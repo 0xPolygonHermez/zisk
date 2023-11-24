@@ -11,7 +11,10 @@ pub struct TraceLayout {
 
 #[allow(dead_code)]
 impl TraceLayout {
-    pub fn new(trace_columns: Vec<TraceColumn>, num_rows: usize) -> TraceLayout {
+    // CONSTRUCTORS
+    // --------------------------------------------------------------------------------------------
+    pub fn new(num_rows: usize) -> TraceLayout {
+        let trace_columns = Vec::<TraceColumn>::new();
         let mut row_bytes = 0;
         for trace_column in trace_columns.iter() {
             row_bytes += trace_column.column_bytes();

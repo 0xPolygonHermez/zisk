@@ -9,11 +9,11 @@ pub struct TraceColumn {
 
 #[allow(dead_code)]
 impl TraceColumn {
-    pub fn new(column_name: String, column_bytes: u32) -> TraceColumn {
+    pub fn new(column_name: &str, column_bytes: u32) -> TraceColumn {
         TraceColumn {
-            column_name,
+            column_name: String::from(column_name),
             column_bytes,
-            pos_bytes: 0u32,
+            pos_bytes: 0_u32,
         }
     }
 
