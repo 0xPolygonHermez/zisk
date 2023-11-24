@@ -12,6 +12,7 @@ pub enum StoreType {
     ColMajor,
 }
 
+// TODO: declare Trace as Trace<T> where T: BaseField
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
     trace_layout: TraceLayout,
@@ -41,10 +42,6 @@ impl Trace {
 
     pub fn trace_store_type(&self) -> &StoreType {
         &self.trace_store_type
-    }
-
-    pub fn trace_mem(&mut self) -> &mut TraceMem {
-        &mut self.trace_mem
     }
 
     pub fn get(&self, col_name: &str, row_idx: usize) -> MockBaseField {

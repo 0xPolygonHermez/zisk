@@ -104,5 +104,15 @@ impl TraceMem {
         let col_offset = self.traces_table[column_idx].offset;
         let buffer = self.buffers_table.get_mut(0).unwrap();
         buffer.set_column(col_offset, values);
-    }    
+    }
+
+    // TODO: implement some of these functions ????
+    // pub fn evaluate_polys(polys: &TraceMem, blowup_factor: usize) -> Self
+    // pub fn evaluate_polys_over(polys: &TraceMem, domain: &Domain<T::BaseField>,) -> Self
+
+    // TODO: Implement Merkle related functions ????
+
+    // TODO: Implement matrix related functions ????
+    // pub fn transpose(&self) -> Self
+
 }
