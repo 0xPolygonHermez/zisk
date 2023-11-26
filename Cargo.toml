@@ -1,3 +1,7 @@
 [workspace]
-members = ["proofman"]
+members = [
+    "proofman",
+    "plonky2/field",
+    "plonky2/util",
+]
 resolver = "2"
