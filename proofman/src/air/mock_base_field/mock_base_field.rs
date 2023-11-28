@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum BaseFieldType {
@@ -5,17 +7,25 @@ pub enum BaseFieldType {
     Extended,
 }
 
-
 // MOCK BASE FIELD TRAIT
 // ================================================================================================
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct MockBaseField {
     value: Vec<u8>,
     field_type: BaseFieldType,
 }
 
+impl fmt::Debug for MockBaseField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value[0])
+    }
+}
+
 #[allow(dead_code)]
 impl MockBaseField {
+    pub const SIZE: u32 = 1;
+    pub const EXTENDED_SIZE: u32 = 3;
+
     pub fn new(field_type: BaseFieldType, value: &[u8]) -> MockBaseField {
         if field_type == BaseFieldType::Extended {
             assert!(value.len() == 3);

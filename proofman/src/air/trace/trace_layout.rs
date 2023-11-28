@@ -1,12 +1,39 @@
-use super::trace_column::TraceColumn;
+
+// TRACE COLUMN LAYOUT
+// ================================================================================================
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraceColumnLayout {
+    column_name: String,
+    column_bytes: usize,
+}
+
+#[allow(dead_code)]
+impl TraceColumnLayout {
+    pub fn new(column_name: &str, column_bytes: usize) -> TraceColumnLayout {
+        TraceColumnLayout {
+            column_name: String::from(column_name),
+            column_bytes,
+        }
+    }
+
+    // PUBLIC ACCESSORS
+    // --------------------------------------------------------------------------------------------
+    pub fn column_name(&self) -> &str {
+        &self.column_name
+    }
+
+    pub fn column_bytes(&self) -> usize {
+        self.column_bytes
+    }
+}
 
 // TRACE LAYOUT
 // ================================================================================================
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceLayout {
-    trace_columns: Vec<TraceColumn>,
+    trace_columns: Vec<TraceColumnLayout>,
     num_rows: usize,
-    row_bytes: u32,
+    row_bytes: usize,
 }
 
 #[allow(dead_code)]
@@ -14,7 +41,9 @@ impl TraceLayout {
     // CONSTRUCTORS
     // --------------------------------------------------------------------------------------------
     pub fn new(num_rows: usize) -> TraceLayout {
-        let trace_columns = Vec::<TraceColumn>::new();
+        assert!(num_rows.is_power_of_two());
+
+        let trace_columns = Vec::<TraceColumnLayout>::new();
         let mut row_bytes = 0;
         for trace_column in trace_columns.iter() {
             row_bytes += trace_column.column_bytes();
@@ -27,7 +56,8 @@ impl TraceLayout {
         }
     }
 
-    pub fn add_column(&mut self, trace_column: TraceColumn) {
+    pub fn add_column(&mut self, column_name: String, column_bytes: usize) {
+        let trace_column = TraceColumnLayout::new(&column_name, column_bytes);
         self.row_bytes += trace_column.column_bytes();
         self.trace_columns.push(trace_column);
     }
@@ -42,11 +72,11 @@ impl TraceLayout {
         self.num_rows
     }
 
-    pub fn row_bytes(&self) -> u32 {
+    pub fn row_bytes(&self) -> usize {
         self.row_bytes
     }
 
-    pub fn trace_columns(&self) -> &Vec<TraceColumn> {
+    pub fn trace_columns(&self) -> &Vec<TraceColumnLayout> {
         &self.trace_columns
     }
 
@@ -54,7 +84,7 @@ impl TraceLayout {
         self.trace_columns.iter().position(|c| c.column_name() == column_name)
     }
 
-    pub fn find_column_by_name(&self, column_name: &str) -> Option<&TraceColumn> {
+    pub fn find_column_by_name(&self, column_name: &str) -> Option<&TraceColumnLayout> {
         self.trace_columns.iter().find(|c| c.column_name() == column_name)
     }
 

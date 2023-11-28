@@ -9,5 +9,5 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
-plonky2_field = { path = "../plonky2/field", default-features = false, features = [] }
-plonky2_util = { path = "../plonky2/util" }
+math = { package = "winter-math", version = "0.6", default-features = false }
+

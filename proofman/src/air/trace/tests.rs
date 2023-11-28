@@ -1,11 +1,11 @@
-use super::trace_column::TraceColumn;
+use super::trace_column::TraceColumnLayout;
 use super::trace_layout::TraceLayout;
 use super::trace::{Trace, StoreType};
 use crate::air::mock_base_field::mock_base_field::{MockBaseField, BaseFieldType};
 
 #[test]
 fn new_trace_table() {
-    let trace_column = TraceColumn::new("colA", 8);
+    let trace_column = TraceColumnLayout::new("colA", 8);
 
     assert_eq!(trace_column.column_name(), "colA");
     assert_eq!(trace_column.column_bytes(), 8);
@@ -43,9 +43,9 @@ fn create_mock_vector_c() -> Vec<MockBaseField>{
 //TODO reorganize tests, change names, ...
 #[test]
 fn test_trace() {
-    let trace_col_a =  TraceColumn::new("colA", 1);
-    let trace_col_b =  TraceColumn::new("colB", 3);
-    let trace_col_c =  TraceColumn::new("colC", 1);
+    let trace_col_a =  TraceColumnLayout::new("colA", MockBaseField::SIZE);
+    let trace_col_b =  TraceColumnLayout::new("colB", MockBaseField::EXTENDED_SIZE);
+    let trace_col_c =  TraceColumnLayout::new("colC", MockBaseField::SIZE);
 
     let num_rows = 2usize.pow(2);
     let mut trace_layout = TraceLayout::new(num_rows);
@@ -69,4 +69,52 @@ fn test_trace() {
     let temp = trace.get("colB", 1);
     println!("temp: {:?}", temp);
 
+}
+
+#[test]
+fn test_trace_fibonacci() {
+    let num_rows = 2usize.pow(3);
+
+    // Create Trace Layout
+    let mut trace_layout = TraceLayout::new(num_rows);
+
+    trace_layout.add_column(TraceColumnLayout::new("witness.a", MockBaseField::SIZE));
+    trace_layout.add_column(TraceColumnLayout::new("witness.b", MockBaseField::SIZE));
+    trace_layout.add_column(TraceColumnLayout::new("fixed.L1", MockBaseField::SIZE));
+    trace_layout.add_column(TraceColumnLayout::new("fixed.LLAST", MockBaseField::SIZE));
+
+    // Create Mock Data values for witness and fixed columns
+    let mut witness_a = Vec::<MockBaseField>::new();
+    let mut witness_b = Vec::<MockBaseField>::new();
+    let mut fixed_l1 = Vec::<MockBaseField>::new();
+    let mut fixed_llast = Vec::<MockBaseField>::new();
+
+    let mut a = 1;
+    let mut b = 1;
+
+    for i in 0..num_rows {
+        witness_a.push(MockBaseField::new(BaseFieldType::NoExtended, &[a]));
+        witness_b.push(MockBaseField::new(BaseFieldType::NoExtended, &[b]));
+        fixed_l1.push(MockBaseField::new(BaseFieldType::NoExtended, &[if i == 0 { 1 } else { 0 }]));
+        fixed_llast.push(MockBaseField::new(BaseFieldType::NoExtended, &[if i == num_rows - 1 { 1 } else { 0 }]));
+
+        let temp = a;
+        a = b;
+        b = temp + b;
+    }
+
+    // Create Trace
+    let mut trace: Trace = Trace::new(trace_layout, StoreType::RowMajor);
+
+    trace.set_column("witness.a", &witness_a);
+    trace.set_column("witness.b", &witness_b);
+    trace.set_column("fixed.L1", &fixed_l1);
+    trace.set_column("fixed.LLAST", &fixed_llast);
+
+    println!("trace: {:?}", trace);
+
+    println!("col_a: {:?}", trace.get_column("witness.a"));
+    println!("col_b: {:?}", trace.get_column("witness.b"));
+    println!("col_l1: {:?}", trace.get_column("fixed.L1"));
+    println!("col_llast: {:?}", trace.get_column("fixed.LLAST"));
 }
