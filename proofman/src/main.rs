@@ -5,7 +5,7 @@ use std::mem;
 mod air;
 
 use air::trace::trace_layout::TraceLayout;
-use air::trace::trace_air_context::{TraceAirContext, StoreType};
+use air::trace::trace::{Trace, StoreType};
 
 use math::FieldElement;
 use math::fields::CubeExtension;
@@ -99,14 +99,23 @@ fn test_trace_air_context() {
     fixed_l1[0] = CubeExtension::new(BaseElement::new(1), BaseElement::new(0), BaseElement::new(0));
     fixed_llast[num_rows - 1] = CubeExtension::new(BaseElement::new(1), BaseElement::new(0), BaseElement::new(0));
 
-    let mut trace_air_context = TraceAirContext::new(&trace_layout, StoreType::RowMajor);
+    let mut trace_air_context = Trace::new(&trace_layout, StoreType::RowMajor);
     trace_air_context.new_trace(num_rows);
-    trace_air_context.set_column("witness.a", &witness_a);
-    trace_air_context.set_column("witness.b", &witness_b);
-    trace_air_context.set_ext_column("fixed.L1", &fixed_l1);
-    trace_air_context.set_ext_column("fixed.LLAST", &fixed_llast);
+    trace_air_context.set_column_u8("witness.a", witness_a.len(), FieldElement::elements_as_bytes(&witness_a));
+    trace_air_context.set_column_u8("witness.b", witness_b.len(), FieldElement::elements_as_bytes(&witness_b));
+    trace_air_context.set_column_u8("fixed.L1", fixed_l1.len(), FieldElement::elements_as_bytes(&fixed_l1));
+    trace_air_context.set_column_u8("fixed.LLAST", fixed_llast.len(), FieldElement::elements_as_bytes(&fixed_llast));
 
-    println!("trace_air_context_2: {:?}", trace_air_context);    
+    println!("trace_air_context_2: {:?}", trace_air_context);
+
+
+    //ctx.add(subprood_id, air_id, trace);
+
+
+
+
+
+
 }
 
 // fn worker_function(_tx: mpsc::Sender<String>, trace: Trace) {
