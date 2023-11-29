@@ -1,5 +1,9 @@
 {
     "rust-analyzer.linkedProjects": [
-        "./Cargo.toml"
+        "./Cargo.toml",
+        "./core/Cargo.toml",
+        "./proofman/Cargo.toml",
+        "./proofs/fibonacci/Cargo.toml",
+        "./core/Cargo.toml"
     ]
 }

@@ -1,0 +1,10 @@
+[package]
+name = "fibonacci"
+version = "0.0.1"
+authors = ["Polygon-zkEvm"]
+edition = "2021"
+readme = "README.md"
+
+[dependencies]
+core = { path = "../core" }
+proofman = { path = "../proofman" }

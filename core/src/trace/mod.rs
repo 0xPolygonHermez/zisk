@@ -1,10 +1,40 @@
-use crate::air::trace::trace_layout::TraceLayout;
+pub mod trace_layout;
+
+use trace_layout::TraceLayout;
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum StoreType {
     RowMajor,
     ColMajor,
+}
+
+// TRACE COL INFO
+// ================================================================================================
+/// Information about a stored trace column
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraceColInfo {
+    column_name: String,
+    filled: bool,
+}
+
+#[allow(dead_code)]
+impl TraceColInfo {
+    pub fn new(column_name: &str) -> TraceColInfo {
+        TraceColInfo { column_name: column_name.to_string(), filled: false }
+    }
+
+    pub fn column_name(&self) -> &str {
+        &self.column_name
+    }
+
+    pub fn filled(&self) -> bool {
+        self.filled
+    }
+
+    pub fn set_filled(&mut self, filled: bool) {
+        self.filled = filled;
+    }
 }
 
 // TRACE COLUMN SEGMENT
@@ -14,7 +44,7 @@ pub enum StoreType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceColSegment {
     /// Name of the trace column.
-    column: String,
+    column_name: String,
     /// Size in bytes of each element
     column_bytes: usize,
     /// Row index of the first row in the segment.
@@ -29,6 +59,13 @@ pub struct TraceColSegment {
     next: usize,
     /// Flag indicating whether this is the last segment of the column.
     last: bool
+}
+
+#[allow(dead_code)]
+impl  TraceColSegment {
+    fn set_last(&mut self, last: bool) {
+        self.last = last;
+    }
 }
 
 /// Trace buffer to store trace column segments.
@@ -73,10 +110,11 @@ impl TraceBuffer {
 
 /// Trace air context is a container for trace column segments and trace buffers. Each air instance has a single trace air context.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct Trace {
     /// Trace layout. TODO, this should be a reference to the layout in the air. ADD metadata as filled?
     layout: TraceLayout,
+    /// Trace columns info
+    info: Vec<TraceColInfo>,
     /// Trace store type.
     store_type: StoreType,
     /// Trace column segments.
@@ -89,7 +127,14 @@ pub struct Trace {
 impl Trace {
     pub fn new(layout: &TraceLayout, store_type: StoreType) -> Trace {
         // TODO! Check if layout.clone() is a good idea, better to pass a reference and a lifetime?
-        Trace { layout: layout.clone(), store_type, segments: Vec::<TraceColSegment>::new(), buffers: Vec::<TraceBuffer>::new() }
+
+        // Foreach layout column create a trace column info
+        let mut info = Vec::<TraceColInfo>::new();
+        for trace_column in layout.trace_columns() {
+            info.push(TraceColInfo::new(trace_column.column_name()));
+        }
+        
+        Trace { layout: layout.clone(), info, store_type, segments: Vec::<TraceColSegment>::new(), buffers: Vec::<TraceBuffer>::new() }
     }
 
     pub fn new_trace(&mut self, trace_rows: usize) {
@@ -104,7 +149,7 @@ impl Trace {
         let mut offset = 0;
         for trace_column in self.layout.trace_columns() {
             let segment = TraceColSegment {
-                column: trace_column.column_name().to_string(),
+                column_name: trace_column.column_name().to_string(),
                 column_bytes: trace_column.column_bytes(),
                 row_from: 0,
                 row_to: trace_rows - 1,
@@ -145,7 +190,7 @@ impl Trace {
         // NOTE: At the moment we only support row major layout
         // TODO! Add support for column major layout
 
-        let trace_column = self.segments.iter().find(|c| c.column == column_name).unwrap();
+        let trace_column = self.segments.iter().find(|c| c.column_name == column_name).unwrap();
 
         assert_eq!(trace_column.column_bytes, values.len() / num_rows);
         assert!(trace_column.row_to - trace_column.row_from + 1 == num_rows);
@@ -157,6 +202,10 @@ impl Trace {
             self.buffers[0].set_element(offset, &values[i * element_bytes..(i + 1) * element_bytes]);
             offset += trace_column.next;
         }
+
+        // Set the column info as filled
+        let info = self.info.iter_mut().find(|c| c.column_name == column_name).unwrap();
+        info.set_filled(true);
     }
 }
 

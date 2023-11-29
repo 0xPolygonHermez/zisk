@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "proofman",
+    "core",
+    "fibonacci"
 ]
-
 
 resolver = "2"

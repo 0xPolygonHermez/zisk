@@ -2,15 +2,17 @@
 // use std::thread;
 use std::mem;
 
-mod air;
-
-use air::trace::trace_layout::TraceLayout;
-use air::trace::trace::{Trace, StoreType};
+use core::trace::{Trace, StoreType};
+use core::trace::trace_layout::TraceLayout;
 
 use math::FieldElement;
 use math::fields::CubeExtension;
 use math::fields::f64::BaseElement;
 use math::StarkField;
+
+// mod pilout;
+// use pilout::pilout::Pilout;
+
 
 
 fn print_info<B: StarkField>(element: B) {
@@ -42,6 +44,10 @@ fn main() {
     println!("{:?}", element_3[0]);
 
     test_trace_air_context();
+
+    // 3. Load pilout into memory
+
+
 
     // let c = GoldilocksField(max);
     // let bytes = c.0;
@@ -109,8 +115,11 @@ fn test_trace_air_context() {
     println!("trace_air_context_2: {:?}", trace_air_context);
 
 
-    //ctx.add(subprood_id, air_id, trace);
-
+    //ctx.addAirInstance(subprood_id, air_id, trace);
+    //TODO create context object
+    //TODO add air instance
+    //Add threads support
+    //Add protobuffer support
 
 
 
