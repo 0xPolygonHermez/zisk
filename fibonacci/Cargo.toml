@@ -8,3 +8,6 @@ readme = "README.md"
 [dependencies]
 core = { path = "../core" }
 proofman = { path = "../proofman" }
+log = { version = "0.4.20" }
+env_logger = "0.10.1"
+math = { package = "winter-math", version = "0.7.1", default-features = false }

@@ -213,7 +213,7 @@ impl Trace {
 #[cfg(test)]
 mod tests {
     // Import necessary items
-    use super::*;
+    //use super::*;
 
     // TODO! Add tests
     #[test]
