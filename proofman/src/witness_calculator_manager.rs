@@ -7,15 +7,15 @@ use crate::{executor::Executor, proof_ctx::ProofCtx};
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
-pub struct WitnessCalculatorManager<'a> {
+pub struct WitnessCalculatorManager {
     name: String,
     initialized: bool,
-    proof_ctx: Option<Rc<RefCell<ProofCtx<'a>>>>,
+    proof_ctx: Option<Rc<RefCell<ProofCtx>>>,
     witness_calculators: Vec<Box<dyn Executor>>,
 }
 
 #[allow(dead_code)]
-impl<'a> WitnessCalculatorManager<'a> {
+impl WitnessCalculatorManager {
     pub fn new() -> Self {
         WitnessCalculatorManager {
             name: String::from("WC Manager"),
@@ -29,7 +29,7 @@ impl<'a> WitnessCalculatorManager<'a> {
         assert!(self.initialized, "WC Manager is not initialized");
     }
 
-    pub fn initialize(&mut self, proof_ctx: Rc<RefCell<ProofCtx<'a>>>, witness_calculators: Vec<Box<dyn Executor>>, _options: &str) {
+    pub fn initialize(&mut self, proof_ctx: Rc<RefCell<ProofCtx>>, witness_calculators: Vec<Box<dyn Executor>>, _options: &str) {
         if self.initialized {
             error!("[{}] WC Manager is already initialized", self.name);
             panic!("WC Manager is already initialized");
@@ -37,9 +37,7 @@ impl<'a> WitnessCalculatorManager<'a> {
 
         debug!("[{}] > Initializing...", self.name);
 
-        proof_ctx.borrow_mut().counter = 1;
         self.proof_ctx = Some(proof_ctx);
-        print!("Proof context: {:?}", self.proof_ctx);
         self.witness_calculators = witness_calculators;
         self.initialized = true;
     }
@@ -58,7 +56,7 @@ impl<'a> WitnessCalculatorManager<'a> {
         // executors.push(this.witnessComputationDeferred(stageId));
         if stage_id == 1 {
             for wc in &self.witness_calculators {
-                wc.witness_computation(stage_id, 0, -1);
+                wc.witness_computation(stage_id, 0, -1, self.proof_ctx.clone().unwrap());
             }
         } else {
         }

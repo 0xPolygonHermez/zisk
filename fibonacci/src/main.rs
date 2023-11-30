@@ -5,7 +5,7 @@ mod module;
 
 use proofman::proof_orchestrator::ProofOrchestrator;
 
-use log::{info, trace, warn, error, debug};
+use log::{info};
 
 fn main() {
     env_logger::builder()
@@ -18,14 +18,13 @@ fn main() {
     let executor1 = fibonacci::Fibonacci::new();
     let executor2 = module::Module::new();
 
-    let wc: Vec<Box<dyn Executor>> = vec![Box::new(executor1), Box::new(executor2)];
-    // let witness_calculators: Vec<&dyn Executor> = vec![&executor1, &executor2];
+    let witness_calculators: Vec<Box<dyn Executor>> = vec![Box::new(executor1), Box::new(executor2)];
 
-    println!("[FullProve ] {}", "==> FULL PROVE TEST");
+    info!("[FullProve ] {}", "==> FULL PROVE TEST");
 
     let mut proof_orchestrator = ProofOrchestrator::new();
 
-    proof_orchestrator.initialize("config", "options", wc);
+    proof_orchestrator.initialize("config", "options", witness_calculators);
 
     proof_orchestrator.generate_proof(/*setup, publics*/);
     
@@ -69,10 +68,4 @@ fn main() {
     // assert(isValid == true, "PROOF NOT VALID");
 
     // if(executeCircom) await verifyCircomCmd(setup, proofs, challenges, challengesFRISteps);
-
-    info!("[FullProve ] {}", "<== FULL PROVE TEST 1");
-    trace!("[FullProve ] {}", "<== FULL PROVE TEST 2");
-    error!("[FullProve ] {}", "<== FULL PROVE TEST 3");
-    debug!("[FullProve ] {}", "<== FULL PROVE TEST 3");
-    warn!("[FullProve ] {}", "<== FULL PROVE TEST 4");
 }

@@ -5,8 +5,13 @@ use proofman::executor::Executor;
 use core::trace::{Trace, StoreType};
 use core::trace::trace_layout::TraceLayout;
 
+use proofman::proof_ctx::ProofCtx;
+
 use math::FieldElement;
 use math::fields::f64::BaseElement;
+
+use std::rc::Rc;
+use std::cell::RefCell;
 
 pub struct Fibonacci {
     name: String
@@ -52,7 +57,7 @@ impl Fibonacci {
 }
 
 impl Executor for Fibonacci {
-    fn witness_computation(&self, stage_id: u32, subproof_id: u32, instance_id: i32/*, publics*/) {
+    fn witness_computation(&self, stage_id: u32, subproof_id: u32, instance_id: i32, proof_ctx: Rc<RefCell<ProofCtx>>/*, publics*/) {
         if stage_id != 1 { return; }
         
         if instance_id != -1 {
@@ -61,6 +66,8 @@ impl Executor for Fibonacci {
         }
 
         // Create the Trace Layout
-        let trace = self.get_fibonacci_trace(2usize.pow(4));
+        let _trace = self.get_fibonacci_trace(2usize.pow(4));
+
+        proof_ctx.borrow_mut().add_air_instance(subproof_id as usize, 0/* , &trace_layout*/);
     }
 }

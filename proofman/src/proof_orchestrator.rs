@@ -1,6 +1,6 @@
 use log::{error, debug};
 
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::witness_calculator_manager::WitnessCalculatorManager;
@@ -16,16 +16,16 @@ enum ProverStatus {
 
 // PROOF ORCHESTRATOR
 // ================================================================================================
-pub struct ProofOrchestrator<'a> {
+pub struct ProofOrchestrator {
     name: String,
     initialized: bool,
-    wc_manager: WitnessCalculatorManager<'a>,
+    wc_manager: WitnessCalculatorManager,
     // TODO! Add Option<>
-    proof_ctx: Rc<RefCell<ProofCtx<'a>>>,
+    proof_ctx: Rc<RefCell<ProofCtx>>,
 }
 
 #[allow(dead_code)]
-impl<'a> ProofOrchestrator<'a> {
+impl ProofOrchestrator {
     pub fn new() -> Self {
         ProofOrchestrator {
             name: String::from("ProofOrch "),
@@ -72,7 +72,6 @@ impl<'a> ProofOrchestrator<'a> {
         
         self.wc_manager.initialize(Rc::clone(&self.proof_ctx), witness_calculators, options);
         
-        println!("Proof context: {:?}", self.proof_ctx);
         // this.proversManager = new ProversManager();
         // await this.proversManager.initialize(config.prover, this.proofCtx, this.options);
 
