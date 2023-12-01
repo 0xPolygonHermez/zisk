@@ -1,11 +1,14 @@
 use proofman::executor::Executor;
 
+use std::sync::{Arc, Mutex};    
+
 mod fibonacci;
 mod module;
 
 use proofman::proof_orchestrator::ProofOrchestrator;
+use proofman::proof_orchestrator::Options;
 
-use log::{info};
+use log::info;
 
 fn main() {
     env_logger::builder()
@@ -18,13 +21,13 @@ fn main() {
     let executor1 = fibonacci::Fibonacci::new();
     let executor2 = module::Module::new();
 
-    let witness_calculators: Vec<Box<dyn Executor>> = vec![Box::new(executor1), Box::new(executor2)];
+    let witness_calculators: Vec<Box<dyn Executor>> = vec![Box::new(executor2), Box::new(executor1)];
 
     info!("[FullProve ] {}", "==> FULL PROVE TEST");
 
     let mut proof_orchestrator = ProofOrchestrator::new();
 
-    proof_orchestrator.initialize("config", "options", witness_calculators);
+    proof_orchestrator.initialize("config", Options { use_threads: false }, Arc::new(Mutex::new(witness_calculators)));
 
     proof_orchestrator.generate_proof(/*setup, publics*/);
     

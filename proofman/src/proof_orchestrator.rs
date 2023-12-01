@@ -1,7 +1,6 @@
 use log::{error, debug};
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::witness_calculator_manager::WitnessCalculatorManager;
 
@@ -14,14 +13,27 @@ enum ProverStatus {
     OpeningsCompleted,
 }
 
+pub struct Options {
+    pub use_threads: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            use_threads: false,
+        }
+    }
+}
+
 // PROOF ORCHESTRATOR
 // ================================================================================================
 pub struct ProofOrchestrator {
     name: String,
     initialized: bool,
+    options: Options,
     wc_manager: WitnessCalculatorManager,
     // TODO! Add Option<>
-    proof_ctx: Rc<RefCell<ProofCtx>>,
+    proof_ctx: Arc<RwLock<ProofCtx>>,
 }
 
 #[allow(dead_code)]
@@ -30,8 +42,9 @@ impl ProofOrchestrator {
         ProofOrchestrator {
             name: String::from("ProofOrch "),
             initialized: false,
+            options: Options::default(),
             wc_manager: WitnessCalculatorManager::new(),
-            proof_ctx: Rc::new(RefCell::new(ProofCtx::new())),
+            proof_ctx: Arc::new(RwLock::new(ProofCtx::new())),
         }
     }
 
@@ -39,7 +52,7 @@ impl ProofOrchestrator {
         assert!(self.initialized, "ProofOrchestrator is not initialized");
     }
 
-    pub fn initialize(&mut self, _config: &str, options: &str, witness_calculators: Vec<Box<dyn Executor>>) {
+    pub fn initialize(&mut self, _config: &str, options: Options, witness_calculators: Arc<Mutex<Vec<Box<dyn Executor>>>>) {
         if self.initialized {
             error!("[{}] ProofOrchestrator is already initialized", self.name);
             panic!("ProofOrchestrator is already initialized");
@@ -47,7 +60,7 @@ impl ProofOrchestrator {
 
         debug!("[{}] > Initializing...", self.name);
 
-        // self.options = options;
+        self.options = options;
 
         /*
          * config is a JSON object containing the following fields:
@@ -70,7 +83,7 @@ impl ProofOrchestrator {
         //self.proof_ctx = RefCell::new(ProofCtx::new());
         // this.proofCtx = ProofCtx.createProofCtxFromAirout(this.config.name, airout, finiteField);
         
-        self.wc_manager.initialize(Rc::clone(&self.proof_ctx), witness_calculators, options);
+        self.wc_manager.initialize(Arc::clone(&self.proof_ctx), witness_calculators);
         
         // this.proversManager = new ProversManager();
         // await this.proversManager.initialize(config.prover, this.proofCtx, this.options);
@@ -221,6 +234,9 @@ impl ProofOrchestrator {
             prover_status = ProverStatus::OpeningsCompleted;
             stage_id += 1;
         }
+
+        //println!("{:?}, self.proof_ctx: {:?}", prover_status, self.proof_ctx);
+
         //     log.info(`[${this.name}]`, `<== PROOF '${this.config.name}' SUCCESSFULLY GENERATED.`);
 
         //     let proofs = [];

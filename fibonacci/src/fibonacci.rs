@@ -1,17 +1,17 @@
-use log::{error};
+use log::error;
 use std::mem;
 
 use proofman::executor::Executor;
 use core::trace::{Trace, StoreType};
 use core::trace::trace_layout::TraceLayout;
 
+use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
+
 use proofman::proof_ctx::ProofCtx;
 
 use math::FieldElement;
 use math::fields::f64::BaseElement;
-
-use std::rc::Rc;
-use std::cell::RefCell;
 
 pub struct Fibonacci {
     name: String
@@ -22,7 +22,7 @@ impl Fibonacci {
         Fibonacci { name: "Fibonacci ".to_string() }
     }
 
-    fn get_fibonacci_trace(&self, num_rows: usize) {
+    fn get_fibonacci_trace(&self, num_rows: usize) -> Trace {
         let mut trace_layout = TraceLayout::new(num_rows);
 
         trace_layout.add_column("witness.a".to_string(), mem::size_of::<BaseElement>());
@@ -53,11 +53,13 @@ impl Fibonacci {
         trace.set_column_u8("witness.b", witness_b.len(), FieldElement::elements_as_bytes(&witness_b));
         trace.set_column_u8("fixed.L1", fixed_l1.len(), FieldElement::elements_as_bytes(&fixed_l1));
         trace.set_column_u8("fixed.LLAST", fixed_llast.len(), FieldElement::elements_as_bytes(&fixed_llast));
+
+        trace
     }
 }
 
 impl Executor for Fibonacci {
-    fn witness_computation(&self, stage_id: u32, subproof_id: u32, instance_id: i32, proof_ctx: Rc<RefCell<ProofCtx>>/*, publics*/) {
+    fn witness_computation(&self, stage_id: u32, subproof_id: u32, instance_id: i32, proof_ctx: Arc<RwLock<ProofCtx>>/*, publics*/) {
         if stage_id != 1 { return; }
         
         if instance_id != -1 {
@@ -65,9 +67,10 @@ impl Executor for Fibonacci {
             panic!("[{}] Air instance id already existing in stageId 1.", self.name);
         }
 
-        // Create the Trace Layout
-        let _trace = self.get_fibonacci_trace(2usize.pow(4));
-
-        proof_ctx.borrow_mut().add_air_instance(subproof_id as usize, 0/* , &trace_layout*/);
+        let mut proof_ctx = proof_ctx.write().unwrap();
+        
+        // Create the Trace Layout and store it in the Proof Context
+        let trace = self.get_fibonacci_trace(2usize.pow(4));
+        proof_ctx.add_air_instance(subproof_id as usize, 0, Arc::new(Mutex::new(trace)));
     }
 }
