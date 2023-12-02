@@ -2,7 +2,8 @@
 members = [
     "proofman",
     "core",
-    "fibonacci"
+    "fibonacci",
+    "trace"
 ]
 
 resolver = "2"
