@@ -1,15 +1,15 @@
 #[derive(Debug)]
 pub struct TraceCol<T> {
-    col: Vec<T>,
+    pub col: Vec<T>,
 }
 
 impl<T: Default + Clone> TraceCol<T> {
-    pub fn new(len: usize) -> Self {
-        Self { col: vec![T::default(); len] }
-    }
-    
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { col: Vec::with_capacity(capacity) }
+    pub fn new(num_rows: usize) -> Self {
+        // PRECONDITIONS
+        // Size must be greater than 0
+        assert!(num_rows >= 2);
+
+        Self { col: vec![T::default(); num_rows] }
     }
 
     pub fn push(&mut self, value: T) {
@@ -24,17 +24,24 @@ impl<T: Default + Clone> TraceCol<T> {
         &mut self.col[index]
     }
 
-    pub fn len(&self) -> usize {
+    pub fn num_rows(&self) -> usize {
         self.col.len()
     }
 }
 
 use std::ops::Index;
+use std::ops::IndexMut;
 
 impl<T> Index<usize> for TraceCol<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.col[index]
+    }
+}
+
+impl<T> IndexMut<usize> for TraceCol<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.col[index]
     }
 }
