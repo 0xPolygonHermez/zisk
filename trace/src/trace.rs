@@ -76,8 +76,11 @@ mod tests {
     }
 
     #[test]
-    fn it_throws_an_error_when_new_trace_with_non_valid_size() {
-        todo!();
+    #[should_panic]
+    fn it_throws_an_error_when_new_trace_with_non_valid_num_rows() {
+        trace!(Simple { field1: usize });
+        let _ = Simple::new(1);
+        let _ = Simple::new(3);
     }
 
     #[test]
