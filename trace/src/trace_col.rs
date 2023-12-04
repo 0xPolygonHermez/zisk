@@ -9,7 +9,9 @@ impl<T: Default + Clone> TraceCol<T> {
         // Size must be greater than 0
         assert!(num_rows >= 2);
 
-        Self { col: vec![T::default(); num_rows] }
+        Self {
+            col: vec![T::default(); num_rows],
+        }
     }
 
     pub fn push(&mut self, value: T) {
