@@ -4,6 +4,8 @@
         "./core/Cargo.toml",
         "./proofman/Cargo.toml",
         "./proofs/fibonacci/Cargo.toml",
-        "./core/Cargo.toml"
+        "./core/Cargo.toml",
+        "./proofman2/Cargo.toml",
+        "./proofman2/Cargo.toml"
     ]
 }

@@ -147,8 +147,19 @@ dependencies = [
  "core",
  "env_logger",
  "log",
+ "rand",
  "serde",
  "serde_json",
+ "winter-math",
+]
+
+[[package]]
+name = "proofman2"
+version = "0.0.1"
+dependencies = [
+ "env_logger",
+ "log",
+ "rand",
  "winter-math",
 ]
 
