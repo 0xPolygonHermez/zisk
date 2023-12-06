@@ -14,6 +14,15 @@ macro_rules! trace {
 
         #[allow(dead_code)]
         impl $my_struct {
+            /// Creates a new $my_struct.
+            ///
+            /// # Arguments
+            ///
+            /// * `num_rows` - The number of rows in all the TraceCol fields defined.
+            ///
+            /// # Preconditions
+            ///
+            /// * Size must be greater than or equal to 2 and a power of 2.
             pub fn new(num_rows: usize) -> Box<Self> {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
@@ -27,10 +36,24 @@ macro_rules! trace {
                 })
             }
 
+            /// Splits the TraceCol into multiple segments.
+            ///
+            /// # Arguments
+            ///
+            /// * `num_segments` - The number of segments to split the TraceCol into.
+            ///
+            /// # Preconditions
+            ///
+            /// * `num_segments` must be greater than 0.
+            /// * `num_segments` must be less than or equal to the length of the TraceCol.
+            ///
+            /// # Returns
+            ///
+            /// Returns a vector of TraceCols, each representing a segment of the original TraceCol.
             pub fn split(&self, num_segments: usize) -> Vec<Self> {
                 // PRECONDITIONS
-                // 1. num_segments must be greater than 0
-                // 2. num_segments must be less than or equal to the length of the trace
+                // · num_segments must be greater than 0
+                // · num_segments must be less than or equal to the length of the trace
                 assert!(num_segments > 0 && num_segments <= self.$first_field.num_rows());
 
                 let mut segments = Vec::with_capacity(num_segments);
@@ -48,6 +71,11 @@ macro_rules! trace {
                 segments
             }
 
+            /// Gets the number of rows in the Trace.
+            ///
+            /// # Returns
+            ///
+            /// Returns the number of rows in the Trace.
             pub fn num_rows(&self) -> usize {
                 self.$first_field.num_rows()
             }
