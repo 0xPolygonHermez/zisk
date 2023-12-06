@@ -1,4 +1,4 @@
-pub trait Trace : Send {}
+pub trait Trace : Send + Sync + std::fmt::Debug {}
 
 #[macro_export]
 macro_rules! trace {
@@ -62,7 +62,7 @@ mod tests {
     use rand::Rng;
 
     #[test]
-    fn it_creates_a_simple_traces() {
+    fn test_simple_trace_creation() {
         let num_rows = 256;
 
         trace!(Simple { field1: usize });
@@ -81,14 +81,14 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn it_throws_an_error_when_new_trace_with_non_valid_num_rows() {
+    fn test_errors_are_launched_when_num_rows_is_invalid() {
         trace!(Simple { field1: usize });
         let _ = Simple::new(1);
         let _ = Simple::new(3);
     }
 
     #[test]
-    fn it_creates_a_fibonacci_trace() {
+    fn test_fibonacci_trace_creation() {
         // NOTE: we are looking for a syntaxis like this:
         // fibonacci = trace!{ { a: BaseField, b: BaseField }::new(num_rows);
         // let fibs = fibonacci.split(8);

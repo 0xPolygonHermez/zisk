@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TraceCol<T> {
     pub col: Vec<T>,
 }
@@ -6,7 +6,7 @@ pub struct TraceCol<T> {
 impl<T: Default + Clone> TraceCol<T> {
     pub fn new(num_rows: usize) -> Self {
         // PRECONDITIONS
-        // Size must be greater than 0
+        // Size must be greater than 2
         assert!(num_rows >= 2);
 
         Self {
