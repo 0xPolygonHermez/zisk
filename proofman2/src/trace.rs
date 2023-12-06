@@ -98,6 +98,8 @@ mod tests {
         trace!(Simple { field1: usize });
         let mut simple = Simple::new(num_rows);
 
+        assert_eq!(simple.field1.num_rows(), num_rows);
+        
         for i in 0..num_rows {
             simple.field1[i] = i;
         }

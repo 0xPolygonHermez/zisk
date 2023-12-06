@@ -77,3 +77,37 @@ impl<T> IndexMut<usize> for TraceCol<T> {
         &mut self.col[index]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trace_col_creation() {
+        let num_rows = 8;
+        let trace_col: TraceCol<usize> = TraceCol::new(num_rows);
+
+        assert_eq!(trace_col.num_rows(), num_rows);
+        for i in 0..num_rows {
+            assert_eq!(trace_col[i], 0_usize); // Assuming Default::default() for usize is 0
+        }
+    }
+
+    #[test]
+    fn test_trace_col_get() {
+        let num_rows = 8;
+        let mut trace_col: TraceCol<usize> = TraceCol::new(num_rows);
+
+        for i in 0..num_rows {
+            trace_col[i] = i;
+        }
+
+        for i in 0..num_rows {
+            assert_eq!(trace_col.get(i), &i);
+        }
+
+        *trace_col.get_mut(1) = 42;
+
+        assert_eq!(trace_col[1], 42);
+    }
+}

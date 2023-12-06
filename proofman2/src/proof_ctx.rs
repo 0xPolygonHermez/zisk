@@ -102,7 +102,7 @@ impl fmt::Debug for AirInstance {
 #[cfg(test)]
 mod tests {
     use crate::trace;
-    use super::ProofCtx;
+    use super::*;
     use std::sync::Arc;
 
     #[test]
@@ -128,5 +128,31 @@ mod tests {
         });
 
         write_handle.join().unwrap();
+    }
+
+    #[test]
+    fn test_find_air_instance_success() {
+        let proof_ctx = ProofCtx {
+            air_instances: vec![
+                AirInstance::new(0, 0),
+                AirInstance::new(1, 1),
+            ],
+        };
+
+        let result = proof_ctx.find_air_instance(1, 1);
+        assert_eq!(result, Ok(1));
+    }
+
+    #[test]
+    fn test_find_air_instance_not_found() {
+        let proof_ctx = ProofCtx {
+            air_instances: vec![
+                AirInstance::new(0, 0),
+                AirInstance::new(1, 1),
+            ],
+        };
+
+        let result = proof_ctx.find_air_instance(2, 2);
+        assert_eq!(result, Err("Air instance not found"));
     }
 }
