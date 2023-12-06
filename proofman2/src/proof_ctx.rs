@@ -2,6 +2,7 @@ use std::sync::RwLock;
 use crate::trace::Trace;
 use std::fmt;
 
+/// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx {
@@ -9,12 +10,23 @@ pub struct ProofCtx {
 }
 
 impl ProofCtx {
+    /// Creates a new ProofCtx instance.
     pub fn new() -> Self {
         ProofCtx {
             air_instances: Vec::new(),
         }
     }
 
+    /// Finds the index of the Air instance with the given subproof_id and air_id.
+    ///
+    /// # Arguments
+    ///
+    /// * `subproof_id` - The subproof ID to search for.
+    /// * `air_id` - The air ID to search for.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(index)` if the Air instance is found, or `None` otherwise.
     pub fn find_air_instance(&self, subproof_id: usize, air_id: usize) -> Result<usize, &'static str> {
         if let Some(index) = self.air_instances.iter().position(|instance| instance.subproof_id == subproof_id && instance.air_id == air_id) {
             Ok(index)
@@ -23,15 +35,28 @@ impl ProofCtx {
         }
     }
 
+    /// Adds a trace to the specified Air instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `subproof_id` - The subproof ID of the target Air instance.
+    /// * `air_id` - The air ID of the target Air instance.
+    /// * `trace` - The trace to add to the Air instance.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the specified Air instance is not found.
     pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) {
         if let Ok(index) = self.find_air_instance(subproof_id, air_id) {
             self.air_instances[index].add_trace(trace);
         } else {
+            // TODO: Better error handling
             panic!("Could not find air instance with subproof_id {} and air_id {}", subproof_id, air_id);
         }
     }
 }
 
+/// Represents an instance of an Air within a proof.
 #[allow(dead_code)]
 pub struct AirInstance {
     subproof_id: usize,
@@ -40,6 +65,12 @@ pub struct AirInstance {
 }
 
 impl AirInstance {
+    /// Creates a new AirInstance.
+    ///
+    /// # Arguments
+    ///
+    /// * `subproof_id` - The subproof ID associated with the AirInstance.
+    /// * `air_id` - The air ID associated with the AirInstance.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
         AirInstance {
             subproof_id,
@@ -48,6 +79,11 @@ impl AirInstance {
         }
     }
 
+    /// Adds a trace to the AirInstance.
+    ///
+    /// # Arguments
+    ///
+    /// * `trace` - The trace to add to the AirInstance.
     pub fn add_trace(&self, trace: Box<dyn Trace>) {
         self.traces.write().unwrap().push(trace);
     }

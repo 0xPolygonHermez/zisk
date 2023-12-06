@@ -1,5 +1,7 @@
+/// A trait representing a trace within a proof.
 pub trait Trace : Send + Sync + std::fmt::Debug {}
 
+/// Macro for defining trace structures with specified fields.
 #[macro_export]
 macro_rules! trace {
     // Case with at least one field and optional trailing comma

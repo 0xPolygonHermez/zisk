@@ -1,9 +1,19 @@
+/// A column in a trace
 #[derive(Debug, Clone)]
 pub struct TraceCol<T> {
     pub col: Vec<T>,
 }
 
 impl<T: Default + Clone> TraceCol<T> {
+    /// Creates a new TraceCol with the specified number of rows.
+    ///
+    /// # Arguments
+    ///
+    /// * `num_rows` - The number of rows in the TraceCol.
+    ///
+    /// # Preconditions
+    ///
+    /// * Size must be greater than or equal to 2.
     pub fn new(num_rows: usize) -> Self {
         // PRECONDITIONS
         // Size must be greater than 2
@@ -14,18 +24,38 @@ impl<T: Default + Clone> TraceCol<T> {
         }
     }
 
-    pub fn push(&mut self, value: T) {
-        self.col.push(value);
-    }
-
+    /// Gets a reference to the value at the specified index in the TraceCol.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the value to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Returns a reference to the value at the specified index.
     pub fn get(&self, index: usize) -> &T {
         &self.col[index]
     }
 
+
+    /// Gets a mutable reference to the value at the specified index in the TraceCol.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the value to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Returns a mutable reference to the value at the specified index.
     pub fn get_mut(&mut self, index: usize) -> &mut T {
         &mut self.col[index]
     }
 
+    /// Gets the number of rows in the TraceCol.
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of rows in the TraceCol.
     pub fn num_rows(&self) -> usize {
         self.col.len()
     }
