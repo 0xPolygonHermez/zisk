@@ -5,6 +5,17 @@ override toolchain for '/Users/xpinsach/dev/pil2-proofman' set to 'nightly-aarch
 
 to be able to use the nightly features of Rust (as Plonky2 need)
 
+commands:
+execute example
+../target/debug/fibonacci prove -a ./src/fibonacci/fibonacci.airout -o ./src/fibonacci/proof.json -p ./src/fibonacci/settings.json
+
+execute tests
+cargo test -p proofman
+
+execute with selected log level
+RUST_LOG=debug cargo run --bin fibonacci
+
+
 NOTE: Back to stable toolchain !!!!
 rustup help toolchain
 

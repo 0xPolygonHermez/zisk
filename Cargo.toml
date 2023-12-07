@@ -1,10 +1,10 @@
 [workspace]
 members = [
     "proofman",
-    "proofman2",
-    "core",
-    "fibonacci",
-    "trace",
+    "examples",
+    "estark",
+    "proto"
 ]
 
 resolver = "2"
+

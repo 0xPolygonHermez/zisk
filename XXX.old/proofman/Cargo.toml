@@ -9,12 +9,12 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+core = { path = "../core" }
 math = { package = "winter-math", version = "0.7.1", default-features = false }
 log = { version = "0.4.20" }
 env_logger = "0.10.1"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.68"
-structopt = { version = "0.3", default-features = false }
 
 [dev-dependencies]
 rand = "0.8"

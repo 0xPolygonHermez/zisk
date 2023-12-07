@@ -1,0 +1,26 @@
+[package]
+name = "examples"
+version = "0.0.1"
+description = "Examples of how to use the proofman prover and verifier"
+authors = ["Polygon-zkEvm"]
+edition = "2021"
+readme = "README.md"
+
+[lib]
+name = "examples"
+path = "src/lib.rs"
+
+[dependencies]
+proofman = { path = "../proofman" }
+estark = { path = "../estark" }
+proto = { path = "../proto" }
+log = { version = "0.4", default-features = false }
+env_logger = { version = "0.10", default-features = false }
+structopt = { version = "0.3", default-features = false }
+math = { package = "winter-math", version = "0.7.1", default-features = false }
+prost = "0.12"
+prost-types = "0.12"
+
+[[bin]]
+name = "fib4"
+path = "src/fib4/main.rs"
