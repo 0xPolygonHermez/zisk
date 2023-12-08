@@ -3,7 +3,7 @@ members = [
     "proofman",
     "examples",
     "estark",
-    "proto"
+    "pilout"
 ]
 
 resolver = "2"

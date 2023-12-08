@@ -103,10 +103,10 @@ dependencies = [
  "env_logger",
  "estark",
  "log",
+ "pilout",
  "proofman",
  "prost",
  "prost-types",
- "proto",
  "structopt",
  "winter-math",
 ]
@@ -265,6 +265,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pilout"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "prost",
+ "prost-build",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,6 +328,7 @@ version = "0.0.1"
 dependencies = [
  "env_logger",
  "log",
+ "pilout",
  "rand",
  "serde",
  "serde_json",
@@ -378,15 +388,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "193898f59edcf43c26227dcd4c8427f00d99d61e95dcde58dabd49fa291d470e"
 dependencies = [
  "prost",
-]
-
-[[package]]
-name = "proto"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "prost",
- "prost-build",
 ]
 
 [[package]]

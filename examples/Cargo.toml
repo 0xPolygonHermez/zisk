@@ -6,14 +6,10 @@ authors = ["Polygon Labs"]
 edition = "2021"
 readme = "README.md"
 
-[lib]
-name = "examples"
-path = "src/lib.rs"
-
 [dependencies]
 proofman = { path = "../proofman" }
 estark = { path = "../estark" }
-proto = { path = "../proto" }
+pilout = { path = "../pilout" }
 log = { version = "0.4", default-features = false }
 env_logger = { version = "0.10", default-features = false }
 structopt = { version = "0.3", default-features = false }
@@ -23,4 +19,4 @@ prost-types = "0.12"
 
 [[bin]]
 name = "fib4"
-path = "src/fib4/main.rs"
+path = "src/fib4/fib4.rs"

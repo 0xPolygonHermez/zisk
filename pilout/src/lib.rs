@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-pub fn get_pilout(airout: &Path) -> PilOut {
+pub fn load_pilout(airout: &Path) -> PilOut {
     // Open the file
     let file_result = File::open(airout);
     let mut file = match file_result {
