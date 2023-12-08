@@ -91,6 +91,7 @@ dependencies = [
 name = "estark"
 version = "0.0.1"
 dependencies = [
+ "proofman",
  "serde",
  "serde_json",
 ]

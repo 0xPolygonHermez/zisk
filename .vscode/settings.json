@@ -4,6 +4,7 @@
         "./proofman/Cargo.toml",
         "./examples/Cargo.toml",
         "./estark/Cargo.toml",
-        "./proto/Cargo.toml"
+        "./proto/Cargo.toml",
+        "./proofman/Cargo.toml"
     ]
 }

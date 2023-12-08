@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use proofman::prover::Prover;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ESTARKProverSettings {
@@ -28,4 +29,23 @@ impl ESTARKProverSettings {
             Err(e) => panic!("Error parsing settings file: {}", e),
         }
     }
+}
+
+pub struct ESTARKProver {
+    settings: ESTARKProverSettings,
+}
+
+impl ESTARKProver {
+    pub fn new(settings: ESTARKProverSettings) -> Self {
+        Self {
+            settings: settings,
+        }
+    }
+
+    pub fn get_settings(&self) -> &ESTARKProverSettings {
+        &self.settings
+    }
+}
+
+impl Prover for ESTARKProver {
 }

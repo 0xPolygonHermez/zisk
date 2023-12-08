@@ -2,7 +2,7 @@
 name = "examples"
 version = "0.0.1"
 description = "Examples of how to use the proofman prover and verifier"
-authors = ["Polygon-zkEvm"]
+authors = ["Polygon Labs"]
 edition = "2021"
 readme = "README.md"
 
