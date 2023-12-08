@@ -11,7 +11,7 @@ use crate::fib4_executor::FibonacciExecutor;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use proofman::proofman::ProofMan;
+use proofman::proofman::{ProofMan, ProofManOpt};
 
 #[derive(StructOpt)]
 #[structopt(name = "fib4", about = "Fibonacci 4 proofman example")]
@@ -58,13 +58,19 @@ fn main() {
         }
     };
 
+    let options = ProofManOpt {
+        debug: opt._debug,
+        ..ProofManOpt::default()
+    };
+
+
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
     let executor = FibonacciExecutor::new();
     let mut proofman = ProofMan::new(
         Path::new("examples/src/fib4/fib4.pilout"),
         vec!(&executor),
         &prover,
-        /* proofman_options */
+        &options
     );
 
     let now = Instant::now();

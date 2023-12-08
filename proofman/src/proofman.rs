@@ -4,38 +4,18 @@ use pilout::load_pilout;
 
 use crate::proof_ctx::{ProofCtx, AirInstance};
 
-use std::path::PathBuf;
-use structopt::StructOpt;
 use std::path::Path;
 
-use log::info;
+#[derive(Debug)]
+pub struct ProofManOpt {
+    pub debug: bool,
+}
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "proofman", about = "Proofman CLI")]
-pub enum ProofManSettings {
-    /// Prove
-    #[structopt(name = "prove")]
-    Prove {
-        /// De/Activate debug mode
-        #[structopt(short, long)]
-        debug: bool,
-
-        // TODO: Public inputs as Option
-
-        /// Airout file
-        #[structopt(short, long, parse(from_os_str))]
-        airout: PathBuf, 
-        
-        /// Prover settings file
-        #[structopt(short, long, parse(from_os_str))]
-        prover_settings: PathBuf,
-
-        /// Output file
-        #[structopt(short, long, parse(from_os_str))]
-        output: PathBuf,
-    },
-    Verify {
-
+impl Default for ProofManOpt {
+    fn default() -> Self {
+        Self {
+            debug: false,
+        }
     }
 }
 
@@ -43,11 +23,12 @@ pub struct ProofMan<'a> {
     pilout: PilOut,
     wc: Vec<&'a dyn Executor>,
     prover: &'a dyn Prover,
-    //settings: ProofManSettings,
+    proof_ctx: ProofCtx,
+    options: &'a ProofManOpt,
 }
 
 impl<'a> ProofMan<'a> {
-    pub fn new(pilout: &Path, wc: Vec<&'a dyn Executor>, prover: &'a dyn Prover, /* options */) -> Self {
+    pub fn new(pilout: &Path, wc: Vec<&'a dyn Executor>, prover: &'a dyn Prover, options: &'a ProofManOpt) -> Self {
         let pilout = load_pilout(pilout);
 
         let mut proof_ctx = ProofCtx::new();
@@ -62,6 +43,8 @@ impl<'a> ProofMan<'a> {
             pilout,
             wc,
             prover,
+            proof_ctx,
+            options
         }
     }
 
