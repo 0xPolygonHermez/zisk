@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use std::path::Path;
 
+use log::info;
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "proofman", about = "Proofman CLI")]
 pub enum ProofManSettings {
@@ -37,13 +39,15 @@ pub enum ProofManSettings {
     }
 }
 
-pub struct ProofMan {
-    _pilout: PilOut,
+pub struct ProofMan<'a> {
+    pilout: PilOut,
+    wc: Vec<&'a dyn Executor>,
+    prover: &'a dyn Prover,
     //settings: ProofManSettings,
 }
 
-impl ProofMan {
-    pub fn new(pilout: &Path, _wc: Vec<&dyn Executor>, _prover: &dyn Prover, /* options */) -> Self {
+impl<'a> ProofMan<'a> {
+    pub fn new(pilout: &Path, wc: Vec<&'a dyn Executor>, prover: &'a dyn Prover, /* options */) -> Self {
         let pilout = load_pilout(pilout);
 
         let mut proof_ctx = ProofCtx::new();
@@ -55,15 +59,47 @@ impl ProofMan {
         }
 
         Self {
-            _pilout: pilout,
+            pilout,
+            wc,
+            prover,
         }
     }
 
     pub fn prove(&mut self, /* public_inputs */) {
-        println!("Proving...");
+        // Setup logging
+        env_logger::builder()
+        .format_timestamp(None)
+        .format_target(false)
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+
+        print_proofman_prompt();
+        print_proofman_2("Loaded", std::env::current_exe().unwrap().display().to_string().as_str());
+        print_proofman_2("Main PID", std::process::id().to_string().as_str());
+        println!("");
+        print_proofman_2("PROVE COMMAND", "");
+        print_proofman_2("Proofman", "TODO");
+        print_proofman_2("Pilout", "TODO");
+        print_proofman_2("Executors", "TODO");
+        print_proofman_2("Prover", "TODO");
     }
 
     pub fn verify() {
         unimplemented!();
     }
 }
+
+fn print_proofman_prompt() {
+    let reset = "\x1b[37;0m";
+    let purple = "\x1b[35m";
+    let bold = "\x1b[1m";
+    println!("{}{}Proof Manager {} by Polygon Labs{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
+}
+
+fn print_proofman_2(field1: &str, field2: &str) {
+    let reset = "\x1b[37;0m";
+    let green = "\x1b[32;1m";
+    let padded_field1 = format!("{: >12}", field1);
+    println!("{}{}{} {}", green, padded_field1, reset, field2);
+}
+

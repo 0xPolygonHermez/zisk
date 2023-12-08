@@ -59,10 +59,10 @@ fn main() {
     };
 
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
-
+    let executor = FibonacciExecutor::new();
     let mut proofman = ProofMan::new(
         Path::new("examples/src/fib4/fib4.pilout"),
-        vec!(&FibonacciExecutor::new()),
+        vec!(&executor),
         &prover,
         /* proofman_options */
     );
