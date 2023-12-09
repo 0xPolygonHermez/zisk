@@ -1,19 +1,63 @@
 use std::sync::RwLock;
+use math::FieldElement;
+use pilout::pilout::PilOut;
+
 use crate::trace::Trace;
 use std::fmt;
 
 /// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ProofCtx {
+pub struct ProofCtx<T> {
+    pilout: PilOut,
+    challenges: Vec<Vec<T>>,
     airs: Vec<AirContext>,
 }
 
-impl ProofCtx {
-    /// Creates a new ProofCtx instance.
-    pub fn new() -> Self {
+impl<T: FieldElement + Default> ProofCtx<T> {
+    pub fn new(pilout: PilOut) -> Self {
+        println!("pilout: {:?}", pilout.num_challenges);
+
+        let mut challenges = Vec::<Vec<T>>::new();
+
+        // TODO! Review this
+        if pilout.num_challenges.len() > 0 {
+            for i in 0..pilout.num_challenges.len() {
+                challenges.push(vec![T::default(); pilout.num_challenges[i] as usize]);
+            }
+        } else {
+            challenges.push(vec![]);
+        }
+        
+        // qStage, evalsStage and friStage
+        challenges.push(vec![T::default(); 1]);
+        challenges.push(vec![T::default(); 1]);
+        challenges.push(vec![T::default(); 2]);
+
+        for i in 0..pilout.num_challenges.len() {
+            println!("pilout.num_challenges[{}]: {}", i, pilout.num_challenges[i]);
+        }
+
+        // proofCtx.stepsFRI = stepsFRI;
+        
+        // for(let i = 0; i < airout.subproofs.length; i++) {
+        //     proofCtx.subAirValues[i] = [];
+        //     for(let j = 0; j < airout.subproofs[i].subproofvalues?.length; j++) {
+        //         const aggType = airout.subproofs[i].subproofvalues[j].aggType;
+        //         proofCtx.subAirValues[i][j] = aggType === 0 ? zero : one;
+        //     }
+        // }
+        let mut airs = Vec::new();
+        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {            
+            for (air_index, _air) in subproof.airs.iter().enumerate() {
+                airs.push(AirContext::new(subproof_index, air_index));
+            }
+        }
+
         ProofCtx {
-            airs: Vec::new(),
+            pilout,
+            challenges,
+            airs,
         }
     }
 
@@ -33,15 +77,6 @@ impl ProofCtx {
         } else {
             Err("Air instance not found")
         }
-    }
-
-    /// Add Air instance to the ProofCtx.
-    ///     
-    /// # Arguments
-    ///     
-    /// * `air_instance` - The Air instance to add to the ProofCtx.
-    pub fn add_air_instance(&mut self, air_instance: AirContext) {
-        self.airs.push(air_instance);
     }
 
     /// Adds a trace to the specified Air instance.
@@ -110,14 +145,20 @@ impl fmt::Debug for AirContext {
 
 #[cfg(test)]
 mod tests {
+    use math::fields::f64::BaseElement;
+
     use crate::trace;
     use super::*;
     use std::sync::Arc;
 
     #[test]
     fn test_proof_ctx() {
-        let mut proof_ctx = ProofCtx::new();
-        proof_ctx.airs.push(super::AirContext::new(0, 0));
+        type T = BaseElement;
+        let proof_ctx = ProofCtx {
+            pilout: PilOut::default(),
+            challenges: vec![vec![T::default(); 0]],
+            airs: vec![AirContext::new(0, 0)],
+        };
 
         let proof_ctx = Arc::new(proof_ctx);
         let cloned_write = Arc::clone(&proof_ctx);
@@ -141,7 +182,10 @@ mod tests {
 
     #[test]
     fn test_find_air_instance_success() {
+        type T = BaseElement;
         let proof_ctx = ProofCtx {
+            pilout: PilOut::default(),
+            challenges: vec![vec![T::default(); 0]],
             airs: vec![
                 AirContext::new(0, 0),
                 AirContext::new(1, 1),
@@ -154,7 +198,10 @@ mod tests {
 
     #[test]
     fn test_find_air_instance_not_found() {
+        type T = BaseElement;
         let proof_ctx = ProofCtx {
+            pilout: PilOut::default(),
+            challenges: vec![vec![T::default(); 0]],
             airs: vec![
                 AirContext::new(0, 0),
                 AirContext::new(1, 1),

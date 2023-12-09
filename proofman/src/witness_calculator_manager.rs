@@ -3,14 +3,14 @@ use crate::executor::Executor;
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
-pub struct WitnessCalculatorManager {
-    wc: Vec<Box<dyn Executor>>
+pub struct WitnessCalculatorManager<T> {
+    wc: Vec<Box<dyn Executor<T>>>
 }
 
-impl WitnessCalculatorManager {
+impl<T> WitnessCalculatorManager<T> {
     const MY_NAME: &'static str = "witnessm";
 
-    pub fn new(wc: Vec<Box<dyn Executor>>) -> Self {
+    pub fn new(wc: Vec<Box<dyn Executor<T>>>) -> Self {
         debug!("{}> Initializing...", Self::MY_NAME);
 
         // self.proof_ctx = Some(proof_ctx);

@@ -1,13 +1,13 @@
 use crate::public_input::PublicInput;
 use crate::{prover::Prover, executor::Executor};
-use pilout::pilout::PilOut;
 use pilout::load_pilout;
 use log::debug;
 
+use math::FieldElement;
 use crate::provers_manager::ProversManager;
 use crate::witness_calculator_manager::WitnessCalculatorManager;
 
-use crate::proof_ctx::{ProofCtx, AirContext};
+use crate::proof_ctx::ProofCtx;
 
 #[derive(Debug)]
 pub struct ProofManOpt {
@@ -22,16 +22,19 @@ impl Default for ProofManOpt {
     }
 }
 
-pub struct ProofManager {
-    pilout: PilOut,
-    proof_ctx: ProofCtx,
+pub struct ProofManager<T> {
     options: ProofManOpt,
+    proof_ctx: ProofCtx<T>,
+    wc_manager: WitnessCalculatorManager<T>,
+    provers_manager: ProversManager,
 }
 
-impl ProofManager {
+impl<T> ProofManager<T>
+where T: FieldElement,
+{
     const MY_NAME: &'static str = "proofman";
 
-    pub fn new(pilout: &str, wc: Vec<Box<dyn Executor>>, prover: Box<dyn Prover>, options: ProofManOpt) -> Self {
+    pub fn new(pilout_path: &str, wc: Vec<Box<dyn Executor<T>>>, prover: Box<dyn Prover>, options: ProofManOpt) -> Self {
         env_logger::builder()
         .format_timestamp(None)
         .format_target(false)
@@ -48,7 +51,7 @@ impl ProofManager {
         println!("");
         println!("{}PROVE COMMAND{}", green, reset);
         // println!("{}{}{} {}", green, format!("{: >13}", "ProofMan:"), reset, "TODO");
-        println!("{}{}{} {}", green, format!("{: >13}", "Pilout:"), reset, str::replace(pilout, "\\", "/"));
+        println!("{}{}{} {}", green, format!("{: >13}", "Pilout:"), reset, str::replace(pilout_path, "\\", "/"));
         // println!("{}{}{} {}", green, format!("{: >13}", "Executors:"), reset, "TODO");
         // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
         println!("");
@@ -56,28 +59,23 @@ impl ProofManager {
     
         debug!("{}> Initializing...", Self::MY_NAME);    
 
-        let pilout = load_pilout(pilout);
+        let pilout = load_pilout(pilout_path);
 
         // TODO! Have we to take in account from here the FinitieField choosed in the pilout?
 
-        let mut proof_ctx = ProofCtx::new();
-
-        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {            
-            for (air_index, _air) in subproof.airs.iter().enumerate() {
-                proof_ctx.add_air_instance(AirContext::new(subproof_index, air_index));
-            }
-        }
+        let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
-        let _wc_manager = WitnessCalculatorManager::new(wc);
+        let wc_manager = WitnessCalculatorManager::new(wc);
 
         // Add ProverManager
-        let _provers_manager = ProversManager::new(prover);
+        let provers_manager = ProversManager::new(prover);
 
         Self {
-            pilout,
+            options,
             proof_ctx,
-            options
+            wc_manager,
+            provers_manager,
         }
     }
 

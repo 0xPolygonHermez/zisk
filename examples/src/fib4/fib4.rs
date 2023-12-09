@@ -1,4 +1,5 @@
 use log::debug;
+use math::fields::f64::BaseElement;
 use std::time::Instant;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
@@ -61,10 +62,10 @@ fn main() {
         ..ProofManOpt::default()
     };
 
-
+    type GoldyLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
     let executor = Box::new(FibonacciExecutor::new());
-    let mut proofman = ProofManager::new(
+    let mut proofman = ProofManager::<GoldyLocks>::new(
         "examples/src/fib4/fib4.pilout",
         vec!(executor),
         Box::new(prover),
