@@ -6,14 +6,14 @@ use std::fmt;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx {
-    air_instances: Vec<AirInstance>,
+    airs: Vec<AirContext>,
 }
 
 impl ProofCtx {
     /// Creates a new ProofCtx instance.
     pub fn new() -> Self {
         ProofCtx {
-            air_instances: Vec::new(),
+            airs: Vec::new(),
         }
     }
 
@@ -28,7 +28,7 @@ impl ProofCtx {
     ///
     /// Returns `Some(index)` if the Air instance is found, or `None` otherwise.
     pub fn find_air_instance(&self, subproof_id: usize, air_id: usize) -> Result<usize, &'static str> {
-        if let Some(index) = self.air_instances.iter().position(|instance| instance.subproof_id == subproof_id && instance.air_id == air_id) {
+        if let Some(index) = self.airs.iter().position(|instance| instance.subproof_id == subproof_id && instance.air_id == air_id) {
             Ok(index)
         } else {
             Err("Air instance not found")
@@ -40,8 +40,8 @@ impl ProofCtx {
     /// # Arguments
     ///     
     /// * `air_instance` - The Air instance to add to the ProofCtx.
-    pub fn add_air_instance(&mut self, air_instance: AirInstance) {
-        self.air_instances.push(air_instance);
+    pub fn add_air_instance(&mut self, air_instance: AirContext) {
+        self.airs.push(air_instance);
     }
 
     /// Adds a trace to the specified Air instance.
@@ -57,7 +57,7 @@ impl ProofCtx {
     /// Panics if the specified Air instance is not found.
     pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) {
         if let Ok(index) = self.find_air_instance(subproof_id, air_id) {
-            self.air_instances[index].add_trace(trace);
+            self.airs[index].add_trace(trace);
         } else {
             // TODO: Better error handling
             panic!("Could not find air instance with subproof_id {} and air_id {}", subproof_id, air_id);
@@ -67,40 +67,40 @@ impl ProofCtx {
 
 /// Represents an instance of an Air within a proof.
 #[allow(dead_code)]
-pub struct AirInstance {
+pub struct AirContext {
     subproof_id: usize,
     air_id: usize,
     traces: RwLock<Vec<Box<dyn Trace>>>,
 }
 
-impl AirInstance {
-    /// Creates a new AirInstance.
+impl AirContext {
+    /// Creates a new AirContext.
     ///
     /// # Arguments
     ///
-    /// * `subproof_id` - The subproof ID associated with the AirInstance.
-    /// * `air_id` - The air ID associated with the AirInstance.
+    /// * `subproof_id` - The subproof ID associated with the AirContext.
+    /// * `air_id` - The air ID associated with the AirContext.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirInstance {
+        AirContext {
             subproof_id,
             air_id,
             traces: RwLock::new(Vec::new()),
         }
     }
 
-    /// Adds a trace to the AirInstance.
+    /// Adds a trace to the AirContext.
     ///
     /// # Arguments
     ///
-    /// * `trace` - The trace to add to the AirInstance.
+    /// * `trace` - The trace to add to the AirContext.
     pub fn add_trace(&self, trace: Box<dyn Trace>) {
         self.traces.write().unwrap().push(trace);
     }
 }
 
-impl fmt::Debug for AirInstance {
+impl fmt::Debug for AirContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AirInstance")
+        f.debug_struct("AirContext")
             .field("subproof_id", &self.subproof_id)
             .field("air_id", &self.air_id)
             .field("traces", &self.traces)
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_proof_ctx() {
         let mut proof_ctx = ProofCtx::new();
-        proof_ctx.air_instances.push(super::AirInstance::new(0, 0));
+        proof_ctx.airs.push(super::AirContext::new(0, 0));
 
         let proof_ctx = Arc::new(proof_ctx);
         let cloned_write = Arc::clone(&proof_ctx);
@@ -142,9 +142,9 @@ mod tests {
     #[test]
     fn test_find_air_instance_success() {
         let proof_ctx = ProofCtx {
-            air_instances: vec![
-                AirInstance::new(0, 0),
-                AirInstance::new(1, 1),
+            airs: vec![
+                AirContext::new(0, 0),
+                AirContext::new(1, 1),
             ],
         };
 
@@ -155,9 +155,9 @@ mod tests {
     #[test]
     fn test_find_air_instance_not_found() {
         let proof_ctx = ProofCtx {
-            air_instances: vec![
-                AirInstance::new(0, 0),
-                AirInstance::new(1, 1),
+            airs: vec![
+                AirContext::new(0, 0),
+                AirContext::new(1, 1),
             ],
         };
 

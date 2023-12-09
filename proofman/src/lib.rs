@@ -1,6 +1,9 @@
 pub mod proof_ctx;
 pub mod trace;
 pub mod trace_col;
-pub mod proofman;
+pub mod proof_manager;
 pub mod executor;
 pub mod prover;
+pub mod provers_manager;
+pub mod witness_calculator_manager;
+pub mod public_input;

@@ -1,8 +1,6 @@
 use log::debug;
 use std::time::Instant;
 
-use std::path::Path;
-
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
 
 mod fib4_executor;
@@ -11,7 +9,7 @@ use crate::fib4_executor::FibonacciExecutor;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use proofman::proofman::{ProofMan, ProofManOpt};
+use proofman::proof_manager::{ProofManager, ProofManOpt};
 
 #[derive(StructOpt)]
 #[structopt(name = "fib4", about = "Fibonacci 4 proofman example")]
@@ -65,15 +63,15 @@ fn main() {
 
 
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
-    let executor = FibonacciExecutor::new();
-    let mut proofman = ProofMan::new(
-        Path::new("examples/src/fib4/fib4.pilout"),
-        vec!(&executor),
-        &prover,
-        &options
+    let executor = Box::new(FibonacciExecutor::new());
+    let mut proofman = ProofManager::new(
+        "examples/src/fib4/fib4.pilout",
+        vec!(executor),
+        Box::new(prover),
+        options
     );
 
     let now = Instant::now();
-    proofman.prove(/* public_inputs */);
+    proofman.prove(None);
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }
