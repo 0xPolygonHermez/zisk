@@ -5,11 +5,14 @@ use pilout::pilout::PilOut;
 use crate::trace::Trace;
 use std::fmt;
 
+use crate::public_input::PublicInput;
+
 /// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
     pilout: PilOut,
+    public_inputs: Option<Box<dyn PublicInput>>,
     challenges: Vec<Vec<T>>,
     airs: Vec<AirContext>,
 }
@@ -56,8 +59,22 @@ impl<T: FieldElement + Default> ProofCtx<T> {
 
         ProofCtx {
             pilout,
+            public_inputs: None,
             challenges,
             airs,
+        }
+    }
+
+    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput>>) {
+        self.public_inputs = public_inputs;
+
+        // TODO!
+        // const poseidon = await buildPoseidonGL();
+        // this.transcript = new Transcript(poseidon);
+
+        // TODO! remove existing traces
+        for air in self.airs.iter_mut() {
+            air.traces.write().unwrap().clear();
         }
     }
 
@@ -156,6 +173,7 @@ mod tests {
         type T = BaseElement;
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
+            public_inputs: None,
             challenges: vec![vec![T::default(); 0]],
             airs: vec![AirContext::new(0, 0)],
         };
@@ -185,6 +203,7 @@ mod tests {
         type T = BaseElement;
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
+            public_inputs: None,
             challenges: vec![vec![T::default(); 0]],
             airs: vec![
                 AirContext::new(0, 0),
@@ -200,6 +219,7 @@ mod tests {
     fn test_find_air_instance_not_found() {
         type T = BaseElement;
         let proof_ctx = ProofCtx {
+            public_inputs: None,
             pilout: PilOut::default(),
             challenges: vec![vec![T::default(); 0]],
             airs: vec![
