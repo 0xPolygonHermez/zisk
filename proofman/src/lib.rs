@@ -7,3 +7,4 @@ pub mod prover;
 pub mod provers_manager;
 pub mod witness_calculator_manager;
 pub mod public_input;
+pub mod message;

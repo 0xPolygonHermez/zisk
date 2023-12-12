@@ -1,6 +1,8 @@
 use log::debug;
 use crate::executor::Executor;
 use crate::proof_ctx;
+use crate::message::Message;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
@@ -22,26 +24,46 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     pub fn witness_computation(&self, stage_id: usize, proof_ctx: &proof_ctx::ProofCtx<T>) {
         debug!("{}> Computing witness stage {}", Self::MY_NAME, stage_id);
 
-        if stage_id == 1 {
-            std::thread::scope(|s| {
+        let (tx, rx): (Sender<Message>, Receiver<Message>) = unbounded();
 
+        if stage_id == 1 {            
+            std::thread::scope(|s| {
                 for (subproof_id, subproof) in proof_ctx.pilout.subproofs.iter().enumerate() {
                     for wc in self.wc.iter() {
                         if subproof.name == Some(wc.get_name().to_string()) {
+                            let tx = tx.clone();
+                            let rx = rx.clone();
                             s.spawn(move || {
-                                wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx);
+                                wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx, tx, rx);
                             });        
                         }
                     }
                 }
+// println!("MASTER THREAD 1");
+//                 //MASTER
+//                 loop {
+//                     let msg = rx.recv().unwrap();
+//                     match msg.payload {
+//                         Payload::Halt => {
+//                             println!("Halt!");
+//                             break;
+//                         },
+//                         _ => {
+//                             println!("Not done yet!");
+//                         }
+//                     }
+//                 }
+// println!("MASTER THREAD 2");
             });
         } else {
             std::thread::scope(|s| {
                 for (instance_id, air) in proof_ctx.airs.iter().enumerate() {
                     let wc = &self.wc[air.subproof_id];
+                    let tx = tx.clone();
+                    let rx = rx.clone();
                     s.spawn(move || {
                         println!("thread spawned with pid: {:?}", std::thread::current().id());        
-                        wc.witness_computation(stage_id as u32, air.subproof_id as u32, instance_id as i32, proof_ctx);
+                        wc.witness_computation(stage_id as u32, air.subproof_id as u32, instance_id as i32, proof_ctx, tx, rx);
                     });        
                 }
             });

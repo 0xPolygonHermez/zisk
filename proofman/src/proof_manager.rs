@@ -58,7 +58,6 @@ where T: FieldElement,
         let green = "\x1b[32;1m";
         let bold = "\x1b[1m";
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!("{}{}{} {}", green, format!("{: >12}", "Version"), reset, env!("CARGO_PKG_VERSION"));
         println!("{}{}{} {}", green, format!("{: >12}", "Loaded"), reset, std::env::current_exe().unwrap().display().to_string().as_str());
         println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
         // println!("{}{}{} {}", green, format!("{: >13}", "ProofMan:"), reset, "TODO");

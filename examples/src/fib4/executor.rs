@@ -2,7 +2,9 @@ use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
 use proofman::trace;
+use proofman::message::Message;
 use math::fields::f64::BaseElement;
+use crossbeam_channel::{Receiver, Sender};
 
 use log::debug;
 
@@ -25,7 +27,7 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
         self.name.as_str()
     }
 
-    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, _rx: Receiver<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;

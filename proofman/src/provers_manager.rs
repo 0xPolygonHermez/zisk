@@ -7,7 +7,7 @@ use log::info;
 // PROVERS MANAGER
 // ================================================================================================
 pub struct ProversManager {
-    prover: Box<dyn Prover>,
+    _prover: Box<dyn Prover>,
 }
 
 impl ProversManager {
@@ -17,7 +17,7 @@ impl ProversManager {
         debug!("{}> Initializing...", Self::MY_NAME);
 
         Self {
-            prover
+            _prover: prover
         }
     }
 

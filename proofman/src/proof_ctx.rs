@@ -35,9 +35,9 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         challenges.push(vec![T::default(); 1]);
         challenges.push(vec![T::default(); 2]);
 
-        for i in 0..pilout.num_challenges.len() {
-            println!("pilout.num_challenges[{}]: {}", i, pilout.num_challenges[i]);
-        }
+        // for i in 0..pilout.num_challenges.len() {
+        //     println!("pilout.num_challenges[{}]: {}", i, pilout.num_challenges[i]);
+        // }
 
         // proofCtx.stepsFRI = stepsFRI;
         
