@@ -8,25 +8,19 @@ use log::info;
 use log::debug;
 
 pub struct ModuleExecutor<T> {
-    pub name: String,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> ModuleExecutor<T> {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         ModuleExecutor {
-            name,
             phantom: std::marker::PhantomData
         }
     }
 }
 
 impl<T: FieldElement> Executor<T> for ModuleExecutor<T> {
-    fn get_name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, _proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, rx: Receiver<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, _proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, rx: Receiver<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;

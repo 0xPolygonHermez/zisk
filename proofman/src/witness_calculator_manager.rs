@@ -28,32 +28,13 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
 
         if stage_id == 1 {            
             std::thread::scope(|s| {
-                for (subproof_id, subproof) in proof_ctx.pilout.subproofs.iter().enumerate() {
-                    for wc in self.wc.iter() {
-                        if subproof.name == Some(wc.get_name().to_string()) {
-                            let tx = tx.clone();
-                            let rx = rx.clone();
-                            s.spawn(move || {
-                                wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx, tx, rx);
-                            });        
-                        }
-                    }
+                for wc in self.wc.iter() {
+                    let tx = tx.clone();
+                    let rx = rx.clone();
+                    s.spawn(move || {
+                        wc.witness_computation(stage_id as u32, -1, -1, proof_ctx, tx, rx);
+                    });        
                 }
-// println!("MASTER THREAD 1");
-//                 //MASTER
-//                 loop {
-//                     let msg = rx.recv().unwrap();
-//                     match msg.payload {
-//                         Payload::Halt => {
-//                             println!("Halt!");
-//                             break;
-//                         },
-//                         _ => {
-//                             println!("Not done yet!");
-//                         }
-//                     }
-//                 }
-// println!("MASTER THREAD 2");
             });
         } else {
             std::thread::scope(|s| {
@@ -63,7 +44,7 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                     let rx = rx.clone();
                     s.spawn(move || {
                         println!("thread spawned with pid: {:?}", std::thread::current().id());        
-                        wc.witness_computation(stage_id as u32, air.subproof_id as u32, instance_id as i32, proof_ctx, tx, rx);
+                        wc.witness_computation(stage_id as u32, air.subproof_id as i32, instance_id as i32, proof_ctx, tx, rx);
                     });        
                 }
             });

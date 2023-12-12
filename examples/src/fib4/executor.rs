@@ -9,25 +9,19 @@ use crossbeam_channel::{Receiver, Sender};
 use log::debug;
 
 pub struct FibonacciExecutor<T> {
-    name: String,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> FibonacciExecutor<T> {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         FibonacciExecutor {
-            name,
             phantom: std::marker::PhantomData
         }
     }
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn get_name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, _rx: Receiver<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, _rx: Receiver<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -50,11 +44,7 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
             fibonacci.b[i] = fibonacci.a[i - 1] + fibonacci.b[i - 1];
         }
 
-        proof_ctx.add_trace_to_air_instance(0, 0, fibonacci);
-
-        // let mut witness = proof_ctx.witnesses[instance_id as usize].lock().unwrap();
-        // let mut witness = witness.borrow_mut();
-        // let mut witness = witness.as_any_mut().downcast_mut::<FibonacciWitness>().unwrap();
-        // witness.compute_witness(stage_id, subproof_id);
+        let subproof_id = proof_ctx.pilout.subproofs.iter().position(|x| x.name == Some("Fibonacci".to_string())).unwrap();
+        proof_ctx.add_trace_to_air_instance(subproof_id, 0, fibonacci);
     }
 }

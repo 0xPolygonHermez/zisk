@@ -68,8 +68,8 @@ fn main() {
     type GoldyLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
 
-    let executor = Box::new(FibonacciExecutor::new("Fibonacci".to_string()));
-    let module = Box::new(ModuleExecutor::new("Module".to_string()));
+    let executor = Box::new(FibonacciExecutor::new());
+    let module = Box::new(ModuleExecutor::new());
 
     let mut proofman = ProofManager::<GoldyLocks>::new(
         "examples/src/fibv/fibv.pilout",

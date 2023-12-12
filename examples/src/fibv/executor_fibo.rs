@@ -12,14 +12,12 @@ use std::time::Duration;
 use log::debug;
 
 pub struct FibonacciExecutor<T> {
-    pub name: String,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> FibonacciExecutor<T> {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         FibonacciExecutor {
-            name,
             phantom: std::marker::PhantomData
         }
     }
@@ -27,11 +25,7 @@ impl<T> FibonacciExecutor<T> {
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn get_name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>, tx: Sender<Message>, _rx: Receiver<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, tx: Sender<Message>, _rx: Receiver<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -57,10 +51,11 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
         proof_ctx.add_trace_to_air_instance(0, 0, fibonacci);
 
         sleep(Duration::from_millis(500));
+        let subproof_id = proof_ctx.pilout.subproofs.iter().position(|x| x.name == Some("Fibonacci".to_string())).unwrap();
         tx.send(Message {
-            src: self.name.clone(),
+            src: "Fibonacci".to_string(),
             dst: "brocadcast".to_string(),
-            payload: Payload::NewTrace { subproof_id: 0, air_id: 0 }
+            payload: Payload::NewTrace { subproof_id: subproof_id as u32, air_id: 0 }
         }).unwrap();
     }
 }
