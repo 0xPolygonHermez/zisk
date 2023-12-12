@@ -54,16 +54,15 @@ where T: FieldElement,
         .init();
 
         let reset = "\x1b[37;0m";
-        let bold = "\x1b[1m";
         let purple = "\x1b[35m";
         let green = "\x1b[32;1m";
-        println!("{}{}Proof Manager {} by Polygon Labs{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!("{}{}{} {}", green, format!("{: >13}", "Loaded:"), reset, std::env::current_exe().unwrap().display().to_string().as_str());
-        println!("{}{}{} {}", green, format!("{: >13}", "Main PID:"), reset, std::process::id().to_string().as_str());
-        println!("");
-        println!("{}PROVE COMMAND{}", green, reset);
+        let bold = "\x1b[1m";
+        println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
+        println!("{}{}{} {}", green, format!("{: >12}", "Version"), reset, env!("CARGO_PKG_VERSION"));
+        println!("{}{}{} {}", green, format!("{: >12}", "Loaded"), reset, std::env::current_exe().unwrap().display().to_string().as_str());
+        println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
         // println!("{}{}{} {}", green, format!("{: >13}", "ProofMan:"), reset, "TODO");
-        println!("{}{}{} {}", green, format!("{: >13}", "Pilout:"), reset, str::replace(pilout_path, "\\", "/"));
+        println!("{}{}{} {}", green, format!("{: >12}", "Pilout"), reset, str::replace(pilout_path, "\\", "/"));
         // println!("{}{}{} {}", green, format!("{: >13}", "Executors:"), reset, "TODO");
         // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
         println!("");

@@ -2,6 +2,8 @@ use log::debug;
 use crate::executor::Executor;
 use crate::proof_ctx;
 use crate::public_input::PublicInput;
+use std::time::Duration;
+use std::{sync::{Arc, Mutex}, thread::sleep};
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
@@ -9,7 +11,7 @@ pub struct WitnessCalculatorManager<T> {
     wc: Vec<Box<dyn Executor<T>>>
 }
 
-impl<T> WitnessCalculatorManager<T> {
+impl<T: Send + Sync> WitnessCalculatorManager<T> {
     const MY_NAME: &'static str = "witnessm";
 
     pub fn new(wc: Vec<Box<dyn Executor<T>>>) -> Self {
@@ -24,9 +26,22 @@ impl<T> WitnessCalculatorManager<T> {
     }
 
     pub fn witness_computation(&self, stage_id: usize, proof_ctx: &proof_ctx::ProofCtx<T>) {
-        // self.check_initialized();
+        debug!("[{}] > Computing witness stage {}", Self::MY_NAME, stage_id);
 
-        // debug!("[{}] > Computing witness stage {}", self.name, stage_id);
+        if stage_id == 1 {
+            std::thread::scope(|s| {
+                for (subproof_id, subproof) in proof_ctx.pilout.subproofs.iter().enumerate() {
+                    for wc in self.wc.iter() {
+                        s.spawn(move || {
+                            println!("thread spawned with pid: {:?}", std::thread::current().id());        
+                            wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx);
+                        });        
+                    }
+                }
+            });
+        } else {
+            todo!();
+        }
 
         // // const regulars = this.wc.filter(wc => wc.type === ModuleTypeEnum.REGULAR);
         // // const executors = [];

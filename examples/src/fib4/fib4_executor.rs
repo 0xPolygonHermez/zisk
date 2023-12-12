@@ -18,7 +18,7 @@ impl<T> FibonacciExecutor<T> {
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: Arc<ProofCtx<T>>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
