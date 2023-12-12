@@ -10,11 +10,9 @@ use std::io::Read;
 
 pub fn load_pilout(airout: &str) -> PilOut {
     // Open the file
-    let file_result = File::open(airout);
-    let mut file = match file_result {
-        Ok(f) => f,
-        Err(e) => panic!("Failed to open file {}: {}", airout, e),
-    };
+    let mut file = File::open(airout).unwrap_or_else(|error| {
+        panic!("Failed to open file {}: {}", airout, error);
+    });
 
     // Read the file content into a Vec<u8>
     let mut file_content = Vec::new();

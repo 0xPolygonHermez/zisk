@@ -1,5 +1,8 @@
 use log::debug;
 use crate::prover::Prover;
+use crate::proof_manager::ProverStatus;
+
+use log::info;
 
 // PROVERS MANAGER
 // ================================================================================================
@@ -16,5 +19,27 @@ impl ProversManager {
         Self {
             prover
         }
+    }
+
+    pub fn setup(&mut self, /*&public_inputs, &self.options*/) {
+        info!("{}> ==> SETUP", Self::MY_NAME);
+    }
+
+    pub fn compute_stage(&mut self, stage_id: usize, /*&public_inputs, &self.options*/) -> ProverStatus {
+        info!("{}> ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
+
+        ProverStatus::OpeningsCompleted
+    }
+
+    pub fn verify_constraints(&self, stage_id: usize) -> bool {
+        info!("{}> ==> VERIFY CONSTRAINTS {}", Self::MY_NAME, stage_id);
+
+        false
+    }
+
+    pub fn verify_global_constraints(&self) -> bool {
+        info!("{}> ==> VERIFY GLOBAL CONSTRAINTS", Self::MY_NAME);
+
+        false
     }
 }

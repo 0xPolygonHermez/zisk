@@ -1,5 +1,7 @@
 use log::debug;
 use crate::executor::Executor;
+use crate::proof_ctx;
+use crate::public_input::PublicInput;
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
@@ -21,7 +23,7 @@ impl<T> WitnessCalculatorManager<T> {
         }
     }
 
-    pub fn witness_computation(&self, stage_id: u32) {
+    pub fn witness_computation(&self, stage_id: usize, proof_ctx: &proof_ctx::ProofCtx<T>) {
         // self.check_initialized();
 
         // debug!("[{}] > Computing witness stage {}", self.name, stage_id);

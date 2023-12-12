@@ -1,7 +1,7 @@
 use crate::public_input::PublicInput;
 use crate::{prover::Prover, executor::Executor};
 use pilout::load_pilout;
-use log::debug;
+use log::{debug, info, error};
 
 use math::FieldElement;
 use crate::provers_manager::ProversManager;
@@ -28,6 +28,12 @@ impl Default for ProofManOpt {
 
 // PROOF MANAGER
 // ================================================================================================
+#[derive(Debug, PartialEq)]
+pub enum ProverStatus {
+    OpeningsPending,
+    OpeningsCompleted,
+}
+
 pub struct ProofManager<T> {
     options: ProofManOpt,
     proof_ctx: ProofCtx<T>,
@@ -85,75 +91,97 @@ where T: FieldElement,
         }
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInput>>) {
+    pub fn setup() {
+        unimplemented!();
+    }
+
+    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
         if !self.options.only_check {
-            debug!("{}> INITIATING PROOF GENERATION", Self::MY_NAME);
+            info!("{}> ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
-            debug!("{}> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
+            info!("{}> ==> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
         }
 
         self.proof_ctx.initialize_proof(public_inputs);
 
-        //     let proverStatus = PROVER_OPENINGS_PENDING;
-        //     for (let stageId = 1; proverStatus !== PROVER_OPENINGS_COMPLETED; stageId++) {
-        //         let str = stageId <= this.proofCtx.airout.numStages + 1 ? "STAGE" : "OPENINGS";
-        //         log.info(`[${this.name}]`, `==> ${str} ${stageId}`);
+        let mut prover_status = ProverStatus::OpeningsPending;
+        let mut stage_id = 1;
+        let num_stages = self.proof_ctx.pilout.num_challenges.len();
 
-        //         await this.wcManager.witnessComputation(stageId, publics);
+        while prover_status != ProverStatus::OpeningsCompleted {
+            let stage_str = if stage_id <= num_stages + 1 {
+                "STAGE"
+            } else {
+                "OPENINGS"
+            };
+            
+            info!("{}> ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-        //         if (stageId === 1) await this.proversManager.setup(setup);
+            self.wc_manager.witness_computation(stage_id, &self.proof_ctx);
 
-        //         proverStatus = await this.proversManager.computeStage(stageId, publics, this.options);
+            if stage_id == 1 {
+                self.provers_manager.setup(/*&setup*/);
+            }
 
-        //         log.info(`[${this.name}]`, `<== ${str} ${stageId}`);
+            prover_status = self.provers_manager.compute_stage(stage_id, /*&public_inputs, &self.options*/);
 
-        //         if(stageId === this.proofCtx.airout.numStages) {
-        //             for(let i = 0; i < this.proofCtx.airout.subproofs.length; i++) {
-        //                 const subproof = this.proofCtx.airout.subproofs[i];
-        //                 const subAirValues = subproof.subproofvalues;
-        //                 if(subAirValues === undefined) continue;
-        //                 const instances = this.proofCtx.airInstances.filter(airInstance => airInstance.subproofId === i);
-        //                 for(let j = 0; j < subAirValues.length; j++) {
-        //                     const aggType = subAirValues[j].aggType;
-        //                     for(const instance of instances) {
-        //                         const subproofValue = instance.ctx.subAirValues[j];
-        //                         this.proofCtx.subAirValues[i][j] = aggType === 0 
-        //                             ? this.proofCtx.F.add(this.proofCtx.subAirValues[i][j], subproofValue) 
-        //                             : this.proofCtx.F.mul(this.proofCtx.subAirValues[i][j], subproofValue);
-        //                     }
-        //                 }
-        //             }
-        //         }
+            info!("{}> <== {} {}", Self::MY_NAME, stage_str, stage_id);
 
-        //         // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
-        //         if(this.options.onlyCheck) {
-        //             log.info(`[${this.name}]`, `==> CHECKING CONSTRAINTS STAGE ${stageId}`);
+            // if stage_id == num_stages {
+            //     for i in 0..self.proof_ctx.pilout.subproofs.len() {
+            //         let subproof = self.proof_ctx.pilout.subproofs[i];
+            //         let sub_air_values = subproof.subproofvalues;
+            //         if sub_air_values.is_none() {
+            //             continue;
+            //         }
+            //         let instances = self.proof_ctx.air_instances.iter().filter(|air_instance| air_instance.subproof_id == i);
+            //         for j in 0..sub_air_values.unwrap().len() {
+            //             let agg_type = sub_air_values.unwrap()[j].agg_type;
+            //             for instance in instances {
+            //                 let subproof_value = instance.ctx.sub_air_values[j];
+            //                 self.proof_ctx.sub_air_values[i][j] = if agg_type == 0 {
+            //                     self.proof_ctx.F.add(self.proof_ctx.sub_air_values[i][j], subproof_value)
+            //                 } else {
+            //                     self.proof_ctx.F.mul(self.proof_ctx.sub_air_values[i][j], subproof_value)
+            //                 };
+            //             }
+            //         }
+            //     }
+            // }
 
-        //             const valid = await this.proversManager.verifyConstraints(stageId);
-        //             if(!valid) {
-        //                 log.error(`[${this.name}]`, `Constraints verification failed.`);
-        //                 throw new Error(`[${this.name}]`, `Constraints verification failed.`);
-        //             }
+            // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
+            if self.options.only_check {
+                info!("{}> ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
-        //             log.info(`[${this.name}]`, `<== CHECKING CONSTRAINTS STAGE ${stageId}`);
+                let valid = self.provers_manager.verify_constraints(stage_id);
+                if !valid {
+                    error!("{}> CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
+                    // TODO throw new Error(`[${this.name}]`, `Constraints verification failed.`); ????
+                    return;
+                }
 
-        //             if(stageId === this.proofCtx.airout.numStages) {
-        //                 log.info(`[${this.name}]`, `==> CHECKING GLOBAL CONSTRAINTS.`);
+                info!("{}> <== CHECKING CONSTRAINTS STAGE {} FINISHED", Self::MY_NAME, stage_id);
 
-        //                 const validG = await this.proversManager.verifyGlobalConstraints();
+                if stage_id == num_stages {
+                    info!("{}> ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
-        //                 if(!validG) {
-        //                     log.error(`[${this.name}]`, `Global constraints verification failed.`);
-        //                     throw new Error(`[${this.name}]`, `Global constraints verification failed.`);
-        //                 }
+                    let valid_g = self.provers_manager.verify_global_constraints();
+
+                    if !valid_g {
+                        error!("{}> Global constraints verification failed", Self::MY_NAME);
+                        //TODO throw new Error(`[${this.name}]`, `Global constraints verification failed.`);
+                        return;
+                    }
                         
-        //                 log.info(`[${this.name}]`, `<== CHECKING GLOBAL CONSTRAINTS.`);
-        //                 return true;
-        //             }
-        //         }
-        //     }
+                    info!("{}> <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
+                    return;
+                }
+            } 
+            
+            stage_id += 1;
+        }
 
-        debug!("{}> PROOF SUCCESSFULLY GENERATED", Self::MY_NAME);
+        info!("{}> <== PROOF SUCCESSFULLY GENERATED", Self::MY_NAME);
 
         //     let proofs = [];
     

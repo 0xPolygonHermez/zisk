@@ -11,8 +11,8 @@ use crate::public_input::PublicInput;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
-    pilout: PilOut,
-    public_inputs: Option<Box<dyn PublicInput>>,
+    pub pilout: PilOut,
+    public_inputs: Option<Box<dyn PublicInput<T>>>,
     challenges: Vec<Vec<T>>,
     airs: Vec<AirContext>,
 }
@@ -65,7 +65,7 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         }
     }
 
-    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput>>) {
+    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
         self.public_inputs = public_inputs;
 
         // TODO!
