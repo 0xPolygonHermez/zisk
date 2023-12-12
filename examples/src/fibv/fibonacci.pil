@@ -1,0 +1,40 @@
+include "module.pil";
+
+challenge stage(2) std_alpha;
+challenge stage(2) std_beta;
+
+public mod;
+public in1;
+public in2;
+public out;
+
+function final_function() {
+    gsum_fibonacci + gsum_module === 0;
+}
+
+subproof aggregate Fibonacci(2**2, 2**4) {
+
+    subproofval aggregate(sum) gsum_fibonacci;
+
+    col fixed L1 = [1,0...];
+    col witness a,b;
+
+    (b' - a) * (1 - L1') === 0;
+    L1 * (b - in1) === 0;
+    L1 * (a - in2) === 0;
+
+    // * multiset_assume(MODULE_ID, 1, [a*a + b*b, a'])
+
+    col witness stage(2) gsum;
+
+    @gsum { reference: gsum, numerator: 5, denominator: ((((L1'2*out + (1 - L1'2)*a') * std_alpha + a * a + b * b) * std_alpha) + MODULE_ID + std_beta)}
+
+    @subproofvalue { reference: gsum_fibonacci, expression: gsum, row_index: N - 1 }
+
+    (gsum - 'gsum * (1 - L1)) * ((((L1'2*out + (1 - L1'2)*a') * std_alpha + a * a + b * b) * std_alpha) + MODULE_ID + std_beta) + 1 === 0;
+    L1' * (gsum - gsum_fibonacci) === 0;
+
+    on final proof final_function();
+};
+
+

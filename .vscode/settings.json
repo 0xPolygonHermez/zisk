@@ -5,6 +5,5 @@
         "./examples/Cargo.toml",
         "./estark/Cargo.toml",
         "./pilout/Cargo.toml",
-        "./proofman/Cargo.toml"
     ]
 }

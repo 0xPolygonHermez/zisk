@@ -24,11 +24,14 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
 
         if stage_id == 1 {
             std::thread::scope(|s| {
-                for (subproof_id, _) in proof_ctx.pilout.subproofs.iter().enumerate() {
+
+                for (subproof_id, subproof) in proof_ctx.pilout.subproofs.iter().enumerate() {
                     for wc in self.wc.iter() {
-                        s.spawn(move || {
-                            wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx);
-                        });        
+                        if subproof.name == Some(wc.get_name().to_string()) {
+                            s.spawn(move || {
+                                wc.witness_computation(stage_id as u32, subproof_id as u32, -1, proof_ctx);
+                            });        
+                        }
                     }
                 }
             });

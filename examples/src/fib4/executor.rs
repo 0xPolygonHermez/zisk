@@ -7,16 +7,24 @@ use math::fields::f64::BaseElement;
 use log::debug;
 
 pub struct FibonacciExecutor<T> {
+    name: String,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> FibonacciExecutor<T> {
-    pub fn new() -> Self {
-        FibonacciExecutor { phantom: std::marker::PhantomData }
+    pub fn new(name: String) -> Self {
+        FibonacciExecutor {
+            name,
+            phantom: std::marker::PhantomData
+        }
     }
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
+    fn get_name(&self) -> &str {
+        self.name.as_str()
+    }
+
     fn witness_computation(&self, stage_id: u32, _subproof_id: u32, _instance_id: i32, proof_ctx: &ProofCtx<T>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);

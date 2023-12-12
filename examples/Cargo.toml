@@ -19,4 +19,8 @@ prost-types = "0.12"
 
 [[bin]]
 name = "fib4"
-path = "src/fib4/fib4.rs"
+path = "src/fib4/main.rs"
+
+[[bin]]
+name = "fibv"
+path = "src/fibv/main.rs"
