@@ -1,7 +1,6 @@
 use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
-use std::sync::Arc;
 use proofman::trace;
 use math::fields::f64::BaseElement;
 

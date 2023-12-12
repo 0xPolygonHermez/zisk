@@ -14,13 +14,11 @@ pub struct ProofCtx<T> {
     pub pilout: PilOut,
     public_inputs: Option<Box<dyn PublicInput<T>>>,
     challenges: Vec<Vec<T>>,
-    airs: Vec<AirContext>,
+    pub airs: Vec<AirContext>,
 }
 
 impl<T: FieldElement + Default> ProofCtx<T> {
     pub fn new(pilout: PilOut) -> Self {
-        println!("pilout: {:?}", pilout.num_challenges);
-
         let mut challenges = Vec::<Vec<T>>::new();
 
         // TODO! Review this
@@ -120,8 +118,8 @@ impl<T: FieldElement + Default> ProofCtx<T> {
 /// Represents an instance of an Air within a proof.
 #[allow(dead_code)]
 pub struct AirContext {
-    subproof_id: usize,
-    air_id: usize,
+    pub subproof_id: usize,
+    pub air_id: usize,
     traces: RwLock<Vec<Box<dyn Trace>>>,
 }
 
