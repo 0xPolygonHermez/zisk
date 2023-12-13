@@ -25,6 +25,7 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     pub fn witness_computation(&self, stage_id: usize, proof_ctx: &proof_ctx::ProofCtx<T>) {
         debug!("{}> Computing witness stage {}", Self::MY_NAME, stage_id);
 
+        // TODO create a channel constructor and use it here. Add Clone trait to clone the channel for each wc
         let (tx, rx): (Sender<Message>, Receiver<Message>) = unbounded();
 
         if stage_id == 1 {            
