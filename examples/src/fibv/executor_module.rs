@@ -1,11 +1,10 @@
 use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
-use crossbeam_channel::{Receiver, Sender};
-use proofman::message::{Message, Payload};
-use log::info;
+use proofman::message::Payload;
+use proofman::channel::Channel;
 
-use log::debug;
+use log::info;
 
 pub struct ModuleExecutor<T> {
     phantom: std::marker::PhantomData<T>,
@@ -20,13 +19,13 @@ impl<T> ModuleExecutor<T> {
 }
 
 impl<T: FieldElement> Executor<T> for ModuleExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, _proof_ctx: &ProofCtx<T>, _tx: Sender<Message>, rx: Receiver<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, _proof_ctx: &ProofCtx<T>, channel: Channel) {
         if stage_id != 1 {
-            debug!("Nothing to do for stage_id {}", stage_id);
+            info!("Nothing to do for stage_id {}", stage_id);
             return;
         }
 
-        let msg = rx.recv().unwrap();
+        let msg = channel.recv().unwrap();
 
         match msg.payload {
             Payload ::Halt => {

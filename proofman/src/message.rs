@@ -7,6 +7,15 @@ pub enum Payload {
     Halt
 }
 
+impl Payload {
+    pub fn new_trace(subproof_id: u32, air_id: u32) -> Self {
+        Payload::NewTrace {
+            subproof_id,
+            air_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Message {
     pub src: String,

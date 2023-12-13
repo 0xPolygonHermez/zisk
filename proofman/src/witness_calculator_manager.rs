@@ -3,6 +3,7 @@ use crate::executor::Executor;
 use crate::proof_ctx;
 use crate::message::Message;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use crate::channel::Channel;
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
@@ -29,10 +30,9 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
         if stage_id == 1 {            
             std::thread::scope(|s| {
                 for wc in self.wc.iter() {
-                    let tx = tx.clone();
-                    let rx = rx.clone();
+                    let channel = Channel::new(tx.clone(), rx.clone());
                     s.spawn(move || {
-                        wc.witness_computation(stage_id as u32, -1, -1, proof_ctx, tx, rx);
+                        wc.witness_computation(stage_id as u32, -1, -1, proof_ctx, channel);
                     });        
                 }
             });
@@ -40,11 +40,10 @@ impl<T: Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             std::thread::scope(|s| {
                 for (instance_id, air) in proof_ctx.airs.iter().enumerate() {
                     let wc = &self.wc[air.subproof_id];
-                    let tx = tx.clone();
-                    let rx = rx.clone();
+                    let channel = Channel::new(tx.clone(), rx.clone());
                     s.spawn(move || {
                         println!("thread spawned with pid: {:?}", std::thread::current().id());        
-                        wc.witness_computation(stage_id as u32, air.subproof_id as i32, instance_id as i32, proof_ctx, tx, rx);
+                        wc.witness_computation(stage_id as u32, air.subproof_id as i32, instance_id as i32, proof_ctx, channel);
                     });        
                 }
             });

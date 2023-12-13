@@ -50,7 +50,7 @@ where T: FieldElement,
         env_logger::builder()
         .format_timestamp(None)
         .format_target(false)
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Trace)
         .init();
 
         let reset = "\x1b[37;0m";
