@@ -6,7 +6,7 @@ use proofman::proof_ctx::ProofCtx;
 use proofman::trace;
 use math::fields::f64::BaseElement;
 
-use log::debug;
+use log::{debug, error};
 
 pub struct FibonacciExecutor<T> {
     phantom: std::marker::PhantomData<T>,
@@ -45,6 +45,10 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
         }
 
         let subproof_id = proof_ctx.pilout.subproofs.iter().position(|x| x.name == Some("Fibonacci".to_string())).unwrap();
-        proof_ctx.add_trace_to_air_instance(subproof_id, 0, fibonacci);
+
+        match proof_ctx.add_trace_to_air_instance(subproof_id, 0, fibonacci) {
+            Ok(_) => debug!("Successfully added trace to AIR instance"),
+            Err(e) => error!("Failed to add trace to AIR instance: {}", e)
+        }
     }
 }

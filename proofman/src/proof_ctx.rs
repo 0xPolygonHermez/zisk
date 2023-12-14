@@ -19,11 +19,13 @@ pub struct ProofCtx<T> {
 }
 
 impl<T: FieldElement + Default> ProofCtx<T> {
+    /// Creates a new `ProofCtx` with the given `PilOut`.
     pub fn new(pilout: PilOut) -> Self {
+        // NOTE: consider Vec::with_capacity() instead of Vec::new()
         let mut challenges = Vec::<Vec<T>>::new();
 
         // TODO! Review this
-        if pilout.num_challenges.len() > 0 {
+        if !pilout.num_challenges.is_empty() {
             for i in 0..pilout.num_challenges.len() {
                 challenges.push(vec![T::default(); pilout.num_challenges[i] as usize]);
             }
@@ -64,6 +66,7 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         }
     }
 
+    /// Initializes the proof context with optional public inputs
     pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
         if let Some(public_inputs) = public_inputs {
             self.public_inputs = Some(public_inputs.to_elements());
@@ -108,12 +111,12 @@ impl<T: FieldElement + Default> ProofCtx<T> {
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) {
+    pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) -> Result<(), &'static str> {
         if let Ok(index) = self.find_air_instance(subproof_id, air_id) {
             self.airs[index].add_trace(trace);
+            Ok(())
         } else {
-            // TODO: Better error handling
-            panic!("Could not find air instance with subproof_id {} and air_id {}", subproof_id, air_id);
+            Err("Air instance not found")
         }
     }
 }
@@ -150,9 +153,23 @@ impl AirContext {
         self.traces.write().unwrap().push(Arc::new(trace));
     }
 
-    // Make a method to return a reference of a self.traces[trace__id]
-    pub fn get_trace(&self, trace_id: usize) -> Arc<Box<dyn Trace>> {
-        self.traces.read().unwrap()[trace_id].clone()
+    /// Returns a reference to the trace at the specified index.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `trace_id` - The index of the trace to return.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a reference to the trace at the specified index.
+    pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+        let traces = self.traces.read().unwrap();
+    
+        if trace_id < traces.len() {
+            Ok(Arc::clone(&traces[trace_id]))
+        } else {
+            Err("Trace not found")
+        }
     }
 }
 
@@ -176,11 +193,10 @@ mod tests {
 
     #[test]
     fn test_proof_ctx() {
-        type T = BaseElement;
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
             public_inputs: None,
-            challenges: vec![vec![T::default(); 0]],
+            challenges: vec![vec![BaseElement::default(); 0]],
             airs: vec![AirContext::new(0, 0)],
         };
 
@@ -198,7 +214,8 @@ mod tests {
                 simple.field1[i] = i;
             }
 
-            proof_ctx.add_trace_to_air_instance(0, 0, simple);
+            let res = proof_ctx.add_trace_to_air_instance(0, 0, simple);
+            assert!(res.is_ok());
         });
 
         write_handle.join().unwrap();

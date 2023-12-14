@@ -5,7 +5,7 @@ use proofman::channel::{SenderB, ReceiverB};
 use proofman::message::Message;
 use proofman::trace;
 use math::fields::f64::BaseElement;
-use log::info;
+use log::{info, debug, error};
 
 pub struct ModuleExecutor;
 
@@ -39,7 +39,7 @@ impl Executor<BaseElement> for ModuleExecutor {
                     let trace_id = 0;
                     let air_id = proof_ctx.find_air_instance(subproof_id as usize, air_id as usize).unwrap();
                     
-                    let trace = proof_ctx.airs[air_id].get_trace(trace_id);
+                    let trace = proof_ctx.airs[air_id].get_trace(trace_id).unwrap();
 
                     trace!(Module {
                         x: BaseElement,
@@ -64,7 +64,10 @@ impl Executor<BaseElement> for ModuleExecutor {
                         a = module.x_mod[i];
                     }
 
-                    proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module);
+                    match proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module) {
+                        Ok(_) => debug!("Successfully added trace to AIR instance"),
+                        Err(e) => error!("Failed to add trace to AIR instance: {}", e)
+                    }
                 }
             },
         }

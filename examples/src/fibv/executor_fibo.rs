@@ -5,7 +5,7 @@ use proofman::trace;
 use math::fields::f64::BaseElement;
 use proofman::channel::{SenderB, ReceiverB};
 
-use log::debug;
+use log::{debug, error};
 
 /// `FibonacciExecutor` is an executor for computing Fibonacci sequences in the Fibonacci vadcop example.
 pub struct FibonacciExecutor;
@@ -39,7 +39,10 @@ impl Executor<BaseElement> for FibonacciExecutor {
             .position(|x| x.name == Some("Fibonacci".to_string()))
             .unwrap();
 
-        proof_ctx.add_trace_to_air_instance(subproof_id, 0, fib);
+        match proof_ctx.add_trace_to_air_instance(subproof_id, 0, fib) {
+            Ok(_) => debug!("Successfully added trace to AIR instance"),
+            Err(e) => error!("Failed to add trace to AIR instance: {}", e)
+        }
 
         let msg = Message {  
             src: "Fibonacci".to_string(),
