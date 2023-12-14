@@ -1,10 +1,10 @@
 use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
-use proofman::message::Payload;
+use proofman::message::{Payload, Message};
 use proofman::trace;
 use math::fields::f64::BaseElement;
-use proofman::channel::Channel;
+use proofman::channel::{SenderB, ReceiverB};
 
 use log::debug;
 
@@ -21,7 +21,7 @@ impl<T> FibonacciExecutor<T> {
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, channel: Channel) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -50,6 +50,12 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
 
         proof_ctx.add_trace_to_air_instance(subproof_id, 0, fib);
 
-        channel.send("Fibonacci".to_string(), Payload::new_trace(subproof_id as u32, 0));
+        let msg = Message {  
+            src: "Fibonacci".to_string(),
+            dst: "*".to_string(),
+            payload: Payload::new_trace(subproof_id as u32, 0)
+        };
+
+        tx.send(msg);
     }
 }

@@ -1,32 +1,57 @@
-use crossbeam_channel::{Receiver, Sender, TryRecvError, RecvError};
-use log::trace;
+use std::sync::{Arc, Mutex};
+use crossbeam_channel::{Sender, Receiver, unbounded};
 
-use crate::message::{Message, Payload};
+// Naive implementation of a broadcast channel
+// TODO: Implement a more efficient broadcast channel
 
-pub struct Channel {
-    pub tx: Sender<Message>,
-    pub rx: Receiver<Message>
+// Struct representing the Broadcast object
+pub struct SenderB<T> {
+    // Internal channel for sending messages to the receiver
+    sender: Sender<T>,
+
+    // Internal receiver and queues for subscribers
+    receivers: Arc<Mutex<Vec<(Sender<T>, Receiver<T>)>>>,
 }
 
-impl Channel {
-    pub fn new(tx: Sender<Message>, rx: Receiver<Message>) -> Self {
-        Channel { tx, rx }
+pub type ReceiverB<T> = Receiver<T>;
+
+// Implementation of Broadcast methods
+impl<T: Clone> SenderB<T> {
+    // Constructor for creating a new Broadcast object
+    pub fn new() -> Self {
+        // Create an unbounded channel for communication between sender and receiver
+        let (sender, receiver) = unbounded();
+
+        // Wrap the receiver in an Arc<Mutex<>> for safe sharing among multiple subscribers
+        let receivers = Arc::new(Mutex::new(vec![(sender.clone(), receiver)]));
+
+        // Return a new Broadcast object with the sender and receiver
+        SenderB { sender, receivers }
     }
 
-    pub fn send(&self, src: String, payload: Payload) {
-        let msg = Message { src, dst: "*".to_string(), payload };
-        trace!("channel > Sending message: {:?}", msg);
-        self.tx.send(msg).unwrap();
+    // Method for sending a message to all subscribers
+    pub fn send(&self, message: T) {
+        // Clone all senders and send the message to each one
+        let receivers = self.receivers.lock().unwrap().clone();
+        for (sender, _) in receivers.iter() {
+            sender.send(message.clone()).unwrap();
+        }
     }
 
-    pub fn recv(&self) -> Result<Message, RecvError> {
-        let msg = self.rx.recv();
-        trace!("channel > Message received: {:?}", msg);
-        msg
+    // Method for subscribing to the Broadcast, returning a sender and a receiver
+    pub fn subscribe(&self) -> ReceiverB<T> {
+        // Create a new sender and receiver and add them to the list of subscribers
+        let (sender, receiver) = unbounded();
+        self.receivers.lock().unwrap().push((sender.clone(), receiver.clone()));
+        receiver
     }
+}
 
-    pub fn try_recv(&self) -> Result<Message, TryRecvError> {
-        trace!("channel > Trying to receive message");
-        self.rx.try_recv()
+impl<T> Clone for SenderB<T> {
+    fn clone(&self) -> Self {
+        SenderB {
+            sender: self.sender.clone(),
+            receivers: self.receivers.clone(),
+        }
     }
 }

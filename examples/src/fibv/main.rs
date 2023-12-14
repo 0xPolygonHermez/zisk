@@ -69,11 +69,12 @@ fn main() {
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
 
     let executor = Box::new(FibonacciExecutor::new());
-    let module = Box::new(ModuleExecutor::new());
+    let module1 = Box::new(ModuleExecutor::new());
+    let module2 = Box::new(ModuleExecutor::new());
 
     let mut proofman = ProofManager::<GoldyLocks>::new(
         "examples/src/fibv/fibv.pilout",
-        vec!(executor, module),
+        vec!(module2, executor, module1),
         Box::new(prover),
         options
     );

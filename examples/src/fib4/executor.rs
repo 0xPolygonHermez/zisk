@@ -1,6 +1,7 @@
 use math::FieldElement;
 use proofman::executor::Executor;
-use proofman::channel::Channel;
+use proofman::channel::{SenderB, ReceiverB};
+use proofman::message::Message;
 use proofman::proof_ctx::ProofCtx;
 use proofman::trace;
 use math::fields::f64::BaseElement;
@@ -20,7 +21,7 @@ impl<T> FibonacciExecutor<T> {
 }
 
 impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _channel: Channel) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
