@@ -1,8 +1,7 @@
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
-use proofman::message::Payload;
+use proofman::message::{Payload, Message};
 use proofman::channel::{SenderB, ReceiverB};
-use proofman::message::Message;
 use proofman::trace;
 use math::fields::f64::BaseElement;
 use log::{info, debug, error};
@@ -17,59 +16,60 @@ impl Executor<BaseElement> for ModuleExecutor {
         }
 
         println!("ModuleEx> Waiting for message...");
-        let msg = rx.recv().unwrap();
+        let msg = rx.recv().expect("Failed to receive message");
 
         if msg.payload == Payload::Halt {
             return;
         }
 
-        
-        match msg.payload {
-            Payload ::Halt => {
-            },
-            Payload::NewTrace { subproof_id, air_id } => {
-                // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
-                let subproof_id2 = proof_ctx.pilout.subproofs
-                    .iter()
-                    .position(|x| x.name == Some("Fibonacci".to_string()))
-                    .unwrap();
-
-                if subproof_id2 == subproof_id as usize {        
-                    // TODO! We need to know the trace_id!!!! Pass it with the message
-                    let trace_id = 0;
-                    let air_id = proof_ctx.find_air_instance(subproof_id as usize, air_id as usize).unwrap();
-                    
-                    let trace = proof_ctx.airs[air_id].get_trace(trace_id).unwrap();
-
-                    trace!(Module {
-                        x: BaseElement,
-                        q: BaseElement,
-                        x_mod: BaseElement
-                    });
-                    let mut module = Module::new(trace.num_rows());
-                    
-                    // TODO how to convert public inputs to BaseElement ina generic way?
-                    let public_inputs = proof_ctx.public_inputs.as_ref();
-                    let mut a = public_inputs.unwrap()[0];
-                    let mut b = public_inputs.unwrap()[1];
-                    let m = public_inputs.unwrap()[2];
-        
-                    for i in 1..trace.num_rows() {
-                        module.x[i] = a * a + b * b;
-        
-                        module.q[i] = module.x[i] / m;
-                        module.x_mod[i] = module.x[i]; // TODO: % m;
-        
-                        b = a;
-                        a = module.x_mod[i];
-                    }
-
-                    match proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module) {
-                        Ok(_) => debug!("Successfully added trace to AIR instance"),
-                        Err(e) => error!("Failed to add trace to AIR instance: {}", e)
-                    }
+        if let Payload::NewTrace { subproof_id, air_id } = msg.payload {
+            // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
+            if let Some(subproof_id_fibo) = proof_ctx
+                .pilout
+                .subproofs
+                .iter()
+                .position(|x| x.name == Some("Fibonacci".to_string()))
+            {
+                if subproof_id != subproof_id_fibo as u32 {
+                    error!("Subproof id {} does not match Fibonacci subproof id {}", subproof_id, subproof_id_fibo);
+                    return;
                 }
-            },
+
+                // TODO! We need to know the trace_id!!!! Pass it with the message
+                let trace_id = 0;
+                let air_id = proof_ctx.find_air_instance(subproof_id as usize, air_id as usize).expect("Failed to find AIR instance");
+
+                let trace = proof_ctx.airs[air_id].get_trace(trace_id).expect("Failed to get trace");
+
+                trace!(Module {
+                    x: BaseElement,
+                    q: BaseElement,
+                    x_mod: BaseElement
+                });
+                let mut module = Module::new(trace.num_rows());
+
+                // TODO how to convert public inputs to BaseElement in a generic way?
+                let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
+                let mut a = public_inputs[0];
+                let mut b = public_inputs[1];
+                let m = public_inputs[2];
+
+                for i in 1..trace.num_rows() {
+                    module.x[i] = a * a + b * b;
+
+                    module.q[i] = module.x[i] / m;
+                    module.x_mod[i] = module.x[i]; // TODO: % m;
+
+                    b = a;
+                    a = module.x_mod[i];
+                }
+
+                if let Err(e) = proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module) {
+                    error!("Failed to add trace to AIR instance: {}", e)
+                } else {
+                    debug!("Successfully added trace to AIR instance");
+                }
+            }
         }
     }
 }
