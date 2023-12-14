@@ -1,6 +1,7 @@
 use log::debug;
 use math::fields::f64::BaseElement;
 use std::time::Instant;
+use proofman::public_input::PublicInput;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
 
@@ -31,6 +32,19 @@ struct FibVOptions {
     /// Output file
     #[structopt(short, long, parse(from_os_str))]
     output: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct FibVPublicInputs {
+    a: BaseElement,
+    b: BaseElement,
+    module: BaseElement,
+}
+
+impl PublicInput<BaseElement> for FibVPublicInputs {
+    fn to_elements(&self) -> Vec<BaseElement> {
+        vec![self.a, self.b, self.module]
+    }
 }
 
 fn main() {
@@ -68,9 +82,9 @@ fn main() {
     type GoldyLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
 
-    let executor = Box::new(FibonacciExecutor::new());
-    let module1 = Box::new(ModuleExecutor::new());
-    let module2 = Box::new(ModuleExecutor::new());
+    let executor = Box::new(FibonacciExecutor);
+    let module1 = Box::new(ModuleExecutor);
+    let module2 = Box::new(ModuleExecutor);
 
     let mut proofman = ProofManager::<GoldyLocks>::new(
         "examples/src/fibv/fibv.pilout",
@@ -79,7 +93,13 @@ fn main() {
         options
     );
 
+    let public_inputs = FibVPublicInputs {
+        a: BaseElement::new(1),
+        b: BaseElement::new(1),
+        module: BaseElement::new(5),
+    };
+
     let now = Instant::now();
-    proofman.prove(None);
+    proofman.prove(Some(Box::new(public_inputs)));
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

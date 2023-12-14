@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     NewTrace {
         subproof_id: u32,
@@ -13,6 +13,10 @@ impl Payload {
             subproof_id,
             air_id,
         }
+    }
+
+    pub fn new_halt() -> Self {
+        Payload::Halt
     }
 }
 

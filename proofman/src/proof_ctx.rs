@@ -2,9 +2,10 @@ use std::sync::RwLock;
 use math::FieldElement;
 use pilout::pilout::PilOut;
 
+use std::sync::Arc;
+
 use crate::trace::Trace;
 use std::fmt;
-
 use crate::public_input::PublicInput;
 
 /// Context for managing proofs, including information about Air instances.
@@ -12,7 +13,7 @@ use crate::public_input::PublicInput;
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
     pub pilout: PilOut,
-    public_inputs: Option<Box<dyn PublicInput<T>>>,
+    pub public_inputs: Option<Vec<T>>,
     challenges: Vec<Vec<T>>,
     pub airs: Vec<AirContext>,
 }
@@ -64,7 +65,9 @@ impl<T: FieldElement + Default> ProofCtx<T> {
     }
 
     pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
-        self.public_inputs = public_inputs;
+        if let Some(public_inputs) = public_inputs {
+            self.public_inputs = Some(public_inputs.to_elements());
+        }
 
         // TODO!
         // const poseidon = await buildPoseidonGL();
@@ -120,7 +123,7 @@ impl<T: FieldElement + Default> ProofCtx<T> {
 pub struct AirContext {
     pub subproof_id: usize,
     pub air_id: usize,
-    traces: RwLock<Vec<Box<dyn Trace>>>,
+    pub traces: RwLock<Vec<Arc<Box<dyn Trace>>>>,
 }
 
 impl AirContext {
@@ -144,7 +147,12 @@ impl AirContext {
     ///
     /// * `trace` - The trace to add to the AirContext.
     pub fn add_trace(&self, trace: Box<dyn Trace>) {
-        self.traces.write().unwrap().push(trace);
+        self.traces.write().unwrap().push(Arc::new(trace));
+    }
+
+    // Make a method to return a reference of a self.traces[trace__id]
+    pub fn get_trace(&self, trace_id: usize) -> Arc<Box<dyn Trace>> {
+        self.traces.read().unwrap()[trace_id].clone()
     }
 }
 

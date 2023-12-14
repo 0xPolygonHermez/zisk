@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 
 // Naive implementation of a broadcast channel
@@ -10,7 +10,7 @@ pub struct SenderB<T> {
     sender: Sender<T>,
 
     // Internal receiver and queues for subscribers
-    receivers: Arc<Mutex<Vec<(Sender<T>, Receiver<T>)>>>,
+    receivers: Arc<RwLock<Vec<(Sender<T>, Receiver<T>)>>>,
 }
 
 pub type ReceiverB<T> = Receiver<T>;
@@ -23,7 +23,7 @@ impl<T: Clone> SenderB<T> {
         let (sender, receiver) = unbounded();
 
         // Wrap the receiver in an Arc<Mutex<>> for safe sharing among multiple subscribers
-        let receivers = Arc::new(Mutex::new(vec![(sender.clone(), receiver)]));
+        let receivers = Arc::new(RwLock::new(vec![(sender.clone(), receiver)]));
 
         // Return a new Broadcast object with the sender and receiver
         SenderB { sender, receivers }
@@ -32,7 +32,7 @@ impl<T: Clone> SenderB<T> {
     // Method for sending a message to all subscribers
     pub fn send(&self, message: T) {
         // Clone all senders and send the message to each one
-        let receivers = self.receivers.lock().unwrap().clone();
+        let receivers = self.receivers.read().unwrap().clone();
         for (sender, _) in receivers.iter() {
             sender.send(message.clone()).unwrap();
         }
@@ -42,7 +42,7 @@ impl<T: Clone> SenderB<T> {
     pub fn subscribe(&self) -> ReceiverB<T> {
         // Create a new sender and receiver and add them to the list of subscribers
         let (sender, receiver) = unbounded();
-        self.receivers.lock().unwrap().push((sender.clone(), receiver.clone()));
+        self.receivers.write().unwrap().push((sender.clone(), receiver.clone()));
         receiver
     }
 }

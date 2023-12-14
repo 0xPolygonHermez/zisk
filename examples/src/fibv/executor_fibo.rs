@@ -1,4 +1,3 @@
-use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::proof_ctx::ProofCtx;
 use proofman::message::{Payload, Message};
@@ -9,19 +8,10 @@ use proofman::channel::{SenderB, ReceiverB};
 use log::debug;
 
 /// `FibonacciExecutor` is an executor for computing Fibonacci sequences in the Fibonacci vadcop example.
-pub struct FibonacciExecutor<T> {
-    phantom: std::marker::PhantomData<T>,
-}
+pub struct FibonacciExecutor;
 
-impl<T> FibonacciExecutor<T> {
-    /// Creates a new instance of `FibonacciExecutor`.
-    pub fn new() -> Self {
-        FibonacciExecutor { phantom: std::marker::PhantomData }
-    }
-}
-
-impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
+impl Executor<BaseElement> for FibonacciExecutor {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -35,8 +25,9 @@ impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
         });
         let mut fib = Fibonacci::new(num_rows);
 
-        fib.a[0] = BaseElement::new(1);
-        fib.b[0] = BaseElement::new(1);
+        let public_inputs = proof_ctx.public_inputs.as_ref();
+        fib.a[0] = public_inputs.unwrap()[0];
+        fib.b[0] = public_inputs.unwrap()[1];
 
         for i in 1..num_rows {
             fib.a[i] = fib.b[i - 1];

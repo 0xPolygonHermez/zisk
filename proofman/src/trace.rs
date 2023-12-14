@@ -1,5 +1,8 @@
 /// A trait representing a trace within a proof.
-pub trait Trace : Send + Sync + std::fmt::Debug {}
+pub trait Trace : Send + Sync + std::fmt::Debug {
+    fn num_rows(&self) -> usize;
+    fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
+}
 
 /// Macro for defining trace structures with specified fields.
 #[macro_export]
@@ -81,7 +84,15 @@ macro_rules! trace {
             }
         }
 
-        impl $crate::trace::Trace for $my_struct {}
+        impl $crate::trace::Trace for $my_struct {
+            fn num_rows(&self) -> usize {
+                self.num_rows()
+            }
+
+            fn split(&self, num_segments: usize) -> Vec<Self> {
+                self.split(num_segments)
+            }
+        }
     };
 }
 
