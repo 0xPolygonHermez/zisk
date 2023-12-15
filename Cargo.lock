@@ -125,6 +125,8 @@ dependencies = [
  "log",
  "pilout",
  "proofman",
+ "serde",
+ "serde_json",
  "structopt",
  "winter-math",
 ]
