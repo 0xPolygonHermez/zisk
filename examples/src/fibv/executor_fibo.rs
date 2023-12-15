@@ -1,15 +1,17 @@
-use proofman::executor::Executor;
-use proofman::proof_ctx::ProofCtx;
-use proofman::message::{Payload, Message};
-use proofman::trace;
+use proofman::{
+    executor,
+    executor::Executor,
+    channel::{SenderB, ReceiverB},
+    message::{Message, Payload},
+    proof_ctx::ProofCtx,
+    trace
+};
 use math::fields::f64::BaseElement;
-use proofman::channel::{SenderB, ReceiverB};
 use pilout::find_subproof_id_by_name;
 
 use log::debug;
 
-/// `FibonacciExecutor` is an executor for computing Fibonacci sequences in the Fibonacci vadcop example.
-pub struct FibonacciExecutor;
+executor!(FibonacciExecutor: BaseElement);
 
 impl Executor<BaseElement> for FibonacciExecutor {
     fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {

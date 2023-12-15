@@ -5,7 +5,8 @@ pub enum Payload {
         air_id: usize,
         trace_id: usize,
     },
-    Halt
+    Halt,
+    Finished,
 }
 
 impl Payload {

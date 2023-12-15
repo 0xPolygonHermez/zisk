@@ -1,5 +1,6 @@
 use crate::public_input::PublicInput;
-use crate::{prover::Prover, executor::Executor};
+use crate::prover::Prover;
+use crate::executor::ExecutorBase;
 use pilout::load_pilout;
 use log::{debug, info, error};
 
@@ -46,7 +47,7 @@ where T: FieldElement,
 {
     const MY_NAME: &'static str = "proofman";
 
-    pub fn new(pilout_path: &str, wc: Vec<Box<dyn Executor<T>>>, prover: Box<dyn Prover>, options: ProofManOpt) -> Self {
+    pub fn new(pilout_path: &str, wc: Vec<Box<dyn ExecutorBase<T>>>, prover: Box<dyn Prover>, options: ProofManOpt) -> Self {
         env_logger::builder()
         .format_timestamp(None)
         .format_target(false)

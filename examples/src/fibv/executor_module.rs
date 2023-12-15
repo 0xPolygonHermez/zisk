@@ -1,13 +1,17 @@
-use proofman::executor::Executor;
-use proofman::proof_ctx::ProofCtx;
-use proofman::message::{Payload, Message};
-use proofman::channel::{SenderB, ReceiverB};
-use proofman::trace;
+use proofman::{
+    executor,
+    executor::Executor,
+    channel::{SenderB, ReceiverB},
+    message::{Message, Payload},
+    proof_ctx::ProofCtx,
+    trace
+};
 use math::fields::f64::BaseElement;
-use log::{info, debug, error};
 use pilout::find_subproof_id_by_name;
 
-pub struct ModuleExecutor;
+use log::{info, debug, error};
+
+executor!(ModuleExecutor: BaseElement);
 
 impl Executor<BaseElement> for ModuleExecutor {
     fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
