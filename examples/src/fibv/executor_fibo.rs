@@ -1,5 +1,6 @@
 use proofman::{
     executor,
+    executor::ExecutorBase,
     executor::Executor,
     channel::{SenderB, ReceiverB},
     message::{Message, Payload},
@@ -42,14 +43,6 @@ impl Executor<BaseElement> for FibonacciExecutor {
         let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib)
             .expect("Failed to add trace to AIR instance");
 
-        let msg = Message {  
-            src: "Fibonacci".to_string(),
-            dst: "*".to_string(),
-            payload: Payload::new_trace(subproof_id, air_id, trace_id)
-        };
-
-        tx.send(msg);
-
-        // channel.send(new_trace!(0, 0, 0));"))
+        self.broadcast(tx, Payload::NewTrace { subproof_id, air_id, trace_id });
     }
 }

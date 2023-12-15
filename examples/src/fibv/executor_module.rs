@@ -21,11 +21,10 @@ impl Executor<BaseElement> for ModuleExecutor {
         }
 
         println!("ModuleEx> Waiting for message...");
+
         let msg = rx.recv().expect("Failed to receive message");
 
-        if msg.payload == Payload::Halt {
-            return;
-        }
+        if msg.payload == Payload::Halt { return; }
 
         if let Payload::NewTrace { subproof_id, air_id, trace_id } = msg.payload {
             // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
