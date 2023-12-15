@@ -14,7 +14,7 @@ use log::{info, debug, error};
 executor!(ModuleExecutor: BaseElement);
 
 impl Executor<BaseElement> for ModuleExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: &SenderB<Message>, rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             info!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -43,7 +43,7 @@ impl Executor<BaseElement> for ModuleExecutor {
             });
             let mut module = Module::new(trace.num_rows());
 
-            // TODO how to convert public inputs to BaseElement in a generic way?
+            // TODO how to convert public inputs to BaseElement lika a downcast?
             let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
             let mut a = public_inputs[0];
             let mut b = public_inputs[1];

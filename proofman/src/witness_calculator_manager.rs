@@ -25,8 +25,6 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
 
     pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
         debug!("{}> Computing witness stage {}", Self::MY_NAME, stage_id);
-
-        // TODO create a channel constructor and use it here. Add Clone trait to clone the channel for each wc
         
         let channel = SenderB::new();
 

@@ -72,8 +72,6 @@ where T: FieldElement,
 
         let pilout = load_pilout(pilout_path);
 
-        // TODO! Have we to take in account from here the FinitieField choosed in the pilout?
-
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
@@ -152,11 +150,8 @@ where T: FieldElement,
             if self.options.only_check {
                 info!("{}> ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
-                let valid = self.provers_manager.verify_constraints(stage_id);
-                if !valid {
+                if !self.provers_manager.verify_constraints(stage_id) {
                     error!("{}> CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
-                    // TODO throw new Error(`[${this.name}]`, `Constraints verification failed.`); ????
-                    return;
                 }
 
                 info!("{}> <== CHECKING CONSTRAINTS STAGE {} FINISHED", Self::MY_NAME, stage_id);
@@ -164,12 +159,8 @@ where T: FieldElement,
                 if stage_id == num_stages {
                     info!("{}> ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
-                    let valid_g = self.provers_manager.verify_global_constraints();
-
-                    if !valid_g {
+                    if !self.provers_manager.verify_global_constraints() {
                         error!("{}> Global constraints verification failed", Self::MY_NAME);
-                        //TODO throw new Error(`[${this.name}]`, `Global constraints verification failed.`);
-                        return;
                     }
                         
                     info!("{}> <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);

@@ -74,8 +74,11 @@ impl<T: FieldElement + Default> ProofCtx<T> {
             self.public_inputs = Some(public_inputs.to_elements());
         }
 
-        // TODO initialize proof context traces and others
-        //self.instances.clear();
+        for subproof in self.instances.iter() {
+            for air_context in subproof.iter() {
+                air_context.traces.write().unwrap().clear();
+            }
+        }
     }
 
     /// Adds a trace to the specified Air instance.
