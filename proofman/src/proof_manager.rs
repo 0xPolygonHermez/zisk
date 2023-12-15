@@ -103,8 +103,8 @@ where T: FieldElement,
         self.proof_ctx.initialize_proof(public_inputs);
 
         let mut prover_status = ProverStatus::OpeningsPending;
-        let mut stage_id = 1;
-        let num_stages = self.proof_ctx.pilout.num_challenges.len();
+        let mut stage_id: u32 = 1;
+        let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
 
         while prover_status != ProverStatus::OpeningsCompleted {
             let stage_str = if stage_id <= num_stages + 1 {

@@ -1,4 +1,3 @@
-use math::FieldElement;
 use proofman::executor::Executor;
 use proofman::channel::{SenderB, ReceiverB};
 use proofman::message::Message;
@@ -8,20 +7,10 @@ use math::fields::f64::BaseElement;
 
 use log::{debug, error};
 
-pub struct FibonacciExecutor<T> {
-    phantom: std::marker::PhantomData<T>,
-}
+pub struct FibonacciExecutor;
 
-impl<T> FibonacciExecutor<T> {
-    pub fn new() -> Self {
-        FibonacciExecutor {
-            phantom: std::marker::PhantomData
-        }
-    }
-}
-
-impl<T: FieldElement> Executor<T> for FibonacciExecutor<T> {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<T>, _tx: SenderB<Message>, _rx: ReceiverB<Message>) {
+impl Executor<BaseElement> for FibonacciExecutor {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: Option<usize>, _air_id: Option<usize>, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;

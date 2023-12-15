@@ -64,7 +64,7 @@ fn main() {
 
     type GoldyLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
-    let executor = Box::new(FibonacciExecutor::new());
+    let executor = Box::new(FibonacciExecutor);
     let mut proofman = ProofManager::<GoldyLocks>::new(
         "examples/src/fib4/fib4.pilout",
         vec!(executor),

@@ -20,33 +20,33 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
         }
     }
 
-    pub fn witness_computation(&self, stage_id: usize, proof_ctx: &proof_ctx::ProofCtx<T>) {
+    pub fn witness_computation(&self, stage_id: u32, proof_ctx: &proof_ctx::ProofCtx<T>) {
         debug!("{}> Computing witness stage {}", Self::MY_NAME, stage_id);
 
         // TODO create a channel constructor and use it here. Add Clone trait to clone the channel for each wc
         
         let channel = SenderB::new();
 
-        if stage_id == 1 {            
+        if stage_id == 1 {
             std::thread::scope(|s| {
                 for wc in self.wc.iter() {
                     let tx = channel.clone();
                     let rx = channel.subscribe();
                     s.spawn(move || {
-                        wc.witness_computation(stage_id as u32, -1, -1, proof_ctx, tx, rx);
-                    });        
+                        wc.witness_computation(stage_id, None, None, proof_ctx, tx, rx);
+                    });
                 }
             });
         } else {
             std::thread::scope(|s| {
-                for (instance_id, air) in proof_ctx.airs.iter().enumerate() {
+                for (air_id, air) in proof_ctx.airs.iter().enumerate() {
                     let wc = &self.wc[air.subproof_id];
                     let tx = channel.clone();
                     let rx = tx.subscribe();
                     s.spawn(move || {
-                        println!("thread spawned with pid: {:?}", std::thread::current().id());        
-                        wc.witness_computation(stage_id as u32, air.subproof_id as i32, instance_id as i32, proof_ctx, tx, rx);
-                    });        
+                        println!("thread spawned with pid: {:?}", std::thread::current().id());
+                        wc.witness_computation(stage_id, Some(air.subproof_id), Some(air_id), proof_ctx, tx, rx);
+                    });
                 }
             });
         }

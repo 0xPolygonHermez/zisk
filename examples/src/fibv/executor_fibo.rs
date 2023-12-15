@@ -11,7 +11,7 @@ use log::{debug, error};
 pub struct FibonacciExecutor;
 
 impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: Option<usize>, _air_id: Option<usize>, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -47,7 +47,7 @@ impl Executor<BaseElement> for FibonacciExecutor {
         let msg = Message {  
             src: "Fibonacci".to_string(),
             dst: "*".to_string(),
-            payload: Payload::new_trace(subproof_id as u32, 0)
+            payload: Payload::new_trace(subproof_id, 0)
         };
 
         tx.send(msg);

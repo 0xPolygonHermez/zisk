@@ -25,13 +25,13 @@ impl ProversManager {
         info!("{}> ==> SETUP", Self::MY_NAME);
     }
 
-    pub fn compute_stage(&mut self, stage_id: usize, /*&public_inputs, &self.options*/) -> ProverStatus {
+    pub fn compute_stage(&mut self, stage_id: u32, /*&public_inputs, &self.options*/) -> ProverStatus {
         info!("{}> ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
         ProverStatus::OpeningsCompleted
     }
 
-    pub fn verify_constraints(&self, stage_id: usize) -> bool {
+    pub fn verify_constraints(&self, stage_id: u32) -> bool {
         info!("{}> ==> VERIFY CONSTRAINTS {}", Self::MY_NAME, stage_id);
 
         false

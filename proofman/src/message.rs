@@ -1,14 +1,14 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     NewTrace {
-        subproof_id: u32,
-        air_id: u32,
+        subproof_id: usize,
+        air_id: usize,
     },
     Halt
 }
 
 impl Payload {
-    pub fn new_trace(subproof_id: u32, air_id: u32) -> Self {
+    pub fn new_trace(subproof_id: usize, air_id: usize) -> Self {
         Payload::NewTrace {
             subproof_id,
             air_id,

@@ -9,7 +9,7 @@ use log::{info, debug, error};
 pub struct ModuleExecutor;
 
 impl Executor<BaseElement> for ModuleExecutor {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: i32, _instance_id: i32, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, _subproof_id: Option<usize>, _air_id: Option<usize>, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
         if stage_id != 1 {
             info!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -30,14 +30,14 @@ impl Executor<BaseElement> for ModuleExecutor {
                 .iter()
                 .position(|x| x.name == Some("Fibonacci".to_string()))
             {
-                if subproof_id != subproof_id_fibo as u32 {
+                if subproof_id != subproof_id_fibo {
                     error!("Subproof id {} does not match Fibonacci subproof id {}", subproof_id, subproof_id_fibo);
                     return;
                 }
 
                 // TODO! We need to know the trace_id!!!! Pass it with the message
                 let trace_id = 0;
-                let air_id = proof_ctx.find_air_instance(subproof_id as usize, air_id as usize).expect("Failed to find AIR instance");
+                let air_id = proof_ctx.find_air_instance(subproof_id, air_id).expect("Failed to find AIR instance");
 
                 let trace = proof_ctx.airs[air_id].get_trace(trace_id).expect("Failed to get trace");
 
