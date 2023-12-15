@@ -1,9 +1,14 @@
-I set a nightly toolchain to use Plonky2...
+[]: # Title: TODO
+[]: # Creation Date: 2019-01-01
+[]: # Last Modified: 2019-01-01T15:00:00+01:00
 
-$ rustup override set nightly
-override toolchain for '/Users/xpinsach/dev/pil2-proofman' set to 'nightly-aarch64-apple-darwin'
+[] Change channel struct !!! This is a naive approach, we need to implement a shared memory one
+[x] Change proof_ctx airs[idx] structure to instances[subproof_id][air_id]
+[] Explore interface RUST/C++
+[] Add macro executor!() to add _witness_computation function to control the entry and the exit of a witness_computation call
+[] Simplify code for the executors
+[] improve API for create messages
 
-to be able to use the nightly features of Rust (as Plonky2 need)
 
 commands:
 execute example
@@ -15,46 +20,22 @@ cargo test -p proofman
 execute with selected log level
 RUST_LOG=debug cargo run --bin fibonacci
 
-
-NOTE: Back to stable toolchain !!!!
-rustup help toolchain
-
 Command to generate protobuffer parsing RUST code:
 protoc --rust_out=experimental-codegen=enabled,kernel=upb:. pilout.proto
 
-TraceColSegment
-column: String,
-row_from: usize,
-row_to: usize,
-buffer_idx: usize,
-offset: usize,
-next: usize,
-last: bool
-
-TraceColSegments
-add_trace_layout(&mut self, trace_layout: &TraceLayout, TraceStoreType: TraceStoreType)-> Option<usize>
-add_col_segment(&mut self, col: String, elem_0: usize, elem_1: usize, buffer: u32, offset: usize, next: usize) -> u32
-find_col_segments(&self, col: String) -> Option<&TraceColSegment>
-find_col_segment(&self, elem_idx: usize) -> Option<&TraceColSegment>
-find_last_segment(&self, col: String) -> Option<&TraceColSegment>
-
-TraceBuffer
-buffer: Vec<u8>,
-size: usize,
-
-TraceBuffers
-create_buffer(&mut self, size: usize) -> Option<usize>
-
-TraceColInfo
-column: String,
-total_elements: usize,
-element_bytes: usize,
-
-TraceMemory
-add_trace(&mut self, trace_layout: &TraceLayout, TraceStoreType: TraceStoreType, Trace: Vec[u8])-> Option<usize>
-
-Context
-add_trace(&mut self, subproof_id: usize, air_id: usize, trace: Vec<u8>) -> Option<usize>
 
 
+NOVA ESTRATEGIA
+A una taula centralitzada de tasques:
+    - Afegir tasques
+    - Consultar tasques
+    - Eliminar tasques
+    - Consultar tasques completes
+    - Consultar tasques pendents
+    - Consultar tasques en execució
+    - Consultar tasques fallades
+    - Consultar tasques cancelades
+    - Consultar tasques en espera
 
+Per cada executor afegir tasques que s'han de completar:
+wait_resolved(subproof_id, air_id, [col_id, col_id2, ...])

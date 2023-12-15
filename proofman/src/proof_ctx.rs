@@ -15,7 +15,7 @@ pub struct ProofCtx<T> {
     pub pilout: PilOut,
     pub public_inputs: Option<Vec<T>>,
     challenges: Vec<Vec<T>>,
-    pub airs: Vec<AirContext>,
+    pub instances: Vec<Vec<AirContext>>,
 }
 
 impl<T: FieldElement + Default> ProofCtx<T> {
@@ -51,18 +51,20 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         //         proofCtx.subAirValues[i][j] = aggType === 0 ? zero : one;
         //     }
         // }
-        let mut airs = Vec::new();
-        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {            
+        let mut instances = Vec::new();
+        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {   
+            let mut air_contexts = Vec::new();
             for (air_index, _air) in subproof.airs.iter().enumerate() {
-                airs.push(AirContext::new(subproof_index, air_index));
+                air_contexts.push(AirContext::new(subproof_index, air_index));
             }
+            instances.push(air_contexts);
         }
 
         ProofCtx {
             pilout,
             public_inputs: None,
             challenges,
-            airs,
+            instances,
         }
     }
 
@@ -72,32 +74,8 @@ impl<T: FieldElement + Default> ProofCtx<T> {
             self.public_inputs = Some(public_inputs.to_elements());
         }
 
-        // TODO!
-        // const poseidon = await buildPoseidonGL();
-        // this.transcript = new Transcript(poseidon);
-
-        // TODO! remove existing traces
-        for air in self.airs.iter_mut() {
-            air.traces.write().unwrap().clear();
-        }
-    }
-
-    /// Finds the index of the Air instance with the given subproof_id and air_id.
-    ///
-    /// # Arguments
-    ///
-    /// * `subproof_id` - The subproof ID to search for.
-    /// * `air_id` - The air ID to search for.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(index)` if the Air instance is found, or `None` otherwise.
-    pub fn find_air_instance(&self, subproof_id: usize, air_id: usize) -> Result<usize, &'static str> {
-        if let Some(index) = self.airs.iter().position(|instance| instance.subproof_id == subproof_id && instance.air_id == air_id) {
-            Ok(index)
-        } else {
-            Err("Air instance not found")
-        }
+        // TODO initialize proof context traces and others
+        //self.instances.clear();
     }
 
     /// Adds a trace to the specified Air instance.
@@ -111,13 +89,16 @@ impl<T: FieldElement + Default> ProofCtx<T> {
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) -> Result<(), &'static str> {
-        if let Ok(index) = self.find_air_instance(subproof_id, air_id) {
-            self.airs[index].add_trace(trace);
-            Ok(())
-        } else {
-            Err("Air instance not found")
+    pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) -> Result<usize, &'static str> {
+        // Check if subproof_id and air_id are valid
+        if subproof_id >= self.instances.len() {
+            return Err("Subproof ID out of bounds");
         }
+        if air_id >= self.instances[subproof_id].len() {
+            return Err("Air ID out of bounds");
+        }
+
+        Ok(self.instances[subproof_id][air_id].add_trace(trace))
     }
 }
 
@@ -149,8 +130,10 @@ impl AirContext {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirContext.
-    pub fn add_trace(&self, trace: Box<dyn Trace>) {
-        self.traces.write().unwrap().push(Arc::new(trace));
+    pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
+        let mut traces = self.traces.write().unwrap();
+        traces.push(Arc::new(trace));
+        traces.len() - 1
     }
 
     /// Returns a reference to the trace at the specified index.
@@ -197,7 +180,7 @@ mod tests {
             pilout: PilOut::default(),
             public_inputs: None,
             challenges: vec![vec![BaseElement::default(); 0]],
-            airs: vec![AirContext::new(0, 0)],
+            instances: vec![vec![AirContext::new(0, 0)]],
         };
 
         let proof_ctx = Arc::new(proof_ctx);
@@ -219,39 +202,5 @@ mod tests {
         });
 
         write_handle.join().unwrap();
-    }
-
-    #[test]
-    fn test_find_air_instance_success() {
-        type T = BaseElement;
-        let proof_ctx = ProofCtx {
-            pilout: PilOut::default(),
-            public_inputs: None,
-            challenges: vec![vec![T::default(); 0]],
-            airs: vec![
-                AirContext::new(0, 0),
-                AirContext::new(1, 1),
-            ],
-        };
-
-        let result = proof_ctx.find_air_instance(1, 1);
-        assert_eq!(result, Ok(1));
-    }
-
-    #[test]
-    fn test_find_air_instance_not_found() {
-        type T = BaseElement;
-        let proof_ctx = ProofCtx {
-            public_inputs: None,
-            pilout: PilOut::default(),
-            challenges: vec![vec![T::default(); 0]],
-            airs: vec![
-                AirContext::new(0, 0),
-                AirContext::new(1, 1),
-            ],
-        };
-
-        let result = proof_ctx.find_air_instance(2, 2);
-        assert_eq!(result, Err("Air instance not found"));
     }
 }

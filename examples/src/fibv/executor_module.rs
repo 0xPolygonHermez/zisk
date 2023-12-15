@@ -5,11 +5,12 @@ use proofman::channel::{SenderB, ReceiverB};
 use proofman::trace;
 use math::fields::f64::BaseElement;
 use log::{info, debug, error};
+use pilout::find_subproof_id_by_name;
 
 pub struct ModuleExecutor;
 
 impl Executor<BaseElement> for ModuleExecutor {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: Option<usize>, _air_id: Option<usize>, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
         if stage_id != 1 {
             info!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -22,53 +23,43 @@ impl Executor<BaseElement> for ModuleExecutor {
             return;
         }
 
-        if let Payload::NewTrace { subproof_id, air_id } = msg.payload {
+        if let Payload::NewTrace { subproof_id, air_id, trace_id } = msg.payload {
             // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
-            if let Some(subproof_id_fibo) = proof_ctx
-                .pilout
-                .subproofs
-                .iter()
-                .position(|x| x.name == Some("Fibonacci".to_string()))
-            {
-                if subproof_id != subproof_id_fibo {
-                    error!("Subproof id {} does not match Fibonacci subproof id {}", subproof_id, subproof_id_fibo);
-                    return;
-                }
+            let subproof_id_fibo = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
+            if subproof_id != subproof_id_fibo {
+                error!("Subproof id {} does not match Fibonacci subproof id {}", subproof_id, subproof_id_fibo);
+                return;
+            }
 
-                // TODO! We need to know the trace_id!!!! Pass it with the message
-                let trace_id = 0;
-                let air_id = proof_ctx.find_air_instance(subproof_id, air_id).expect("Failed to find AIR instance");
+            let trace = proof_ctx.instances[subproof_id][air_id].get_trace(trace_id).expect("Failed to get trace");
 
-                let trace = proof_ctx.airs[air_id].get_trace(trace_id).expect("Failed to get trace");
+            trace!(Module {
+                x: BaseElement,
+                q: BaseElement,
+                x_mod: BaseElement
+            });
+            let mut module = Module::new(trace.num_rows());
 
-                trace!(Module {
-                    x: BaseElement,
-                    q: BaseElement,
-                    x_mod: BaseElement
-                });
-                let mut module = Module::new(trace.num_rows());
+            // TODO how to convert public inputs to BaseElement in a generic way?
+            let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
+            let mut a = public_inputs[0];
+            let mut b = public_inputs[1];
+            let m = public_inputs[2];
 
-                // TODO how to convert public inputs to BaseElement in a generic way?
-                let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
-                let mut a = public_inputs[0];
-                let mut b = public_inputs[1];
-                let m = public_inputs[2];
+            for i in 1..trace.num_rows() {
+                module.x[i] = a * a + b * b;
 
-                for i in 1..trace.num_rows() {
-                    module.x[i] = a * a + b * b;
+                module.q[i] = module.x[i] / m;
+                module.x_mod[i] = module.x[i]; // TODO: % m;
 
-                    module.q[i] = module.x[i] / m;
-                    module.x_mod[i] = module.x[i]; // TODO: % m;
+                b = a;
+                a = module.x_mod[i];
+            }
 
-                    b = a;
-                    a = module.x_mod[i];
-                }
-
-                if let Err(e) = proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module) {
-                    error!("Failed to add trace to AIR instance: {}", e)
-                } else {
-                    debug!("Successfully added trace to AIR instance");
-                }
+            if let Err(e) = proof_ctx.add_trace_to_air_instance(subproof_id as usize, 0, module) {
+                error!("Failed to add trace to AIR instance: {}", e)
+            } else {
+                debug!("Successfully added trace to AIR instance");
             }
         }
     }

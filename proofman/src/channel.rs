@@ -5,6 +5,7 @@ use crossbeam_channel::{Sender, Receiver, unbounded};
 // TODO: Implement a more efficient broadcast channel
 
 // Struct representing the Broadcast object
+#[derive(Debug)]
 pub struct SenderB<T> {
     // Internal channel for sending messages to the receiver
     sender: Sender<T>,

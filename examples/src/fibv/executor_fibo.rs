@@ -4,52 +4,50 @@ use proofman::message::{Payload, Message};
 use proofman::trace;
 use math::fields::f64::BaseElement;
 use proofman::channel::{SenderB, ReceiverB};
+use pilout::find_subproof_id_by_name;
 
-use log::{debug, error};
+use log::debug;
 
 /// `FibonacciExecutor` is an executor for computing Fibonacci sequences in the Fibonacci vadcop example.
 pub struct FibonacciExecutor;
 
 impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, _subproof_id: Option<usize>, _air_id: Option<usize>, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tx: SenderB<Message>, _rx: ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
         }
 
-        let num_rows = 16;
+        let subproof_id = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
+        let air_id = 1;
+        let air = &proof_ctx.pilout.subproofs[subproof_id].airs[air_id];
 
         trace!(Fibonacci {
             a: BaseElement,
             b: BaseElement
         });
-        let mut fib = Fibonacci::new(num_rows);
+        let mut fib = Fibonacci::new(air.num_rows() as usize);
 
         let public_inputs = proof_ctx.public_inputs.as_ref();
         fib.a[0] = public_inputs.unwrap()[0];
         fib.b[0] = public_inputs.unwrap()[1];
 
-        for i in 1..num_rows {
+        for i in 1..air.num_rows() as usize {
             fib.a[i] = fib.b[i - 1];
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        let subproof_id = proof_ctx.pilout.subproofs
-            .iter()
-            .position(|x| x.name == Some("Fibonacci".to_string()))
-            .unwrap();
-
-        match proof_ctx.add_trace_to_air_instance(subproof_id, 0, fib) {
-            Ok(_) => debug!("Successfully added trace to AIR instance"),
-            Err(e) => error!("Failed to add trace to AIR instance: {}", e)
-        }
+        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib)
+            .expect("Failed to add trace to AIR instance");
 
         let msg = Message {  
             src: "Fibonacci".to_string(),
             dst: "*".to_string(),
-            payload: Payload::new_trace(subproof_id, 0)
+            payload: Payload::new_trace(subproof_id, air_id, trace_id)
         };
 
         tx.send(msg);
+
+        // channel.send(new_trace!(0, 0, 0));"))
     }
 }

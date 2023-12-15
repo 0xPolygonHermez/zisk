@@ -33,22 +33,22 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                     let tx = channel.clone();
                     let rx = channel.subscribe();
                     s.spawn(move || {
-                        wc.witness_computation(stage_id, None, None, proof_ctx, tx, rx);
+                        wc.witness_computation(stage_id, proof_ctx, tx, rx);
                     });
                 }
             });
         } else {
-            std::thread::scope(|s| {
-                for (air_id, air) in proof_ctx.airs.iter().enumerate() {
-                    let wc = &self.wc[air.subproof_id];
-                    let tx = channel.clone();
-                    let rx = tx.subscribe();
-                    s.spawn(move || {
-                        println!("thread spawned with pid: {:?}", std::thread::current().id());
-                        wc.witness_computation(stage_id, Some(air.subproof_id), Some(air_id), proof_ctx, tx, rx);
-                    });
-                }
-            });
+            // std::thread::scope(|s| {
+            //     for (air_id, air) in proof_ctx.instances.iter().enumerate() {
+            //         let wc = &self.wc[air.subproof_id];
+            //         let tx = channel.clone();
+            //         let rx = tx.subscribe();
+            //         s.spawn(move || {
+            //             println!("thread spawned with pid: {:?}", std::thread::current().id());
+            //             wc.witness_computation(stage_id, Some(air.subproof_id), Some(air_id), proof_ctx, tx, rx);
+            //         });
+            //     }
+            // });
         }
 
         // // const regulars = this.wc.filter(wc => wc.type === ModuleTypeEnum.REGULAR);
