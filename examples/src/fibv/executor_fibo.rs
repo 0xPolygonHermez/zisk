@@ -23,19 +23,19 @@ impl Executor<BaseElement> for FibonacciExecutor {
 
         let subproof_id = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
         let air_id = 1;
-        let air = &proof_ctx.pilout.subproofs[subproof_id].airs[air_id];
+        let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci {
             a: BaseElement,
             b: BaseElement
         });
-        let mut fib = Fibonacci::new(air.num_rows() as usize);
+        let mut fib = Fibonacci::new(num_rows);
 
         let public_inputs = proof_ctx.public_inputs.as_ref();
         fib.a[0] = public_inputs.unwrap()[0];
         fib.b[0] = public_inputs.unwrap()[1];
 
-        for i in 1..air.num_rows() as usize {
+        for i in 1..num_rows as usize {
             fib.a[i] = fib.b[i - 1];
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
