@@ -10,7 +10,6 @@ pub trait TaskPayload: Send + Sync {
 
 pub struct Task {
     pub src: String,
-    pub dst: String,
     pub blocking_type: TaskBlockingType,
     condvar: Option<Arc<Condvar>>,
     completed: bool,
@@ -18,7 +17,7 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(src: String, dst: String, payload: Box<dyn TaskPayload>, blocking_type: TaskBlockingType) -> Self {
+    pub fn new(src: String, payload: Box<dyn TaskPayload>, blocking_type: TaskBlockingType) -> Self {
         let condvar = match blocking_type {
             TaskBlockingType::Blocking => Some(Arc::new(Condvar::new())),
             TaskBlockingType::NonBlocking => None,
@@ -26,7 +25,6 @@ impl Task {
             
         Task {
             src,
-            dst,
             blocking_type,
             condvar,
             completed: false,
@@ -39,7 +37,6 @@ impl std::fmt::Debug for Task {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Task")
             .field("src", &self.src)
-            .field("dst", &self.dst)
             .field("payload", &"TaskPayload")
             .field("completed", &self.completed)
             .finish()
@@ -61,10 +58,10 @@ impl TasksTable {
         TasksTable { tasks: Arc::new(Mutex::new(Vec::new())) }
     }
 
-    pub fn add_blocking_task(&self, src: String, dst: String, payload: Box<dyn TaskPayload>) {
+    pub fn add_blocking_task(&self, src: String, payload: Box<dyn TaskPayload>) {
         let mut tasks = self.tasks.lock().unwrap();
         
-        tasks.push(Task::new(src, dst, payload, TaskBlockingType::Blocking));
+        tasks.push(Task::new(src, payload, TaskBlockingType::Blocking));
         let task_id = tasks.len() - 1;
     
         if let Some(condvar) = tasks[task_id].condvar.as_ref().cloned() {
@@ -74,8 +71,8 @@ impl TasksTable {
         }
     }
 
-    pub fn add_non_blocking_task(&self, src: String, dst: String, payload: Box<dyn TaskPayload>) {
-        self.tasks.lock().unwrap().push(Task::new(src, dst, payload, TaskBlockingType::NonBlocking));
+    pub fn add_non_blocking_task(&self, src: String, payload: Box<dyn TaskPayload>) {
+        self.tasks.lock().unwrap().push(Task::new(src, payload, TaskBlockingType::NonBlocking));
     }
 
     pub fn resolve_task(&self, task_id: usize) -> Result<(), TasksTableError> {
@@ -97,11 +94,6 @@ impl TasksTable {
     pub fn get_tasks_id_by_src(&self, src: &str) -> Vec<usize> {
         let tasks = self.tasks.lock().unwrap();
         tasks.iter().enumerate().filter(|(_, task)| task.src == src.to_string()).map(|(id, _)| id).collect()
-    }
-
-    pub fn get_tasks_id_by_dst(&self, dst: &str) -> Vec<usize> {
-        let tasks = self.tasks.lock().unwrap();
-        tasks.iter().enumerate().filter(|(_, task)| task.dst == dst.to_string()).map(|(id, _)| id).collect()
     }
 
     pub fn get_num_tasks(&self) -> usize {
@@ -153,7 +145,7 @@ mod tests {
     #[test]
     fn test_tasks_table_add_task() {
         let tasks_table = TasksTable::new();
-        tasks_table.add_non_blocking_task("src".to_string(), "dst".to_string(), Box::new(DummyPayload));
+        tasks_table.add_non_blocking_task("src".to_string(), Box::new(DummyPayload));
         assert_eq!(tasks_table.get_num_tasks(), 1);
         assert_eq!(tasks_table.get_num_pending_tasks(), 1);
         assert_eq!(tasks_table.get_num_finished_tasks(), 0);
@@ -165,7 +157,7 @@ mod tests {
         let result = tasks_table.resolve_task(0);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), TasksTableError::NotFound);
-        tasks_table.add_non_blocking_task("src".to_string(), "dst".to_string(), Box::new(DummyPayload));
+        tasks_table.add_non_blocking_task("src".to_string(), Box::new(DummyPayload));
         assert_eq!(tasks_table.get_num_pending_tasks(), 1);
         assert_eq!(tasks_table.get_num_finished_tasks(), 0);
         tasks_table.resolve_task(0).unwrap();
@@ -176,7 +168,7 @@ mod tests {
     #[test]
     fn test_tasks_table_clone() {
         let tasks_table1 = TasksTable::new();
-        tasks_table1.add_non_blocking_task("src".to_string(), "dst".to_string(), Box::new(DummyPayload));
+        tasks_table1.add_non_blocking_task("src".to_string(), Box::new(DummyPayload));
         let tasks_table2 = tasks_table1.clone();
 
         assert_eq!(tasks_table2.get_num_tasks(), 1);
@@ -204,11 +196,11 @@ mod thread_tests {
 
         // Spawn two threads that manipulate the shared tasks table
         let handle1 = thread::spawn(move || {
-            thread1_tasks_table.add_non_blocking_task("src1".to_string(), "dst1".to_string(), Box::new(DummyPayload));
+            thread1_tasks_table.add_non_blocking_task("src1".to_string(), Box::new(DummyPayload));
         });
 
         let handle2 = thread::spawn(move || {
-            thread2_tasks_table.add_non_blocking_task("src2".to_string(), "dst2".to_string(), Box::new(DummyPayload));
+            thread2_tasks_table.add_non_blocking_task("src2".to_string(), Box::new(DummyPayload));
         });
 
         // Wait for both threads to finish
@@ -231,7 +223,7 @@ mod thread_tests {
 
         // Spawn two threads that manipulate the shared tasks table
         let handle1 = thread::spawn(move || {
-            thread1_tasks_table.add_non_blocking_task("src1".to_string(), "dst1".to_string(), Box::new(DummyPayload));
+            thread1_tasks_table.add_non_blocking_task("src1".to_string(), Box::new(DummyPayload));
             let get_tasks_id_by_src = thread1_tasks_table.get_tasks_id_by_src("src1");
             assert_eq!(get_tasks_id_by_src.len(), 1);
             for task_id in get_tasks_id_by_src {
@@ -240,7 +232,7 @@ mod thread_tests {
         });
 
         let handle2 = thread::spawn(move || {
-            thread2_tasks_table.add_non_blocking_task("src2".to_string(), "dst2".to_string(), Box::new(DummyPayload));
+            thread2_tasks_table.add_non_blocking_task("src2".to_string(), Box::new(DummyPayload));
             let get_tasks_id_by_src = thread2_tasks_table.get_tasks_id_by_src("src2");
             assert_eq!(get_tasks_id_by_src.len(), 1);
             for task_id in get_tasks_id_by_src {
@@ -268,8 +260,8 @@ mod thread_tests {
 
         // Spawn two threads that manipulate the shared tasks table
         let handle1 = thread::spawn(move || {
-            table_1.add_blocking_task("src1".to_string(), "dst1".to_string(), Box::new(DummyPayload));
-            table_1.add_blocking_task("src2".to_string(), "dst2".to_string(), Box::new(DummyPayload));
+            table_1.add_blocking_task("src1".to_string(), Box::new(DummyPayload));
+            table_1.add_blocking_task("src2".to_string(), Box::new(DummyPayload));
         });
 
         let handle2 = thread::spawn(move || {
