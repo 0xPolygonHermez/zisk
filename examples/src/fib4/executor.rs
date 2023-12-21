@@ -4,7 +4,8 @@ use proofman::{
     channel::{SenderB, ReceiverB},
     message::Message,
     proof_ctx::ProofCtx,
-    trace
+    trace,
+    task::TasksTable
 };
 use math::{fields::f64::BaseElement, FieldElement};
 use pilout::find_subproof_id_by_name;
@@ -14,7 +15,7 @@ use log::debug;
 executor!(FibonacciExecutor: BaseElement);
 
 impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tasks: &TasksTable, _tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;

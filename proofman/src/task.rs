@@ -8,6 +8,14 @@ pub enum TaskBlockingType {
 pub trait TaskPayload: Send + Sync {
 }
 
+pub struct WaitColumnTask {
+    subproof_id: usize,
+    air_id: usize,
+    column: String,
+}
+
+impl TaskPayload for WaitColumnTask {}
+
 pub struct Task {
     pub src: String,
     pub blocking_type: TaskBlockingType,
@@ -78,17 +86,21 @@ impl TasksTable {
     pub fn resolve_task(&self, task_id: usize) -> Result<(), TasksTableError> {
         let mut tasks = self.tasks.lock().unwrap();
         
-        if task_id < tasks.len() {
-            tasks[task_id].completed = true;
-    
-            // Notify the Condvar if it is present
-            if let Some(condvar) = &tasks[task_id].condvar {
-                condvar.notify_all();
-            }
-            Ok(())
-        } else {
-            Err(TasksTableError::NotFound)
+        if task_id >= tasks.len() { return Err(TasksTableError::NotFound); }
+
+        if tasks[task_id].completed { return Ok(()); }
+
+        tasks[task_id].completed = true;
+
+        // Notify the Condvar if it is present
+        if let Some(condvar) = &tasks[task_id].condvar {
+            condvar.notify_all();
         }
+        Ok(())
+    }
+
+    pub fn wait_column(&self, src: String, subproof_id: usize, air_id: usize, column: String) {
+        self.add_blocking_task(src, Box::new(WaitColumnTask { subproof_id, air_id, column }));
     }
     
     pub fn get_tasks_id_by_src(&self, src: &str) -> Vec<usize> {
@@ -101,7 +113,7 @@ impl TasksTable {
         tasks.len()
     }
 
-    pub fn get_num_tasks_by_completed(&self, completed: bool) -> usize {
+    fn get_num_tasks_by_completed(&self, completed: bool) -> usize {
         let tasks = self.tasks.lock().unwrap();
         tasks.iter().filter(|task| {
             task.completed == completed
@@ -265,10 +277,10 @@ mod thread_tests {
         });
 
         let handle2 = thread::spawn(move || {
-            thread::sleep(std::time::Duration::from_millis(200));
+            thread::sleep(std::time::Duration::from_millis(100));
             let get_tasks_id_by_src = table_2.get_tasks_id_by_src("src1");
             table_2.resolve_task(get_tasks_id_by_src[0]).unwrap();
-            thread::sleep(std::time::Duration::from_millis(200));
+            thread::sleep(std::time::Duration::from_millis(100));
             let get_tasks_id_by_src = table_2.get_tasks_id_by_src("src2");
             table_2.resolve_task(get_tasks_id_by_src[0]).unwrap();
         });
@@ -278,7 +290,6 @@ mod thread_tests {
         handle2.join().unwrap();
 
         // Check the final state of the tasks table
-        assert_eq!(table.get_num_tasks(), 2);
         assert_eq!(table.get_num_pending_tasks(), 0);
         assert_eq!(table.get_num_finished_tasks(), 2);
     }

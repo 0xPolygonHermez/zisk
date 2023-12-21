@@ -1,4 +1,4 @@
-use crate::executor::ExecutorBase;
+use crate::{executor::ExecutorBase, task::TasksTable};
 use crate::channel::SenderB;
 use crate::proof_ctx::ProofCtx;
 use crate::message::Message;
@@ -9,7 +9,8 @@ use log::{debug, info};
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
 pub struct WitnessCalculatorManager<T> {
-    wc: Vec<Box<dyn ExecutorBase<T>>>
+    wc: Vec<Box<dyn ExecutorBase<T>>>,
+    tasks: TasksTable
 }
 
 impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
@@ -19,7 +20,8 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
         debug!("{}> Initializing...", Self::MY_NAME);
 
         WitnessCalculatorManager {
-            wc
+            wc,
+            tasks: TasksTable::new()
         }
     }
 
@@ -33,7 +35,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                 let tx = channel.clone();
                 let rx = channel.subscribe();
                 s.spawn(move || {
-                    wc._witness_computation(stage_id, proof_ctx, tx, rx);
+                    wc._witness_computation(stage_id, proof_ctx, &self.tasks, tx, rx);
                 });
             }
 

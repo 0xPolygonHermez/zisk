@@ -1,17 +1,20 @@
-[]: # Title: TODO
-[]: # Creation Date: 2019-01-01
-[]: # Last Modified: 2019-01-01T15:00:00+01:00
+#TODO
 
 [X] Change proof_ctx airs[idx] structure to instances[subproof_id][air_id]
 [X] Add macro executor!() to add _witness_computation function to control the entry and the exit of a witness_computation call
 [X] Simplify code for the executors
 [X] improve API for create messages
-[ ] Add a table of tasks
-[ ] Add a wait until resolved function
-[ ] How to organize Traces from Trace buffer ?
-[ ] Explore interface RUST/C++
-[ ] Change channel struct !!! This is a naive approach, we need to implement a shared memory one
-
+[X] Load public inputs from file
+1.  [ ] Add TraceTable (Adapt code to TraceTable if needed or new TraceTable test)
+1.1 [ ] fork and join with Trace test and test example
+1.2 [ ] fork and join with TraceTable test and test example
+2.  [X] Add a table of tasks using shared memory
+2.1 [X] Add a wait until resolved function: wait(subproof_id, air_id, [col_id, col_id2, ...])
+2.2 [ ] Add deferred function test
+3.  [ ] binary or arith examples
+4.  [ ] Explore interface RUST/C++
+5.  [ ] Change channel struct !!! This is a naive approach, we need to implement a shared memory one
+6. Transform Vec<Vec<T>> to slice [u8] and access to the specific element with a function ??? 
 
 commands:
 execute example
@@ -30,15 +33,13 @@ protoc --rust_out=experimental-codegen=enabled,kernel=upb:. pilout.proto
 
 NOVA ESTRATEGIA
 A una taula centralitzada de tasques:
-    - Afegir tasques
-    - Consultar tasques
-    - Eliminar tasques
-    - Consultar tasques completes
-    - Consultar tasques pendents
-    - Consultar tasques en execució
-    - Consultar tasques fallades
-    - Consultar tasques cancelades
-    - Consultar tasques en espera
+add_task(task_id, subproof_id, air_id, col_id, col_id2, ...)
 
-Per cada executor afegir tasques que s'han de completar:
-wait_resolved(subproof_id, air_id, [col_id, col_id2, ...])
+find_task_dest(dest)
+find_task_by_id(task_id)
+
+resolve_task(task_id)
+
+get_num_tasks()
+get_num_pending_tasks()
+

@@ -4,7 +4,8 @@ use proofman::{
     channel::{SenderB, ReceiverB},
     message::{Message, Payload},
     proof_ctx::ProofCtx,
-    trace
+    trace,
+    task::TasksTable
 };
 use math::fields::f64::BaseElement;
 use pilout::find_subproof_id_by_name;
@@ -14,7 +15,7 @@ use log::{info, debug, error};
 executor!(ModuleExecutor: BaseElement);
 
 impl Executor<BaseElement> for ModuleExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tx: &SenderB<Message>, rx: &ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tasks: &TasksTable, _tx: &SenderB<Message>, rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             info!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -64,6 +65,9 @@ impl Executor<BaseElement> for ModuleExecutor {
             } else {
                 debug!("Successfully added trace to AIR instance");
             }
+
+            println!("ModuleEx> Resolving task...");
+            tasks.resolve_task(0).unwrap();
         }
     }
 }

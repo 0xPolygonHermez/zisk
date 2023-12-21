@@ -5,7 +5,8 @@ use proofman::{
     channel::{SenderB, ReceiverB},
     message::{Message, Payload},
     proof_ctx::ProofCtx,
-    trace
+    trace,
+    task::TasksTable
 };
 use math::fields::f64::BaseElement;
 use pilout::find_subproof_id_by_name;
@@ -15,7 +16,7 @@ use log::debug;
 executor!(FibonacciExecutor: BaseElement);
 
 impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tasks: &TasksTable, tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -44,5 +45,9 @@ impl Executor<BaseElement> for FibonacciExecutor {
             .expect("Failed to add trace to AIR instance");
 
         self.broadcast(tx, Payload::NewTrace { subproof_id, air_id, trace_id });
+
+        println!("FibonacciExecutor> Waiting for resolve...");
+        tasks.wait_column("Fibonacci".to_string(), subproof_id, air_id, "XXX".to_string());
+        println!("FibonacciExecutor> Resolved!");
     }
 }
