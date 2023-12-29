@@ -8,6 +8,7 @@ pub enum TaskBlockingType {
 pub trait TaskPayload: Send + Sync {
 }
 
+#[allow(dead_code)]
 pub struct WaitColumnTask {
     subproof_id: usize,
     air_id: usize,

@@ -56,14 +56,14 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         //     }
         // }
         let mut subproofs = Vec::new();
-        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {
+        for (subproof_index, _subproof) in pilout.subproofs.iter().enumerate() {
             let subproof = SubproofCtx {
                 subproof_id: subproof_index,
                 airs: Vec::new(),
             };
             subproofs.push(subproof);
 
-            for (air_index, air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
+            for (air_index, _air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
                 let air = AirCtx::new(subproof_index, air_index);
                 subproofs[subproof_index].airs.push(air);
             }
