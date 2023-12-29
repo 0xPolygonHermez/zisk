@@ -15,7 +15,8 @@ pub struct ProofCtx<T> {
     pub pilout: PilOut,
     pub public_inputs: Option<Vec<T>>,
     challenges: Vec<Vec<T>>,
-    pub instances: Vec<Vec<AirContext>>,
+    pub subproofs: Vec<SubproofCtx>,
+    //pub subAirValues = Vec<T>,
 }
 
 impl<T: FieldElement + Default> ProofCtx<T> {
@@ -38,12 +39,15 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         challenges.push(vec![T::default(); 1]);
         challenges.push(vec![T::default(); 2]);
 
+        //TODO!
         // for i in 0..pilout.num_challenges.len() {
         //     println!("pilout.num_challenges[{}]: {}", i, pilout.num_challenges[i]);
         // }
 
+        //TODO!
         // proofCtx.stepsFRI = stepsFRI;
         
+        //TODO!
         // for(let i = 0; i < airout.subproofs.length; i++) {
         //     proofCtx.subAirValues[i] = [];
         //     for(let j = 0; j < airout.subproofs[i].subproofvalues?.length; j++) {
@@ -51,20 +55,25 @@ impl<T: FieldElement + Default> ProofCtx<T> {
         //         proofCtx.subAirValues[i][j] = aggType === 0 ? zero : one;
         //     }
         // }
-        let mut instances = Vec::new();
-        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {   
-            let mut air_contexts = Vec::new();
-            for (air_index, _air) in subproof.airs.iter().enumerate() {
-                air_contexts.push(AirContext::new(subproof_index, air_index));
+        let mut subproofs = Vec::new();
+        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {
+            let subproof = SubproofCtx {
+                subproof_id: subproof_index,
+                airs: Vec::new(),
+            };
+            subproofs.push(subproof);
+
+            for (air_index, air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
+                let air = AirCtx::new(subproof_index, air_index);
+                subproofs[subproof_index].airs.push(air);
             }
-            instances.push(air_contexts);
         }
 
         ProofCtx {
             pilout,
             public_inputs: None,
             challenges,
-            instances,
+            subproofs,
         }
     }
 
@@ -74,9 +83,9 @@ impl<T: FieldElement + Default> ProofCtx<T> {
             self.public_inputs = Some(public_inputs.to_elements());
         }
 
-        for subproof in self.instances.iter() {
-            for air_context in subproof.iter() {
-                air_context.traces.write().unwrap().clear();
+        for subproof in self.subproofs.iter() {
+            for air in subproof.airs.iter() {
+                air.instances.write().unwrap().clear();
             }
         }
     }
@@ -94,47 +103,59 @@ impl<T: FieldElement + Default> ProofCtx<T> {
     /// Panics if the specified Air instance is not found.
     pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
-        if subproof_id >= self.instances.len() {
-            return Err("Subproof ID out of bounds");
-        }
-        if air_id >= self.instances[subproof_id].len() {
-            return Err("Air ID out of bounds");
-        }
-
-        Ok(self.instances[subproof_id][air_id].add_trace(trace))
+        assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+        assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+        
+        Ok(self.subproofs[subproof_id].airs[air_id].add_trace(trace))
     }
+
+    pub fn get_trace(&self, subproof_id: usize, air_id: usize, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+        // Check if subproof_id and air_id are valid
+        assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+        assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+
+        self.subproofs[subproof_id].airs[air_id].get_trace(trace_id)
+    }
+}
+
+/// Represents an instance of a Subproof within a proof.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct SubproofCtx {
+    pub subproof_id: usize,
+    pub airs: Vec<AirCtx>,
 }
 
 /// Represents an instance of an Air within a proof.
 #[allow(dead_code)]
-pub struct AirContext {
+pub struct AirCtx {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub traces: RwLock<Vec<Arc<Box<dyn Trace>>>>,
+    pub instances: RwLock<Vec<Arc<Box<dyn Trace>>>>,
 }
 
-impl AirContext {
-    /// Creates a new AirContext.
+impl AirCtx {
+    /// Creates a new AirCtx.
     ///
     /// # Arguments
     ///
-    /// * `subproof_id` - The subproof ID associated with the AirContext.
-    /// * `air_id` - The air ID associated with the AirContext.
+    /// * `subproof_id` - The subproof ID associated with the AirCtx.
+    /// * `air_id` - The air ID associated with the AirCtx.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirContext {
+        AirCtx {
             subproof_id,
             air_id,
-            traces: RwLock::new(Vec::new()),
+            instances: RwLock::new(Vec::new()),
         }
     }
 
-    /// Adds a trace to the AirContext.
+    /// Adds a trace to the AirCtx.
     ///
     /// # Arguments
     ///
-    /// * `trace` - The trace to add to the AirContext.
+    /// * `trace` - The trace to add to the AirCtx.
     pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
-        let mut traces = self.traces.write().unwrap();
+        let mut traces = self.instances.write().unwrap();
         traces.push(Arc::new(trace));
         traces.len() - 1
     }
@@ -149,22 +170,20 @@ impl AirContext {
     /// 
     /// Returns a reference to the trace at the specified index.
     pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
-        let traces = self.traces.read().unwrap();
+        let traces = self.instances.read().unwrap();
     
-        if trace_id < traces.len() {
-            Ok(Arc::clone(&traces[trace_id]))
-        } else {
-            Err("Trace not found")
-        }
+        assert!(trace_id < traces.len(), "Trace ID out of bounds");
+
+        Ok(Arc::clone(&traces[trace_id]))
     }
 }
 
-impl fmt::Debug for AirContext {
+impl fmt::Debug for AirCtx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AirContext")
+        f.debug_struct("AirCtx")
             .field("subproof_id", &self.subproof_id)
             .field("air_id", &self.air_id)
-            .field("traces", &self.traces)
+            .field("traces", &self.instances)
             .finish()
     }
 }
@@ -183,7 +202,10 @@ mod tests {
             pilout: PilOut::default(),
             public_inputs: None,
             challenges: vec![vec![BaseElement::default(); 0]],
-            instances: vec![vec![AirContext::new(0, 0)]],
+            subproofs: vec![SubproofCtx {
+                subproof_id: 0,
+                airs: vec![AirCtx::new(0, 0)],
+            }],
         };
 
         let proof_ctx = Arc::new(proof_ctx);

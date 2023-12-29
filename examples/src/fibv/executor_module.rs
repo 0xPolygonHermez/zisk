@@ -35,7 +35,8 @@ impl Executor<BaseElement> for ModuleExecutor {
                 return;
             }
 
-            let trace = proof_ctx.instances[subproof_id][air_id].get_trace(trace_id).expect("Failed to get trace");
+            
+            let trace = proof_ctx.get_trace(subproof_id, air_id, trace_id).expect("Failed to get trace");
 
             trace!(Module {
                 x: BaseElement,
