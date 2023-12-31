@@ -25,18 +25,15 @@ impl Executor<BaseElement> for ModuleExecutor {
 
         let msg = rx.recv().expect("Failed to receive message");
 
-        if msg.payload == Payload::Halt { return; }
+        if let Payload::Halt = msg.payload { return; }
 
-        if let Payload::NewTrace { subproof_id, air_id, trace_id } = msg.payload {
+        if let Payload::NewTrace { subproof_id, trace } = msg.payload {
             // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
             let subproof_id_fibo = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
             if subproof_id != subproof_id_fibo {
                 error!("Subproof id {} does not match Fibonacci subproof id {}", subproof_id, subproof_id_fibo);
                 return;
             }
-
-            
-            let trace = proof_ctx.get_trace(subproof_id, air_id, trace_id).expect("Failed to get trace");
 
             trace!(Module {
                 x: BaseElement,

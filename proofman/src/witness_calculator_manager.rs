@@ -50,7 +50,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
         loop {
             let msg = rx.recv().expect("Failed to receive message");
 
-            if msg.payload == Payload::Finished {
+            if let Payload::Finished = msg.payload {
                 num_threads_finished += 1;
                 if num_threads_finished == num_threads {
                     info!("All threads finished");

@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "proofman",
-    "examples",
     "estark",
-    "pilout"
+    "pilout",
+    "examples/*",
 ]
 
 resolver = "2"

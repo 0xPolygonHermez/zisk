@@ -41,10 +41,7 @@ impl Executor<BaseElement> for FibonacciExecutor {
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib)
-            .expect("Failed to add trace to AIR instance");
-
-        self.broadcast(tx, Payload::NewTrace { subproof_id, air_id, trace_id });
+        self.broadcast(tx, Payload::new_trace(subproof_id, fib));
 
         println!("FibonacciExecutor> Waiting for resolve...");
         tasks.wait_column("Fibonacci".to_string(), subproof_id, air_id, "XXX".to_string());

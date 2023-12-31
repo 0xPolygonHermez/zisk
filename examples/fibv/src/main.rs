@@ -124,7 +124,7 @@ fn main() {
     let module2 = Box::new(ModuleExecutor);
 
     let mut proofman = ProofManager::<GoldyLocks>::new(
-        "examples/src/fibv/fibv.pilout",
+        "examples/fibv/src/fibv.pilout",
         vec!(module2, executor, module1),
         Box::new(prover),
         options
