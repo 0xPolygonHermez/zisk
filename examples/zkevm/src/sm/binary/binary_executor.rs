@@ -1,10 +1,9 @@
-// use crate::config::Config;
-// use crate::sm::pols_generated::commit_pols::BinaryCommitPols;
-// use crate::utils::USING_PROVER_FORK_NAMESPACE;
 use rayon::prelude::*;
 
 use math::FieldElement;
 use num_bigint::BigUint;
+
+use crate::sm::binary::binary_sm::BinarySM;
 
 #[derive(Debug)]
 pub struct BinaryAction {
@@ -69,8 +68,11 @@ impl<T: FieldElement> BinaryExecutor<T> {
         reset
     }
 
-    pub fn execute(&mut self, inputs: &mut Vec<BinaryAction>/*, pols: &mut BinaryCommitPols*/) {
+    pub fn execute(&mut self, inputs: &mut Vec<BinaryAction>) {
         let t_256 = T::from(256u32);
+
+        // TODO The elngth is
+        let mut pols = BinarySM::<T>::new(inputs.len());
 
         // Check that we have enough room in polynomials
         assert!(inputs.len() * Self::LATCH_SIZE <= self.num_rows, "BinaryExecutor::execute() Too many Binary entries={} > N/LATCH_SIZE={}", inputs.len(), self.num_rows / Self::LATCH_SIZE);
@@ -102,16 +104,16 @@ impl<T: FieldElement> BinaryExecutor<T> {
                 let mut use_previous_are_lt4 = 0;
 
                 for k in 0..2 {
-                    c_in = if k == 0 { pols.c_in[index] } else { c_out };
+                    c_in = if k == 0 { pols.cin[index] } else { c_out };
 
                     let byte_a = a_bytes[j * 2 + k];
                     let byte_b = b_bytes[j * 2 + k];
                     let byte_c = c_bytes[j * 2 + k];
                     let reset_byte = reset && k == 0;
                     let last_byte = last && k == 1;
-                    pols.free_in_a[k][index] = T::from(byte_a);
-                    pols.free_in_b[k][index] = T::from(byte_b);
-                    pols.free_in_c[k][index] = T::from(byte_c);
+                    pols.freein_a[k][index] = T::from(byte_a);
+                    pols.freein_b[k][index] = T::from(byte_b);
+                    pols.freein_c[k][index] = T::from(byte_c);
 
                     // ONLY for carry, ge4 management
                     match opcode {
@@ -132,7 +134,7 @@ impl<T: FieldElement> BinaryExecutor<T> {
                         // LT4 (OPCODE = 8)
                         2 | 8 => {
                             if reset_byte {
-                                pols.free_in_c[0][index] = T::from(c_bytes[Self::STEPS - 1]);
+                                pols.freein_c[0][index] = T::from(c_bytes[Self::STEPS - 1]);
                             }
                     
                             if byte_a < byte_b {
@@ -146,10 +148,10 @@ impl<T: FieldElement> BinaryExecutor<T> {
                             if last_byte {
                                 if opcode == 2 || c_out == T::ZERO {
                                     use_carry = true;
-                                    pols.free_in_c[1][index] = T::from(c_bytes[0]);
+                                    pols.freein_c[1][index] = T::from(c_bytes[0]);
                                 } else {
                                     use_previous_are_lt4 = 1;
-                                    pols.free_in_c[1][index] = c_out;
+                                    pols.freein_c[1][index] = c_out;
                                 }
                             }
                         }
@@ -157,7 +159,7 @@ impl<T: FieldElement> BinaryExecutor<T> {
                         3 => {
                             use_carry = last;
                             if reset_byte {
-                                pols.free_in_c[0][index] = T::from(c_bytes[Self::STEPS - 1]);
+                                pols.freein_c[0][index] = T::from(c_bytes[Self::STEPS - 1]);
                             }
                     
                             if last_byte {
@@ -176,7 +178,7 @@ impl<T: FieldElement> BinaryExecutor<T> {
                                     } else {
                                         c_out = T::ZERO;
                                     }
-                                    pols.free_in_c[k][index] = T::from(c_bytes[0]);
+                                    pols.freein_c[k][index] = T::from(c_bytes[0]);
                                 }
                             } else {
                                 if byte_a < byte_b {
@@ -191,7 +193,7 @@ impl<T: FieldElement> BinaryExecutor<T> {
                         // EQ (OPCODE = 4)
                         4 => {
                             if reset_byte {
-                                pols.free_in_c[k][index] = T::from(c_bytes[Self::STEPS - 1]);
+                                pols.freein_c[k][index] = T::from(c_bytes[Self::STEPS - 1]);
                             }
                     
                             if byte_a == byte_b && fr.is_zero(c_in) {
@@ -203,7 +205,7 @@ impl<T: FieldElement> BinaryExecutor<T> {
                             if last_byte {
                                 use_carry = true;
                                 c_out = if fr.is_zero(c_out) { T::ONE } else { T::ZERO };
-                                pols.free_in_c[k][index] = T::from(c_bytes[0]);
+                                pols.freein_c[k][index] = T::from(c_bytes[0]);
                             }
                         }
                         // AND (OPCODE = 5)
@@ -232,17 +234,17 @@ impl<T: FieldElement> BinaryExecutor<T> {
                 let next_index = (index + 1) % self.num_rows;
                 let reset = if (index % Self::STEPS) == 0 { T::ZERO } else { T::ONE };
                 
-                pols.a[0][next_index] = pols.a[0][index] * reset + pols.free_in_a[0][index] * self.factors[0][index] + t_256 * pols.free_in_a[1][index] * self.factors[0][index];
-                pols.b[0][next_index] = pols.b[0][index] * reset + pols.free_in_b[0][index] * self.factors[0][index] + t_256 * pols.free_in_b[1][index] * self.factors[0][index];
+                pols.a[0][next_index] = pols.a[0][index] * reset + pols.freein_a[0][index] * self.factors[0][index] + t_256 * pols.freein_a[1][index] * self.factors[0][index];
+                pols.b[0][next_index] = pols.b[0][index] * reset + pols.freein_b[0][index] * self.factors[0][index] + t_256 * pols.freein_b[1][index] * self.factors[0][index];
             
-                let c0_temp = pols.c[0][index] * reset + pols.free_in_c[0][index] * self.factors[0][index] + t_256 * pols.free_in_c[1][index] * self.factors[0][index];
+                let c0_temp = pols.c[0][index] * reset + pols.freein_c[0][index] * self.factors[0][index] + t_256 * pols.freein_c[1][index] * self.factors[0][index];
             
                 pols.c[0][next_index] = pols.use_carry[index] * (pols.c_out[index] - c0_temp) + c0_temp;
             
                 for j in 1..Self::REGISTERS_NUM {
-                    pols.a[j][next_index] = pols.a[j][index] * reset + pols.free_in_a[0][index] * self.factors[j][index] + t_256 * pols.free_in_a[1][index] * self.factors[j][index];
-                    pols.b[j][next_index] = pols.b[j][index] * reset + pols.free_in_b[0][index] * self.factors[j][index] + t_256 * pols.free_in_b[1][index] * self.factors[j][index];
-                    pols.c[j][next_index] = pols.c[j][index] * reset + pols.free_in_c[0][index] * self.factors[j][index] + t_256 * pols.free_in_c[1][index] * self.factors[j][index];
+                    pols.a[j][next_index] = pols.a[j][index] * reset + pols.freein_a[0][index] * self.factors[j][index] + t_256 * pols.freein_a[1][index] * self.factors[j][index];
+                    pols.b[j][next_index] = pols.b[j][index] * reset + pols.freein_b[0][index] * self.factors[j][index] + t_256 * pols.freein_b[1][index] * self.factors[j][index];
+                    pols.c[j][next_index] = pols.c[j][index] * reset + pols.freein_c[0][index] * self.factors[j][index] + t_256 * pols.freein_c[1][index] * self.factors[j][index];
                 }
             }            
         }        

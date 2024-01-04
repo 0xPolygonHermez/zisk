@@ -8,11 +8,11 @@ pub trait Trace : Send + Sync + std::fmt::Debug {
 #[macro_export]
 macro_rules! trace {
     // Case with at least one field and optional trailing comma
-    ($my_struct:ident { $first_field:ident : $first_field_type:ty $(, $rest:ident : $rest_type:ty)* $(,)? }) => {
+    ($my_struct:ident { $($field:ident : $field_type:ty),* $(,)? } ) => {
         #[derive(Debug)]
         pub struct $my_struct {
-            pub $first_field: $crate::trace_col::TraceCol<$first_field_type>,
-            $(pub $rest: $crate::trace_col::TraceCol<$rest_type>),*
+            num_rows: usize,
+            $(pub $field: $crate::trace_col::TraceCol<$field_type>),*
         }
 
         #[allow(dead_code)]
@@ -34,8 +34,8 @@ macro_rules! trace {
                 assert!(num_rows & (num_rows - 1) == 0);
 
                 Box::new(Self {
-                    $first_field: $crate::trace_col::TraceCol::new(num_rows),
-                    $($rest: $crate::trace_col::TraceCol::new(num_rows)),*
+                    num_rows,
+                    $($field: $crate::trace_col::TraceCol::new(num_rows)),*
                 })
             }
 
@@ -57,17 +57,17 @@ macro_rules! trace {
                 // PRECONDITIONS
                 // · num_segments must be greater than 0
                 // · num_segments must be less than or equal to the length of the trace
-                assert!(num_segments > 0 && num_segments <= self.$first_field.num_rows());
+                assert!(num_segments > 0 && num_segments <= self.num_rows());
 
                 let mut segments = Vec::with_capacity(num_segments);
-                let segment_size = self.$first_field.num_rows() / num_segments;
+                let segment_size = self.num_rows() / num_segments;
 
                 let mut start = 0;
                 for _ in 0..num_segments {
                     let end = start + segment_size;
                     segments.push(Self {
-                        $first_field: $crate::trace_col::TraceCol { col: self.$first_field.col[start..end].to_vec() },
-                        $($rest: $crate::trace_col::TraceCol { col: self.$rest.col[start..end].to_vec() }),*
+                        num_rows: end - start,
+                        $($field: $crate::trace_col::TraceCol { col: self.$field.col[start..end].to_vec() }),*
                     });
                     start = end;
                 }
@@ -80,7 +80,7 @@ macro_rules! trace {
             ///
             /// Returns the number of rows in the Trace.
             pub fn num_rows(&self) -> usize {
-                self.$first_field.num_rows()
+                self.num_rows
             }
         }
 
