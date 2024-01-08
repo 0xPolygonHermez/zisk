@@ -1,4 +1,4 @@
-use crate::trace::Trace;
+use crate::trace::trace::Trace;
 use std::sync::Arc;
 
 #[derive(Debug)]

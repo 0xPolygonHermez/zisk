@@ -116,14 +116,14 @@ fn main() {
         ..ProofManOpt::default()
     };
 
-    type GoldyLocks = BaseElement;
+    type GoldiLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
 
     let executor = Box::new(FibonacciExecutor);
     let module1 = Box::new(ModuleExecutor);
     let module2 = Box::new(ModuleExecutor);
 
-    let mut proofman = ProofManager::<GoldyLocks>::new(
+    let mut proofman = ProofManager::<GoldiLocks>::new(
         "examples/fibv/src/fibv.pilout",
         vec!(module2, executor, module1),
         Box::new(prover),

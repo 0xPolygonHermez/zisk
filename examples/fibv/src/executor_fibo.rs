@@ -6,7 +6,7 @@ use proofman::{
     message::{Message, Payload},
     proof_ctx::ProofCtx,
     trace,
-    task::TasksTable
+    task::TasksTable,
 };
 use math::fields::f64::BaseElement;
 use pilout::find_subproof_id_by_name;

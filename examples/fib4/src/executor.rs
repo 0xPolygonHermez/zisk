@@ -4,8 +4,8 @@ use proofman::{
     channel::{SenderB, ReceiverB},
     message::Message,
     proof_ctx::ProofCtx,
+    task::TasksTable,
     trace,
-    task::TasksTable
 };
 use math::{fields::f64::BaseElement, FieldElement};
 use pilout::find_subproof_id_by_name;
@@ -38,7 +38,7 @@ impl Executor<BaseElement> for FibonacciExecutor {
             fib.a[i] = fib.b[i - 1];
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
-
+        
         proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib).expect("Error adding trace to air instance");
     }
 }

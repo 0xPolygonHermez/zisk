@@ -6,7 +6,7 @@
 [X] improve API for create messages
 [X] Load public inputs from file
 1.  [ ] Add TraceTable (Adapt code to TraceTable if needed or new TraceTable test)
-1.1 [ ] fork and join with Trace test and test example
+1.1 [ ] fork and join with Trace test and test example 
 1.2 [ ] fork and join with TraceTable test and test example
 2.  [X] Add a table of tasks using shared memory
 2.1 [X] Add a wait until resolved function: wait(subproof_id, air_id, [col_id, col_id2, ...])
@@ -14,7 +14,9 @@
 3.  [ ] binary or arith examples
 4.  [ ] Explore interface RUST/C++
 5.  [ ] Change channel struct !!! This is a naive approach, we need to implement a shared memory one
-6. Transform Vec<Vec<T>> to slice [u8] and access to the specific element with a function ??? 
+6. Transform Vec<Vec<T>> to slice [u8] and access to the specific element with a function ???
+7. [X] Organize different proof_ctx as in javascript
+8. [ ] Picar-me les màquines d'estats
 
 commands:
 execute example

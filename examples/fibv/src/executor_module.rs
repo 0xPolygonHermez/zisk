@@ -4,8 +4,8 @@ use proofman::{
     channel::{SenderB, ReceiverB},
     message::{Message, Payload},
     proof_ctx::ProofCtx,
+    task::TasksTable,
     trace,
-    task::TasksTable
 };
 use math::fields::f64::BaseElement;
 use pilout::find_subproof_id_by_name;

@@ -1,6 +1,5 @@
 pub mod proof_ctx;
 pub mod trace;
-pub mod trace_col;
 pub mod proof_manager;
 pub mod executor;
 pub mod prover;
@@ -10,4 +9,3 @@ pub mod public_input;
 pub mod message;
 pub mod channel;
 pub mod task;
-pub mod trace_pol;

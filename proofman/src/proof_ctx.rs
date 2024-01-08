@@ -4,7 +4,7 @@ use pilout::pilout::PilOut;
 
 use std::sync::Arc;
 
-use crate::trace::Trace;
+use crate::trace::trace::Trace;
 use std::fmt;
 use crate::public_input::PublicInput;
 
@@ -193,9 +193,10 @@ mod tests {
     use math::fields::f64::BaseElement;
 
     use crate::trace;
+
     use super::*;
     use std::sync::Arc;
-
+    
     #[test]
     fn test_proof_ctx() {
         let proof_ctx = ProofCtx {
