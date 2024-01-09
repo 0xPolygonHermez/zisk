@@ -1,0 +1,227 @@
+{
+  name: 'myFirstPil',
+  baseField: <Buffer ff ff ff ff 00 00 00 01>,
+  blowupFactor: 3,
+  subproofs: [
+    {
+      name: 'Fibonacci',
+      aggregable: false,
+      airs: [
+        {
+          name: 'Fibonacci',
+          numRows: 1024,
+          fixedCols: [
+            {
+              values: [
+                <Buffer 01>, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >,   <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                ... 924 more items
+              ]
+            },
+            {
+              values: [
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                <Buffer >, <Buffer >, <Buffer >, <Buffer >,
+                ... 924 more items
+              ]
+            }
+          ],
+          constraints: [
+            {
+              everyRow: {
+                expressionIdx: { idx: 2 },
+                debugLine: "INFO 0: 0 2 fibfull.pil:12 (Fibonacci.b'-Fibonacci.a)*(1-Fibonacci.L1')"
+              }
+            },
+            {
+              everyRow: {
+                expressionIdx: { idx: 4 },
+                debugLine: 'INFO 1: 1 4 fibfull.pil:14 Fibonacci.L1*(Fibonacci.b-in1)'
+              }
+            },
+            {
+              everyRow: {
+                expressionIdx: { idx: 6 },
+                debugLine: 'INFO 2: 2 6 fibfull.pil:15 Fibonacci.L1*(Fibonacci.a-in2)'
+              }
+            },
+            {
+              everyRow: {
+                expressionIdx: { idx: 8 },
+                debugLine: 'INFO 3: 3 8 fibfull.pil:16 Fibonacci.LLAST*(Fibonacci.a-out)'
+              }
+            }
+          ],
+          stageWidths: [ 2 ],
+          expressions: [
+            {
+              sub: {
+                lhs: { witnessCol: { colIdx: 1, rowOffset: 1, stage: 1 } },
+                rhs: { witnessCol: { colIdx: 0, rowOffset: 0, stage: 1 } }
+              }
+            },
+            {
+              sub: {
+                lhs: { constant: { value: <Buffer 01> } },
+                rhs: { fixedCol: { idx: 0, rowOffset: 1, colIdx: 0 } }
+              }
+            },
+            {
+              mul: {
+                lhs: { expression: { idx: 0 } },
+                rhs: { expression: { idx: 1 } }
+              }
+            },
+            {
+              sub: {
+                lhs: { witnessCol: { colIdx: 1, rowOffset: 0, stage: 1 } },
+                rhs: { publicValue: { idx: 0 } }
+              }
+            },
+            {
+              mul: {
+                lhs: { fixedCol: { idx: 0, rowOffset: 0, colIdx: 0 } },
+                rhs: { expression: { idx: 3 } }
+              }
+            },
+            {
+              sub: {
+                lhs: { witnessCol: { colIdx: 0, rowOffset: 0, stage: 1 } },
+                rhs: { publicValue: { idx: 1 } }
+              }
+            },
+            {
+              mul: {
+                lhs: { fixedCol: { idx: 0, rowOffset: 0, colIdx: 0 } },
+                rhs: { expression: { idx: 5 } }
+              }
+            },
+            {
+              sub: {
+                lhs: { witnessCol: { colIdx: 0, rowOffset: 0, stage: 1 } },
+                rhs: { publicValue: { idx: 2 } }
+              }
+            },
+            {
+              mul: {
+                lhs: { fixedCol: { idx: 1, rowOffset: 0, colIdx: 1 } },
+                rhs: { expression: { idx: 7 } }
+              }
+            }
+          ]
+        }
+      ],
+      subproofvalues: []
+    }
+  ],
+  numChallenges: [],
+  numProofValues: 0,
+  numPublicValues: 3,
+  publicTables: [],
+  expressions: [],
+  constraints: [],
+  hints: [],
+  symbols: [
+    {
+      name: 'Fibonacci.a',
+      dim: 0,
+      lengths: [],
+      debugLine: '',
+      airId: 0,
+      subproofId: 0,
+      type: 3,
+      id: 0,
+      stage: 1
+    },
+    {
+      name: 'Fibonacci.b',
+      dim: 0,
+      lengths: [],
+      debugLine: '',
+      airId: 0,
+      subproofId: 0,
+      type: 3,
+      id: 1,
+      stage: 1
+    },
+    {
+      name: 'Fibonacci.L1',
+      dim: 0,
+      lengths: [],
+      debugLine: '',
+      airId: 0,
+      subproofId: 0,
+      type: 1,
+      id: 0,
+      stage: 0
+    },
+    {
+      name: 'Fibonacci.LLAST',
+      dim: 0,
+      lengths: [],
+      debugLine: '',
+      airId: 0,
+      subproofId: 0,
+      type: 1,
+      id: 1,
+      stage: 0
+    },
+    {
+      name: 'in1',
+      dim: 0,
+      lengths: [],
+      debugLine: 'fibfull.pil:1',
+      type: 6,
+      id: 0
+    },
+    {
+      name: 'in2',
+      dim: 0,
+      lengths: [],
+      debugLine: 'fibfull.pil:2',
+      type: 6,
+      id: 1
+    },
+    {
+      name: 'out',
+      dim: 0,
+      lengths: [],
+      debugLine: 'fibfull.pil:3',
+      type: 6,
+      id: 2
+    }
+  ]
+}

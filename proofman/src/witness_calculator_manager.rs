@@ -4,7 +4,7 @@ use crate::proof_ctx::ProofCtx;
 use crate::message::Message;
 use crate::channel::ReceiverB;
 use crate::message::Payload;
-use log::{debug, info};
+use log::debug;
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
@@ -26,7 +26,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     }
 
     pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
-        debug!("{}> Computing witness stage {}", Self::MY_NAME, stage_id);
+        debug!("{}> --> Computing witness stage {}", Self::MY_NAME, stage_id);
         
         let channel = SenderB::new();
 
@@ -42,7 +42,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             self.thread_manager(self.wc.len(), channel.clone(), channel.subscribe());
         });
 
-        debug!("[{}] > Computing witness stage {}", Self::MY_NAME, stage_id);
+        debug!("{}> <-- Computing witness stage {}", Self::MY_NAME, stage_id);
     }
 
     fn thread_manager(&self, num_threads: usize, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
@@ -53,7 +53,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             if let Payload::Finished = msg.payload {
                 num_threads_finished += 1;
                 if num_threads_finished == num_threads {
-                    info!("All threads finished");
+                    debug!("{}> All threads finished", Self::MY_NAME);
                     break;
                 }
             }
