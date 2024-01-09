@@ -30,10 +30,10 @@ macro_rules! trace {
     ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }) => {
         #[derive(Debug)]
         #[allow(dead_code)]
-        struct $my_struct {
+        pub struct $my_struct {
             buffer: Vec<u8>,
             num_rows: usize,
-            $($field_name: $crate::trace_field!($field_type),)*
+            $(pub $field_name: $crate::trace_field!($field_type),)*
         }
 
         #[allow(dead_code)]
