@@ -19,7 +19,7 @@ impl Ptr {
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace : Send + Sync + std::fmt::Debug {
+pub trait Trace: Send + Sync + std::fmt::Debug {
     fn num_rows(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
 }
@@ -58,7 +58,7 @@ macro_rules! trace {
 
                 let mut buffer = vec![0u8; num_rows * Self::ROW_SIZE];
                 let ptr = $crate::trace::trace::Ptr::new(buffer.as_mut_ptr());
-                
+
                 Box::new($my_struct {
                     buffer,
                     num_rows,
@@ -140,17 +140,23 @@ macro_rules! trace_row_size {
 
 #[macro_export]
 macro_rules! trace_default_value {
-    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr) => {
-        {
-            let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
-            for elem in array.iter_mut() {
-                *elem = $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), Self::ROW_SIZE, $num_rows);
-            }
-            array
+    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr) => {{
+        let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
+        for elem in array.iter_mut() {
+            *elem = $crate::trace::trace_pol::TracePol::new(
+                $ptr.add::<$field_type>(),
+                Self::ROW_SIZE,
+                $num_rows,
+            );
         }
-    };
+        array
+    }};
     ($field_type:ty, $ptr:expr, $num_rows:expr) => {
-        $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), Self::ROW_SIZE, $num_rows)
+        $crate::trace::trace_pol::TracePol::new(
+            $ptr.add::<$field_type>(),
+            Self::ROW_SIZE,
+            $num_rows,
+        )
     };
 }
 
@@ -167,7 +173,7 @@ mod tests {
         let mut simple = Simple::new(num_rows);
 
         assert_eq!(simple.field1.num_rows(), num_rows);
-        
+
         for i in 0..num_rows {
             simple.field1[i] = i;
         }
@@ -232,7 +238,10 @@ mod tests {
 
         for i in 1..num_rows {
             assert_eq!(fibonacci.a[i - 1] + fibonacci.b[i - 1], fibonacci.b[i]);
-            assert_eq!(fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1], fibonacci.c[1][i]);
+            assert_eq!(
+                fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1],
+                fibonacci.c[1][i]
+            );
         }
 
         // let num_segments = 2;

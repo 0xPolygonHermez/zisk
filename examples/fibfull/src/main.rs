@@ -16,6 +16,8 @@ use structopt::StructOpt;
 
 use proofman::proof_manager::{ProofManager, ProofManOpt};
 
+use fibfull::fibonacci_test_rust;
+
 #[derive(StructOpt)]
 #[structopt(name = "fibfull", about = "Fibonacci proofman example")]
 struct FibFullOptions {
@@ -64,7 +66,16 @@ impl<BaseElement: FieldElement> PublicInput<BaseElement> for FibFullPublicInputs
 
 }
 
+
+include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
 fn main() {
+    //fibonacci_test_rust();
+    
+    unsafe {
+        fibonacci_test();
+    }
+
     // read command-line args
     let opt = FibFullOptions::from_args();
 
