@@ -1,4 +1,4 @@
-use fibfull::generate_proof;
+use fibfull::ffi;
 use log::info;
 use math::{fields::f64::BaseElement, FieldElement};
 use proofman::public_input::PublicInput;
@@ -71,7 +71,7 @@ fn main() {
     let stark_info_file = String::from("c");
     let commit_pols = String::from("d");
     let verkey = String::from("e");
-    generate_proof(const_pols, const_tree, stark_info_file, commit_pols, verkey);
+    ffi::generate_proof(const_pols, const_tree, stark_info_file, commit_pols, verkey);
 
     // read command-line args
     let opt = FibFullOptions::from_args();
