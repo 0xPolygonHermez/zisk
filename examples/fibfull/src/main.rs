@@ -1,7 +1,8 @@
+use fibfull::generate_proof;
 use log::info;
 use math::{fields::f64::BaseElement, FieldElement};
-use std::time::Instant;
 use proofman::public_input::PublicInput;
+use std::time::Instant;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
 
@@ -14,9 +15,7 @@ use serde_json;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use proofman::proof_manager::{ProofManager, ProofManOpt};
-
-use fibfull::fibonacci_test_rust;
+use proofman::proof_manager::{ProofManOpt, ProofManager};
 
 #[derive(StructOpt)]
 #[structopt(name = "fibfull", about = "Fibonacci proofman example")]
@@ -28,7 +27,7 @@ struct FibFullOptions {
     /// Public inputs file
     #[structopt(long, parse(from_os_str))]
     public_inputs: PathBuf,
-    
+
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
     prover_settings: PathBuf,
@@ -39,13 +38,12 @@ struct FibFullOptions {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FibFullPublicInputs<T>
- {
+pub struct FibFullPublicInputs<T> {
     a: T,
     b: T,
 }
 
-impl FibFullPublicInputs<u64> {   
+impl FibFullPublicInputs<u64> {
     pub fn new(json: String) -> FibFullPublicInputs<BaseElement> {
         let data: Result<FibFullPublicInputs<u64>, _> = serde_json::from_str(&json);
 
@@ -63,38 +61,46 @@ impl<BaseElement: FieldElement> PublicInput<BaseElement> for FibFullPublicInputs
     fn to_elements(&self) -> Vec<BaseElement> {
         vec![self.a, self.b]
     }
-
 }
 
-
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+include!("../bindings.rs");
 
 fn main() {
-    //fibonacci_test_rust();
-    
-    unsafe {
-        fibonacci_test();
-    }
+    let const_pols = String::from("a");
+    let const_tree = String::from("b");
+    let stark_info_file = String::from("c");
+    let commit_pols = String::from("d");
+    let verkey = String::from("e");
+    generate_proof(const_pols, const_tree, stark_info_file, commit_pols, verkey);
 
     // read command-line args
     let opt = FibFullOptions::from_args();
 
-    // CHECKS 
+    // CHECKS
     // Check if public inputs file exists
     if !opt.public_inputs.exists() {
-        eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
+        eprintln!(
+            "Error: Public inputs file '{}' does not exist",
+            opt.public_inputs.display()
+        );
         std::process::exit(1);
     }
 
     // Check if prover settings file exists
     if !opt.prover_settings.exists() {
-        eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
+        eprintln!(
+            "Error: Prover settings file '{}' does not exist",
+            opt.prover_settings.display()
+        );
         std::process::exit(1);
     }
 
     // Check if output file already exists
     if opt.output.exists() {
-        eprintln!("Error: Output file '{}' already exists", opt.output.display());
+        eprintln!(
+            "Error: Output file '{}' already exists",
+            opt.output.display()
+        );
         std::process::exit(1);
     }
 
@@ -103,7 +109,11 @@ fn main() {
     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
         Ok(settings) => ESTARKProverSettings::new(settings),
         Err(err) => {
-            eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
+            eprintln!(
+                "Error reading settings file '{}': {}",
+                opt.prover_settings.display(),
+                err
+            );
             std::process::exit(1);
         }
     };
@@ -112,7 +122,11 @@ fn main() {
     let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
         Ok(public_inputs) => FibFullPublicInputs::new(public_inputs),
         Err(err) => {
-            eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
+            eprintln!(
+                "Error reading public inputs file '{}': {}",
+                opt.public_inputs.display(),
+                err
+            );
             std::process::exit(1);
         }
     };
@@ -123,15 +137,15 @@ fn main() {
     };
 
     type GoldiLocks = BaseElement;
-    let prover = ESTARKProver::new(estark_settings, /* prover_options */);
+    let prover = ESTARKProver::new(estark_settings /* prover_options */);
 
     let executor = Box::new(FibonacciExecutor);
- 
+
     let mut proofman = ProofManager::<GoldiLocks>::new(
         "examples/fibfull/src/tmp/pilout.ptb",
-        vec!(executor),
+        vec![executor],
         Box::new(prover),
-        options
+        options,
     );
 
     let now = Instant::now();
