@@ -3,7 +3,8 @@ members = [
     "proofman",
     "estark",
     "pilout",
-    "examples/*",
+    "examples/fib4",
+    "examples/fibv",
 ]
 
 resolver = "2"

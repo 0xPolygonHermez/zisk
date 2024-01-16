@@ -30,14 +30,15 @@ macro_rules! trace {
     ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }) => {
         #[derive(Debug)]
         #[allow(dead_code)]
-        pub struct $my_struct {
-            buffer: Vec<u8>,
+        pub struct $my_struct<'a> {
+            buffer: Option<Vec<u8>>,
+            ptr: &'a [u8],
             num_rows: usize,
             $(pub $field_name: $crate::trace_field!($field_type),)*
         }
 
         #[allow(dead_code)]
-        impl $my_struct {
+        impl<'a> $my_struct<'a> {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
 
             /// Creates a new $my_struct.
@@ -57,12 +58,35 @@ macro_rules! trace {
                 assert!(num_rows & (num_rows - 1) == 0);
 
                 let mut buffer = vec![0u8; num_rows * Self::ROW_SIZE];
-                let ptr = $crate::trace::trace::Ptr::new(buffer.as_mut_ptr());
+
+                let ptr = buffer.as_mut_ptr();
+                // TODO! check stride
+                let stride = Self::ROW_SIZE;
+                let ptr_x = $crate::trace::trace::Ptr::new(ptr);
 
                 Box::new($my_struct {
-                    buffer,
+                    buffer: Some(buffer),
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr, num_rows),)*
+                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows),)*
+                })
+            }
+
+            pub fn from_ptr(mut ptr: *mut u8, offset:usize, stride: usize, num_rows: usize) -> Box<Self> {
+                // PRECONDITIONS
+                // num_rows must be greater than or equal to 2
+                assert!(num_rows >= 2);
+                // num_rows must be a power of 2
+                assert!(num_rows & (num_rows - 1) == 0);
+
+                ptr = unsafe { ptr.add(offset) };
+                let ptr_x = $crate::trace::trace::Ptr::new(ptr);
+
+                Box::new($my_struct {
+                    buffer: None,
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
+                    num_rows,
+                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows),)*
                 })
             }
 
@@ -106,7 +130,7 @@ macro_rules! trace {
             }
         }
 
-        impl $crate::trace::trace::Trace for $my_struct {
+        impl<'a> $crate::trace::trace::Trace for $my_struct<'a> {
             fn num_rows(&self) -> usize {
                 self.num_rows()
             }
@@ -170,26 +194,54 @@ mod tests {
         let num_rows = 256;
 
         trace!(Simple { field1: usize });
-        let mut simple = Simple::new(num_rows);
+        let mut buffer = vec![0u8; num_rows * 8];
+        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let mut simple = Simple::from_ptr(ptr, 0, 8 * 2, num_rows);
+
+        let mut simple2 = Simple::new(num_rows);
 
         assert_eq!(simple.field1.num_rows(), num_rows);
+        assert_eq!(simple2.field1.num_rows(), num_rows);
 
         for i in 0..num_rows {
             simple.field1[i] = i;
+            simple2.field1[i] = i;
         }
 
         for i in 0..num_rows {
             assert_eq!(simple.field1[i], i);
+            assert_eq!(simple2.field1[i], i);
         }
 
         assert_eq!(simple.num_rows(), num_rows);
+        assert_eq!(simple2.num_rows(), num_rows);
     }
 
     #[test]
     #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid() {
+    fn test_errors_are_launched_when_num_rows_is_invalid_1() {
+        trace!(Simple { field1: usize });
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_2() {
+        trace!(Simple { field1: usize });
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_3() {
         trace!(Simple { field1: usize });
         let _ = Simple::new(1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_4() {
+        trace!(Simple { field1: usize });
         let _ = Simple::new(3);
     }
 
@@ -216,24 +268,32 @@ mod tests {
             b: BaseElement,
             c: [u64; 2],
         });
-        let mut fibonacci = Fibonacci::new(num_rows);
+        let mut buffer = vec![0u8; num_rows * 8 * 4];
+        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let mut fibonacci = Fibonacci::from_ptr(ptr, 0, 8 * 2, num_rows);
+
+        let mut fibonacci2 = Fibonacci::new(num_rows);
 
         fibonacci.a[0] = BaseElement::new(1);
         fibonacci.b[0] = BaseElement::new(1);
         fibonacci.c[0][0] = 2;
         fibonacci.c[1][0] = 3;
 
-        println!("fibonacci.c = {:?}", fibonacci.c);
-        println!("num_rows = {}", num_rows);
-        println!("ROW_SIZE = {}", Fibonacci::ROW_SIZE);
-        println!("buffer = {:?}", fibonacci.buffer);
+        fibonacci2.a[0] = BaseElement::new(1);
+        fibonacci2.b[0] = BaseElement::new(1);
+        fibonacci2.c[0][0] = 2;
+        fibonacci2.c[1][0] = 3;
+
         for i in 1..num_rows {
             fibonacci.a[i] = fibonacci.b[i - 1];
             fibonacci.b[i] = fibonacci.a[i - 1] + fibonacci.b[i - 1];
-            println!("ix = {}", i);
             fibonacci.c[0][i] = fibonacci.c[0][i - 1];
-            println!("iy = {}", i);
             fibonacci.c[1][i] = fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1];
+
+            fibonacci2.a[i] = fibonacci2.b[i - 1];
+            fibonacci2.b[i] = fibonacci2.a[i - 1] + fibonacci2.b[i - 1];
+            fibonacci2.c[0][i] = fibonacci2.c[0][i - 1];
+            fibonacci2.c[1][i] = fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1];
         }
 
         for i in 1..num_rows {
@@ -241,6 +301,12 @@ mod tests {
             assert_eq!(
                 fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1],
                 fibonacci.c[1][i]
+            );
+
+            assert_eq!(fibonacci2.a[i - 1] + fibonacci2.b[i - 1], fibonacci2.b[i]);
+            assert_eq!(
+                fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1],
+                fibonacci2.c[1][i]
             );
         }
 

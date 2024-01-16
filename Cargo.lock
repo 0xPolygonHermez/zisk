@@ -162,23 +162,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fibfull"
-version = "0.0.1"
-dependencies = [
- "crossbeam-channel",
- "env_logger",
- "estark",
- "libc",
- "log",
- "pilout",
- "proofman",
- "serde",
- "serde_json",
- "structopt",
- "winter-math",
-]
-
-[[package]]
 name = "fibv"
 version = "0.0.1"
 dependencies = [
