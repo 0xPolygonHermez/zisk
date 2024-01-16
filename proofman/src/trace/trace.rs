@@ -41,7 +41,7 @@ macro_rules! trace {
         impl<'a> $my_struct<'a> {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
 
-            /// Creates a new $my_struct.
+            /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
             ///
             /// # Arguments
             ///
@@ -49,7 +49,7 @@ macro_rules! trace {
             ///
             /// # Preconditions
             ///
-            /// * Size must be greater than or equal to 2 and a power of 2.
+            /// * `num_rows` must be greater than or equal to 2 and a power of 2.
             pub fn new(num_rows: usize) -> Box<Self> {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
@@ -68,10 +68,23 @@ macro_rules! trace {
                     buffer: Some(buffer),
                     ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows),)*
+                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, Self::ROW_SIZE),)*
                 })
             }
 
+            /// Create a new instance of $my_struct using an outside buffer.
+            /// TODO! Explain it better
+            ///
+            /// # Arguments
+            ///
+            /// * `ptr` - A mutable raw pointer to the starting memory location.
+            /// * `offset` - The offset (in bytes) to the first element.
+            /// * `stride` - The stride (in bytes) between consecutive elements.
+            /// * `num_rows` - The number of rows in all the TraceCol fields defined.
+            ///
+            /// # Preconditions
+            ///
+            /// * `num_rows` must be greater than or equal to 2 and a power of 2.
             pub fn from_ptr(mut ptr: *mut u8, offset:usize, stride: usize, num_rows: usize) -> Box<Self> {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
@@ -86,7 +99,7 @@ macro_rules! trace {
                     buffer: None,
                     ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows),)*
+                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, stride),)*
                 })
             }
 
@@ -164,21 +177,21 @@ macro_rules! trace_row_size {
 
 #[macro_export]
 macro_rules! trace_default_value {
-    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr) => {{
+    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
         let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
         for elem in array.iter_mut() {
             *elem = $crate::trace::trace_pol::TracePol::new(
                 $ptr.add::<$field_type>(),
-                Self::ROW_SIZE,
+                $stride,
                 $num_rows,
             );
         }
         array
     }};
-    ($field_type:ty, $ptr:expr, $num_rows:expr) => {
+    ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
         $crate::trace::trace_pol::TracePol::new(
             $ptr.add::<$field_type>(),
-            Self::ROW_SIZE,
+            $stride,
             $num_rows,
         )
     };
@@ -190,13 +203,40 @@ mod tests {
     use rand::Rng;
 
     #[test]
+    fn check() {
+        trace!(Check {
+            a:u8
+        });
+
+        let offset = 2;
+        let stride = 5;
+        let num_rows = 8;
+
+        let mut buffer = vec![0u8; num_rows * stride];
+        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let mut check = Check::from_ptr(ptr, offset, stride, num_rows);
+
+        for i in 0..num_rows {
+            check.a[i] = i as u8;
+        }
+
+        for i in 0..num_rows {
+            assert_eq!(check.a[i], i as u8);
+        }
+    }
+
+    #[test]
     fn test_simple_trace_creation() {
         let num_rows = 256;
 
+        // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
+        let offset = 3;
+        let stride = 15;
+        
         trace!(Simple { field1: usize });
-        let mut buffer = vec![0u8; num_rows * 8];
+        let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut u8;
-        let mut simple = Simple::from_ptr(ptr, 0, 8 * 2, num_rows);
+        let mut simple = Simple::from_ptr(ptr, offset, stride, num_rows);
 
         let mut simple2 = Simple::new(num_rows);
 
@@ -268,9 +308,14 @@ mod tests {
             b: BaseElement,
             c: [u64; 2],
         });
-        let mut buffer = vec![0u8; num_rows * 8 * 4];
+    
+        // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
+        let offset = 7;
+        let stride = 45;
+
+        let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut u8;
-        let mut fibonacci = Fibonacci::from_ptr(ptr, 0, 8 * 2, num_rows);
+        let mut fibonacci = Fibonacci::from_ptr(ptr, offset, stride, num_rows);
 
         let mut fibonacci2 = Fibonacci::new(num_rows);
 
