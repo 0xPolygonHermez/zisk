@@ -1,22 +1,18 @@
 use std::ops::{Index, IndexMut};
-use std::cell::UnsafeCell;
 
 #[derive(Debug)]
-pub struct TracePol<T: Send + Sync> {
-    ptr: UnsafeCell<*mut u8>,
-    row_size: usize,
+pub struct TracePol<'a, T: Send + Sync> {
+    ptr: &'a [u8],
+    stride: usize,
     num_rows: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
-unsafe impl<T: Send + Sync> Sync for TracePol<T> {}
-unsafe impl<T: Send + Sync> Send for TracePol<T> {}
-
-impl<T: Send + Sync> TracePol<T> {
-    pub fn new(ptr: *mut u8, row_size: usize, num_rows: usize) -> Self {
+impl<'a, T: Send + Sync> TracePol<'a, T> {
+    pub fn new(ptr: *mut u8, stride: usize, num_rows: usize) -> Self {
         TracePol {
-            ptr: UnsafeCell::new(ptr),
-            row_size,
+            ptr: unsafe { std::slice::from_raw_parts(ptr, stride * (num_rows - 1) + std::mem::size_of::<T>()) },
+            stride,
             num_rows,
             _phantom: std::marker::PhantomData,
         }
@@ -27,29 +23,27 @@ impl<T: Send + Sync> TracePol<T> {
     }
 }
 
-impl<T: Send + Sync> Index<usize> for TracePol<T> {
+impl<'a, T: Send + Sync> Index<usize> for TracePol<'a, T> {
     type Output = T;
 
     fn index(&self, i: usize) -> &T {
         assert!(i < self.num_rows);
-        let ptr = unsafe { *self.ptr.get() };
-        unsafe { & *(ptr.offset((i * self.row_size) as isize) as *mut T) }
+        unsafe { &*(self.ptr.as_ptr().offset((i * self.stride) as isize) as *const T) }
     }
 }
 
-impl<T: Send + Sync> IndexMut<usize> for TracePol<T> {
+impl<'a, T: Send + Sync> IndexMut<usize> for TracePol<'a, T> {
     fn index_mut(&mut self, i: usize) -> &mut T {
         assert!(i < self.num_rows);
-        let ptr = unsafe { *self.ptr.get() };
-        unsafe { &mut *(ptr.offset((i * self.row_size) as isize) as *mut T) }
+        unsafe { &mut *(self.ptr.as_ptr().offset((i * self.stride) as isize) as *mut T) }
     }
 }
 
-impl<T: Send + Sync> Default for TracePol<T> {
+impl<'a, T: Send + Sync> Default for TracePol<'a, T> {
     fn default() -> Self {
         TracePol {
-            ptr: UnsafeCell::new(std::ptr::null_mut()),
-            row_size: 0,
+            ptr: &[],
+            stride: 0,
             num_rows: 0,
             _phantom: std::marker::PhantomData,
         }

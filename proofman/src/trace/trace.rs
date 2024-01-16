@@ -161,10 +161,10 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! trace_field {
     ([$field_type:ty; $num:expr]) => {
-        [$crate::trace::trace_pol::TracePol<$field_type>; $num]
+        [$crate::trace::trace_pol::TracePol<'a, $field_type>; $num]
     };
     ($field_type:ty) => {
-        $crate::trace::trace_pol::TracePol<$field_type>
+        $crate::trace::trace_pol::TracePol<'a, $field_type>
     };
 }
 
