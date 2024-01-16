@@ -85,12 +85,14 @@ macro_rules! trace {
             /// # Preconditions
             ///
             /// * `num_rows` must be greater than or equal to 2 and a power of 2.
-            pub fn from_ptr(mut ptr: *mut u8, offset:usize, stride: usize, num_rows: usize) -> Box<Self> {
+            pub fn from_ptr(ptr: *mut std::ffi::c_void, offset:usize, stride: usize, num_rows: usize) -> Box<Self> {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
                 // num_rows must be a power of 2
                 assert!(num_rows & (num_rows - 1) == 0);
+                
+                let mut ptr = ptr as *mut u8;
 
                 ptr = unsafe { ptr.add(offset) };
                 let ptr_x = $crate::trace::trace::Ptr::new(ptr);
@@ -199,6 +201,8 @@ macro_rules! trace_default_value {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::c_void;
+
     use math::fields::f64::BaseElement;
     use rand::Rng;
 
@@ -213,7 +217,7 @@ mod tests {
         let num_rows = 8;
 
         let mut buffer = vec![0u8; num_rows * stride];
-        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let ptr = buffer.as_mut_ptr() as *mut c_void;
         let mut check = Check::from_ptr(ptr, offset, stride, num_rows);
 
         for i in 0..num_rows {
@@ -235,7 +239,7 @@ mod tests {
         
         trace!(Simple { field1: usize });
         let mut buffer = vec![0u8; num_rows * stride];
-        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let ptr = buffer.as_mut_ptr() as *mut c_void;
         let mut simple = Simple::from_ptr(ptr, offset, stride, num_rows);
 
         let mut simple2 = Simple::new(num_rows);
@@ -314,7 +318,7 @@ mod tests {
         let stride = 45;
 
         let mut buffer = vec![0u8; num_rows * stride];
-        let ptr = buffer.as_mut_ptr() as *mut u8;
+        let ptr = buffer.as_mut_ptr() as *mut c_void;
         let mut fibonacci = Fibonacci::from_ptr(ptr, offset, stride, num_rows);
 
         let mut fibonacci2 = Fibonacci::new(num_rows);
