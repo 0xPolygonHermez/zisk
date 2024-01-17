@@ -7,15 +7,15 @@ use proofman::{
     task::TasksTable,
     trace,
 };
-use math::fields::f64::BaseElement;
+use p3_goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
 
 use log::{info, debug, error};
 
-executor!(ModuleExecutor: BaseElement);
+executor!(ModuleExecutor: Goldilocks);
 
-impl Executor<BaseElement> for ModuleExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tasks: &TasksTable, _tx: &SenderB<Message>, rx: &ReceiverB<Message>) {
+impl Executor<Goldilocks> for ModuleExecutor {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<Goldilocks>, tasks: &TasksTable, _tx: &SenderB<Message>, rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             info!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -36,13 +36,13 @@ impl Executor<BaseElement> for ModuleExecutor {
             }
 
             trace!(Module {
-                x: BaseElement,
-                q: BaseElement,
-                x_mod: BaseElement
+                x: Goldilocks,
+                q: Goldilocks,
+                x_mod: Goldilocks
             });
             let mut module = Module::new(trace.num_rows());
 
-            // TODO how to convert public inputs to BaseElement lika a downcast?
+            // TODO how to convert public inputs to Goldilocks like a downcast?
             let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
             let mut a = public_inputs[0];
             let mut b = public_inputs[1];

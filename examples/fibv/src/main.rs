@@ -1,5 +1,6 @@
 use log::debug;
-use math::{fields::f64::BaseElement, FieldElement};
+use p3_goldilocks::Goldilocks;
+use p3_field::AbstractField;
 use std::time::Instant;
 use proofman::public_input::PublicInput;
 
@@ -48,22 +49,22 @@ pub struct FibVPublicInputs<T>
 }
 
 impl FibVPublicInputs<u64> {   
-    pub fn new(json: String) -> FibVPublicInputs<BaseElement> {
+    pub fn new(json: String) -> FibVPublicInputs<Goldilocks> {
         let data: Result<FibVPublicInputs<u64>, _> = serde_json::from_str(&json);
 
         match data {
             Ok(data) => FibVPublicInputs {
-                a: BaseElement::new(data.a),
-                b: BaseElement::new(data.b),
-                module: BaseElement::new(data.module),
+                a: Goldilocks::from_canonical_u64(data.a),
+                b: Goldilocks::from_canonical_u64(data.b),
+                module: Goldilocks::from_canonical_u64(data.module),
             },
             Err(e) => panic!("Error parsing settings file: {}", e),
         }
     }
 }
 
-impl<BaseElement: FieldElement> PublicInput<BaseElement> for FibVPublicInputs<BaseElement> {
-    fn to_elements(&self) -> Vec<BaseElement> {
+impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInput<Goldilocks> for FibVPublicInputs<Goldilocks> {
+    fn to_elements(&self) -> Vec<Goldilocks> {
         vec![self.a, self.b, self.module]
     }
 
@@ -116,14 +117,13 @@ fn main() {
         ..ProofManOpt::default()
     };
 
-    type GoldiLocks = BaseElement;
     let prover = ESTARKProver::new(estark_settings, /* prover_options */);
 
     let executor = Box::new(FibonacciExecutor);
     let module1 = Box::new(ModuleExecutor);
     let module2 = Box::new(ModuleExecutor);
 
-    let mut proofman = ProofManager::<GoldiLocks>::new(
+    let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fibv/src/fibv.pilout",
         vec!(module2, executor, module1),
         Box::new(prover),

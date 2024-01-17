@@ -1,5 +1,4 @@
 use std::sync::RwLock;
-use math::FieldElement;
 use pilout::pilout::PilOut;
 
 use std::sync::Arc;
@@ -19,7 +18,7 @@ pub struct ProofCtx<T> {
     //pub subAirValues = Vec<T>,
 }
 
-impl<T: FieldElement + Default> ProofCtx<T> {
+impl<T: Default + Clone> ProofCtx<T> {
     /// Creates a new `ProofCtx` with the given `PilOut`.
     pub fn new(pilout: PilOut) -> Self {
         // NOTE: consider Vec::with_capacity() instead of Vec::new()
@@ -190,8 +189,7 @@ impl fmt::Debug for AirCtx {
 
 #[cfg(test)]
 mod tests {
-    use math::fields::f64::BaseElement;
-
+    use p3_goldilocks::Goldilocks;
     use crate::trace;
 
     use super::*;
@@ -202,7 +200,7 @@ mod tests {
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
             public_inputs: None,
-            challenges: vec![vec![BaseElement::default(); 0]],
+            challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx {
                 subproof_id: 0,
                 airs: vec![AirCtx::new(0, 0)],
