@@ -9,8 +9,8 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
-p3-goldilocks = { path = "../../Plonky3/goldilocks" }
-p3-field = { path = "../../Plonky3/field" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
 log = { version = "0.4.20" }
 env_logger = "0.10.1"
 serde = { version = "1.0.130", features = ["derive"] }

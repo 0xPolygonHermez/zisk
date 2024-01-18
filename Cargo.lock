@@ -337,6 +337,7 @@ checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 [[package]]
 name = "p3-field"
 version = "0.1.0"
+source = "git+https://github.com/Plonky3/Plonky3.git#b9770f7f6afb3973daa07566f01ee6dd22a8eac6"
 dependencies = [
  "itertools 0.12.0",
  "p3-util",
@@ -347,6 +348,7 @@ dependencies = [
 [[package]]
 name = "p3-goldilocks"
 version = "0.1.0"
+source = "git+https://github.com/Plonky3/Plonky3.git#b9770f7f6afb3973daa07566f01ee6dd22a8eac6"
 dependencies = [
  "p3-field",
  "p3-util",
@@ -357,6 +359,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
+source = "git+https://github.com/Plonky3/Plonky3.git#b9770f7f6afb3973daa07566f01ee6dd22a8eac6"
 dependencies = [
  "serde",
 ]
