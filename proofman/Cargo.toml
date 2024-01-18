@@ -9,7 +9,8 @@ readme = "README.md"
 path = "src/lib.rs"
 
 [dependencies]
-math = { package = "winter-math", version = "0.7.1", default-features = false }
+p3-goldilocks = { path = "../../Plonky3/goldilocks" }
+p3-field = { path = "../../Plonky3/field" }
 log = { version = "0.4.20" }
 env_logger = "0.10.1"
 serde = { version = "1.0.130", features = ["derive"] }

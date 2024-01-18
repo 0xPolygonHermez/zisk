@@ -1,10 +1,11 @@
+use core::fmt;
+
 use crate::public_input::PublicInput;
 use crate::prover::Prover;
 use crate::executor::ExecutorBase;
 use pilout::load_pilout;
 use log::{debug, info, error};
 
-use math::FieldElement;
 use crate::provers_manager::ProversManager;
 use crate::witness_calculator_manager::WitnessCalculatorManager;
 
@@ -42,8 +43,7 @@ pub struct ProofManager<T> {
     provers_manager: ProversManager,
 }
 
-impl<T> ProofManager<T>
-where T: FieldElement,
+impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
 {
     const MY_NAME: &'static str = "proofman";
 

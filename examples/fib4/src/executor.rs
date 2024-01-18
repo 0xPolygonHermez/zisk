@@ -7,15 +7,16 @@ use proofman::{
     task::TasksTable,
     trace,
 };
-use math::{fields::f64::BaseElement, FieldElement};
+use p3_goldilocks::Goldilocks;
+use p3_field::AbstractField;
 use pilout::find_subproof_id_by_name;
 
 use log::debug;
 
-executor!(FibonacciExecutor: BaseElement);
+executor!(FibonacciExecutor: Goldilocks);
 
-impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, _tasks: &TasksTable, _tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
+impl Executor<Goldilocks> for FibonacciExecutor {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<Goldilocks>, _tasks: &TasksTable, _tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -26,13 +27,13 @@ impl Executor<BaseElement> for FibonacciExecutor {
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci {
-            a: BaseElement,
-            b: BaseElement
+            a: Goldilocks,
+            b: Goldilocks
         });
         let mut fib = Fibonacci::new(num_rows);
 
-        fib.a[0] = BaseElement::ONE;
-        fib.b[0] = BaseElement::ONE;
+        fib.a[0] = Goldilocks::one();
+        fib.b[0] = Goldilocks::one();
 
         for i in 1..num_rows {
             fib.a[i] = fib.b[i - 1];

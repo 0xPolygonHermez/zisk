@@ -203,7 +203,9 @@ macro_rules! trace_default_value {
 mod tests {
     use std::ffi::c_void;
 
-    use math::fields::f64::BaseElement;
+    use p3_goldilocks::Goldilocks;
+    use p3_field::AbstractField;
+
     use rand::Rng;
 
     #[test]
@@ -308,8 +310,8 @@ mod tests {
         // QUESTION: why not this syntax? trace!(cols Fibonacci { a: BaseElement, b: BaseElement });
         // and why not this alternative syntax? trace!(buffer Fibonacci { a: BaseElement, b: BaseElement });
         trace!(Fibonacci {
-            a: BaseElement,
-            b: BaseElement,
+            a: Goldilocks,
+            b: Goldilocks,
             c: [u64; 2],
         });
     
@@ -323,13 +325,13 @@ mod tests {
 
         let mut fibonacci2 = Fibonacci::new(num_rows);
 
-        fibonacci.a[0] = BaseElement::new(1);
-        fibonacci.b[0] = BaseElement::new(1);
+        fibonacci.a[0] = Goldilocks::from_canonical_u64(1);
+        fibonacci.b[0] = Goldilocks::from_canonical_u64(1);
         fibonacci.c[0][0] = 2;
         fibonacci.c[1][0] = 3;
 
-        fibonacci2.a[0] = BaseElement::new(1);
-        fibonacci2.b[0] = BaseElement::new(1);
+        fibonacci2.a[0] = Goldilocks::from_canonical_u64(1);
+        fibonacci2.b[0] = Goldilocks::from_canonical_u64(1);
         fibonacci2.c[0][0] = 2;
         fibonacci2.c[1][0] = 3;
 

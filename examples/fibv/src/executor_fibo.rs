@@ -8,15 +8,15 @@ use proofman::{
     trace,
     task::TasksTable,
 };
-use math::fields::f64::BaseElement;
+use p3_goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
 
 use log::debug;
 
-executor!(FibonacciExecutor: BaseElement);
+executor!(FibonacciExecutor: Goldilocks);
 
-impl Executor<BaseElement> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<BaseElement>, tasks: &TasksTable, tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
+impl Executor<Goldilocks> for FibonacciExecutor {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<Goldilocks>, tasks: &TasksTable, tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -27,8 +27,8 @@ impl Executor<BaseElement> for FibonacciExecutor {
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci {
-            a: BaseElement,
-            b: BaseElement
+            a: Goldilocks,
+            b: Goldilocks
         });
         let mut fib = Fibonacci::new(num_rows);
 
