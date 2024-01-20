@@ -6,7 +6,7 @@ pub struct Ptr {
 
 impl Ptr {
     pub fn new(ptr: *mut u8) -> Self {
-        Ptr { ptr: UnsafeCell::new(ptr) }
+            Ptr { ptr: UnsafeCell::new(ptr) }
     }
 
     pub fn add<T>(&self) -> *mut u8 {
@@ -19,6 +19,7 @@ impl Ptr {
 /// A trait representing a trace within a proof.
 pub trait Trace: Send + Sync + std::fmt::Debug {
     fn num_rows(&self) -> usize;
+    fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
 }
 
@@ -141,11 +142,24 @@ macro_rules! trace {
             pub fn num_rows(&self) -> usize {
                 self.num_rows
             }
+
+            /// Returns the size of a row in bytes.
+            /// 
+            /// # Returns
+            /// 
+            /// The size of a row in bytes.
+            pub fn row_size(&self) -> usize {
+                Self::ROW_SIZE
+            }
         }
 
         impl<'a> $crate::trace::trace::Trace for $my_struct<'a> {
             fn num_rows(&self) -> usize {
                 self.num_rows()
+            }
+
+            fn row_size(&self) -> usize {
+                self.row_size()
             }
 
             // TODO! uncomment
