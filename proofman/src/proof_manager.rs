@@ -21,10 +21,7 @@ pub struct ProofManOpt {
 
 impl Default for ProofManOpt {
     fn default() -> Self {
-        Self {
-            debug: false,
-            only_check: false,
-        }
+        Self { debug: false, only_check: false }
     }
 }
 
@@ -43,32 +40,37 @@ pub struct ProofManager<T> {
     provers_manager: ProversManager,
 }
 
-impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
-{
+impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
     const MY_NAME: &'static str = "proofman";
 
-    pub fn new(pilout_path: &str, wc: Vec<Box<dyn ExecutorBase<T>>>, prover: Box<dyn Prover>, options: ProofManOpt) -> Self {
-        env_logger::builder()
-        .format_timestamp(None)
-        .format_target(false)
-        .filter_level(log::LevelFilter::Trace)
-        .init();
+    pub fn new(
+        pilout_path: &str,
+        wc: Vec<Box<dyn ExecutorBase<T>>>,
+        prover: Box<dyn Prover>,
+        options: ProofManOpt,
+    ) -> Self {
+        env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
         let reset = "\x1b[37;0m";
         let purple = "\x1b[35m";
         let green = "\x1b[32;1m";
         let bold = "\x1b[1m";
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!("{}{}{} {}", green, format!("{: >12}", "Loaded"), reset, std::env::current_exe().unwrap().display().to_string().as_str());
+        println!(
+            "{}{}{} {}",
+            green,
+            format!("{: >12}", "Loaded"),
+            reset,
+            std::env::current_exe().unwrap().display().to_string().as_str()
+        );
         println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
         // println!("{}{}{} {}", green, format!("{: >13}", "ProofMan:"), reset, "TODO");
         println!("{}{}{} {}", green, format!("{: >12}", "Pilout"), reset, str::replace(pilout_path, "\\", "/"));
         // println!("{}{}{} {}", green, format!("{: >13}", "Executors:"), reset, "TODO");
         // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
         println!("");
-    
-    
-        debug!("{}> Initializing...", Self::MY_NAME);    
+
+        debug!("{}> Initializing...", Self::MY_NAME);
 
         let pilout = load_pilout(pilout_path);
 
@@ -80,12 +82,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);
 
-        Self {
-            options,
-            proof_ctx,
-            wc_manager,
-            provers_manager,
-        }
+        Self { options, proof_ctx, wc_manager, provers_manager }
     }
 
     pub fn setup() {
@@ -106,12 +103,8 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
         let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
 
         while prover_status != ProverStatus::OpeningsCompleted {
-            let stage_str = if stage_id <= num_stages + 1 {
-                "STAGE"
-            } else {
-                "OPENINGS"
-            };
-            
+            let stage_str = if stage_id <= num_stages + 1 { "STAGE" } else { "OPENINGS" };
+
             info!("{}> ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
             self.wc_manager.witness_computation(stage_id, &self.proof_ctx);
@@ -120,7 +113,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
                 self.provers_manager.setup(/*&setup*/);
             }
 
-            prover_status = self.provers_manager.compute_stage(stage_id, /*&public_inputs, &self.options*/);
+            prover_status = self.provers_manager.compute_stage(stage_id /*&public_inputs, &self.options*/);
 
             info!("{}> <== {} {}", Self::MY_NAME, stage_str, stage_id);
 
@@ -162,25 +155,25 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T>
                     if !self.provers_manager.verify_global_constraints() {
                         error!("{}> Global constraints verification failed", Self::MY_NAME);
                     }
-                        
+
                     info!("{}> <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
                     return;
                 }
-            } 
-            
+            }
+
             stage_id += 1;
         }
 
         info!("{}> <== PROOF SUCCESSFULLY GENERATED", Self::MY_NAME);
 
         //     let proofs = [];
-    
+
         //     for(const airInstance of this.proofCtx.airInstances) {
         //         airInstance.proof.subproofId = airInstance.subproofId;
         //         airInstance.proof.airId = airInstance.airId;
         //         proofs.push(airInstance.proof);
         //     }
-    
+
         //     return {
         //         proofs,
         //         challenges: this.proofCtx.challenges.slice(0, this.proofCtx.airout.numStages + 3),

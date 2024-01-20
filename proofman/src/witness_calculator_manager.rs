@@ -10,7 +10,7 @@ use log::debug;
 // ================================================================================================
 pub struct WitnessCalculatorManager<T> {
     wc: Vec<Box<dyn ExecutorBase<T>>>,
-    tasks: TasksTable
+    tasks: TasksTable,
 }
 
 impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
@@ -19,15 +19,12 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
         debug!("{}> Initializing...", Self::MY_NAME);
 
-        WitnessCalculatorManager {
-            wc,
-            tasks: TasksTable::new()
-        }
+        WitnessCalculatorManager { wc, tasks: TasksTable::new() }
     }
 
     pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
         debug!("{}> --> Computing witness stage {}", Self::MY_NAME, stage_id);
-        
+
         let channel = SenderB::new();
 
         std::thread::scope(|s| {

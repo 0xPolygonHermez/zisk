@@ -28,8 +28,5 @@ pub fn load_pilout(airout: &str) -> PilOut {
 }
 
 pub fn find_subproof_id_by_name(pilout: &PilOut, name: &str) -> Option<usize> {
-    pilout
-        .subproofs
-        .iter()
-        .position(|x| x.name.as_deref() == Some(name))
+    pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
 }

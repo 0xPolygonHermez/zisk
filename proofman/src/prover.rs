@@ -1,3 +1,1 @@
-pub trait Prover {
-
-}
+pub trait Prover {}

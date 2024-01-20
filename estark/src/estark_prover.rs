@@ -11,7 +11,7 @@ pub struct ESTARKProverSettings {
     n_queries: u32,
     #[serde(rename = "verificationHashType")]
     verification_hash_type: String,
-    steps: Vec<NBits>
+    steps: Vec<NBits>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,9 +37,7 @@ pub struct ESTARKProver {
 
 impl ESTARKProver {
     pub fn new(settings: ESTARKProverSettings) -> Self {
-        Self {
-            settings: settings,
-        }
+        Self { settings: settings }
     }
 
     pub fn get_settings(&self) -> &ESTARKProverSettings {
@@ -47,5 +45,4 @@ impl ESTARKProver {
     }
 }
 
-impl Prover for ESTARKProver {
-}
+impl Prover for ESTARKProver {}

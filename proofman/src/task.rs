@@ -5,8 +5,7 @@ pub enum TaskBlockingType {
     NonBlocking,
 }
 
-pub trait TaskPayload: Send + Sync {
-}
+pub trait TaskPayload: Send + Sync {}
 
 #[allow(dead_code)]
 pub struct WaitColumnTask {
@@ -31,14 +30,8 @@ impl Task {
             TaskBlockingType::Blocking => Some(Arc::new(Condvar::new())),
             TaskBlockingType::NonBlocking => None,
         };
-            
-        Task {
-            src,
-            blocking_type,
-            condvar,
-            completed: false,
-            payload,
-        }
+
+        Task { src, blocking_type, condvar, completed: false, payload }
     }
 }
 
@@ -69,10 +62,10 @@ impl TasksTable {
 
     pub fn add_blocking_task(&self, src: String, payload: Box<dyn TaskPayload>) {
         let mut tasks = self.tasks.lock().unwrap();
-        
+
         tasks.push(Task::new(src, payload, TaskBlockingType::Blocking));
         let task_id = tasks.len() - 1;
-    
+
         if let Some(condvar) = tasks[task_id].condvar.as_ref().cloned() {
             tasks = condvar.wait(tasks).unwrap();
             condvar.notify_all();
@@ -86,10 +79,14 @@ impl TasksTable {
 
     pub fn resolve_task(&self, task_id: usize) -> Result<(), TasksTableError> {
         let mut tasks = self.tasks.lock().unwrap();
-        
-        if task_id >= tasks.len() { return Err(TasksTableError::NotFound); }
 
-        if tasks[task_id].completed { return Ok(()); }
+        if task_id >= tasks.len() {
+            return Err(TasksTableError::NotFound);
+        }
+
+        if tasks[task_id].completed {
+            return Ok(());
+        }
 
         tasks[task_id].completed = true;
 
@@ -103,7 +100,7 @@ impl TasksTable {
     pub fn wait_column(&self, src: String, subproof_id: usize, air_id: usize, column: String) {
         self.add_blocking_task(src, Box::new(WaitColumnTask { subproof_id, air_id, column }));
     }
-    
+
     pub fn get_tasks_id_by_src(&self, src: &str) -> Vec<usize> {
         let tasks = self.tasks.lock().unwrap();
         tasks.iter().enumerate().filter(|(_, task)| task.src == src.to_string()).map(|(id, _)| id).collect()
@@ -116,9 +113,7 @@ impl TasksTable {
 
     fn get_num_tasks_by_completed(&self, completed: bool) -> usize {
         let tasks = self.tasks.lock().unwrap();
-        tasks.iter().filter(|task| {
-            task.completed == completed
-        }).count()
+        tasks.iter().filter(|task| task.completed == completed).count()
     }
 
     pub fn get_num_pending_tasks(&self) -> usize {
@@ -128,14 +123,11 @@ impl TasksTable {
     pub fn get_num_finished_tasks(&self) -> usize {
         self.get_num_tasks_by_completed(true)
     }
-
 }
 
 impl Clone for TasksTable {
     fn clone(&self) -> Self {
-        TasksTable {
-            tasks: Arc::clone(&self.tasks),
-        }
+        TasksTable { tasks: Arc::clone(&self.tasks) }
     }
 }
 
@@ -294,5 +286,4 @@ mod thread_tests {
         assert_eq!(table.get_num_pending_tasks(), 0);
         assert_eq!(table.get_num_finished_tasks(), 2);
     }
-
 }

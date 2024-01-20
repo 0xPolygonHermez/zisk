@@ -41,12 +41,7 @@ impl<'a, T: Send + Sync> IndexMut<usize> for TracePol<'a, T> {
 
 impl<'a, T: Send + Sync> Default for TracePol<'a, T> {
     fn default() -> Self {
-        TracePol {
-            ptr: &[],
-            stride: 0,
-            num_rows: 0,
-            _phantom: std::marker::PhantomData,
-        }
+        TracePol { ptr: &[], stride: 0, num_rows: 0, _phantom: std::marker::PhantomData }
     }
 }
 

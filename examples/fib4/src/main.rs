@@ -22,7 +22,6 @@ struct Fib4Options {
     _debug: bool,
 
     // TODO: Public inputs as Option
-    
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
     prover_settings: PathBuf,
@@ -36,7 +35,7 @@ fn main() {
     // read command-line args
     let opt = Fib4Options::from_args();
 
-    // CHECKS 
+    // CHECKS
     // Check if prover settings file exists
     if !opt.prover_settings.exists() {
         eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
@@ -59,19 +58,12 @@ fn main() {
         }
     };
 
-    let options = ProofManOpt {
-        debug: opt._debug,
-        ..ProofManOpt::default()
-    };
+    let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
 
-    let prover = ESTARKProver::new(estark_settings, /* prover_options */);
+    let prover = ESTARKProver::new(estark_settings /* prover_options */);
     let executor = Box::new(FibonacciExecutor);
-    let mut proofman = ProofManager::<Goldilocks>::new(
-        "examples/fib4/src/fib4.pilout",
-        vec!(executor),
-        Box::new(prover),
-        options
-    );
+    let mut proofman =
+        ProofManager::<Goldilocks>::new("examples/fib4/src/fib4.pilout", vec![executor], Box::new(prover), options);
 
     let now = Instant::now();
     proofman.prove(None);

@@ -32,7 +32,7 @@ impl<T: Default + Clone> ProofCtx<T> {
         } else {
             challenges.push(vec![]);
         }
-        
+
         // qStage, evalsStage and friStage
         challenges.push(vec![T::default(); 1]);
         challenges.push(vec![T::default(); 1]);
@@ -45,7 +45,7 @@ impl<T: Default + Clone> ProofCtx<T> {
 
         //TODO!
         // proofCtx.stepsFRI = stepsFRI;
-        
+
         //TODO!
         // for(let i = 0; i < airout.subproofs.length; i++) {
         //     proofCtx.subAirValues[i] = [];
@@ -56,10 +56,7 @@ impl<T: Default + Clone> ProofCtx<T> {
         // }
         let mut subproofs = Vec::new();
         for (subproof_index, _subproof) in pilout.subproofs.iter().enumerate() {
-            let subproof = SubproofCtx {
-                subproof_id: subproof_index,
-                airs: Vec::new(),
-            };
+            let subproof = SubproofCtx { subproof_id: subproof_index, airs: Vec::new() };
             subproofs.push(subproof);
 
             for (air_index, _air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
@@ -68,12 +65,7 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        ProofCtx {
-            pilout,
-            public_inputs: None,
-            challenges,
-            subproofs,
-        }
+        ProofCtx { pilout, public_inputs: None, challenges, subproofs }
     }
 
     /// Initializes the proof context with optional public inputs
@@ -100,15 +92,25 @@ impl<T: Default + Clone> ProofCtx<T> {
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance(&self, subproof_id: usize, air_id: usize, trace: Box<dyn Trace>) -> Result<usize, &'static str> {
+    pub fn add_trace_to_air_instance(
+        &self,
+        subproof_id: usize,
+        air_id: usize,
+        trace: Box<dyn Trace>,
+    ) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
-        
+
         Ok(self.subproofs[subproof_id].airs[air_id].add_trace(trace))
     }
 
-    pub fn get_trace(&self, subproof_id: usize, air_id: usize, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    pub fn get_trace(
+        &self,
+        subproof_id: usize,
+        air_id: usize,
+        trace_id: usize,
+    ) -> Result<Arc<Box<dyn Trace>>, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
@@ -141,11 +143,7 @@ impl AirCtx {
     /// * `subproof_id` - The subproof ID associated with the AirCtx.
     /// * `air_id` - The air ID associated with the AirCtx.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirCtx {
-            subproof_id,
-            air_id,
-            instances: RwLock::new(Vec::new()),
-        }
+        AirCtx { subproof_id, air_id, instances: RwLock::new(Vec::new()) }
     }
 
     /// Adds a trace to the AirCtx.
@@ -160,17 +158,17 @@ impl AirCtx {
     }
 
     /// Returns a reference to the trace at the specified index.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `trace_id` - The index of the trace to return.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns a reference to the trace at the specified index.
     pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
         let traces = self.instances.read().unwrap();
-    
+
         assert!(trace_id < traces.len(), "Trace ID out of bounds");
 
         Ok(Arc::clone(&traces[trace_id]))
@@ -194,17 +192,14 @@ mod tests {
 
     use super::*;
     use std::sync::Arc;
-    
+
     #[test]
     fn test_proof_ctx() {
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
             public_inputs: None,
             challenges: vec![vec![Goldilocks::default(); 0]],
-            subproofs: vec![SubproofCtx {
-                subproof_id: 0,
-                airs: vec![AirCtx::new(0, 0)],
-            }],
+            subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
         };
 
         let proof_ctx = Arc::new(proof_ctx);

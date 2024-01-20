@@ -50,9 +50,6 @@ impl<T: Clone> SenderB<T> {
 
 impl<T> Clone for SenderB<T> {
     fn clone(&self) -> Self {
-        SenderB {
-            sender: self.sender.clone(),
-            receivers: self.receivers.clone(),
-        }
+        SenderB { sender: self.sender.clone(), receivers: self.receivers.clone() }
     }
 }

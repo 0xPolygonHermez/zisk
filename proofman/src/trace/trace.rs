@@ -6,7 +6,7 @@ pub struct Ptr {
 
 impl Ptr {
     pub fn new(ptr: *mut u8) -> Self {
-            Ptr { ptr: UnsafeCell::new(ptr) }
+        Ptr { ptr: UnsafeCell::new(ptr) }
     }
 
     pub fn add<T>(&self) -> *mut u8 {
@@ -144,9 +144,9 @@ macro_rules! trace {
             }
 
             /// Returns the size of a row in bytes.
-            /// 
+            ///
             /// # Returns
-            /// 
+            ///
             /// The size of a row in bytes.
             pub fn row_size(&self) -> usize {
                 Self::ROW_SIZE

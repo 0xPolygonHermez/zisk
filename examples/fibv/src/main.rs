@@ -30,7 +30,7 @@ struct FibVOptions {
     /// Public inputs file
     #[structopt(long, parse(from_os_str))]
     public_inputs: PathBuf,
-    
+
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
     prover_settings: PathBuf,
@@ -41,14 +41,13 @@ struct FibVOptions {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FibVPublicInputs<T>
- {
+pub struct FibVPublicInputs<T> {
     a: T,
     b: T,
     module: T,
 }
 
-impl FibVPublicInputs<u64> {   
+impl FibVPublicInputs<u64> {
     pub fn new(json: String) -> FibVPublicInputs<Goldilocks> {
         let data: Result<FibVPublicInputs<u64>, _> = serde_json::from_str(&json);
 
@@ -67,14 +66,13 @@ impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInput<Goldilocks> f
     fn to_elements(&self) -> Vec<Goldilocks> {
         vec![self.a, self.b, self.module]
     }
-
 }
 
 fn main() {
     // read command-line args
     let opt = FibVOptions::from_args();
 
-    // CHECKS 
+    // CHECKS
     // Check if public inputs file exists
     if !opt.public_inputs.exists() {
         eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
@@ -112,12 +110,9 @@ fn main() {
         }
     };
 
-    let options = ProofManOpt {
-        debug: opt._debug,
-        ..ProofManOpt::default()
-    };
+    let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
 
-    let prover = ESTARKProver::new(estark_settings, /* prover_options */);
+    let prover = ESTARKProver::new(estark_settings /* prover_options */);
 
     let executor = Box::new(FibonacciExecutor);
     let module1 = Box::new(ModuleExecutor);
@@ -125,9 +120,9 @@ fn main() {
 
     let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fibv/src/fibv.pilout",
-        vec!(module2, executor, module1),
+        vec![module2, executor, module1],
         Box::new(prover),
-        options
+        options,
     );
 
     let now = Instant::now();

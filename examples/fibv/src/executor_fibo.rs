@@ -16,7 +16,14 @@ use log::debug;
 executor!(FibonacciExecutor: Goldilocks);
 
 impl Executor<Goldilocks> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<Goldilocks>, tasks: &TasksTable, tx: &SenderB<Message>, _rx: &ReceiverB<Message>) {
+    fn witness_computation(
+        &self,
+        stage_id: u32,
+        proof_ctx: &ProofCtx<Goldilocks>,
+        tasks: &TasksTable,
+        tx: &SenderB<Message>,
+        _rx: &ReceiverB<Message>,
+    ) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -26,10 +33,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
         let air_id = 1;
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 
-        trace!(Fibonacci {
-            a: Goldilocks,
-            b: Goldilocks
-        });
+        trace!(Fibonacci { a: Goldilocks, b: Goldilocks });
         let mut fib = Fibonacci::new(num_rows);
 
         let public_inputs = proof_ctx.public_inputs.as_ref();

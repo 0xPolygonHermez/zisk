@@ -4,20 +4,30 @@ use crate::message::{Message, Payload};
 use crate::task::TasksTable;
 
 pub trait Executor<T>: Sync {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>, tasks: &TasksTable, tx: &SenderB<Message>, rx: &ReceiverB<Message>);
+    fn witness_computation(
+        &self,
+        stage_id: u32,
+        proof_ctx: &ProofCtx<T>,
+        tasks: &TasksTable,
+        tx: &SenderB<Message>,
+        rx: &ReceiverB<Message>,
+    );
 }
 
 pub trait ExecutorBase<T>: Sync {
     fn get_name(&self) -> String;
-    
-    fn _witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>, tasks: &TasksTable, tx: SenderB<Message>, rx: ReceiverB<Message>);
+
+    fn _witness_computation(
+        &self,
+        stage_id: u32,
+        proof_ctx: &ProofCtx<T>,
+        tasks: &TasksTable,
+        tx: SenderB<Message>,
+        rx: ReceiverB<Message>,
+    );
 
     fn broadcast(&self, tx: &SenderB<Message>, payload: Payload) {
-        let msg = Message {  
-            src: self.get_name(),
-            dst: "*".to_string(),
-            payload
-        };
+        let msg = Message { src: self.get_name(), dst: "*".to_string(), payload };
         tx.send(msg);
     }
 }
@@ -32,15 +42,18 @@ macro_rules! executor {
                 stringify!($executor_name).to_string()
             }
 
-            fn _witness_computation(&self, stage_id: u32,
+            fn _witness_computation(
+                &self,
+                stage_id: u32,
                 proof_ctx: &$crate::proof_ctx::ProofCtx<$base_element>,
                 tasks: &$crate::task::TasksTable,
                 tx: $crate::channel::SenderB<Message>,
-                rx: $crate::channel::ReceiverB<Message>) {
+                rx: $crate::channel::ReceiverB<Message>,
+            ) {
                 self.witness_computation(stage_id, proof_ctx, tasks, &tx, &rx);
                 self.broadcast(&tx, $crate::message::Payload::Finished);
                 ()
             }
         }
-    }    
+    };
 }
