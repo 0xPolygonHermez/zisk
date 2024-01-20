@@ -6,9 +6,7 @@ pub struct Ptr {
 
 impl Ptr {
     pub fn new(ptr: *mut u8) -> Self {
-        Ptr {
-            ptr: UnsafeCell::new(ptr),
-        }
+        Ptr { ptr: UnsafeCell::new(ptr) }
     }
 
     pub fn add<T>(&self) -> *mut u8 {
@@ -91,7 +89,7 @@ macro_rules! trace {
                 assert!(num_rows >= 2);
                 // num_rows must be a power of 2
                 assert!(num_rows & (num_rows - 1) == 0);
-                
+
                 let mut ptr = ptr as *mut u8;
 
                 ptr = unsafe { ptr.add(offset) };
@@ -182,20 +180,12 @@ macro_rules! trace_default_value {
     ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
         let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
         for elem in array.iter_mut() {
-            *elem = $crate::trace::trace_pol::TracePol::new(
-                $ptr.add::<$field_type>(),
-                $stride,
-                $num_rows,
-            );
+            *elem = $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows);
         }
         array
     }};
     ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
-        $crate::trace::trace_pol::TracePol::new(
-            $ptr.add::<$field_type>(),
-            $stride,
-            $num_rows,
-        )
+        $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows)
     };
 }
 
@@ -203,16 +193,14 @@ macro_rules! trace_default_value {
 mod tests {
     use std::ffi::c_void;
 
-    use p3_goldilocks::Goldilocks;
     use p3_field::AbstractField;
+    use p3_goldilocks::Goldilocks;
 
     use rand::Rng;
 
     #[test]
     fn check() {
-        trace!(Check {
-            a:u8
-        });
+        trace!(Check { a: u8 });
 
         let offset = 2;
         let stride = 5;
@@ -238,7 +226,7 @@ mod tests {
         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
         let offset = 3;
         let stride = 15;
-        
+
         trace!(Simple { field1: usize });
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
@@ -309,12 +297,8 @@ mod tests {
 
         // QUESTION: why not this syntax? trace!(cols Fibonacci { a: BaseElement, b: BaseElement });
         // and why not this alternative syntax? trace!(buffer Fibonacci { a: BaseElement, b: BaseElement });
-        trace!(Fibonacci {
-            a: Goldilocks,
-            b: Goldilocks,
-            c: [u64; 2],
-        });
-    
+        trace!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] });
+
         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
         let offset = 7;
         let stride = 45;
@@ -349,16 +333,10 @@ mod tests {
 
         for i in 1..num_rows {
             assert_eq!(fibonacci.a[i - 1] + fibonacci.b[i - 1], fibonacci.b[i]);
-            assert_eq!(
-                fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1],
-                fibonacci.c[1][i]
-            );
+            assert_eq!(fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1], fibonacci.c[1][i]);
 
             assert_eq!(fibonacci2.a[i - 1] + fibonacci2.b[i - 1], fibonacci2.b[i]);
-            assert_eq!(
-                fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1],
-                fibonacci2.c[1][i]
-            );
+            assert_eq!(fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1], fibonacci2.c[1][i]);
         }
 
         // let num_segments = 2;
