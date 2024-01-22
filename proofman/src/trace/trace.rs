@@ -207,9 +207,7 @@ macro_rules! trace_default_value {
 mod tests {
     use std::ffi::c_void;
 
-    use p3_field::AbstractField;
-    use p3_goldilocks::Goldilocks;
-
+    use goldilocks::{Goldilocks, AbstractField};
     use rand::Rng;
 
     #[test]

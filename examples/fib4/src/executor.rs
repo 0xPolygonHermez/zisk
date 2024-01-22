@@ -7,8 +7,7 @@ use proofman::{
     task::TasksTable,
     trace,
 };
-use p3_goldilocks::Goldilocks;
-use p3_field::AbstractField;
+use goldilocks::{Goldilocks, AbstractField};
 use pilout::find_subproof_id_by_name;
 
 use log::debug;

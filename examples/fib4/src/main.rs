@@ -1,6 +1,6 @@
 use log::debug;
 
-use p3_goldilocks::Goldilocks;
+use goldilocks::Goldilocks;
 
 use std::time::Instant;
 

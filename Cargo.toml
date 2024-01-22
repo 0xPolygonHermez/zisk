@@ -3,6 +3,7 @@ members = [
     "proofman",
     "estark",
     "pilout",
+    "goldilocks",
     "examples/fib4",
     "examples/fibv",
 ]

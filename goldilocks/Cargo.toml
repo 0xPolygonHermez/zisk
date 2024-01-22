@@ -1,0 +1,14 @@
+[package]
+name = "goldilocks"
+version = "0.1.0"
+edition = "2021"
+description = "Polygon zkEVM Goldilocks"
+authors = ["Polygon Labs"]
+
+[dependencies]
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
+
+[features]
+default = ["goldilocksp3"]
+goldilocksp3 = []

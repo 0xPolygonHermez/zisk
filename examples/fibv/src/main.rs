@@ -1,7 +1,5 @@
 use log::debug;
-use p3_goldilocks::Goldilocks;
-use p3_field::AbstractField;
-use std::time::Instant;
+use goldilocks::{Goldilocks, AbstractField};use std::time::Instant;
 use proofman::public_input::PublicInput;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};

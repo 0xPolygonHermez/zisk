@@ -187,7 +187,7 @@ impl fmt::Debug for AirCtx {
 
 #[cfg(test)]
 mod tests {
-    use p3_goldilocks::Goldilocks;
+    use goldilocks::Goldilocks;
     use crate::trace;
 
     use super::*;
