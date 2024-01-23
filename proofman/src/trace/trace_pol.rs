@@ -26,15 +26,17 @@ impl<'a, T: Send + Sync> TracePol<'a, T> {
 impl<'a, T: Send + Sync> Index<usize> for TracePol<'a, T> {
     type Output = T;
 
+    #[inline(always)]
     fn index(&self, i: usize) -> &T {
-        assert!(i < self.num_rows);
+        // assert!(i < self.num_rows);
         unsafe { &*(self.ptr.as_ptr().offset((i * self.stride) as isize) as *const T) }
     }
 }
 
 impl<'a, T: Send + Sync> IndexMut<usize> for TracePol<'a, T> {
+    #[inline(always)]
     fn index_mut(&mut self, i: usize) -> &mut T {
-        assert!(i < self.num_rows);
+        // assert!(i < self.num_rows);
         unsafe { &mut *(self.ptr.as_ptr().offset((i * self.stride) as isize) as *mut T) }
     }
 }
