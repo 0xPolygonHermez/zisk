@@ -17,7 +17,7 @@ impl Ptr {
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace: std::fmt::Debug {
+pub trait TraceThread: Send + Sync + std::fmt::Debug {
     fn num_rows(&self) -> usize;
     fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
@@ -25,20 +25,20 @@ pub trait Trace: std::fmt::Debug {
 
 /// Macro for defining trace structures with specified fields.
 #[macro_export]
-macro_rules! trace {
+macro_rules! trace_thread {
     ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }) => {
         #[derive(Debug)]
         #[allow(dead_code)]
         pub struct $my_struct<'a> {
-            pub buffer: Option<Vec<u8>>,
-            pub ptr: &'a [u8],
+            buffer: Option<Vec<u8>>,
+            ptr: &'a [u8],
             num_rows: usize,
-            $(pub $field_name: $crate::trace_field!($field_type),)*
+            $(pub $field_name: $crate::trace_thread_field!($field_type),)*
         }
 
         #[allow(dead_code)]
         impl<'a> $my_struct<'a> {
-            const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
+            const ROW_SIZE: usize = $crate::trace__thread_row_size!($($field_name : $field_type),*);
 
             /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
             ///
@@ -59,13 +59,15 @@ macro_rules! trace {
                 let mut buffer = vec![0u8; num_rows * Self::ROW_SIZE];
 
                 let ptr = buffer.as_mut_ptr();
-                let ptr_x = $crate::trace::trace::Ptr::new(ptr);
+                // TODO! check stride
+                let stride = Self::ROW_SIZE;
+                let ptr_x = $crate::trace::trace_thread::Ptr::new(ptr);
 
                 $my_struct {
                     buffer: Some(buffer),
-                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * Self::ROW_SIZE) },
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, Self::ROW_SIZE),)*
+                    $($field_name: $crate::trace_thread_default_value!($field_type, ptr_x, num_rows, Self::ROW_SIZE),)*
                 }
             }
 
@@ -92,13 +94,13 @@ macro_rules! trace {
                 let mut ptr = ptr as *mut u8;
 
                 ptr = unsafe { ptr.add(offset) };
-                let ptr_x = $crate::trace::trace::Ptr::new(ptr);
+                let ptr_x = $crate::trace::trace_thread::Ptr::new(ptr);
 
                 Box::new($my_struct {
                     buffer: None,
                     ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, stride),)*
+                    $($field_name: $crate::trace_thread_default_value!($field_type, ptr_x, num_rows, stride),)*
                 })
             }
 
@@ -131,7 +133,7 @@ macro_rules! trace {
             //         segments.push(Self {
             //             buffer: self.buffer[start * Self::ROW_SIZE..(start + segment_size) * Self::ROW_SIZE].to_vec(),
             //             num_rows: segment_size,
-            //             $($field_name: $crate::trace_field!($field_type, $crate::trace::trace::Ptr::new(self.buffer.as_mut_ptr().add(start * Self::ROW_SIZE)), segment_size)),*
+            //             $($field_name: $crate::trace_thread_field!($field_type, $crate::trace::trace::Ptr::new(self.buffer.as_mut_ptr().add(start * Self::ROW_SIZE)), segment_size)),*
             //         });
             //     }
             //     segments
@@ -149,13 +151,9 @@ macro_rules! trace {
             pub fn row_size(&self) -> usize {
                 Self::ROW_SIZE
             }
-            
-            pub fn buffer_size(&self) -> usize {
-                self.buffer.as_ref().unwrap().len()
-            }
         }
 
-        impl<'a> $crate::trace::trace::Trace for $my_struct<'a> {
+        impl<'a> $crate::trace::trace_thread::TraceThread for $my_struct<'a> {
             fn num_rows(&self) -> usize {
                 self.num_rows()
             }
@@ -173,17 +171,17 @@ macro_rules! trace {
 }
 
 #[macro_export]
-macro_rules! trace_field {
+macro_rules! trace_thread_field {
     ([$field_type:ty; $num:expr]) => {
-        [$crate::trace::trace_pol::TracePol<$field_type>; $num]
+        [$crate::trace::trace_pol_thread::TracePolThread<'a, $field_type>; $num]
     };
     ($field_type:ty) => {
-        $crate::trace::trace_pol::TracePol<$field_type>
+        $crate::trace::trace_pol_thread::TracePolThread<'a, $field_type>
     };
 }
 
 #[macro_export]
-macro_rules! trace_row_size {
+macro_rules! trace__thread_row_size {
     ($($field_name:ident : $field_type:tt),*) => {
         {
             $(std::mem::size_of::<$field_type>() +)* 0
@@ -192,16 +190,16 @@ macro_rules! trace_row_size {
 }
 
 #[macro_export]
-macro_rules! trace_default_value {
+macro_rules! trace_thread_default_value {
     ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
-        let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
+        let mut array: [$crate::trace::trace_pol_thread::TracePolThread<$field_type>; $num] = Default::default();
         for elem in array.iter_mut() {
-            *elem = $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows);
+            *elem = $crate::trace::trace_pol_thread::TracePolThread::new($ptr.add::<$field_type>(), $stride, $num_rows);
         }
         array
     }};
     ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
-        $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows)
+        $crate::trace::trace_pol_thread::TracePolThread::new($ptr.add::<$field_type>(), $stride, $num_rows)
     };
 }
 
@@ -214,7 +212,7 @@ mod tests {
 
     #[test]
     fn check() {
-        trace!(Check { a: u8 });
+        trace_thread!(Check { a: u8 });
 
         let offset = 2;
         let stride = 5;
@@ -241,7 +239,7 @@ mod tests {
         let offset = 3;
         let stride = 15;
 
-        trace!(Simple { field1: usize });
+        trace_thread!(Simple { field1: usize });
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
         let mut simple = Simple::from_ptr(ptr, offset, stride, num_rows);
@@ -268,28 +266,28 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_1() {
-        trace!(Simple { field1: usize });
+        trace_thread!(Simple { field1: usize });
         let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 1);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_2() {
-        trace!(Simple { field1: usize });
+        trace_thread!(Simple { field1: usize });
         let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 3);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_3() {
-        trace!(Simple { field1: usize });
+        trace_thread!(Simple { field1: usize });
         let _ = Simple::new(1);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_4() {
-        trace!(Simple { field1: usize });
+        trace_thread!(Simple { field1: usize });
         let _ = Simple::new(3);
     }
 
@@ -311,7 +309,7 @@ mod tests {
 
         // QUESTION: why not this syntax? trace!(cols Fibonacci { a: BaseElement, b: BaseElement });
         // and why not this alternative syntax? trace!(buffer Fibonacci { a: BaseElement, b: BaseElement });
-        trace!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] });
+        trace_thread!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] });
 
         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
         let offset = 7;
@@ -375,4 +373,3 @@ mod tests {
         // }
     }
 }
-

@@ -21,7 +21,3 @@ criterion = "0.5.1"
 
 [dev-dependencies]
 rand = "0.8"
-
-[[bench]]
-name = "trace_pol"
-harness = false

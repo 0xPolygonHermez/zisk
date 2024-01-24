@@ -3,7 +3,7 @@ use pilout::pilout::PilOut;
 
 use std::sync::Arc;
 
-use crate::trace::trace::Trace;
+use crate::trace::trace_thread::TraceThread;
 use std::fmt;
 use crate::public_input::PublicInput;
 
@@ -96,13 +96,13 @@ impl<T: Default + Clone> ProofCtx<T> {
         &self,
         subproof_id: usize,
         air_id: usize,
-        trace: Box<dyn Trace>,
+        trace_thread: Box<dyn TraceThread>,
     ) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
 
-        Ok(self.subproofs[subproof_id].airs[air_id].add_trace(trace))
+        Ok(self.subproofs[subproof_id].airs[air_id].add_trace(trace_thread))
     }
 
     pub fn get_trace(
@@ -110,7 +110,7 @@ impl<T: Default + Clone> ProofCtx<T> {
         subproof_id: usize,
         air_id: usize,
         trace_id: usize,
-    ) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    ) -> Result<Arc<Box<dyn TraceThread>>, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
@@ -132,7 +132,7 @@ pub struct SubproofCtx {
 pub struct AirCtx {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub instances: RwLock<Vec<Arc<Box<dyn Trace>>>>,
+    pub instances: RwLock<Vec<Arc<Box<dyn TraceThread>>>>,
 }
 
 impl AirCtx {
@@ -151,7 +151,7 @@ impl AirCtx {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
+    pub fn add_trace(&self, trace: Box<dyn TraceThread>) -> usize {
         let mut traces = self.instances.write().unwrap();
         traces.push(Arc::new(trace));
         traces.len() - 1
@@ -166,7 +166,7 @@ impl AirCtx {
     /// # Returns
     ///
     /// Returns a reference to the trace at the specified index.
-    pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn TraceThread>>, &'static str> {
         let traces = self.instances.read().unwrap();
 
         assert!(trace_id < traces.len(), "Trace ID out of bounds");
@@ -188,7 +188,7 @@ impl fmt::Debug for AirCtx {
 #[cfg(test)]
 mod tests {
     use goldilocks::Goldilocks;
-    use crate::trace;
+    use crate::trace_thread;
 
     use super::*;
     use std::sync::Arc;
@@ -209,7 +209,7 @@ mod tests {
             let proof_ctx = cloned_write;
 
             // Create trace
-            trace!(Simple { field1: usize });
+            trace_thread!(Simple { field1: usize });
             let mut simple = Simple::new(16);
 
             for i in 0..16 {
