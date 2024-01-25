@@ -17,7 +17,7 @@ impl Ptr {
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace: std::fmt::Debug {
+pub trait Trace: Send + Sync + std::fmt::Debug {
     fn num_rows(&self) -> usize;
     fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
@@ -169,6 +169,9 @@ macro_rules! trace {
             //     self.split(num_segments)
             // }
         }
+
+        unsafe impl<'a> Send for $my_struct<'a> {}
+        unsafe impl<'a> Sync for $my_struct<'a> {}
     };
 }
 

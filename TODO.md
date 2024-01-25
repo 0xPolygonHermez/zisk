@@ -16,7 +16,7 @@
 5.  [ ] Change channel struct !!! This is a naive approach, we need to implement a shared memory one
 6. Transform Vec<Vec<T>> to slice [u8] and access to the specific element with a function ???
 7. [X] Organize different proof_ctx as in javascript
-8. [ ] Picar-me les màquines d'estats
+8. [ ] Change the way we are "sending" traces from threads. Box is used to be sized and this pushes down the performance to access the elements of a trace when used
 
 commands:
 execute example
