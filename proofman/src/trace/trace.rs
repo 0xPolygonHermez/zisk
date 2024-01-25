@@ -82,7 +82,7 @@ macro_rules! trace {
             /// # Preconditions
             ///
             /// * `num_rows` must be greater than or equal to 2 and a power of 2.
-            pub fn from_ptr(ptr: *mut std::ffi::c_void, offset:usize, stride: usize, num_rows: usize) -> Box<Self> {
+            pub fn from_ptr(ptr: *mut std::ffi::c_void, offset:usize, stride: usize, num_rows: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
@@ -94,12 +94,12 @@ macro_rules! trace {
                 ptr = unsafe { ptr.add(offset) };
                 let ptr_x = $crate::trace::trace::Ptr::new(ptr);
 
-                Box::new($my_struct {
+                $my_struct {
                     buffer: None,
                     ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
                     num_rows,
                     $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, stride),)*
-                })
+                }
             }
 
             // TODO! uncomment
