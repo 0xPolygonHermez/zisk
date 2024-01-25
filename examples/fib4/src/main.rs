@@ -32,6 +32,8 @@ struct Fib4Options {
 }
 
 fn main() {
+    env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
+
     // read command-line args
     let opt = Fib4Options::from_args();
 

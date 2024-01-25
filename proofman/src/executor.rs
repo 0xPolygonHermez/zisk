@@ -3,9 +3,11 @@ use crate::channel::{SenderB, ReceiverB};
 use crate::message::{Message, Payload};
 use crate::task::TasksTable;
 
+// NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
 pub trait Executor<T>: Sync {
     fn witness_computation(
         &self,
+        config: String,
         stage_id: u32,
         proof_ctx: &ProofCtx<T>,
         tasks: &TasksTable,
@@ -19,6 +21,7 @@ pub trait ExecutorBase<T>: Sync {
 
     fn _witness_computation(
         &self,
+        config: String,
         stage_id: u32,
         proof_ctx: &ProofCtx<T>,
         tasks: &TasksTable,
@@ -44,13 +47,14 @@ macro_rules! executor {
 
             fn _witness_computation(
                 &self,
+                config: String,
                 stage_id: u32,
                 proof_ctx: &$crate::proof_ctx::ProofCtx<$base_element>,
                 tasks: &$crate::task::TasksTable,
                 tx: $crate::channel::SenderB<Message>,
                 rx: $crate::channel::ReceiverB<Message>,
             ) {
-                self.witness_computation(stage_id, proof_ctx, tasks, &tx, &rx);
+                self.witness_computation(config, stage_id, proof_ctx, tasks, &tx, &rx);
                 self.broadcast(&tx, $crate::message::Payload::Finished);
                 ()
             }

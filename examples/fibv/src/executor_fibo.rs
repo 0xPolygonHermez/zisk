@@ -18,6 +18,7 @@ executor!(FibonacciExecutor: Goldilocks);
 impl Executor<Goldilocks> for FibonacciExecutor {
     fn witness_computation(
         &self,
+        _config: String,
         stage_id: u32,
         proof_ctx: &ProofCtx<Goldilocks>,
         tasks: &TasksTable,

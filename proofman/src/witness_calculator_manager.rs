@@ -17,13 +17,13 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     const MY_NAME: &'static str = "witnessm";
 
     pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
-        debug!("{}> Initializing...", Self::MY_NAME);
+        debug!("{}: Initializing...", Self::MY_NAME);
 
         WitnessCalculatorManager { wc, tasks: TasksTable::new() }
     }
 
     pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
-        debug!("{}> --> Computing witness stage {}", Self::MY_NAME, stage_id);
+        debug!("{}: --> Computing witness stage {}", Self::MY_NAME, stage_id);
 
         let channel = SenderB::new();
 
@@ -32,14 +32,14 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                 let tx = channel.clone();
                 let rx = channel.subscribe();
                 s.spawn(move || {
-                    wc._witness_computation(stage_id, proof_ctx, &self.tasks, tx, rx);
+                    wc._witness_computation("".to_owned(), stage_id, proof_ctx, &self.tasks, tx, rx);
                 });
             }
 
             self.thread_manager(self.wc.len(), channel.clone(), channel.subscribe());
         });
 
-        debug!("{}> <-- Computing witness stage {}", Self::MY_NAME, stage_id);
+        debug!("{}: <-- Computing witness stage {}", Self::MY_NAME, stage_id);
     }
 
     fn thread_manager(&self, num_threads: usize, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
@@ -50,7 +50,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             if let Payload::Finished = msg.payload {
                 num_threads_finished += 1;
                 if num_threads_finished == num_threads {
-                    debug!("{}> All threads finished", Self::MY_NAME);
+                    debug!("{}: All threads finished", Self::MY_NAME);
                     break;
                 }
             }

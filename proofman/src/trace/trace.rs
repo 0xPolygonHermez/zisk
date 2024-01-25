@@ -149,7 +149,7 @@ macro_rules! trace {
             pub fn row_size(&self) -> usize {
                 Self::ROW_SIZE
             }
-            
+
             pub fn buffer_size(&self) -> usize {
                 self.buffer.as_ref().unwrap().len()
             }
@@ -378,4 +378,3 @@ mod tests {
         // }
     }
 }
-

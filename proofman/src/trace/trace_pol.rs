@@ -1,4 +1,7 @@
-use std::{ops::{Index, IndexMut}, ptr::null_mut};
+use std::{
+    ops::{Index, IndexMut},
+    ptr::null_mut,
+};
 
 #[derive(Debug)]
 pub struct TracePol<T: Send + Sync> {
@@ -10,12 +13,7 @@ pub struct TracePol<T: Send + Sync> {
 
 impl<T: Send + Sync> TracePol<T> {
     pub fn new(ptr: *mut u8, stride: usize, num_rows: usize) -> Self {
-        TracePol {
-            ptr,
-            stride,
-            num_rows,
-            _phantom: std::marker::PhantomData,
-        }
+        TracePol { ptr, stride, num_rows, _phantom: std::marker::PhantomData }
     }
 
     pub fn num_rows(&self) -> usize {
@@ -89,4 +87,3 @@ mod tests {
         }
     }
 }
-

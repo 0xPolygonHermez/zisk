@@ -1,5 +1,6 @@
 use log::debug;
-use goldilocks::{Goldilocks, AbstractField};use std::time::Instant;
+use goldilocks::{Goldilocks, AbstractField};
+use std::time::Instant;
 use proofman::public_input::PublicInput;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
@@ -67,63 +68,65 @@ impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInput<Goldilocks> f
 }
 
 fn main() {
-        // read command-line args
-        let opt = FibVOptions::from_args();
+    env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
-        // CHECKS
-        // Check if public inputs file exists
-        if !opt.public_inputs.exists() {
-            eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
+    // read command-line args
+    let opt = FibVOptions::from_args();
+
+    // CHECKS
+    // Check if public inputs file exists
+    if !opt.public_inputs.exists() {
+        eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
+        std::process::exit(1);
+    }
+
+    // Check if prover settings file exists
+    if !opt.prover_settings.exists() {
+        eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
+        std::process::exit(1);
+    }
+
+    // Check if output file already exists
+    if opt.output.exists() {
+        eprintln!("Error: Output file '{}' already exists", opt.output.display());
+        std::process::exit(1);
+    }
+
+    // Create prover
+    // read prover settings file
+    let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
+        Ok(settings) => ESTARKProverSettings::new(settings),
+        Err(err) => {
+            eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
             std::process::exit(1);
         }
+    };
 
-        // Check if prover settings file exists
-        if !opt.prover_settings.exists() {
-            eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
+    //read public inputs file
+    let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
+        Ok(public_inputs) => FibVPublicInputs::new(public_inputs),
+        Err(err) => {
+            eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
             std::process::exit(1);
         }
+    };
 
-        // Check if output file already exists
-        if opt.output.exists() {
-            eprintln!("Error: Output file '{}' already exists", opt.output.display());
-            std::process::exit(1);
-        }
+    let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
 
-        // Create prover
-        // read prover settings file
-        let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
-            Ok(settings) => ESTARKProverSettings::new(settings),
-            Err(err) => {
-                eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
-                std::process::exit(1);
-            }
-        };
+    let prover = ESTARKProver::new(estark_settings /* prover_options */);
 
-        //read public inputs file
-        let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
-            Ok(public_inputs) => FibVPublicInputs::new(public_inputs),
-            Err(err) => {
-                eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
-                std::process::exit(1);
-            }
-        };
+    let executor = Box::new(FibonacciExecutor);
+    let module1 = Box::new(ModuleExecutor);
+    let module2 = Box::new(ModuleExecutor);
 
-        let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
+    let mut proofman = ProofManager::<Goldilocks>::new(
+        "examples/fibv/src/fibv.pilout",
+        vec![module2, executor, module1],
+        Box::new(prover),
+        options,
+    );
 
-        let prover = ESTARKProver::new(estark_settings /* prover_options */);
-
-        let executor = Box::new(FibonacciExecutor);
-        let module1 = Box::new(ModuleExecutor);
-        let module2 = Box::new(ModuleExecutor);
-
-        let mut proofman = ProofManager::<Goldilocks>::new(
-            "examples/fibv/src/fibv.pilout",
-            vec![module2, executor, module1],
-            Box::new(prover),
-            options,
-        );
-
-        let now = Instant::now();
-        proofman.prove(Some(Box::new(public_inputs)));
-        debug!("Proof generated in {} ms", now.elapsed().as_millis());
+    let now = Instant::now();
+    proofman.prove(Some(Box::new(public_inputs)));
+    debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

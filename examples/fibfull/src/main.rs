@@ -66,6 +66,8 @@ impl<BaseElement: FieldElement> PublicInput<BaseElement> for FibFullPublicInputs
 include!("../bindings.rs");
 use std::env;
 fn main() {
+    env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
+
     let sample_data_dir = env::current_dir().unwrap().join("../sample_data");
     let const_pols = sample_data_dir.join("fibonacci.const").display().to_string();
     let const_tree = sample_data_dir.join("fibonacci.consttree").display().to_string();

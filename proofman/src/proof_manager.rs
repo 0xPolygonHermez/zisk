@@ -49,28 +49,25 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         prover: Box<dyn Prover>,
         options: ProofManOpt,
     ) -> Self {
-        env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
-
         let reset = "\x1b[37;0m";
         let purple = "\x1b[35m";
         let green = "\x1b[32;1m";
         let bold = "\x1b[1m";
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!(
-            "{}{}{} {}",
-            green,
-            format!("{: >12}", "Loaded"),
-            reset,
-            std::env::current_exe().unwrap().display().to_string().as_str()
-        );
-        println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
-        // println!("{}{}{} {}", green, format!("{: >13}", "ProofMan:"), reset, "TODO");
+        // println!(
+        //     "{}{}{} {}",
+        //     green,
+        //     format!("{: >12}", "Loaded"),
+        //     reset,
+        //     std::env::current_exe().unwrap().display().to_string().as_str()
+        // );
+        // println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
         println!("{}{}{} {}", green, format!("{: >12}", "Pilout"), reset, str::replace(pilout_path, "\\", "/"));
         // println!("{}{}{} {}", green, format!("{: >13}", "Executors:"), reset, "TODO");
         // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
         println!("");
 
-        debug!("{}> Initializing...", Self::MY_NAME);
+        debug!("{}: Initializing...", Self::MY_NAME);
 
         let pilout = load_pilout(pilout_path);
 
@@ -91,9 +88,9 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
     pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
         if !self.options.only_check {
-            info!("{}> ==> INITIATING PROOF GENERATION", Self::MY_NAME);
+            info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
-            info!("{}> ==> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
+            info!("{}: ==> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
         }
 
         self.proof_ctx.initialize_proof(public_inputs);
@@ -105,7 +102,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         while prover_status != ProverStatus::OpeningsCompleted {
             let stage_str = if stage_id <= num_stages + 1 { "STAGE" } else { "OPENINGS" };
 
-            info!("{}> ==> {} {}", Self::MY_NAME, stage_str, stage_id);
+            info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
             self.wc_manager.witness_computation(stage_id, &self.proof_ctx);
 
@@ -115,7 +112,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
             prover_status = self.provers_manager.compute_stage(stage_id /*&public_inputs, &self.options*/);
 
-            info!("{}> <== {} {}", Self::MY_NAME, stage_str, stage_id);
+            info!("{}: <== {} {}", Self::MY_NAME, stage_str, stage_id);
 
             // if stage_id == num_stages {
             //     for i in 0..self.proof_ctx.pilout.subproofs.len() {
@@ -141,22 +138,22 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
             if self.options.only_check {
-                info!("{}> ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
+                info!("{}: ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
                 if !self.provers_manager.verify_constraints(stage_id) {
-                    error!("{}> CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
+                    error!("{}: CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
                 }
 
-                info!("{}> <== CHECKING CONSTRAINTS STAGE {} FINISHED", Self::MY_NAME, stage_id);
+                info!("{}: <== CHECKING CONSTRAINTS STAGE {} FINISHED", Self::MY_NAME, stage_id);
 
                 if stage_id == num_stages {
-                    info!("{}> ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
+                    info!("{}: ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
                     if !self.provers_manager.verify_global_constraints() {
-                        error!("{}> Global constraints verification failed", Self::MY_NAME);
+                        error!("{}: Global constraints verification failed", Self::MY_NAME);
                     }
 
-                    info!("{}> <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
+                    info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
                     return;
                 }
             }
@@ -164,7 +161,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
             stage_id += 1;
         }
 
-        info!("{}> <== PROOF SUCCESSFULLY GENERATED", Self::MY_NAME);
+        info!("{}: <== PROOF SUCCESSFULLY GENERATED", Self::MY_NAME);
 
         //     let proofs = [];
 
