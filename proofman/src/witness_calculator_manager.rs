@@ -10,16 +10,17 @@ use log::debug;
 // ================================================================================================
 pub struct WitnessCalculatorManager<T> {
     wc: Vec<Box<dyn ExecutorBase<T>>>,
+    config: String,
     tasks: TasksTable,
 }
 
 impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     const MY_NAME: &'static str = "witnessm";
 
-    pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
+    pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>, config: String) -> Self {
         debug!("{}: Initializing...", Self::MY_NAME);
 
-        WitnessCalculatorManager { wc, tasks: TasksTable::new() }
+        WitnessCalculatorManager { wc, config, tasks: TasksTable::new() }
     }
 
     pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
@@ -31,8 +32,10 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             for wc in self.wc.iter() {
                 let tx = channel.clone();
                 let rx = channel.subscribe();
+                let config = self.config.clone();
+                
                 s.spawn(move || {
-                    wc._witness_computation("".to_owned(), stage_id, proof_ctx, &self.tasks, tx, rx);
+                    wc._witness_computation(config, stage_id, proof_ctx, &self.tasks, tx, rx);
                 });
             }
 

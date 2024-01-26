@@ -47,6 +47,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         pilout_path: &str,
         wc: Vec<Box<dyn ExecutorBase<T>>>,
         prover: Box<dyn Prover>,
+        prover_config: String,
         options: ProofManOpt,
     ) -> Self {
         let reset = "\x1b[37;0m";
@@ -74,7 +75,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
-        let wc_manager = WitnessCalculatorManager::new(wc);
+        let wc_manager = WitnessCalculatorManager::new(wc, prover_config);
 
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);

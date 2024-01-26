@@ -123,6 +123,7 @@ fn main() {
         "examples/fibv/src/fibv.pilout",
         vec![module2, executor, module1],
         Box::new(prover),
+        "".to_owned(),
         options,
     );
 

@@ -64,8 +64,13 @@ fn main() {
 
     let prover = ESTARKProver::new(estark_settings /* prover_options */);
     let executor = Box::new(FibonacciExecutor);
-    let mut proofman =
-        ProofManager::<Goldilocks>::new("examples/fib4/src/fib4.pilout", vec![executor], Box::new(prover), options);
+    let mut proofman = ProofManager::<Goldilocks>::new(
+        "examples/fib4/src/fib4.pilout",
+        vec![executor],
+        Box::new(prover),
+        "".to_owned(),
+        options,
+    );
 
     let now = Instant::now();
     proofman.prove(None);
