@@ -33,10 +33,16 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                 let tx = channel.clone();
                 let rx = channel.subscribe();
                 let config = self.config.clone();
-                
-                s.spawn(move || {
-                    wc._witness_computation(config, stage_id, proof_ctx, &self.tasks, tx, rx);
-                });
+
+                // TODO! THIS IS A HACK TO AVOID STACK OVERFLOW DURING THE CALL TO ZKEVM PROVER BUT IT SHOULD BE FIXED
+                // TODO! IN THE FUTURE OR SET A PARAMETER TO CONFIGURE THE STACK SIZE
+                // We set the stack size to 4MB to avoid stack overflow during the call to zkevm prover
+                std::thread::Builder::new()
+                    .stack_size(4 * 1024 * 1024)
+                    .spawn_scoped(s, move || {
+                        wc._witness_computation(config, stage_id, proof_ctx, &self.tasks, tx, rx);
+                    })
+                    .unwrap();
             }
 
             self.thread_manager(self.wc.len(), channel.clone(), channel.subscribe());
