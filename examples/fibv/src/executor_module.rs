@@ -7,6 +7,8 @@ use proofman::{
     task::TasksTable,
     trace,
 };
+
+use std::sync::{Arc, RwLock};
 use goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
 
@@ -19,7 +21,7 @@ impl Executor<Goldilocks> for ModuleExecutor {
         &self,
         _config: String,
         stage_id: u32,
-        proof_ctx: &ProofCtx<Goldilocks>,
+        proof_ctx: Arc<RwLock<&mut ProofCtx<Goldilocks>>>,
         tasks: &TasksTable,
         _tx: &SenderB<Message>,
         rx: &ReceiverB<Message>,
@@ -37,6 +39,8 @@ impl Executor<Goldilocks> for ModuleExecutor {
             return;
         }
 
+        let proof_ctx = proof_ctx.read().unwrap();
+
         if let Payload::NewTrace { subproof_id, trace } = msg.payload {
             // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
             let subproof_id_fibo =
@@ -50,10 +54,9 @@ impl Executor<Goldilocks> for ModuleExecutor {
             let mut module = Module::new(trace.num_rows());
 
             // TODO how to convert public inputs to Goldilocks like a downcast?
-            let public_inputs = proof_ctx.public_inputs.as_ref().expect("Failed to get public inputs");
-            let mut a = public_inputs[0];
-            let mut b = public_inputs[1];
-            let m = public_inputs[2];
+            let mut a = proof_ctx.public_inputs[0];
+            let mut b = proof_ctx.public_inputs[1];
+            let m = proof_ctx.public_inputs[2];
 
             for i in 1..trace.num_rows() {
                 module.x[i] = a * a + b * b;

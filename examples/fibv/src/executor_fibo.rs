@@ -8,6 +8,8 @@ use proofman::{
     trace,
     task::TasksTable,
 };
+
+use std::sync::{Arc, RwLock};
 use goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
 
@@ -20,7 +22,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
         &self,
         _config: String,
         stage_id: u32,
-        proof_ctx: &ProofCtx<Goldilocks>,
+        proof_ctx: Arc<RwLock<&mut ProofCtx<Goldilocks>>>,
         tasks: &TasksTable,
         tx: &SenderB<Message>,
         _rx: &ReceiverB<Message>,
@@ -30,6 +32,8 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             return;
         }
 
+        let proof_ctx = proof_ctx.read().unwrap();
+
         let subproof_id = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
         let air_id = 1;
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
@@ -37,9 +41,8 @@ impl Executor<Goldilocks> for FibonacciExecutor {
         trace!(Fibonacci { a: Goldilocks, b: Goldilocks });
         let mut fib = Fibonacci::new(num_rows);
 
-        let public_inputs = proof_ctx.public_inputs.as_ref();
-        fib.a[0] = public_inputs.unwrap()[0];
-        fib.b[0] = public_inputs.unwrap()[1];
+        fib.a[0] = proof_ctx.public_inputs[0];
+        fib.b[0] = proof_ctx.public_inputs[1];
 
         for i in 1..num_rows as usize {
             fib.a[i] = fib.b[i - 1];

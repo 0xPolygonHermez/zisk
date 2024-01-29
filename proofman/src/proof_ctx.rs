@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use crate::trace::trace::Trace;
 use std::fmt;
-use crate::public_input::PublicInput;
+use crate::public_inputs::PublicInputs;
 
 /// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
     pub pilout: PilOut,
-    pub public_inputs: Option<Vec<T>>,
+    pub public_inputs: Vec<T>,
     challenges: Vec<Vec<T>>,
     pub subproofs: Vec<SubproofCtx>,
     //pub subAirValues = Vec<T>,
@@ -65,13 +65,13 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        ProofCtx { pilout, public_inputs: None, challenges, subproofs }
+        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs }
     }
 
     /// Initializes the proof context with optional public inputs
-    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
+    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
         if let Some(public_inputs) = public_inputs {
-            self.public_inputs = Some(public_inputs.to_elements());
+            self.public_inputs = public_inputs.to_elements();
         }
 
         for subproof in self.subproofs.iter() {
@@ -197,7 +197,7 @@ mod tests {
     fn test_proof_ctx() {
         let proof_ctx = ProofCtx {
             pilout: PilOut::default(),
-            public_inputs: None,
+            public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
         };

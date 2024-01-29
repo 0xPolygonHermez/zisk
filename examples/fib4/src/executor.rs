@@ -7,6 +7,8 @@ use proofman::{
     task::TasksTable,
     trace,
 };
+
+use std::sync::{Arc, RwLock};
 use goldilocks::{Goldilocks, AbstractField};
 use pilout::find_subproof_id_by_name;
 
@@ -19,7 +21,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
         &self,
         _config: String,
         stage_id: u32,
-        proof_ctx: &ProofCtx<Goldilocks>,
+        proof_ctx: Arc<RwLock<&mut ProofCtx<Goldilocks>>>,
         _tasks: &TasksTable,
         _tx: &SenderB<Message>,
         _rx: &ReceiverB<Message>,
@@ -28,6 +30,8 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
         }
+
+        let proof_ctx = proof_ctx.read().unwrap();
 
         let subproof_id = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
         let air_id = 0;

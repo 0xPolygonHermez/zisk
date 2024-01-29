@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::public_input::PublicInput;
+use crate::public_inputs::PublicInputs;
 use crate::prover::Prover;
 use crate::executor::ExecutorBase;
 use pilout::load_pilout;
@@ -87,7 +87,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInput<T>>>) {
+    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
         if !self.options.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -105,7 +105,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-            self.wc_manager.witness_computation(stage_id, &self.proof_ctx);
+            self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
 
             if stage_id == 1 {
                 self.provers_manager.setup(/*&setup*/);

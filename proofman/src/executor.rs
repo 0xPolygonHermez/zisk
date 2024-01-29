@@ -2,6 +2,7 @@ use crate::proof_ctx::ProofCtx;
 use crate::channel::{SenderB, ReceiverB};
 use crate::message::{Message, Payload};
 use crate::task::TasksTable;
+use std::sync::{Arc, RwLock};
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
 pub trait Executor<T>: Sync {
@@ -9,7 +10,7 @@ pub trait Executor<T>: Sync {
         &self,
         config: String,
         stage_id: u32,
-        proof_ctx: &ProofCtx<T>,
+        proof_ctx: Arc<RwLock<&mut ProofCtx<T>>>,
         tasks: &TasksTable,
         tx: &SenderB<Message>,
         rx: &ReceiverB<Message>,
@@ -23,7 +24,7 @@ pub trait ExecutorBase<T>: Sync {
         &self,
         config: String,
         stage_id: u32,
-        proof_ctx: &ProofCtx<T>,
+        proof_ctx: Arc<RwLock<&mut ProofCtx<T>>>,
         tasks: &TasksTable,
         tx: SenderB<Message>,
         rx: ReceiverB<Message>,
@@ -38,7 +39,22 @@ pub trait ExecutorBase<T>: Sync {
 #[macro_export]
 macro_rules! executor {
     ($executor_name:ident: $base_element:ty) => {
-        pub struct $executor_name;
+        pub struct $executor_name {
+            ptr: std::cell::UnsafeCell<*mut u8>,
+        }
+
+        unsafe impl Send for $executor_name {}
+        unsafe impl Sync for $executor_name {}
+
+        impl $executor_name {
+            pub fn new() -> Self {
+                $executor_name { ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()) }
+            }
+
+            pub fn from_ptr(ptr: *mut u8) -> Self {
+                $executor_name { ptr: std::cell::UnsafeCell::new(ptr) }
+            }
+        }
 
         impl $crate::executor::ExecutorBase<$base_element> for $executor_name {
             fn get_name(&self) -> String {
@@ -49,7 +65,7 @@ macro_rules! executor {
                 &self,
                 config: String,
                 stage_id: u32,
-                proof_ctx: &$crate::proof_ctx::ProofCtx<$base_element>,
+                proof_ctx: std::sync::Arc<std::sync::RwLock<&mut $crate::proof_ctx::ProofCtx<$base_element>>>,
                 tasks: &$crate::task::TasksTable,
                 tx: $crate::channel::SenderB<Message>,
                 rx: $crate::channel::ReceiverB<Message>,

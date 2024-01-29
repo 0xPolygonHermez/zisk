@@ -1,3 +1,6 @@
+use std::sync::RwLock;
+use std::sync::Arc;
+
 use crate::{executor::ExecutorBase, task::TasksTable};
 use crate::channel::SenderB;
 use crate::proof_ctx::ProofCtx;
@@ -23,10 +26,12 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
         WitnessCalculatorManager { wc, config, tasks: TasksTable::new() }
     }
 
-    pub fn witness_computation(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) {
+    pub fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
         debug!("{}: --> Computing witness stage {}", Self::MY_NAME, stage_id);
 
         let channel = SenderB::new();
+
+        let arc_proof = Arc::new(RwLock::new(proof_ctx));
 
         std::thread::scope(|s| {
             for wc in self.wc.iter() {
@@ -34,13 +39,15 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                 let rx = channel.subscribe();
                 let config = self.config.clone();
 
+                let proof_ctx_lock = Arc::clone(&arc_proof);
+
                 // TODO! THIS IS A HACK TO AVOID STACK OVERFLOW DURING THE CALL TO ZKEVM PROVER BUT IT SHOULD BE FIXED
                 // TODO! IN THE FUTURE OR SET A PARAMETER TO CONFIGURE THE STACK SIZE
                 // We set the stack size to 4MB to avoid stack overflow during the call to zkevm prover
                 std::thread::Builder::new()
                     .stack_size(4 * 1024 * 1024)
                     .spawn_scoped(s, move || {
-                        wc._witness_computation(config, stage_id, proof_ctx, &self.tasks, tx, rx);
+                        wc._witness_computation(config, stage_id, proof_ctx_lock, &self.tasks, tx, rx);
                     })
                     .unwrap();
             }

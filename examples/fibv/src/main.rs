@@ -1,7 +1,7 @@
 use log::debug;
 use goldilocks::{Goldilocks, AbstractField};
 use std::time::Instant;
-use proofman::public_input::PublicInput;
+use proofman::public_inputs::PublicInputs;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
 
@@ -61,7 +61,7 @@ impl FibVPublicInputs<u64> {
     }
 }
 
-impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInput<Goldilocks> for FibVPublicInputs<Goldilocks> {
+impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
     fn to_elements(&self) -> Vec<Goldilocks> {
         vec![self.a, self.b, self.module]
     }
@@ -115,9 +115,9 @@ fn main() {
 
     let prover = ESTARKProver::new(estark_settings /* prover_options */);
 
-    let executor = Box::new(FibonacciExecutor);
-    let module1 = Box::new(ModuleExecutor);
-    let module2 = Box::new(ModuleExecutor);
+    let executor = Box::new(FibonacciExecutor::new());
+    let module1 = Box::new(ModuleExecutor::new());
+    let module2 = Box::new(ModuleExecutor::new());
 
     let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fibv/src/fibv.pilout",

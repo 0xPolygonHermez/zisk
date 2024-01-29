@@ -62,7 +62,7 @@ fn main() {
     let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
 
     let prover = ESTARKProver::new(estark_settings /* prover_options */);
-    let executor = Box::new(FibonacciExecutor);
+    let executor = Box::new(FibonacciExecutor::new());
     let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fib4/src/fib4.pilout",
         vec![executor],
