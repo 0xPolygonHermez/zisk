@@ -329,6 +329,7 @@ dependencies = [
 name = "estark"
 version = "0.0.1"
 dependencies = [
+ "goldilocks",
  "proofman",
  "serde",
  "serde_json",
