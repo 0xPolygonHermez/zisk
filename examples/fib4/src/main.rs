@@ -21,7 +21,6 @@ struct Fib4Options {
     #[structopt(short, long)]
     _debug: bool,
 
-    // TODO: Public inputs as Option
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
     prover_settings: PathBuf,
