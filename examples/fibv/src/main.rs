@@ -18,6 +18,8 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use proofman::proof_manager::{ProofManager, ProofManOpt};
+use proofman::config::ConfigNull;
+
 
 #[derive(StructOpt)]
 #[structopt(name = "fibv", about = "Fibonacci 4 proofman example")]
@@ -119,11 +121,13 @@ fn main() {
     let module1 = Box::new(ModuleExecutor::new());
     let module2 = Box::new(ModuleExecutor::new());
 
+    let config = Box::new(ConfigNull {});
+
     let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fibv/src/fibv.pilout",
         vec![module2, executor, module1],
         Box::new(prover),
-        "".to_owned(),
+        config,
         options,
     );
 

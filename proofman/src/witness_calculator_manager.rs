@@ -1,32 +1,30 @@
-use std::sync::RwLock;
-use std::sync::Arc;
-
 use crate::{executor::ExecutorBase, task::TasksTable};
 use crate::channel::SenderB;
 use crate::proof_ctx::ProofCtx;
 use crate::message::Message;
 use crate::channel::ReceiverB;
 use crate::message::Payload;
+use crate::config::Config;
 use log::debug;
+use std::sync::{Arc, RwLock};
 
 // WITNESS CALCULATOR MANAGER
 // ================================================================================================
 pub struct WitnessCalculatorManager<T> {
     wc: Vec<Box<dyn ExecutorBase<T>>>,
-    config: String,
     tasks: TasksTable,
 }
 
 impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
     const MY_NAME: &'static str = "witnessm";
 
-    pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>, config: String) -> Self {
+    pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
         debug!("{}: Initializing...", Self::MY_NAME);
 
-        WitnessCalculatorManager { wc, config, tasks: TasksTable::new() }
+        WitnessCalculatorManager { wc, tasks: TasksTable::new() }
     }
 
-    pub fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
+    pub fn witness_computation(&self, stage_id: u32, config: &Box<dyn Config>, proof_ctx: &mut ProofCtx<T>) {
         debug!("{}: --> Computing witness stage {}", Self::MY_NAME, stage_id);
 
         let channel = SenderB::new();
@@ -37,7 +35,6 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
             for wc in self.wc.iter() {
                 let tx = channel.clone();
                 let rx = channel.subscribe();
-                let config = self.config.clone();
 
                 let proof_ctx_lock = Arc::clone(&arc_proof);
 

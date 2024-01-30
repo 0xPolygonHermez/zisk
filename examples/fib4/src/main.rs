@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use proofman::proof_manager::{ProofManager, ProofManOpt};
+use proofman::config::ConfigNull;
 
 #[derive(StructOpt)]
 #[structopt(name = "fib4", about = "Fibonacci 4 proofman example")]
@@ -63,11 +64,14 @@ fn main() {
 
     let prover = ESTARKProver::new(estark_settings /* prover_options */);
     let executor = Box::new(FibonacciExecutor::new());
+
+    let config = Box::new(ConfigNull {});
+
     let mut proofman = ProofManager::<Goldilocks>::new(
         "examples/fib4/src/fib4.pilout",
         vec![executor],
         Box::new(prover),
-        "".to_owned(),
+        config,
         options,
     );
 

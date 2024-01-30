@@ -9,6 +9,8 @@ use proofman::{
     task::TasksTable,
 };
 
+use proofman::config::Config;
+
 use std::sync::{Arc, RwLock};
 use goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
@@ -20,7 +22,7 @@ executor!(FibonacciExecutor: Goldilocks);
 impl Executor<Goldilocks> for FibonacciExecutor {
     fn witness_computation(
         &self,
-        _config: String,
+        _config: &Box<dyn Config>,
         stage_id: u32,
         proof_ctx: Arc<RwLock<&mut ProofCtx<Goldilocks>>>,
         tasks: &TasksTable,

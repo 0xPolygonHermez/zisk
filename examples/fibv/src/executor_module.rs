@@ -8,6 +8,7 @@ use proofman::{
     trace,
 };
 
+use proofman::config::Config;
 use std::sync::{Arc, RwLock};
 use goldilocks::Goldilocks;
 use pilout::find_subproof_id_by_name;
@@ -19,7 +20,7 @@ executor!(ModuleExecutor: Goldilocks);
 impl Executor<Goldilocks> for ModuleExecutor {
     fn witness_computation(
         &self,
-        _config: String,
+        _config: &Box<dyn Config>,
         stage_id: u32,
         proof_ctx: Arc<RwLock<&mut ProofCtx<Goldilocks>>>,
         tasks: &TasksTable,

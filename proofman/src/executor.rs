@@ -3,12 +3,13 @@ use crate::channel::{SenderB, ReceiverB};
 use crate::message::{Message, Payload};
 use crate::task::TasksTable;
 use std::sync::{Arc, RwLock};
+use crate::config::Config;
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
 pub trait Executor<T>: Sync {
     fn witness_computation(
         &self,
-        config: String,
+        config: &Box<dyn Config>,
         stage_id: u32,
         proof_ctx: Arc<RwLock<&mut ProofCtx<T>>>,
         tasks: &TasksTable,
@@ -22,7 +23,7 @@ pub trait ExecutorBase<T>: Sync {
 
     fn _witness_computation(
         &self,
-        config: String,
+        config: &Box<dyn Config>,
         stage_id: u32,
         proof_ctx: Arc<RwLock<&mut ProofCtx<T>>>,
         tasks: &TasksTable,
@@ -63,7 +64,7 @@ macro_rules! executor {
 
             fn _witness_computation(
                 &self,
-                config: String,
+                config: &Box<dyn $crate::config::Config>,
                 stage_id: u32,
                 proof_ctx: std::sync::Arc<std::sync::RwLock<&mut $crate::proof_ctx::ProofCtx<$base_element>>>,
                 tasks: &$crate::task::TasksTable,

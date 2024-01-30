@@ -10,6 +10,7 @@ use crate::provers_manager::ProversManager;
 use crate::witness_calculator_manager::WitnessCalculatorManager;
 
 use crate::proof_ctx::ProofCtx;
+use crate::config::Config;
 
 // PROOF MANAGER OPTIONS
 // ================================================================================================
@@ -37,6 +38,7 @@ pub struct ProofManager<T> {
     options: ProofManOpt,
     proof_ctx: ProofCtx<T>,
     wc_manager: WitnessCalculatorManager<T>,
+    config: Box<dyn Config>,
     provers_manager: ProversManager,
 }
 
@@ -47,7 +49,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         pilout_path: &str,
         wc: Vec<Box<dyn ExecutorBase<T>>>,
         prover: Box<dyn Prover>,
-        prover_config: String,
+        config: Box<dyn Config>,
         options: ProofManOpt,
     ) -> Self {
         let reset = "\x1b[37;0m";
@@ -75,12 +77,12 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
-        let wc_manager = WitnessCalculatorManager::new(wc, prover_config);
+        let wc_manager = WitnessCalculatorManager::new(wc);
 
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);
 
-        Self { options, proof_ctx, wc_manager, provers_manager }
+        Self { options, proof_ctx, wc_manager, config, provers_manager }
     }
 
     pub fn setup() {
@@ -105,7 +107,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-            self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+            self.wc_manager.witness_computation(stage_id, &self.config, &mut self.proof_ctx);
 
             if stage_id == 1 {
                 self.provers_manager.setup(/*&setup*/);
