@@ -7,11 +7,11 @@ include!("../bindings.rs");
 use std::ffi::CString;
 
 pub fn generate_proof(
-    const_pols: String,
-    const_tree: String,
-    stark_info_file: String,
-    commit_pols: String,
-    verkey: String,
+    const_pols: &str,
+    const_tree: &str,
+    stark_info_file: &str,
+    commit_pols: &str,
+    verkey: &str,
 ) {
     unsafe {
         let const_pols = CString::new(const_pols).unwrap();

@@ -54,7 +54,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
         self.broadcast(tx, Payload::new_trace(subproof_id, Box::new(fib)));
 
         println!("FibonacciExecutor> Waiting for resolve...");
-        tasks.wait_column("Fibonacci".to_string(), subproof_id, air_id, "XXX".to_string());
+        tasks.wait_column("Fibonacci", subproof_id, air_id, "XXX");
         println!("FibonacciExecutor> Resolved!");
     }
 }

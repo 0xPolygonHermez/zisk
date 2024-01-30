@@ -44,7 +44,7 @@ pub struct FibFullPublicInputs<T> {
 }
 
 impl FibFullPublicInputs<u64> {
-    pub fn new(json: String) -> FibFullPublicInputs<BaseElement> {
+    pub fn new(json: &str) -> FibFullPublicInputs<BaseElement> {
         let data: Result<FibFullPublicInputs<u64>, _> = serde_json::from_str(&json);
 
         match data {

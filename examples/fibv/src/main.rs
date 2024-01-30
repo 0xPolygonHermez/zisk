@@ -20,7 +20,6 @@ use structopt::StructOpt;
 use proofman::proof_manager::{ProofManager, ProofManOpt};
 use proofman::config::ConfigNull;
 
-
 #[derive(StructOpt)]
 #[structopt(name = "fibv", about = "Fibonacci 4 proofman example")]
 struct FibVOptions {
@@ -49,7 +48,7 @@ pub struct FibVPublicInputs<T> {
 }
 
 impl FibVPublicInputs<u64> {
-    pub fn new(json: String) -> FibVPublicInputs<Goldilocks> {
+    pub fn new(json: &str) -> FibVPublicInputs<Goldilocks> {
         let data: Result<FibVPublicInputs<u64>, _> = serde_json::from_str(&json);
 
         match data {
@@ -97,7 +96,7 @@ fn main() {
     // Create prover
     // read prover settings file
     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
-        Ok(settings) => ESTARKProverSettings::new(settings),
+        Ok(settings) => ESTARKProverSettings::new(&settings),
         Err(err) => {
             eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
             std::process::exit(1);
@@ -106,7 +105,7 @@ fn main() {
 
     //read public inputs file
     let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
-        Ok(public_inputs) => FibVPublicInputs::new(public_inputs),
+        Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
         Err(err) => {
             eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
             std::process::exit(1);

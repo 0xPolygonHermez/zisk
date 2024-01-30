@@ -53,7 +53,7 @@ fn main() {
     // Create prover
     // read prover settings file
     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
-        Ok(settings) => ESTARKProverSettings::new(settings),
+        Ok(settings) => ESTARKProverSettings::new(&settings),
         Err(err) => {
             eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
             std::process::exit(1);

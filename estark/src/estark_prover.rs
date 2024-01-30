@@ -21,7 +21,7 @@ struct NBits {
 }
 
 impl ESTARKProverSettings {
-    pub fn new(json: String) -> Self {
+    pub fn new(json: &str) -> Self {
         let data = serde_json::from_str(&json);
 
         match data {
