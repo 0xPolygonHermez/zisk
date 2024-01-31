@@ -1,11 +1,10 @@
-use std::{any::Any, fmt::Debug};
+use std::any::Any;
 
-pub trait Config: Any + Send + Sync + Debug {
+pub trait Config: Any + Send + Sync {
     fn get_filename(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
 }
 
-#[derive(Debug)]
 pub struct ConfigNull {}
 
 impl Config for ConfigNull {
