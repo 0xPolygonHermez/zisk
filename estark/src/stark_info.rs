@@ -1,308 +1,414 @@
-// // use serde_json::Value as JsonValue;
-// use std::collections::HashMap;
-// use goldilocks::Goldilocks;
+// use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use util::{timer_start, timer_stop_and_log};
+use log::debug;
+use serde::Deserialize;
+use std::time::Instant;
 
-// #[derive(Debug)]
-// struct StepStruct {
-//     n_bits: u64,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct StepStruct {
+    #[serde(rename = "nBits")]
+    pub n_bits: u64,
+}
 
-// #[derive(Debug)]
-// struct StarkStruct {
-//     n_bits: u64,
-//     n_bits_ext: u64,
-//     n_queries: u64,
-//     verification_hash_type: String,
-//     steps: Vec<StepStruct>,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct StarkStruct {
+    #[serde(rename = "nBits")]
+    pub n_bits: u64,
+    #[serde(rename = "nBitsExt")]
+    pub n_bits_ext: u64,
+    #[serde(rename = "nQueries")]
+    pub n_queries: u64,
+    #[serde(rename = "verificationHashType")]
+    pub verification_hash_type: String,
+    #[serde(rename = "steps")]
+    pub steps: Vec<StepStruct>,
+}
 
-// #[derive(Debug)]
-// #[allow(non_camel_case_types)]
-// enum ESection {
-//     Cm1_N = 0,
-//     Cm1_2Ns = 1,
-//     Cm2_N = 2,
-//     Cm2_2Ns = 3,
-//     Cm3_N = 4,
-//     Cm3_2Ns = 5,
-//     Cm4_N = 6,
-//     Cm4_2Ns = 7,
-//     TmpExp_N = 8,
-//     Q_2Ns = 9,
-//     F_2Ns = 10,
-// }
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Debug, Deserialize)]
+enum ESection {
+    #[serde(rename = "cm1_n")]
+    Cm1_N = 0,
+    #[serde(rename = "cm1_2ns")]
+    Cm1_2Ns = 1,
+    #[serde(rename = "cm2_n")]
+    Cm2_N = 2,
+    #[serde(rename = "cm2_2ns")]
+    Cm2_2Ns = 3,
+    #[serde(rename = "cm3_n")]
+    Cm3_N = 4,
+    #[serde(rename = "cm3_2ns")]
+    Cm3_2Ns = 5,
+    #[serde(rename = "cm4_n")]
+    Cm4_N = 6,
+    #[serde(rename = "cm5_2ns")]
+    Cm4_2Ns = 7,
+    #[serde(rename = "tmpExp_n")]
+    TmpExp_N = 8,
+    #[serde(rename = "q_2ns")]
+    Q_2Ns = 9,
+    #[serde(rename = "f_2ns")]
+    F_2Ns = 10,
+}
 
-// const ESECTION_VARIANTS: usize = 11;
+const ESECTION_VARIANTS: usize = 11;
 
-// fn string_to_section(s: &str) -> Option<ESection> {
-//     match s {
-//         "cm1_n" => Some(ESection::Cm1_N),
-//         "cm1_2ns" => Some(ESection::Cm1_2Ns),
-//         "cm2_n" => Some(ESection::Cm2_N),
-//         "cm2_2ns" => Some(ESection::Cm2_2Ns),
-//         "cm3_n" => Some(ESection::Cm3_N),
-//         "cm3_2ns" => Some(ESection::Cm3_2Ns),
-//         "cm4_n" => Some(ESection::Cm4_N),
-//         "cm4_2ns" => Some(ESection::Cm4_2Ns),
-//         "tmpExp_n" => Some(ESection::TmpExp_N),
-//         "q_2ns" => Some(ESection::Q_2Ns),
-//         "f_2ns" => Some(ESection::F_2Ns),
-//         _ => None,
-//     }
-// }
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct PolsSections {
+    section: [u64; ESECTION_VARIANTS],
+}
 
-// #[derive(Debug)]
-// struct PolsSections {
-//     section: [u64; ESECTION_VARIANTS],
-// }
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct PolsSectionsVector {
+    section: [Vec<u64>; ESECTION_VARIANTS],
+}
 
-// #[derive(Debug)]
-// struct PolsSectionsVector {
-//     section: [Vec<u64>; ESECTION_VARIANTS],
-// }
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct VarPolMap {
+    section: ESection,
+    dim: u64,
+    section_pos: u64,
+}
 
-// #[derive(Debug)]
-// struct VarPolMap {
-//     section: ESection,
-//     dim: u64,
-//     section_pos: u64,
-// }
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct PolInfo<T> {
+    map: VarPolMap,
+    n: u64,
+    offset: u64,
+    size: u64,
+    p_address: *mut T,
+}
 
-// #[derive(Debug)]
-// struct PolInfo<T> {
-//     map: VarPolMap,
-//     n: u64,
-//     offset: u64,
-//     size: u64,
-//     p_address: *mut T,
-// }
+impl<T> PolInfo<T> {
+    fn get(&self, step: u64) -> *mut T {
+        assert!(self.map.dim == 1);
+        unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
+    }
 
-// impl<T> PolInfo<T> {
-//     fn get(&self, step: u64) -> *mut T {
-//         assert!(self.map.dim == 1);
-//         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
-//     }
+    fn get1(&self, step: u64) -> *mut T {
+        assert!(self.map.dim == 3);
+        unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
+    }
 
-//     fn get1(&self, step: u64) -> *mut T {
-//         assert!(self.map.dim == 3);
-//         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
-//     }
+    fn get2(&self, step: u64) -> *mut T {
+        assert!(self.map.dim == 3);
+        unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
+    }
 
-//     fn get2(&self, step: u64) -> *mut T {
-//         assert!(self.map.dim == 3);
-//         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
-//     }
+    fn get3(&self, step: u64) -> *mut T {
+        assert!(self.map.dim == 3);
+        unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
+    }
+}
 
-//     fn get3(&self, step: u64) -> *mut T {
-//         assert!(self.map.dim == 3);
-//         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
-//     }
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct PeCtx {
+    #[serde(rename = "tExpId")]
+    t_exp_id: u64,
+    #[serde(rename = "fExpId")]
+    f_exp_id: u64,
+    #[serde(rename = "zId")]
+    z_id: u64,
+    #[serde(rename = "c1Id")]
+    c1_id: u64,
+    #[serde(rename = "numId")]
+    num_id: u64,
+    #[serde(rename = "denId")]
+    den_id: u64,
+    #[serde(rename = "c2Id")]
+    c2_id: u64,
+}
 
-// #[derive(Debug)]
-// struct PeCtx {
-//     t_exp_id: u64,
-//     f_exp_id: u64,
-//     z_id: u64,
-//     c1_id: u64,
-//     num_id: u64,
-//     den_id: u64,
-//     c2_id: u64,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct PuCtx {
+    #[serde(rename = "tExpId")]
+    t_exp_id: u64,
+    #[serde(rename = "fExpId")]
+    f_exp_id: u64,
+    #[serde(rename = "h1Id")]
+    h1_id: u64,
+    #[serde(rename = "h2Id")]
+    h2_id: u64,
+    #[serde(rename = "zId")]
+    z_id: u64,
+    #[serde(rename = "c1Id")]
+    c1_id: u64,
+    #[serde(rename = "numId")]
+    num_id: u64,
+    #[serde(rename = "denId")]
+    den_id: u64,
+    #[serde(rename = "c2Id")]
+    c2_id: u64,
+}
 
-// #[derive(Debug)]
-// struct PuCtx {
-//     t_exp_id: u64,
-//     f_exp_id: u64,
-//     h1_id: u64,
-//     h2_id: u64,
-//     z_id: u64,
-//     c1_id: u64,
-//     num_id: u64,
-//     den_id: u64,
-//     c2_id: u64,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct CiCtx {
+    #[serde(rename = "zId")]
+    z_id: u64,
+    #[serde(rename = "numId")]
+    num_id: u64,
+    #[serde(rename = "denId")]
+    den_id: u64,
+    #[serde(rename = "c1Id")]
+    c1_id: u64,
+    #[serde(rename = "c2Id")]
+    c2_id: u64,
+}
 
-// #[derive(Debug)]
-// struct CiCtx {
-//     z_id: u64,
-//     num_id: u64,
-//     den_id: u64,
-//     c1_id: u64,
-//     c2_id: u64,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+enum EvMapEType {
+    #[serde(rename = "cm")]
+    Cm,
+    #[serde(rename = "const")]
+    Const,
+    #[serde(rename = "q")]
+    Q,
+}
 
-// #[derive(Debug)]
-// enum EvMapEType {
-//     Cm,
-//     Const,
-//     Q,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct EvMap {
+    #[serde(rename = "type")]
+    type_: EvMapEType,
+    #[serde(rename = "id")]
+    id: u64,
+    #[serde(rename = "prime", default)]
+    prime: bool,
+}
 
-// #[derive(Debug)]
-// struct EvMap {
-//     type_: EvMapEType,
-//     id: u64,
-//     prime: bool,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+enum StepTypeEType {
+    #[serde(rename = "tmp")]
+    Tmp,
+    #[serde(rename = "exp")]
+    Exp,
+    #[serde(rename = "eval")]
+    Eval,
+    #[serde(rename = "challenge")]
+    Challenge,
+    #[serde(rename = "tree1")]
+    Tree1,
+    #[serde(rename = "tree2")]
+    Tree2,
+    #[serde(rename = "tree3")]
+    Tree3,
+    #[serde(rename = "tree4")]
+    Tree4,
+    #[serde(rename = "number")]
+    Number,
+    #[serde(rename = "x")]
+    X,
+    #[serde(rename = "Z")]
+    Z,
+    #[serde(rename = "public")]
+    Public,
+    #[serde(rename = "xDivXSubXi")]
+    XDivXSubXi,
+    #[serde(rename = "xDivXSubWXi")]
+    XDivXSubWXi,
+    #[serde(rename = "cm")]
+    Cm,
+    #[serde(rename = "const")]
+    Const,
+    #[serde(rename = "q")]
+    Q,
+    #[serde(rename = "Zi")]
+    Zi,
+    #[serde(rename = "tmpExp")]
+    TmpExp,
+    #[serde(rename = "f")]
+    F,
+}
 
-// impl EvMap {
-//     fn set_type(&mut self, s: &str) {
-//         match s {
-//             "cm" => self.type_ = EvMapEType::Cm,
-//             "const" => self.type_ = EvMapEType::Const,
-//             "q" => self.type_ = EvMapEType::Q,
-//             _ => {
-//                 eprintln!("EvMap::set_type() found invalid type: {}", s);
-//                 std::process::exit(1);
-//             }
-//         }
-//     }
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct StepType {
+    #[serde(rename = "type")]
+    type_: StepTypeEType,
+    #[serde(rename = "id", default)]
+    id: u64,
+    #[serde(rename = "prime", default)]
+    prime: bool,
+    #[serde(rename = "p", default)]
+    p: u64,
+    #[serde(rename = "value", default)]
+    value: String,
+}
 
-// #[derive(Debug)]
-// enum StepTypeEType {
-//     Tmp,
-//     Exp,
-//     Eval,
-//     Challenge,
-//     Tree1,
-//     Tree2,
-//     Tree3,
-//     Tree4,
-//     Number,
-//     X,
-//     Z,
-//     Public,
-//     XDivXSubXi,
-//     XDivXSubWXi,
-//     Cm,
-//     Const,
-//     Q,
-//     Zi,
-//     TmpExp,
-//     F,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+enum StepOperationEOperation {
+    #[serde(rename = "add")]
+    Add,
+    #[serde(rename = "sub")]
+    Sub,
+    #[serde(rename = "mul")]
+    Mul,
+    #[serde(rename = "copy")]
+    Copy,
+}
 
-// #[derive(Debug)]
-// struct StepType {
-//     type_: StepTypeEType,
-//     id: u64,
-//     prime: bool,
-//     p: u64,
-//     value: String,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct StepOperation {
+    #[serde(rename = "op")]
+    op: StepOperationEOperation,
+    #[serde(rename = "dest")]
+    dest: StepType,
+    #[serde(rename = "src")]
+    src: Vec<StepType>,
+}
 
-// impl StepType {
-//     fn set_type(&mut self, s: &str) {
-//         match s {
-//             "tmp" => self.type_ = StepTypeEType::Tmp,
-//             "exp" => self.type_ = StepTypeEType::Exp,
-//             "eval" => self.type_ = StepTypeEType::Eval,
-//             "challenge" => self.type_ = StepTypeEType::Challenge,
-//             "tree1" => self.type_ = StepTypeEType::Tree1,
-//             "tree2" => self.type_ = StepTypeEType::Tree2,
-//             "tree3" => self.type_ = StepTypeEType::Tree3,
-//             "tree4" => self.type_ = StepTypeEType::Tree4,
-//             "number" => self.type_ = StepTypeEType::Number,
-//             "x" => self.type_ = StepTypeEType::X,
-//             "Z" => self.type_ = StepTypeEType::Z,
-//             "public" => self.type_ = StepTypeEType::Public,
-//             "xDivXSubXi" => self.type_ = StepTypeEType::XDivXSubXi,
-//             "xDivXSubWXi" => self.type_ = StepTypeEType::XDivXSubWXi,
-//             "cm" => self.type_ = StepTypeEType::Cm,
-//             "const" => self.type_ = StepTypeEType::Const,
-//             "q" => self.type_ = StepTypeEType::Q,
-//             "Zi" => self.type_ = StepTypeEType::Zi,
-//             "tmpExp" => self.type_ = StepTypeEType::TmpExp,
-//             "f" => self.type_ = StepTypeEType::F,
-//             _ => {
-//                 eprintln!("StepType::set_type() found invalid type: {}", s);
-//                 std::process::exit(1);
-//             }
-//         }
-//     }
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct Step {
+    #[serde(rename = "first")]
+    first: Vec<StepOperation>,
+    #[serde(rename = "i")]
+    i: Vec<StepOperation>,
+    #[serde(rename = "last")]
+    last: Vec<StepOperation>,
+    #[serde(rename = "tmpUsed")]
+    tmp_used: u64,
+}
 
-// #[derive(Debug)]
-// enum StepOperationEOperation {
-//     Add,
-//     Sub,
-//     Mul,
-//     Copy,
-// }
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct StarkInfo {
+    #[serde(rename = "starkStruct")]
+    pub stark_struct: StarkStruct,
 
-// #[derive(Debug)]
-// struct StepOperation {
-//     op: StepOperationEOperation,
-//     dest: StepType,
-//     src: Vec<StepType>,
-// }
+    #[serde(rename = "mapTotalN")]
+    pub map_total_n: u64,
+    #[serde(rename = "nConstants")]
+    pub n_constants: u64,
+    #[serde(rename = "nPublics")]
+    pub n_publics: u64,
+    #[serde(rename = "nCm1")]
+    pub n_cm1: u64,
+    #[serde(rename = "nCm2")]
+    pub n_cm2: u64,
+    #[serde(rename = "nCm3")]
+    pub n_cm3: u64,
+    #[serde(rename = "nCm4")]
+    pub n_cm4: u64,
+    #[serde(rename = "qDeg")]
+    pub q_deg: u64,
+    #[serde(rename = "qDim")]
+    pub q_dim: u64,
+    #[serde(rename = "friExpId")]
+    pub fri_exp_id: u64,
+    #[serde(rename = "nExps")]
+    pub n_exps: u64,
+    // pub map_deg: PolsSections,
+    // pub map_offsets: PolsSections,
+    // pub map_sections: PolsSectionsVector,
+    // pub map_sections_n: PolsSections,
+    // pub map_sections_n1: PolsSections,
+    // pub map_sections_n3: PolsSections,
+    // pub var_pol_map: Vec<VarPolMap>,
+    #[serde(rename = "qs")]
+    pub qs: Vec<u64>,
+    #[serde(rename = "cm_n")]
+    pub cm_n: Vec<u64>,
+    #[serde(rename = "cm_2ns")]
+    pub cm_2ns: Vec<u64>,
+    #[serde(rename = "peCtx")]
+    pub pe_ctx: Vec<PeCtx>,
+    #[serde(rename = "puCtx")]
+    pub pu_ctx: Vec<PuCtx>,
+    #[serde(rename = "ciCtx")]
+    pub ci_ctx: Vec<CiCtx>,
+    #[serde(rename = "evMap")]
+    pub ev_map: Vec<EvMap>,
+    #[serde(rename = "step2prev")]
+    pub step2_prev: Step,
+    #[serde(rename = "step3prev")]
+    pub step3_prev: Step,
+    #[serde(rename = "step3")]
+    pub step3: Step,
+    #[serde(rename = "step42ns")]
+    pub step4_2ns: Step,
+    #[serde(rename = "step52ns")]
+    pub step5_2ns: Step,
+    #[serde(rename = "exps_n", default)]
+    pub exps_n: Vec<u64>,
+    #[serde(rename = "q_2ns")]
+    pub q_2ns_vector: Vec<u64>,
+    #[serde(rename = "cm4_n", default)]
+    pub cm4_n_vector: Vec<u64>,
+    #[serde(rename = "cm4_2ns", default)]
+    pub cm4_2ns_vector: Vec<u64>,
+    #[serde(rename = "tmpExp_n")]
+    pub tmp_exp_n: Vec<u64>,
+    #[serde(rename = "exp2pol")]
+    pub exp2pol: HashMap<String, u64>,
+    #[serde(default)]
+    pub opening_points: Vec<u64>,
+    #[serde(default)]
+    pub num_challenges: Vec<u64>,
+    #[serde(default)]
+    pub n_stages: u64,
+    #[serde(default)]
+    pub n_challenges: u64,
+}
 
-// impl StepOperation {
-//     fn set_operation(&mut self, s: &str) {
-//         match s {
-//             "add" => self.op = StepOperationEOperation::Add,
-//             "sub" => self.op = StepOperationEOperation::Sub,
-//             "mul" => self.op = StepOperationEOperation::Mul,
-//             "copy" => self.op = StepOperationEOperation::Copy,
-//             _ => {
-//                 eprintln!("StepOperation::set_operation() found invalid type: {}", s);
-//                 std::process::exit(1);
-//             }
-//         }
-//     }
-// }
+impl StarkInfo {
+    pub fn from_json(filename: &str) -> Self {
+        timer_start!(STARK_INFO_LOAD);
+        let json = std::fs::read_to_string(filename).expect("Failed to read file");
+        let mut stark_info: StarkInfo =
+            serde_json::from_str(&json).expect(&format!("Failed to parse JSON file: {}", filename));
 
-// #[derive(Debug)]
-// struct Step {
-//     first: Vec<StepOperation>,
-//     i: Vec<StepOperation>,
-//     last: Vec<StepOperation>,
-//     tmp_used: u64,
-// }
+        // TODO: THIS SHOULD NOT BE HARDCODED
 
-// #[derive(Debug)]
-// struct StarkInfo {
-//     pub stark_struct: StarkStruct,
-//     pub map_total_n: u64,
-//     pub n_constants: u64,
-//     pub n_publics: u64,
-//     pub n_cm1: u64,
-//     pub n_cm2: u64,
-//     pub n_cm3: u64,
-//     pub n_cm4: u64,
-//     pub q_deg: u64,
-//     pub q_dim: u64,
-//     pub fri_exp_id: u64,
-//     pub n_exps: u64,
-//     pub map_deg: PolsSections,
-//     pub map_offsets: PolsSections,
-//     pub map_sections: PolsSectionsVector,
-//     pub map_sections_n: PolsSections,
-//     pub map_sections_n1: PolsSections,
-//     pub map_sections_n3: PolsSections,
-//     pub var_pol_map: Vec<VarPolMap>,
-//     pub qs: Vec<u64>,
-//     pub cm_n: Vec<u64>,
-//     pub cm_2ns: Vec<u64>,
-//     pub pe_ctx: Vec<PeCtx>,
-//     pub pu_ctx: Vec<PuCtx>,
-//     pub ci_ctx: Vec<CiCtx>,
-//     pub ev_map: Vec<EvMap>,
-//     pub step2_prev: Step,
-//     pub step3_prev: Step,
-//     pub step3: Step,
-//     pub step4_2ns: Step,
-//     pub step5_2ns: Step,
-//     pub exps_n: Vec<u64>,
-//     pub q_2ns_vector: Vec<u64>,
-//     pub cm4_n_vector: Vec<u64>,
-//     pub cm4_2ns_vector: Vec<u64>,
-//     pub tmp_exp_n: Vec<u64>,
-//     pub exp2pol: HashMap<String, u64>,
-// }
+        stark_info.opening_points.push(0);
+        stark_info.opening_points.push(1);
 
-// impl StarkInfo {
-//     //TODO!
-// }
+        stark_info.num_challenges.push(0);
+        stark_info.num_challenges.push(2);
+        stark_info.num_challenges.push(2);
+
+        stark_info.n_stages = stark_info.num_challenges.len() as u64;
+        stark_info.n_challenges = stark_info.num_challenges.iter().fold(4, |acc, &x| acc + x);
+        //std::accumulate(numChallenges.begin(), numChallenges.end(), 4);
+
+        timer_stop_and_log!(STARK_INFO_LOAD);
+        stark_info
+    }
+
+    // TODO!
+    // /* Returns information about a polynomial specified by its ID */
+    // void getPol(void * pAddress, uint64_t idPol, PolInfo &polInfo);
+
+    // TODO!
+    // /* Returns the size of a polynomial specified by its ID */
+    // uint64_t getPolSize(uint64_t polId);
+
+    // TODO!
+    // /* Returns a polynomial specified by its ID */
+    // Polinomial getPolinomial(Goldilocks::Element *pAddress, uint64_t idPol);
+
+    // TODO!
+    // /* Returns the size of the constant tree data/file */
+    // uint64_t getConstTreeSizeInBytes (void) const
+    // {
+    //     uint64_t NExtended = 1 << starkStruct.nBitsExt;
+    //     uint64_t constTreeSize = nConstants * NExtended + NExtended * HASH_SIZE + (NExtended - 1) * HASH_SIZE + MERKLEHASHGOLDILOCKS_HEADER_SIZE;
+    //     uint64_t constTreeSizeBytes = constTreeSize * sizeof(Goldilocks::Element);
+    //     return constTreeSizeBytes;
+    // }
+}
