@@ -4,6 +4,7 @@ members = [
     "estark",
     "pilout",
     "goldilocks",
+    "util",
     "examples/fib4",
     "examples/fibv",
 ]

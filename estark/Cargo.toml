@@ -13,5 +13,5 @@ serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0.68"
 proofman = { path = "../proofman" }
 goldilocks = { path = "../goldilocks" }
-
-[dev-dependencies]
+util = { path = "../util" }
+log = { version = "0.4", default-features = false }
