@@ -42,7 +42,7 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
                 // TODO! IN THE FUTURE OR SET A PARAMETER TO CONFIGURE THE STACK SIZE
                 // We set the stack size to 4MB to avoid stack overflow during the call to zkevm prover
                 std::thread::Builder::new()
-                    .stack_size(4 * 1024 * 1024)
+                    .stack_size(8 * 1024 * 1024)
                     .spawn_scoped(s, move || {
                         wc._witness_computation(config, stage_id, proof_ctx_lock, &self.tasks, tx, rx);
                     })
