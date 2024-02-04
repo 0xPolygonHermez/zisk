@@ -2,12 +2,14 @@ use core::fmt;
 
 use crate::public_inputs::PublicInputs;
 use crate::prover::Prover;
-use crate::executor::ExecutorBase;
 use pilout::load_pilout;
 use log::{debug, info, error};
 
-use crate::provers_manager::ProversManager;
-use crate::witness_calculator_manager::WitnessCalculatorManager;
+use crate::prover::provers_manager::ProversManager;
+
+use crate::executor::ExecutorBase;
+use crate::executor::executors_manager::WitnessCalculatorManager;
+use crate::executor::executors_manager_thread::WitnessCalculatorManagerThread;
 
 use crate::proof_ctx::ProofCtx;
 use crate::config::Config;
@@ -37,7 +39,7 @@ pub enum ProverStatus {
 pub struct ProofManager<T> {
     options: ProofManOpt,
     proof_ctx: ProofCtx<T>,
-    wc_manager: WitnessCalculatorManager<T>,
+    wc_manager: WitnessCalculatorManagerThread<T>,
     config: Box<dyn Config>,
     provers_manager: ProversManager,
 }
@@ -77,7 +79,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
-        let wc_manager = WitnessCalculatorManager::new(wc);
+        let wc_manager = WitnessCalculatorManagerThread::new(wc);
 
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);

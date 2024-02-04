@@ -7,24 +7,25 @@ use crate::message::Payload;
 use crate::config::Config;
 use log::debug;
 use std::sync::{Arc, RwLock};
+use crate::executor::executors_manager::WitnessCalculatorManager;
 
-// WITNESS CALCULATOR MANAGER
+// EXECUTORS (WITNESS CALCULATORS) MANAGER
 // ================================================================================================
-pub struct WitnessCalculatorManager<T> {
+pub struct WitnessCalculatorManagerThread<T> {
     wc: Vec<Box<dyn ExecutorBase<T>>>,
     tasks: TasksTable,
 }
 
-impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
+impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> for WitnessCalculatorManagerThread<T> {
     const MY_NAME: &'static str = "witnessm";
 
-    pub fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
+    fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
         debug!("{}: Initializing...", Self::MY_NAME);
 
-        WitnessCalculatorManager { wc, tasks: TasksTable::new() }
+        WitnessCalculatorManagerThread { wc, tasks: TasksTable::new() }
     }
 
-    pub fn witness_computation(&self, stage_id: u32, config: &Box<dyn Config>, proof_ctx: &mut ProofCtx<T>) {
+    fn witness_computation(&self, stage_id: u32, config: &Box<dyn Config>, proof_ctx: &mut ProofCtx<T>) {
         debug!("{}: --> Computing witness stage {}", Self::MY_NAME, stage_id);
 
         let channel = SenderB::new();
@@ -54,7 +55,9 @@ impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManager<T> {
 
         debug!("{}: <-- Computing witness stage {}", Self::MY_NAME, stage_id);
     }
+}
 
+impl<T: Clone + Send + Sync + std::fmt::Debug> WitnessCalculatorManagerThread<T> {
     fn thread_manager(&self, num_threads: usize, _tx: SenderB<Message>, rx: ReceiverB<Message>) {
         let mut num_threads_finished = 0;
         loop {

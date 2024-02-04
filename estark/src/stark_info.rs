@@ -88,22 +88,22 @@ pub struct PolInfo<T> {
 }
 
 impl<T> PolInfo<T> {
-    fn get(&self, step: u64) -> *mut T {
+    fn _get(&self, step: u64) -> *mut T {
         assert!(self.map.dim == 1);
         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
     }
 
-    fn get1(&self, step: u64) -> *mut T {
+    fn _get1(&self, step: u64) -> *mut T {
         assert!(self.map.dim == 3);
         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
     }
 
-    fn get2(&self, step: u64) -> *mut T {
+    fn _get2(&self, step: u64) -> *mut T {
         assert!(self.map.dim == 3);
         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
     }
 
-    fn get3(&self, step: u64) -> *mut T {
+    fn _get3(&self, step: u64) -> *mut T {
         assert!(self.map.dim == 3);
         unsafe { self.p_address.offset((step * self.size * std::mem::size_of::<T>() as u64) as isize) }
     }
