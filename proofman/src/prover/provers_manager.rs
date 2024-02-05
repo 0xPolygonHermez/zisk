@@ -7,7 +7,7 @@ use log::info;
 // PROVERS MANAGER
 // ================================================================================================
 pub struct ProversManager {
-    _prover: Box<dyn Prover>,
+    prover: Box<dyn Prover>,
 }
 
 impl ProversManager {
@@ -16,7 +16,7 @@ impl ProversManager {
     pub fn new(prover: Box<dyn Prover>) -> Self {
         debug!("{}: Initializing...", Self::MY_NAME);
 
-        Self { _prover: prover }
+        Self { prover }
     }
 
     pub fn setup(&mut self /*&public_inputs, &self.options*/) {
@@ -25,6 +25,10 @@ impl ProversManager {
 
     pub fn compute_stage(&mut self, stage_id: u32 /*&public_inputs, &self.options*/) -> ProverStatus {
         info!("{}: ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
+
+        self.prover.compute_stage(stage_id);
+
+        info!("{}: <== COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
         ProverStatus::OpeningsCompleted
     }

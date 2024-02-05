@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use proofman::prover::Prover;
+use log::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ESTARKProverSettings {
@@ -36,6 +37,8 @@ pub struct ESTARKProver {
 }
 
 impl ESTARKProver {
+    const MY_NAME: &'static str = "estarkpr";
+
     pub fn new(settings: ESTARKProverSettings) -> Self {
         Self { settings: settings }
     }
@@ -45,4 +48,14 @@ impl ESTARKProver {
     }
 }
 
-impl Prover for ESTARKProver {}
+impl Prover for ESTARKProver {
+    fn compute_stage(&self, stage_id: u32) {
+        if stage_id != 1 {
+            return;
+        }
+
+        info!("{}: --> eStark prover - STAGE {}", Self::MY_NAME, stage_id);
+
+        info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
+    }
+}
