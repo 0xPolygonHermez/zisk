@@ -46,7 +46,7 @@ macro_rules! executor {
                 $executor_name { ptr: std::ptr::null_mut() }
             }
 
-            pub fn from_ptr(&self, ptr: *mut u8) -> Self {
+            pub fn from_ptr(ptr: *mut u8) -> Self {
                 $executor_name { ptr }
             }
         }
