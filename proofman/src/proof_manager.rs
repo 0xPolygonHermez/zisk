@@ -1,5 +1,3 @@
-use core::fmt;
-
 use crate::public_inputs::PublicInputs;
 use crate::prover::Prover;
 use pilout::load_pilout;
@@ -7,9 +5,8 @@ use log::{debug, info, error};
 
 use crate::prover::provers_manager::ProversManager;
 
-use crate::executor::ExecutorBase;
-use crate::executor::executors_manager::WitnessCalculatorManager;
-use crate::executor::executors_manager_thread::WitnessCalculatorManagerThread;
+use crate::executor::Executor;
+use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
 
 use crate::proof_ctx::ProofCtx;
 use crate::config::Config;
@@ -36,20 +33,23 @@ pub enum ProverStatus {
     OpeningsCompleted,
 }
 
+// PROOF MANAGER SEQUENTIAL
+// ================================================================================================
+
 pub struct ProofManager<T> {
     options: ProofManOpt,
     proof_ctx: ProofCtx<T>,
-    wc_manager: WitnessCalculatorManagerThread<T>,
+    wc_manager: ExecutorsManagerSequential<T>,
     config: Box<dyn Config>,
     provers_manager: ProversManager,
 }
 
-impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
+impl<T: Default + Clone> ProofManager<T> {
     const MY_NAME: &'static str = "proofman";
 
     pub fn new(
         pilout_path: &str,
-        wc: Vec<Box<dyn ExecutorBase<T>>>,
+        wc: Vec<Box<dyn Executor<T>>>,
         prover: Box<dyn Prover>,
         config: Box<dyn Config>,
         options: ProofManOpt,
@@ -59,17 +59,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         let green = "\x1b[32;1m";
         let bold = "\x1b[1m";
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        // println!(
-        //     "{}{}{} {}",
-        //     green,
-        //     format!("{: >12}", "Loaded"),
-        //     reset,
-        //     std::env::current_exe().unwrap().display().to_string().as_str()
-        // );
-        // println!("{}{}{} {}", green, format!("{: >12}", "Main PID"), reset, std::process::id().to_string().as_str());
         println!("{}{}{} {}", green, format!("{: >12}", "Pilout"), reset, str::replace(pilout_path, "\\", "/"));
-        // println!("{}{}{} {}", green, format!("{: >13}", "Executors:"), reset, "TODO");
-        // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
         println!("");
 
         debug!("{}: Initializing...", Self::MY_NAME);
@@ -79,7 +69,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
-        let wc_manager = WitnessCalculatorManagerThread::new(wc);
+        let wc_manager = ExecutorsManager::new(wc);
 
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);
@@ -109,7 +99,7 @@ impl<T: Default + Clone + Send + Sync + fmt::Debug> ProofManager<T> {
 
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-            self.wc_manager.witness_computation(stage_id, &self.config, &mut self.proof_ctx);
+            self.wc_manager.witness_computation(&*self.config, stage_id, &mut self.proof_ctx);
 
             if stage_id == 1 {
                 self.provers_manager.setup(/*&setup*/);

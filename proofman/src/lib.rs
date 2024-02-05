@@ -4,6 +4,7 @@ pub mod config;
 pub mod executor;
 pub mod message;
 pub mod proof_ctx;
+pub mod proof_manager_threaded;
 pub mod proof_manager;
 pub mod prover;
 pub mod public_inputs;

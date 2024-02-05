@@ -1,0 +1,19 @@
+[package]
+name = "fib4"
+version = "0.0.1"
+description = "Examples of how to use the proofman prover and verifier"
+authors = ["Polygon Labs"]
+edition = "2021"
+readme = "README.md"
+
+[dependencies]
+proofman = { path = "../../proofman" }
+estark = { path = "../../estark" }
+pilout = { path = "../../pilout" }
+log = { version = "0.4", default-features = false }
+env_logger = { version = "0.11", default-features = false }
+structopt = { version = "0.3", default-features = true }
+goldilocks = { path = "../../goldilocks"}
+crossbeam-channel = "0.5.8"
+serde = { version = "1.0.130", features = ["derive"] }
+serde_json = "1.0.68"
