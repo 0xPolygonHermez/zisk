@@ -31,7 +31,7 @@ pub trait Executor<T> {
 macro_rules! executor {
     ($executor_name:ident: $base_element:ty) => {
         pub struct $executor_name {
-            ptr: *mut u8,
+            ptr: std::cell::UnsafeCell<*mut u8>,
         }
 
         unsafe impl Send for $executor_name {}
@@ -39,15 +39,15 @@ macro_rules! executor {
 
         impl $executor_name {
             fn get_name(&self) -> String {
-                stringify!($executor_name).to_string()
+                 stringify!($executor_name).to_string()
             }
 
             pub fn new() -> Self {
-                $executor_name { ptr: std::ptr::null_mut() }
+                $executor_name { ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()) }
             }
 
             pub fn from_ptr(ptr: *mut u8) -> Self {
-                $executor_name { ptr }
+                $executor_name { ptr: std::cell::UnsafeCell::new(ptr) }
             }
         }
 

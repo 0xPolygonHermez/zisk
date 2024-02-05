@@ -1,15 +1,17 @@
+use std::cell::UnsafeCell;
+
 pub struct Ptr {
-    pub ptr: *mut u8,
+    pub ptr: UnsafeCell<*mut u8>,
 }
 
 impl Ptr {
     pub fn new(ptr: *mut u8) -> Self {
-        Ptr { ptr }
+        Ptr { ptr: UnsafeCell::new(ptr) }
     }
 
     pub fn add<T>(&self) -> *mut u8 {
-        let ptr = self.ptr;
-        unsafe { *self.ptr = *ptr.add(std::mem::size_of::<T>() as usize) };
+        let ptr = unsafe { *self.ptr.get() };
+        unsafe { *self.ptr.get() = ptr.add(std::mem::size_of::<T>() as usize) };
         ptr
     }
 }
