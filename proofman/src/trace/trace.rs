@@ -1,23 +1,21 @@
-use std::cell::UnsafeCell;
-
 pub struct Ptr {
-    pub ptr: UnsafeCell<*mut u8>,
+    pub ptr: *mut u8,
 }
 
 impl Ptr {
     pub fn new(ptr: *mut u8) -> Self {
-        Ptr { ptr: UnsafeCell::new(ptr) }
+        Ptr { ptr }
     }
 
     pub fn add<T>(&self) -> *mut u8 {
-        let ptr = unsafe { *self.ptr.get() };
-        unsafe { *self.ptr.get() = ptr.add(std::mem::size_of::<T>() as usize) };
+        let ptr = self.ptr;
+        unsafe { *self.ptr = *ptr.add(std::mem::size_of::<T>() as usize) };
         ptr
     }
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace: Send + Sync + std::fmt::Debug {
+pub trait Trace: std::fmt::Debug {
     fn num_rows(&self) -> usize;
     fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
@@ -169,9 +167,6 @@ macro_rules! trace {
             //     self.split(num_segments)
             // }
         }
-
-        unsafe impl<'a> Send for $my_struct<'a> {}
-        unsafe impl<'a> Sync for $my_struct<'a> {}
     };
 }
 

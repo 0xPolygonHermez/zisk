@@ -4,7 +4,7 @@ use crate::proof_ctx::ProofCtx;
 use crate::config::Config;
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
-pub trait Executor<T>: Sync {
+pub trait Executor<T> {
     fn witness_computation(&self, config: &dyn Config, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
 }
 
@@ -31,7 +31,7 @@ pub trait Executor<T>: Sync {
 macro_rules! executor {
     ($executor_name:ident: $base_element:ty) => {
         pub struct $executor_name {
-            ptr: std::cell::UnsafeCell<*mut u8>,
+            ptr: *mut u8,
         }
 
         unsafe impl Send for $executor_name {}
@@ -39,15 +39,15 @@ macro_rules! executor {
 
         impl $executor_name {
             fn get_name(&self) -> String {
-                 stringify!($executor_name).to_string()
+                stringify!($executor_name).to_string()
             }
 
             pub fn new() -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()) }
+                $executor_name { ptr: std::ptr::null_mut() }
             }
 
-            pub fn from_ptr(ptr: *mut u8) -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(ptr) }
+            pub fn from_ptr(&self, ptr: *mut u8) -> Self {
+                $executor_name { ptr }
             }
         }
 

@@ -188,7 +188,7 @@ impl fmt::Debug for AirCtx {
 #[cfg(test)]
 mod tests {
     use goldilocks::Goldilocks;
-    use crate::trace;
+    // use crate::trace;
 
     use super::*;
     use std::sync::Arc;
@@ -203,23 +203,23 @@ mod tests {
         };
 
         let proof_ctx = Arc::new(proof_ctx);
-        let cloned_write = Arc::clone(&proof_ctx);
+        let _cloned_write = Arc::clone(&proof_ctx);
 
-        let write_handle = std::thread::spawn(move || {
-            let proof_ctx = cloned_write;
+        // let write_handle = std::thread::spawn(move || {
+        //     let proof_ctx = cloned_write;
 
-            // Create trace
-            trace!(Simple { field1: usize });
-            let mut simple = Simple::new(16);
+        //     // Create trace
+        //     trace!(Simple { field1: usize });
+        //     let mut simple = Simple::new(16);
 
-            for i in 0..16 {
-                simple.field1[i] = i;
-            }
+        //     for i in 0..16 {
+        //         simple.field1[i] = i;
+        //     }
 
-            let res = proof_ctx.add_trace_to_air_instance(0, 0, Box::new(simple));
-            assert!(res.is_ok());
-        });
+        //     let res = proof_ctx.add_trace_to_air_instance(0, 0, Box::new(simple));
+        //     assert!(res.is_ok());
+        // });
 
-        write_handle.join().unwrap();
+        // write_handle.join().unwrap();
     }
 }

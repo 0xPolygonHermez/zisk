@@ -4,14 +4,14 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct TracePol<T: Send + Sync> {
+pub struct TracePol<T> {
     ptr: *mut u8,
     stride: usize,
     num_rows: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Send + Sync> TracePol<T> {
+impl<T> TracePol<T> {
     pub fn new(ptr: *mut u8, stride: usize, num_rows: usize) -> Self {
         TracePol { ptr, stride, num_rows, _phantom: std::marker::PhantomData }
     }
@@ -21,7 +21,7 @@ impl<T: Send + Sync> TracePol<T> {
     }
 }
 
-impl<T: Send + Sync> Index<usize> for TracePol<T> {
+impl<T> Index<usize> for TracePol<T> {
     type Output = T;
 
     #[inline(always)]
@@ -31,7 +31,7 @@ impl<T: Send + Sync> Index<usize> for TracePol<T> {
     }
 }
 
-impl<T: Send + Sync> IndexMut<usize> for TracePol<T> {
+impl<T> IndexMut<usize> for TracePol<T> {
     #[inline(always)]
     fn index_mut(&mut self, i: usize) -> &mut T {
         assert!(i < self.num_rows);
@@ -39,7 +39,7 @@ impl<T: Send + Sync> IndexMut<usize> for TracePol<T> {
     }
 }
 
-impl<T: Send + Sync> Default for TracePol<T> {
+impl<T> Default for TracePol<T> {
     fn default() -> Self {
         TracePol { ptr: null_mut(), stride: 0, num_rows: 0, _phantom: std::marker::PhantomData }
     }
