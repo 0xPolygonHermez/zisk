@@ -1,6 +1,6 @@
 use goldilocks::Goldilocks;
 use proofman::prover::Prover;
-use log::{info, debug};
+use log::{info, debug, trace};
 use util::{timer_start, timer_stop_and_log};
 use crate::ffi::*;
 use proofman::proof_ctx::ProofCtx;
@@ -83,7 +83,8 @@ impl<T: Clone> Prover<T> for EStarkProver<T> {
 
         timer_start!(SAVE_PUBLICS_JSON_BATCH_PROOF);
 
-        let publics_stark_json: Vec<T> = proof_ctx.public_inputs.iter().cloned().take(proof_ctx.public_inputs.len() - 4).collect();
+        let publics_stark_json: Vec<T> =
+            proof_ctx.public_inputs.iter().cloned().take(proof_ctx.public_inputs.len() - 4).collect();
 
         timer_stop_and_log!(SAVE_PUBLICS_JSON_BATCH_PROOF);
 
@@ -193,29 +194,36 @@ impl<T: Clone> Prover<T> for EStarkProver<T> {
 
         // Save output to file
         // if self.config.save_output_to_file {
-            // json2file(pProverRequest.batchProofOutput, pProverRequest.filePrefix + "batch_proof.output.json");
+        // json2file(pProverRequest.batchProofOutput, pProverRequest.filePrefix + "batch_proof.output.json");
         // }
 
         // Save proof to file
         // if self.config.save_proof_to_file {
-            // jProofRecursive1["publics"] = publicStarkJson;
-            // json2file(jProofRecursive1, pProverRequest.filePrefix + "batch_proof.proof.json");
+        // jProofRecursive1["publics"] = publicStarkJson;
+        // json2file(jProofRecursive1, pProverRequest.filePrefix + "batch_proof.proof.json");
         // }
 
         timer_stop_and_log!(SAVE_PROOF);
         config_free_c(p_config);
+        trace!("{}: ··· Memory for p_config deallocated", Self::MY_NAME);
 
         fri_proof_free_c(p_fri_proof);
+        trace!("{}: ··· Memory for p_fri_proof deallocated", Self::MY_NAME);
         fri_proof_free_c(p_fri_proof_c12a);
+        trace!("{}: ··· Memory for p_fri_proof_c12a deallocated", Self::MY_NAME);
         fri_proof_free_c(p_fri_proof_rec1);
+        trace!("{}: ··· Memory for p_fri_proof_rec1 deallocated", Self::MY_NAME);
 
-        zkevm_steps_free_c(p_steps);
-        c12a_steps_free_c(p_steps_c12a);
-        recursive1_steps_free_c(p_steps_rec1);
+        // zkevm_steps_free_c(p_steps);
+        // c12a_steps_free_c(p_steps_c12a);
+        // recursive1_steps_free_c(p_steps_rec1);
 
         starks_free_c(p_starks);
+        trace!("{}: ··· Memory for p_starks deallocated", Self::MY_NAME);
         starks_free_c(p_starks_c12a);
+        trace!("{}: ··· Memory for p_starks_c12a deallocated", Self::MY_NAME);
         starks_free_c(p_starks_recursive1);
+        trace!("{}: ··· Memory for p_starks_recursive1 deallocated", Self::MY_NAME);
 
         info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
     }
