@@ -41,7 +41,7 @@ pub struct ProofManager<T> {
     proof_ctx: ProofCtx<T>,
     wc_manager: ExecutorsManagerSequential<T>,
     config: Box<dyn Config>,
-    provers_manager: ProversManager,
+    provers_manager: ProversManager<T>,
 }
 
 impl<T: Default + Clone> ProofManager<T> {
@@ -50,7 +50,7 @@ impl<T: Default + Clone> ProofManager<T> {
     pub fn new(
         pilout_path: &str,
         wc: Vec<Box<dyn Executor<T>>>,
-        prover: Box<dyn Prover>,
+        prover: Box<dyn Prover<T>>,
         config: Box<dyn Config>,
         options: ProofManOpt,
     ) -> Self {
@@ -77,6 +77,11 @@ impl<T: Default + Clone> ProofManager<T> {
         Self { options, proof_ctx, wc_manager, config, provers_manager }
     }
 
+    pub fn with_ptr(mut self, ptr: *mut u8) -> Self {
+        self.proof_ctx = self.proof_ctx.with_ptr(ptr);
+        self
+    }
+    
     pub fn setup() {
         unimplemented!();
     }
@@ -105,7 +110,7 @@ impl<T: Default + Clone> ProofManager<T> {
                 self.provers_manager.setup(/*&setup*/);
             }
 
-            prover_status = self.provers_manager.compute_stage(stage_id /*&public_inputs, &self.options*/);
+            prover_status = self.provers_manager.compute_stage(stage_id, &mut self.proof_ctx);
 
             info!("{}: <== {} {}", Self::MY_NAME, stage_str, stage_id);
 

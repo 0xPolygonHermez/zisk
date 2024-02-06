@@ -1,19 +1,20 @@
 use log::debug;
 use crate::prover::Prover;
 use crate::proof_manager::ProverStatus;
+use crate::proof_ctx::ProofCtx;
 
 use log::info;
 
 // PROVERS MANAGER
 // ================================================================================================
-pub struct ProversManager {
-    prover: Box<dyn Prover>,
+pub struct ProversManager<T> {
+    prover: Box<dyn Prover<T>>,
 }
 
-impl ProversManager {
+impl<T> ProversManager<T> {
     const MY_NAME: &'static str = "proversm";
 
-    pub fn new(prover: Box<dyn Prover>) -> Self {
+    pub fn new(prover: Box<dyn Prover<T>>) -> Self {
         debug!("{}: Initializing...", Self::MY_NAME);
 
         Self { prover }
@@ -23,10 +24,10 @@ impl ProversManager {
         info!("{}: ==> SETUP", Self::MY_NAME);
     }
 
-    pub fn compute_stage(&mut self, stage_id: u32 /*&public_inputs, &self.options*/) -> ProverStatus {
+    pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         info!("{}: ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
-        self.prover.compute_stage(stage_id);
+        self.prover.compute_stage(stage_id, proof_ctx);
 
         info!("{}: <== COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
