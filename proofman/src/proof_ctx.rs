@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::{os::raw::c_void, sync::RwLock};
 use pilout::pilout::PilOut;
 
 use std::sync::Arc;
@@ -18,6 +18,7 @@ pub struct ProofCtx<T> {
     //pub subAirValues = Vec<T>,
     // NOTE: remove this ptr when vadcops ready, now it's used while developing
     pub ptr: *mut u8,
+    pub proof: Option<*mut c_void>,
 }
 
 impl<T: Default + Clone> ProofCtx<T> {
@@ -67,7 +68,7 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, ptr: std::ptr::null_mut() }
+        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, ptr: std::ptr::null_mut(), proof: None }
     }
 
     pub fn with_ptr(mut self, ptr: *mut u8) -> Self {
@@ -208,6 +209,7 @@ mod tests {
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
             ptr: std::ptr::null_mut(),
+            proof: None,
         };
 
         let proof_ctx = Arc::new(proof_ctx);

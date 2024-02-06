@@ -29,7 +29,7 @@ pub trait Executor<T> {
 
 #[macro_export]
 macro_rules! executor {
-    ($executor_name:ident: $base_element:ty) => {
+    ($executor_name:ident/*: $base_element:ty*/) => {
         pub struct $executor_name {
             ptr: std::cell::UnsafeCell<*mut u8>,
         }

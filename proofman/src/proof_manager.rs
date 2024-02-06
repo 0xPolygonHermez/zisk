@@ -1,9 +1,9 @@
 use crate::public_inputs::PublicInputs;
-use crate::prover::Prover;
+use crate::provers_manager::Prover;
 use pilout::load_pilout;
 use log::{debug, info, error};
 
-use crate::prover::provers_manager::ProversManager;
+use crate::provers_manager::ProversManager;
 
 use crate::executor::Executor;
 use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
@@ -86,7 +86,7 @@ impl<T: Default + Clone> ProofManager<T> {
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
+    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &ProofCtx<T> {
         if !self.options.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -154,7 +154,7 @@ impl<T: Default + Clone> ProofManager<T> {
                     }
 
                     info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
-                    return;
+                    return &self.proof_ctx;
                 }
             }
 
@@ -177,6 +177,8 @@ impl<T: Default + Clone> ProofManager<T> {
         //         challengesFRISteps: this.proofCtx.challenges.slice(this.proofCtx.airout.numStages + 3).map(c => c[0]),
         //         subAirValues: this.proofCtx.subAirValues,
         //     };
+
+        &self.proof_ctx
     }
 
     pub fn verify() {

@@ -1,12 +1,13 @@
 use goldilocks::Goldilocks;
-use proofman::prover::Prover;
-use log::{info, debug, trace};
+use proofman::provers_manager::Prover;
+use log::{info, debug};
 use util::{timer_start, timer_stop_and_log};
 use crate::ffi::*;
 use proofman::proof_ctx::ProofCtx;
 use crate::verification_key::VerificationKey;
 use std::time::Instant;
 use crate::stark_info::StarkInfo;
+
 
 pub struct EStarkProverConfig {
     pub current_path: String,
@@ -30,6 +31,34 @@ pub struct EStarkProverConfig {
     pub recursive2_verkey: String,
     // pub save_output_to_file: bool,
     // pub save_proof_to_file: bool,
+}
+
+impl Clone for EStarkProverConfig {
+    fn clone(&self) -> Self {
+        Self {
+            current_path: self.current_path.clone(),
+            zkevm_const_pols: self.zkevm_const_pols.clone(),
+            map_const_pols_file: self.map_const_pols_file,
+            zkevm_constants_tree: self.zkevm_constants_tree.clone(),
+            zkevm_stark_info: self.zkevm_stark_info.clone(),
+            zkevm_verkey: self.zkevm_verkey.clone(),
+            zkevm_verifier: self.zkevm_verifier.clone(),
+            c12a_const_pols: self.c12a_const_pols.clone(),
+            c12a_constants_tree: self.c12a_constants_tree.clone(),
+            c12a_stark_info: self.c12a_stark_info.clone(),
+            c12a_verkey: self.c12a_verkey.clone(),
+            c12a_exec: self.c12a_exec.clone(),
+            recursive1_const_pols: self.recursive1_const_pols.clone(),
+            recursive1_constants_tree: self.recursive1_constants_tree.clone(),
+            recursive1_stark_info: self.recursive1_stark_info.clone(),
+            recursive1_verkey: self.recursive1_verkey.clone(),
+            recursive1_verifier: self.recursive1_verifier.clone(),
+            recursive1_exec: self.recursive1_exec.clone(),
+            recursive2_verkey: self.recursive2_verkey.clone(),
+            // save_output_to_file: self.save_output_to_file,
+            // save_proof_to_file: self.save_proof_to_file,
+        }
+    }
 }
 
 pub struct EStarkProver<T> {
@@ -61,30 +90,30 @@ impl<T: Clone> Prover<T> for EStarkProver<T> {
             proof_ctx.ptr as *mut std::os::raw::c_void,
         );
 
-        let p_starks_c12a = starks_new_c(
-            p_config,
-            self.config.c12a_const_pols.as_str(),
-            self.config.map_const_pols_file,
-            self.config.c12a_constants_tree.as_str(),
-            self.config.c12a_stark_info.as_str(),
-            proof_ctx.ptr as *mut std::os::raw::c_void,
-        );
+        // let p_starks_c12a = starks_new_c(
+        //     p_config,
+        //     self.config.c12a_const_pols.as_str(),
+        //     self.config.map_const_pols_file,
+        //     self.config.c12a_constants_tree.as_str(),
+        //     self.config.c12a_stark_info.as_str(),
+        //     proof_ctx.ptr as *mut std::os::raw::c_void,
+        // );
 
-        let p_starks_recursive1 = starks_new_c(
-            p_config,
-            self.config.recursive1_const_pols.as_str(),
-            self.config.map_const_pols_file,
-            self.config.recursive1_constants_tree.as_str(),
-            self.config.recursive1_stark_info.as_str(),
-            proof_ctx.ptr as *mut std::os::raw::c_void,
-        );
+        // let p_starks_recursive1 = starks_new_c(
+        //     p_config,
+        //     self.config.recursive1_const_pols.as_str(),
+        //     self.config.map_const_pols_file,
+        //     self.config.recursive1_constants_tree.as_str(),
+        //     self.config.recursive1_stark_info.as_str(),
+        //     proof_ctx.ptr as *mut std::os::raw::c_void,
+        // );
 
-        let verkey_recursive2 = VerificationKey::<Goldilocks>::from_json(self.config.recursive2_verkey.as_str());
+        // let verkey_recursive2 = VerificationKey::<Goldilocks>::from_json(self.config.recursive2_verkey.as_str());
 
         timer_start!(SAVE_PUBLICS_JSON_BATCH_PROOF);
 
-        let publics_stark_json: Vec<T> =
-            proof_ctx.public_inputs.iter().cloned().take(proof_ctx.public_inputs.len() - 4).collect();
+        // let publics_stark_json: Vec<T> =
+        //     proof_ctx.public_inputs.iter().cloned().take(proof_ctx.public_inputs.len() - 4).collect();
 
         timer_stop_and_log!(SAVE_PUBLICS_JSON_BATCH_PROOF);
 
@@ -99,133 +128,136 @@ impl<T: Clone> Prover<T> for EStarkProver<T> {
             p_steps,
         );
 
-        // Compute witness C12a
-        // ========================================================================
-        timer_start!(STARK_CALC_WITNESS_C12A);
-        let stark_info_c12a = StarkInfo::from_json(self.config.c12a_stark_info.as_str());
+        proof_ctx.proof = Some(p_fri_proof);
 
-        let roots_c = Vec::<Goldilocks>::new();
-        let zkin = zkin_new_c(p_fri_proof, &publics_stark_json, &roots_c);
+        return;
 
-        let p_cm_pols12a = commit_pols_starks_new_c(
-            proof_ctx.ptr as *mut std::os::raw::c_void,
-            1 << stark_info_c12a.stark_struct.n_bits,
-            stark_info_c12a.n_cm1,
-        );
+        // // Compute witness C12a
+        // // ========================================================================
+        // timer_start!(STARK_CALC_WITNESS_C12A);
+        // let stark_info_c12a = StarkInfo::from_json(self.config.c12a_stark_info.as_str());
 
-        circom_get_commited_pols_c(
-            p_cm_pols12a,
-            self.config.zkevm_verifier.as_str(),
-            self.config.c12a_exec.as_str(),
-            zkin,
-            1 << stark_info_c12a.stark_struct.n_bits,
-            stark_info_c12a.n_cm1,
-        );
+        // let roots_c = Vec::<Goldilocks>::new();
+        // let zkin = zkin_new_c(p_fri_proof, &publics_stark_json, &roots_c);
 
-        commit_pols_starks_free_c(p_cm_pols12a);
+        // let p_cm_pols12a = commit_pols_starks_new_c(
+        //     proof_ctx.ptr as *mut std::os::raw::c_void,
+        //     1 << stark_info_c12a.stark_struct.n_bits,
+        //     stark_info_c12a.n_cm1,
+        // );
 
-        timer_stop_and_log!(STARK_CALC_WITNESS_C12A);
+        // circom_get_commited_pols_c(
+        //     p_cm_pols12a,
+        //     self.config.zkevm_verifier.as_str(),
+        //     self.config.c12a_exec.as_str(),
+        //     zkin,
+        //     1 << stark_info_c12a.stark_struct.n_bits,
+        //     stark_info_c12a.n_cm1,
+        // );
 
-        // Generate C12a stark proof
-        // ========================================================================
-        let p_steps_c12a = c12a_steps_new_c();
-        let p_fri_proof_c12a = self.main_gen_proof(
-            p_starks_c12a,
-            self.config.c12a_stark_info.as_str(),
-            self.config.c12a_verkey.as_str(),
-            &proof_ctx.public_inputs,
-            p_steps_c12a,
-        );
+        // timer_stop_and_log!(STARK_CALC_WITNESS_C12A);
 
-        // Compute witness recursive1
-        // ========================================================================
-        timer_start!(STARK_CALC_WITNESS_RECURSIVE1);
-        let stark_info_recursive1 = StarkInfo::from_json(self.config.recursive1_stark_info.as_str());
+        // // Generate C12a stark proof
+        // // ========================================================================
+        // let p_steps_c12a = c12a_steps_new_c();
+        // let p_fri_proof_c12a = self.main_gen_proof(
+        //     p_starks_c12a,
+        //     self.config.c12a_stark_info.as_str(),
+        //     self.config.c12a_verkey.as_str(),
+        //     &proof_ctx.public_inputs,
+        //     p_steps_c12a,
+        // );
 
-        let mut roots_c_c12a = Vec::new();
-        roots_c_c12a.push(verkey_recursive2.const_root[0]);
-        roots_c_c12a.push(verkey_recursive2.const_root[1]);
-        roots_c_c12a.push(verkey_recursive2.const_root[2]);
-        roots_c_c12a.push(verkey_recursive2.const_root[3]);
+        // // Compute witness recursive1
+        // // ========================================================================
+        // timer_start!(STARK_CALC_WITNESS_RECURSIVE1);
+        // let stark_info_recursive1 = StarkInfo::from_json(self.config.recursive1_stark_info.as_str());
 
-        let zkin_c12a = zkin_new_c(p_fri_proof_c12a, &publics_stark_json, &roots_c_c12a);
+        // let mut roots_c_c12a = Vec::new();
+        // roots_c_c12a.push(verkey_recursive2.const_root[0]);
+        // roots_c_c12a.push(verkey_recursive2.const_root[1]);
+        // roots_c_c12a.push(verkey_recursive2.const_root[2]);
+        // roots_c_c12a.push(verkey_recursive2.const_root[3]);
 
-        let p_cm_pols_recursive1 = commit_pols_starks_new_c(
-            proof_ctx.ptr as *mut std::os::raw::c_void,
-            1 << stark_info_recursive1.stark_struct.n_bits,
-            stark_info_recursive1.n_cm1,
-        );
+        // let zkin_c12a = zkin_new_c(p_fri_proof_c12a, &publics_stark_json, &roots_c_c12a);
 
-        circom_recursive1_get_commited_pols_c(
-            p_cm_pols_recursive1,
-            self.config.recursive1_verifier.as_str(),
-            self.config.recursive1_exec.as_str(),
-            zkin_c12a,
-            1 << stark_info_recursive1.stark_struct.n_bits,
-            stark_info_recursive1.n_cm1,
-        );
+        // let p_cm_pols_recursive1 = commit_pols_starks_new_c(
+        //     proof_ctx.ptr as *mut std::os::raw::c_void,
+        //     1 << stark_info_recursive1.stark_struct.n_bits,
+        //     stark_info_recursive1.n_cm1,
+        // );
 
-        commit_pols_starks_free_c(p_cm_pols_recursive1);
+        // circom_recursive1_get_commited_pols_c(
+        //     p_cm_pols_recursive1,
+        //     self.config.recursive1_verifier.as_str(),
+        //     self.config.recursive1_exec.as_str(),
+        //     zkin_c12a,
+        //     1 << stark_info_recursive1.stark_struct.n_bits,
+        //     stark_info_recursive1.n_cm1,
+        // );
 
-        timer_stop_and_log!(STARK_CALC_WITNESS_RECURSIVE1);
+        // timer_stop_and_log!(STARK_CALC_WITNESS_RECURSIVE1);
 
-        // Generate recursive 1 stark proof
-        // ========================================================================
-        let p_steps_rec1 = recursive1_steps_new_c();
-        let p_fri_proof_rec1 = self.main_gen_proof(
-            p_starks_recursive1,
-            self.config.recursive1_stark_info.as_str(),
-            self.config.recursive1_verkey.as_str(),
-            &proof_ctx.public_inputs,
-            p_steps_rec1,
-        );
+        // // Generate recursive 1 stark proof
+        // // ========================================================================
+        // let p_steps_rec1 = recursive1_steps_new_c();
+        // let p_fri_proof_rec1 = self.main_gen_proof(
+        //     p_starks_recursive1,
+        //     self.config.recursive1_stark_info.as_str(),
+        //     self.config.recursive1_verkey.as_str(),
+        //     &proof_ctx.public_inputs,
+        //     p_steps_rec1,
+        // );
 
-        // Save proof
-        // ========================================================================
-        timer_start!(SAVE_PROOF);
+        // // Save proof
+        // // ========================================================================
+        // timer_start!(SAVE_PROOF);
 
-        // let mut roots_c_recursive1 = Vec::<Goldilocks>::new();
-        // let zkin_recursive1 = zkin_new_c(p_fri_proof_recursive1, &publics_stark_json, &roots_c_recursive1);
+        // // let mut roots_c_recursive1 = Vec::<Goldilocks>::new();
+        // // let zkin_recursive1 = zkin_new_c(p_fri_proof_recursive1, &publics_stark_json, &roots_c_recursive1);
 
-        // pProverRequest.batchProofOutput = zkinRecursive1;
+        // // pProverRequest.batchProofOutput = zkinRecursive1;
 
-        // save publics to filestarks
-        // json2file(publicStarkJson, pProverRequest.publicsOutputFile());
+        // // save publics to filestarks
+        // // json2file(publicStarkJson, pProverRequest.publicsOutputFile());
 
-        // Save output to file
-        // if self.config.save_output_to_file {
-        // json2file(pProverRequest.batchProofOutput, pProverRequest.filePrefix + "batch_proof.output.json");
-        // }
+        // // Save output to file
+        // // if self.config.save_output_to_file {
+        // // json2file(pProverRequest.batchProofOutput, pProverRequest.filePrefix + "batch_proof.output.json");
+        // // }
 
-        // Save proof to file
-        // if self.config.save_proof_to_file {
-        // jProofRecursive1["publics"] = publicStarkJson;
-        // json2file(jProofRecursive1, pProverRequest.filePrefix + "batch_proof.proof.json");
-        // }
+        // // Save proof to file
+        // // if self.config.save_proof_to_file {
+        // // jProofRecursive1["publics"] = publicStarkJson;
+        // // json2file(jProofRecursive1, pProverRequest.filePrefix + "batch_proof.proof.json");
+        // // }
 
-        timer_stop_and_log!(SAVE_PROOF);
-        config_free_c(p_config);
-        trace!("{}: ··· Memory for p_config deallocated", Self::MY_NAME);
+        // timer_stop_and_log!(SAVE_PROOF);
+        // config_free_c(p_config);
+        // trace!("{}: ··· Memory for p_config deallocated", Self::MY_NAME);
 
-        fri_proof_free_c(p_fri_proof);
-        trace!("{}: ··· Memory for p_fri_proof deallocated", Self::MY_NAME);
-        fri_proof_free_c(p_fri_proof_c12a);
-        trace!("{}: ··· Memory for p_fri_proof_c12a deallocated", Self::MY_NAME);
-        fri_proof_free_c(p_fri_proof_rec1);
-        trace!("{}: ··· Memory for p_fri_proof_rec1 deallocated", Self::MY_NAME);
+        // fri_proof_free_c(p_fri_proof);
+        // trace!("{}: ··· Memory for p_fri_proof deallocated", Self::MY_NAME);
+        // fri_proof_free_c(p_fri_proof_c12a);
+        // trace!("{}: ··· Memory for p_fri_proof_c12a deallocated", Self::MY_NAME);
+        // fri_proof_free_c(p_fri_proof_rec1);
+        // trace!("{}: ··· Memory for p_fri_proof_rec1 deallocated", Self::MY_NAME);
 
-        // zkevm_steps_free_c(p_steps);
-        // c12a_steps_free_c(p_steps_c12a);
-        // recursive1_steps_free_c(p_steps_rec1);
+        // // commit_pols_starks_free_c(p_cm_pols_recursive1);
+        // // commit_pols_starks_free_c(p_cm_pols12a);
 
-        starks_free_c(p_starks);
-        trace!("{}: ··· Memory for p_starks deallocated", Self::MY_NAME);
-        starks_free_c(p_starks_c12a);
-        trace!("{}: ··· Memory for p_starks_c12a deallocated", Self::MY_NAME);
-        starks_free_c(p_starks_recursive1);
-        trace!("{}: ··· Memory for p_starks_recursive1 deallocated", Self::MY_NAME);
+        // // zkevm_steps_free_c(p_steps);
+        // // c12a_steps_free_c(p_steps_c12a);
+        // // recursive1_steps_free_c(p_steps_rec1);
 
-        info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
+        // starks_free_c(p_starks);
+        // trace!("{}: ··· Memory for p_starks deallocated", Self::MY_NAME);
+        // starks_free_c(p_starks_c12a);
+        // trace!("{}: ··· Memory for p_starks_c12a deallocated", Self::MY_NAME);
+        // starks_free_c(p_starks_recursive1);
+        // trace!("{}: ··· Memory for p_starks_recursive1 deallocated", Self::MY_NAME);
+
+        // info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
     }
 }
 

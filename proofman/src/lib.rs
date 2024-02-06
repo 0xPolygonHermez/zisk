@@ -6,6 +6,6 @@ pub mod message;
 pub mod proof_ctx;
 pub mod proof_manager_threaded;
 pub mod proof_manager;
-pub mod prover;
+pub mod provers_manager;
 pub mod public_inputs;
 pub mod task;
