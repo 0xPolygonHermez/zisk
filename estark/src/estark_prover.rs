@@ -209,16 +209,13 @@ impl<T: Clone> Prover<T> for EStarkProver<T> {
         fri_proof_free_c(p_fri_proof_c12a);
         fri_proof_free_c(p_fri_proof_rec1);
 
-        println!("free steps");
         zkevm_steps_free_c(p_steps);
         c12a_steps_free_c(p_steps_c12a);
         recursive1_steps_free_c(p_steps_rec1);
 
-        println!("free starks");
         starks_free_c(p_starks);
         starks_free_c(p_starks_c12a);
         starks_free_c(p_starks_recursive1);
-        println!("free starks done");
 
         info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
     }

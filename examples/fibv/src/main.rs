@@ -63,7 +63,7 @@
 // }
 
 // impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
-//     fn to_elements(&self) -> Vec<Goldilocks> {
+//     fn to_vec(&self) -> Vec<Goldilocks> {
 //         vec![self.a, self.b, self.module]
 //     }
 // }

@@ -58,7 +58,7 @@ impl FibFullPublicInputs<u64> {
 }
 
 impl<BaseElement: FieldElement> PublicInput<BaseElement> for FibFullPublicInputs<BaseElement> {
-    fn to_elements(&self) -> Vec<BaseElement> {
+    fn to_vec(&self) -> Vec<BaseElement> {
         vec![self.a, self.b]
     }
 }

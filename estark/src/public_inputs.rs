@@ -64,7 +64,7 @@ pub struct ZKEVMPublicInputs {
 }
 
 impl PublicInputs<Goldilocks> for ZKEVMPublicInputs {
-    fn to_elements(&self) -> Vec<Goldilocks> {
+    fn to_vec(&self) -> Vec<Goldilocks> {
         vec![
             self.b0, self.b1, self.b2, self.b3, self.b4, self.b5, self.b6, self.b7, self.c0, self.c1, self.c2, self.c3,
             self.c4, self.c5, self.c6, self.c7, self.sp, self.gas, self.ctx, self.sr0, self.sr1, self.sr2, self.sr3,

@@ -78,7 +78,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     /// Initializes the proof context with optional public inputs
     pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
         if let Some(public_inputs) = public_inputs {
-            self.public_inputs = public_inputs.to_elements();
+            self.public_inputs = public_inputs.to_vec();
         }
 
         for subproof in self.subproofs.iter() {
@@ -207,6 +207,7 @@ mod tests {
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
+            ptr: std::ptr::null_mut(),
         };
 
         let proof_ctx = Arc::new(proof_ctx);
