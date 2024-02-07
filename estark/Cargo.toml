@@ -16,3 +16,7 @@ proofman = { path = "../proofman" }
 goldilocks = { path = "../goldilocks" }
 util = { path = "../util" }
 log = { version = "0.4", default-features = false }
+
+[features]
+default = ["no_lib_link"]
+no_lib_link = []
