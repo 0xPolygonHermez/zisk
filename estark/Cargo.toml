@@ -18,5 +18,5 @@ util = { path = "../util" }
 log = { version = "0.4", default-features = false }
 
 [features]
-default = ["no_lib_link"]
+default = []
 no_lib_link = []
