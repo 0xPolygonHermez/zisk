@@ -18,7 +18,7 @@ pub struct EStarkProverConfig {
 }
 
 pub struct EStarkProver<T> {
-    p_starks: *mut ::std::os::raw::c_void,
+    pub p_starks: *mut ::std::os::raw::c_void,
     p_steps: *mut ::std::os::raw::c_void,
     stark_info: StarkInfo,
     verkey: VerificationKey<Goldilocks>,

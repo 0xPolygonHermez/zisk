@@ -81,7 +81,7 @@ impl<T: Default + Clone> ProofManager<T> {
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &ProofCtx<T> {
+    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &mut ProofCtx<T> {
         if !self.options.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -149,7 +149,7 @@ impl<T: Default + Clone> ProofManager<T> {
                     }
 
                     info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
-                    return &self.proof_ctx;
+                    return &mut self.proof_ctx;
                 }
             }
 
@@ -173,7 +173,7 @@ impl<T: Default + Clone> ProofManager<T> {
         //         subAirValues: this.proofCtx.subAirValues,
         //     };
 
-        &self.proof_ctx
+        &mut self.proof_ctx
     }
 
     pub fn verify() {
