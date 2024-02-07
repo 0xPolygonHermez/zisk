@@ -17,7 +17,6 @@ pub struct ProofCtx<T> {
     pub subproofs: Vec<SubproofCtx>,
     //pub subAirValues = Vec<T>,
     // NOTE: remove this ptr when vadcops ready, now it's used while developing
-    pub ptr: *mut u8,
     pub proof: Option<*mut c_void>,
 }
 
@@ -68,12 +67,7 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, ptr: std::ptr::null_mut(), proof: None }
-    }
-
-    pub fn with_ptr(mut self, ptr: *mut u8) -> Self {
-        self.ptr = ptr;
-        self
+        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, proof: None }
     }
 
     /// Initializes the proof context with optional public inputs

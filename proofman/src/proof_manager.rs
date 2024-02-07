@@ -76,11 +76,6 @@ impl<T: Default + Clone> ProofManager<T> {
 
         Self { options, proof_ctx, wc_manager, config, provers_manager }
     }
-
-    pub fn with_ptr(mut self, ptr: *mut u8) -> Self {
-        self.proof_ctx = self.proof_ctx.with_ptr(ptr);
-        self
-    }
     
     pub fn setup() {
         unimplemented!();
