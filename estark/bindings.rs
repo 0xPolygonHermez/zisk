@@ -123,4 +123,13 @@ extern "C" {
         numRootC: ::std::os::raw::c_ulong,
         pRootC: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z10save_proofPvmS_PcS0_"]
+    pub fn save_proof(
+        pFriProof: *mut ::std::os::raw::c_void,
+        numPublicInputs: ::std::os::raw::c_ulong,
+        pPublicInputs: *mut ::std::os::raw::c_void,
+        publicsOutputFile: *mut ::std::os::raw::c_char,
+        filePrefix: *mut ::std::os::raw::c_char,
+    );
 }
