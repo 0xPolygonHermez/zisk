@@ -369,7 +369,7 @@ pub struct StarkInfo {
 impl StarkInfo {
     pub fn from_json(filename: &str) -> Self {
         timer_start!(STARK_INFO_LOAD);
-        println!("Loading StarkInfo from {}", filename);
+        debug!("starkinf: ··· Loading StarkInfo from {}", filename);
         let json = std::fs::read_to_string(filename).expect(format!("Failed to read file {}", filename).as_str());
         let mut stark_info: StarkInfo =
             serde_json::from_str(&json).expect(&format!("Failed to parse JSON file: {}", filename));

@@ -10,26 +10,11 @@ use crate::stark_info::StarkInfo;
 
 pub struct EStarkProverConfig {
     pub current_path: String,
-    pub zkevm_const_pols: String,
+    pub const_pols_filename: String,
     pub map_const_pols_file: bool,
-    pub zkevm_constants_tree: String,
-    pub zkevm_stark_info: String,
-    pub zkevm_verkey: String,
-    pub zkevm_verifier: String,
-    pub c12a_const_pols: String,
-    pub c12a_constants_tree: String,
-    pub c12a_stark_info: String,
-    pub c12a_verkey: String,
-    pub c12a_exec: String,
-    pub recursive1_const_pols: String,
-    pub recursive1_constants_tree: String,
-    pub recursive1_stark_info: String,
-    pub recursive1_verkey: String,
-    pub recursive1_verifier: String,
-    pub recursive1_exec: String,
-    pub recursive2_verkey: String,
-    // pub save_output_to_file: bool,
-    // pub save_proof_to_file: bool,
+    pub const_tree_filename: String,
+    pub stark_info_filename: String,
+    pub verkey_filename: String,
 }
 
 pub struct EStarkProver<T> {
@@ -51,16 +36,16 @@ impl<T> EStarkProver<T> {
         timer_start!(ESTARK_PROVER_NEW);
 
         let p_config = config_new_c(&config.current_path);
-        let stark_info = StarkInfo::from_json(&config.zkevm_stark_info);
+        let stark_info = StarkInfo::from_json(&config.stark_info_filename);
 
-        let verkey = VerificationKey::<Goldilocks>::from_json(&config.zkevm_verkey);
+        let verkey = VerificationKey::<Goldilocks>::from_json(&config.verkey_filename);
 
         let p_starks = starks_new_c(
             p_config,
-            config.zkevm_const_pols.as_str(),
+            config.const_pols_filename.as_str(),
             config.map_const_pols_file,
-            config.zkevm_constants_tree.as_str(),
-            config.zkevm_stark_info.as_str(),
+            config.const_tree_filename.as_str(),
+            config.stark_info_filename.as_str(),
             ptr,
         );
 
