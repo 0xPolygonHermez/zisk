@@ -71,6 +71,111 @@ pub fn _recursive2_steps_free_c(pRecursive2Steps: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn step2prev_parser_first_avx_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step2prev_parser_first_avx(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step2prev_parser_first_avx512_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step2prev_parser_first_avx512(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step2prev_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64) {
+    unsafe {
+        step2prev_first_parallel(_pSteps, _pParams, _nrows);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3prev_parser_first_avx_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step3prev_parser_first_avx(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3prev_parser_first_avx512_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step3prev_parser_first_avx512(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3prev_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64) {
+    unsafe {
+        step3prev_first_parallel(_pSteps, _pParams, _nrows);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3_parser_first_avx_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step3_parser_first_avx(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3_parser_first_avx512_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step3_parser_first_avx512(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step3_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64) {
+    unsafe {
+        step3_first_parallel(_pSteps, _pParams, _nrows);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step42ns_parser_first_avx_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step42ns_parser_first_avx(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step42ns_parser_first_avx512_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step42ns_parser_first_avx512(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step42ns_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64) {
+    unsafe {
+        step42ns_first_parallel(_pSteps, _pParams, _nrows);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step52ns_parser_first_avx_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step52ns_parser_first_avx(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step52ns_parser_first_avx512_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64, _nrowsBatch: u64) {
+    unsafe {
+        step52ns_parser_first_avx512(_pSteps, _pParams, _nrows, _nrowsBatch);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn step52ns_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _nrows: u64) {
+    unsafe {
+        step52ns_first_parallel(_pSteps, _pParams, _nrows);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(
     pol_n: u64,
     dim: u64,
@@ -152,6 +257,63 @@ pub fn starks_genproof_c<T>(
 pub fn starks_free_c(p_starks: *mut c_void) {
     unsafe {
         starks_free(p_starks);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transpose_h1_h2_columns_c(
+    p_starks: *mut c_void,
+    p_address: *mut c_void,
+    num_commited: *const u64,
+    p_buffer: *mut c_void,
+) -> *mut c_void {
+    unsafe { transpose_h1_h2_columns(p_starks, p_address, num_commited, p_buffer) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transpose_h1_h2_rows_c(
+    p_starks: *mut c_void,
+    p_address: *mut c_void,
+    num_commited: *const u64,
+    p_trans_pols: *mut c_void,
+) {
+    unsafe {
+        transpose_h1_h2_rows(p_starks, p_address, num_commited, p_trans_pols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transpose_z_columns_c(
+    p_starks: *mut c_void,
+    p_address: *mut c_void,
+    num_commited: *const u64,
+    p_buffer: *mut c_void,
+) -> *mut c_void {
+    unsafe { transpose_z_columns(p_starks, p_address, num_commited, p_buffer) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transpose_z_rows_c(
+    p_starks: *mut c_void,
+    p_address: *mut c_void,
+    num_commited: *const u64,
+    p_trans_pols: *mut c_void,
+) {
+    unsafe {
+        transpose_z_rows(p_starks, p_address, num_commited, p_trans_pols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn evmap_c(
+    p_starks: *mut c_void,
+    p_address: *mut c_void,
+    evals: *mut c_void,
+    p_l_ev: *mut c_void,
+    p_lp_ev: *mut c_void,
+) {
+    unsafe {
+        evmap(p_starks, p_address, evals, p_l_ev, p_lp_ev);
     }
 }
 
@@ -242,6 +404,118 @@ pub fn starks_free_c(p_starks: *mut c_void) {
 // pub fn get_proof_c(p_starks: *mut c_void) -> *mut c_void {
 //     unsafe { get_proof(p_starks) }
 // }
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn steps_params_new_c(
+    p_starks: *mut c_void,
+    p_challenges: *mut c_void,
+    p_evals: *mut c_void,
+    p_x_div_x_sub_xi: *mut c_void,
+    p_x_div_x_sub_wxi: *mut c_void,
+    p_public_inputs: *mut c_void,
+) -> *mut c_void {
+    unsafe { steps_params_new(p_starks, p_challenges, p_evals, p_x_div_x_sub_xi, p_x_div_x_sub_wxi, p_public_inputs) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn steps_params_free_c(p_steps_params: *mut c_void) {
+    unsafe {
+        steps_params_free(p_steps_params);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn tree_merkelize_c(p_starks: *mut c_void, index: u64) {
+    unsafe {
+        tree_merkelize(p_starks, index);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn tree_get_root_c(p_starks: *mut c_void, index: u64, root: *mut c_void) {
+    unsafe {
+        tree_get_root(p_starks, index, root);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn extend_pol_c(p_starks: *mut c_void, step: u64) {
+    unsafe {
+        extend_pol(p_starks, step);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_pbuffer_c(p_starks: *mut c_void) -> *mut c_void {
+    unsafe { get_pbuffer(p_starks) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_h1_h2_c(p_starks: *mut c_void, p_trans_pols: *mut c_void) {
+    unsafe {
+        calculate_h1_h2(p_starks, p_trans_pols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_z_c(p_starks: *mut c_void, p_new_pols: *mut c_void) {
+    unsafe {
+        calculate_z(p_starks, p_new_pols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_exps_2ns_c(p_starks: *mut c_void, p_qq1: *mut c_void, p_qq2: *mut c_void) {
+    unsafe {
+        calculate_exps_2ns(p_starks, p_qq1, p_qq2);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_lev_lpev_c(
+    p_starks: *mut c_void,
+    p_l_ev: *mut c_void,
+    p_lp_ev: *mut c_void,
+    p_xis: *mut c_void,
+    p_wxis: *mut c_void,
+    p_c_w: *mut c_void,
+    p_challenges: *mut c_void,
+) {
+    unsafe {
+        calculate_lev_lpev(p_starks, p_l_ev, p_lp_ev, p_xis, p_wxis, p_c_w, p_challenges);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_xdivxsubxi_c(
+    p_starks: *mut c_void,
+    extend_bits: u64,
+    xi: *mut c_void,
+    wxi: *mut c_void,
+    challenges: *mut c_void,
+    p_x_div_x_sub_xi: *mut c_void,
+    p_x_div_x_sub_wxi: *mut c_void,
+) {
+    unsafe {
+        calculate_xdivxsubxi(p_starks, extend_bits, xi, wxi, challenges, p_x_div_x_sub_xi, p_x_div_x_sub_wxi);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn finalize_proof_c(
+    p_starks: *mut c_void,
+    p_proof: *mut c_void,
+    p_transcript: *mut c_void,
+    p_evals: *mut c_void,
+    p_root0: *mut c_void,
+    p_root1: *mut c_void,
+    p_root2: *mut c_void,
+    p_root3: *mut c_void,
+) {
+    unsafe {
+        finalize_proof(p_starks, p_proof, p_transcript, p_evals, p_root0, p_root1, p_root2, p_root3);
+    }
+}
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_num_rows_step_batch_c(pStarks: *mut c_void) -> u64 {
@@ -417,6 +691,20 @@ pub fn transcript_new_c() -> *mut c_void {
     unsafe { transcript_new() }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transcript_put_c(_pTranscript: *mut c_void, _pInput: *mut c_void, _size: u64) {
+    unsafe {
+        transcript_put(_pTranscript, _pInput, _size);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transcript_get_field_c(_pTranscript: *mut c_void, _pOutput: *mut c_void) {
+    unsafe {
+        transcript_get_field(_pTranscript, _pOutput);
+    }
+}
+
 // #[cfg(not(feature = "no_lib_link"))]
 // pub fn get_permutations_c(p_transcript: *mut c_void, res: &[u64], n: u64, nBits: u64) {
 //     unsafe {
@@ -428,6 +716,32 @@ pub fn transcript_new_c() -> *mut c_void {
 pub fn transcript_free_c(p_transcript: *mut c_void) {
     unsafe {
         transcript_free(p_transcript);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
+    unsafe {
+        let name = CString::new(_name).unwrap();
+
+        polinomial_new(_degree, _dim, name.as_ptr() as *mut std::os::raw::c_char)
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_get_address_c(_pPolinomial: *mut c_void) -> *mut c_void {
+    unsafe { polinomial_get_address(_pPolinomial) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_get_p_element_c(_pPolinomial: *mut c_void, _index: u64) -> *mut c_void {
+    unsafe { polinomial_get_p_element(_pPolinomial, _index) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_free_c(_pPolinomial: *mut c_void) {
+    unsafe {
+        polinomial_free(_pPolinomial);
     }
 }
 
@@ -779,7 +1093,7 @@ pub fn calculate_xdivxsubxi_c(
 #[cfg(feature = "no_lib_link")]
 pub fn finalize_proof_c(
     _pStarks: *mut c_void,
-    _proof: *mut c_void,
+    _pProof: *mut c_void,
     _transcript: *mut c_void,
     _evals: *mut c_void,
     _root0: *mut c_void,

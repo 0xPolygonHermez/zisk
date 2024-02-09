@@ -190,35 +190,35 @@ extern "C" {
     #[link_name = "\u{1}_Z11starks_freePv"]
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
 
-    #[link_name = "\u{1}_Z20transposeH1H2ColumnsPvS_PmS_"]
+    #[link_name = "\u{1}_Z23transpose_h1_h2_columnsPvS_PmS_"]
     pub fn transpose_h1_h2_columns(
         pStarks: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *mut u64,
+        numCommited: *const u64,
         pBuffer: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z17transposeH1H2RowsPvS_PmS_"]
+    #[link_name = "\u{1}_Z20transpose_h1_h2_rowsPvS_PmS_"]
     pub fn transpose_h1_h2_rows(
         pStarks: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *mut u64,
+        numCommited: *const u64,
         transPols: *mut ::std::os::raw::c_void,
     );
 
-    #[link_name = "\u{1}_Z17transposeZColumnsPvS_PmS_"]
+    #[link_name = "\u{1}_Z19transpose_z_columnsPvS_PmS_"]
     pub fn transpose_z_columns(
         pStarks: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *mut u64,
+        numCommited: *const u64,
         pBuffer: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z14transposeZRowsPvS_PmS_"]
+    #[link_name = "\u{1}_Z16transpose_z_rowsPvS_PmS_"]
     pub fn transpose_z_rows(
         pStarks: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *mut u64,
+        numCommited: *const u64,
         transPols: *mut ::std::os::raw::c_void,
     );
 
@@ -273,8 +273,8 @@ extern "C" {
     #[link_name = "\u{1}_Z13tree_get_rootPvmS_"]
     pub fn tree_get_root(pStarks: *mut ::std::os::raw::c_void, index: u64, root: *mut ::std::os::raw::c_void);
 
-    #[link_name = "\u{1}_Z9extendPolPvm"]
-    pub fn extendPol(pStarks: *mut ::std::os::raw::c_void, step: u64);
+    #[link_name = "\u{1}_Z10extend_polPvm"]
+    pub fn extend_pol(pStarks: *mut ::std::os::raw::c_void, step: u64);
 
     #[link_name = "\u{1}_Z11get_pbufferPv"]
     pub fn get_pbuffer(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
@@ -471,7 +471,7 @@ extern "C" {
     #[link_name = "\u{1}_Z14transcript_newv"]
     pub fn transcript_new() -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z3putPvS_m"]
+    #[link_name = "\u{1}_Z14transcript_putPvS_m"]
     pub fn transcript_put(pTranscript: *mut ::std::os::raw::c_void, pInput: *mut ::std::os::raw::c_void, size: u64);
 
     #[link_name = "\u{1}_Z20transcript_get_fieldPvS_"]
@@ -487,10 +487,12 @@ extern "C" {
     #[link_name = "\u{1}_Z14polinomial_newmmPc"]
     pub fn polinomial_new(degree: u64, dim: u64, name: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z11get_addressPv"]
-    pub fn polinomial_get_address(pPolinomial: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+    #[link_name = "\u{1}_Z22polinomial_get_addressPv"]
+    pub fn polinomial_get_address(
+        pPolinomial: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z13get_p_elementPvm"]
+    #[link_name = "\u{1}_Z24polinomial_get_p_elementPvm"]
     pub fn polinomial_get_p_element(
         pPolinomial: *mut ::std::os::raw::c_void,
         index: u64,
