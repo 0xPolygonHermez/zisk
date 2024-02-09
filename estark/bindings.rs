@@ -33,6 +33,117 @@ extern "C" {
     #[link_name = "\u{1}_Z21recursive2_steps_freePv"]
     pub fn recursive2_steps_free(Recursive2Steps: *mut ::std::os::raw::c_void);
 
+    #[link_name = "\u{1}_Z26step2prev_parser_first_avxPvS_mm"]
+    pub fn step2prev_parser_first_avx(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z29step2prev_parser_first_avx512PvS_mm"]
+    pub fn step2prev_parser_first_avx512(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z24step2prev_first_parallelPvS_m"]
+    pub fn step2prev_first_parallel(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+    );
+
+    #[link_name = "\u{1}_Z26step3prev_parser_first_avxPvS_mm"]
+    pub fn step3prev_parser_first_avx(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z29step3prev_parser_first_avx512PvS_mm"]
+    pub fn step3prev_parser_first_avx512(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z24step3prev_first_parallelPvS_m"]
+    pub fn step3prev_first_parallel(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+    );
+
+    #[link_name = "\u{1}_Z22step3_parser_first_avxPvS_mm"]
+    pub fn step3_parser_first_avx(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z25step3_parser_first_avx512PvS_mm"]
+    pub fn step3_parser_first_avx512(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z20step3_first_parallelPvS_m"]
+    pub fn step3_first_parallel(pSteps: *mut ::std::os::raw::c_void, pParams: *mut ::std::os::raw::c_void, nrows: u64);
+
+    #[link_name = "\u{1}_Z25step42ns_parser_first_avxPvS_mm"]
+    pub fn step42ns_parser_first_avx(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z28step42ns_parser_first_avx512PvS_mm"]
+    pub fn step42ns_parser_first_avx512(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z23step42ns_first_parallelPvS_m"]
+    pub fn step42ns_first_parallel(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+    );
+
+    #[link_name = "\u{1}_Z25step52ns_parser_first_avxPvS_mm"]
+    pub fn step52ns_parser_first_avx(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z28step52ns_parser_first_avx512PvS_mm"]
+    pub fn step52ns_parser_first_avx512(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+        nrowsBatch: u64,
+    );
+
+    #[link_name = "\u{1}_Z23step52ns_first_parallelPvS_m"]
+    pub fn step52ns_first_parallel(
+        pSteps: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        nrows: u64,
+    );
+
     // FRIProof
     // ========================================================================================
     #[link_name = "\u{1}_Z13fri_proof_newmmmmm"]
@@ -78,6 +189,228 @@ extern "C" {
 
     #[link_name = "\u{1}_Z11starks_freePv"]
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z20transposeH1H2ColumnsPvS_PmS_"]
+    pub fn transpose_h1_h2_columns(
+        pStarks: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        numCommited: *mut u64,
+        pBuffer: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z17transposeH1H2RowsPvS_PmS_"]
+    pub fn transpose_h1_h2_rows(
+        pStarks: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        numCommited: *mut u64,
+        transPols: *mut ::std::os::raw::c_void,
+    );
+
+    #[link_name = "\u{1}_Z17transposeZColumnsPvS_PmS_"]
+    pub fn transpose_z_columns(
+        pStarks: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        numCommited: *mut u64,
+        pBuffer: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z14transposeZRowsPvS_PmS_"]
+    pub fn transpose_z_rows(
+        pStarks: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        numCommited: *mut u64,
+        transPols: *mut ::std::os::raw::c_void,
+    );
+
+    #[link_name = "\u{1}_Z5evmapPvS_S_S_S_"]
+    pub fn evmap(
+        pStarks: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        LEv: *mut ::std::os::raw::c_void,
+        LpEv: *mut ::std::os::raw::c_void,
+    );
+
+    // #[link_name = "\u{1}_Z20transcript_add_arrayPvS_mS_"]
+    // pub fn transcript_add_array(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pTranscript: *mut ::std::os::raw::c_void,
+    //     numElements: ::std::os::raw::c_ulong,
+    //     pArray: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z25transcript_add_polynomialPvS_S_"]
+    // pub fn transcript_add_polynomial(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pTranscript: *mut ::std::os::raw::c_void,
+    //     pPolynomial: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z14get_challengesPvS_mm"]
+    // pub fn get_challenges(
+    //     pTranscript: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     nChallenges: u64,
+    //     index: u64,
+    // );
+
+    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_S_"]
+    pub fn steps_params_new(
+        pStarks: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        pEvals: *mut ::std::os::raw::c_void,
+        pXDivXSubXi: *mut ::std::os::raw::c_void,
+        pXDivXSubWXi: *mut ::std::os::raw::c_void,
+        pPublicInputs: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z17steps_params_freePv"]
+    pub fn steps_params_free(pStepsParams: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z14tree_merkelizePvm"]
+    pub fn tree_merkelize(pStarks: *mut ::std::os::raw::c_void, index: u64);
+
+    #[link_name = "\u{1}_Z13tree_get_rootPvmS_"]
+    pub fn tree_get_root(pStarks: *mut ::std::os::raw::c_void, index: u64, root: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z9extendPolPvm"]
+    pub fn extendPol(pStarks: *mut ::std::os::raw::c_void, step: u64);
+
+    #[link_name = "\u{1}_Z11get_pbufferPv"]
+    pub fn get_pbuffer(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z15calculate_h1_h2PvS_"]
+    pub fn calculate_h1_h2(pStarks: *mut ::std::os::raw::c_void, pTransPols: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z11calculate_zPvS_"]
+    pub fn calculate_z(pStarks: *mut ::std::os::raw::c_void, pNewPols: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z18calculate_exps_2nsPvS_S_"]
+    pub fn calculate_exps_2ns(
+        pStarks: *mut ::std::os::raw::c_void,
+        pQq1: *mut ::std::os::raw::c_void,
+        pQq2: *mut ::std::os::raw::c_void,
+    );
+
+    #[link_name = "\u{1}_Z18calculate_lev_lpevPvS_S_S_S_S_S_"]
+    pub fn calculate_lev_lpev(
+        pStarks: *mut ::std::os::raw::c_void,
+        pLEv: *mut ::std::os::raw::c_void,
+        pLpEv: *mut ::std::os::raw::c_void,
+        pXis: *mut ::std::os::raw::c_void,
+        pWxis: *mut ::std::os::raw::c_void,
+        pC_w: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+    );
+
+    #[link_name = "\u{1}_Z20calculate_xdivxsubxiPvmS_S_S_S_S_"]
+    pub fn calculate_xdivxsubxi(
+        pStarks: *mut ::std::os::raw::c_void,
+        extendBits: u64,
+        xi: *mut ::std::os::raw::c_void,
+        wxi: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        xDivXSubXi: *mut ::std::os::raw::c_void,
+        xDivXSubWXi: *mut ::std::os::raw::c_void,
+    );
+
+    #[link_name = "\u{1}_Z14finalize_proofPvS_S_S_S_S_S_S_"]
+    pub fn finalize_proof(
+        pStarks: *mut ::std::os::raw::c_void,
+        proof: *mut ::std::os::raw::c_void,
+        transcript: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        root0: *mut ::std::os::raw::c_void,
+        root1: *mut ::std::os::raw::c_void,
+        root2: *mut ::std::os::raw::c_void,
+        root3: *mut ::std::os::raw::c_void,
+    );
+
+    // #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_S_"]
+    // pub fn extend_and_merkelize(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     step: u64,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pProof: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z21calculate_expressionsPvPcmS_S_m"]
+    // pub fn calculate_expressions(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     step: *mut ::std::os::raw::c_char,
+    //     nRowsStepBatch: u64,
+    //     pSteps: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     N: u64,
+    // );
+
+    // #[link_name = "\u{1}_Z14get_stark_infoPv"]
+    // pub fn get_stark_info(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+
+    // #[link_name = "\u{1}_Z9get_proofPv"]
+    // pub fn get_proof(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z23get_num_rows_step_batchPv"]
+    pub fn get_num_rows_step_batch(pStarks: *mut ::std::os::raw::c_void) -> u64;
+
+    // #[link_name = "\u{1}_Z14calculate_h1h2PvS_S_"]
+    // pub fn calculate_h1h2(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z11calculate_zPvS_S_"]
+    // pub fn calculate_z(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z11calculate_qPvS_S_S_"]
+    // pub fn calculate_q(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pProof: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z15calculate_evalsPvS_S_S_"]
+    // pub fn calculate_evals(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pProof: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z17calculate_fri_polPvS_S_S_m"]
+    // pub fn calculate_fri_pol(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStepsParams: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pSteps: *mut ::std::os::raw::c_void,
+    //     nRowsStepBatch: u64,
+    // ) -> *mut ::std::os::raw::c_void;
+
+    // #[link_name = "\u{1}_Z21calculate_fri_foldingPvS_S_S_mS_"]
+    // pub fn calculate_fri_folding(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pProof: *mut ::std::os::raw::c_void,
+    //     pFriPol: *mut ::std::os::raw::c_void,
+    //     step: u64,
+    //     pPolinomial: *mut ::std::os::raw::c_void,
+    // );
+
+    // #[link_name = "\u{1}_Z21calculate_fri_queriesPvS_S_S_Pm"]
+    // pub fn calculate_fri_queries(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pStarkInfo: *mut ::std::os::raw::c_void,
+    //     pProof: *mut ::std::os::raw::c_void,
+    //     pFriPol: *mut ::std::os::raw::c_void,
+    //     friQueries: *mut u64,
+    // );
 
     // CommitPolsStarks
     // ========================================================================================
@@ -132,4 +465,45 @@ extern "C" {
         publicsOutputFile: *mut ::std::os::raw::c_char,
         filePrefix: *mut ::std::os::raw::c_char,
     );
+
+    // Transcript
+    // ========================================================================================
+    #[link_name = "\u{1}_Z14transcript_newv"]
+    pub fn transcript_new() -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z3putPvS_m"]
+    pub fn transcript_put(pTranscript: *mut ::std::os::raw::c_void, pInput: *mut ::std::os::raw::c_void, size: u64);
+
+    #[link_name = "\u{1}_Z20transcript_get_fieldPvS_"]
+    pub fn transcript_get_field(pTranscript: *mut ::std::os::raw::c_void, pOutput: *mut ::std::os::raw::c_void);
+    // #[link_name = "\u{1}_Z16get_permutationsPvPmmm"]
+    // pub fn get_permutations(pTranscript: *mut ::std::os::raw::c_void, res: *mut u64, n: u64, nBits: u64);
+
+    #[link_name = "\u{1}_Z15transcript_freePv"]
+    pub fn transcript_free(pTranscript: *mut ::std::os::raw::c_void);
+
+    // Polinomial
+    // ========================================================================================
+    #[link_name = "\u{1}_Z14polinomial_newmmPc"]
+    pub fn polinomial_new(degree: u64, dim: u64, name: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z11get_addressPv"]
+    pub fn polinomial_get_address(pPolinomial: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z13get_p_elementPvm"]
+    pub fn polinomial_get_p_element(
+        pPolinomial: *mut ::std::os::raw::c_void,
+        index: u64,
+    ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z15polinomial_freePv"]
+    pub fn polinomial_free(pPolinomial: *mut ::std::os::raw::c_void);
+
+    // Commit Pols
+    // ========================================================================================
+    #[link_name = "\u{1}_Z15commit_pols_newPvm"]
+    pub fn commit_pols_new(pAddress: *mut ::std::os::raw::c_void, degree: u64) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z16commit_pols_freePv"]
+    pub fn commit_pols_free(pCommitPols: *mut ::std::os::raw::c_void);
 }

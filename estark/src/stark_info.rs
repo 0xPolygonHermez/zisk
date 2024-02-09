@@ -30,7 +30,7 @@ pub struct StarkStruct {
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 #[derive(Debug, Deserialize)]
-enum ESection {
+pub enum ESection {
     #[serde(rename = "cm1_n")]
     Cm1_N = 0,
     #[serde(rename = "cm1_2ns")]
@@ -57,10 +57,9 @@ enum ESection {
 
 const ESECTION_VARIANTS: usize = 11;
 
-#[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct PolsSections {
-    section: [u64; ESECTION_VARIANTS],
+    pub section: [u64; ESECTION_VARIANTS],
 }
 
 #[allow(dead_code)]
@@ -313,7 +312,8 @@ pub struct StarkInfo {
     pub fri_exp_id: u64,
     #[serde(rename = "nExps")]
     pub n_exps: u64,
-    // pub map_deg: PolsSections,
+    #[serde(rename = "mapDeg")]
+    pub map_deg: PolsSections,
     // pub map_offsets: PolsSections,
     // pub map_sections: PolsSectionsVector,
     // pub map_sections_n: PolsSections,
