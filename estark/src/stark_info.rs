@@ -313,7 +313,7 @@ pub struct StarkInfo {
     #[serde(rename = "nExps")]
     pub n_exps: u64,
     #[serde(rename = "mapDeg")]
-    pub map_deg: PolsSections,
+    pub map_deg: HashMap<String, u64>,
     // pub map_offsets: PolsSections,
     // pub map_sections: PolsSectionsVector,
     // pub map_sections_n: PolsSections,
