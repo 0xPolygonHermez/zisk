@@ -1,12 +1,12 @@
 {
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
-        "./proofman/Cargo.toml",
-        "./examples/Cargo.toml",
         "./estark/Cargo.toml",
-        "./pilout/Cargo.toml",
         "./examples/fib4/Cargo.toml",
         "./examples/fibv/Cargo.toml",
-        "./examples/zkevm/Cargo.toml",
+        "./goldilocks/Cargo.toml",
+        "./pilout/Cargo.toml",
+        "./proofman/Cargo.toml",
+        "./util/Cargo.toml"
     ]
 }
