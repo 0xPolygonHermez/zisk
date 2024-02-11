@@ -8,7 +8,7 @@ readme = "README.md"
 
 [dependencies]
 proofman = { path = "../../proofman" }
-estark = { path = "../../estark" }
+estark = { path = "../../lib/provers/estark" }
 pilout = { path = "../../pilout" }
 log = { version = "0.4", default-features = false }
 env_logger = { version = "0.11", default-features = false }

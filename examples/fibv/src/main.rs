@@ -69,67 +69,67 @@
 // }
 
 fn main() {
-//     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
+    //     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
-//     // read command-line args
-//     let opt = FibVOptions::from_args();
+    //     // read command-line args
+    //     let opt = FibVOptions::from_args();
 
-//     // CHECKS
-//     // Check if public inputs file exists
-//     if !opt.public_inputs.exists() {
-//         eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
-//         std::process::exit(1);
-//     }
+    //     // CHECKS
+    //     // Check if public inputs file exists
+    //     if !opt.public_inputs.exists() {
+    //         eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
+    //         std::process::exit(1);
+    //     }
 
-//     // Check if prover settings file exists
-//     if !opt.prover_settings.exists() {
-//         eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
-//         std::process::exit(1);
-//     }
+    //     // Check if prover settings file exists
+    //     if !opt.prover_settings.exists() {
+    //         eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
+    //         std::process::exit(1);
+    //     }
 
-//     // Check if output file already exists
-//     if opt.output.exists() {
-//         eprintln!("Error: Output file '{}' already exists", opt.output.display());
-//         std::process::exit(1);
-//     }
+    //     // Check if output file already exists
+    //     if opt.output.exists() {
+    //         eprintln!("Error: Output file '{}' already exists", opt.output.display());
+    //         std::process::exit(1);
+    //     }
 
-//     // Create prover
-//     // read prover settings file
-//     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
-//         Ok(settings) => EStarkProverSettings::new(&settings),
-//         Err(err) => {
-//             eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
-//             std::process::exit(1);
-//         }
-//     };
+    //     // Create prover
+    //     // read prover settings file
+    //     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
+    //         Ok(settings) => EStarkProverSettings::new(&settings),
+    //         Err(err) => {
+    //             eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
+    //             std::process::exit(1);
+    //         }
+    //     };
 
-//     //read public inputs file
-//     let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
-//         Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
-//         Err(err) => {
-//             eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
-//             std::process::exit(1);
-//         }
-//     };
+    //     //read public inputs file
+    //     let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
+    //         Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
+    //         Err(err) => {
+    //             eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
+    //             std::process::exit(1);
+    //         }
+    //     };
 
-//     let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
+    //     let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
 
-//     let prover = EStarkProver::new(estark_settings /* prover_options */);
+    //     let prover = EStarkProver::new(estark_settings /* prover_options */);
 
-//     let executor = Box::new(FibonacciExecutor::new());
-//     let module = Box::new(ModuleExecutor::new());
+    //     let executor = Box::new(FibonacciExecutor::new());
+    //     let module = Box::new(ModuleExecutor::new());
 
-//     let config = Box::new(ConfigNull {});
+    //     let config = Box::new(ConfigNull {});
 
-//     let mut proofman = ProofManager::<Goldilocks>::new(
-//         "examples/fibv/src/fibv.pilout",
-//         vec![executor, module],
-//         Box::new(prover),
-//         config,
-//         options,
-//     );
+    //     let mut proofman = ProofManager::<Goldilocks>::new(
+    //         "examples/fibv/src/fibv.pilout",
+    //         vec![executor, module],
+    //         Box::new(prover),
+    //         config,
+    //         options,
+    //     );
 
-//     let now = Instant::now();
-//     proofman.prove(Some(Box::new(public_inputs)));
-//     debug!("Proof generated in {} ms", now.elapsed().as_millis());
+    //     let now = Instant::now();
+    //     proofman.prove(Some(Box::new(public_inputs)));
+    //     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

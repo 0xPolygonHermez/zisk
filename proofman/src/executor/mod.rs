@@ -39,7 +39,7 @@ macro_rules! executor {
 
         impl $executor_name {
             fn get_name(&self) -> String {
-                 stringify!($executor_name).to_string()
+                stringify!($executor_name).to_string()
             }
 
             pub fn new() -> Self {

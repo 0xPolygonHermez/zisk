@@ -202,7 +202,6 @@ mod tests {
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
-            ptr: std::ptr::null_mut(),
             proof: None,
         };
 

@@ -11,15 +11,15 @@ use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSeque
 use crate::proof_ctx::ProofCtx;
 use crate::config::Config;
 
-// PROOF MANAGER OPTIONS
+// PROOF MANAGER SETTINGS
 // ================================================================================================
 #[derive(Debug)]
-pub struct ProofManOpt {
+pub struct ProofManSettings {
     pub debug: bool,
     pub only_check: bool,
 }
 
-impl Default for ProofManOpt {
+impl Default for ProofManSettings {
     fn default() -> Self {
         Self { debug: false, only_check: false }
     }
@@ -37,7 +37,7 @@ pub enum ProverStatus {
 // ================================================================================================
 
 pub struct ProofManager<T> {
-    options: ProofManOpt,
+    settings: ProofManSettings,
     proof_ctx: ProofCtx<T>,
     wc_manager: ExecutorsManagerSequential<T>,
     config: Box<dyn Config>,
@@ -52,7 +52,7 @@ impl<T: Default + Clone> ProofManager<T> {
         wc: Vec<Box<dyn Executor<T>>>,
         prover: Box<dyn Prover<T>>,
         config: Box<dyn Config>,
-        options: ProofManOpt,
+        settings: ProofManSettings,
     ) -> Self {
         let reset = "\x1b[37;0m";
         let purple = "\x1b[35m";
@@ -74,15 +74,15 @@ impl<T: Default + Clone> ProofManager<T> {
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);
 
-        Self { options, proof_ctx, wc_manager, config, provers_manager }
+        Self { settings, proof_ctx, wc_manager, config, provers_manager }
     }
-    
+
     pub fn setup() {
         unimplemented!();
     }
 
     pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &mut ProofCtx<T> {
-        if !self.options.only_check {
+        if !self.settings.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
             info!("{}: ==> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
@@ -132,7 +132,7 @@ impl<T: Default + Clone> ProofManager<T> {
             // }
 
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
-            if self.options.only_check {
+            if self.settings.only_check {
                 info!("{}: ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
                 if !self.provers_manager.verify_constraints(stage_id) {

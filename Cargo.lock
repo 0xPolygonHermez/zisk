@@ -350,11 +350,11 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "env_logger",
- "estark",
  "goldilocks",
  "log",
  "pilout",
  "proofman",
+ "prover-mocked",
  "serde",
  "serde_json",
  "structopt",
@@ -772,6 +772,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "193898f59edcf43c26227dcd4c8427f00d99d61e95dcde58dabd49fa291d470e"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "prover-mocked"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "proofman",
+ "util",
 ]
 
 [[package]]

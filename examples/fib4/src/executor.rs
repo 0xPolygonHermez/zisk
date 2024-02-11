@@ -6,7 +6,7 @@ use proofman::config::Config;
 
 use log::debug;
 
-executor!(FibonacciExecutor: Goldilocks);
+executor!(FibonacciExecutor);
 
 impl Executor<Goldilocks> for FibonacciExecutor {
     fn witness_computation(&self, _config: &dyn Config, stage_id: u32, proof_ctx: &mut ProofCtx<Goldilocks>) {

@@ -1,4 +1,5 @@
 pub mod estark_prover;
+pub mod estark_prover_settings;
 pub mod ffi;
 pub mod public_inputs;
 pub mod stark_info;

@@ -9,15 +9,7 @@ use proofman::proof_ctx::ProofCtx;
 use crate::verification_key::VerificationKey;
 use std::time::Instant;
 use crate::stark_info::StarkInfo;
-
-pub struct EStarkProverConfig {
-    pub current_path: String,
-    pub const_pols_filename: String,
-    pub map_const_pols_file: bool,
-    pub const_tree_filename: String,
-    pub stark_info_filename: String,
-    pub verkey_filename: String,
-}
+use crate::estark_prover_settings::EStarkProverSettings;
 
 pub struct EStarkProver<T> {
     pub p_starks: *mut ::std::os::raw::c_void,
@@ -32,16 +24,20 @@ impl<T> EStarkProver<T> {
     const MY_NAME: &'static str = "estark  ";
 
     pub fn new(
-        config: &EStarkProverConfig,
+        config: &EStarkProverSettings,
         p_steps: *mut std::os::raw::c_void,
         ptr: *mut std::os::raw::c_void,
     ) -> Self {
         timer_start!(ESTARK_PROVER_NEW);
 
         let p_config = config_new_c(&config.current_path);
-        let stark_info = StarkInfo::from_json(&config.stark_info_filename);
+        let stark_info_json = std::fs::read_to_string(&config.stark_info_filename)
+            .expect(format!("Failed to read file {}", &config.stark_info_filename).as_str());
+        let stark_info = StarkInfo::from_json(&stark_info_json);
 
-        let verkey = VerificationKey::<Goldilocks>::from_json(&config.verkey_filename);
+        let verkey_json = std::fs::read_to_string(&config.stark_info_filename)
+            .expect(format!("Failed to read file {}", &config.verkey_filename).as_str());
+        let verkey = VerificationKey::<Goldilocks>::from_json(&verkey_json);
 
         let p_starks = starks_new_c(
             p_config,

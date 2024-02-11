@@ -1,9 +1,10 @@
 [workspace]
 members = [
     "proofman",
-    "estark",
     "pilout",
     "goldilocks",
+    "lib/provers/estark",
+    "lib/provers/mocked",
     "util",
     "examples/fib4",
     "examples/fibv",

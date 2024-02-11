@@ -8,11 +8,10 @@ pub struct VerificationKey<T> {
 }
 
 impl VerificationKey<Goldilocks> {
-    pub fn from_json(filename: &str) -> VerificationKey<Goldilocks> {
-        let json = std::fs::read_to_string(filename).expect(format!("Failed to read file {}", filename).as_str());
-        let vk_json: VerificationKey<u64> = serde_json::from_str(&json).expect("Failed to parse JSON");
+    pub fn from_json(verkey_json: &str) -> VerificationKey<Goldilocks> {
+        let verkey: VerificationKey<u64> = serde_json::from_str(&verkey_json).expect("Failed to parse JSON");
 
-        VerificationKey { const_root: vk_json.const_root.iter().map(|x| Goldilocks::from_canonical_u64(*x)).collect() }
+        VerificationKey { const_root: verkey.const_root.iter().map(|x| Goldilocks::from_canonical_u64(*x)).collect() }
     }
 }
 

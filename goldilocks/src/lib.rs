@@ -9,8 +9,8 @@
 #[cfg(feature = "goldilocksp3")]
 pub type Goldilocks = p3_goldilocks::Goldilocks;
 
-#[cfg(feature = "goldilocksp2")]
-pub type Goldilocks = plonky2::field::goldilocks_field::GoldilocksField;
+// #[cfg(feature = "goldilocksp2")]
+// pub type Goldilocks = plonky2::field::goldilocks_field::GoldilocksField;
 
 pub trait AbstractField {
     fn zero() -> Goldilocks;
@@ -24,8 +24,8 @@ pub trait AbstractField {
 #[cfg(feature = "goldilocksp3")]
 mod goldilocksp3;
 
-#[cfg(feature = "goldilocksp2")]
-mod goldilocksp2;
+// #[cfg(feature = "goldilocksp2")]
+// mod goldilocksp2;
 
 #[cfg(test)]
 mod tests {
