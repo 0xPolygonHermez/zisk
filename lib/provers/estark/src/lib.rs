@@ -1,3 +1,4 @@
+pub mod config;
 pub mod estark_prover;
 pub mod estark_prover_settings;
 pub mod ffi;

@@ -1,26 +1,12 @@
 {
     "name": "fib4 test",
     "pilout": "examples/fib4/data/fib4.pilout",
-    "executors": {
-        "settings": { "Fibonacci": {} }
-    },
     "prover": {
-        "type": "estark",
+        "variant": "estark",
         "settings": {
-            "Fibonacci": "examples/fib4/data/fib4.stark_info.json",
-            "Fibonacci_2": "examples/fib4/data/fib4_2.stark_info.json"
-        },
-        "verifier": {
-            "settings": {}
+            "Fibonacci": {
+                "stark_info": "./fib4.settings.json"
+            }
         }
-    },
-    "aggregation": {
-        "recursive": {
-            "starkStruct": "./src/recursion/configs/recursive.starkstruct.json"
-        },
-        "final": {
-            "starkStruct": "./src/recursion/configs/final.starkstruct.json"
-        }
-    },
-    "meta": {}
+    }
 }

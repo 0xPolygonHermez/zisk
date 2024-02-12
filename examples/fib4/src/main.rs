@@ -14,6 +14,10 @@ use structopt::StructOpt;
 
 use proofman::proof_manager::{ProofManager, ProofManSettings};
 use proofman::config::ConfigNull;
+use estark::config::executors_config::ExecutorsConfig;
+use estark::config::prover_config::EStarkConfig;
+use estark::config::meta_config::MetaConfig;
+use proofman::config::proofman_config::Config;
 
 #[derive(StructOpt)]
 #[structopt(name = "fib4", about = "Fibonacci 4 proofman example")]
@@ -24,7 +28,7 @@ struct Fib4Options {
 
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
-    prover_settings: PathBuf,
+    proofman_settings: PathBuf,
 
     /// Output file
     #[structopt(short, long, parse(from_os_str))]
@@ -37,8 +41,8 @@ fn read_arguments() -> Fib4Options {
 
     // CHECKS
     // Check if prover settings file exists
-    if !opt.prover_settings.exists() {
-        eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
+    if !opt.proofman_settings.exists() {
+        eprintln!("Error: Prover settings file '{}' does not exist", opt.proofman_settings.display());
         std::process::exit(1);
     }
 
@@ -56,12 +60,16 @@ fn main() {
 
     let arguments = read_arguments();
 
+    let config_json = std::fs::read_to_string(arguments.proofman_settings).expect("Failed to read file");
+
+    let config = Config::<ExecutorsConfig, EStarkConfig, MetaConfig>::parse_input_json(&config_json);
+
     let executor = Box::new(FibonacciExecutor::new());
 
     let prover = MockedProver::<Goldilocks>::new();
 
     let mut proofman = ProofManager::<Goldilocks>::new(
-        "examples/fib4/src/fib4.pilout",
+        config.get_pilout(),
         vec![executor],
         Box::new(prover),
         Box::new(ConfigNull {}),
