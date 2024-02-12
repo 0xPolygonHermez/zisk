@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::any::Any;
-use proofman::config::MetaConfiguration;
+use proofman::proof_manager_config::MetaConfiguration;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]

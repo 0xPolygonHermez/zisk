@@ -9,7 +9,7 @@ use crate::executor::Executor;
 use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
 
 use crate::proof_ctx::ProofCtx;
-use crate::config::Config;
+use crate::proof_manager_config::Config;
 
 // PROOF MANAGER SETTINGS
 // ================================================================================================

@@ -1,5 +1,5 @@
 use crate::executor::Executor;
-use crate::config::Config;
+use crate::proof_manager_config::Config;
 use crate::proof_ctx::ProofCtx;
 use log::debug;
 

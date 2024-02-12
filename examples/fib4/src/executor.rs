@@ -2,7 +2,7 @@ use proofman::{executor, executor::Executor, proof_ctx::ProofCtx, trace};
 
 use goldilocks::{Goldilocks, AbstractField};
 use pilout::find_subproof_id_by_name;
-use proofman::config::Config;
+use proofman::proof_manager_config::Config;
 
 use log::debug;
 

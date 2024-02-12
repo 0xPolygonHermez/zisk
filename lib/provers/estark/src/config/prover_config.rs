@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::HashMap;
-use proofman::config::ProverConfiguration;
+use proofman::proof_manager_config::ProverConfiguration;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]

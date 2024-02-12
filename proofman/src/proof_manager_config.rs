@@ -1,8 +1,38 @@
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::fs;
+use std::any::Any;
 
-use crate::config::{ExecutorsConfiguration, ProverConfiguration, MetaConfiguration};
+pub trait ExecutorsConfiguration: Any {
+    fn as_any(&self) -> &dyn Any;
+}
+
+pub trait MetaConfiguration: Any {
+    fn as_any(&self) -> &dyn Any;
+}
+
+pub trait ProverConfiguration: Any {
+    fn variant(&self) -> &str;
+    fn as_any(&self) -> &dyn Any;
+}
+
+// TODO! Config can be removed?????
+pub trait Config: Any + Send + Sync {
+    fn get_filename(&self) -> &str;
+    fn as_any(&self) -> &dyn Any;
+}
+
+pub struct ConfigNull {}
+
+impl Config for ConfigNull {
+    fn get_filename(&self) -> &str {
+        ""
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigJson<E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
@@ -36,7 +66,7 @@ enum MetaInput<M: MetaConfiguration> {
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct Config<E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
+pub struct ProofManConfig<E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
     name: String,
     pilout: String,
     executors: Option<E>,
@@ -44,7 +74,7 @@ pub struct Config<E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConf
     meta: Option<M>,
 }
 
-impl<E, P, M> Config<E, P, M>
+impl<E, P, M> ProofManConfig<E, P, M>
 where
     E: ExecutorsConfiguration + DeserializeOwned,
     P: ProverConfiguration + DeserializeOwned,
@@ -58,7 +88,7 @@ where
         &self.pilout
     }
 
-    pub fn parse_input_json(input_json: &str) -> Config<E, P, M> {
+    pub fn parse_input_json(input_json: &str) -> ProofManConfig<E, P, M> {
         let parsed_json: ConfigJson<E, P, M> = serde_json::from_str(input_json).expect("Failed to parse JSON");
 
         let executors_config = match parsed_json.executors {
@@ -91,7 +121,7 @@ where
             None => None,
         };
 
-        Config {
+        ProofManConfig {
             name: parsed_json.name,
             pilout: parsed_json.pilout,
             executors: executors_config,

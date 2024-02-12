@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use proofman::config::Config;
+use proofman::proof_manager_config::Config;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct EStarkProverSettings {

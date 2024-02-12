@@ -1,9 +1,10 @@
 pub mod trace;
 pub mod channel;
-pub mod config;
+pub mod cli;
 pub mod executor;
 pub mod message;
 pub mod proof_ctx;
+pub mod proof_manager_config;
 pub mod proof_manager_threaded;
 pub mod proof_manager;
 pub mod provers_manager;

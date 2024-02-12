@@ -1,7 +1,7 @@
 pub mod executors_manager;
 pub mod executors_manager_thread;
 use crate::proof_ctx::ProofCtx;
-use crate::config::Config;
+use crate::proof_manager_config::Config;
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
 pub trait Executor<T> {
