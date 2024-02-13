@@ -11,6 +11,10 @@ pub struct ProofManCli {
     /// Output file
     #[structopt(short, long, parse(from_os_str))]
     pub output: PathBuf,
+
+    /// Public inputs file
+    #[structopt(long, parse(from_os_str))]
+    pub public_inputs: Option<PathBuf>,
 }
 
 impl ProofManCli {
@@ -29,6 +33,14 @@ impl ProofManCli {
         if arg.output.exists() {
             eprintln!("Error: Output file '{}' already exists", arg.output.display());
             std::process::exit(1);
+        }
+
+        // Check if public inputs file exists
+        if arg.public_inputs.is_some() {
+            if !arg.public_inputs.as_ref().unwrap().exists() {
+                eprintln!("Error: Public inputs file '{}' does not exist", arg.config.display());
+                std::process::exit(1);
+            }
         }
 
         arg

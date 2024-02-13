@@ -1,135 +1,85 @@
-// use log::debug;
-// use goldilocks::{Goldilocks, AbstractField};
-// use std::time::Instant;
-// use proofman::public_inputs::PublicInputs;
+use log::debug;
 
-// use estark::estark_prover::{EStarkProver, EStarkProverSettings};
+use goldilocks::{Goldilocks, AbstractField};
 
-// mod executor_fibo;
-// use executor_fibo::FibonacciExecutor;
+use std::time::Instant;
 
-// mod executor_module;
-// use executor_module::ModuleExecutor;
+use proofman::public_inputs::PublicInputs;
+use prover_mocked::mocked_prover::MockedProver;
 
-// use serde::{Deserialize, Serialize};
-// use serde_json;
+mod executor_fibo;
+use executor_fibo::FibonacciExecutor;
 
-// use std::path::PathBuf;
-// use structopt::StructOpt;
+mod executor_module;
+use executor_module::ModuleExecutor;
 
-// use proofman::proof_manager::{ProofManager, ProofManOpt};
-// use proofman::config::ConfigNull;
+use proofman::proof_manager::ProofManager;
 
-// #[derive(StructOpt)]
-// #[structopt(name = "fibv", about = "Fibonacci 4 proofman example")]
-// struct FibVOptions {
-//     /// De/Activate debug mode
-//     #[structopt(short, long)]
-//     _debug: bool,
+use estark::config::{executors_config::ExecutorsConfig, estark_config::EStarkConfig, meta_config::MetaConfig};
+use proofman::proof_manager_config::ProofManConfig;
+use proofman::proofman_cli::ProofManCli;
 
-//     /// Public inputs file
-//     #[structopt(long, parse(from_os_str))]
-//     public_inputs: PathBuf,
+use serde::{Deserialize, Serialize};
+use serde_json;
 
-//     /// Prover settings file
-//     #[structopt(short, long, parse(from_os_str))]
-//     prover_settings: PathBuf,
 
-//     /// Output file
-//     #[structopt(short, long, parse(from_os_str))]
-//     output: PathBuf,
-// }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FibVPublicInputs<T> {
+    a: T,
+    b: T,
+    module: T,
+}
 
-// #[derive(Debug, Serialize, Deserialize)]
-// pub struct FibVPublicInputs<T> {
-//     a: T,
-//     b: T,
-//     module: T,
-// }
+impl FibVPublicInputs<u64> {
+    pub fn new(json: &str) -> FibVPublicInputs<Goldilocks> {
+        let data: Result<FibVPublicInputs<u64>, _> = serde_json::from_str(&json);
 
-// impl FibVPublicInputs<u64> {
-//     pub fn new(json: &str) -> FibVPublicInputs<Goldilocks> {
-//         let data: Result<FibVPublicInputs<u64>, _> = serde_json::from_str(&json);
+        match data {
+            Ok(data) => FibVPublicInputs {
+                a: Goldilocks::from_canonical_u64(data.a),
+                b: Goldilocks::from_canonical_u64(data.b),
+                module: Goldilocks::from_canonical_u64(data.module),
+            },
+            Err(e) => panic!("Error parsing settings file: {}", e),
+        }
+    }
+}
 
-//         match data {
-//             Ok(data) => FibVPublicInputs {
-//                 a: Goldilocks::from_canonical_u64(data.a),
-//                 b: Goldilocks::from_canonical_u64(data.b),
-//                 module: Goldilocks::from_canonical_u64(data.module),
-//             },
-//             Err(e) => panic!("Error parsing settings file: {}", e),
-//         }
-//     }
-// }
-
-// impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
-//     fn to_vec(&self) -> Vec<Goldilocks> {
-//         vec![self.a, self.b, self.module]
-//     }
-// }
+impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
+    fn to_vec(&self) -> Vec<Goldilocks> {
+        vec![self.a, self.b, self.module]
+    }
+}
 
 fn main() {
-    //     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
+    env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
-    //     // read command-line args
-    //     let opt = FibVOptions::from_args();
+    let arguments = ProofManCli::read_arguments();
+    let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
+    let proofman_config = ProofManConfig::<ExecutorsConfig, EStarkConfig, MetaConfig>::parse_input_json(&config_json);
 
-    //     // CHECKS
-    //     // Check if public inputs file exists
-    //     if !opt.public_inputs.exists() {
-    //         eprintln!("Error: Public inputs file '{}' does not exist", opt.public_inputs.display());
-    //         std::process::exit(1);
-    //     }
+    //read public inputs file
+    let public_inputs_filename = arguments.public_inputs.as_ref().unwrap().display().to_string();
+    let public_inputs = match std::fs::read_to_string(&public_inputs_filename) {
+        Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
+        Err(err) => {
+            println!("Error reading public inputs file '{}': {}", &public_inputs_filename, err);
+            std::process::exit(1);
+        }
+    };
 
-    //     // Check if prover settings file exists
-    //     if !opt.prover_settings.exists() {
-    //         eprintln!("Error: Prover settings file '{}' does not exist", opt.prover_settings.display());
-    //         std::process::exit(1);
-    //     }
+    let fibonacci_executor = Box::new(FibonacciExecutor::new());
+    let module_executor = Box::new(ModuleExecutor::new());
 
-    //     // Check if output file already exists
-    //     if opt.output.exists() {
-    //         eprintln!("Error: Output file '{}' already exists", opt.output.display());
-    //         std::process::exit(1);
-    //     }
+    let prover = MockedProver::<Goldilocks>::new();
 
-    //     // Create prover
-    //     // read prover settings file
-    //     let estark_settings = match std::fs::read_to_string(&opt.prover_settings) {
-    //         Ok(settings) => EStarkProverSettings::new(&settings),
-    //         Err(err) => {
-    //             eprintln!("Error reading settings file '{}': {}", opt.prover_settings.display(), err);
-    //             std::process::exit(1);
-    //         }
-    //     };
+    let mut proofman = ProofManager::<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig>::new(
+        proofman_config,
+        vec![fibonacci_executor, module_executor],
+        Box::new(prover),
+    );
 
-    //     //read public inputs file
-    //     let public_inputs = match std::fs::read_to_string(&opt.public_inputs) {
-    //         Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
-    //         Err(err) => {
-    //             eprintln!("Error reading public inputs file '{}': {}", opt.public_inputs.display(), err);
-    //             std::process::exit(1);
-    //         }
-    //     };
-
-    //     let options = ProofManOpt { debug: opt._debug, ..ProofManOpt::default() };
-
-    //     let prover = EStarkProver::new(estark_settings /* prover_options */);
-
-    //     let executor = Box::new(FibonacciExecutor::new());
-    //     let module = Box::new(ModuleExecutor::new());
-
-    //     let config = Box::new(ConfigNull {});
-
-    //     let mut proofman = ProofManager::<Goldilocks>::new(
-    //         "examples/fibv/src/fibv.pilout",
-    //         vec![executor, module],
-    //         Box::new(prover),
-    //         config,
-    //         options,
-    //     );
-
-    //     let now = Instant::now();
-    //     proofman.prove(Some(Box::new(public_inputs)));
-    //     debug!("Proof generated in {} ms", now.elapsed().as_millis());
+    let now = Instant::now();
+    proofman.prove(Some(Box::new(public_inputs)));
+    debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

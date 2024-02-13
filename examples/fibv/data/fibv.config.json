@@ -1,0 +1,15 @@
+{
+    "name": "fibv test",
+    "pilout": "examples/fibv/data/fibv.pilout",
+    "prover": {
+        "variant": "estark",
+        "settings": {
+            "Fibonacci": {
+                "stark_info": "./fibv.prover_config.json"
+            },
+            "Module": {
+                "stark_info": "./fibv.prover_config.json"
+            }
+        }
+    }
+}

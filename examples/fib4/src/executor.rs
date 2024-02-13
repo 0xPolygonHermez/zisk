@@ -6,13 +6,17 @@ use proofman::proof_manager_config::ProofManConfig;
 
 use estark::config::{executors_config::ExecutorsConfig, estark_config::EStarkConfig, meta_config::MetaConfig};
 
-
 use log::debug;
 
 executor!(FibonacciExecutor);
 
 impl Executor<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig> for FibonacciExecutor {
-    fn witness_computation(&self, _config: &ProofManConfig<ExecutorsConfig, EStarkConfig, MetaConfig>, stage_id: u32, proof_ctx: &mut ProofCtx<Goldilocks>) {
+    fn witness_computation(
+        &self,
+        _config: &ProofManConfig<ExecutorsConfig, EStarkConfig, MetaConfig>,
+        stage_id: u32,
+        proof_ctx: &mut ProofCtx<Goldilocks>,
+    ) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
