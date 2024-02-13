@@ -6,7 +6,7 @@ use structopt::StructOpt;
 pub struct ProofManCli {
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
-    pub proofman_config: PathBuf,
+    pub config: PathBuf,
 
     /// Output file
     #[structopt(short, long, parse(from_os_str))]
@@ -20,8 +20,8 @@ impl ProofManCli {
 
         // CHECKS
         // Check if prover settings file exists
-        if !arg.proofman_config.exists() {
-            eprintln!("Error: Prover settings file '{}' does not exist", arg.proofman_config.display());
+        if !arg.config.exists() {
+            eprintln!("Error: Prover settings file '{}' does not exist", arg.config.display());
             std::process::exit(1);
         }
 

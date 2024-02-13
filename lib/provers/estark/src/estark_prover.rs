@@ -35,7 +35,7 @@ impl<T> EStarkProver<T> {
             .expect(format!("Failed to read file {}", &config.stark_info_filename).as_str());
         let stark_info = StarkInfo::from_json(&stark_info_json);
 
-        let verkey_json = std::fs::read_to_string(&config.stark_info_filename)
+        let verkey_json = std::fs::read_to_string(&config.verkey_filename)
             .expect(format!("Failed to read file {}", &config.verkey_filename).as_str());
         let verkey = VerificationKey::<Goldilocks>::from_json(&verkey_json);
 
