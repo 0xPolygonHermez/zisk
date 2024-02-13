@@ -11,7 +11,7 @@ pub struct EStarkProverSettings {
     pub map_const_pols_file: bool,
     #[serde(default = "default_string", rename = "constTreeFilename")]
     pub const_tree_filename: String,
-    #[serde(default = "default_string", rename = "startInfoFilename")]
+    #[serde(default = "default_string", rename = "starkInfoFilename")]
     pub stark_info_filename: String,
     #[serde(default = "default_string", rename = "verifierFilename")]
     pub verkey_filename: String,

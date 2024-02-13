@@ -1,11 +1,12 @@
 pub mod executors_manager;
 pub mod executors_manager_thread;
 use crate::proof_ctx::ProofCtx;
-use crate::proof_manager_config::Config;
+use crate::proof_manager_config::ProofManConfig;
+use crate::proof_manager_config::{ExecutorsConfiguration, ProverConfiguration, MetaConfiguration};
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
-pub trait Executor<T> {
-    fn witness_computation(&self, config: &dyn Config, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
+pub trait Executor<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
+    fn witness_computation(&self, config: &ProofManConfig<E, P, M>, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
 }
 
 // pub trait ExecutorBase<T>: Sync {

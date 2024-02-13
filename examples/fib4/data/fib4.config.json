@@ -5,7 +5,7 @@
         "variant": "estark",
         "settings": {
             "Fibonacci": {
-                "stark_info": "./fib4.settings.json"
+                "stark_info": "./fib4.prover_config.json"
             }
         }
     }

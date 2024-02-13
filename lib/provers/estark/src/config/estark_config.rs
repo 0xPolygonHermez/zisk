@@ -6,15 +6,15 @@ use proofman::proof_manager_config::ProverConfiguration;
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EStarkConfig {
-    variant: String,
-    settings: HashMap<String, EStarkSettings>,
-    verifier: Option<EStarkVerifier>,
+    pub variant: String,
+    pub settings: HashMap<String, EStarkSettings>,
+    pub verifier: Option<EStarkVerifier>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EStarkSettings {
-    stark_info: String,
+    pub stark_info: String,
 }
 
 #[allow(dead_code)]

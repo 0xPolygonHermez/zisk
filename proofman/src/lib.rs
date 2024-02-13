@@ -1,6 +1,6 @@
 pub mod trace;
 pub mod channel;
-pub mod cli;
+pub mod proofman_cli;
 pub mod executor;
 pub mod message;
 pub mod proof_ctx;

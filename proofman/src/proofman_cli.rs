@@ -3,11 +3,7 @@ use structopt::StructOpt;
 
 #[derive(StructOpt)]
 #[structopt(name = "proofman", about = "Proofman")]
-pub struct ProofmanCli {
-    /// De/Activate debug mode
-    #[structopt(short, long)]
-    pub _debug: bool,
-
+pub struct ProofManCli {
     /// Prover settings file
     #[structopt(short, long, parse(from_os_str))]
     pub proofman_settings: PathBuf,
@@ -17,10 +13,10 @@ pub struct ProofmanCli {
     pub output: PathBuf,
 }
 
-impl ProofmanCli {
-    pub fn read_arguments() -> ProofmanCli {
+impl ProofManCli {
+    pub fn read_arguments() -> ProofManCli {
         // read command-line args
-        let arg = ProofmanCli::from_args();
+        let arg = ProofManCli::from_args();
 
         // CHECKS
         // Check if prover settings file exists

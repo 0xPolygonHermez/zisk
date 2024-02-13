@@ -39,8 +39,10 @@ pub struct ConfigJson<E: ExecutorsConfiguration, P: ProverConfiguration, M: Meta
     name: String,
     pilout: String,
     executors: Option<ExecutorsInput<E>>,
-    prover: ProverInput<P>,
+    prover: Option<ProverInput<P>>,
     meta: Option<MetaInput<M>>,
+    pub debug: Option<bool>,
+    pub only_check: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,11 +69,13 @@ enum MetaInput<M: MetaConfiguration> {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ProofManConfig<E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
-    name: String,
-    pilout: String,
-    executors: Option<E>,
-    prover: P,
-    meta: Option<M>,
+    pub name: String,
+    pub pilout: String,
+    pub executors: Option<E>,
+    pub prover: Option<P>,
+    pub meta: Option<M>,
+    pub debug: bool,
+    pub only_check: bool,
 }
 
 impl<E, P, M> ProofManConfig<E, P, M>
@@ -103,11 +107,14 @@ where
         };
 
         let prover_config = match parsed_json.prover {
-            ProverInput::String(filename) => {
-                let file_contents = fs::read_to_string(&filename).expect("Failed to read file");
-                serde_json::from_str(file_contents.as_str()).expect("Failed to parse JSON")
-            }
-            ProverInput::Struct(prover) => prover,
+            Some(prover) => match prover {
+                ProverInput::String(filename) => {
+                    let file_contents = fs::read_to_string(&filename).expect("Failed to read file");
+                    Some(serde_json::from_str(file_contents.as_str()).expect("Failed to parse JSON"))
+                }
+                ProverInput::Struct(prover) => Some(prover),
+            },
+            None => None,
         };
 
         let meta_config = match parsed_json.meta {
@@ -127,6 +134,8 @@ where
             executors: executors_config,
             prover: prover_config,
             meta: meta_config,
+            debug: parsed_json.debug.unwrap_or(false),
+            only_check: parsed_json.only_check.unwrap_or(false),
         }
     }
 }

@@ -2,28 +2,16 @@ use crate::public_inputs::PublicInputs;
 use crate::provers_manager::Prover;
 use pilout::load_pilout;
 use log::{debug, info, error};
+use serde::de::DeserializeOwned;
 
 use crate::provers_manager::ProversManager;
 
 use crate::executor::Executor;
 use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
+use crate::proof_manager_config::{ExecutorsConfiguration, ProverConfiguration, MetaConfiguration};
+use crate::proof_manager_config::ProofManConfig;
 
 use crate::proof_ctx::ProofCtx;
-use crate::proof_manager_config::Config;
-
-// PROOF MANAGER SETTINGS
-// ================================================================================================
-#[derive(Debug)]
-pub struct ProofManSettings {
-    pub debug: bool,
-    pub only_check: bool,
-}
-
-impl Default for ProofManSettings {
-    fn default() -> Self {
-        Self { debug: false, only_check: false }
-    }
-}
 
 // PROOF MANAGER
 // ================================================================================================
@@ -35,36 +23,45 @@ pub enum ProverStatus {
 
 // PROOF MANAGER SEQUENTIAL
 // ================================================================================================
-
-pub struct ProofManager<T> {
-    settings: ProofManSettings,
+#[allow(dead_code)]
+pub struct ProofManager<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
+    proofman_config: ProofManConfig<E, P, M>,
     proof_ctx: ProofCtx<T>,
-    wc_manager: ExecutorsManagerSequential<T>,
-    config: Box<dyn Config>,
+    wc_manager: ExecutorsManagerSequential<T, E, P, M>,
     provers_manager: ProversManager<T>,
 }
 
-impl<T: Default + Clone> ProofManager<T> {
+impl<T, E, P, M> ProofManager<T, E, P, M>
+where
+    T: Default + Clone,
+    E: ExecutorsConfiguration + DeserializeOwned,
+    P: ProverConfiguration + DeserializeOwned,
+    M: MetaConfiguration + DeserializeOwned,
+{
     const MY_NAME: &'static str = "proofman";
 
     pub fn new(
-        pilout_path: &str,
-        wc: Vec<Box<dyn Executor<T>>>,
+        proofman_config: ProofManConfig<E, P, M>,
+        wc: Vec<Box<dyn Executor<T, E, P, M>>>,
         prover: Box<dyn Prover<T>>,
-        config: Box<dyn Config>,
-        settings: ProofManSettings,
     ) -> Self {
         let reset = "\x1b[37;0m";
         let purple = "\x1b[35m";
         let green = "\x1b[32;1m";
         let bold = "\x1b[1m";
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!("{}{}{} {}", green, format!("{: >12}", "Pilout"), reset, str::replace(pilout_path, "\\", "/"));
+        println!(
+            "{}{}{} {}",
+            green,
+            format!("{: >12}", "Pilout"),
+            reset,
+            str::replace(proofman_config.get_pilout(), "\\", "/")
+        );
         println!("");
 
         debug!("{}: Initializing...", Self::MY_NAME);
 
-        let pilout = load_pilout(pilout_path);
+        let pilout = load_pilout(proofman_config.get_pilout());
 
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
@@ -74,7 +71,7 @@ impl<T: Default + Clone> ProofManager<T> {
         // Add ProverManager
         let provers_manager = ProversManager::new(prover);
 
-        Self { settings, proof_ctx, wc_manager, config, provers_manager }
+        Self { proofman_config, proof_ctx, wc_manager, provers_manager }
     }
 
     pub fn setup() {
@@ -82,7 +79,7 @@ impl<T: Default + Clone> ProofManager<T> {
     }
 
     pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &mut ProofCtx<T> {
-        if !self.settings.only_check {
+        if !self.proofman_config.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
             info!("{}: ==> INITIATING PILOUT VERIFICATION", Self::MY_NAME);
@@ -99,7 +96,7 @@ impl<T: Default + Clone> ProofManager<T> {
 
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-            self.wc_manager.witness_computation(&*self.config, stage_id, &mut self.proof_ctx);
+            self.wc_manager.witness_computation(&self.proofman_config, stage_id, &mut self.proof_ctx);
 
             if stage_id == 1 {
                 self.provers_manager.setup(/*&setup*/);
@@ -132,7 +129,7 @@ impl<T: Default + Clone> ProofManager<T> {
             // }
 
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
-            if self.settings.only_check {
+            if self.proofman_config.only_check {
                 info!("{}: ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
                 if !self.provers_manager.verify_constraints(stage_id) {
