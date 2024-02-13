@@ -19,7 +19,7 @@ fn main() {
     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
     let arguments = ProofManCli::read_arguments();
-    let config_json = std::fs::read_to_string(arguments.proofman_settings).expect("Failed to read file");
+    let config_json = std::fs::read_to_string(arguments.proofman_config).expect("Failed to read file");
     let proofman_config = ProofManConfig::<ExecutorsConfig, EStarkConfig, MetaConfig>::parse_input_json(&config_json);
 
     let executor = Box::new(FibonacciExecutor::new());

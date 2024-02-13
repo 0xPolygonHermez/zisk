@@ -2,7 +2,7 @@ use std::env;
 
 fn main() {
     if std::env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
-        let library_folder = "../../zkevm-prover/lib";
+        let library_folder = "../../../../zkevm-prover/lib";
         let library_sm_folder = "../target/release";
         let library_short_name = "zkProver";
         let library_name = format!("lib{}.a", library_short_name);
