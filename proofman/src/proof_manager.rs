@@ -49,7 +49,9 @@ where
     ) -> Self {
         println!("    {}{}PROOFMAN by Polygon Labs v{}{}", BOLD, PURPLE, env!("CARGO_PKG_VERSION"), RESET);
 
+        println!("{}{}{} {}", GREEN, format!("{: >12}", "Name"), RESET, proofman_config.get_name());
         println!("{}{}{} {}", GREEN, format!("{: >12}", "Pilout"), RESET, proofman_config.get_pilout());
+        println!("");
 
         debug!("{}: Initializing", Self::MY_NAME);
 

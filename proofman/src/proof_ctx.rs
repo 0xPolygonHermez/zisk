@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_proof_ctx() {
         let proof_ctx = ProofCtx {
-            pilout: PilOut::default(),
+            pilout: PilOutProxy::default(),
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],

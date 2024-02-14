@@ -66,17 +66,28 @@ impl PilOutProxy {
         debug!("{}:     Subproofs:", Self::MY_NAME);
         for (subproof_index, subproof) in self.pilout.subproofs.iter().enumerate() {
             debug!(
-                "{}:     [{}] {} (aggregable: {}, subproof values: {})",
+                "{}:     + [{}] {} (aggregable: {}, subproof values: {})",
                 Self::MY_NAME,
                 subproof_index,
                 subproof.name.as_ref().unwrap(),
                 subproof.aggregable,
                 subproof.subproofvalues.len()
             );
+
             for (air_index, air) in self.pilout.subproofs[subproof_index].airs.iter().enumerate() {
-                debug!("{}:       [{}] {}", Self::MY_NAME, air_index, air.name.as_ref().unwrap());
-                debug!("{}:         rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {}", Self::MY_NAME,
-                    air.num_rows.unwrap(), air.fixed_cols.len(), air.periodic_cols.len(), air.stage_widths.len(), air.expressions.len(), air.constraints.len());
+                debug!(
+                    "{}:       [{}][{}] {} (rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {})",
+                    Self::MY_NAME,
+                    subproof_index,
+                    air_index,
+                    air.name.as_ref().unwrap(),
+                    air.num_rows.unwrap(),
+                    air.fixed_cols.len(),
+                    air.periodic_cols.len(),
+                    air.stage_widths.len(),
+                    air.expressions.len(),
+                    air.constraints.len()
+                );
             }
         }
 
@@ -84,7 +95,6 @@ impl PilOutProxy {
         for i in 0..self.pilout.num_challenges.len() {
             debug!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
         }
-
 
         debug!("{}:     Number of proof values: {}", Self::MY_NAME, self.pilout.num_proof_values);
         debug!("{}:     Number of public values: {}", Self::MY_NAME, self.pilout.num_public_values);
@@ -101,5 +111,11 @@ impl Deref for PilOutProxy {
 
     fn deref(&self) -> &Self::Target {
         &self.pilout
+    }
+}
+
+impl Default for PilOutProxy {
+    fn default() -> Self {
+        PilOutProxy { pilout: PilOut::default() }
     }
 }
