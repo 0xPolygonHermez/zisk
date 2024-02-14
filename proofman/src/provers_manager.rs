@@ -15,10 +15,10 @@ pub struct ProversManager<T> {
 }
 
 impl<T> ProversManager<T> {
-    const MY_NAME: &'static str = "proversm";
+    const MY_NAME: &'static str = "prvrsMan";
 
     pub fn new(prover: Box<dyn Prover<T>>) -> Self {
-        debug!("{}: Initializing...", Self::MY_NAME);
+        debug!("{}: Initializing", Self::MY_NAME);
 
         Self { prover }
     }

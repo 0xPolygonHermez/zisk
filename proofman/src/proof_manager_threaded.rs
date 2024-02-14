@@ -72,7 +72,7 @@
 //         // println!("{}{}{} {}", green, format!("{: >13}", "Prover:"), reset, "TODO");
 //         println!("");
 
-//         debug!("{}: Initializing...", Self::MY_NAME);
+//         debug!("{}: Initializing", Self::MY_NAME);
 
 //         let pilout = load_pilout(pilout_path);
 

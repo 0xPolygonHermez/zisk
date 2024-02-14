@@ -1,5 +1,5 @@
 use std::{os::raw::c_void, sync::RwLock};
-use pilout::pilout::PilOut;
+use pilout::pilout_proxy::PilOutProxy;
 
 use std::sync::Arc;
 
@@ -7,11 +7,15 @@ use crate::trace::trace::Trace;
 use std::fmt;
 use crate::public_inputs::PublicInputs;
 
+use log::debug;
+use util::{timer_start, timer_stop_and_log};
+use std::time::Instant;
+
 /// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
-    pub pilout: PilOut,
+    pub pilout: PilOutProxy,
     pub public_inputs: Vec<T>,
     challenges: Vec<Vec<T>>,
     pub subproofs: Vec<SubproofCtx>,
@@ -21,8 +25,31 @@ pub struct ProofCtx<T> {
 }
 
 impl<T: Default + Clone> ProofCtx<T> {
+    const MY_NAME: &'static str = "proofCtx";
+
     /// Creates a new `ProofCtx` with the given `PilOut`.
-    pub fn new(pilout: PilOut) -> Self {
+    pub fn new(pilout: PilOutProxy) -> Self {
+        timer_start!(CREATING_PROOF_CTX);
+        debug!("{}: ··· Creating proof context", Self::MY_NAME);
+
+        if pilout.subproofs.len() == 0 {
+            panic!("No subproofs found in PilOut");
+        }
+
+        // Print PilOut subproofs and airs names and degrees
+        debug!("{}: ··· PilOut subproofs and airs", Self::MY_NAME);
+        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {
+            for (air_index, air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
+                debug!(
+                    "          [subproof {}, air {}] {}: {}",
+                    subproof_index,
+                    air_index,
+                    subproof.name.as_ref().unwrap(),
+                    air.name.as_ref().unwrap()
+                );
+            }
+        }
+
         // NOTE: consider Vec::with_capacity() instead of Vec::new()
         let mut challenges = Vec::<Vec<T>>::new();
 
@@ -67,7 +94,11 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, proof: None }
+        let proof_ctx = ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, proof: None };
+
+        timer_stop_and_log!(CREATING_PROOF_CTX);
+
+        proof_ctx
     }
 
     /// Initializes the proof context with optional public inputs

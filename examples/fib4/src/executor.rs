@@ -1,7 +1,6 @@
 use proofman::{executor, executor::Executor, proof_ctx::ProofCtx, trace};
 
 use goldilocks::{Goldilocks, AbstractField};
-use pilout::find_subproof_id_by_name;
 use proofman::proof_manager_config::ProofManConfig;
 
 use estark::config::{executors_config::ExecutorsConfig, estark_config::EStarkConfig, meta_config::MetaConfig};
@@ -22,7 +21,7 @@ impl Executor<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig> for Fibonac
             return;
         }
 
-        let subproof_id = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
+        let subproof_id = proof_ctx.pilout.find_subproof_id_by_name("Fibonacci").expect("Subproof not found");
         let air_id = 0;
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 

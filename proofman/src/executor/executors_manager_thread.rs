@@ -20,7 +20,7 @@
 //     const MY_NAME: &'static str = "witnessm";
 
 //     fn new(wc: Vec<Box<dyn ExecutorBase<T>>>) -> Self {
-//         debug!("{}: Initializing...", Self::MY_NAME);
+//         debug!("{}: Initializing", Self::MY_NAME);
 
 //         WitnessCalculatorManagerThread { wc, tasks: TasksTable::new() }
 //     }

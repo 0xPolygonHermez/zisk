@@ -23,10 +23,10 @@ pub struct ExecutorsManagerSequential<T, E: ExecutorsConfiguration, P: ProverCon
 impl<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> ExecutorsManager<T, E, P, M>
     for ExecutorsManagerSequential<T, E, P, M>
 {
-    const MY_NAME: &'static str = "exectrsm";
+    const MY_NAME: &'static str = "exctrMan";
 
     fn new(wc: Vec<Box<dyn Executor<T, E, P, M>>>) -> Self {
-        debug!("{}: Initializing...", Self::MY_NAME);
+        debug!("{}: Initializing", Self::MY_NAME);
 
         ExecutorsManagerSequential::<T, E, P, M> { wc, phantom: std::marker::PhantomData }
     }

@@ -17,6 +17,7 @@ serde_json = "1.0.68"
 structopt = { version = "0.3", default-features = false }
 pilout = { path = "../pilout" }
 crossbeam-channel = "0.5.8"
+util = { path = "../util" }
 
 [dev-dependencies]
 rand = "0.8"

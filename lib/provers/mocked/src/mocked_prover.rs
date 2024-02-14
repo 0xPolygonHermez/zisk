@@ -9,7 +9,7 @@ pub struct MockedProver<T> {
 }
 
 impl<T> MockedProver<T> {
-    const MY_NAME: &'static str = "mck prvr";
+    const MY_NAME: &'static str = "mockdPrv";
 
     pub fn new() -> Self {
         Self { phantom: std::marker::PhantomData }

@@ -1,6 +1,6 @@
 use crate::public_inputs::PublicInputs;
 use crate::provers_manager::Prover;
-use pilout::load_pilout;
+use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
 use serde::de::DeserializeOwned;
 
@@ -12,6 +12,8 @@ use crate::proof_manager_config::{ExecutorsConfiguration, ProverConfiguration, M
 use crate::proof_manager_config::ProofManConfig;
 
 use crate::proof_ctx::ProofCtx;
+
+use util::colors::colors::*;
 
 // PROOF MANAGER
 // ================================================================================================
@@ -38,37 +40,29 @@ where
     P: ProverConfiguration + DeserializeOwned,
     M: MetaConfiguration + DeserializeOwned,
 {
-    const MY_NAME: &'static str = "proofman";
+    const MY_NAME: &'static str = "proofMan";
 
     pub fn new(
         proofman_config: ProofManConfig<E, P, M>,
         wc: Vec<Box<dyn Executor<T, E, P, M>>>,
         prover: Box<dyn Prover<T>>,
     ) -> Self {
-        let reset = "\x1b[37;0m";
-        let purple = "\x1b[35m";
-        let green = "\x1b[32;1m";
-        let bold = "\x1b[1m";
-        println!("    {}{}PROOFMAN by Polygon Labs v{}{}", bold, purple, env!("CARGO_PKG_VERSION"), reset);
-        println!(
-            "{}{}{} {}",
-            green,
-            format!("{: >12}", "Pilout"),
-            reset,
-            str::replace(proofman_config.get_pilout(), "\\", "/")
-        );
-        println!("");
+        println!("    {}{}PROOFMAN by Polygon Labs v{}{}", BOLD, PURPLE, env!("CARGO_PKG_VERSION"), RESET);
 
-        debug!("{}: Initializing...", Self::MY_NAME);
+        println!("{}{}{} {}", GREEN, format!("{: >12}", "Pilout"), RESET, proofman_config.get_pilout());
 
-        let pilout = load_pilout(proofman_config.get_pilout());
+        debug!("{}: Initializing", Self::MY_NAME);
+
+        let pilout = PilOutProxy::new(proofman_config.get_pilout());
 
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
         // Add WitnessCalculatorManager
+        debug!("{}: ··· Creating proof executors manager", Self::MY_NAME);
         let wc_manager = ExecutorsManager::new(wc);
 
         // Add ProverManager
+        debug!("{}: ··· Creating prover manager", Self::MY_NAME);
         let provers_manager = ProversManager::new(prover);
 
         Self { proofman_config, proof_ctx, wc_manager, provers_manager }

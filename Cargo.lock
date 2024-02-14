@@ -625,8 +625,10 @@ name = "pilout"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "log",
  "prost",
  "prost-build",
+ "util",
 ]
 
 [[package]]
@@ -720,6 +722,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "util",
 ]
 
 [[package]]

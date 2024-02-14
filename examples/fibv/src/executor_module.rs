@@ -2,7 +2,6 @@ use proofman::{executor, executor::Executor, proof_ctx::ProofCtx, trace};
 
 use proofman::proof_manager_config::ProofManConfig;
 use goldilocks::Goldilocks;
-use pilout::find_subproof_id_by_name;
 use estark::config::{executors_config::ExecutorsConfig, estark_config::EStarkConfig, meta_config::MetaConfig};
 
 use log::debug;
@@ -22,7 +21,7 @@ impl Executor<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig> for ModuleE
         }
 
         // Search pilout.subproof index with name Fibonacci inside proof_ctx.pilout.subproofs
-        let subproof_id_fibo = find_subproof_id_by_name(&proof_ctx.pilout, "Fibonacci").expect("Subproof not found");
+        let subproof_id_fibo = proof_ctx.pilout.find_subproof_id_by_name("Fibonacci").expect("Subproof not found");
 
         trace!(Module { x: Goldilocks, q: Goldilocks, x_mod: Goldilocks });
 
@@ -44,6 +43,6 @@ impl Executor<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig> for ModuleE
             a = module.x_mod[i];
         }
 
-        debug!("modlexct: ··· Module trace generated");
+        debug!("modleExe: ··· Module trace generated");
     }
 }

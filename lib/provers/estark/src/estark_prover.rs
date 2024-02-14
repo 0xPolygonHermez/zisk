@@ -21,7 +21,7 @@ pub struct EStarkProver<T> {
 }
 
 impl<T> EStarkProver<T> {
-    const MY_NAME: &'static str = "estark  ";
+    const MY_NAME: &'static str = "estrkPrv";
 
     pub fn new(
         config: &EStarkProverSettings,
