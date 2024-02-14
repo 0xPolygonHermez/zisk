@@ -18,6 +18,7 @@ structopt = { version = "0.3", default-features = false }
 pilout = { path = "../pilout" }
 crossbeam-channel = "0.5.8"
 util = { path = "../util" }
+sysinfo = "0.30"
 
 [dev-dependencies]
 rand = "0.8"

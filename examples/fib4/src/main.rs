@@ -16,7 +16,12 @@ use proofman::proof_manager_config::ProofManConfig;
 use proofman::proofman_cli::ProofManCli;
 
 fn main() {
-    env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
+    env_logger::builder()
+        .format_timestamp(None)
+        .format_level(true)
+        .format_target(false)
+        .filter_level(log::LevelFilter::Trace)
+        .init();
 
     let arguments = ProofManCli::read_arguments();
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
