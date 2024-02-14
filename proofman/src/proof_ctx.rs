@@ -36,19 +36,7 @@ impl<T: Default + Clone> ProofCtx<T> {
             panic!("No subproofs found in PilOut");
         }
 
-        // Print PilOut subproofs and airs names and degrees
-        debug!("{}: ··· PilOut subproofs and airs", Self::MY_NAME);
-        for (subproof_index, subproof) in pilout.subproofs.iter().enumerate() {
-            for (air_index, air) in pilout.subproofs[subproof_index].airs.iter().enumerate() {
-                debug!(
-                    "          [subproof {}, air {}] {}: {}",
-                    subproof_index,
-                    air_index,
-                    subproof.name.as_ref().unwrap(),
-                    air.name.as_ref().unwrap()
-                );
-            }
-        }
+        pilout.print_pilout_info();
 
         // NOTE: consider Vec::with_capacity() instead of Vec::new()
         let mut challenges = Vec::<Vec<T>>::new();

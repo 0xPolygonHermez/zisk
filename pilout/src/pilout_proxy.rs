@@ -51,6 +51,49 @@ impl PilOutProxy {
     pub fn find_subproof_id_by_name(&self, name: &str) -> Option<usize> {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
+
+    pub fn print_pilout_info(&self) {
+        // Print PilOut subproofs and airs names and degrees
+        debug!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
+
+        let base_field: &Vec<u8> = self.pilout.base_field.as_ref();
+        let mut hex_string = "0x".to_owned();
+        for &byte in base_field {
+            hex_string.push_str(&format!("{:02X}", byte));
+        }
+        debug!("{}:     Base field: {}", Self::MY_NAME, hex_string);
+
+        debug!("{}:     Subproofs:", Self::MY_NAME);
+        for (subproof_index, subproof) in self.pilout.subproofs.iter().enumerate() {
+            debug!(
+                "{}:     [{}] {} (aggregable: {}, subproof values: {})",
+                Self::MY_NAME,
+                subproof_index,
+                subproof.name.as_ref().unwrap(),
+                subproof.aggregable,
+                subproof.subproofvalues.len()
+            );
+            for (air_index, air) in self.pilout.subproofs[subproof_index].airs.iter().enumerate() {
+                debug!("{}:       [{}] {}", Self::MY_NAME, air_index, air.name.as_ref().unwrap());
+                debug!("{}:         rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {}", Self::MY_NAME,
+                    air.num_rows.unwrap(), air.fixed_cols.len(), air.periodic_cols.len(), air.stage_widths.len(), air.expressions.len(), air.constraints.len());
+            }
+        }
+
+        debug!("{}:     Challenges: {}", Self::MY_NAME, self.pilout.num_challenges.len());
+        for i in 0..self.pilout.num_challenges.len() {
+            debug!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
+        }
+
+
+        debug!("{}:     Number of proof values: {}", Self::MY_NAME, self.pilout.num_proof_values);
+        debug!("{}:     Number of public values: {}", Self::MY_NAME, self.pilout.num_public_values);
+        debug!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
+        debug!("{}:     Global expressions: {}", Self::MY_NAME, self.pilout.expressions.len());
+        debug!("{}:     Global constraints: {}", Self::MY_NAME, self.pilout.constraints.len());
+        debug!("{}:     Hints: {}", Self::MY_NAME, self.pilout.hints.len());
+        debug!("{}:     Symbols: {}", Self::MY_NAME, self.pilout.symbols.len());
+    }
 }
 
 impl Deref for PilOutProxy {
