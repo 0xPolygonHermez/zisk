@@ -22,7 +22,6 @@ use proofman::proofman_cli::ProofManCli;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
     a: T,

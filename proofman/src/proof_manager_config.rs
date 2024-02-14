@@ -139,3 +139,106 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Define some mock configurations for testing
+    #[allow(dead_code)]
+    #[derive(Debug, Deserialize)]
+    struct MockExecutorsConfig {
+        mock_key: String,
+    }
+
+    impl ExecutorsConfiguration for MockExecutorsConfig {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[allow(dead_code)]
+    #[derive(Debug, Deserialize)]
+    struct MockProverConfig {
+        mock_key: String,
+    }
+
+    impl ProverConfiguration for MockProverConfig {
+        fn variant(&self) -> &str {
+            "mock"
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[allow(dead_code)]
+    #[derive(Debug, Deserialize)]
+    struct MockMetaConfig {
+        mock_key: String,
+    }
+
+    impl MetaConfiguration for MockMetaConfig {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    // Test deserialization and parsing of JSON input
+    #[test]
+    fn test_parse_input_json() {
+        let input_json = r#"
+            {
+                "name": "TestConfig",
+                "pilout": "test_pilout",
+                "executors": {
+                    "mock_key": "mock_value"
+                },
+                "prover": {
+                    "mock_key": "mock_value"
+                },
+                "meta": {
+                    "mock_key": "mock_value"
+                },
+                "debug": true,
+                "only_check": false
+            }
+        "#;
+
+        let config: ProofManConfig<MockExecutorsConfig, MockProverConfig, MockMetaConfig> =
+            ProofManConfig::parse_input_json(input_json);
+
+        assert_eq!(config.name, "TestConfig");
+        assert_eq!(config.pilout, "test_pilout");
+        assert!(config.debug);
+        assert!(!config.only_check);
+
+        assert!(config.executors.is_some());
+        assert!(config.prover.is_some());
+        assert!(config.meta.is_some());
+    }
+
+    // Test deserialization and parsing of JSON input with missing fields
+    #[test]
+    fn test_parse_input_json_missing_fields() {
+        let input_json = r#"
+            {
+                "name": "TestConfig",
+                "pilout": "test_pilout"
+            }
+        "#;
+
+        let config: ProofManConfig<MockExecutorsConfig, MockProverConfig, MockMetaConfig> =
+            ProofManConfig::parse_input_json(input_json);
+
+        assert_eq!(config.name, "TestConfig");
+        assert_eq!(config.pilout, "test_pilout");
+        assert!(!config.debug); // Default value for debug
+        assert!(!config.only_check); // Default value for only_check
+
+        assert!(config.executors.is_none());
+        assert!(config.prover.is_none());
+        assert!(config.meta.is_none());
+    }
+}
