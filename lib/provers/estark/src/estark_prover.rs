@@ -4,7 +4,7 @@ use goldilocks::Goldilocks;
 use proofman::provers_manager::Prover;
 use log::{info, debug};
 use util::{timer_start, timer_stop_and_log};
-use crate::ffi::*;
+use zkevm_lib_c::ffi::*;
 use proofman::proof_ctx::ProofCtx;
 use crate::verification_key::VerificationKey;
 use std::time::Instant;

@@ -1,0 +1,8 @@
+[package]
+name = "zkevm-lib-c"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+no_lib_link = []

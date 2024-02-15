@@ -5,6 +5,7 @@ members = [
     "goldilocks",
     "lib/provers/estark",
     "lib/provers/mocked",
+    "lib/zkevm_lib_c",
     "util",
     "examples/fib4",
     "examples/fibv",

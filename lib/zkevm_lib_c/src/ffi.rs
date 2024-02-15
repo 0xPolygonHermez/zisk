@@ -2,9 +2,6 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use goldilocks::Goldilocks;
-use super::verification_key::VerificationKey;
-
 use ::std::os::raw::c_void;
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -19,6 +16,29 @@ pub fn zkevm_main_c(config_filename: &str, ptr: *mut u8) {
         let config_filename = CString::new(config_filename).unwrap();
 
         zkevm_main(config_filename.as_ptr() as *mut std::os::raw::c_char, ptr as *mut std::os::raw::c_void);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn save_proof_c<T>(
+    p_starks: *mut ::std::os::raw::c_void,
+    p_fri_proof: *mut ::std::os::raw::c_void,
+    public_inputs: &Vec<T>,
+    public_outputs_file: &str,
+    file_prefix: &str,
+) {
+    unsafe {
+        let public_outputs_file = CString::new(public_outputs_file).unwrap();
+        let file_prefix = CString::new(file_prefix).unwrap();
+
+        save_proof(
+            p_starks,
+            p_fri_proof,
+            public_inputs.len() as std::os::raw::c_ulong,
+            public_inputs.as_ptr() as *mut std::os::raw::c_void,
+            public_outputs_file.as_ptr() as *mut std::os::raw::c_char,
+            file_prefix.as_ptr() as *mut std::os::raw::c_char,
+        );
     }
 }
 
@@ -244,25 +264,6 @@ pub fn get_stark_info_c(p_stark: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn starks_genproof_c<T>(
-    _p_Starks: *mut c_void,
-    _p_fri_proof: *mut c_void,
-    _p_public_inputs: &Vec<T>,
-    _p_verkey: &VerificationKey<Goldilocks>,
-    _p_steps: *mut c_void,
-) {
-    unsafe {
-        starks_genproof(
-            _p_Starks,
-            _p_fri_proof,
-            _p_public_inputs.as_ptr() as *mut std::os::raw::c_void,
-            _p_verkey.const_root.as_ptr() as *mut std::os::raw::c_void,
-            _p_steps,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn starks_free_c(p_starks: *mut c_void) {
     unsafe {
         starks_free(p_starks);
@@ -450,7 +451,7 @@ pub fn zkin_new_c<T>(
     p_starks: *mut c_void,
     p_fri_proof: *mut c_void,
     public_inputs: &Vec<T>,
-    root_c: &Vec<Goldilocks>,
+    root_c: &Vec<T>,
 ) -> *mut c_void {
     unsafe {
         zkin_new(
@@ -547,6 +548,17 @@ pub fn polinomial_free_c(p_polinomial: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn zkevm_main_c(config_filename: &str, _ptr: *mut u8) {
     println!("zkevm_main_c: This is a mock call because there is no linked library {}", config_filename);
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn save_proof_c<T>(
+    _p_starks: *mut ::std::os::raw::c_void,
+    _p_fri_proof: *mut ::std::os::raw::c_void,
+    _public_inputs: &Vec<T>,
+    _public_outputs_file: &str,
+    _file_prefix: &str,
+) {
+    println!("save_proof: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -722,17 +734,6 @@ pub fn get_stark_info_c(_p_stark: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn starks_genproof_c<T>(
-    _p_Starks: *mut c_void,
-    _p_fri_proof: *mut c_void,
-    _p_public_inputs: &Vec<T>,
-    _p_verkey: &VerificationKey<Goldilocks>,
-    _p_steps: *mut c_void,
-) {
-    println!("starks_genproof_c: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn starks_free_c(_p_stark: *mut c_void) {
     println!("starks_free: This is a mock call because there is no linked library");
 }
@@ -874,7 +875,7 @@ pub fn zkin_new_c<T>(
     _p_starks: *mut c_void,
     _p_fri_proof: *mut c_void,
     _public_inputs: &Vec<T>,
-    _root_c: &Vec<Goldilocks>,
+    _root_c: &Vec<T>,
 ) -> *mut c_void {
     println!("zkin_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()

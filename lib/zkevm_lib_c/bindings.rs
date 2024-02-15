@@ -1,10 +1,18 @@
-use std::os::raw::c_void;
-
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
 #[allow(dead_code)]
 extern "C" {
     #[link_name = "\u{1}_Z10zkevm_mainPcPv"]
     pub fn zkevm_main(config_filename: *mut ::std::os::raw::c_char, pAddress: *mut c_void) -> ::std::os::raw::c_int;
+
+    #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
+    pub fn save_proof(
+        pStarks: *mut ::std::os::raw::c_void,
+        pFriProof: *mut ::std::os::raw::c_void,
+        numPublicInputs: ::std::os::raw::c_ulong,
+        pPublicInputs: *mut ::std::os::raw::c_void,
+        publicsOutputFile: *mut ::std::os::raw::c_char,
+        filePrefix: *mut ::std::os::raw::c_char,
+    );
 
     // Steps
     // ========================================================================================
@@ -228,16 +236,6 @@ extern "C" {
         numRootC: ::std::os::raw::c_ulong,
         pRootC: *mut c_void,
     ) -> *mut c_void;
-
-    #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
-    pub fn save_proof(
-        pStarks: *mut c_void,
-        pFriProof: *mut c_void,
-        numPublicInputs: ::std::os::raw::c_ulong,
-        pPublicInputs: *mut c_void,
-        publicsOutputFile: *mut ::std::os::raw::c_char,
-        filePrefix: *mut ::std::os::raw::c_char,
-    );
 
     // Transcript
     // ========================================================================================
