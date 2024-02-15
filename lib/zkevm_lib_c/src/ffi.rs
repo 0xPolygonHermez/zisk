@@ -21,7 +21,7 @@ pub fn zkevm_main_c(config_filename: &str, ptr: *mut u8) {
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn save_proof_c<T>(
-    p_starks: *mut ::std::os::raw::c_void,
+    p_stark: *mut ::std::os::raw::c_void,
     p_fri_proof: *mut ::std::os::raw::c_void,
     public_inputs: &Vec<T>,
     public_outputs_file: &str,
@@ -32,7 +32,7 @@ pub fn save_proof_c<T>(
         let file_prefix = CString::new(file_prefix).unwrap();
 
         save_proof(
-            p_starks,
+            p_stark,
             p_fri_proof,
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
@@ -196,8 +196,8 @@ pub fn step52ns_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nr
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn fri_proof_new_c(p_starks: *mut c_void) -> *mut c_void {
-    unsafe { fri_proof_new(p_starks) }
+pub fn fri_proof_new_c(p_stark: *mut c_void) -> *mut c_void {
+    unsafe { fri_proof_new(p_stark) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -264,22 +264,22 @@ pub fn get_stark_info_c(p_stark: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn starks_free_c(p_starks: *mut c_void) {
+pub fn starks_free_c(p_stark: *mut c_void) {
     unsafe {
-        starks_free(p_starks);
+        starks_free(p_stark);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn steps_params_new_c(
-    p_starks: *mut c_void,
+    p_stark: *mut c_void,
     p_challenges: *mut c_void,
     p_evals: *mut c_void,
     p_x_div_x_sub_xi: *mut c_void,
     p_x_div_x_sub_wxi: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
-    unsafe { steps_params_new(p_starks, p_challenges, p_evals, p_x_div_x_sub_xi, p_x_div_x_sub_wxi, p_public_inputs) }
+    unsafe { steps_params_new(p_stark, p_challenges, p_evals, p_x_div_x_sub_xi, p_x_div_x_sub_wxi, p_public_inputs) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -297,16 +297,16 @@ pub fn extend_and_merkelize_c(p_stark: *mut c_void, step: u64, p_params: *mut c_
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_h1_h2_c(p_starks: *mut c_void, p_params: *mut c_void) {
+pub fn calculate_h1_h2_c(p_stark: *mut c_void, p_params: *mut c_void) {
     unsafe {
-        calculate_h1_h2(p_starks, p_params);
+        calculate_h1_h2(p_stark, p_params);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_z_c(p_starks: *mut c_void, p_params: *mut c_void) {
+pub fn calculate_z_c(p_stark: *mut c_void, p_params: *mut c_void) {
     unsafe {
-        calculate_z(p_starks, p_params);
+        calculate_z(p_stark, p_params);
     }
 }
 
@@ -448,14 +448,14 @@ pub fn circom_recursive1_get_commited_pols_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn zkin_new_c<T>(
-    p_starks: *mut c_void,
+    p_stark: *mut c_void,
     p_fri_proof: *mut c_void,
     public_inputs: &Vec<T>,
     root_c: &Vec<T>,
 ) -> *mut c_void {
     unsafe {
         zkin_new(
-            p_starks,
+            p_stark,
             p_fri_proof,
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
