@@ -186,6 +186,9 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 
+    #[link_name = "\u{1}_Z14get_stark_infoPv"]
+    pub fn get_stark_info(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+
     #[link_name = "\u{1}_Z16starks_gen_proofPvS_S_S_S_"]
     pub fn starks_genproof(
         pStarks: *mut ::std::os::raw::c_void,
@@ -198,46 +201,46 @@ extern "C" {
     #[link_name = "\u{1}_Z11starks_freePv"]
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
 
-    #[link_name = "\u{1}_Z23transpose_h1_h2_columnsPvS_PmS_"]
-    pub fn transpose_h1_h2_columns(
-        pStarks: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *const u64,
-        pBuffer: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
+    // #[link_name = "\u{1}_Z23transpose_h1_h2_columnsPvS_PmS_"]
+    // pub fn transpose_h1_h2_columns(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pAddress: *mut ::std::os::raw::c_void,
+    //     numCommited: *const u64,
+    //     pBuffer: *mut ::std::os::raw::c_void,
+    // ) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z20transpose_h1_h2_rowsPvS_PmS_"]
-    pub fn transpose_h1_h2_rows(
-        pStarks: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *const u64,
-        transPols: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z20transpose_h1_h2_rowsPvS_PmS_"]
+    // pub fn transpose_h1_h2_rows(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pAddress: *mut ::std::os::raw::c_void,
+    //     numCommited: *const u64,
+    //     transPols: *mut ::std::os::raw::c_void,
+    // );
 
-    #[link_name = "\u{1}_Z19transpose_z_columnsPvS_PmS_"]
-    pub fn transpose_z_columns(
-        pStarks: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *const u64,
-        pBuffer: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
+    // #[link_name = "\u{1}_Z19transpose_z_columnsPvS_PmS_"]
+    // pub fn transpose_z_columns(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pAddress: *mut ::std::os::raw::c_void,
+    //     numCommited: *const u64,
+    //     pBuffer: *mut ::std::os::raw::c_void,
+    // ) -> *mut ::std::os::raw::c_void;
 
-    #[link_name = "\u{1}_Z16transpose_z_rowsPvS_PmS_"]
-    pub fn transpose_z_rows(
-        pStarks: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-        numCommited: *const u64,
-        transPols: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z16transpose_z_rowsPvS_PmS_"]
+    // pub fn transpose_z_rows(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pAddress: *mut ::std::os::raw::c_void,
+    //     numCommited: *const u64,
+    //     transPols: *mut ::std::os::raw::c_void,
+    // );
 
-    #[link_name = "\u{1}_Z5evmapPvS_S_S_S_"]
-    pub fn evmap(
-        pStarks: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
-        LEv: *mut ::std::os::raw::c_void,
-        LpEv: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z5evmapPvS_S_S_S_"]
+    // pub fn evmap(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pAddress: *mut ::std::os::raw::c_void,
+    //     evals: *mut ::std::os::raw::c_void,
+    //     LEv: *mut ::std::os::raw::c_void,
+    //     LpEv: *mut ::std::os::raw::c_void,
+    // );
 
     // #[link_name = "\u{1}_Z20transcript_add_arrayPvS_mS_"]
     // pub fn transcript_add_array(
@@ -283,17 +286,17 @@ extern "C" {
         proof: *mut ::std::os::raw::c_void,
     );
 
-    #[link_name = "\u{1}_Z14tree_merkelizePvm"]
-    pub fn tree_merkelize(pStarks: *mut ::std::os::raw::c_void, index: u64);
+    // #[link_name = "\u{1}_Z14tree_merkelizePvm"]
+    // pub fn tree_merkelize(pStarks: *mut ::std::os::raw::c_void, index: u64);
 
-    #[link_name = "\u{1}_Z13tree_get_rootPvmS_"]
-    pub fn tree_get_root(pStarks: *mut ::std::os::raw::c_void, index: u64, root: *mut ::std::os::raw::c_void);
+    // #[link_name = "\u{1}_Z13tree_get_rootPvmS_"]
+    // pub fn tree_get_root(pStarks: *mut ::std::os::raw::c_void, index: u64, root: *mut ::std::os::raw::c_void);
 
-    #[link_name = "\u{1}_Z10extend_polPvm"]
-    pub fn extend_pol(pStarks: *mut ::std::os::raw::c_void, step: u64);
+    // #[link_name = "\u{1}_Z10extend_polPvm"]
+    // pub fn extend_pol(pStarks: *mut ::std::os::raw::c_void, step: u64);
 
-    #[link_name = "\u{1}_Z11get_pbufferPv"]
-    pub fn get_pbuffer(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+    // #[link_name = "\u{1}_Z11get_pbufferPv"]
+    // pub fn get_pbuffer(pStarks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z15calculate_h1_h2PvS_"]
     pub fn calculate_h1_h2(pStarks: *mut ::std::os::raw::c_void, pParams: *mut ::std::os::raw::c_void);
@@ -350,46 +353,46 @@ extern "C" {
         friQueries: *mut u64,
     );
 
-    #[link_name = "\u{1}_Z18calculate_exps_2nsPvS_S_"]
-    pub fn calculate_exps_2ns(
-        pStarks: *mut ::std::os::raw::c_void,
-        pQq1: *mut ::std::os::raw::c_void,
-        pQq2: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z18calculate_exps_2nsPvS_S_"]
+    // pub fn calculate_exps_2ns(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pQq1: *mut ::std::os::raw::c_void,
+    //     pQq2: *mut ::std::os::raw::c_void,
+    // );
 
-    #[link_name = "\u{1}_Z18calculate_lev_lpevPvS_S_S_S_S_S_"]
-    pub fn calculate_lev_lpev(
-        pStarks: *mut ::std::os::raw::c_void,
-        pLEv: *mut ::std::os::raw::c_void,
-        pLpEv: *mut ::std::os::raw::c_void,
-        pXis: *mut ::std::os::raw::c_void,
-        pWxis: *mut ::std::os::raw::c_void,
-        pC_w: *mut ::std::os::raw::c_void,
-        pChallenges: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z18calculate_lev_lpevPvS_S_S_S_S_S_"]
+    // pub fn calculate_lev_lpev(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     pLEv: *mut ::std::os::raw::c_void,
+    //     pLpEv: *mut ::std::os::raw::c_void,
+    //     pXis: *mut ::std::os::raw::c_void,
+    //     pWxis: *mut ::std::os::raw::c_void,
+    //     pC_w: *mut ::std::os::raw::c_void,
+    //     pChallenges: *mut ::std::os::raw::c_void,
+    // );
 
-    #[link_name = "\u{1}_Z20calculate_xdivxsubxiPvmS_S_S_S_S_"]
-    pub fn calculate_xdivxsubxi(
-        pStarks: *mut ::std::os::raw::c_void,
-        extendBits: u64,
-        xi: *mut ::std::os::raw::c_void,
-        wxi: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        xDivXSubXi: *mut ::std::os::raw::c_void,
-        xDivXSubWXi: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z20calculate_xdivxsubxiPvmS_S_S_S_S_"]
+    // pub fn calculate_xdivxsubxi(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     extendBits: u64,
+    //     xi: *mut ::std::os::raw::c_void,
+    //     wxi: *mut ::std::os::raw::c_void,
+    //     challenges: *mut ::std::os::raw::c_void,
+    //     xDivXSubXi: *mut ::std::os::raw::c_void,
+    //     xDivXSubWXi: *mut ::std::os::raw::c_void,
+    // );
 
-    #[link_name = "\u{1}_Z14finalize_proofPvS_S_S_S_S_S_S_"]
-    pub fn finalize_proof(
-        pStarks: *mut ::std::os::raw::c_void,
-        proof: *mut ::std::os::raw::c_void,
-        transcript: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
-        root0: *mut ::std::os::raw::c_void,
-        root1: *mut ::std::os::raw::c_void,
-        root2: *mut ::std::os::raw::c_void,
-        root3: *mut ::std::os::raw::c_void,
-    );
+    // #[link_name = "\u{1}_Z14finalize_proofPvS_S_S_S_S_S_S_"]
+    // pub fn finalize_proof(
+    //     pStarks: *mut ::std::os::raw::c_void,
+    //     proof: *mut ::std::os::raw::c_void,
+    //     transcript: *mut ::std::os::raw::c_void,
+    //     evals: *mut ::std::os::raw::c_void,
+    //     root0: *mut ::std::os::raw::c_void,
+    //     root1: *mut ::std::os::raw::c_void,
+    //     root2: *mut ::std::os::raw::c_void,
+    //     root3: *mut ::std::os::raw::c_void,
+    // );
 
     // #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_S_"]
     // pub fn extend_and_merkelize(

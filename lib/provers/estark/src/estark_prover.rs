@@ -13,6 +13,7 @@ use crate::estark_prover_settings::EStarkProverSettings;
 
 pub struct EStarkProver<T> {
     pub p_starks: *mut ::std::os::raw::c_void,
+    pub p_stark_info: *mut ::std::os::raw::c_void,
     p_steps: *mut ::std::os::raw::c_void,
     stark_info: StarkInfo,
     verkey: VerificationKey<Goldilocks>,
@@ -47,9 +48,11 @@ impl<T> EStarkProver<T> {
             ptr,
         );
 
+        let p_stark_info = get_stark_info_c(p_starks);
+
         timer_stop_and_log!(ESTARK_PROVER_NEW);
 
-        Self { p_starks, p_steps, stark_info, verkey, phantom: std::marker::PhantomData }
+        Self { p_starks, p_steps, p_stark_info, stark_info, verkey, phantom: std::marker::PhantomData }
     }
 }
 
