@@ -176,14 +176,26 @@ pub fn step52ns_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _n
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn fri_proof_new_c(
-    pol_n: u64,
-    dim: u64,
-    num_trees: u64,
-    eval_size: u64,
-    n_publics: u64,
-) -> *mut std::os::raw::c_void {
-    unsafe { fri_proof_new(pol_n, dim, num_trees, eval_size, n_publics) }
+pub fn fri_proof_new_c(p_starks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void {
+    unsafe { fri_proof_new(p_starks) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn fri_proof_get_root_c(
+    pFriProof: *mut ::std::os::raw::c_void,
+    root_index: u64,
+    root_subindex: u64,
+) -> *mut ::std::os::raw::c_void {
+    unsafe { fri_proof_get_root(pFriProof, root_index, root_subindex) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn fri_proof_get_tree_root_c(
+    pFriProof: *mut ::std::os::raw::c_void,
+    tree_index: u64,
+    root_index: u64,
+) -> *mut ::std::os::raw::c_void {
+    unsafe { fri_proof_get_tree_root(pFriProof, tree_index, root_index) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -425,6 +437,18 @@ pub fn steps_params_free_c(p_steps_params: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn extend_and_merkelize_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    step: u64,
+    pParams: *mut ::std::os::raw::c_void,
+    proof: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        extend_and_merkelize(pStarks, step, pParams, proof);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn tree_merkelize_c(p_starks: *mut c_void, index: u64) {
     unsafe {
         tree_merkelize(p_starks, index);
@@ -451,16 +475,89 @@ pub fn get_pbuffer_c(p_starks: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_h1_h2_c(p_starks: *mut c_void, p_trans_pols: *mut c_void) {
+pub fn calculate_h1_h2_c(p_starks: *mut c_void, p_params: *mut c_void) {
     unsafe {
-        calculate_h1_h2(p_starks, p_trans_pols);
+        calculate_h1_h2(p_starks, p_params);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_z_c(p_starks: *mut c_void, p_new_pols: *mut c_void) {
+pub fn calculate_z_c(p_starks: *mut c_void, p_params: *mut c_void) {
     unsafe {
-        calculate_z(p_starks, p_new_pols);
+        calculate_z(p_starks, p_params);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_expressions_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    step: &str,
+    nrowsStepBatch: u64,
+    pSteps: *mut ::std::os::raw::c_void,
+    pParams: *mut ::std::os::raw::c_void,
+    n: u64,
+) {
+    let step = CString::new(step).unwrap();
+
+    unsafe {
+        calculate_expressions(pStarks, step.as_ptr() as *mut std::os::raw::c_char, nrowsStepBatch, pSteps, pParams, n);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_q_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    pParams: *mut ::std::os::raw::c_void,
+    pProof: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        compute_q(pStarks, pParams, pProof);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_evals_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    pParams: *mut ::std::os::raw::c_void,
+    pProof: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        compute_evals(pStarks, pParams, pProof);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_fri_pol_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    pParams: *mut ::std::os::raw::c_void,
+    steps: *mut ::std::os::raw::c_void,
+    nrowsStepBatch: u64,
+) -> *mut ::std::os::raw::c_void {
+    unsafe { compute_fri_pol(pStarks, pParams, steps, nrowsStepBatch) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_fri_folding_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    pProof: *mut ::std::os::raw::c_void,
+    pFriPol: *mut ::std::os::raw::c_void,
+    step: u64,
+    challenge: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        compute_fri_folding(pStarks, pProof, pFriPol, step, challenge);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_fri_queries_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    pProof: *mut ::std::os::raw::c_void,
+    pFriPol: *mut ::std::os::raw::c_void,
+    friQueries: *mut u64,
+) {
+    unsafe {
+        compute_fri_queries(pStarks, pProof, pFriPol, friQueries);
     }
 }
 
@@ -674,9 +771,10 @@ pub fn circom_recursive1_get_commited_pols_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn zkin_new_c<T>(p_fri_proof: *mut c_void, public_inputs: &Vec<T>, root_c: &Vec<Goldilocks>) -> *mut c_void {
+pub fn zkin_new_c<T>(p_starks: *mut c_void, p_fri_proof: *mut c_void, public_inputs: &Vec<T>, root_c: &Vec<Goldilocks>) -> *mut c_void {
     unsafe {
         zkin_new(
+            p_starks,
             p_fri_proof,
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
@@ -692,9 +790,16 @@ pub fn transcript_new_c() -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_put_c(_pTranscript: *mut c_void, _pInput: *mut c_void, _size: u64) {
+pub fn transcript_add_c(_pTranscript: *mut c_void, _pInput: *mut c_void, _size: u64) {
     unsafe {
-        transcript_put(_pTranscript, _pInput, _size);
+        transcript_add(_pTranscript, _pInput, _size);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn transcript_add_polinomial_c(pTranscript: *mut ::std::os::raw::c_void, pPolinomial: *mut ::std::os::raw::c_void) {
+    unsafe {
+        transcript_add_polynomial(pTranscript, pPolinomial);
     }
 }
 
@@ -720,12 +825,36 @@ pub fn transcript_free_c(p_transcript: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn get_challenges_c(
+    pTranscript: *mut ::std::os::raw::c_void,
+    pPolinomial: *mut ::std::os::raw::c_void,
+    nChallenges: u64,
+    index: u64,
+) {
+    unsafe {
+        get_challenges_c(pTranscript, pParams, nChallenges, index);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_permutations_c(pTranscript: *mut ::std::os::raw::c_void, res: *mut u64, n: u64, nBits: u64) {
+    unsafe {
+        get_permutations(pTranscript, res, n, nBits);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
     unsafe {
         let name = CString::new(_name).unwrap();
 
         polinomial_new(_degree, _dim, name.as_ptr() as *mut std::os::raw::c_char)
     }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_new_void_c() -> *mut ::std::os::raw::c_void {
+    unsafe { polinomial_new_void() }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -872,14 +1001,28 @@ pub fn step52ns_first_parallel_c(_pSteps: *mut c_void, _pParams: *mut c_void, _n
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn fri_proof_new_c(
-    _polN: u64,
-    _dim: u64,
-    _numTrees: u64,
-    _evalSize: u64,
-    _nPublics: u64,
-) -> *mut std::os::raw::c_void {
+pub fn fri_proof_new_c(_p_starks: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void {
     println!("fri_proof_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn fri_proof_get_root_c(
+    _pFriProof: *mut ::std::os::raw::c_void,
+    _root_index: u64,
+    _root_subindex: u64,
+) -> *mut ::std::os::raw::c_void {
+    println!("fri_proof_get_root: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn fri_proof_get_tree_root_c(
+    _pFriProof: *mut ::std::os::raw::c_void,
+    _tree_index: u64,
+    _root_index: u64,
+) -> *mut ::std::os::raw::c_void {
+    println!("fri_proof_get_tree_root: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
@@ -1012,12 +1155,12 @@ pub fn evmap_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn steps_params_new_c(
-    _pStarks: *mut c_void,
-    _pChallenges: *mut c_void,
-    _pEvals: *mut c_void,
-    _pXDivXSubXi: *mut c_void,
-    _pXDivXSubWXi: *mut c_void,
-    _pPublicInputs: *mut c_void,
+    pStarks: *mut c_void,
+    pChallenges: *mut c_void,
+    pEvals: *mut c_void,
+    pXDivXSubXi: *mut c_void,
+    pXDivXSubWXi: *mut c_void,
+    pPublicInputs: *mut c_void,
 ) -> *mut c_void {
     println!("steps_params_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -1026,6 +1169,16 @@ pub fn steps_params_new_c(
 #[cfg(feature = "no_lib_link")]
 pub fn steps_params_free_c(_pStepsParams: *mut c_void) {
     println!("steps_params_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn extend_and_merkelize_c(
+    pStarks: *mut ::std::os::raw::c_void,
+    step: u64,
+    pParams: *mut ::std::os::raw::c_void,
+    proof: *mut ::std::os::raw::c_void,
+) {
+    println!("extend_and_merkelize: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1050,13 +1203,75 @@ pub fn get_pbuffer_c(_pStarks: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_h1_h2_c(_pStarks: *mut c_void, _pTransPols: *mut c_void) {
+pub fn calculate_h1_h2_c(_pStarks: *mut c_void, _pParams: *mut c_void) {
     println!("calculate_h1_h2: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_z_c(_pStarks: *mut c_void, _pNewPols: *mut c_void) {
+pub fn calculate_z_c(_pStarks: *mut c_void, _p_params: *mut c_void) {
     println!("calculate_z: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn calculate_expressions_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _step: &str,
+    _nrowsStepBatch: u64,
+    _pSteps: *mut ::std::os::raw::c_void,
+    _pParams: *mut ::std::os::raw::c_void,
+    _n: u64,
+) {
+    println!("calculate_expressions: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_q_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _pParams: *mut ::std::os::raw::c_void,
+    _pProof: *mut ::std::os::raw::c_void,
+) {
+    println!("compute_q: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_evals_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _pParams: *mut ::std::os::raw::c_void,
+    _pProof: *mut ::std::os::raw::c_void,
+) {
+    println!("compute_evals: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_fri_pol_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _pParams: *mut ::std::os::raw::c_void,
+    _steps: *mut ::std::os::raw::c_void,
+    _nrowsStepBatch: u64,
+) -> *mut ::std::os::raw::c_void {
+    println!("compute_fri_pol: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_fri_folding_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _pProof: *mut ::std::os::raw::c_void,
+    _pFriPol: *mut ::std::os::raw::c_void,
+    _step: u64,
+    _challenge: *mut ::std::os::raw::c_void,
+) {
+    println!("compute_fri_folding: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_fri_queries_c(
+    _pStarks: *mut ::std::os::raw::c_void,
+    _pProof: *mut ::std::os::raw::c_void,
+    _pFriPol: *mut ::std::os::raw::c_void,
+    _friQueries: *mut u64,
+) {
+    println!("compute_fri_queries: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1258,7 +1473,7 @@ pub fn circom_recursive1_get_commited_pols_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn zkin_new_c<T>(_p_fri_proof: *mut c_void, _public_inputs: &Vec<T>, _root_c: &Vec<Goldilocks>) -> *mut c_void {
+pub fn zkin_new_c<T>(_p_starks: *mut c_void, _p_fri_proof: *mut c_void, _public_inputs: &Vec<T>, _root_c: &Vec<Goldilocks>) -> *mut c_void {
     println!("zkin_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -1270,8 +1485,13 @@ pub fn transcript_new_c() -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn transcript_put_c(_pTranscript: *mut c_void, _pInput: *mut c_void, _size: u64) {
-    println!("transcript_put: This is a mock call because there is no linked library");
+pub fn transcript_add_c(pTranscript: *mut c_void, pInput: *mut c_void, size: u64) {
+    println!("transcript_add: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn transcript_add_polinomial_c(pTranscript: *mut ::std::os::raw::c_void, pPolinomial: *mut ::std::os::raw::c_void) {
+    println!("transcript_add_polinomial: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1290,8 +1510,29 @@ pub fn transcript_free_c(_p_transcript: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn get_challenges_c(
+    _pTranscript: *mut ::std::os::raw::c_void,
+    _pPolinomial: *mut ::std::os::raw::c_void,
+    _nChallenges: u64,
+    _index: u64,
+) {
+    println!("get_challenges: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_permutations_c(_pTranscript: *mut ::std::os::raw::c_void, _res: *mut u64, _n: u64, _nBits: u64) {
+    println!("get_permutations: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
     println!("polinomial_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn polinomial_new_void_c() -> *mut ::std::os::raw::c_void {
+    println!("polinomial_new_void: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
