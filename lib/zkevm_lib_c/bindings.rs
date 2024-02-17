@@ -150,6 +150,13 @@ extern "C" {
     #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_"]
     pub fn extend_and_merkelize(pStarks: *mut c_void, step: u64, pParams: *mut c_void, proof: *mut c_void);
 
+    #[link_name = "\u{1}_Z16treesGL_get_rootPvmS_"]
+    pub fn treesGL_get_root(
+        pStarks: *mut ::std::os::raw::c_void,
+        index: u64,
+        root: *mut ::std::os::raw::c_void,
+    );
+
     #[link_name = "\u{1}_Z15calculate_h1_h2PvS_"]
     pub fn calculate_h1_h2(pStarks: *mut c_void, pParams: *mut c_void);
 
@@ -254,9 +261,14 @@ extern "C" {
     #[link_name = "\u{1}_Z15transcript_freePv"]
     pub fn transcript_free(pTranscript: *mut c_void);
 
-    #[link_name = "\u{1}_Z14get_challengesPvS_mm"]
-    pub fn get_challenges(pTranscript: *mut c_void, pPolinomial: *mut c_void, nChallenges: u64, index: u64);
-
+    #[link_name = "\u{1}_Z14get_challengesPvS_S_m"]
+    pub fn get_challenges(
+        pStarks: *mut c_void,
+        pTranscript: *mut c_void,
+        pElement: *mut c_void,
+        nChallenges: u64,
+    );
+    
     #[link_name = "\u{1}_Z16get_permutationsPvPmmm"]
     pub fn get_permutations(pTranscript: *mut c_void, res: *mut u64, n: u64, nBits: u64);
 
@@ -267,6 +279,15 @@ extern "C" {
 
     #[link_name = "\u{1}_Z19polinomial_new_voidv"]
     pub fn polinomial_new_void() -> *mut c_void;
+
+    #[link_name = "\u{1}_Z27polinomial_new_with_addressPvmmmPc"]
+    pub fn polinomial_new_with_address(
+        pAddress: *mut c_void,
+        degree: u64,
+        dim: u64,
+        offset: u64,
+        name: *mut ::std::os::raw::c_char,
+    ) -> *mut c_void;
 
     #[link_name = "\u{1}_Z22polinomial_get_addressPv"]
     pub fn polinomial_get_address(pPolinomial: *mut c_void) -> *mut c_void;

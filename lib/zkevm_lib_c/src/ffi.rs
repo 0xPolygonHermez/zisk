@@ -297,6 +297,13 @@ pub fn extend_and_merkelize_c(p_stark: *mut c_void, step: u64, p_params: *mut c_
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
+    unsafe {
+        treesGL_get_root(pStark, index, root);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn calculate_h1_h2_c(p_stark: *mut c_void, p_params: *mut c_void) {
     unsafe {
         calculate_h1_h2(p_stark, p_params);
@@ -499,9 +506,9 @@ pub fn transcript_free_c(p_transcript: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_challenges_c(p_transcript: *mut c_void, p_polinomial: *mut c_void, n_challenges: u64, index: u64) {
+pub fn get_challenges_c(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void, nChallenges: u64) {
     unsafe {
-        get_challenges(p_transcript, p_polinomial, n_challenges, index);
+        get_challenges(pStarks, pTranscript, pElement, nChallenges);
     }
 }
 
@@ -524,6 +531,21 @@ pub fn polinomial_new_c(degree: u64, dim: u64, name: &str) -> *mut c_void {
 #[cfg(not(feature = "no_lib_link"))]
 pub fn polinomial_new_void_c() -> *mut c_void {
     unsafe { polinomial_new_void() }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn polinomial_new_with_address_c(
+    pAddress: *mut c_void,
+    degree: u64,
+    dim: u64,
+    offset: u64,
+    name: &str,
+) -> *mut c_void {
+    unsafe {
+        let name = CString::new(name).unwrap();
+
+        polinomial_new_with_address(pAddress, degree, dim, offset, name.as_ptr() as *mut std::os::raw::c_char)
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -760,6 +782,10 @@ pub fn steps_params_free_c(_p_stepsParams: *mut c_void) {
 pub fn extend_and_merkelize_c(_p_stark: *mut c_void, _step: u64, _p_params: *mut c_void, _proof: *mut c_void) {
     println!("extend_and_merkelize: This is a mock call because there is no linked library");
 }
+#[cfg(feature = "no_lib_link")]
+pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void) {
+    println!("treesGL_get_root: This is a mock call because there is no linked library");
+}
 
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_h1_h2_c(_p_stark: *mut c_void, _p_params: *mut c_void) {
@@ -908,7 +934,7 @@ pub fn transcript_free_c(_p_transcript: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_challenges_c(_p_transcript: *mut c_void, _p_polinomial: *mut c_void, _n_challenges: u64, _index: u64) {
+pub fn get_challenges_c(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void, nChallenges: u64) {
     println!("get_challenges: This is a mock call because there is no linked library");
 }
 
@@ -926,6 +952,18 @@ pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
 #[cfg(feature = "no_lib_link")]
 pub fn polinomial_new_void_c() -> *mut c_void {
     println!("polinomial_new_void: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn polinomial_new_with_address_c(
+    _pAddress: *mut c_void,
+    _degree: u64,
+    _dim: u64,
+    _offset: u64,
+    _name: &str,
+) -> *mut c_void {
+    println!("polinomial_new_with_address: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
