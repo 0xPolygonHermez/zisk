@@ -934,7 +934,7 @@ pub fn transcript_free_c(_p_transcript: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_challenges_c(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void, nChallenges: u64) {
+pub fn get_challenges_c(_p_stark: *mut c_void, _p_transcript: *mut c_void, _p_element: *mut c_void, _n_challenges: u64) {
     println!("get_challenges: This is a mock call because there is no linked library");
 }
 
