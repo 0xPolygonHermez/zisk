@@ -11,17 +11,17 @@ include!("../bindings.rs");
 use std::ffi::CString;
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn zkevm_main_c(config_filename: &str, ptr: *mut u8) {
+pub fn zkevm_main_c(config_filename: &str, ptr: *mut u8) -> ::std::os::raw::c_int {
     unsafe {
         let config_filename = CString::new(config_filename).unwrap();
 
-        zkevm_main(config_filename.as_ptr() as *mut std::os::raw::c_char, ptr as *mut std::os::raw::c_void);
+        zkevm_main(config_filename.as_ptr() as *mut std::os::raw::c_char, ptr as *mut std::os::raw::c_void)
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn save_proof_c<T>(
-    p_stark: *mut ::std::os::raw::c_void,
+    p_stark_info: *mut ::std::os::raw::c_void,
     p_fri_proof: *mut ::std::os::raw::c_void,
     public_inputs: &Vec<T>,
     public_outputs_file: &str,
@@ -32,7 +32,7 @@ pub fn save_proof_c<T>(
         let file_prefix = CString::new(file_prefix).unwrap();
 
         save_proof(
-            p_stark,
+            p_stark_info,
             p_fri_proof,
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
@@ -358,10 +358,10 @@ pub fn compute_evals_c(p_stark: *mut c_void, p_params: *mut c_void, pProof: *mut
 pub fn compute_fri_pol_c(
     p_stark: *mut c_void,
     p_params: *mut c_void,
-    steps: *mut c_void,
+    p_steps: *mut c_void,
     nrowsStepBatch: u64,
 ) -> *mut c_void {
-    unsafe { compute_fri_pol(p_stark, p_params, steps, nrowsStepBatch) }
+    unsafe { compute_fri_pol(p_stark, p_params, p_steps, nrowsStepBatch) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -455,14 +455,14 @@ pub fn circom_recursive1_get_commited_pols_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn zkin_new_c<T>(
-    p_stark: *mut c_void,
+    p_stark_info: *mut c_void,
     p_fri_proof: *mut c_void,
     public_inputs: &Vec<T>,
     root_c: &Vec<T>,
 ) -> *mut c_void {
     unsafe {
         zkin_new(
-            p_stark,
+            p_stark_info,
             p_fri_proof,
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
@@ -568,13 +568,14 @@ pub fn polinomial_free_c(p_polinomial: *mut c_void) {
 // MOCK METHODS FOR TESTING
 
 #[cfg(feature = "no_lib_link")]
-pub fn zkevm_main_c(config_filename: &str, _ptr: *mut u8) {
+pub fn zkevm_main_c(config_filename: &str, _ptr: *mut u8) -> ::std::os::raw::c_int {
     println!("zkevm_main_c: This is a mock call because there is no linked library {}", config_filename);
+    0
 }
 
 #[cfg(feature = "no_lib_link")]
 pub fn save_proof_c<T>(
-    _p_starks: *mut ::std::os::raw::c_void,
+    _p_stark_info: *mut ::std::os::raw::c_void,
     _p_fri_proof: *mut ::std::os::raw::c_void,
     _public_inputs: &Vec<T>,
     _public_outputs_file: &str,
@@ -823,7 +824,7 @@ pub fn compute_evals_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *
 pub fn compute_fri_pol_c(
     _p_stark: *mut c_void,
     _p_params: *mut c_void,
-    _steps: *mut c_void,
+    _p_steps: *mut c_void,
     _nrowsStepBatch: u64,
 ) -> *mut c_void {
     println!("compute_fri_pol: This is a mock call because there is no linked library");
@@ -898,7 +899,7 @@ pub fn circom_recursive1_get_commited_pols_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn zkin_new_c<T>(
-    _p_starks: *mut c_void,
+    _p_stark_info: *mut c_void,
     _p_fri_proof: *mut c_void,
     _public_inputs: &Vec<T>,
     _root_c: &Vec<T>,
@@ -934,7 +935,12 @@ pub fn transcript_free_c(_p_transcript: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_challenges_c(_p_stark: *mut c_void, _p_transcript: *mut c_void, _p_element: *mut c_void, _n_challenges: u64) {
+pub fn get_challenges_c(
+    _p_stark: *mut c_void,
+    _p_transcript: *mut c_void,
+    _p_element: *mut c_void,
+    _n_challenges: u64,
+) {
     println!("get_challenges: This is a mock call because there is no linked library");
 }
 

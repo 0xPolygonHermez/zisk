@@ -118,6 +118,7 @@ impl<T: AbstractField> EStarkProver<T> {
         );
 
         let hash_size = if self.stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
+
         let verkey = vec![T::zero(); hash_size as usize];
         treesGL_get_root_c(self.p_stark, self.stark_info.n_stages + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
 
@@ -283,7 +284,5 @@ impl<T: AbstractField> EStarkProver<T> {
 
         proof_ctx.proof = Some(p_proof);
         info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
-
-        return;
     }
 }

@@ -6,7 +6,7 @@ extern "C" {
 
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
-        pStarks: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
         pFriProof: *mut ::std::os::raw::c_void,
         numPublicInputs: ::std::os::raw::c_ulong,
         pPublicInputs: *mut ::std::os::raw::c_void,
@@ -151,11 +151,7 @@ extern "C" {
     pub fn extend_and_merkelize(pStarks: *mut c_void, step: u64, pParams: *mut c_void, proof: *mut c_void);
 
     #[link_name = "\u{1}_Z16treesGL_get_rootPvmS_"]
-    pub fn treesGL_get_root(
-        pStarks: *mut ::std::os::raw::c_void,
-        index: u64,
-        root: *mut ::std::os::raw::c_void,
-    );
+    pub fn treesGL_get_root(pStarks: *mut ::std::os::raw::c_void, index: u64, root: *mut ::std::os::raw::c_void);
 
     #[link_name = "\u{1}_Z15calculate_h1_h2PvS_"]
     pub fn calculate_h1_h2(pStarks: *mut c_void, pParams: *mut c_void);
@@ -236,7 +232,7 @@ extern "C" {
     // ========================================================================================
     #[link_name = "\u{1}_Z8zkin_newPvS_mS_mS_"]
     pub fn zkin_new(
-        pStarks: *mut c_void,
+        pStarkInfo: *mut c_void,
         pFriProof: *mut c_void,
         numPublicInputs: ::std::os::raw::c_ulong,
         pPublicInputs: *mut c_void,
@@ -262,13 +258,8 @@ extern "C" {
     pub fn transcript_free(pTranscript: *mut c_void);
 
     #[link_name = "\u{1}_Z14get_challengesPvS_S_m"]
-    pub fn get_challenges(
-        pStarks: *mut c_void,
-        pTranscript: *mut c_void,
-        pElement: *mut c_void,
-        nChallenges: u64,
-    );
-    
+    pub fn get_challenges(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void, nChallenges: u64);
+
     #[link_name = "\u{1}_Z16get_permutationsPvPmmm"]
     pub fn get_permutations(pTranscript: *mut c_void, res: *mut u64, n: u64, nBits: u64);
 
