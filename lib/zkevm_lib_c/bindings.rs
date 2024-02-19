@@ -1,8 +1,13 @@
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
 #[allow(dead_code)]
 extern "C" {
-    #[link_name = "\u{1}_Z10zkevm_mainPcPv"]
-    pub fn zkevm_main(config_filename: *mut ::std::os::raw::c_char, pAddress: *mut c_void) -> ::std::os::raw::c_int;
+
+    #[link_name = "\u{1}_Z10zkevm_mainPcPvS0_"]
+    pub fn zkevm_main(
+        pConfigFile: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_void,
+        pMainSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
 
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(

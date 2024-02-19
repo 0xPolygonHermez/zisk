@@ -11,11 +11,12 @@ include!("../bindings.rs");
 use std::ffi::CString;
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn zkevm_main_c(config_filename: &str, ptr: *mut u8) -> ::std::os::raw::c_int {
+pub fn zkevm_main_c(config_filename: &str, ptr_address: *mut u8, ptr_req: *mut u8)-> ::std::os::raw::c_int {
     unsafe {
         let config_filename = CString::new(config_filename).unwrap();
 
-        zkevm_main(config_filename.as_ptr() as *mut std::os::raw::c_char, ptr as *mut std::os::raw::c_void)
+        zkevm_main(config_filename.as_ptr() as *mut std::os::raw::c_char, ptr_address as *mut std::os::raw::c_void, ptr_req as *mut std::os::raw::c_void);
+        0
     }
 }
 
@@ -568,7 +569,7 @@ pub fn polinomial_free_c(p_polinomial: *mut c_void) {
 // MOCK METHODS FOR TESTING
 
 #[cfg(feature = "no_lib_link")]
-pub fn zkevm_main_c(config_filename: &str, _ptr: *mut u8) -> ::std::os::raw::c_int {
+pub fn zkevm_main_c(config_filename: &str, ptr_address: *mut u8, ptr_req: *mut u8)-> ::std::os::raw::c_int {
     println!("zkevm_main_c: This is a mock call because there is no linked library {}", config_filename);
     0
 }
