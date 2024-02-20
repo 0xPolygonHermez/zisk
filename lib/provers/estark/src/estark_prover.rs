@@ -56,32 +56,6 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
     fn compute_stage(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
         info!("{}: --> eStark prover - STAGE {}", Self::MY_NAME, stage_id);
 
-        self.compute_stage_new(stage_id, proof_ctx)
-        // timer_start!(STARK_GENPROOF);
-
-        // let n_bits = self.stark_info.stark_struct.steps[self.stark_info.stark_struct.steps.len() - 1].n_bits;
-        // let n_trees = self.stark_info.stark_struct.steps.len() as u64;
-        // let n_publics = self.stark_info.n_publics;
-        // let eval_size = self.stark_info.ev_map.len() as u64;
-        // const FIELD_EXTENSION: u64 = 3;
-
-        // let p_fri_proof = fri_proof_new_c(1 << n_bits, FIELD_EXTENSION, n_trees, eval_size, n_publics);
-
-        // starks_genproof_c::<T>(self.p_stark, p_fri_proof, &proof_ctx.public_inputs, &self.verkey, self.p_steps);
-
-        // timer_stop_and_log!(STARK_GENPROOF);
-
-        // proof_ctx.proof = Some(p_fri_proof);
-        // info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
-
-        // return;
-    }
-}
-
-impl<T: AbstractField> EStarkProver<T> {
-    fn compute_stage_new(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
-        info!("{}: --> eStark prover - STAGE {}", Self::MY_NAME, stage_id);
-
         const HASH_SIZE: u64 = 4;
         const FIELD_EXTENSION: u64 = 3;
 
