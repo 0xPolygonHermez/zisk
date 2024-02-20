@@ -45,51 +45,6 @@ extern "C" {
     #[link_name = "\u{1}_Z21recursive2_steps_freePv"]
     pub fn recursive2_steps_free(Recursive2Steps: *mut c_void);
 
-    // #[link_name = "\u{1}_Z26step2prev_parser_first_avxPvS_mm"]
-    // pub fn step2prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z29step2prev_parser_first_avx512PvS_mm"]
-    // pub fn step2prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z24step2prev_first_parallelPvS_m"]
-    // pub fn step2prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
-
-    // #[link_name = "\u{1}_Z26step3prev_parser_first_avxPvS_mm"]
-    // pub fn step3prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z29step3prev_parser_first_avx512PvS_mm"]
-    // pub fn step3prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z24step3prev_first_parallelPvS_m"]
-    // pub fn step3prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
-
-    // #[link_name = "\u{1}_Z22step3_parser_first_avxPvS_mm"]
-    // pub fn step3_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z25step3_parser_first_avx512PvS_mm"]
-    // pub fn step3_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z20step3_first_parallelPvS_m"]
-    // pub fn step3_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
-
-    // #[link_name = "\u{1}_Z25step42ns_parser_first_avxPvS_mm"]
-    // pub fn step42ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z28step42ns_parser_first_avx512PvS_mm"]
-    // pub fn step42ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z23step42ns_first_parallelPvS_m"]
-    // pub fn step42ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
-
-    // #[link_name = "\u{1}_Z25step52ns_parser_first_avxPvS_mm"]
-    // pub fn step52ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z28step52ns_parser_first_avx512PvS_mm"]
-    // pub fn step52ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
-
-    // #[link_name = "\u{1}_Z23step52ns_first_parallelPvS_m"]
-    // pub fn step52ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
-
     // FRIProof
     // ========================================================================================
     #[link_name = "\u{1}_Z13fri_proof_newPv"]
@@ -127,15 +82,6 @@ extern "C" {
 
     #[link_name = "\u{1}_Z14get_stark_infoPv"]
     pub fn get_stark_info(pStarks: *mut c_void) -> *mut c_void;
-
-    #[link_name = "\u{1}_Z16starks_gen_proofPvS_S_S_S_"]
-    pub fn starks_genproof(
-        pStarks: *mut c_void,
-        pFRIProof: *mut c_void,
-        pPublicInputs: *mut c_void,
-        pVerkey: *mut c_void,
-        pSteps: *mut c_void,
-    );
 
     #[link_name = "\u{1}_Z11starks_freePv"]
     pub fn starks_free(pStarks: *mut c_void);
@@ -198,9 +144,6 @@ extern "C" {
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_S_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, pFriPol: *mut c_void, friQueries: *mut u64);
 
-    // #[link_name = "\u{1}_Z23get_num_rows_step_batchPv"]
-    // pub fn get_num_rows_step_batch(pStarks: *mut c_void) -> u64;
-
     // CommitPolsStarks
     // ========================================================================================
     #[link_name = "\u{1}_Z22commit_pols_starks_newPvmm"]
@@ -254,9 +197,6 @@ extern "C" {
     #[link_name = "\u{1}_Z25transcript_add_polinomialPvS_"]
     pub fn transcript_add_polinomial(pTranscript: *mut c_void, pPolinomial: *mut c_void);
 
-    #[link_name = "\u{1}_Z20transcript_get_fieldPvS_"]
-    pub fn transcript_get_field(pTranscript: *mut c_void, pOutput: *mut c_void);
-
     #[link_name = "\u{1}_Z15transcript_freePv"]
     pub fn transcript_free(pTranscript: *mut c_void);
 
@@ -271,9 +211,6 @@ extern "C" {
     #[link_name = "\u{1}_Z14polinomial_newmmPc"]
     pub fn polinomial_new(degree: u64, dim: u64, name: *mut ::std::os::raw::c_char) -> *mut c_void;
 
-    #[link_name = "\u{1}_Z19polinomial_new_voidv"]
-    pub fn polinomial_new_void() -> *mut c_void;
-
     #[link_name = "\u{1}_Z27polinomial_new_with_addressPvmmmPc"]
     pub fn polinomial_new_with_address(
         pAddress: *mut c_void,
@@ -283,20 +220,9 @@ extern "C" {
         name: *mut ::std::os::raw::c_char,
     ) -> *mut c_void;
 
-    #[link_name = "\u{1}_Z22polinomial_get_addressPv"]
-    pub fn polinomial_get_address(pPolinomial: *mut c_void) -> *mut c_void;
-
     #[link_name = "\u{1}_Z24polinomial_get_p_elementPvm"]
     pub fn polinomial_get_p_element(pPolinomial: *mut c_void, index: u64) -> *mut c_void;
 
     #[link_name = "\u{1}_Z15polinomial_freePv"]
     pub fn polinomial_free(pPolinomial: *mut c_void);
-
-    // Commit Pols
-    // ========================================================================================
-    #[link_name = "\u{1}_Z15commit_pols_newPvm"]
-    pub fn commit_pols_new(pAddress: *mut c_void, degree: u64) -> *mut c_void;
-
-    #[link_name = "\u{1}_Z16commit_pols_freePv"]
-    pub fn commit_pols_free(pCommitPols: *mut c_void);
 }
