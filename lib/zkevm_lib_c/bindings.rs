@@ -6,7 +6,7 @@ extern "C" {
     pub fn zkevm_main(
         pConfigFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
-        pMainSMRquests: *mut ::std::os::raw::c_void,
+        pSecondarySMInputs: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
