@@ -98,111 +98,6 @@ pub fn _recursive2_steps_free_c(p_recursive2_steps: *mut c_void) {
     }
 }
 
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step2prev_parser_first_avx_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step2prev_parser_first_avx(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step2prev_parser_first_avx512_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step2prev_parser_first_avx512(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step2prev_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64) {
-//     unsafe {
-//         step2prev_first_parallel(p_steps, p_params, nrows);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3prev_parser_first_avx_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step3prev_parser_first_avx(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3prev_parser_first_avx512_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step3prev_parser_first_avx512(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3prev_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64) {
-//     unsafe {
-//         step3prev_first_parallel(p_steps, p_params, nrows);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3_parser_first_avx_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step3_parser_first_avx(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3_parser_first_avx512_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step3_parser_first_avx512(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step3_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64) {
-//     unsafe {
-//         step3_first_parallel(p_steps, p_params, nrows);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step42ns_parser_first_avx_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step42ns_parser_first_avx(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step42ns_parser_first_avx512_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step42ns_parser_first_avx512(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step42ns_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64) {
-//     unsafe {
-//         step42ns_first_parallel(p_steps, p_params, nrows);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step52ns_parser_first_avx_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step52ns_parser_first_avx(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step52ns_parser_first_avx512_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64, n_rows_batch: u64) {
-//     unsafe {
-//         step52ns_parser_first_avx512(p_steps, p_params, nrows, n_rows_batch);
-//     }
-// }
-
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn step52ns_first_parallel_c(p_steps: *mut c_void, p_params: *mut c_void, nrows: u64) {
-//     unsafe {
-//         step52ns_first_parallel(p_steps, p_params, nrows);
-//     }
-// }
-
 #[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(p_stark: *mut c_void) -> *mut c_void {
     unsafe { fri_proof_new(p_stark) }
@@ -376,11 +271,6 @@ pub fn compute_fri_queries_c(p_stark: *mut c_void, pProof: *mut c_void, pFriPol:
     }
 }
 
-// #[cfg(not(feature = "no_lib_link"))]
-// pub fn get_num_rows_step_batch_c(p_stark: *mut c_void) -> u64 {
-//     unsafe { get_num_rows_step_batch(p_stark) }
-// }
-
 #[cfg(not(feature = "no_lib_link"))]
 pub fn commit_pols_starks_new_c(
     p_address: *mut c_void,
@@ -484,13 +374,6 @@ pub fn transcript_add_polinomial_c(p_transcript: *mut c_void, p_polinomial: *mut
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_get_field_c(p_transcript: *mut c_void, pOutput: *mut c_void) {
-    unsafe {
-        transcript_get_field(p_transcript, pOutput);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn transcript_free_c(p_transcript: *mut c_void) {
     unsafe {
         transcript_free(p_transcript);
@@ -521,11 +404,6 @@ pub fn polinomial_new_c(degree: u64, dim: u64, name: &str) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn polinomial_new_void_c() -> *mut c_void {
-    unsafe { polinomial_new_void() }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn polinomial_new_with_address_c(
     pAddress: *mut c_void,
     degree: u64,
@@ -538,11 +416,6 @@ pub fn polinomial_new_with_address_c(
 
         polinomial_new_with_address(pAddress, degree, dim, offset, name.as_ptr() as *mut std::os::raw::c_char)
     }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn polinomial_get_address_c(p_polinomial: *mut c_void) -> *mut c_void {
-    unsafe { polinomial_get_address(p_polinomial) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -626,81 +499,6 @@ pub fn _recursive2_steps_free_c(_p_recursive2_steps: *mut c_void) {
     println!("recursive2_steps_free_c: This is a mock call because there is no linked library");
 }
 
-// #[cfg(feature = "no_lib_link")]
-// pub fn step2prev_parser_first_avx_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step2prev_parser_first_avx: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step2prev_parser_first_avx512_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step2prev_parser_first_avx512: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step2prev_first_parallel_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64) {
-//     println!("step2prev_first_parallel: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3prev_parser_first_avx_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step3prev_parser_first_avx: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3prev_parser_first_avx512_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step3prev_parser_first_avx512: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3prev_first_parallel_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64) {
-//     println!("step3prev_first_parallel: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3_parser_first_avx_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step3_parser_first_avx: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3_parser_first_avx512_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step3_parser_first_avx512: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step3_first_parallel_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64) {
-//     println!("step3_first_parallel: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step42ns_parser_first_avx_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step42ns_parser_first_avx: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step42ns_parser_first_avx512_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step42ns_parser_first_avx512: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step42ns_first_parallel_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64) {
-//     println!("step42ns_first_parallel: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step52ns_parser_first_avx_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step52ns_parser_first_avx: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step52ns_parser_first_avx512_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64, _n_rows_batch: u64) {
-//     println!("step52ns_parser_first_avx512: This is a mock call because there is no linked library");
-// }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn step52ns_first_parallel_c(_p_steps: *mut c_void, _p_params: *mut c_void, _nrows: u64) {
-//     println!("step52ns_first_parallel: This is a mock call because there is no linked library");
-// }
-
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_new_c(_p_starks: *mut c_void) -> *mut c_void {
     println!("fri_proof_new: This is a mock call because there is no linked library");
@@ -782,6 +580,7 @@ pub fn steps_params_free_c(_p_stepsParams: *mut c_void) {
 pub fn extend_and_merkelize_c(_p_stark: *mut c_void, _step: u64, _p_params: *mut c_void, _proof: *mut c_void) {
     println!("extend_and_merkelize: This is a mock call because there is no linked library");
 }
+
 #[cfg(feature = "no_lib_link")]
 pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void) {
     println!("treesGL_get_root: This is a mock call because there is no linked library");
@@ -818,11 +617,7 @@ pub fn compute_evals_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_fri_pol_c(
-    _p_stark: *mut c_void,
-    _p_params: *mut c_void,
-    _p_chelpers_steps: *mut c_void,
-) -> *mut c_void {
+pub fn compute_fri_pol_c(_p_stark: *mut c_void, _p_params: *mut c_void, _p_chelpers_steps: *mut c_void) -> *mut c_void {
     println!("compute_fri_pol: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -847,12 +642,6 @@ pub fn compute_fri_queries_c(
 ) {
     println!("compute_fri_queries: This is a mock call because there is no linked library");
 }
-
-// #[cfg(feature = "no_lib_link")]
-// pub fn get_num_rows_step_batch_c(_p_stark: *mut c_void) -> u64 {
-//     println!("get_num_rows_step_batch: This is a mock call because there is no linked library");
-//     1
-// }
 
 #[cfg(feature = "no_lib_link")]
 pub fn commit_pols_starks_new_c(
@@ -921,11 +710,6 @@ pub fn transcript_add_polinomial_c(_p_transcript: *mut c_void, _p_polinomial: *m
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn transcript_get_field_c(_p_transcript: *mut c_void, _pOutput: *mut c_void) {
-    println!("transcript_get_field: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn transcript_free_c(_p_transcript: *mut c_void) {
     println!("transcript_free: This is a mock call because there is no linked library");
 }
@@ -952,12 +736,6 @@ pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn polinomial_new_void_c() -> *mut c_void {
-    println!("polinomial_new_void: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn polinomial_new_with_address_c(
     _pAddress: *mut c_void,
     _degree: u64,
@@ -970,12 +748,6 @@ pub fn polinomial_new_with_address_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn polinomial_get_address_c(_p_polinomial: *mut c_void) -> *mut c_void {
-    println!("get_address: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn polinomial_get_p_element_c(_p_polinomial: *mut c_void, _index: u64) -> *mut c_void {
     println!("get_p_element: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -984,15 +756,4 @@ pub fn polinomial_get_p_element_c(_p_polinomial: *mut c_void, _index: u64) -> *m
 #[cfg(feature = "no_lib_link")]
 pub fn polinomial_free_c(_p_polinomial: *mut c_void) {
     println!("polinomial_free: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn commit_pols_new_c(_p_address: *mut c_void, _degree: u64) -> *mut c_void {
-    println!("commit_pols_new: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn commit_pols_free_c(_pCommitPols: *mut c_void) {
-    println!("commit_pols_free: This is a mock call because there is no linked library");
 }

@@ -256,6 +256,10 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         timer_stop_and_log!(STARK_COMPUTE_STAGE);
 
         proof_ctx.proof = Some(p_proof);
+
+        steps_params_free_c(p_params);
+        transcript_free_c(p_transcript);
+
         info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
     }
 }
