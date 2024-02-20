@@ -45,50 +45,50 @@ extern "C" {
     #[link_name = "\u{1}_Z21recursive2_steps_freePv"]
     pub fn recursive2_steps_free(Recursive2Steps: *mut c_void);
 
-    #[link_name = "\u{1}_Z26step2prev_parser_first_avxPvS_mm"]
-    pub fn step2prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z26step2prev_parser_first_avxPvS_mm"]
+    // pub fn step2prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z29step2prev_parser_first_avx512PvS_mm"]
-    pub fn step2prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z29step2prev_parser_first_avx512PvS_mm"]
+    // pub fn step2prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z24step2prev_first_parallelPvS_m"]
-    pub fn step2prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
+    // #[link_name = "\u{1}_Z24step2prev_first_parallelPvS_m"]
+    // pub fn step2prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
 
-    #[link_name = "\u{1}_Z26step3prev_parser_first_avxPvS_mm"]
-    pub fn step3prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z26step3prev_parser_first_avxPvS_mm"]
+    // pub fn step3prev_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z29step3prev_parser_first_avx512PvS_mm"]
-    pub fn step3prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z29step3prev_parser_first_avx512PvS_mm"]
+    // pub fn step3prev_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z24step3prev_first_parallelPvS_m"]
-    pub fn step3prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
+    // #[link_name = "\u{1}_Z24step3prev_first_parallelPvS_m"]
+    // pub fn step3prev_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
 
-    #[link_name = "\u{1}_Z22step3_parser_first_avxPvS_mm"]
-    pub fn step3_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z22step3_parser_first_avxPvS_mm"]
+    // pub fn step3_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z25step3_parser_first_avx512PvS_mm"]
-    pub fn step3_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z25step3_parser_first_avx512PvS_mm"]
+    // pub fn step3_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z20step3_first_parallelPvS_m"]
-    pub fn step3_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
+    // #[link_name = "\u{1}_Z20step3_first_parallelPvS_m"]
+    // pub fn step3_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
 
-    #[link_name = "\u{1}_Z25step42ns_parser_first_avxPvS_mm"]
-    pub fn step42ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z25step42ns_parser_first_avxPvS_mm"]
+    // pub fn step42ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z28step42ns_parser_first_avx512PvS_mm"]
-    pub fn step42ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z28step42ns_parser_first_avx512PvS_mm"]
+    // pub fn step42ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z23step42ns_first_parallelPvS_m"]
-    pub fn step42ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
+    // #[link_name = "\u{1}_Z23step42ns_first_parallelPvS_m"]
+    // pub fn step42ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
 
-    #[link_name = "\u{1}_Z25step52ns_parser_first_avxPvS_mm"]
-    pub fn step52ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z25step52ns_parser_first_avxPvS_mm"]
+    // pub fn step52ns_parser_first_avx(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z28step52ns_parser_first_avx512PvS_mm"]
-    pub fn step52ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
+    // #[link_name = "\u{1}_Z28step52ns_parser_first_avx512PvS_mm"]
+    // pub fn step52ns_parser_first_avx512(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64, nrowsBatch: u64);
 
-    #[link_name = "\u{1}_Z23step52ns_first_parallelPvS_m"]
-    pub fn step52ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
+    // #[link_name = "\u{1}_Z23step52ns_first_parallelPvS_m"]
+    // pub fn step52ns_first_parallel(pSteps: *mut c_void, pParams: *mut c_void, nrows: u64);
 
     // FRIProof
     // ========================================================================================
@@ -114,15 +114,16 @@ extern "C" {
 
     // Starks
     // ========================================================================================
-    #[link_name = "\u{1}_Z10starks_newPvPcbS0_S0_S_"]
+    #[link_name = "\u{1}_Z10starks_newPvPcbS0_S0_S0_S_"]
     pub fn starks_new(
-        pConfig: *mut c_void,
+        pConfig: *mut ::std::os::raw::c_void,
         constPols: *mut ::std::os::raw::c_char,
         mapConstPolsFile: bool,
         constantsTree: *mut ::std::os::raw::c_char,
         starkInfo: *mut ::std::os::raw::c_char,
-        pAddress: *mut c_void,
-    ) -> *mut c_void;
+        cHelpers: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z14get_stark_infoPv"]
     pub fn get_stark_info(pStarks: *mut c_void) -> *mut c_void;
@@ -164,14 +165,12 @@ extern "C" {
     #[link_name = "\u{1}_Z11calculate_zPvS_"]
     pub fn calculate_z(pStarks: *mut c_void, pParams: *mut c_void);
 
-    #[link_name = "\u{1}_Z21calculate_expressionsPvPcmS_S_m"]
+    #[link_name = "\u{1}_Z21calculate_expressionsPvPcS_S_"]
     pub fn calculate_expressions(
-        pStarks: *mut c_void,
+        pStarks: *mut ::std::os::raw::c_void,
         step: *mut ::std::os::raw::c_char,
-        nrowsStepBatch: u64,
-        pSteps: *mut c_void,
-        pParams: *mut c_void,
-        n: u64,
+        pParams: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
     );
 
     #[link_name = "\u{1}_Z9compute_qPvS_S_"]
@@ -180,13 +179,12 @@ extern "C" {
     #[link_name = "\u{1}_Z13compute_evalsPvS_S_"]
     pub fn compute_evals(pStarks: *mut c_void, pParams: *mut c_void, pProof: *mut c_void);
 
-    #[link_name = "\u{1}_Z15compute_fri_polPvS_S_m"]
+    #[link_name = "\u{1}_Z15compute_fri_polPvS_S_"]
     pub fn compute_fri_pol(
-        pStarks: *mut c_void,
-        pParams: *mut c_void,
-        steps: *mut c_void,
-        nrowsStepBatch: u64,
-    ) -> *mut c_void;
+        pStarks: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        cHelpersSteps: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z19compute_fri_foldingPvS_S_mS_"]
     pub fn compute_fri_folding(
@@ -200,8 +198,8 @@ extern "C" {
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_S_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, pFriPol: *mut c_void, friQueries: *mut u64);
 
-    #[link_name = "\u{1}_Z23get_num_rows_step_batchPv"]
-    pub fn get_num_rows_step_batch(pStarks: *mut c_void) -> u64;
+    // #[link_name = "\u{1}_Z23get_num_rows_step_batchPv"]
+    // pub fn get_num_rows_step_batch(pStarks: *mut c_void) -> u64;
 
     // CommitPolsStarks
     // ========================================================================================

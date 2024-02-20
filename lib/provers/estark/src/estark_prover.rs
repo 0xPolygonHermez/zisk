@@ -39,6 +39,7 @@ impl<T: AbstractField> EStarkProver<T> {
             config.map_const_pols_file,
             config.const_tree_filename.as_str(),
             config.stark_info_filename.as_str(),
+            config.chelpers_filename.as_str(),
             ptr,
         );
 
@@ -63,9 +64,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
 
         timer_start!(STARK_INITIALIZATION);
 
-        let n = 1 << self.stark_info.stark_struct.n_bits;
         let n_extended = 1 << self.stark_info.stark_struct.n_bits_ext;
-        let n_rows_step_batch = get_num_rows_step_batch_c(self.p_stark);
 
         let p_transcript = transcript_new_c();
 
@@ -150,7 +149,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             self.stark_info.num_challenges[step as usize - 1],
         );
 
-        calculate_expressions_c(self.p_stark, "step2prev", n_rows_step_batch, self.p_steps, p_params, n);
+        calculate_expressions_c(self.p_stark, "step2", p_params, self.p_steps);
 
         calculate_h1_h2_c(self.p_stark, p_params);
 
@@ -174,11 +173,11 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             self.stark_info.num_challenges[step as usize - 1],
         );
 
-        calculate_expressions_c(self.p_stark, "step3prev", n_rows_step_batch, self.p_steps, p_params, n);
+        calculate_expressions_c(self.p_stark, "step3", p_params, self.p_steps);
 
         calculate_z_c(self.p_stark, p_params);
 
-        calculate_expressions_c(self.p_stark, "step3", n_rows_step_batch, self.p_steps, p_params, n);
+        calculate_expressions_c(self.p_stark, "step3_after", p_params, self.p_steps);
 
         extend_and_merkelize_c(self.p_stark, step, p_params, p_proof);
 
@@ -195,7 +194,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
 
         get_challenges_c(self.p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 4), 1);
 
-        calculate_expressions_c(self.p_stark, "step42ns", n_rows_step_batch, self.p_steps, p_params, n_extended);
+        calculate_expressions_c(self.p_stark, "step4", p_params, self.p_steps);
 
         compute_q_c(self.p_stark, p_params, p_proof);
 
@@ -224,7 +223,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         timer_start!(STARK_STEP_FRI);
 
-        let p_fri_pol = compute_fri_pol_c(self.p_stark, p_params, self.p_steps, n_rows_step_batch);
+        let p_fri_pol = compute_fri_pol_c(self.p_stark, p_params, self.p_steps);
 
         for step in 0..self.stark_info.stark_struct.steps.len() {
             let challenge = polinomial_new_c(1, FIELD_EXTENSION, "");
