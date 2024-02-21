@@ -100,6 +100,8 @@ impl<T: Default + Clone> ProofCtx<T> {
                 air.instances.write().unwrap().clear();
             }
         }
+
+        self.proof = None;
     }
 
     /// Adds a trace to the specified Air instance.

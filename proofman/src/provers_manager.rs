@@ -5,7 +5,8 @@ use crate::proof_ctx::ProofCtx;
 use log::info;
 
 pub trait Prover<T> {
-    fn compute_stage(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
+    fn build(&mut self);
+    fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
 }
 
 // PROVERS MANAGER
@@ -34,7 +35,7 @@ impl<T> ProversManager<T> {
 
         info!("{}: <== COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
-        ProverStatus::OpeningsCompleted
+        ProverStatus::StagesCompleted
     }
 
     pub fn verify_constraints(&self, stage_id: u32) -> bool {

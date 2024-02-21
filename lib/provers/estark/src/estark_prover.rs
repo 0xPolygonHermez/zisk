@@ -11,50 +11,68 @@ use std::time::Instant;
 use crate::stark_info::StarkInfo;
 use crate::estark_prover_settings::EStarkProverSettings;
 
-pub struct EStarkProver<T: AbstractField> {
-    pub p_stark: *mut ::std::os::raw::c_void,
+pub struct EStarkProver<'a, T: AbstractField> {
+    initialized: bool,
+    config: &'a EStarkProverSettings,
     p_steps: *mut ::std::os::raw::c_void,
-    stark_info: StarkInfo,
+    ptr: *mut std::os::raw::c_void,
+    pub p_stark: Option<*mut ::std::os::raw::c_void>,
+    stark_info: Option<StarkInfo>,
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: AbstractField> EStarkProver<T> {
+impl<'a, T: AbstractField> EStarkProver<'a, T> {
     const MY_NAME: &'static str = "estrkPrv";
 
     pub fn new(
-        config: &EStarkProverSettings,
+        config: &'a EStarkProverSettings,
         p_steps: *mut std::os::raw::c_void,
         ptr: *mut std::os::raw::c_void,
     ) -> Self {
-        timer_start!(ESTARK_PROVER_NEW);
-
-        let p_config = config_new_c(&config.current_path);
-        let stark_info_json = std::fs::read_to_string(&config.stark_info_filename)
-            .expect(format!("Failed to read file {}", &config.stark_info_filename).as_str());
-        let stark_info = StarkInfo::from_json(&stark_info_json);
-
-        let p_stark = starks_new_c(
-            p_config,
-            config.const_pols_filename.as_str(),
-            config.map_const_pols_file,
-            config.const_tree_filename.as_str(),
-            config.stark_info_filename.as_str(),
-            config.chelpers_filename.as_str(),
+        Self {
+            initialized: false,
+            config,
+            p_steps,
             ptr,
-        );
-
-        timer_stop_and_log!(ESTARK_PROVER_NEW);
-
-        Self { p_stark, p_steps, stark_info, phantom: std::marker::PhantomData }
+            p_stark: None,
+            stark_info: None,
+            phantom: std::marker::PhantomData,
+        }
     }
 
     pub fn get_stark_info(&self) -> *mut ::std::os::raw::c_void {
-        get_stark_info_c(self.p_stark)
+        get_stark_info_c(self.p_stark.unwrap())
     }
 }
 
-impl<T: AbstractField> Prover<T> for EStarkProver<T> {
-    fn compute_stage(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
+impl<'a, T: AbstractField> Prover<T> for EStarkProver<'a, T> {
+    fn build(&mut self) {
+        timer_start!(ESTARK_PROVER_NEW);
+
+        let p_config = config_new_c(&self.config.current_path);
+        let stark_info_json = std::fs::read_to_string(&self.config.stark_info_filename)
+            .expect(format!("Failed to read file {}", &self.config.stark_info_filename).as_str());
+        self.stark_info = Some(StarkInfo::from_json(&stark_info_json));
+
+        self.p_stark = Some(starks_new_c(
+            p_config,
+            self.config.const_pols_filename.as_str(),
+            self.config.map_const_pols_file,
+            self.config.const_tree_filename.as_str(),
+            self.config.stark_info_filename.as_str(),
+            self.config.chelpers_filename.as_str(),
+            self.ptr,
+        ));
+
+        timer_stop_and_log!(ESTARK_PROVER_NEW);
+    }
+
+    fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
+        if !self.initialized {
+            self.build();
+            self.initialized = true;
+        }
+
         info!("{}: --> eStark prover - STAGE {}", Self::MY_NAME, stage_id);
 
         const HASH_SIZE: u64 = 4;
@@ -64,15 +82,17 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
 
         timer_start!(STARK_INITIALIZATION);
 
-        let n_extended = 1 << self.stark_info.stark_struct.n_bits_ext;
+        let stark_info = self.stark_info.as_ref().unwrap();
+        let p_stark = self.p_stark.unwrap();
+
+        let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
 
         let p_transcript = transcript_new_c();
 
-        let p_evals = polinomial_new_c(self.stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
-        let p_challenges = polinomial_new_c(self.stark_info.n_challenges, FIELD_EXTENSION, "");
+        let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
+        let p_challenges = polinomial_new_c(stark_info.n_challenges, FIELD_EXTENSION, "");
 
-        let p_div_x_sub =
-            polinomial_new_c(self.stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
+        let p_div_x_sub = polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
 
         let p_x_div_x_sub_xi = polinomial_new_with_address_c(
             polinomial_get_p_element_c(p_div_x_sub, 0),
@@ -90,15 +110,15 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             "",
         );
 
-        let hash_size = if self.stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
+        let hash_size = if stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
 
         let verkey = vec![T::zero(); hash_size as usize];
-        treesGL_get_root_c(self.p_stark, self.stark_info.n_stages + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
+        treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
 
-        let p_proof = fri_proof_new_c(self.p_stark);
+        let p_proof = fri_proof_new_c(p_stark);
 
         let p_params = steps_params_new_c(
-            self.p_stark,
+            p_stark,
             p_challenges,
             p_evals,
             p_x_div_x_sub_xi,
@@ -118,7 +138,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         transcript_add_c(
             p_transcript,
             proof_ctx.public_inputs.as_ptr() as *mut std::os::raw::c_void,
-            self.stark_info.n_publics,
+            stark_info.n_publics,
         );
 
         timer_stop_and_log!(STARK_STEP_0);
@@ -129,7 +149,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         timer_start!(STARK_STEP_1);
         let mut step = 1;
 
-        extend_and_merkelize_c(self.p_stark, step, p_params, p_proof);
+        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
 
         let root = fri_proof_get_root_c(p_proof, step - 1, 0);
         transcript_add_c(p_transcript, root, HASH_SIZE);
@@ -143,17 +163,17 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         step = 2;
 
         get_challenges_c(
-            self.p_stark,
+            p_stark,
             p_transcript,
             polinomial_get_p_element_c(p_challenges, 0),
-            self.stark_info.num_challenges[step as usize - 1],
+            stark_info.num_challenges[step as usize - 1],
         );
 
-        calculate_expressions_c(self.p_stark, "step2", p_params, self.p_steps);
+        calculate_expressions_c(p_stark, "step2", p_params, self.p_steps);
 
-        calculate_h1_h2_c(self.p_stark, p_params);
+        calculate_h1_h2_c(p_stark, p_params);
 
-        extend_and_merkelize_c(self.p_stark, step, p_params, p_proof);
+        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
 
         let root = fri_proof_get_root_c(p_proof, step - 1, 0);
         transcript_add_c(p_transcript, root, HASH_SIZE);
@@ -167,19 +187,19 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         step = 3;
 
         get_challenges_c(
-            self.p_stark,
+            p_stark,
             p_transcript,
             polinomial_get_p_element_c(p_challenges, 2),
-            self.stark_info.num_challenges[step as usize - 1],
+            stark_info.num_challenges[step as usize - 1],
         );
 
-        calculate_expressions_c(self.p_stark, "step3", p_params, self.p_steps);
+        calculate_expressions_c(p_stark, "step3", p_params, self.p_steps);
 
-        calculate_z_c(self.p_stark, p_params);
+        calculate_z_c(p_stark, p_params);
 
-        calculate_expressions_c(self.p_stark, "step3_after", p_params, self.p_steps);
+        calculate_expressions_c(p_stark, "step3_after", p_params, self.p_steps);
 
-        extend_and_merkelize_c(self.p_stark, step, p_params, p_proof);
+        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
 
         let root = fri_proof_get_root_c(p_proof, step - 1, 0);
         transcript_add_c(p_transcript, root, HASH_SIZE);
@@ -192,11 +212,11 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         timer_start!(STARK_STEP_4);
         step = 4;
 
-        get_challenges_c(self.p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 4), 1);
+        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 4), 1);
 
-        calculate_expressions_c(self.p_stark, "step4", p_params, self.p_steps);
+        calculate_expressions_c(p_stark, "step4", p_params, self.p_steps);
 
-        compute_q_c(self.p_stark, p_params, p_proof);
+        compute_q_c(p_stark, p_params, p_proof);
 
         let root = fri_proof_get_root_c(p_proof, step - 1, 0);
         transcript_add_c(p_transcript, root, HASH_SIZE);
@@ -208,13 +228,13 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         timer_start!(STARK_STEP_5);
 
-        get_challenges_c(self.p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7), 1);
+        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7), 1);
 
-        compute_evals_c(self.p_stark, p_params, p_proof);
+        compute_evals_c(p_stark, p_params, p_proof);
 
         transcript_add_polinomial_c(p_transcript, p_evals);
 
-        get_challenges_c(self.p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5), 2);
+        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5), 2);
 
         timer_stop_and_log!(STARK_STEP_5);
 
@@ -223,14 +243,14 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         timer_start!(STARK_STEP_FRI);
 
-        let p_fri_pol = compute_fri_pol_c(self.p_stark, p_params, self.p_steps);
+        let p_fri_pol = compute_fri_pol_c(p_stark, p_params, self.p_steps);
 
-        for step in 0..self.stark_info.stark_struct.steps.len() {
+        for step in 0..stark_info.stark_struct.steps.len() {
             let challenge = polinomial_new_c(1, FIELD_EXTENSION, "");
-            get_challenges_c(self.p_stark, p_transcript, polinomial_get_p_element_c(challenge, 0), 1);
+            get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(challenge, 0), 1);
 
-            compute_fri_folding_c(self.p_stark, p_proof, p_fri_pol, step as u64, challenge);
-            if step < self.stark_info.stark_struct.steps.len() - 1 {
+            compute_fri_folding_c(p_stark, p_proof, p_fri_pol, step as u64, challenge);
+            if step < stark_info.stark_struct.steps.len() - 1 {
                 let root = fri_proof_get_tree_root_c(p_proof, step as u64 + 1, 0);
                 transcript_add_c(p_transcript, root, HASH_SIZE);
             } else {
@@ -238,16 +258,16 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             }
         }
 
-        let mut fri_queries = vec![0u64; self.stark_info.stark_struct.n_queries as usize];
+        let mut fri_queries = vec![0u64; stark_info.stark_struct.n_queries as usize];
 
         get_permutations_c(
             p_transcript,
             fri_queries.as_mut_ptr(),
-            self.stark_info.stark_struct.n_queries,
-            self.stark_info.stark_struct.steps[0].n_bits,
+            stark_info.stark_struct.n_queries,
+            stark_info.stark_struct.steps[0].n_bits,
         );
 
-        compute_fri_queries_c(self.p_stark, p_proof, p_fri_pol, fri_queries.as_mut_ptr());
+        compute_fri_queries_c(p_stark, p_proof, p_fri_pol, fri_queries.as_mut_ptr());
 
         polinomial_free_c(p_fri_pol);
 

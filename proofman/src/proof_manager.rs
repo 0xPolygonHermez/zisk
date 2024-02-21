@@ -20,8 +20,8 @@ use util::colors::colors::*;
 // ================================================================================================
 #[derive(Debug, PartialEq)]
 pub enum ProverStatus {
-    OpeningsPending,
-    OpeningsCompleted,
+    StagesPending,
+    StagesCompleted,
 }
 
 // PROOF MANAGER SEQUENTIAL
@@ -85,18 +85,20 @@ where
 
         self.proof_ctx.initialize_proof(public_inputs);
 
-        let mut prover_status = ProverStatus::OpeningsPending;
+        let mut prover_status = ProverStatus::StagesPending;
         let mut stage_id: u32 = 1;
         let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
 
-        while prover_status != ProverStatus::OpeningsCompleted {
-            let stage_str = if stage_id <= num_stages + 1 { "WITNESS COMPUTATION STAGE" } else { "OPENINGS STAGE" };
-
+        while prover_status != ProverStatus::StagesCompleted {
+            let stage_str = if stage_id <= num_stages + 1 { "COMMIT PHASE - STAGE" } else { "OPENINGS PHASE - STAGE" };
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
             self.wc_manager.witness_computation(&self.proofman_config, stage_id, &mut self.proof_ctx);
 
+            // Once the first witness computation is done we assume we have initialized the air instances.
+            // So, we know the number of row for each air instance and we can select the setup for each air instance.
             if stage_id == 1 {
+                // TODO!
                 self.provers_manager.setup(/*&setup*/);
             }
 

@@ -16,7 +16,11 @@ impl<T> MockedProver<T> {
     }
 }
 impl<T> Prover<T> for MockedProver<T> {
-    fn compute_stage(&self, stage_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+    fn build(&mut self) {
+        info!("{}: --> Mocked prover - BUILD", Self::MY_NAME);
+    }
+
+    fn compute_stage(&mut self, stage_id: u32, _proof_ctx: &mut ProofCtx<T>) {
         info!("{}: --> Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
         info!("{}: <-- Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
     }
