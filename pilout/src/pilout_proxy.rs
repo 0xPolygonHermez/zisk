@@ -96,13 +96,16 @@ impl PilOutProxy {
             debug!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
         }
 
-        debug!("{}:     Number of proof values: {}", Self::MY_NAME, self.pilout.num_proof_values);
-        debug!("{}:     Number of public values: {}", Self::MY_NAME, self.pilout.num_public_values);
+        debug!(
+            "{}:     #Proof values: {}, #Public values: {}, #Global expressions: {}, #Global constraints: {}",
+            Self::MY_NAME,
+            self.pilout.num_proof_values,
+            self.pilout.num_public_values,
+            self.pilout.expressions.len(),
+            self.pilout.constraints.len()
+        );
+        debug!("{}:     #Hints: {}, #Symbols: {}", Self::MY_NAME, self.pilout.hints.len(), self.pilout.symbols.len());
         debug!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
-        debug!("{}:     Global expressions: {}", Self::MY_NAME, self.pilout.expressions.len());
-        debug!("{}:     Global constraints: {}", Self::MY_NAME, self.pilout.constraints.len());
-        debug!("{}:     Hints: {}", Self::MY_NAME, self.pilout.hints.len());
-        debug!("{}:     Symbols: {}", Self::MY_NAME, self.pilout.symbols.len());
     }
 }
 

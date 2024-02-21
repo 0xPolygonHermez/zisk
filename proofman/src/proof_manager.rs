@@ -90,7 +90,7 @@ where
         let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
 
         while prover_status != ProverStatus::OpeningsCompleted {
-            let stage_str = if stage_id <= num_stages + 1 { "STAGE" } else { "OPENINGS" };
+            let stage_str = if stage_id <= num_stages + 1 { "WITNESS COMPUTATION STAGE" } else { "OPENINGS STAGE" };
 
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
