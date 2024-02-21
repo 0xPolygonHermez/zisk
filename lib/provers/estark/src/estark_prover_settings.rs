@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use proofman::proof_manager_config::Config;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct EStarkProverSettings {
     #[serde(default = "default_string", rename = "currentPath")]
     pub current_path: String,

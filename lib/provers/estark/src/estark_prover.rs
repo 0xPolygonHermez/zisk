@@ -11,9 +11,9 @@ use std::time::Instant;
 use crate::stark_info::StarkInfo;
 use crate::estark_prover_settings::EStarkProverSettings;
 
-pub struct EStarkProver<'a, T: AbstractField> {
+pub struct EStarkProver<T: AbstractField> {
     initialized: bool,
-    config: &'a EStarkProverSettings,
+    config: EStarkProverSettings,
     p_steps: *mut ::std::os::raw::c_void,
     ptr: *mut std::os::raw::c_void,
     pub p_stark: Option<*mut ::std::os::raw::c_void>,
@@ -21,11 +21,11 @@ pub struct EStarkProver<'a, T: AbstractField> {
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a, T: AbstractField> EStarkProver<'a, T> {
+impl<T: AbstractField> EStarkProver<T> {
     const MY_NAME: &'static str = "estrkPrv";
 
     pub fn new(
-        config: &'a EStarkProverSettings,
+        config: EStarkProverSettings,
         p_steps: *mut std::os::raw::c_void,
         ptr: *mut std::os::raw::c_void,
     ) -> Self {
@@ -45,7 +45,7 @@ impl<'a, T: AbstractField> EStarkProver<'a, T> {
     }
 }
 
-impl<'a, T: AbstractField> Prover<T> for EStarkProver<'a, T> {
+impl<T: AbstractField> Prover<T> for EStarkProver<T> {
     fn build(&mut self) {
         timer_start!(ESTARK_PROVER_NEW);
 
