@@ -146,7 +146,7 @@ pub fn stark_info_new_c(p_config: *mut c_void, filename: &str) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
+pub fn stark_info_free_c(p_stark_info: *mut c_void) {
     unsafe {
         starkinfo_free(p_stark_info);
     }
