@@ -200,7 +200,7 @@ pub fn steps_params_new_c(
     p_x_div_x_sub_xi: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
-    unsafe { steps_params_new(p_stark, p_challenges, p_evals, p_x_div_x_sub_xi, p_x_div_x_sub_wxi, p_public_inputs) }
+    unsafe { steps_params_new(p_stark, p_challenges, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
