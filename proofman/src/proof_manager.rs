@@ -1,5 +1,5 @@
 use crate::public_inputs::PublicInputs;
-use crate::provers_manager::Prover;
+use crate::provers_manager::ProverBuilder;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
 use serde::de::DeserializeOwned;
@@ -46,7 +46,7 @@ where
     pub fn new(
         proofman_config: ProofManConfig<E, P, M>,
         wc: Vec<Box<dyn Executor<T, E, P, M>>>,
-        prover: Box<dyn Prover<T>>,
+        prover_builder: Box<dyn ProverBuilder<T>>,
     ) -> Self {
         Self::print_banner();
 
@@ -67,7 +67,7 @@ where
 
         // Add ProverManager
         debug!("{}: ··· Creating prover manager", Self::MY_NAME);
-        let provers_manager = ProversManager::new(prover);
+        let provers_manager = ProversManager::new(prover_builder);
 
         Self { proofman_config, proof_ctx, wc_manager, provers_manager }
     }

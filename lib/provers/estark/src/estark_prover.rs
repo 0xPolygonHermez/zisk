@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-
 use goldilocks::AbstractField;
 
 use proofman::provers_manager::Prover;

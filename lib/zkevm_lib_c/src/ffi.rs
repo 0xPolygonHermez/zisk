@@ -137,6 +137,22 @@ pub fn config_free_c(pConfig: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn stark_info_new_c(p_config: *mut c_void, filename: &str) -> *mut c_void {
+    unsafe {
+        let filename = CString::new(filename).unwrap();
+
+        starkinfo_new(p_config, filename.as_ptr() as *mut std::os::raw::c_char)
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
+    unsafe {
+        starkinfo_free(p_stark_info);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn starks_new_c(
     p_config: *mut c_void,
     const_pols: &str,
@@ -531,6 +547,17 @@ pub fn config_new_c(config_filename: &str) -> *mut std::os::raw::c_void {
 #[cfg(feature = "no_lib_link")]
 pub fn config_free_c(_pConfig: *mut c_void) {
     println!("config_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn stark_info_new_c(_p_config: *mut c_void, _filename: &str) -> *mut c_void {
+    println!("starkinfo_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
+    println!("starkinfo_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

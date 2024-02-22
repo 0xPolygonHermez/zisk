@@ -67,6 +67,17 @@ extern "C" {
     #[link_name = "\u{1}_Z11config_freePv"]
     pub fn config_free(pConfig: *mut c_void);
 
+    // Stark Info
+    // ========================================================================================
+    #[link_name = "\u{1}_Z13starkinfo_newPvPc"]
+    pub fn starkinfo_new(
+        pConfig: *mut ::std::os::raw::c_void,
+        filename: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+
+    #[link_name = "\u{1}_Z14starkinfo_freePv"]
+    pub fn starkinfo_free(pStarkInfo: *mut ::std::os::raw::c_void);
+
     // Starks
     // ========================================================================================
     #[link_name = "\u{1}_Z10starks_newPvPcbS0_S0_S0_S_"]

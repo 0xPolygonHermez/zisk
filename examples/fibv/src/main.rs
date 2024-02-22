@@ -5,7 +5,7 @@ use goldilocks::{Goldilocks, AbstractField};
 use std::time::Instant;
 
 use proofman::public_inputs::PublicInputs;
-use prover_mocked::mocked_prover::MockedProver;
+use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod executor_fibo;
 use executor_fibo::FibonacciExecutor;
@@ -70,12 +70,12 @@ fn main() {
     let fibonacci_executor = Box::new(FibonacciExecutor::new());
     let module_executor = Box::new(ModuleExecutor::new());
 
-    let prover = MockedProver::<Goldilocks>::new();
+    let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
     let mut proofman = ProofManager::<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig>::new(
         proofman_config,
         vec![fibonacci_executor, module_executor],
-        Box::new(prover),
+        Box::new(prover_builder),
     );
 
     let now = Instant::now();

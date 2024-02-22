@@ -1,10 +1,9 @@
 use log::debug;
 
 use goldilocks::Goldilocks;
+use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 use std::time::Instant;
-
-use prover_mocked::mocked_prover::MockedProver;
 
 mod executor;
 use crate::executor::FibonacciExecutor;
@@ -29,12 +28,12 @@ fn main() {
 
     let executor = Box::new(FibonacciExecutor::new());
 
-    let prover = MockedProver::<Goldilocks>::new();
+    let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
     let mut proofman = ProofManager::<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig>::new(
         proofman_config,
         vec![executor],
-        Box::new(prover),
+        Box::new(prover_builder),
     );
 
     let now = Instant::now();

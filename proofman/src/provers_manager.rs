@@ -4,6 +4,10 @@ use crate::proof_ctx::ProofCtx;
 
 use log::info;
 
+pub trait ProverBuilder<T> {
+    fn build(&mut self) -> Box<dyn Prover<T>>;
+}
+
 pub trait Prover<T> {
     fn build(&mut self);
     fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
@@ -12,16 +16,17 @@ pub trait Prover<T> {
 // PROVERS MANAGER
 // ================================================================================================
 pub struct ProversManager<T> {
-    prover: Box<dyn Prover<T>>,
+    prover_builder: Box<dyn ProverBuilder<T>>,
+    provers: Vec<Box<dyn Prover<T>>>,
 }
 
 impl<T> ProversManager<T> {
     const MY_NAME: &'static str = "prvrsMan";
 
-    pub fn new(prover: Box<dyn Prover<T>>) -> Self {
+    pub fn new(prover_builder: Box<dyn ProverBuilder<T>>) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        Self { prover }
+        Self { prover_builder, provers: Vec::new() }
     }
 
     pub fn setup(&mut self /*&public_inputs, &self.options*/) {
@@ -31,7 +36,9 @@ impl<T> ProversManager<T> {
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         info!("{}: ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
-        self.prover.compute_stage(stage_id, proof_ctx);
+        let prover = self.prover_builder.build();
+        self.provers.push(prover);
+        self.provers[0].compute_stage(stage_id, proof_ctx);
 
         info!("{}: <== COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
