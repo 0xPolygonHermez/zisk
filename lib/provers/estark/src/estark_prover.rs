@@ -62,13 +62,14 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             self.ptr,
         ));
 
+        self.initialized = true;
+
         timer_stop_and_log!(ESTARK_PROVER_NEW);
     }
 
     fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {
         if !self.initialized {
             self.build();
-            self.initialized = true;
         }
 
         info!("{}: --> eStark prover - STAGE {}", Self::MY_NAME, stage_id);

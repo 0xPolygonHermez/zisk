@@ -23,7 +23,10 @@ impl<T> EStarkProverBuilder<T> {
 
 impl<T: 'static + AbstractField> ProverBuilder<T> for EStarkProverBuilder<T> {
     fn build(&mut self) -> Box<dyn Prover<T>> {
-        Box::new(EStarkProver::new(self.config.clone(), self.p_steps, self.ptr))
+        let mut prover = Box::new(EStarkProver::new(self.config.clone(), self.p_steps, self.ptr));
+        prover.build();
+
+        prover
     }
 }
 
