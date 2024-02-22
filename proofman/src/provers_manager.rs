@@ -1,4 +1,6 @@
 use log::debug;
+use util::{timer_start, timer_stop_and_log};
+use std::time::Instant;
 use crate::proof_manager::ProverStatus;
 use crate::proof_ctx::ProofCtx;
 
@@ -34,10 +36,22 @@ impl<T> ProversManager<T> {
     }
 
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+        // After computing the witness on stage 1, we assume we know the value of N for all air instances.
+        // This allows us to construct each air instance prover depending on its features.
+        if stage_id == 1 {
+            timer_start!(BUILDING_PROVERS);
+            info!("{}: ==> CREATING PROVERS {}", Self::MY_NAME, stage_id);
+
+            // TODO! When VADCOPS we will iterate and selecte the prover for each air instance.
+            let prover = self.prover_builder.build();
+            self.provers.push(prover);
+
+            info!("{}: <== CREATING PROVERS {}", Self::MY_NAME, stage_id);
+            timer_stop_and_log!(BUILDING_PROVERS);
+        }
+
         info!("{}: ==> COMPUTE STAGE {}", Self::MY_NAME, stage_id);
 
-        let prover = self.prover_builder.build();
-        self.provers.push(prover);
         self.provers[0].compute_stage(stage_id, proof_ctx);
 
         info!("{}: <== COMPUTE STAGE {}", Self::MY_NAME, stage_id);
