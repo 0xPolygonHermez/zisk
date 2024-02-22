@@ -91,23 +91,8 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
         let p_challenges = polinomial_new_c(stark_info.n_challenges, FIELD_EXTENSION, "");
 
-        let p_div_x_sub = polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
-
-        let p_x_div_x_sub_xi = polinomial_new_with_address_c(
-            polinomial_get_p_element_c(p_div_x_sub, 0),
-            n_extended,
-            FIELD_EXTENSION,
-            FIELD_EXTENSION,
-            "",
-        );
-
-        let p_x_div_x_sub_w_xi = polinomial_new_with_address_c(
-            polinomial_get_p_element_c(p_div_x_sub, n_extended),
-            n_extended,
-            FIELD_EXTENSION,
-            FIELD_EXTENSION,
-            "",
-        );
+        let p_x_div_x_sub_xi =
+            polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
 
         let hash_size = if stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
 
@@ -121,7 +106,6 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             p_challenges,
             p_evals,
             p_x_div_x_sub_xi,
-            p_x_div_x_sub_w_xi,
             proof_ctx.public_inputs.as_ptr() as *mut std::os::raw::c_void,
         );
 

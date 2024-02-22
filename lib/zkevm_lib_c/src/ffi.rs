@@ -198,7 +198,6 @@ pub fn steps_params_new_c(
     p_challenges: *mut c_void,
     p_evals: *mut c_void,
     p_x_div_x_sub_xi: *mut c_void,
-    p_x_div_x_sub_wxi: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     unsafe { steps_params_new(p_stark, p_challenges, p_evals, p_x_div_x_sub_xi, p_x_div_x_sub_wxi, p_public_inputs) }
@@ -420,21 +419,6 @@ pub fn polinomial_new_c(degree: u64, dim: u64, name: &str) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn polinomial_new_with_address_c(
-    pAddress: *mut c_void,
-    degree: u64,
-    dim: u64,
-    offset: u64,
-    name: &str,
-) -> *mut c_void {
-    unsafe {
-        let name = CString::new(name).unwrap();
-
-        polinomial_new_with_address(pAddress, degree, dim, offset, name.as_ptr() as *mut std::os::raw::c_char)
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn polinomial_get_p_element_c(p_polinomial: *mut c_void, index: u64) -> *mut c_void {
     unsafe { polinomial_get_p_element(p_polinomial, index) }
 }
@@ -588,11 +572,10 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn steps_params_new_c(
     _p_stark: *mut c_void,
-    _pChallenges: *mut c_void,
-    _pEvals: *mut c_void,
-    _pXDivXSubXi: *mut c_void,
-    _pXDivXSubWXi: *mut c_void,
-    _pPublicInputs: *mut c_void,
+    _p_challenges: *mut c_void,
+    _p_evals: *mut c_void,
+    _p_x_div_x_sub_xi: *mut c_void,
+    _p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     println!("steps_params_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -759,18 +742,6 @@ pub fn get_permutations_c(_p_transcript: *mut c_void, _res: *mut u64, _n: u64, _
 #[cfg(feature = "no_lib_link")]
 pub fn polinomial_new_c(_degree: u64, _dim: u64, _name: &str) -> *mut c_void {
     println!("polinomial_new: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn polinomial_new_with_address_c(
-    _pAddress: *mut c_void,
-    _degree: u64,
-    _dim: u64,
-    _offset: u64,
-    _name: &str,
-) -> *mut c_void {
-    println!("polinomial_new_with_address: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 

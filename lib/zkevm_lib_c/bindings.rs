@@ -97,15 +97,14 @@ extern "C" {
     #[link_name = "\u{1}_Z11starks_freePv"]
     pub fn starks_free(pStarks: *mut c_void);
 
-    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_"]
     pub fn steps_params_new(
-        pStarks: *mut c_void,
-        pChallenges: *mut c_void,
-        pEvals: *mut c_void,
-        pXDivXSubXi: *mut c_void,
-        pXDivXSubWXi: *mut c_void,
-        pPublicInputs: *mut c_void,
-    ) -> *mut c_void;
+        pStarks: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        pEvals: *mut ::std::os::raw::c_void,
+        pXDivXSubXi: *mut ::std::os::raw::c_void,
+        pPublicInputs: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z17steps_params_freePv"]
     pub fn steps_params_free(pStepsParams: *mut c_void);
@@ -221,15 +220,6 @@ extern "C" {
     // ========================================================================================
     #[link_name = "\u{1}_Z14polinomial_newmmPc"]
     pub fn polinomial_new(degree: u64, dim: u64, name: *mut ::std::os::raw::c_char) -> *mut c_void;
-
-    #[link_name = "\u{1}_Z27polinomial_new_with_addressPvmmmPc"]
-    pub fn polinomial_new_with_address(
-        pAddress: *mut c_void,
-        degree: u64,
-        dim: u64,
-        offset: u64,
-        name: *mut ::std::os::raw::c_char,
-    ) -> *mut c_void;
 
     #[link_name = "\u{1}_Z24polinomial_get_p_elementPvm"]
     pub fn polinomial_get_p_element(pPolinomial: *mut c_void, index: u64) -> *mut c_void;

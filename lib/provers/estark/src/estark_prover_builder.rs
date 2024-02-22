@@ -29,4 +29,3 @@ impl<T: 'static + AbstractField> ProverBuilder<T> for EStarkProverBuilder<T> {
         prover
     }
 }
-
