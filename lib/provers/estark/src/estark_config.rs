@@ -1,7 +1,5 @@
 use serde::Deserialize;
-use std::any::Any;
 use std::collections::HashMap;
-use proofman::proof_manager_config::ProverConfiguration;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -25,13 +23,3 @@ pub struct EStarkVerifier {
 
 #[derive(Debug, Deserialize)]
 pub struct VerifierSettings {}
-
-impl ProverConfiguration for EStarkConfig {
-    fn variant(&self) -> &str {
-        &self.variant
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}

@@ -2,14 +2,12 @@ use crate::public_inputs::PublicInputs;
 use crate::provers_manager::ProverBuilder;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
-use serde::de::DeserializeOwned;
 use sysinfo::System;
 
 use crate::provers_manager::ProversManager;
 
 use crate::executor::Executor;
 use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
-use crate::proof_manager_config::{ExecutorsConfiguration, ProverConfiguration, MetaConfiguration};
 use crate::proof_manager_config::ProofManConfig;
 
 use crate::proof_ctx::ProofCtx;
@@ -27,25 +25,22 @@ pub enum ProverStatus {
 // PROOF MANAGER SEQUENTIAL
 // ================================================================================================
 #[allow(dead_code)]
-pub struct ProofManager<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
-    proofman_config: ProofManConfig<E, P, M>,
+pub struct ProofManager<T> {
+    proofman_config: ProofManConfig,
     proof_ctx: ProofCtx<T>,
-    wc_manager: ExecutorsManagerSequential<T, E, P, M>,
+    wc_manager: ExecutorsManagerSequential<T>,
     provers_manager: ProversManager<T>,
 }
 
-impl<T, E, P, M> ProofManager<T, E, P, M>
+impl<T> ProofManager<T>
 where
     T: Default + Clone,
-    E: ExecutorsConfiguration + DeserializeOwned,
-    P: ProverConfiguration + DeserializeOwned,
-    M: MetaConfiguration + DeserializeOwned,
 {
     const MY_NAME: &'static str = "proofMan";
 
     pub fn new(
-        proofman_config: ProofManConfig<E, P, M>,
-        wc: Vec<Box<dyn Executor<T, E, P, M>>>,
+        proofman_config: ProofManConfig,
+        wc: Vec<Box<dyn Executor<T>>>,
         prover_builder: Box<dyn ProverBuilder<T>>,
     ) -> Self {
         Self::print_banner();
@@ -93,7 +88,7 @@ where
             let stage_str = if stage_id <= num_stages + 1 { "COMMIT PHASE - STAGE" } else { "OPENINGS PHASE - STAGE" };
             info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
 
-            self.wc_manager.witness_computation(&self.proofman_config, stage_id, &mut self.proof_ctx);
+            self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
 
             // Once the first witness computation is done we assume we have initialized the air instances.
             // So, we know the number of row for each air instance and we can select the setup for each air instance.

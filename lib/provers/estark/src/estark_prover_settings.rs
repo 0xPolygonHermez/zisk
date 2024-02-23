@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use proofman::proof_manager_config::Config;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct EStarkProverSettings {
@@ -36,15 +35,5 @@ impl EStarkProverSettings {
         config.current_path = filename.to_string();
 
         config
-    }
-}
-
-impl Config for EStarkProverSettings {
-    fn get_filename(&self) -> &str {
-        self.current_path.as_str()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }

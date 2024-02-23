@@ -15,7 +15,6 @@ use executor_module::ModuleExecutor;
 
 use proofman::proof_manager::ProofManager;
 
-use estark::config::{executors_config::ExecutorsConfig, estark_config::EStarkConfig, meta_config::MetaConfig};
 use proofman::proof_manager_config::ProofManConfig;
 use proofman::proofman_cli::ProofManCli;
 
@@ -55,7 +54,7 @@ fn main() {
 
     let arguments = ProofManCli::read_arguments();
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
-    let proofman_config = ProofManConfig::<ExecutorsConfig, EStarkConfig, MetaConfig>::parse_input_json(&config_json);
+    let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
     //read public inputs file
     let public_inputs_filename = arguments.public_inputs.as_ref().unwrap().display().to_string();
@@ -67,16 +66,13 @@ fn main() {
         }
     };
 
-    let fibonacci_executor = Box::new(FibonacciExecutor::new());
-    let module_executor = Box::new(ModuleExecutor::new());
+    let fibonacci_executor = Box::new(FibonacciExecutor::new(None));
+    let module_executor = Box::new(ModuleExecutor::new(None));
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = ProofManager::<Goldilocks, ExecutorsConfig, EStarkConfig, MetaConfig>::new(
-        proofman_config,
-        vec![fibonacci_executor, module_executor],
-        Box::new(prover_builder),
-    );
+    let mut proofman =
+        ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], Box::new(prover_builder));
 
     let now = Instant::now();
     proofman.prove(Some(Box::new(public_inputs)));
