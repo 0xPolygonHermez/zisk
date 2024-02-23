@@ -1,7 +1,7 @@
 {
     "name": "fib4 test",
     "pilout": "examples/fib4/data/fib4.pilout",
-    "prover": {
+    "provers": {
         "variant": "estark",
         "settings": {
             "Fibonacci": {

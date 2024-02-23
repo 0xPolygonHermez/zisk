@@ -1,12 +1,15 @@
 pub mod executors_manager;
 pub mod executors_manager_thread;
 use crate::proof_ctx::ProofCtx;
-use crate::proof_manager_config::ProofManConfig;
-use crate::proof_manager_config::{ExecutorsConfiguration, ProverConfiguration, MetaConfiguration};
+use std::any::Any;
 
 // NOTE: config argument is added temporaly while integrating with zkevm-prover, remove when done
-pub trait Executor<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: MetaConfiguration> {
-    fn witness_computation(&self, config: &ProofManConfig<E, P, M>, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
+pub trait Executor<T> {
+    fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
+}
+
+pub trait ExecutorConfig: Any {
+    fn as_any(&self) -> &dyn Any;
 }
 
 // pub trait ExecutorBase<T>: Sync {
@@ -32,6 +35,7 @@ pub trait Executor<T, E: ExecutorsConfiguration, P: ProverConfiguration, M: Meta
 macro_rules! executor {
     ($executor_name:ident/*: $base_element:ty*/) => {
         pub struct $executor_name {
+            config: Option<Box<dyn $crate::executor::ExecutorConfig>>,
             ptr: std::cell::UnsafeCell<*mut u8>,
         }
 
@@ -43,12 +47,12 @@ macro_rules! executor {
                 stringify!($executor_name).to_string()
             }
 
-            pub fn new() -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()) }
+            pub fn new(config: Option<Box<dyn $crate::executor::ExecutorConfig>>) -> Self {
+                $executor_name { config, ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()) }
             }
 
-            pub fn from_ptr(ptr: *mut u8) -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(ptr) }
+            pub fn from_ptr(config: Option<Box<dyn $crate::executor::ExecutorConfig>>, ptr: *mut u8) -> Self {
+                $executor_name { config, ptr: std::cell::UnsafeCell::new(ptr) }
             }
         }
 
