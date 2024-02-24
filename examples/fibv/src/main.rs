@@ -66,8 +66,8 @@ fn main() {
         }
     };
 
-    let fibonacci_executor = Box::new(FibonacciExecutor::new(None));
-    let module_executor = Box::new(ModuleExecutor::new(None));
+    let fibonacci_executor = Box::new(FibonacciExecutor::new());
+    let module_executor = Box::new(ModuleExecutor::new());
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 

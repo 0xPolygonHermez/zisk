@@ -26,7 +26,7 @@ fn main() {
 
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
-    let executor = Box::new(FibonacciExecutor::new(None));
+    let executor = Box::new(FibonacciExecutor::new());
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
