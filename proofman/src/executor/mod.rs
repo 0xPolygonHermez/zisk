@@ -23,7 +23,7 @@ macro_rules! executor {
             }
 
             pub fn new($( $field : $field_type ),*) -> Self {
-                $executor_name { /*ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()),*/ $( $field ),* }
+                $executor_name { $( $field ),* }
             }
         }
     };
