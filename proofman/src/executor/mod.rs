@@ -14,7 +14,6 @@ macro_rules! executor {
 
     ($executor_name:ident { $( $field:ident : $field_type:ty ),* $(,)? }) => {
         pub struct $executor_name {
-            ptr: std::cell::UnsafeCell<*mut u8>,
             $( $field : $field_type ),*
         }
 
@@ -24,11 +23,7 @@ macro_rules! executor {
             }
 
             pub fn new($( $field : $field_type ),*) -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(std::ptr::null_mut()), $( $field ),* }
-            }
-
-            pub fn from_ptr(ptr: *mut u8, $( $field : $field_type ),*) -> Self {
-                $executor_name { ptr: std::cell::UnsafeCell::new(ptr), $( $field ),* }
+                $executor_name { $( $field ),* }
             }
         }
     };
