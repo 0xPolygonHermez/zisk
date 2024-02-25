@@ -71,7 +71,7 @@ where
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &mut ProofCtx<T> {
+    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> Result<&mut ProofCtx<T>, &str> {
         if !self.proofman_config.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -141,7 +141,7 @@ where
                     }
 
                     info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
-                    return &mut self.proof_ctx;
+                    return Ok(&mut self.proof_ctx);
                 }
             }
 
@@ -165,7 +165,7 @@ where
         //         subAirValues: this.proofCtx.subAirValues,
         //     };
 
-        &mut self.proof_ctx
+        Ok(&mut self.proof_ctx)
     }
 
     pub fn verify() {

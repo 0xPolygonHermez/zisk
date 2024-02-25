@@ -31,6 +31,9 @@ fn main() {
     let mut proofman = ProofManager::<Goldilocks>::new(proofman_config, vec![executor], Box::new(prover_builder));
 
     let now = std::time::Instant::now();
-    proofman.prove(None);
+    let proof = proofman.prove(None);
+    if let Err(err) = proof {
+        println!("Error: {}", err);
+    }
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

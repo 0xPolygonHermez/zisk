@@ -73,6 +73,10 @@ fn main() {
         ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], Box::new(prover_builder));
 
     let now = std::time::Instant::now();
-    proofman.prove(Some(Box::new(public_inputs)));
+    let proof = proofman.prove(Some(Box::new(public_inputs)));
+    if let Err(err) = proof {
+        println!("Error: {}", err);
+    }
+
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }
