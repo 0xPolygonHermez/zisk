@@ -9,7 +9,6 @@ use crate::public_inputs::PublicInputs;
 
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
-use std::time::Instant;
 
 /// Context for managing proofs, including information about Air instances.
 #[derive(Debug)]

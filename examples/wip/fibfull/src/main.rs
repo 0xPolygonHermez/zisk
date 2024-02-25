@@ -2,7 +2,6 @@ use fibfull::ffi;
 use log::info;
 use math::{fields::f64::BaseElement, FieldElement};
 use proofman::public_input::PublicInput;
-use std::time::Instant;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
 

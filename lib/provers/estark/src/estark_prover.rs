@@ -5,7 +5,6 @@ use log::{info, debug};
 use util::{timer_start, timer_stop_and_log};
 use zkevm_lib_c::ffi::*;
 use proofman::proof_ctx::ProofCtx;
-use std::time::Instant;
 use crate::stark_info::StarkInfo;
 use crate::estark_prover_settings::EStarkProverSettings;
 

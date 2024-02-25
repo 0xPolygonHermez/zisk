@@ -1,6 +1,5 @@
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
-use std::time::Instant;
 use crate::proof_manager::ProverStatus;
 use crate::proof_ctx::ProofCtx;
 

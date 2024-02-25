@@ -1,6 +1,5 @@
 use log::debug;
 use goldilocks::{Goldilocks, AbstractField};
-use std::time::Instant;
 use proofman::public_inputs::PublicInputs;
 
 use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
@@ -130,7 +129,7 @@ fn main() {
         options,
     );
 
-    let now = Instant::now();
+    let now = std::time::Instant::now();
     proofman.prove(Some(Box::new(public_inputs)));
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

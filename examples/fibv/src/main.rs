@@ -2,8 +2,6 @@ use log::debug;
 
 use goldilocks::{Goldilocks, AbstractField};
 
-use std::time::Instant;
-
 use proofman::public_inputs::PublicInputs;
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
@@ -74,7 +72,7 @@ fn main() {
     let mut proofman =
         ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], Box::new(prover_builder));
 
-    let now = Instant::now();
+    let now = std::time::Instant::now();
     proofman.prove(Some(Box::new(public_inputs)));
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

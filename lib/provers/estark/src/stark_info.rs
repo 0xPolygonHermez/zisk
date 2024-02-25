@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use util::{timer_start, timer_stop_and_log};
 use log::debug;
 use serde::Deserialize;
-use std::time::Instant;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]

@@ -7,7 +7,6 @@ use std::ops::Deref;
 
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
-use std::time::Instant;
 
 #[derive(Debug)]
 pub struct PilOutProxy {
