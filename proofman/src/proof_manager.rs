@@ -1,4 +1,3 @@
-use crate::public_inputs::PublicInputs;
 use crate::provers_manager::ProverBuilder;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
@@ -71,7 +70,7 @@ where
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> Result<&mut ProofCtx<T>, &str> {
+    pub fn prove(&mut self, public_inputs: Option<Vec<T>>) -> Result<&mut ProofCtx<T>, &str> {
         if !self.proofman_config.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {

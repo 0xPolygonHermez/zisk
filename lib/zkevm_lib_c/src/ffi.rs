@@ -305,19 +305,19 @@ pub fn commit_pols_starks_free_c(p_commit_pols_starks: *mut c_void) {
 #[cfg(not(feature = "no_lib_link"))]
 pub fn circom_get_commited_pols_c(
     p_commit_pols_starks: *mut c_void,
-    zkevm_ferifier: &str,
+    zkevm_verifier: &str,
     exec_file: &str,
     zkin: *mut c_void,
     n: u64,
     n_cols: u64,
 ) {
     unsafe {
-        let zkevm_ferifier = CString::new(zkevm_ferifier).unwrap();
+        let zkevm_verifier = CString::new(zkevm_verifier).unwrap();
         let exec_file = CString::new(exec_file).unwrap();
 
         circom_get_commited_pols(
             p_commit_pols_starks,
-            zkevm_ferifier.as_ptr() as *mut std::os::raw::c_char,
+            zkevm_verifier.as_ptr() as *mut std::os::raw::c_char,
             exec_file.as_ptr() as *mut std::os::raw::c_char,
             zkin,
             n,
@@ -329,19 +329,19 @@ pub fn circom_get_commited_pols_c(
 #[cfg(not(feature = "no_lib_link"))]
 pub fn circom_recursive1_get_commited_pols_c(
     p_commit_pols_starks: *mut c_void,
-    zkevm_ferifier: &str,
+    zkevm_verifier: &str,
     exec_file: &str,
     zkin: *mut c_void,
     n: u64,
     n_cols: u64,
 ) {
     unsafe {
-        let zkevm_ferifier = CString::new(zkevm_ferifier).unwrap();
+        let zkevm_verifier = CString::new(zkevm_verifier).unwrap();
         let exec_file = CString::new(exec_file).unwrap();
 
         circom_recursive1_get_commited_pols(
             p_commit_pols_starks,
-            zkevm_ferifier.as_ptr() as *mut std::os::raw::c_char,
+            zkevm_verifier.as_ptr() as *mut std::os::raw::c_char,
             exec_file.as_ptr() as *mut std::os::raw::c_char,
             zkin,
             n,
@@ -671,7 +671,7 @@ pub fn commit_pols_starks_free_c(_p_commit_pols_starks: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn circom_get_commited_pols_c(
     _p_commit_pols_starks: *mut c_void,
-    _zkevm_ferifier: &str,
+    _zkevm_verifier: &str,
     _exec_file: &str,
     _zkin: *mut c_void,
     _n: u64,
@@ -683,7 +683,7 @@ pub fn circom_get_commited_pols_c(
 #[cfg(feature = "no_lib_link")]
 pub fn circom_recursive1_get_commited_pols_c(
     _p_commit_pols_starks: *mut c_void,
-    _zkevm_ferifier: &str,
+    _zkevm_verifier: &str,
     _exec_file: &str,
     _zkin: *mut c_void,
     _n: u64,

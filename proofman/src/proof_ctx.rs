@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use crate::trace::trace::Trace;
 use std::fmt;
-use crate::public_inputs::PublicInputs;
 
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
@@ -89,9 +88,9 @@ impl<T: Default + Clone> ProofCtx<T> {
     }
 
     /// Initializes the proof context with optional public inputs
-    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
+    pub fn initialize_proof<U: Into<Vec<T>>>(&mut self, public_inputs:Option<U>) {
         if let Some(public_inputs) = public_inputs {
-            self.public_inputs = public_inputs.to_vec();
+            self.public_inputs = public_inputs.into();
         }
 
         for subproof in self.subproofs.iter() {

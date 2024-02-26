@@ -8,5 +8,4 @@ pub mod proof_manager_config;
 pub mod proof_manager_threaded;
 pub mod proof_manager;
 pub mod provers_manager;
-pub mod public_inputs;
 pub mod task;
