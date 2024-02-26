@@ -2,7 +2,6 @@ use log::debug;
 
 use goldilocks::{Goldilocks, AbstractField};
 
-use proofman::public_inputs::PublicInputs;
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod executor_fibo;
@@ -41,8 +40,8 @@ impl FibVPublicInputs<u64> {
     }
 }
 
-impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
-    fn to_vec(&self) -> Vec<Goldilocks> {
+impl<T> Into<Vec<T>> for FibVPublicInputs<T> {
+    fn into(self) -> Vec<T> {
         vec![self.a, self.b, self.module]
     }
 }
@@ -73,7 +72,7 @@ fn main() {
         ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], Box::new(prover_builder));
 
     let now = std::time::Instant::now();
-    let proof = proofman.prove(Some(Box::new(public_inputs)));
+    let proof = proofman.prove(Some(public_inputs.into()));
     if let Err(err) = proof {
         println!("Error: {}", err);
     }
