@@ -24,6 +24,20 @@ pub fn zkevm_main_c(
             p_address as *mut std::os::raw::c_void,
             p_secondary_sm_inputs as *mut std::os::raw::c_void,
         )
+    }    
+}
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_mem_align_c(
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    unsafe {
+        zkevm_mem_align(
+            inputs_,
+            ninputs,
+            pAddress,
+        )
     }
 }
 
@@ -441,6 +455,16 @@ pub fn zkevm_main_c(
     _p_secondary_sm_inputs: *mut u8,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_main_c: This is a mock call because there is no linked library {}", config_filename);
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_mem_align_c(
+    _inputs_: *mut ::std::os::raw::c_char,
+    _ninputs: ::std::os::raw::c_int,
+    _pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_mem_align_c: This is a mock call because there is no linked library");
     0
 }
 

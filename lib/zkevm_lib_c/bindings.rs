@@ -9,6 +9,13 @@ extern "C" {
         pSecondarySMInputs: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
+    #[link_name = "\u{1}_Z15zkevm_mem_alignPciS_"]
+    pub fn zkevm_mem_align(
+        inputs_: *mut ::std::os::raw::c_char,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
         pStarkInfo: *mut ::std::os::raw::c_void,
