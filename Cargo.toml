@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "proofman",
+    "proofman-cli",
     "pilout",
     "goldilocks",
     "lib/provers/estark",

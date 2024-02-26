@@ -88,7 +88,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     }
 
     /// Initializes the proof context with optional public inputs
-    pub fn initialize_proof<U: Into<Vec<T>>>(&mut self, public_inputs:Option<U>) {
+    pub fn initialize_proof<U: Into<Vec<T>>>(&mut self, public_inputs: Option<U>) {
         if let Some(public_inputs) = public_inputs {
             self.public_inputs = public_inputs.into();
         }

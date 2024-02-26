@@ -1,4 +1,5 @@
 use crate::provers_manager::ProverBuilder;
+use pilout::pilout::SymbolType;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
 use sysinfo::System;
@@ -52,6 +53,11 @@ where
         debug!("{}: Initializing", Self::MY_NAME);
 
         let pilout = PilOutProxy::new(proofman_config.get_pilout());
+
+        //let's filter pilout symbols where type = WitnessColl
+        let witness_cols =
+            pilout.symbols.iter().filter(|s| s.r#type == SymbolType::WitnessCol as i32).collect::<Vec<_>>();
+        println!("witness_cols: {:?}", witness_cols);
 
         let proof_ctx = ProofCtx::<T>::new(pilout);
 

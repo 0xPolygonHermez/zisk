@@ -8,6 +8,7 @@
         "./lib/provers/mocked/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",
+        "./proofman-cli/Cargo.toml",
         "./util/Cargo.toml"
     ]
 }
