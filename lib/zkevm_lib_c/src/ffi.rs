@@ -42,6 +42,19 @@ pub fn zkevm_mem_align_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_sha256_c(
+    inputs_: *mut ::std::os::raw::c_char,
+    pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    unsafe {
+        zkevm_padding_sha256(
+            inputs_,
+            pAddress,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn save_proof_c<T>(
     p_stark_info: *mut ::std::os::raw::c_void,
     p_fri_proof: *mut ::std::os::raw::c_void,
@@ -465,6 +478,15 @@ pub fn zkevm_mem_align_c(
     _pAddress: *mut ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_mem_align_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_sha256_c(
+    _inputs_: *mut ::std::os::raw::c_char,
+    _pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_sha256: This is a mock call because there is no linked library");
     0
 }
 

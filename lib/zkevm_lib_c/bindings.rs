@@ -16,6 +16,13 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 
+    #[link_name = "\u{1}_Z20zkevm_padding_sha256PcS_"]
+    pub fn zkevm_padding_sha256(
+        inputs_: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+    
+
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
         pStarkInfo: *mut ::std::os::raw::c_void,
