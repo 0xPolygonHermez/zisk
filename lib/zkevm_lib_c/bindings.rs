@@ -16,9 +16,10 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 
-    #[link_name = "\u{1}_Z20zkevm_padding_sha256PcS_"]
+    #[link_name = "\u{1}_Z20zkevm_padding_sha256PciS_"]
     pub fn zkevm_padding_sha256(
         inputs_: *mut ::std::os::raw::c_char,
+        ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
     
