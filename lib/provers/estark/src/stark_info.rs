@@ -59,7 +59,7 @@ pub enum OpType {
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Eq, PartialEq, Hash)]
 pub enum ESection {
     #[serde(rename = "cm1_n")]
     Cm1_N = 0,
@@ -75,7 +75,7 @@ pub enum ESection {
     Cm3_2Ns = 5,
     #[serde(rename = "cm4_n")]
     Cm4_N = 6,
-    #[serde(rename = "cm5_2ns")]
+    #[serde(rename = "cm4_2ns")]
     Cm4_2Ns = 7,
     #[serde(rename = "tmpExp_n")]
     TmpExp_N = 8,
@@ -177,8 +177,8 @@ pub struct PublicHint {
 pub struct VarPolMap {
     section: ESection,
     dim: u64,
-    section_pos: u64,
-    deg: u64,
+    section_pos: Option<u64>,
+    deg: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -229,15 +229,15 @@ pub enum EMapSectionsN {
 pub struct EvMap {
     #[serde(rename = "type")]
     type_: EvMapEType,
-    name: String,
+    name: Option<String>,
     id: u64,
-    prime: Option<i64>,
-    stage: u64,
-    dim: u64,
+    prime: Option<bool>,
+    stage: Option<u64>,
+    dim: Option<u64>,
     #[serde(rename = "subproofId")]
-    subproof_id: u64,
+    subproof_id: Option<u64>,
     #[serde(rename = "airId")]
-    air_id: u64,
+    air_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -269,7 +269,7 @@ pub struct StarkInfo {
     #[serde(rename = "starkStruct")]
     pub stark_struct: StarkStruct,
 
-    pub pil2: bool,
+    pub pil2: Option<bool>,
 
     #[serde(rename = "nCm1")]
     pub n_cm1: u64,
@@ -298,22 +298,22 @@ pub struct StarkInfo {
     #[serde(rename = "mapTotalN")]
     pub map_total_n: u64,
     #[serde(rename = "mapSectionsN")]
-    pub map_sections_n: HashMap<EMapSectionsN, u64>,
+    pub map_sections_n: HashMap<ESection, u64>,
     #[serde(rename = "mapOffsets")]
-    pub map_offsets: HashMap<EMapSectionsN, u64>,
+    pub map_offsets: HashMap<ESection, u64>,
 
     // pil2-stark-js specific
     #[serde(rename = "cmPolsMap")]
-    pub cm_pols_map: Vec<CmPolMap>,
+    pub cm_pols_map: Option<Vec<CmPolMap>>,
     #[serde(rename = "symbolsStage")]
-    pub symbols_stage: Vec<Vec<Symbol>>,
+    pub symbols_stage: Option<Vec<Vec<Symbol>>>,
 
     pub code: Option<HashMap<String, CodeStage>>,
 
     #[serde(rename = "expressionsCode")]
     pub expressions_code: Option<HashMap<u64, ExpressionsCode>>,
 
-    pub hints: Vec<Hint>,
+    pub hints: Option<Vec<Hint>>,
 
     //Exclusius de PIL1
     #[serde(rename = "varPolMap")]
