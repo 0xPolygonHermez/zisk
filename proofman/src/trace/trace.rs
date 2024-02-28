@@ -45,7 +45,7 @@ macro_rules! trace {
         #[allow(dead_code)]
         impl<'a> $my_struct<'a> {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
-            
+
             /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
             ///
             /// # Arguments
@@ -225,7 +225,6 @@ mod tests {
 
         trace!(Check { a: u8 }, offset: 2, stride: 5);
 
-        
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
         let mut check = Check::from_ptr(ptr, num_rows);

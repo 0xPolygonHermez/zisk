@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 mod commands;
-use commands::trace::{TraceCommands, Trace};
+use commands::trace_commands::{TraceSubcommands, Trace};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -20,7 +20,7 @@ fn main() {
 
     match &cli.command {
         Commands::Trace(args) => match &args.trace_commands {
-            TraceCommands::Setup(args) => {
+            TraceSubcommands::Setup(args) => {
                 args.run().unwrap();
             }
         },
