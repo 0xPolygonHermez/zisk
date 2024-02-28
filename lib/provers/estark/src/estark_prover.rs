@@ -1,4 +1,5 @@
-use goldilocks::AbstractField;
+use goldilocks::{AbstractField, Goldilocks};
+use std::any::type_name;
 
 use proofman::provers_manager::Prover;
 use log::{info, debug};
@@ -80,29 +81,34 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
 
         timer_start!(STARK_INITIALIZATION);
 
+        let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
+        let p_transcript = transcript_new_c(element_type);
+
         let stark_info = self.stark_info.as_ref().unwrap();
-        let p_stark = self.p_stark.unwrap();
-
-        let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
-
-        let p_transcript = transcript_new_c();
 
         let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
-        let p_challenges = polinomial_new_c(stark_info.n_challenges, FIELD_EXTENSION, "");
+        let p_challenges = polinomial_new_c(stark_info.n_challenges.unwrap(), FIELD_EXTENSION, "");
+        let p_subproof_values = polinomial_new_c(stark_info.n_subair_values.unwrap(), FIELD_EXTENSION, "");
 
-        let p_x_div_x_sub_xi =
-            polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
+        let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
+        let p_x_div_x_sub_xi = polinomial_new_c(
+            stark_info.opening_points.as_ref().unwrap().len() as u64 * n_extended,
+            FIELD_EXTENSION,
+            "",
+        );
 
         let hash_size = if stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
-
         let verkey = vec![T::zero(); hash_size as usize];
-        treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
+
+        let p_stark = self.p_stark.unwrap();
+        treesGL_get_root_c(p_stark, stark_info.n_stages.unwrap() + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
 
         let p_proof = fri_proof_new_c(p_stark);
 
         let p_params = steps_params_new_c(
             p_stark,
             p_challenges,
+            p_subproof_values,
             p_evals,
             p_x_div_x_sub_xi,
             proof_ctx.public_inputs.as_ptr() as *mut std::os::raw::c_void,
@@ -126,110 +132,43 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         timer_stop_and_log!(STARK_STEP_0);
 
         //--------------------------------
-        // 1.- Calculate Stage 1
+        // 1.- Compute stages
         //--------------------------------
-        timer_start!(STARK_STEP_1);
-        let mut step = 1;
 
-        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
-
-        let root = fri_proof_get_root_c(p_proof, step - 1, 0);
-        transcript_add_c(p_transcript, root, HASH_SIZE);
-
-        timer_stop_and_log!(STARK_STEP_1);
+        for step in 1..=stark_info.n_stages.unwrap() + 1 {
+            timer_start!(STARK_COMMIT_STAGE_XX);
+            compute_stage_c(p_stark, element_type, step, p_params, p_proof, p_transcript, self.p_steps);
+            timer_stop_and_log!(STARK_COMMIT_STAGE_XX);
+        }
 
         //--------------------------------
-        // 2.- Calculate plookups h1 and h2
+        // 2. Compute Evals
         //--------------------------------
-        timer_start!(STARK_STEP_2);
-        step = 2;
+        timer_start!(STARK_COMMIT_STAGE_YY);
 
-        get_challenges_c(
-            p_stark,
-            p_transcript,
-            polinomial_get_p_element_c(p_challenges, 0),
-            stark_info.num_challenges[step as usize - 1],
-        );
-
-        calculate_expressions_c(p_stark, "step2", p_params, self.p_steps);
-
-        calculate_h1_h2_c(p_stark, p_params);
-
-        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
-
-        let root = fri_proof_get_root_c(p_proof, step - 1, 0);
-        transcript_add_c(p_transcript, root, HASH_SIZE);
-
-        timer_stop_and_log!(STARK_STEP_2);
-
-        //--------------------------------
-        // 3.- Compute Z polynomials
-        //--------------------------------
-        timer_start!(STARK_STEP_3);
-        step = 3;
-
-        get_challenges_c(
-            p_stark,
-            p_transcript,
-            polinomial_get_p_element_c(p_challenges, 2),
-            stark_info.num_challenges[step as usize - 1],
-        );
-
-        calculate_expressions_c(p_stark, "step3", p_params, self.p_steps);
-
-        calculate_z_c(p_stark, p_params);
-
-        calculate_expressions_c(p_stark, "step3_after", p_params, self.p_steps);
-
-        extend_and_merkelize_c(p_stark, step, p_params, p_proof);
-
-        let root = fri_proof_get_root_c(p_proof, step - 1, 0);
-        transcript_add_c(p_transcript, root, HASH_SIZE);
-
-        timer_stop_and_log!(STARK_STEP_3);
-
-        //--------------------------------
-        // 4. Compute C Polynomial
-        //--------------------------------
-        timer_start!(STARK_STEP_4);
-        step = 4;
-
-        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 4), 1);
-
-        calculate_expressions_c(p_stark, "step4", p_params, self.p_steps);
-
-        compute_q_c(p_stark, p_params, p_proof);
-
-        let root = fri_proof_get_root_c(p_proof, step - 1, 0);
-        transcript_add_c(p_transcript, root, HASH_SIZE);
-
-        timer_stop_and_log!(STARK_STEP_4);
-
-        //--------------------------------
-        // 5. Compute Evals
-        //--------------------------------
-        timer_start!(STARK_STEP_5);
-
-        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7), 1);
+        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7));
 
         compute_evals_c(p_stark, p_params, p_proof);
 
         transcript_add_polinomial_c(p_transcript, p_evals);
 
-        get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5), 2);
+        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5));
+        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 6));
 
-        timer_stop_and_log!(STARK_STEP_5);
+        // Polinomial* friPol = computeFRIPol(starkInfo.nStages + 2, params, chelpersSteps);
+
+        timer_stop_and_log!(STARK_COMMIT_STAGE_YY);
 
         //--------------------------------
-        // 6. Compute FRI
+        // 3. Compute FRI
         //--------------------------------
         timer_start!(STARK_STEP_FRI);
 
-        let p_fri_pol = compute_fri_pol_c(p_stark, p_params, self.p_steps);
+        let p_fri_pol = compute_fri_pol_c(p_stark, stark_info.n_stages.unwrap() + 2, p_params, self.p_steps);
 
         for step in 0..stark_info.stark_struct.steps.len() {
             let challenge = polinomial_new_c(1, FIELD_EXTENSION, "");
-            get_challenges_c(p_stark, p_transcript, polinomial_get_p_element_c(challenge, 0), 1);
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(challenge, 0));
 
             compute_fri_folding_c(p_stark, p_proof, p_fri_pol, step as u64, challenge);
             if step < stark_info.stark_struct.steps.len() - 1 {
@@ -252,6 +191,10 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         compute_fri_queries_c(p_stark, p_proof, p_fri_pol, fri_queries.as_mut_ptr());
 
         polinomial_free_c(p_fri_pol);
+        polinomial_free_c(p_subproof_values);
+        polinomial_free_c(p_challenges);
+
+        polinomial_free_c(p_evals);
 
         timer_stop_and_log!(STARK_STEP_FRI);
 
@@ -260,7 +203,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         proof_ctx.proof = Some(p_proof);
 
         steps_params_free_c(p_params);
-        transcript_free_c(p_transcript);
+        transcript_free_c(p_transcript, element_type);
 
         info!("{}: <-- eStark prover - STAGE {}", Self::MY_NAME, stage_id);
     }

@@ -194,13 +194,14 @@ pub fn starks_free_c(p_stark: *mut c_void) {
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn steps_params_new_c(
-    p_stark: *mut c_void,
+    p_starks: *mut c_void,
     p_challenges: *mut c_void,
+    p_subproof_values: *mut c_void,
     p_evals: *mut c_void,
-    p_x_div_x_sub_xi: *mut c_void,
+    p_x_div_x_sub_si: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
-    unsafe { steps_params_new(p_stark, p_challenges, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
+    unsafe { steps_params_new(p_stark, p_challenges, p_subproof_values, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -248,6 +249,21 @@ pub fn calculate_expressions_c(p_stark: *mut c_void, step: &str, p_params: *mut 
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn compute_stage_c(
+    p_starks: *mut ::std::os::raw::c_void,
+    element_type: u32,
+    step: u64,
+    p_params: *mut ::std::os::raw::c_void,
+    p_proof: *mut ::std::os::raw::c_void,
+    p_transcript: *mut ::std::os::raw::c_void,
+    p_chelpers_steps: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        compute_stage(p_starks, element_type, step, p_params, p_proof, p_transcript, p_chelpers_steps);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn compute_q_c(p_stark: *mut c_void, p_params: *mut c_void, pProof: *mut c_void) {
     unsafe {
         compute_q(p_stark, p_params, pProof);
@@ -262,8 +278,13 @@ pub fn compute_evals_c(p_stark: *mut c_void, p_params: *mut c_void, pProof: *mut
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_fri_pol_c(p_stark: *mut c_void, p_params: *mut c_void, p_chelpers_steps: *mut c_void) -> *mut c_void {
-    unsafe { compute_fri_pol(p_stark, p_params, p_chelpers_steps) }
+pub fn compute_fri_pol_c(
+    p_stark: *mut c_void,
+    step: u64,
+    p_params: *mut c_void,
+    p_chelpers_steps: *mut c_void,
+) -> *mut c_void {
+    unsafe { compute_fri_pol(p_stark, step, p_params, p_chelpers_steps) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -370,8 +391,8 @@ pub fn zkin_new_c<T>(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_new_c() -> *mut c_void {
-    unsafe { transcript_new() }
+pub fn transcript_new_c(type_: u32) -> *mut ::std::os::raw::c_void {
+    unsafe { transcript_new(type_) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -389,14 +410,14 @@ pub fn transcript_add_polinomial_c(p_transcript: *mut c_void, p_polinomial: *mut
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_free_c(p_transcript: *mut c_void) {
+pub fn transcript_free_c(p_transcript: *mut ::std::os::raw::c_void, type_: u32) {
     unsafe {
-        transcript_free(p_transcript);
+        transcript_free(p_transcript, type_);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_challenges_c(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void, nChallenges: u64) {
+pub fn get_challenge_c(p_starks: *mut c_void, p_transcript: *mut c_void, p_element: *mut c_void) {
     unsafe {
         get_challenges(pStarks, pTranscript, pElement, nChallenges);
     }
@@ -573,6 +594,7 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
 pub fn steps_params_new_c(
     _p_stark: *mut c_void,
     _p_challenges: *mut c_void,
+    _p_subproof_values: *mut c_void,
     _p_evals: *mut c_void,
     _p_x_div_x_sub_xi: *mut c_void,
     _p_public_inputs: *mut c_void,
@@ -617,6 +639,19 @@ pub fn calculate_expressions_c(
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn compute_stage_c(
+    _p_starks: *mut ::std::os::raw::c_void,
+    _element_type: u32,
+    _step: u64,
+    _p_params: *mut ::std::os::raw::c_void,
+    _p_proof: *mut ::std::os::raw::c_void,
+    _p_transcript: *mut ::std::os::raw::c_void,
+    _p_chelpers_steps: *mut ::std::os::raw::c_void,
+) {
+    println!("compute_stage: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn compute_q_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *mut c_void) {
     println!("compute_q: This is a mock call because there is no linked library");
 }
@@ -627,7 +662,12 @@ pub fn compute_evals_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_fri_pol_c(_p_stark: *mut c_void, _p_params: *mut c_void, _p_chelpers_steps: *mut c_void) -> *mut c_void {
+pub fn compute_fri_pol_c(
+    _p_stark: *mut c_void,
+    _step: u64,
+    _p_params: *mut c_void,
+    _p_chelpers_steps: *mut c_void,
+) -> *mut c_void {
     println!("compute_fri_pol: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -704,7 +744,7 @@ pub fn zkin_new_c<T>(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn transcript_new_c() -> *mut c_void {
+pub fn transcript_new_c(_element_type: u32) -> *mut ::std::os::raw::c_void {
     println!("transcript_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -720,17 +760,12 @@ pub fn transcript_add_polinomial_c(_p_transcript: *mut c_void, _p_polinomial: *m
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn transcript_free_c(_p_transcript: *mut c_void) {
+pub fn transcript_free_c(_p_transcript: *mut ::std::os::raw::c_void, _element_type: u32) {
     println!("transcript_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_challenges_c(
-    _p_stark: *mut c_void,
-    _p_transcript: *mut c_void,
-    _p_element: *mut c_void,
-    _n_challenges: u64,
-) {
+pub fn get_challenge_c(_p_starks: *mut c_void, _p_transcript: *mut c_void, _p_element: *mut c_void) {
     println!("get_challenges: This is a mock call because there is no linked library");
 }
 
