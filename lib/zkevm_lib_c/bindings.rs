@@ -34,7 +34,15 @@ extern "C" {
         pSMRquests: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
-
+extern "C" {
+    #[link_name = "\u{1}_Z23zkevm_bits2field_sha256PviS_S_"]
+    pub fn zkevm_bits2field_sha256(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
 extern "C" {
     #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_"]
     pub fn zkevm_padding_kk(
@@ -47,6 +55,15 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z20zkevm_padding_kk_bitPviS_S_"]
     pub fn zkevm_padding_kk_bit(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_bits2field_kkPviS_S_"]
+    pub fn zkevm_bits2field_kk(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
