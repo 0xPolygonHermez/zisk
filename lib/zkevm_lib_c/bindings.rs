@@ -24,6 +24,17 @@ extern "C" {
         pSMRquests: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
+
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_padding_sha256_bitPviS_S_"]
+    pub fn zkevm_padding_sha256_bit(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
 extern "C" {
     #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_"]
     pub fn zkevm_padding_kk(

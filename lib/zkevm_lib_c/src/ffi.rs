@@ -53,6 +53,23 @@ pub fn zkevm_padding_sha256_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_sha256_bit_c(
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+    pSMRquests: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe {
+        zkevm_padding_sha256_bit(
+            inputs_ as *mut std::os::raw::c_void,
+            ninputs,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn zkevm_padding_kk_c(
     inputs_: *mut ::std::os::raw::c_char,
     ninputs: ::std::os::raw::c_int,
@@ -521,6 +538,17 @@ pub fn zkevm_padding_sha256_c(
     _pSMRquests: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_padding_sha256_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_sha256_bit_c(
+    _inputs_: *mut ::std::os::raw::c_char,
+    _ninputs: ::std::os::raw::c_int,
+    _pAddress: *mut ::std::os::raw::c_char,
+    _pSMRquests: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_sha256_bit_c: This is a mock call because there is no linked library");
     0
 }
 
