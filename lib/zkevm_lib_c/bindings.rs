@@ -1,29 +1,50 @@
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
-#[allow(dead_code)]
 extern "C" {
-
     #[link_name = "\u{1}_Z10zkevm_mainPcPvS0_"]
     pub fn zkevm_main(
         pConfigFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
-        pSecondarySMInputs: *mut ::std::os::raw::c_void,
+        pMainSMRquests: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
-
-    #[link_name = "\u{1}_Z15zkevm_mem_alignPciS_"]
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15zkevm_mem_alignPviS_"]
     pub fn zkevm_mem_align(
-        inputs_: *mut ::std::os::raw::c_char,
+        inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
-        pAddress: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
-
-    #[link_name = "\u{1}_Z20zkevm_padding_sha256PciS_"]
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_sha256PviS_S_"]
     pub fn zkevm_padding_sha256(
-        inputs_: *mut ::std::os::raw::c_char,
+        inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
-        pAddress: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
-    
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_"]
+    pub fn zkevm_padding_kk(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_kk_bitPviS_S_"]
+    pub fn zkevm_padding_kk_bit(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
 
+#[allow(dead_code)]
+extern "C" {
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
         pStarkInfo: *mut ::std::os::raw::c_void,
