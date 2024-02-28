@@ -194,11 +194,11 @@ pub fn starks_free_c(p_stark: *mut c_void) {
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn steps_params_new_c(
-    p_starks: *mut c_void,
+    p_stark: *mut c_void,
     p_challenges: *mut c_void,
     p_subproof_values: *mut c_void,
     p_evals: *mut c_void,
-    p_x_div_x_sub_si: *mut c_void,
+    p_x_div_x_sub_xi: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     unsafe { steps_params_new(p_stark, p_challenges, p_subproof_values, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
@@ -391,8 +391,8 @@ pub fn zkin_new_c<T>(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_new_c(type_: u32) -> *mut ::std::os::raw::c_void {
-    unsafe { transcript_new(type_) }
+pub fn transcript_new_c(element_type: u32) -> *mut ::std::os::raw::c_void {
+    unsafe { transcript_new(element_type) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -419,7 +419,7 @@ pub fn transcript_free_c(p_transcript: *mut ::std::os::raw::c_void, type_: u32) 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_challenge_c(p_starks: *mut c_void, p_transcript: *mut c_void, p_element: *mut c_void) {
     unsafe {
-        get_challenges(pStarks, pTranscript, pElement, nChallenges);
+        get_challenge(p_starks, p_transcript, p_element);
     }
 }
 
