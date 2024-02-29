@@ -199,6 +199,21 @@ pub fn zkevm_arith_c(
     }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_keccak_f_c(
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    unsafe {
+        zkevm_keccak_f(
+            inputs_ as *mut std::os::raw::c_void,
+            ninputs,
+            pAddress as *mut std::os::raw::c_void,
+        )
+    }
+}
+
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn save_proof_c<T>(
@@ -731,6 +746,16 @@ pub fn zkevm_arith_c(
     _pAddress: *mut ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_arith_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_keccak_f_c(
+    _inputs_: *mut ::std::os::raw::c_char,
+    _ninputs: ::std::os::raw::c_int,
+    _pAddress: *mut ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_keccak_f_c: This is a mock call because there is no linked library");
     0
 }
 
