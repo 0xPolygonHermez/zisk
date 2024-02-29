@@ -119,12 +119,12 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         // 0.- Add const root and publics to transcript
         //--------------------------------
-        timer_start!(STARK_STEP_0);
+        timer_start!(STARK_COMMIT_STAGE_0);
 
         transcript_add_c(p_transcript, verkey.as_ptr() as *mut c_void, HASH_SIZE);
         transcript_add_c(p_transcript, proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics);
 
-        timer_stop_and_log!(STARK_STEP_0);
+        timer_stop_and_log!(STARK_COMMIT_STAGE_0);
 
         //--------------------------------
         // 1.- Compute stages
