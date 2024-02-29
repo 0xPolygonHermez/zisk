@@ -86,13 +86,14 @@ where
 
         let mut prover_status = ProverStatus::StagesPending;
         let mut stage_id: u32 = 1;
-        let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
+        // TODO! Uncomment this when pilout done!!!!
+        // let num_stages = proof_ctx.pilout.get_num_stages();
+        let num_stages = 3;
 
         while prover_status != ProverStatus::StagesCompleted {
-            let stage_str = if stage_id <= num_stages + 1 { "COMMIT PHASE - STAGE" } else { "OPENINGS PHASE - STAGE" };
-            info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
-
-            self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+            if stage_id <= num_stages {
+                self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+            }
 
             // Once the first witness computation is done we assume we have initialized the air instances.
             // So, we know the number of row for each air instance and we can select the setup for each air instance.
@@ -102,8 +103,6 @@ where
             }
 
             prover_status = self.provers_manager.compute_stage(stage_id, &mut self.proof_ctx);
-
-            info!("{}: <== {} {}", Self::MY_NAME, stage_str, stage_id);
 
             // if stage_id == num_stages {
             //     for i in 0..self.proof_ctx.pilout.subproofs.len() {
