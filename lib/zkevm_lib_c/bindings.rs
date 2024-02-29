@@ -71,6 +71,16 @@ extern "C" {
     ) -> ::std::os::raw::c_int;
 }
 
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_padding_pgPviS_S_"]
+    pub fn zkevm_padding_pg(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+        pSMRquests: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
 #[allow(dead_code)]
 extern "C" {
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]

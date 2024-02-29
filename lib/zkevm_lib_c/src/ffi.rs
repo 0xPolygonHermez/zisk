@@ -138,6 +138,23 @@ pub fn zkevm_bits2field_kk_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_pg_c(
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+    pSMRquests: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe {
+        zkevm_padding_pg(
+            inputs_ as *mut std::os::raw::c_void,
+            ninputs,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn save_proof_c<T>(
     p_stark_info: *mut ::std::os::raw::c_void,
     p_fri_proof: *mut ::std::os::raw::c_void,
@@ -627,6 +644,17 @@ pub fn zkevm_bits2field_kk_c(
     _pSMRquests: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_bits2field_kk_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_pg_c(
+    _inputs_: *mut ::std::os::raw::c_char,
+    _ninputs: ::std::os::raw::c_int,
+    _pAddress: *mut ::std::os::raw::c_char,
+    _pSMRquests: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_pg_c: This is a mock call because there is no linked library");
     0
 }
 
