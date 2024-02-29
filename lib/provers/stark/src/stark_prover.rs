@@ -3,7 +3,7 @@ use std::any::type_name;
 
 use proofman::provers_manager::Prover;
 use log::{info, debug};
-use util::{timer_start, timer_start_step, timer_stop_and_log, timer_stop_and_log_step};
+use util::{timer_start, timer_stop_and_log};
 use zkevm_lib_c::ffi::*;
 use proofman::proof_ctx::ProofCtx;
 use crate::stark_info::StarkInfo;
@@ -130,15 +130,15 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         // 1.- Compute stages
         //--------------------------------
         for step in 1..=n_stages + 1 {
-            timer_start_step!(STARK_COMMIT_STAGE_, step);
+            timer_start!(STARK_COMMIT_STAGE_, step);
             compute_stage_c(p_stark, element_type, step, p_params, p_proof, p_transcript, self.p_steps);
-            timer_stop_and_log_step!(STARK_COMMIT_STAGE_, step);
+            timer_stop_and_log!(STARK_COMMIT_STAGE_, step);
         }
 
         //--------------------------------
         // 2. Compute Evals
         //--------------------------------
-        timer_start_step!(STARK_COMMIT_STAGE_, n_stages + 2);
+        timer_start!(STARK_COMMIT_STAGE_, n_stages + 2);
 
         let mut challenge_index = stark_info.num_challenges.as_ref().unwrap().iter().sum::<u64>() + 1;
 
@@ -165,7 +165,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 6));
         }
 
-        timer_stop_and_log_step!(STARK_COMMIT_STAGE_, n_stages + 2);
+        timer_stop_and_log!(STARK_COMMIT_STAGE_, n_stages + 2);
 
         //--------------------------------
         // 3. Compute FRI
