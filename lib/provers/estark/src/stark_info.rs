@@ -344,7 +344,7 @@ impl StarkInfo {
         if stark_info.pil2.is_none() {
             stark_info.pil2 = Some(false);
         }
-        
+
         if stark_info.n_subair_values.is_none() {
             stark_info.n_subair_values = Some(0);
         }

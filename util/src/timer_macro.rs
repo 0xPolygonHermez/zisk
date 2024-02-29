@@ -49,3 +49,12 @@ macro_rules! timer_stop_and_log {
         debug!("{}     stop <<< {} {}ms{}", "\x1b[2m", stringify!($name), $name.as_millis(), "\x1b[37;0m");
     };
 }
+
+#[macro_export]
+macro_rules! timer_stop_and_log_step {
+    ($name:ident, $step:expr) => {
+        #[allow(non_snake_case)]
+        let $name = std::time::Instant::now() - $name;
+        debug!("{}     stop <<< {}{} {}ms{}", "\x1b[2m", stringify!($name), $step, $name.as_millis(), "\x1b[37;0m");
+    };
+}
