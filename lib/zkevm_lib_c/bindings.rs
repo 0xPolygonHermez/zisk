@@ -91,8 +91,17 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z9climb_keyPviS_"]
+    #[link_name = "\u{1}_Z15zkevm_climb_keyPviS_"]
     pub fn zkevm_climb_key(
+        inputs_: *mut ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z11zkevm_arithPviS_"]
+    pub fn zkevm_arith(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
