@@ -9,12 +9,14 @@ use proofman::proof_ctx::ProofCtx;
 use crate::stark_info::StarkInfo;
 use crate::estark_prover_settings::EStarkProverSettings;
 
+use std::os::raw::c_void;
+
 pub struct EStarkProver<T: AbstractField> {
     initialized: bool,
     config: EStarkProverSettings,
-    p_steps: *mut ::std::os::raw::c_void,
-    ptr: *mut std::os::raw::c_void,
-    pub p_stark: Option<*mut ::std::os::raw::c_void>,
+    p_steps: *mut c_void,
+    ptr: *mut c_void,
+    pub p_stark: Option<*mut c_void>,
     stark_info: Option<StarkInfo>,
     phantom: std::marker::PhantomData<T>,
 }
@@ -22,11 +24,7 @@ pub struct EStarkProver<T: AbstractField> {
 impl<T: AbstractField> EStarkProver<T> {
     const MY_NAME: &'static str = "estrkPrv";
 
-    pub fn new(
-        config: EStarkProverSettings,
-        p_steps: *mut std::os::raw::c_void,
-        ptr: *mut std::os::raw::c_void,
-    ) -> Self {
+    pub fn new(config: EStarkProverSettings, p_steps: *mut c_void, ptr: *mut c_void) -> Self {
         Self {
             initialized: false,
             config,
@@ -38,7 +36,7 @@ impl<T: AbstractField> EStarkProver<T> {
         }
     }
 
-    pub fn get_stark_info(&self) -> *mut ::std::os::raw::c_void {
+    pub fn get_stark_info(&self) -> *mut c_void {
         get_stark_info_c(self.p_stark.unwrap())
     }
 }
@@ -85,6 +83,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         let p_transcript = transcript_new_c(element_type);
 
         let stark_info = self.stark_info.as_ref().unwrap();
+        let is_pil2 = stark_info.pil2.unwrap();
 
         let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
         let p_challenges = polinomial_new_c(stark_info.n_challenges.unwrap(), FIELD_EXTENSION, "");
@@ -101,7 +100,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         let verkey = vec![T::zero(); hash_size as usize];
 
         let p_stark = self.p_stark.unwrap();
-        treesGL_get_root_c(p_stark, stark_info.n_stages.unwrap() + 1, verkey.as_ptr() as *mut std::os::raw::c_void);
+        treesGL_get_root_c(p_stark, stark_info.n_stages.unwrap() + 1, verkey.as_ptr() as *mut c_void);
 
         let p_proof = fri_proof_new_c(p_stark);
 
@@ -111,7 +110,7 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
             p_subproof_values,
             p_evals,
             p_x_div_x_sub_xi,
-            proof_ctx.public_inputs.as_ptr() as *mut std::os::raw::c_void,
+            proof_ctx.public_inputs.as_ptr() as *mut c_void,
         );
 
         timer_stop_and_log!(STARK_INITIALIZATION);
@@ -121,20 +120,14 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         timer_start!(STARK_STEP_0);
 
-        transcript_add_c(p_transcript, verkey.as_ptr() as *mut std::os::raw::c_void, HASH_SIZE);
-
-        transcript_add_c(
-            p_transcript,
-            proof_ctx.public_inputs.as_ptr() as *mut std::os::raw::c_void,
-            stark_info.n_publics,
-        );
+        transcript_add_c(p_transcript, verkey.as_ptr() as *mut c_void, HASH_SIZE);
+        transcript_add_c(p_transcript, proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics);
 
         timer_stop_and_log!(STARK_STEP_0);
 
         //--------------------------------
         // 1.- Compute stages
         //--------------------------------
-
         for step in 1..=stark_info.n_stages.unwrap() + 1 {
             timer_start!(STARK_COMMIT_STAGE_XX);
             compute_stage_c(p_stark, element_type, step, p_params, p_proof, p_transcript, self.p_steps);
@@ -146,16 +139,28 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         //--------------------------------
         timer_start!(STARK_COMMIT_STAGE_YY);
 
-        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7));
+        let mut challenge_index = stark_info.num_challenges.as_ref().unwrap().iter().sum::<u64>() + 1;
+
+        if is_pil2 { // in a future version, this will be removed because all will be pil2 While developing this will be kept
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, challenge_index));
+            challenge_index += 1;
+        } else {
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 7));
+        }
+        challenge_index += 1;
 
         compute_evals_c(p_stark, p_params, p_proof);
 
         transcript_add_polinomial_c(p_transcript, p_evals);
 
-        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5));
-        get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 6));
-
-        // Polinomial* friPol = computeFRIPol(starkInfo.nStages + 2, params, chelpersSteps);
+        if is_pil2 { // in a future version, this will be removed because all will be pil2. While developing this will be kept
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, challenge_index));
+            challenge_index += 1;
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, challenge_index));
+        } else {
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5));
+            get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 6));
+        }
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_YY);
 
@@ -193,7 +198,6 @@ impl<T: AbstractField> Prover<T> for EStarkProver<T> {
         polinomial_free_c(p_fri_pol);
         polinomial_free_c(p_subproof_values);
         polinomial_free_c(p_challenges);
-
         polinomial_free_c(p_evals);
 
         timer_stop_and_log!(STARK_STEP_FRI);
