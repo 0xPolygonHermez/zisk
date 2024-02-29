@@ -1,9 +1,8 @@
-use log::debug;
 use util::{timer_start, timer_stop_and_log};
 use crate::proof_manager::ProverStatus;
 use crate::proof_ctx::ProofCtx;
 
-use log::info;
+use log::{debug, trace};
 
 pub trait ProverBuilder<T> {
     fn build(&mut self) -> Box<dyn Prover<T>>;
@@ -36,7 +35,7 @@ impl<T> ProversManager<T> {
     }
 
     pub fn setup(&mut self /*&public_inputs, &self.options*/) {
-        info!("{}: ==> SETUP", Self::MY_NAME);
+        debug!("{}: ==> SETUP", Self::MY_NAME);
     }
 
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
@@ -47,13 +46,13 @@ impl<T> ProversManager<T> {
             // self.new_proof();
 
             timer_start!(BUILDING_PROVERS);
-            info!("{}: ==> CREATING PROVERS {}", Self::MY_NAME, stage_id);
+            debug!("{}: ==> CREATING PROVERS {}", Self::MY_NAME, stage_id);
 
             // TODO! When VADCOPS we will iterate and select the prover for each air instance.
             let prover = self.prover_builder.build();
             self.provers.push(prover);
 
-            info!("{}: <== CREATING PROVERS {}", Self::MY_NAME, stage_id);
+            debug!("{}: <== CREATING PROVERS {}", Self::MY_NAME, stage_id);
             timer_stop_and_log!(BUILDING_PROVERS);
         }
 
@@ -73,19 +72,19 @@ impl<T> ProversManager<T> {
     }
 
     pub fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
-        info!("{}: ==> COMMIT STAGE {}", Self::MY_NAME, stage_id);
+        trace!("{}: ==> COMMIT STAGE {}", Self::MY_NAME, stage_id);
 
         // for prover in self.provers.iter() {
         //     prover.compute_stage(stage_id, proof_ctx);
         // }
         let status = self.provers[0].commit_stage(stage_id, proof_ctx);
-        info!("{}: <== COMMIT STAGE {}", Self::MY_NAME, stage_id);
+        trace!("{}: <== COMMIT STAGE {}", Self::MY_NAME, stage_id);
 
         status
     }
 
     pub fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
-        info!("{}: ==> OPENING STAGE {}", Self::MY_NAME, opening_id);
+        trace!("{}: ==> OPENING STAGE {}", Self::MY_NAME, opening_id);
 
         // for prover in self.provers.iter() {
         //     prover.opening_stage(stage_id, proof_ctx);
@@ -94,19 +93,19 @@ impl<T> ProversManager<T> {
 
         // state
         let status = self.provers[0].opening_stage(opening_id, proof_ctx);
-        info!("{}: <== OPENING STAGE {}", Self::MY_NAME, opening_id);
+        trace!("{}: <== OPENING STAGE {}", Self::MY_NAME, opening_id);
 
         status
     }
 
     pub fn verify_constraints(&self, stage_id: u32) -> bool {
-        info!("{}: ==> VERIFY CONSTRAINTS {}", Self::MY_NAME, stage_id);
+        trace!("{}: ==> VERIFY CONSTRAINTS {}", Self::MY_NAME, stage_id);
 
         false
     }
 
     pub fn verify_global_constraints(&self) -> bool {
-        info!("{}: ==> VERIFY GLOBAL CONSTRAINTS", Self::MY_NAME);
+        trace!("{}: ==> VERIFY GLOBAL CONSTRAINTS", Self::MY_NAME);
 
         false
     }

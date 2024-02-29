@@ -342,9 +342,6 @@ impl<T: AbstractField> StarkProver<T> {
         let p_challenges = self.p_challenges.unwrap();
         let p_evals = self.p_evals.unwrap();
         let is_pil2 = stark_info.pil2.unwrap();
-        let n_stages = stark_info.n_stages.unwrap();
-
-        timer_start!(STARK_COMMIT_STAGE_, n_stages + 2);
 
         let mut challenge_index = stark_info.num_challenges.as_ref().unwrap().iter().sum::<u64>() + 1;
 
@@ -370,8 +367,6 @@ impl<T: AbstractField> StarkProver<T> {
             get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 5));
             get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, 6));
         }
-
-        timer_stop_and_log!(STARK_COMMIT_STAGE_, n_stages + 2);
     }
 
     fn compute_fri_pol(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
@@ -389,8 +384,8 @@ impl<T: AbstractField> StarkProver<T> {
         let p_proof = self.p_proof.unwrap();
         let p_transcript = self.p_transcript.unwrap();
         let p_fri_pol = self.p_fri_pol.unwrap();
+        let step = opening_id - 3;
 
-        let step = opening_id - 2;
         //TODO! step = Restar opening_id de n_stages + 2
         let challenge = polinomial_new_c(1, Self::FIELD_EXTENSION, "");
         get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(challenge, 0));
