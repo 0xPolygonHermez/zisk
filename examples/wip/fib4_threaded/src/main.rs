@@ -2,7 +2,7 @@ use log::debug;
 
 use goldilocks::Goldilocks;
 
-use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
+use estark::estark_prover::{STARKProver, STARKProverSettings};
 
 mod executor;
 use crate::executor::FibonacciExecutor;

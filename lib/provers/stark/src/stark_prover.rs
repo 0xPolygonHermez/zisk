@@ -7,13 +7,13 @@ use util::{timer_start, timer_start_step, timer_stop_and_log, timer_stop_and_log
 use zkevm_lib_c::ffi::*;
 use proofman::proof_ctx::ProofCtx;
 use crate::stark_info::StarkInfo;
-use crate::estark_prover_settings::EStarkProverSettings;
+use crate::stark_prover_settings::StarkProverSettings;
 
 use std::os::raw::c_void;
 
-pub struct EStarkProver<T: AbstractField> {
+pub struct StarkProver<T: AbstractField> {
     initialized: bool,
-    config: EStarkProverSettings,
+    config: StarkProverSettings,
     p_steps: *mut c_void,
     ptr: *mut c_void,
     pub p_stark: Option<*mut c_void>,
@@ -21,10 +21,10 @@ pub struct EStarkProver<T: AbstractField> {
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: AbstractField> EStarkProver<T> {
+impl<T: AbstractField> StarkProver<T> {
     const MY_NAME: &'static str = "estrkPrv";
 
-    pub fn new(config: EStarkProverSettings, p_steps: *mut c_void, ptr: *mut c_void) -> Self {
+    pub fn new(config: StarkProverSettings, p_steps: *mut c_void, ptr: *mut c_void) -> Self {
         Self {
             initialized: false,
             config,
@@ -41,7 +41,7 @@ impl<T: AbstractField> EStarkProver<T> {
     }
 }
 
-impl<T: AbstractField> Prover<T> for EStarkProver<T> {
+impl<T: AbstractField> Prover<T> for StarkProver<T> {
     fn build(&mut self) {
         timer_start!(ESTARK_PROVER_NEW);
 

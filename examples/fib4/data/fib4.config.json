@@ -2,7 +2,7 @@
     "name": "fib4 test",
     "pilout": "examples/fib4/data/fib4.pilout",
     "provers": {
-        "variant": "estark",
+        "variant": "stark",
         "settings": {
             "Fibonacci": {
                 "stark_info": "./fib4.prover_config.json"

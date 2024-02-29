@@ -4,7 +4,7 @@
         "./examples/fib4/Cargo.toml",
         "./examples/fibv/Cargo.toml",
         "./goldilocks/Cargo.toml",
-        "./lib/provers/estark/Cargo.toml",
+        "./lib/provers/stark/Cargo.toml",
         "./lib/provers/mocked/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",

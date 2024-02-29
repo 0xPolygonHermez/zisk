@@ -17,4 +17,4 @@ goldilocks = { path = "../../goldilocks"}
 crossbeam-channel = "0.5.8"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0.68"
-estark = { path = "../../lib/provers/estark" }
+stark = { path = "../../lib/provers/stark" }

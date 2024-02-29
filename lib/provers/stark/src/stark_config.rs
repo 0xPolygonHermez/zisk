@@ -3,21 +3,21 @@ use std::collections::HashMap;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct EStarkConfig {
+pub struct StarkConfig {
     pub variant: String,
-    pub settings: HashMap<String, EStarkSettings>,
-    pub verifier: Option<EStarkVerifier>,
+    pub settings: HashMap<String, StarkSettings>,
+    pub verifier: Option<StarkVerifier>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct EStarkSettings {
+pub struct StarkSettings {
     pub stark_info: String,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct EStarkVerifier {
+pub struct StarkVerifier {
     settings: HashMap<String, VerifierSettings>,
 }
 

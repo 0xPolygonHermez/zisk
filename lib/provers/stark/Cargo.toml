@@ -1,5 +1,5 @@
 [package]
-name = "estark"
+name = "stark"
 version = "0.0.1"
 authors = ["Polygon Labs"]
 edition = "2021"
