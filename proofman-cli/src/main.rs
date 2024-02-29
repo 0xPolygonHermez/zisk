@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod commands;
 use commands::trace_commands::{TraceSubcommands, Trace};
+use util::cli::print_banner;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -16,6 +17,8 @@ pub enum Commands {
 }
 
 fn main() {
+    print_banner(false);
+
     let cli = Cli::parse();
 
     match &cli.command {

@@ -766,6 +766,7 @@ dependencies = [
  "log",
  "pilout",
  "structopt",
+ "util",
 ]
 
 [[package]]

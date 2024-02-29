@@ -2,7 +2,7 @@ extern crate env_logger;
 use clap::{Args, Parser, Subcommand};
 
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
-// use std::{fs, path::Path};
+use util::cli::{GREEN, RESET};
 
 #[derive(Parser)]
 pub struct Trace {
@@ -20,6 +20,9 @@ pub struct TraceSetupSubcmd {}
 
 impl TraceSetupSubcmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("{}{}{} {}", GREEN, format!("{: >12}", "Command"), RESET, "Trace setup subcommand");
+        println!("");
+
         let pilout = PilOutProxy::new("./examples/fibv/data/fibv.pilout");
 
         let witness_cols =
