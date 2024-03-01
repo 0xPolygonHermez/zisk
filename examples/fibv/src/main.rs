@@ -13,10 +13,12 @@ use executor_module::ModuleExecutor;
 use proofman::proof_manager::ProofManager;
 
 use proofman::proof_manager_config::ProofManConfig;
-use proofman::proofman_cli::ProofManCli;
 
 use serde::{Deserialize, Serialize};
 use serde_json;
+
+use clap::Parser;
+use proofman_cli::commands::prove::ProveCmd;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
@@ -49,16 +51,17 @@ impl<T> Into<Vec<T>> for FibVPublicInputs<T> {
 fn main() {
     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
-    let arguments = ProofManCli::read_arguments();
+    let arguments: ProveCmd = ProveCmd::parse();
+
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
     //read public inputs file
-    let public_inputs_filename = arguments.public_inputs.as_ref().unwrap().display().to_string();
+    let public_inputs_filename = arguments.public_inputs.as_ref().unwrap();
     let public_inputs = match std::fs::read_to_string(&public_inputs_filename) {
         Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
         Err(err) => {
-            println!("Error reading public inputs file '{}': {}", &public_inputs_filename, err);
+            println!("Error reading public inputs file '{}': {}", &public_inputs_filename.display(), err);
             std::process::exit(1);
         }
     };

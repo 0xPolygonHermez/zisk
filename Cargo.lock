@@ -345,17 +345,15 @@ dependencies = [
 name = "fibv"
 version = "0.1.0"
 dependencies = [
- "crossbeam-channel",
+ "clap 4.5.1",
  "env_logger",
  "goldilocks",
  "log",
- "pilout",
  "proofman",
+ "proofman-cli",
  "prover-mocked",
  "serde",
  "serde_json",
- "stark",
- "structopt",
 ]
 
 [[package]]
@@ -714,7 +712,6 @@ dependencies = [
  "goldilocks",
  "log",
  "pilout",
- "structopt",
  "util",
 ]
 
