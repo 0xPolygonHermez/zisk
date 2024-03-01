@@ -1,6 +1,6 @@
 [package]
 name = "prover-mocked"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Polygon Labs"]
 edition = "2021"
 readme = "README.md"

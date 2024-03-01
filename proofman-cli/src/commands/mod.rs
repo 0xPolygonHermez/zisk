@@ -1,1 +1,2 @@
-pub mod trace_commands;
+pub mod prove;
+pub mod trace;

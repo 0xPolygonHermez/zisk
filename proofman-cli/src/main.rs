@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod commands;
-use commands::trace_commands::{TraceSubcommands, Trace};
+use commands::trace::{TraceSubcommands, TraceCmd};
+use commands::prove::ProveCmd;
 use util::cli::print_banner;
 
 #[derive(Parser)]
@@ -13,7 +14,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Trace(Trace),
+    Trace(TraceCmd),
+    Prove(ProveCmd),
 }
 
 fn main() {
@@ -27,5 +29,8 @@ fn main() {
                 args.run().unwrap();
             }
         },
+        Commands::Prove(args) => {
+            args.run().unwrap();
+        }
     };
 }

@@ -1,15 +1,15 @@
 use log::debug;
-
 use goldilocks::Goldilocks;
+
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod executor;
 use crate::executor::FibonacciExecutor;
 
+use clap::Parser;
 use proofman::proof_manager::ProofManager;
-
 use proofman::proof_manager_config::ProofManConfig;
-use proofman::proofman_cli::ProofManCli;
+use proofman_cli::commands::prove::ProveCmd;
 
 fn main() {
     env_logger::builder()
@@ -19,7 +19,7 @@ fn main() {
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    let arguments = ProofManCli::read_arguments();
+    let arguments: ProveCmd = ProveCmd::parse();
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
 
     let proofman_config = ProofManConfig::parse_input_json(&config_json);

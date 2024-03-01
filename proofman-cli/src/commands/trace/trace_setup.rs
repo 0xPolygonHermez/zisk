@@ -1,24 +1,13 @@
 extern crate env_logger;
-use clap::{Args, Parser, Subcommand};
+use clap::Args;
 
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
 use util::cli::{GREEN, RESET};
 
-#[derive(Parser)]
-pub struct Trace {
-    #[command(subcommand)]
-    pub trace_commands: TraceSubcommands,
-}
-
-#[derive(Subcommand)]
-pub enum TraceSubcommands {
-    Setup(TraceSetupSubcmd),
-}
-
 #[derive(Args)]
-pub struct TraceSetupSubcmd {}
+pub struct TraceSetupCmd {}
 
-impl TraceSetupSubcmd {
+impl TraceSetupCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         println!("{}{}{} {}", GREEN, format!("{: >12}", "Command"), RESET, "Trace setup subcommand");
         println!("");

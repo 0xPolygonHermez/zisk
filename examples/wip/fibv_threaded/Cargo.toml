@@ -1,6 +1,6 @@
 [package]
 name = "fibv"
-version = "0.0.1"
+version = "0.1.0"
 description = "Examples of how to use the proofman prover and verifier"
 authors = ["Polygon Labs"]
 edition = "2021"
