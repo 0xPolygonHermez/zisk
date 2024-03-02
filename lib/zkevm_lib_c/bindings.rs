@@ -1,10 +1,24 @@
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
 extern "C" {
-    #[link_name = "\u{1}_Z10zkevm_mainPcPvS0_"]
+    #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_"]
     pub fn zkevm_main(
-        pConfigFile: *mut ::std::os::raw::c_char,
+        configFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
-        pMainSMRquests: *mut ::std::os::raw::c_void,
+        pSMRequests: *mut *mut ::std::os::raw::c_void,
+        pSMRequestsOut: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_binary_reqPvS_"]
+    pub fn zkevm_binary_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_delete_sm_requestsPPv"]
+    pub fn zkevm_delete_sm_requests(
+        pSMRequests: *mut *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -15,6 +29,14 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_mem_align_reqPvS_"]
+    pub fn zkevm_mem_align_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
 extern "C" {
     #[link_name = "\u{1}_Z20zkevm_padding_sha256PviS_S_"]
     pub fn zkevm_padding_sha256(
@@ -99,6 +121,13 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_memory_reqPvS_"]
+    pub fn zkevm_memory_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
 
 extern "C" {
     #[link_name = "\u{1}_Z15zkevm_climb_keyPviS_"]
@@ -112,11 +141,19 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z11zkevm_arithPviS_"]
     pub fn zkevm_arith(
-        inputs_: *mut ::std::os::raw::c_void,
+        inputs: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
+extern "C" {
+    #[link_name = "\u{1}_Z15zkevm_arith_reqPvS_"]
+    pub fn zkevm_arith_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
 
 extern "C" {
     #[link_name = "\u{1}_Z14zkevm_keccak_fPviS_"]
