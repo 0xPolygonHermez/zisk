@@ -1,15 +1,15 @@
 extern crate env_logger;
 use clap::Args;
 
+use colored::Colorize;
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
-use util::cli::{GREEN, RESET};
 
 #[derive(Args)]
 pub struct TraceSetupCmd {}
 
 impl TraceSetupCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Command"), RESET, "Trace setup subcommand");
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Trace setup subcommand");
         println!("");
 
         let pilout = PilOutProxy::new("./examples/fibv/data/fibv.pilout");

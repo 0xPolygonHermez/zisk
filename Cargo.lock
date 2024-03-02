@@ -198,6 +198,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
+name = "colored"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbf2150cce219b664a8a70df7a1f933836724b503f8a413af9365b4dcc4d90b8"
+dependencies = [
+ "lazy_static",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -690,6 +700,7 @@ dependencies = [
 name = "proofman"
 version = "0.1.0"
 dependencies = [
+ "colored",
  "criterion",
  "crossbeam-channel",
  "env_logger",
@@ -708,6 +719,7 @@ name = "proofman-cli"
 version = "0.1.0"
 dependencies = [
  "clap 4.5.1",
+ "colored",
  "env_logger",
  "goldilocks",
  "log",
@@ -1075,6 +1087,7 @@ checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 name = "util"
 version = "0.1.0"
 dependencies = [
+ "colored",
  "sysinfo",
 ]
 

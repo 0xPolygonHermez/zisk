@@ -1,8 +1,6 @@
 // extern crate env_logger;
 use clap::Parser;
-
-use util::cli::{GREEN, RESET};
-
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -24,7 +22,7 @@ pub struct ProveCmd {
 
 impl ProveCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Command"), RESET, "Prove command");
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove command");
         println!("");
 
         Ok(())

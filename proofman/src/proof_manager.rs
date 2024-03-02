@@ -1,4 +1,5 @@
 use crate::provers_manager::ProverBuilder;
+use colored::Colorize;
 // use pilout::pilout::SymbolType;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
@@ -44,9 +45,9 @@ where
     ) -> Self {
         print_banner(true);
 
-        println!("{}{}············ {}{}", BOLD, PURPLE, proofman_config.get_name(), RESET);
+        println!("············ {}", proofman_config.get_name().bright_purple().bold());
 
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Pilout"), RESET, proofman_config.get_pilout());
+        println!("{} {}", format!("{: >12}", "Pilout").bright_green().bold(), proofman_config.get_pilout());
         println!("");
 
         debug!("{}: Initializing", Self::MY_NAME);

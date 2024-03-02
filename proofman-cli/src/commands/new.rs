@@ -1,5 +1,5 @@
 use clap::Parser;
-use util::cli::{GREEN, RESET};
+use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::fs;
 
@@ -17,7 +17,7 @@ pub struct NewCmd {
 
 impl NewCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Command"), RESET, "New project");
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "New project");
         println!("");
 
         println!("Creating new proofman project: {}", self.name);
@@ -43,7 +43,7 @@ impl NewCmd {
 
         // Create the src directory.
         const MAIN_RS: &str = include_str!("../../assets/code/main.rs");
-        
+
         fs::create_dir(&src_folder)?;
         fs::write(src_folder.join("main.rs"), MAIN_RS)?;
 
