@@ -76,30 +76,56 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_"]
+    #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_S_"]
     pub fn zkevm_padding_kk(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
-        pSMRquests: *mut ::std::os::raw::c_void,
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pSMRequestsOut: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_kk_reqPvS_"]
+    pub fn zkevm_padding_kk_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z20zkevm_padding_kk_bitPviS_S_"]
+    #[link_name = "\u{1}_Z20zkevm_padding_kk_bitPviS_S_S_"]
     pub fn zkevm_padding_kk_bit(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
-        pSMRquests: *mut ::std::os::raw::c_void,
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pSMRequestsOut: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_padding_kk_bit_reqPvS_"]
+    pub fn zkevm_padding_kk_bit_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19zkevm_bits2field_kkPviS_S_"]
+    #[link_name = "\u{1}_Z19zkevm_bits2field_kkPviS_S_S_"]
     pub fn zkevm_bits2field_kk(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
-        pSMRquests: *mut ::std::os::raw::c_void,
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pSMRequestsOut: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z23zkevm_bits2field_kk_reqPvS_"]
+    pub fn zkevm_bits2field_kk_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
 
@@ -160,6 +186,14 @@ extern "C" {
     pub fn zkevm_keccak_f(
         inputs_: *mut ::std::os::raw::c_void,
         ninputs: ::std::os::raw::c_int,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z18zkevm_keccak_f_reqPvS_"]
+    pub fn zkevm_keccak_f_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }

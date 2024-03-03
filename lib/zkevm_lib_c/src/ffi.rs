@@ -124,16 +124,26 @@ pub fn zkevm_padding_kk_c(
     inputs_: *mut ::std::os::raw::c_char,
     ninputs: ::std::os::raw::c_int,
     pAddress: *mut ::std::os::raw::c_char,
-    pSMRquests: *mut ::std::os::raw::c_void,
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_kk(
             inputs_ as *mut std::os::raw::c_void,
             ninputs,
             pAddress as *mut std::os::raw::c_void,
-            pSMRquests,
+            pSMRequests,
+            pSMRequestsOut,
         )
     }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_kk_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_padding_kk_req(pSMRequests, pAddress) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -142,6 +152,7 @@ pub fn zkevm_padding_kk_bit_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *mut ::std::os::raw::c_char,
     pSMRquests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_kk_bit(
@@ -149,8 +160,16 @@ pub fn zkevm_padding_kk_bit_c(
             ninputs,
             pAddress as *mut std::os::raw::c_void,
             pSMRquests,
+            pSMRequestsOut,
         )
     }
+}
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_kk_bit_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_padding_kk_bit_req(pSMRequests, pAddress) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -159,6 +178,7 @@ pub fn zkevm_bits2field_kk_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *mut ::std::os::raw::c_char,
     pSMRquests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_bits2field_kk(
@@ -166,8 +186,17 @@ pub fn zkevm_bits2field_kk_c(
             ninputs,
             pAddress as *mut std::os::raw::c_void,
             pSMRquests,
+            pSMRequestsOut,
         )
     }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_bits2field_kk_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_bits2field_kk_req(pSMRequests, pAddress) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -240,6 +269,14 @@ pub fn zkevm_keccak_f_c(
     pAddress: *mut ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
     unsafe { zkevm_keccak_f(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_keccak_f_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_keccak_f_req(pSMRequests, pAddress) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -738,10 +775,11 @@ pub fn zkevm_sha256_f_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn zkevm_padding_kk_c(
-    _inputs_: *mut ::std::os::raw::c_char,
-    _ninputs: ::std::os::raw::c_int,
-    _pAddress: *mut ::std::os::raw::c_char,
-    _pSMRquests: *mut ::std::os::raw::c_void,
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_padding_kk_c: This is a mock call because there is no linked library");
     0
@@ -749,23 +787,44 @@ pub fn zkevm_padding_kk_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn zkevm_padding_kk_bit_c(
-    _inputs_: *mut ::std::os::raw::c_char,
-    _ninputs: ::std::os::raw::c_int,
-    _pAddress: *mut ::std::os::raw::c_char,
-    _pSMRquests: *mut ::std::os::raw::c_void,
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+    pSMRquests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_padding_kk_bit_c: This is a mock call because there is no linked library");
     0
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_kk_bit_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_kk_bit_req_c: This is a mock call because there is no linked library");
+    0
+}
+
+
+#[cfg(feature = "no_lib_link")]
 pub fn zkevm_bits2field_kk_c(
-    _inputs_: *mut ::std::os::raw::c_char,
-    _ninputs: ::std::os::raw::c_int,
-    _pAddress: *mut ::std::os::raw::c_char,
-    _pSMRquests: *mut ::std::os::raw::c_void,
+    inputs_: *mut ::std::os::raw::c_char,
+    ninputs: ::std::os::raw::c_int,
+    pAddress: *mut ::std::os::raw::c_char,
+    pSMRquests: *mut ::std::os::raw::c_void,
+    pSMRequestsOut: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_bits2field_kk_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_bits2field_kk_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_bits2field_kk_req_c: This is a mock call because there is no linked library");
     0
 }
 
@@ -837,6 +896,15 @@ pub fn zkevm_keccak_f_c(
     _pAddress: *mut ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_keccak_f_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_keccak_f_req_c(
+    _pSMRequests: *mut ::std::os::raw::c_void,
+    _pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_keccak_f_req_c: This is a mock call because there is no linked library");
     0
 }
 
