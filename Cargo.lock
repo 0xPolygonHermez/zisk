@@ -721,9 +721,8 @@ dependencies = [
  "clap 4.5.1",
  "colored",
  "env_logger",
- "goldilocks",
  "log",
- "pilout",
+ "proofman",
  "util",
 ]
 
