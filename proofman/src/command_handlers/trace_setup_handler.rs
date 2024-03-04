@@ -1,16 +1,15 @@
 use colored::Colorize;
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
-use std::path::PathBuf;
 
-pub fn trace_setup_handler(pilout: &PathBuf, dest_folder: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn trace_setup_handler(pilout: &PilOutProxy) -> Result<String, Box<dyn std::error::Error>> {
     println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Trace setup subcommand");
     println!("");
 
-    let pilout = PilOutProxy::new(&pilout.display().to_string())?;
+    // let pilout = PilOutProxy::new(&pilout.display().to_string())?;
 
     let witness_cols = pilout.symbols.iter().filter(|s| s.r#type == SymbolType::WitnessCol as i32).collect::<Vec<_>>();
 
-    let headers = "use proofman::trace\n".to_owned();
+    let headers = "use proofman::trace;\n".to_owned();
     let headers = headers + "use goldilocks::Goldilocks;\n\n";
     let mut traces = "".to_owned();
 
@@ -42,7 +41,5 @@ pub fn trace_setup_handler(pilout: &PathBuf, dest_folder: &PathBuf) -> Result<()
         }
     }
 
-    println!("{}{}", headers, traces);
-
-    Ok(())
+    Ok(headers + &traces)
 }

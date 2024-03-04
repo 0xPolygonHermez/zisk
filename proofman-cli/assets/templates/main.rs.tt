@@ -1,0 +1,38 @@
+use goldilocks::Goldilocks;
+
+use prover_mocked::mocked_prover_builder::MockedProverBuilder;
+
+mod witness_computation;
+{{ for wc_context in wc }}use crate::witness_computation::{wc_context.file}::{wc_context.name}WC;
+{{ endfor }}
+use clap::Parser;
+use proofman::proof_manager::ProofManager;
+use proofman::proof_manager_config::ProofManConfig;
+use proofman_cli::commands::prove::ProveCmd;
+use proofman::executor::Executor;
+
+fn main() \{
+    let arguments: ProveCmd = ProveCmd::parse();
+
+    let proofman_config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
+    let proofman_config = ProofManConfig::parse_input_json(&proofman_config_json);
+
+    let executors: Vec<Box<dyn Executor<Goldilocks>>> = vec![{{ for wc_context in wc }}Box::new({wc_context.name}WC::new()), {{ endfor }}];
+
+    let prover_builder = MockedProverBuilder::<Goldilocks>::new();
+
+    let mut proofman = match ProofManager::<Goldilocks>::new(proofman_config, executors, Box::new(prover_builder)) \{
+        Ok(proofman) => proofman,
+        Err(err) => \{
+            println!("Error: \{:?}", err);
+            return;
+        }
+    };
+
+    // Change None to your public inputs if necessary
+    let proof = proofman.prove(None);
+
+    if let Err(err) = proof \{
+        println!("Error: Proof generation failed \{}", err);
+    }
+}

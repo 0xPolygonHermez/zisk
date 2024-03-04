@@ -2,7 +2,7 @@ use clap::Args;
 use proofman::command_handlers::trace_setup_handler::trace_setup_handler;
 use std::path::PathBuf;
 use colored::Colorize;
-
+use pilout::pilout_proxy::PilOutProxy;
 #[derive(Args)]
 pub struct TraceSetupCmd {
     /// pilout file path
@@ -19,6 +19,15 @@ impl TraceSetupCmd {
         println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Trace setup subcommand");
         println!("");
 
-        trace_setup_handler(&self.pilout, &self.dest)
+        let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
+        let output = match trace_setup_handler(&pilout) {
+            Ok(output) => output,
+            Err(e) => return Err(e),
+        };
+
+        // TODO write to file
+        println!("{}", output);
+
+        Ok(())
     }
 }
