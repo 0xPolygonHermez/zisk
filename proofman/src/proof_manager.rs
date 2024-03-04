@@ -42,7 +42,7 @@ where
         proofman_config: ProofManConfig,
         wc: Vec<Box<dyn Executor<T>>>,
         prover_builder: Box<dyn ProverBuilder<T>>,
-    ) -> Self {
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         print_banner(true);
 
         println!("············ {}", proofman_config.get_name().bright_purple().bold());
@@ -52,7 +52,7 @@ where
 
         debug!("{}: Initializing", Self::MY_NAME);
 
-        let pilout = PilOutProxy::new(proofman_config.get_pilout());
+        let pilout = PilOutProxy::new(proofman_config.get_pilout())?;
 
         //let's filter pilout symbols where type = WitnessColl
         // let witness_cols =
@@ -69,7 +69,7 @@ where
         debug!("{}: ··· Creating prover manager", Self::MY_NAME);
         let provers_manager = ProversManager::new(prover_builder);
 
-        Self { proofman_config, proof_ctx, wc_manager, provers_manager }
+        Ok(Self { proofman_config, proof_ctx, wc_manager, provers_manager })
     }
 
     pub fn setup() {

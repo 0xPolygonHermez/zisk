@@ -3,6 +3,7 @@ mod commands;
 use commands::new::NewCmd;
 use commands::trace::{TraceSubcommands, TraceCmd};
 use commands::prove::ProveCmd;
+use commands::pilout::{PiloutSubcommands, PiloutCmd};
 use util::cli::print_banner;
 
 #[derive(Parser)]
@@ -15,25 +16,38 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    New(NewCmd),
+    Pilout(PiloutCmd),
     Trace(TraceCmd),
+    New(NewCmd),
     Prove(ProveCmd),
 }
 
 fn main() {
+    env_logger::builder()
+        .format_timestamp(None)
+        .format_level(true)
+        .format_target(false)
+        .filter_level(log::LevelFilter::Trace)
+        .init();
+
     print_banner(false);
 
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::New(args) => {
-            args.run().unwrap();
-        }
+        Commands::Pilout(args) => match &args.pilout_commands {
+            PiloutSubcommands::Inspect(args) => {
+                args.run().unwrap();
+            }
+        },
         Commands::Trace(args) => match &args.trace_commands {
             TraceSubcommands::Setup(args) => {
                 args.run().unwrap();
             }
         },
+        Commands::New(args) => {
+            args.run().unwrap();
+        }
         Commands::Prove(args) => {
             args.run().unwrap();
         }

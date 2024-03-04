@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::Read;
 use std::ops::Deref;
 
-use log::debug;
+use log::{debug, info};
 use util::{timer_start, timer_stop_and_log};
 
 #[derive(Debug)]
@@ -16,13 +16,9 @@ pub struct PilOutProxy {
 impl PilOutProxy {
     const MY_NAME: &'static str = "piloutPx";
 
-    pub fn new(pilout_filename: &str) -> Self {
-        let pilout = Self::load_pilout(pilout_filename);
-        let pilout = match pilout {
-            Ok(pilout) => pilout,
-            Err(e) => panic!("Failed to load pilout: {}", e),
-        };
-        PilOutProxy { pilout }
+    pub fn new(pilout_filename: &str) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
+        let pilout = Self::load_pilout(pilout_filename)?;
+        Ok(PilOutProxy { pilout })
     }
 
     fn load_pilout(pilout_filename: &str) -> Result<PilOut, DecodeError> {
@@ -53,18 +49,18 @@ impl PilOutProxy {
 
     pub fn print_pilout_info(&self) {
         // Print PilOut subproofs and airs names and degrees
-        debug!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
+        info!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
 
         let base_field: &Vec<u8> = self.pilout.base_field.as_ref();
         let mut hex_string = "0x".to_owned();
         for &byte in base_field {
             hex_string.push_str(&format!("{:02X}", byte));
         }
-        debug!("{}:     Base field: {}", Self::MY_NAME, hex_string);
+        info!("{}:     Base field: {}", Self::MY_NAME, hex_string);
 
-        debug!("{}:     Subproofs:", Self::MY_NAME);
+        info!("{}:     Subproofs:", Self::MY_NAME);
         for (subproof_index, subproof) in self.pilout.subproofs.iter().enumerate() {
-            debug!(
+            info!(
                 "{}:     + [{}] {} (aggregable: {}, subproof values: {})",
                 Self::MY_NAME,
                 subproof_index,
@@ -74,7 +70,7 @@ impl PilOutProxy {
             );
 
             for (air_index, air) in self.pilout.subproofs[subproof_index].airs.iter().enumerate() {
-                debug!(
+                info!(
                     "{}:       [{}][{}] {} (rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {})",
                     Self::MY_NAME,
                     subproof_index,
@@ -90,12 +86,12 @@ impl PilOutProxy {
             }
         }
 
-        debug!("{}:     Challenges: {}", Self::MY_NAME, self.pilout.num_challenges.len());
+        info!("{}:     Challenges: {}", Self::MY_NAME, self.pilout.num_challenges.len());
         for i in 0..self.pilout.num_challenges.len() {
-            debug!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
+            info!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
         }
 
-        debug!(
+        info!(
             "{}:     #Proof values: {}, #Public values: {}, #Global expressions: {}, #Global constraints: {}",
             Self::MY_NAME,
             self.pilout.num_proof_values,
@@ -103,8 +99,8 @@ impl PilOutProxy {
             self.pilout.expressions.len(),
             self.pilout.constraints.len()
         );
-        debug!("{}:     #Hints: {}, #Symbols: {}", Self::MY_NAME, self.pilout.hints.len(), self.pilout.symbols.len());
-        debug!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
+        info!("{}:     #Hints: {}, #Symbols: {}", Self::MY_NAME, self.pilout.hints.len(), self.pilout.symbols.len());
+        info!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
     }
 }
 

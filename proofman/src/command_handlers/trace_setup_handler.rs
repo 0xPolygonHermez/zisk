@@ -2,11 +2,11 @@ use colored::Colorize;
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
 use std::path::PathBuf;
 
-pub fn trace_setup_handler(pilout: &PathBuf, src_folder: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn trace_setup_handler(pilout: &PathBuf, dest_folder: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Trace setup subcommand");
     println!("");
 
-    let pilout = PilOutProxy::new(&pilout.display().to_string());
+    let pilout = PilOutProxy::new(&pilout.display().to_string())?;
 
     let witness_cols = pilout.symbols.iter().filter(|s| s.r#type == SymbolType::WitnessCol as i32).collect::<Vec<_>>();
 
