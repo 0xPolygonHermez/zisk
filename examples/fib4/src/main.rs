@@ -28,7 +28,14 @@ fn main() {
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = ProofManager::<Goldilocks>::new(proofman_config, vec![executor], Box::new(prover_builder));
+    let mut proofman = match ProofManager::<Goldilocks>::new(proofman_config, vec![executor], Box::new(prover_builder))
+    {
+        Ok(proofman) => proofman,
+        Err(err) => {
+            println!("Error: {:?}", err);
+            return;
+        }
+    };
 
     let now = std::time::Instant::now();
     let proof = proofman.prove(None);
