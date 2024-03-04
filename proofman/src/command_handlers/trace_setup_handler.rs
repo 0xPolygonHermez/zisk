@@ -35,7 +35,7 @@ pub fn trace_setup_handler(pilout: &PilOutProxy) -> Result<String, Box<dyn std::
                     trace += &format!("\t{}: {},\n", name, field_type);
                 }
             }
-            trace += &format!("}}\n\n");
+            trace += &format!("}});\n\n");
 
             traces += &trace;
         }

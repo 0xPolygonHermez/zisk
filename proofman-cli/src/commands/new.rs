@@ -88,15 +88,9 @@ impl NewCmd {
             wc: pilout
                 .subproofs
                 .iter()
-                .flat_map(|subproof| {
-                    subproof
-                        .airs
-                        .iter()
-                        .map(|air| WCContext {
-                            name: air.name.as_ref().unwrap().clone(),
-                            file: format!("{}_wc", air.name.as_ref().unwrap().to_lowercase()),
-                        })
-                        .collect::<Vec<_>>()
+                .map(|subproof| WCContext {
+                    name: subproof.name.as_ref().unwrap().clone(),
+                    file: format!("{}_wc", subproof.name.as_ref().unwrap().to_lowercase()),
                 })
                 .collect::<Vec<_>>(),
         };
