@@ -93,9 +93,9 @@ impl<T: Default + Clone> ProofCtx<T> {
             self.public_inputs = public_inputs.into();
         }
 
-        for subproof in self.subproofs.iter() {
-            for air in subproof.airs.iter() {
-                air.instances.write().unwrap().clear();
+        for subproof in self.subproofs.iter_mut() {
+            for air in subproof.airs.iter_mut() {
+                air.instances.clear();
             }
         }
 
@@ -114,7 +114,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     ///
     /// Panics if the specified Air instance is not found.
     pub fn add_trace_to_air_instance(
-        &self,
+        &mut self,
         subproof_id: usize,
         air_id: usize,
         trace: Box<dyn Trace>,
@@ -153,7 +153,7 @@ pub struct SubproofCtx {
 pub struct AirCtx {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub instances: RwLock<Vec<AirInstanceCtx>>,
+    pub instances: Vec<AirInstanceCtx>,
 }
 
 #[derive(Debug)]
@@ -161,7 +161,7 @@ pub struct AirInstanceCtx {
     pub subproof_id: usize,
     pub air_id: usize,
     pub instance_id: usize,
-    pub trace: Arc<Box<dyn Trace>>,
+    pub trace: RwLock<Arc<Box<dyn Trace>>>,
 }
 
 impl AirCtx {
@@ -172,7 +172,7 @@ impl AirCtx {
     /// * `subproof_id` - The subproof ID associated with the AirCtx.
     /// * `air_id` - The air ID associated with the AirCtx.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirCtx { subproof_id, air_id, /*instances: RwLock::new(Vec::new()),*/ instances: RwLock::new(Vec::new()) }
+        AirCtx { subproof_id, air_id, instances: Vec::new() }
     }
 
     /// Adds a trace to the AirCtx.
@@ -180,17 +180,16 @@ impl AirCtx {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
-        let mut traces = self.instances.write().unwrap();
-        let len = traces.len();
+    pub fn add_trace(&mut self, trace: Box<dyn Trace>) -> usize {
+        let len = self.instances.len();
 
-        traces.push(AirInstanceCtx {
+        self.instances.push(AirInstanceCtx {
             subproof_id: self.subproof_id,
             air_id: self.air_id,
             instance_id: len,
-            trace: Arc::new(trace),
+            trace: RwLock::new(Arc::new(trace)),
         });
-        traces.len() - 1
+        self.instances.len() - 1
     }
 
     /// Returns a reference to the trace at the specified index.
@@ -202,12 +201,10 @@ impl AirCtx {
     /// # Returns
     ///
     /// Returns a reference to the trace at the specified index.
-    pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
-        let traces = self.instances.read().unwrap();
+    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+        assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
 
-        assert!(trace_id < traces.len(), "Trace ID out of bounds");
-
-        Ok(Arc::clone(&traces[trace_id].trace))
+        Ok(Arc::clone(&self.instances[instance_id].trace.read().unwrap()))
     }
 }
 
