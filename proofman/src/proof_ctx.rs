@@ -153,7 +153,15 @@ pub struct SubproofCtx {
 pub struct AirCtx {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub instances: RwLock<Vec<Arc<Box<dyn Trace>>>>,
+    pub instances: RwLock<Vec<AirInstanceCtx>>,
+}
+
+#[derive(Debug)]
+pub struct AirInstanceCtx {
+    pub subproof_id: usize,
+    pub air_id: usize,
+    pub instance_id: usize,
+    pub trace: Arc<Box<dyn Trace>>,
 }
 
 impl AirCtx {
@@ -164,7 +172,7 @@ impl AirCtx {
     /// * `subproof_id` - The subproof ID associated with the AirCtx.
     /// * `air_id` - The air ID associated with the AirCtx.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirCtx { subproof_id, air_id, instances: RwLock::new(Vec::new()) }
+        AirCtx { subproof_id, air_id, /*instances: RwLock::new(Vec::new()),*/ instances: RwLock::new(Vec::new()) }
     }
 
     /// Adds a trace to the AirCtx.
@@ -174,7 +182,14 @@ impl AirCtx {
     /// * `trace` - The trace to add to the AirCtx.
     pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
         let mut traces = self.instances.write().unwrap();
-        traces.push(Arc::new(trace));
+        let len = traces.len();
+
+        traces.push(AirInstanceCtx {
+            subproof_id: self.subproof_id,
+            air_id: self.air_id,
+            instance_id: len,
+            trace: Arc::new(trace),
+        });
         traces.len() - 1
     }
 
@@ -192,7 +207,7 @@ impl AirCtx {
 
         assert!(trace_id < traces.len(), "Trace ID out of bounds");
 
-        Ok(Arc::clone(&traces[trace_id]))
+        Ok(Arc::clone(&traces[trace_id].trace))
     }
 }
 
@@ -201,7 +216,7 @@ impl fmt::Debug for AirCtx {
         f.debug_struct("AirCtx")
             .field("subproof_id", &self.subproof_id)
             .field("air_id", &self.air_id)
-            .field("traces", &self.instances)
+            .field("instances", &self.instances)
             .finish()
     }
 }
