@@ -20,13 +20,15 @@ impl TraceSetupCmd {
         println!("");
 
         let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
-        let output = match trace_setup_handler(&pilout) {
-            Ok(output) => output,
-            Err(e) => return Err(e),
-        };
+        for (subproof_id, _subproof) in pilout.subproofs.iter().enumerate() {
+            let output = match trace_setup_handler(&pilout, subproof_id) {
+                Ok(output) => output,
+                Err(e) => return Err(e),
+            };
 
-        // TODO write to file
-        println!("{}", output);
+            // TODO write to file
+            println!("{}", output);
+        }
 
         Ok(())
     }

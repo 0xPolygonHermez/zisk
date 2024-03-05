@@ -3,7 +3,7 @@ use goldilocks::Goldilocks;
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod witness_computation;
-{{ for wc_context in wc }}use crate::witness_computation::{wc_context.file}::{wc_context.name}WC;
+{{ for wc_context in wc }}use crate::witness_computation::{wc_context.snake_name}_wc::{wc_context.name}WC;
 {{ endfor }}
 use clap::Parser;
 use proofman::proof_manager::ProofManager;
