@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::any::Any;
 
 pub struct Ptr {
     pub ptr: UnsafeCell<*mut u8>,
@@ -17,10 +18,11 @@ impl Ptr {
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace: std::fmt::Debug {
+pub trait Trace: std::fmt::Debug + Any {
     fn num_rows(&self) -> usize;
     fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Macro for defining trace structures with specified fields.
@@ -35,15 +37,15 @@ macro_rules! trace {
     ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }, offset: $offset:expr, stride: $stride:expr) => {
         #[derive(Debug)]
         #[allow(dead_code)]
-        pub struct $my_struct<'a> {
+        pub struct $my_struct {
             pub buffer: Option<Vec<u8>>,
-            pub ptr: &'a [u8],
+            pub ptr: *mut u8,
             num_rows: usize,
             $(pub $field_name: $crate::trace_field!($field_type),)*
         }
 
         #[allow(dead_code)]
-        impl<'a> $my_struct<'a> {
+        impl $my_struct {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
 
             /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
@@ -69,7 +71,7 @@ macro_rules! trace {
 
                 $my_struct {
                     buffer: Some(buffer),
-                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * Self::ROW_SIZE) },
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * Self::ROW_SIZE).as_mut_ptr() },
                     num_rows,
                     $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, Self::ROW_SIZE),)*
                 }
@@ -102,7 +104,7 @@ macro_rules! trace {
 
                 $my_struct {
                     buffer: None,
-                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * $stride) },
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * $stride).as_mut_ptr() },
                     num_rows,
                     $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, $stride),)*
                 }
@@ -161,7 +163,7 @@ macro_rules! trace {
             }
         }
 
-        impl<'a> $crate::trace::trace::Trace for $my_struct<'a> {
+        impl $crate::trace::trace::Trace for $my_struct {
             fn num_rows(&self) -> usize {
                 self.num_rows()
             }
@@ -170,10 +172,15 @@ macro_rules! trace {
                 self.row_size()
             }
 
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+
             // TODO! uncomment
             // fn split(&self, num_segments: usize) -> Vec<Self> {
             //     self.split(num_segments)
             // }
+
         }
     };
 }
