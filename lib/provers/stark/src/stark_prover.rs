@@ -106,11 +106,11 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             let p_challenges = polinomial_new_c(stark_info.n_challenges.unwrap(), FIELD_EXTENSION, "");
             self.p_challenges = Some(p_challenges);
 
-            let p_subproof_values = polinomial_new_c(stark_info.n_subair_values.unwrap(), FIELD_EXTENSION, "");
+            let p_subproof_values = polinomial_new_c(stark_info.n_subair_values, FIELD_EXTENSION, "");
 
             let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
             let p_x_div_x_sub_xi = polinomial_new_c(
-                stark_info.opening_points.as_ref().unwrap().len() as u64 * n_extended,
+                stark_info.opening_points.len() as u64 * n_extended,
                 FIELD_EXTENSION,
                 "",
             );
@@ -193,13 +193,12 @@ impl<T: AbstractField> StarkProver<T> {
         let p_transcript = self.p_transcript.unwrap();
         let p_challenges = self.p_challenges.unwrap();
         let p_evals = self.p_evals.unwrap();
-        let is_pil2 = stark_info.pil2.unwrap();
 
         debug!("{}: ··· Computing evaluations", Self::MY_NAME);
 
-        let mut challenge_index = stark_info.num_challenges.as_ref().unwrap().iter().sum::<u64>() + 1;
+        let mut challenge_index = stark_info.num_challenges.iter().sum::<u64>() + 1;
 
-        if is_pil2 {
+        if stark_info.pil2 {
             // in a future version, this will be removed because all will be pil2 While developing this will be kept
             get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, challenge_index));
             challenge_index += 1;
@@ -212,7 +211,7 @@ impl<T: AbstractField> StarkProver<T> {
 
         transcript_add_polinomial_c(p_transcript, p_evals);
 
-        if is_pil2 {
+        if stark_info.pil2 {
             // in a future version, this will be removed because all will be pil2. While developing this will be kept
             get_challenge_c(p_stark, p_transcript, polinomial_get_p_element_c(p_challenges, challenge_index));
             challenge_index += 1;
