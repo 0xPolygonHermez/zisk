@@ -67,7 +67,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             .expect(format!("Failed to read file {}", &self.config.stark_info_filename).as_str());
         self.stark_info = Some(StarkInfo::from_json(&stark_info_json));
 
-        self.p_stark = Some(starks_new_c(
+        let p_stark = starks_new_c(
             p_config,
             self.config.const_pols_filename.as_str(),
             self.config.map_const_pols_file,
@@ -75,10 +75,12 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             self.config.stark_info_filename.as_str(),
             self.config.chelpers_filename.as_str(),
             self.ptr,
-        ));
+        );
+
+        self.p_stark = Some(p_stark);
 
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
-        self.transcript = Some(FFITranscript::new(self.p_stark.unwrap(), element_type));
+        self.transcript = Some(FFITranscript::new(p_stark, element_type));
 
         self.initialized = true;
 
@@ -93,6 +95,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         }
 
         let transcript = self.transcript.as_ref().unwrap();
+        let p_stark = self.p_stark.unwrap();
 
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
@@ -119,7 +122,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             let hash_size = if stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
             let verkey = vec![T::zero(); hash_size as usize];
 
-            let p_stark = self.p_stark.unwrap();
             treesGL_get_root_c(p_stark, n_stages + 1, verkey.as_ptr() as *mut c_void);
 
             self.p_proof = Some(fri_proof_new_c(p_stark));
@@ -146,7 +148,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             timer_stop_and_log!(STARK_COMMIT_STAGE_0);
         }
 
-        let p_stark = self.p_stark.unwrap();
         let p_params = self.p_params.unwrap();
         let p_proof = self.p_proof.unwrap();
 
@@ -261,12 +262,13 @@ impl<T: AbstractField> StarkProver<T> {
     }
 
     fn compute_fri_queries(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<T>) {
-        debug!("{}: ··· Computing FRI queries", Self::MY_NAME);
         let p_stark = self.p_stark.unwrap();
         let stark_info = self.stark_info.as_ref().unwrap();
         let p_proof = self.p_proof.unwrap();
         let transcript = self.transcript.as_ref().unwrap();
         let p_fri_pol = self.p_fri_pol.unwrap();
+
+        debug!("{}: ··· Computing FRI queries", Self::MY_NAME);
 
         let mut fri_queries = vec![0u64; stark_info.stark_struct.n_queries as usize];
 
