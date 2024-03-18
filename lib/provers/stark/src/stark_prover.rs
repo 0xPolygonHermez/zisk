@@ -270,8 +270,7 @@ impl<T: AbstractField> StarkProver<T> {
 
         let mut fri_queries = vec![0u64; stark_info.stark_struct.n_queries as usize];
 
-        get_permutations_c(
-            transcript.p_transcript,
+        transcript.get_permutations(
             fri_queries.as_mut_ptr(),
             stark_info.stark_struct.n_queries,
             stark_info.stark_struct.steps[0].n_bits,
