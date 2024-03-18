@@ -269,7 +269,9 @@ pub struct StarkInfo {
     #[serde(rename = "starkStruct")]
     pub stark_struct: StarkStruct,
 
-    pub pil2: Option<bool>,
+    // Default value for pil2 is false
+    #[serde(default)]
+    pub pil2: bool,
 
     #[serde(rename = "nCm1")]
     pub n_cm1: u64,
@@ -278,16 +280,18 @@ pub struct StarkInfo {
     #[serde(rename = "nPublics")]
     pub n_publics: u64,
 
-    #[serde(rename = "numChallenges")]
-    pub num_challenges: Option<Vec<u64>>,
+    #[serde(default = "default_num_challenges", rename = "numChallenges")]
+    pub num_challenges: Vec<u64>,
 
-    #[serde(rename = "nSubAirValues")]
-    pub n_subair_values: Option<u64>,
+    // Default value for nSubAirValues is 0
+    #[serde(default, rename = "nSubAirValues")]
+    pub n_subair_values: u64,
 
-    #[serde(rename = "openingPoints")]
-    pub opening_points: Option<Vec<u64>>,
+    #[serde(default = "default_opening_points", rename = "openingPoints")]
+    pub opening_points: Vec<u64>,
 
-    pub boundaries: Option<Vec<Boundary>>,
+    #[serde(default = "default_boundaries")]
+    pub boundaries: Vec<Boundary>,
 
     #[serde(rename = "qDeg")]
     pub q_deg: u64,
@@ -315,7 +319,7 @@ pub struct StarkInfo {
 
     pub hints: Option<Vec<Hint>>,
 
-    //Exclusius de PIL1
+    // PIL1 specific
     #[serde(rename = "varPolMap")]
     pub var_pol_map: Option<Vec<VarPolMap>>,
     #[serde(rename = "cm_n")]
@@ -329,42 +333,32 @@ pub struct StarkInfo {
     #[serde(rename = "exp2pol")]
     pub exp2pol: Option<HashMap<String, u64>>,
 
-    // Computed fields:
+    // Computed fields, not present in the JSON
     pub n_stages: Option<u64>,
     pub n_challenges: Option<u64>,
+}
+
+fn default_num_challenges() -> Vec<u64> {
+    vec![0, 2, 2]
+}
+
+fn default_opening_points() -> Vec<u64> {
+    vec![0, 1]
+}
+
+fn default_boundaries() -> Vec<Boundary> {
+    vec![Boundary { name: "everyRow".to_string(), offset_min: Some(0), offset_max: Some(0) }]
 }
 
 impl StarkInfo {
     pub fn from_json(stark_info_json: &str) -> Self {
         timer_start!(STARK_INFO_LOAD);
 
-        debug!("starkinf: ··· Loading StarkInfo JSON");
+        debug!("strkinfo: ··· Loading StarkInfo JSON");
         let mut stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
 
-        if stark_info.pil2.is_none() {
-            stark_info.pil2 = Some(false);
-        }
-
-        if stark_info.n_subair_values.is_none() {
-            stark_info.n_subair_values = Some(0);
-        }
-
-        if stark_info.num_challenges.is_none() {
-            stark_info.num_challenges = Some(vec![0, 2, 2]);
-        }
-
-        stark_info.n_stages = Some(stark_info.num_challenges.as_ref().unwrap().len() as u64);
-
-        stark_info.n_challenges = Some(stark_info.num_challenges.as_ref().unwrap().iter().sum::<u64>() + 4);
-
-        if stark_info.opening_points.is_none() {
-            stark_info.opening_points = Some(vec![0, 1]);
-        }
-
-        if stark_info.boundaries.is_none() {
-            stark_info.boundaries =
-                Some(vec![Boundary { name: "everyRow".to_string(), offset_min: Some(0), offset_max: Some(0) }]);
-        }
+        stark_info.n_stages = Some(stark_info.num_challenges.len() as u64);
+        stark_info.n_challenges = Some(stark_info.num_challenges.iter().sum::<u64>() + 4);
 
         timer_stop_and_log!(STARK_INFO_LOAD);
         stark_info
