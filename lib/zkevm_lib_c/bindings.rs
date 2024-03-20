@@ -161,17 +161,34 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
-
 extern "C" {
-    #[link_name = "\u{1}_Z16zkevm_padding_pgPviS_S_"]
-    pub fn zkevm_padding_pg(
-        inputs_: *mut ::std::os::raw::c_void,
-        ninputs: ::std::os::raw::c_int,
+    #[link_name = "\u{1}_Z17zkevm_storage_reqPvS_"]
+    pub fn zkevm_storage_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        pSMRquests: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
-
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_pg_reqPvS_"]
+    pub fn zkevm_padding_pg_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_climb_key_reqPvS_"]
+    pub fn zkevm_climb_key_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_poseidon_g_reqPvS_"]
+    pub fn zkevm_poseidon_g_req(
+        pSMRequests: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
 extern "C" {
     #[link_name = "\u{1}_Z12zkevm_memoryPviS_"]
     pub fn zkevm_memory(
@@ -184,15 +201,6 @@ extern "C" {
     #[link_name = "\u{1}_Z16zkevm_memory_reqPvS_"]
     pub fn zkevm_memory_req(
         pSMRequests: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-}
-
-extern "C" {
-    #[link_name = "\u{1}_Z15zkevm_climb_keyPviS_"]
-    pub fn zkevm_climb_key(
-        inputs_: *mut ::std::os::raw::c_void,
-        ninputs: ::std::os::raw::c_int,
         pAddress: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }

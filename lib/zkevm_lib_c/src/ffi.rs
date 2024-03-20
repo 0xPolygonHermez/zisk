@@ -238,22 +238,36 @@ pub fn zkevm_bits2field_kk_req_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn zkevm_padding_pg_c(
-    inputs_: *mut ::std::os::raw::c_char,
-    ninputs: ::std::os::raw::c_int,
-    pAddress: *mut ::std::os::raw::c_char,
-    pSMRquests: *mut ::std::os::raw::c_void,
+pub fn zkevm_storage_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe {
-        zkevm_padding_pg(
-            inputs_ as *mut std::os::raw::c_void,
-            ninputs,
-            pAddress as *mut std::os::raw::c_void,
-            pSMRquests,
-        )
-    }
+    unsafe { zkevm_storage_req(pSMRequests, pAddress) }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_padding_pg_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_padding_pg_req(pSMRequests, pAddress) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_climb_key_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_climb_key_req(pSMRequests, pAddress) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkevm_poseidon_g_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    unsafe { zkevm_poseidon_g_req(pSMRequests, pAddress) }
+}
 #[cfg(not(feature = "no_lib_link"))]
 pub fn zkevm_memory_c(
     inputs_: *mut ::std::os::raw::c_char,
@@ -269,17 +283,6 @@ pub fn zkevm_memory_req_c(
     pAddress: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     unsafe { zkevm_memory_req(pSMRequests, pAddress) }
-}
-
-
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn zkevm_climb_key_c(
-    inputs_: *mut ::std::os::raw::c_char,
-    ninputs: ::std::os::raw::c_int,
-    pAddress: *mut ::std::os::raw::c_char,
-) -> ::std::os::raw::c_int {
-    unsafe { zkevm_climb_key(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -907,13 +910,38 @@ pub fn zkevm_bits2field_kk_req_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn zkevm_padding_pg_c(
-    _inputs_: *mut ::std::os::raw::c_char,
-    _ninputs: ::std::os::raw::c_int,
-    _pAddress: *mut ::std::os::raw::c_char,
-    _pSMRquests: *mut ::std::os::raw::c_void,
+pub fn zkevm_storage_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    println!("zkevm_padding_pg_c: This is a mock call because there is no linked library");
+    println!("zkevm_storage_req_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_pg_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_pg_req_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_climb_key_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_climb_key_req_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_poseidon_g_req_c(
+    pSMRequests: *mut ::std::os::raw::c_void,
+    pAddress: *mut ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_poseidon_g_req_c: This is a mock call because there is no linked library");
     0
 }
 
@@ -933,17 +961,6 @@ pub fn zkevm_memory_req_c(
     _pAddress: *mut ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_memory_req_c: This is a mock call because there is no linked library");
-    0
-}
-
-
-#[cfg(feature = "no_lib_link")]
-pub fn zkevm_climb_key_c(
-    _inputs_: *mut ::std::os::raw::c_char,
-    _ninputs: ::std::os::raw::c_int,
-    _pAddress: *mut ::std::os::raw::c_char,
-) -> ::std::os::raw::c_int {
-    println!("climb_key_c: This is a mock call because there is no linked library");
     0
 }
 
