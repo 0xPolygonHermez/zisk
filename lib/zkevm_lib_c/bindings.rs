@@ -167,6 +167,18 @@ extern "C" {
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_S_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, pFriPol: *mut c_void, friQueries: *mut u64);
 
+     #[link_name = "\u{1}_Z18get_vector_pointerPvPc"]
+    pub fn get_vector_pointer(
+        pStarks: *mut c_void,
+        name: *mut ::std::os::raw::c_char,
+    ) -> *mut c_void;
+
+    #[link_name = "\u{1}_Z13resize_vectorPvmb"]
+    pub fn resize_vector(pVector: *mut ::std::os::raw::c_void, newSize: u64, value: bool);
+
+    #[link_name = "\u{1}_Z21set_bool_vector_valuePvmb"]
+    pub fn set_bool_vector_value(pVector: *mut c_void, index: u64, value: bool);
+
     // CommitPolsStarks
     // ========================================================================================
     #[link_name = "\u{1}_Z22commit_pols_starks_newPvmm"]

@@ -47,6 +47,10 @@ impl PilOutProxy {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
+    pub fn num_stages(&self) -> u32 {
+        self.pilout.num_challenges.len() as u32
+    }
+
     pub fn print_pilout_info(&self) {
         // Print PilOut subproofs and airs names and degrees
         info!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());

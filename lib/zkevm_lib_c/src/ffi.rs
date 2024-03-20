@@ -311,6 +311,27 @@ pub fn compute_fri_queries_c(p_stark: *mut c_void, pProof: *mut c_void, pFriPol:
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn get_vector_pointer_c(p_stark: *mut c_void, name: &str) -> *mut c_void {
+    let name = CString::new(name).unwrap();
+
+    unsafe { get_vector_pointer(p_stark, name.as_ptr() as *mut std::os::raw::c_char) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn resize_vector_c(p_vector: *mut c_void, new_size: u64, value: bool) {
+    unsafe {
+        resize_vector(p_vector, new_size, value);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_bool_vector_value_c(p_vector: *mut c_void, index: u64, value: bool) {
+    unsafe {
+        set_bool_vector_value(p_vector, index, value);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn commit_pols_starks_new_c(
     p_address: *mut c_void,
     degree: u64,
@@ -704,6 +725,22 @@ pub fn compute_fri_queries_c(
     _friQueries: *mut u64,
 ) {
     trace!("{}: ··· {}", "mckzkevm", "compute_fri_queries: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_vector_pointer_c(_p_stark: *mut c_void, _name: &str) -> *mut c_void {
+    trace!("{}: ··· {}", "mckzkevm", "get_vector_pointer: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn resize_vector_c(_p_vector: *mut c_void, _new_size: u64, _value: bool) {
+    trace!("{}: ··· {}", "mckzkevm", "resize_vector: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_bool_vector_value_c(_p_vector: *mut c_void, _index: u64, _value: bool) {
+    trace!("{}: ··· {}", "mckzkevm", "set_bool_vector_value: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

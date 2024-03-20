@@ -285,7 +285,7 @@ pub struct StarkInfo {
 
     // Default value for nSubAirValues is 0
     #[serde(default, rename = "nSubAirValues")]
-    pub n_subair_values: u64,
+    pub n_subproof_values: u64,
 
     #[serde(default = "default_opening_points", rename = "openingPoints")]
     pub opening_points: Vec<u64>,
@@ -334,8 +334,20 @@ pub struct StarkInfo {
     pub exp2pol: Option<HashMap<String, u64>>,
 
     // Computed fields, not present in the JSON
-    pub n_stages: Option<u64>,
-    pub n_challenges: Option<u64>,
+    #[serde(default)]
+    pub n_stages: u64,
+    #[serde(default)]
+    pub n_challenges: u64,
+    #[serde(default)]
+    pub stage_challenge_index: Vec<u64>,
+    #[serde(default)]
+    pub q_challenge_index: u64,
+    #[serde(default)]
+    pub xi_challenge_index: u64,
+    #[serde(default)]
+    pub fri1_challenge_index: u64,
+    #[serde(default)]
+    pub fri2_challenge_index: u64,
 }
 
 fn default_num_challenges() -> Vec<u64> {
@@ -357,8 +369,49 @@ impl StarkInfo {
         debug!("strkinfo: ··· Loading StarkInfo JSON");
         let mut stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
 
-        stark_info.n_stages = Some(stark_info.num_challenges.len() as u64);
-        stark_info.n_challenges = Some(stark_info.num_challenges.iter().sum::<u64>() + 4);
+        // Compute stage_challenge_index
+        let mut n_challenges = 0;
+        let mut stage_challenge_index = Vec::new();
+        let mut q_challenge_index = 0;
+        let mut xi_challenge_index = 0;
+        let mut fri1_challenge_index = 0;
+        let mut fri2_challenge_index = 0;
+
+        if stark_info.pil2 {
+            for i in 0..stark_info.num_challenges.len() {
+                n_challenges += stark_info.num_challenges[i];
+                if i == 0 {
+                    stage_challenge_index.push(0);
+                } else {
+                    stage_challenge_index.push(stage_challenge_index[i - 1] + stark_info.num_challenges[i - 1]);
+                }
+                q_challenge_index = n_challenges;
+                xi_challenge_index = n_challenges + 1;
+                fri1_challenge_index = n_challenges + 2;
+                fri2_challenge_index = n_challenges + 3;
+
+                n_challenges += 4;
+            }
+        } else {
+            stage_challenge_index.push(0);
+            stage_challenge_index.push(0);
+            stage_challenge_index.push(2);
+            q_challenge_index = 4;
+            xi_challenge_index = 7;
+            fri1_challenge_index = 5;
+            fri2_challenge_index = 6;
+            n_challenges = 8;
+        }
+
+        stark_info.stage_challenge_index = stage_challenge_index;
+        stark_info.q_challenge_index = q_challenge_index;
+        stark_info.xi_challenge_index = xi_challenge_index;
+        stark_info.fri1_challenge_index = fri1_challenge_index;
+        stark_info.fri2_challenge_index = fri2_challenge_index;
+        stark_info.n_challenges = n_challenges;
+
+        let n_stages = stark_info.num_challenges.len();
+        stark_info.n_stages = n_stages as u64;
 
         timer_stop_and_log!(STARK_INFO_LOAD);
         stark_info

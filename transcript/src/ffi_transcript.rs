@@ -24,7 +24,7 @@ impl FFITranscript {
         transcript_add_c(self.p_transcript, input, size);
     }
 
-    pub fn transcript_add_polinomial(&self, p_polinomial: *mut c_void) {
+    pub fn add_polinomial(&self, p_polinomial: *mut c_void) {
         transcript_add_polinomial_c(self.p_transcript, p_polinomial);
     }
 
