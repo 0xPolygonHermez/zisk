@@ -118,8 +118,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let transcript = self.transcript.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
 
-        let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
-
         if stage_id == 1 {
             const HASH_SIZE: u64 = 4;
             const FIELD_EXTENSION: u64 = 3;
@@ -184,6 +182,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let p_proof = self.p_proof.unwrap();
 
         timer_start!(STARK_COMMIT_STAGE_, stage_id);
+        let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
         compute_stage_c(
             p_stark,
             element_type,
@@ -300,8 +299,11 @@ impl<T: AbstractField> StarkProver<T> {
 
         if stark_info.pil2 {
             let p_tmp_challenge = polinomial_new_c(1, Self::FIELD_EXTENSION, "");
+
             transcript.get_challenge(polinomial_get_p_element_c(p_tmp_challenge, 0));
-            let transcript_permutation = FFITranscript::new(p_stark, 0);
+            let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
+            let transcript_permutation = FFITranscript::new(p_stark, element_type);
+            
             transcript_permutation.add_polinomial(p_tmp_challenge);
             transcript_permutation.get_permutations(
                 fri_queries.as_mut_ptr(),

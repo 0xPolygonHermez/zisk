@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use util::{timer_start, timer_stop_and_log};
 use log::debug;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
@@ -41,13 +41,13 @@ pub struct StarkStruct {
 #[allow(non_camel_case_types)]
 #[derive(Deserialize)]
 pub enum OpType {
-    #[serde(rename = "const_")]
+    #[serde(rename = "const")]
     Const = 0,
     #[serde(rename = "cm")]
     Cm = 1,
     #[serde(rename = "tmp")]
     Tmp = 2,
-    #[serde(rename = "public_")]
+    #[serde(rename = "public")]
     Public = 3,
     #[serde(rename = "subproofvalue")]
     SubproofValue = 4,
@@ -63,26 +63,34 @@ pub enum OpType {
 pub enum ESection {
     #[serde(rename = "cm1_n")]
     Cm1_N = 0,
-    #[serde(rename = "cm1_2ns")]
+    #[serde(rename = "cm1_ext")]
     Cm1_2Ns = 1,
     #[serde(rename = "cm2_n")]
     Cm2_N = 2,
-    #[serde(rename = "cm2_2ns")]
+    #[serde(rename = "cm2_ext")]
     Cm2_2Ns = 3,
     #[serde(rename = "cm3_n")]
     Cm3_N = 4,
-    #[serde(rename = "cm3_2ns")]
+    #[serde(rename = "cm3_ext")]
     Cm3_2Ns = 5,
     #[serde(rename = "cm4_n")]
     Cm4_N = 6,
-    #[serde(rename = "cm4_2ns")]
+    #[serde(rename = "cm4_ext")]
     Cm4_2Ns = 7,
     #[serde(rename = "tmpExp_n")]
     TmpExp_N = 8,
-    #[serde(rename = "q_2ns")]
+    #[serde(rename = "q_ext")]
     Q_2Ns = 9,
-    #[serde(rename = "f_2ns")]
+    #[serde(rename = "f_ext")]
     F_2Ns = 10,
+    #[serde(rename = "const_n")]
+    Const_N = 11,
+    #[serde(rename = "const_ext")]
+    Const_Ext = 12,
+    #[serde(rename = "cmQ_n")]
+    CmQ_N = 13,
+    #[serde(rename = "cmQ_ext")]
+    CmQ_Ext = 14,
 }
 
 const ESECTION_VARIANTS: usize = 11;
@@ -224,6 +232,14 @@ pub enum EMapSectionsN {
     F_Ext = 12,
 }
 
+fn deserialize_bool_from_int<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: i32 = Deserialize::deserialize(deserializer)?;
+    Ok(Some(value != 0))
+}
+
 #[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct EvMap {
@@ -231,8 +247,9 @@ pub struct EvMap {
     type_: EvMapEType,
     name: Option<String>,
     id: u64,
+    #[serde(deserialize_with = "deserialize_bool_from_int")]
     prime: Option<bool>,
-    stage: Option<u64>,
+    // stage: Option<u64>,
     dim: Option<u64>,
     #[serde(rename = "subproofId")]
     subproof_id: Option<u64>,
@@ -280,7 +297,7 @@ pub struct StarkInfo {
     #[serde(rename = "nPublics")]
     pub n_publics: u64,
 
-    #[serde(default = "default_num_challenges", rename = "numChallenges")]
+    #[serde(default, rename = "numChallenges")]
     pub num_challenges: Vec<u64>,
 
     // Default value for nSubAirValues is 0
@@ -314,9 +331,8 @@ pub struct StarkInfo {
 
     pub code: Option<HashMap<String, CodeStage>>,
 
-    #[serde(rename = "expressionsCode")]
-    pub expressions_code: Option<HashMap<u64, ExpressionsCode>>,
-
+    // #[serde(rename = "expressionsCode")]
+    // pub expressions_code: Option<HashMap<u64, ExpressionsCode>>,
     pub hints: Option<Vec<Hint>>,
 
     // PIL1 specific
@@ -350,10 +366,6 @@ pub struct StarkInfo {
     pub fri2_challenge_index: u64,
 }
 
-fn default_num_challenges() -> Vec<u64> {
-    vec![0, 2, 2]
-}
-
 fn default_opening_points() -> Vec<u64> {
     vec![0, 1]
 }
@@ -372,12 +384,12 @@ impl StarkInfo {
         // Compute stage_challenge_index
         let mut n_challenges = 0;
         let mut stage_challenge_index = Vec::new();
-        let mut q_challenge_index = 0;
-        let mut xi_challenge_index = 0;
-        let mut fri1_challenge_index = 0;
-        let mut fri2_challenge_index = 0;
+        let q_challenge_index;
+        let xi_challenge_index;
+        let fri1_challenge_index;
+        let fri2_challenge_index;
 
-        if stark_info.pil2 {
+        if stark_info.num_challenges.len() > 0 {
             for i in 0..stark_info.num_challenges.len() {
                 n_challenges += stark_info.num_challenges[i];
                 if i == 0 {
@@ -385,14 +397,17 @@ impl StarkInfo {
                 } else {
                     stage_challenge_index.push(stage_challenge_index[i - 1] + stark_info.num_challenges[i - 1]);
                 }
-                q_challenge_index = n_challenges;
-                xi_challenge_index = n_challenges + 1;
-                fri1_challenge_index = n_challenges + 2;
-                fri2_challenge_index = n_challenges + 3;
-
-                n_challenges += 4;
             }
+
+            q_challenge_index = n_challenges;
+            xi_challenge_index = n_challenges + 1;
+            fri1_challenge_index = n_challenges + 2;
+            fri2_challenge_index = n_challenges + 3;
+
+            n_challenges += 4;
         } else {
+            stark_info.num_challenges = vec![0, 2, 2];
+
             stage_challenge_index.push(0);
             stage_challenge_index.push(0);
             stage_challenge_index.push(2);
