@@ -1,0 +1,12 @@
+\{
+    "name": "{project_name}",
+    "pilout": "./data/{pilout_filename}",
+    "provers": \{
+        "variant": "stark",
+        "settings": \{
+            "Fibonacci": \{
+                "stark_info": "./fib4.prover_config.json"
+            }
+        }
+    }
+}

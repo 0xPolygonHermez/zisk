@@ -1,0 +1,434 @@
+// use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use util::{timer_start, timer_stop_and_log};
+use log::debug;
+use serde::{Deserialize, Deserializer};
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct Boundary {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "offsetMin")]
+    pub offset_min: Option<u64>,
+    #[serde(rename = "offsetMax")]
+    pub offset_max: Option<u64>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct StepStruct {
+    #[serde(rename = "nBits")]
+    pub n_bits: u64,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct StarkStruct {
+    #[serde(rename = "nBits")]
+    pub n_bits: u64,
+    #[serde(rename = "nBitsExt")]
+    pub n_bits_ext: u64,
+    #[serde(rename = "nQueries")]
+    pub n_queries: u64,
+    #[serde(rename = "verificationHashType")]
+    pub verification_hash_type: String,
+    #[serde(rename = "steps")]
+    pub steps: Vec<StepStruct>,
+}
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Deserialize)]
+pub enum OpType {
+    #[serde(rename = "const")]
+    Const = 0,
+    #[serde(rename = "cm")]
+    Cm = 1,
+    #[serde(rename = "tmp")]
+    Tmp = 2,
+    #[serde(rename = "public")]
+    Public = 3,
+    #[serde(rename = "subproofvalue")]
+    SubproofValue = 4,
+    #[serde(rename = "challenge")]
+    Challenge = 5,
+    #[serde(rename = "number")]
+    Number = 6,
+}
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Deserialize, Eq, PartialEq, Hash)]
+pub enum ESection {
+    #[serde(rename = "cm1_n")]
+    Cm1_N = 0,
+    #[serde(rename = "cm1_ext")]
+    Cm1_2Ns = 1,
+    #[serde(rename = "cm2_n")]
+    Cm2_N = 2,
+    #[serde(rename = "cm2_ext")]
+    Cm2_2Ns = 3,
+    #[serde(rename = "cm3_n")]
+    Cm3_N = 4,
+    #[serde(rename = "cm3_ext")]
+    Cm3_2Ns = 5,
+    #[serde(rename = "cm4_n")]
+    Cm4_N = 6,
+    #[serde(rename = "cm4_ext")]
+    Cm4_2Ns = 7,
+    #[serde(rename = "tmpExp_n")]
+    TmpExp_N = 8,
+    #[serde(rename = "q_ext")]
+    Q_2Ns = 9,
+    #[serde(rename = "f_ext")]
+    F_2Ns = 10,
+    #[serde(rename = "const_n")]
+    Const_N = 11,
+    #[serde(rename = "const_ext")]
+    Const_Ext = 12,
+    #[serde(rename = "cmQ_n")]
+    CmQ_N = 13,
+    #[serde(rename = "cmQ_ext")]
+    CmQ_Ext = 14,
+}
+
+const ESECTION_VARIANTS: usize = 11;
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Deserialize)]
+pub enum HintType {
+    #[serde(rename = "h1h2")]
+    H1H2 = 0,
+    #[serde(rename = "gprod")]
+    GProd = 1,
+    #[serde(rename = "publicValue")]
+    PublicValue = 2,
+}
+
+#[derive(Deserialize)]
+pub struct PolsSections {
+    pub section: [u64; ESECTION_VARIANTS],
+}
+
+#[derive(Deserialize)]
+pub struct CmPolMap {
+    pub stage: String,
+    #[serde(rename = "stageNum")]
+    pub stage_num: u64,
+    pub name: String,
+    pub dim: u64,
+    #[serde(rename = "imPol")]
+    pub im_pol: bool,
+    #[serde(rename = "stagePos")]
+    pub stage_pos: u64,
+    #[serde(rename = "stageId")]
+    pub stage_id: u64,
+}
+
+#[derive(Deserialize)]
+pub struct Symbol {
+    pub op: OpType,
+    pub stage: Option<u64>,
+    #[serde(rename = "stageId")]
+    pub stage_id: Option<u64>,
+    pub id: Option<u64>,
+    pub value: Option<u64>,
+}
+
+// HINTS
+// =================================================================================================
+#[derive(Deserialize)]
+#[serde(tag = "name")]
+pub enum Hint {
+    #[serde(rename = "gprod")]
+    GProd(GProdHint),
+    #[serde(rename = "h1h2")]
+    H1H2(H1H2Hint),
+    #[serde(rename = "public")]
+    Public(PublicHint),
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct GProdHint {
+    numerator: Symbol,
+    denominator: Symbol,
+    dest: Vec<Symbol>,
+    fields: Vec<String>,
+    symbols: Vec<Symbol>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct H1H2Hint {
+    f: Symbol,
+    t: Symbol,
+    dest: Vec<Symbol>,
+    fields: Vec<String>,
+    symbols: Vec<Symbol>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct PublicHint {
+    // row_index: XXX,
+    // expression: YYY,
+    dest: Vec<Symbol>,
+    fields: Vec<String>,
+    symbols: Vec<Symbol>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct VarPolMap {
+    section: ESection,
+    dim: u64,
+    section_pos: Option<u64>,
+    deg: Option<u64>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+enum EvMapEType {
+    #[serde(rename = "cm")]
+    Cm,
+    #[serde(rename = "const")]
+    Const,
+    #[serde(rename = "q")]
+    Q,
+}
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Deserialize, Eq, PartialEq, Hash)]
+pub enum EMapSectionsN {
+    #[serde(rename = "cm1_n")]
+    Cm1_N = 0,
+    #[serde(rename = "cm1_ext")]
+    Cm1_Ext = 1,
+    #[serde(rename = "cm2_n")]
+    Cm2_N = 2,
+    #[serde(rename = "cm2_ext")]
+    Cm2_Ext = 3,
+    #[serde(rename = "cm3_n")]
+    Cm3_N = 4,
+    #[serde(rename = "cm3_ext")]
+    Cm3_Ext = 5,
+    #[serde(rename = "cmQ_n")]
+    CmQ_N = 6,
+    #[serde(rename = "cmQ_ext")]
+    CmQ_Ext = 7,
+    #[serde(rename = "tmpExp_n")]
+    TmpExp_N = 8,
+    #[serde(rename = "const_n")]
+    Const_N = 9,
+    #[serde(rename = "const_ext")]
+    Const_Ext = 10,
+    #[serde(rename = "q_ext")]
+    Q_Ext = 11,
+    #[serde(rename = "f_ext")]
+    F_Ext = 12,
+}
+
+fn deserialize_bool_from_int<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: i32 = Deserialize::deserialize(deserializer)?;
+    Ok(Some(value != 0))
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct EvMap {
+    #[serde(rename = "type")]
+    type_: EvMapEType,
+    name: Option<String>,
+    id: u64,
+    #[serde(deserialize_with = "deserialize_bool_from_int")]
+    prime: Option<bool>,
+    // stage: Option<u64>,
+    dim: Option<u64>,
+    #[serde(rename = "subproofId")]
+    subproof_id: Option<u64>,
+    #[serde(rename = "airId")]
+    air_id: Option<u64>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct ExpressionsCode {
+    #[serde(rename = "expId", default)]
+    exp_id: u64,
+    stage: u64,
+    symbols: Vec<Symbol>,
+    // code: Vec<XXX>,
+    // dest: Vec<XXX>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct CodeStage {
+    #[serde(rename = "tmpUsed", default)]
+    tmp_used: u64,
+    // code: Vec<XXX>,
+    // #[serde(rename = "symbolsCalculated", default)]
+    // symbols_calculated: Vec<XXX>,
+    // #[serde(rename = "symbolsUsed", default)]
+    // symbols_used: Vec<XXX>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct StarkInfo {
+    #[serde(rename = "starkStruct")]
+    pub stark_struct: StarkStruct,
+
+    // Default value for pil2 is false
+    #[serde(default)]
+    pub pil2: bool,
+
+    #[serde(rename = "nCm1")]
+    pub n_cm1: u64,
+    #[serde(rename = "nConstants")]
+    pub n_constants: u64,
+    #[serde(rename = "nPublics")]
+    pub n_publics: u64,
+
+    #[serde(default, rename = "numChallenges")]
+    pub num_challenges: Vec<u64>,
+
+    // Default value for nSubAirValues is 0
+    #[serde(default, rename = "nSubAirValues")]
+    pub n_subproof_values: u64,
+
+    #[serde(default = "default_opening_points", rename = "openingPoints")]
+    pub opening_points: Vec<u64>,
+
+    #[serde(default = "default_boundaries")]
+    pub boundaries: Vec<Boundary>,
+
+    #[serde(rename = "qDeg")]
+    pub q_deg: u64,
+    #[serde(rename = "qDim")]
+    pub q_dim: u64,
+    pub qs: Vec<u64>,
+
+    #[serde(rename = "mapTotalN")]
+    pub map_total_n: u64,
+    #[serde(rename = "mapSectionsN")]
+    pub map_sections_n: HashMap<ESection, u64>,
+    #[serde(rename = "mapOffsets")]
+    pub map_offsets: HashMap<ESection, u64>,
+
+    // pil2-stark-js specific
+    #[serde(rename = "cmPolsMap")]
+    pub cm_pols_map: Option<Vec<CmPolMap>>,
+    #[serde(rename = "symbolsStage")]
+    pub symbols_stage: Option<Vec<Vec<Symbol>>>,
+
+    pub code: Option<HashMap<String, CodeStage>>,
+
+    // #[serde(rename = "expressionsCode")]
+    // pub expressions_code: Option<HashMap<u64, ExpressionsCode>>,
+    pub hints: Option<Vec<Hint>>,
+
+    // PIL1 specific
+    #[serde(rename = "varPolMap")]
+    pub var_pol_map: Option<Vec<VarPolMap>>,
+    #[serde(rename = "cm_n")]
+    pub cm_n: Option<Vec<u64>>,
+    #[serde(rename = "cm_2ns")]
+    pub cm_2ns: Option<Vec<u64>>,
+
+    #[serde(rename = "evMap")]
+    pub ev_map: Vec<EvMap>,
+
+    #[serde(rename = "exp2pol")]
+    pub exp2pol: Option<HashMap<String, u64>>,
+
+    // Computed fields, not present in the JSON
+    #[serde(default)]
+    pub n_stages: u64,
+    #[serde(default)]
+    pub n_challenges: u64,
+    #[serde(default)]
+    pub stage_challenge_index: Vec<u64>,
+    #[serde(default)]
+    pub q_challenge_index: u64,
+    #[serde(default)]
+    pub xi_challenge_index: u64,
+    #[serde(default)]
+    pub fri1_challenge_index: u64,
+    #[serde(default)]
+    pub fri2_challenge_index: u64,
+}
+
+fn default_opening_points() -> Vec<u64> {
+    vec![0, 1]
+}
+
+fn default_boundaries() -> Vec<Boundary> {
+    vec![Boundary { name: "everyRow".to_string(), offset_min: Some(0), offset_max: Some(0) }]
+}
+
+impl StarkInfo {
+    pub fn from_json(stark_info_json: &str) -> Self {
+        timer_start!(STARK_INFO_LOAD);
+
+        debug!("strkinfo: ··· Loading StarkInfo JSON");
+        let mut stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
+
+        // Compute stage_challenge_index
+        let mut n_challenges = 0;
+        let mut stage_challenge_index = Vec::new();
+        let q_challenge_index;
+        let xi_challenge_index;
+        let fri1_challenge_index;
+        let fri2_challenge_index;
+
+        if stark_info.num_challenges.len() > 0 {
+            for i in 0..stark_info.num_challenges.len() {
+                n_challenges += stark_info.num_challenges[i];
+                if i == 0 {
+                    stage_challenge_index.push(0);
+                } else {
+                    stage_challenge_index.push(stage_challenge_index[i - 1] + stark_info.num_challenges[i - 1]);
+                }
+            }
+
+            q_challenge_index = n_challenges;
+            xi_challenge_index = n_challenges + 1;
+            fri1_challenge_index = n_challenges + 2;
+            fri2_challenge_index = n_challenges + 3;
+
+            n_challenges += 4;
+        } else {
+            stark_info.num_challenges = vec![0, 2, 2];
+
+            stage_challenge_index.push(0);
+            stage_challenge_index.push(0);
+            stage_challenge_index.push(2);
+            q_challenge_index = 4;
+            xi_challenge_index = 7;
+            fri1_challenge_index = 5;
+            fri2_challenge_index = 6;
+            n_challenges = 8;
+        }
+
+        stark_info.stage_challenge_index = stage_challenge_index;
+        stark_info.q_challenge_index = q_challenge_index;
+        stark_info.xi_challenge_index = xi_challenge_index;
+        stark_info.fri1_challenge_index = fri1_challenge_index;
+        stark_info.fri2_challenge_index = fri2_challenge_index;
+        stark_info.n_challenges = n_challenges;
+
+        let n_stages = stark_info.num_challenges.len();
+        stark_info.n_stages = n_stages as u64;
+
+        timer_stop_and_log!(STARK_INFO_LOAD);
+        stark_info
+    }
+}

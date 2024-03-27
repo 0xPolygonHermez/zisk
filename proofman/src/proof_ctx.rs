@@ -5,19 +5,21 @@ use std::sync::Arc;
 
 use crate::trace::trace::Trace;
 use std::fmt;
-use crate::public_inputs::PublicInputs;
 
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
-use std::time::Instant;
 
-/// Context for managing proofs, including information about Air instances.
+/// Proof context for managing proofs, including information about airs and air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
+    /// The Pilout associated with the proof context.
     pub pilout: PilOutProxy,
+    /// The public inputs associated with the proof context.
     pub public_inputs: Vec<T>,
+    /// The challenges associated with the proof context.
     challenges: Vec<Vec<T>>,
+    /// The subproofs associated with the proof context.
     pub subproofs: Vec<SubproofCtx>,
     //pub subAirValues = Vec<T>,
     // NOTE: remove this ptr when vadcops ready, now it's used while developing
@@ -27,7 +29,7 @@ pub struct ProofCtx<T> {
 impl<T: Default + Clone> ProofCtx<T> {
     const MY_NAME: &'static str = "proofCtx";
 
-    /// Creates a new `ProofCtx` with the given `PilOut`.
+    /// Creates a new `ProofCtx` given a `Pilout`.
     pub fn new(pilout: PilOutProxy) -> Self {
         timer_start!(CREATING_PROOF_CTX);
         debug!("{}: ··· Creating proof context", Self::MY_NAME);
@@ -90,14 +92,14 @@ impl<T: Default + Clone> ProofCtx<T> {
     }
 
     /// Initializes the proof context with optional public inputs
-    pub fn initialize_proof(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) {
+    pub fn initialize_proof<U: Into<Vec<T>>>(&mut self, public_inputs: Option<U>) {
         if let Some(public_inputs) = public_inputs {
-            self.public_inputs = public_inputs.to_vec();
+            self.public_inputs = public_inputs.into();
         }
 
-        for subproof in self.subproofs.iter() {
-            for air in subproof.airs.iter() {
-                air.instances.write().unwrap().clear();
+        for subproof in self.subproofs.iter_mut() {
+            for air in subproof.airs.iter_mut() {
+                air.instances.clear();
             }
         }
 
@@ -116,7 +118,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     ///
     /// Panics if the specified Air instance is not found.
     pub fn add_trace_to_air_instance(
-        &self,
+        &mut self,
         subproof_id: usize,
         air_id: usize,
         trace: Box<dyn Trace>,
@@ -142,7 +144,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     }
 }
 
-/// Represents an instance of a Subproof within a proof.
+/// Subproof context for managing subproofs, including information about airs and air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct SubproofCtx {
@@ -150,12 +152,21 @@ pub struct SubproofCtx {
     pub airs: Vec<AirCtx>,
 }
 
-/// Represents an instance of an Air within a proof.
+/// Air context for managing airs, including information about air instances.
 #[allow(dead_code)]
 pub struct AirCtx {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub instances: RwLock<Vec<Arc<Box<dyn Trace>>>>,
+    pub instances: Vec<AirInstanceCtx>,
+}
+
+/// Air instance context for managing air instances (traces)
+#[derive(Debug)]
+pub struct AirInstanceCtx {
+    pub subproof_id: usize,
+    pub air_id: usize,
+    pub instance_id: usize,
+    pub trace: RwLock<Arc<Box<dyn Trace>>>,
 }
 
 impl AirCtx {
@@ -166,7 +177,7 @@ impl AirCtx {
     /// * `subproof_id` - The subproof ID associated with the AirCtx.
     /// * `air_id` - The air ID associated with the AirCtx.
     pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirCtx { subproof_id, air_id, instances: RwLock::new(Vec::new()) }
+        AirCtx { subproof_id, air_id, instances: Vec::new() }
     }
 
     /// Adds a trace to the AirCtx.
@@ -174,10 +185,16 @@ impl AirCtx {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace(&self, trace: Box<dyn Trace>) -> usize {
-        let mut traces = self.instances.write().unwrap();
-        traces.push(Arc::new(trace));
-        traces.len() - 1
+    pub fn add_trace(&mut self, trace: Box<dyn Trace>) -> usize {
+        let len = self.instances.len();
+
+        self.instances.push(AirInstanceCtx {
+            subproof_id: self.subproof_id,
+            air_id: self.air_id,
+            instance_id: len,
+            trace: RwLock::new(Arc::new(trace)),
+        });
+        self.instances.len() - 1
     }
 
     /// Returns a reference to the trace at the specified index.
@@ -189,12 +206,10 @@ impl AirCtx {
     /// # Returns
     ///
     /// Returns a reference to the trace at the specified index.
-    pub fn get_trace(&self, trace_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
-        let traces = self.instances.read().unwrap();
+    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+        assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
 
-        assert!(trace_id < traces.len(), "Trace ID out of bounds");
-
-        Ok(Arc::clone(&traces[trace_id]))
+        Ok(Arc::clone(&self.instances[instance_id].trace.read().unwrap()))
     }
 }
 
@@ -203,22 +218,41 @@ impl fmt::Debug for AirCtx {
         f.debug_struct("AirCtx")
             .field("subproof_id", &self.subproof_id)
             .field("air_id", &self.air_id)
-            .field("traces", &self.instances)
+            .field("instances", &self.instances)
             .finish()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use goldilocks::Goldilocks;
-    // use crate::trace;
-
     use super::*;
-    use std::sync::Arc;
+    // use std::sync::Arc;
+    // use std::thread;
+    use goldilocks::Goldilocks;
+    use crate::trace;
+
+    // Define a trait for types that support downcasting
+    // Mock trace implementation for testing
+    #[derive(Debug)]
+    struct MockTrace;
+
+    impl Trace for MockTrace {
+        fn num_rows(&self) -> usize {
+            0
+        }
+
+        fn row_size(&self) -> usize {
+            0
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
 
     #[test]
-    fn test_proof_ctx() {
-        let proof_ctx = ProofCtx {
+    fn test_add_trace_to_air_instance() {
+        let mut proof_ctx = ProofCtx {
             pilout: PilOutProxy::default(),
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
@@ -226,24 +260,106 @@ mod tests {
             proof: None,
         };
 
-        let proof_ctx = Arc::new(proof_ctx);
-        let _cloned_write = Arc::clone(&proof_ctx);
+        // Add a trace to the first Air instance of the first subproof
+        let subproof_id = 0;
+        let air_id = 0;
+        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(MockTrace)).unwrap();
 
-        // let write_handle = std::thread::spawn(move || {
-        //     let proof_ctx = cloned_write;
-
-        //     // Create trace
-        //     trace!(Simple { field1: usize });
-        //     let mut simple = Simple::new(16);
-
-        //     for i in 0..16 {
-        //         simple.field1[i] = i;
-        //     }
-
-        //     let res = proof_ctx.add_trace_to_air_instance(0, 0, Box::new(simple));
-        //     assert!(res.is_ok());
-        // });
-
-        // write_handle.join().unwrap();
+        // Check if the trace was added successfully
+        assert_eq!(trace_id, 0);
     }
+
+    #[test]
+    fn test_get_trace() {
+        let mut proof_ctx = ProofCtx {
+            pilout: PilOutProxy::default(),
+            public_inputs: Vec::new(),
+            challenges: vec![vec![Goldilocks::default(); 0]],
+            subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
+            proof: None,
+        };
+
+        // Add a trace to the first Air instance of the first subproof
+        let subproof_id = 0;
+        let air_id = 0;
+
+        // Fille Simple trace with fake values
+        trace!(Simple { field1: usize });
+        let mut simple = Simple::new(16);
+        for i in 0..16 {
+            simple.field1[i] = i;
+        }
+
+        let mut simple2 = Simple::new(16);
+        for i in 0..16 {
+            simple2.field1[i] = i * 2;
+        }
+
+        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple));
+        assert!(result.is_ok());
+
+        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple2));
+        assert!(result2.is_ok());
+
+        let index = result.unwrap();
+        let index2 = result2.unwrap();
+
+        // Retrieve the added traces
+        let trace_result = proof_ctx.get_trace(subproof_id, air_id, index);
+        assert!(trace_result.is_ok());
+
+        let trace_result2 = proof_ctx.get_trace(subproof_id, air_id, index2);
+        assert!(trace_result2.is_ok());
+
+        // Downcast the trait object to a concrete type
+        let trace = trace_result.unwrap();
+        let simple_p = trace.as_any().downcast_ref::<Simple>().unwrap();
+
+        // Check if the retrieved trace is the same as the added trace
+        for i in 0..16 {
+            assert_eq!(simple_p.field1[i], i);
+        }
+
+        let trace2 = trace_result2.unwrap();
+        let simple2_p = trace2.as_any().downcast_ref::<Simple>().unwrap();
+
+        // Check if the retrieved trace is the same as the added trace
+        for i in 0..16 {
+            assert_eq!(simple2_p.field1[i], i * 2);
+        }
+    }
+
+    // #[test]
+    // fn test_concurrent_add_trace() {
+    //     let mut proof_ctx = ProofCtx {
+    //         pilout: PilOutProxy::default(),
+    //         public_inputs: Vec::new(),
+    //         challenges: vec![vec![Goldilocks::default(); 0]],
+    //         subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
+    //         proof: None,
+    //     };
+
+    //     // Number of threads for concurrent addition of traces
+    //     let num_threads = 10;
+
+    //     // Vector to store thread handles
+    //     let mut handles = vec![];
+
+    //     // Concurrently add traces to the first Air instance of the first subproof
+    //     for _ in 0..num_threads {
+    //         let proof_ctx_ref = &mut proof_ctx;
+    //         let handle = thread::spawn(move || {
+    //             proof_ctx_ref.add_trace_to_air_instance(0, 0, Box::new(MockTrace)).unwrap();
+    //         });
+    //         handles.push(handle);
+    //     }
+
+    //     // Wait for all threads to finish
+    //     for handle in handles {
+    //         handle.join().unwrap();
+    //     }
+
+    //     // Check if all traces were added successfully
+    //     assert_eq!(proof_ctx.subproofs[0].airs[0].instances.len(), num_threads);
+    // }
 }

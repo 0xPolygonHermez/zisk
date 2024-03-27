@@ -2,3 +2,7 @@
 name = "util"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+sysinfo = "0.30"
+colored = "2"

@@ -1,6 +1,6 @@
 [package]
-name = "estark"
-version = "0.0.1"
+name = "stark"
+version = "0.1.0"
 authors = ["Polygon Labs"]
 edition = "2021"
 readme = "README.md"
@@ -17,6 +17,7 @@ goldilocks = { path = "../../../goldilocks" }
 util = { path = "../../../util" }
 log = { version = "0.4", default-features = false }
 zkevm-lib-c = { path = "../../zkevm_lib_c" }
+transcript = { path = "../../../transcript" }
 
 [features]
 default = []

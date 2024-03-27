@@ -2,9 +2,6 @@ use log::debug;
 
 use goldilocks::{Goldilocks, AbstractField};
 
-use std::time::Instant;
-
-use proofman::public_inputs::PublicInputs;
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod executor_fibo;
@@ -16,10 +13,12 @@ use executor_module::ModuleExecutor;
 use proofman::proof_manager::ProofManager;
 
 use proofman::proof_manager_config::ProofManConfig;
-use proofman::proofman_cli::ProofManCli;
 
 use serde::{Deserialize, Serialize};
 use serde_json;
+
+use clap::Parser;
+use proofman_cli::commands::prove::ProveCmd;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
@@ -43,8 +42,8 @@ impl FibVPublicInputs<u64> {
     }
 }
 
-impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> for FibVPublicInputs<Goldilocks> {
-    fn to_vec(&self) -> Vec<Goldilocks> {
+impl<T> Into<Vec<T>> for FibVPublicInputs<T> {
+    fn into(self) -> Vec<T> {
         vec![self.a, self.b, self.module]
     }
 }
@@ -52,16 +51,17 @@ impl<Goldilocks: Copy + Send + Sync + std::fmt::Debug> PublicInputs<Goldilocks> 
 fn main() {
     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
-    let arguments = ProofManCli::read_arguments();
+    let arguments: ProveCmd = ProveCmd::parse();
+
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
     //read public inputs file
-    let public_inputs_filename = arguments.public_inputs.as_ref().unwrap().display().to_string();
+    let public_inputs_filename = arguments.public_inputs.as_ref().unwrap();
     let public_inputs = match std::fs::read_to_string(&public_inputs_filename) {
         Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
         Err(err) => {
-            println!("Error reading public inputs file '{}': {}", &public_inputs_filename, err);
+            println!("Error reading public inputs file '{}': {}", &public_inputs_filename.display(), err);
             std::process::exit(1);
         }
     };
@@ -71,10 +71,23 @@ fn main() {
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman =
-        ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], Box::new(prover_builder));
+    let mut proofman = match ProofManager::<Goldilocks>::new(
+        proofman_config,
+        vec![fibonacci_executor, module_executor],
+        Box::new(prover_builder),
+    ) {
+        Ok(proofman) => proofman,
+        Err(err) => {
+            println!("Error: {:?}", err);
+            return;
+        }
+    };
 
-    let now = Instant::now();
-    proofman.prove(Some(Box::new(public_inputs)));
+    let now = std::time::Instant::now();
+    let proof = proofman.prove(Some(public_inputs.into()));
+    if let Err(err) = proof {
+        println!("Error: {}", err);
+    }
+
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

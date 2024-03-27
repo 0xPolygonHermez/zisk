@@ -31,7 +31,7 @@ Here's an example configuration file demonstrating the mandatory and optional fi
     "pilout": "my_pilout",
     "executors": "path_to_executors_config.json",
     "prover": {
-        "variant": "estark",
+        "variant": "stark",
         "lib": "mock_value"
     },
     "meta": {

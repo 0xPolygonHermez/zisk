@@ -1,19 +1,19 @@
 use goldilocks::AbstractField;
 
 use proofman::provers_manager::{Prover, ProverBuilder};
-use crate::estark_prover_settings::EStarkProverSettings;
-use crate::estark_prover::EStarkProver;
+use crate::stark_prover_settings::StarkProverSettings;
+use crate::stark_prover::StarkProver;
 
-pub struct EStarkProverBuilder<T> {
-    config: EStarkProverSettings,
+pub struct StarkProverBuilder<T> {
+    config: StarkProverSettings,
     p_steps: *mut std::os::raw::c_void,
     ptr: *mut std::os::raw::c_void,
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> EStarkProverBuilder<T> {
+impl<T> StarkProverBuilder<T> {
     pub fn new(
-        config: EStarkProverSettings,
+        config: StarkProverSettings,
         p_steps: *mut std::os::raw::c_void,
         ptr: *mut std::os::raw::c_void,
     ) -> Self {
@@ -21,9 +21,9 @@ impl<T> EStarkProverBuilder<T> {
     }
 }
 
-impl<T: 'static + AbstractField> ProverBuilder<T> for EStarkProverBuilder<T> {
+impl<T: 'static + AbstractField> ProverBuilder<T> for StarkProverBuilder<T> {
     fn build(&mut self) -> Box<dyn Prover<T>> {
-        let mut prover = Box::new(EStarkProver::new(self.config.clone(), self.p_steps, self.ptr));
+        let mut prover = Box::new(StarkProver::new(self.config.clone(), self.p_steps, self.ptr));
         prover.build();
 
         prover

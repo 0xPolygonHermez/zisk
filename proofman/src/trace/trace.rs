@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::any::Any;
 
 pub struct Ptr {
     pub ptr: UnsafeCell<*mut u8>,
@@ -17,27 +18,34 @@ impl Ptr {
 }
 
 /// A trait representing a trace within a proof.
-pub trait Trace: std::fmt::Debug {
+pub trait Trace: std::fmt::Debug + Any {
     fn num_rows(&self) -> usize;
     fn row_size(&self) -> usize;
     // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Macro for defining trace structures with specified fields.
 #[macro_export]
 macro_rules! trace {
-    ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }) => {
+    (
+        $my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }
+    ) => {
+        trace!($my_struct { $($field_name : $field_type),* }, offset: 0, stride: Self::ROW_SIZE);
+    };
+
+    ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }, offset: $offset:expr, stride: $stride:expr) => {
         #[derive(Debug)]
         #[allow(dead_code)]
-        pub struct $my_struct<'a> {
+        pub struct $my_struct {
             pub buffer: Option<Vec<u8>>,
-            pub ptr: &'a [u8],
+            pub ptr: *mut u8,
             num_rows: usize,
             $(pub $field_name: $crate::trace_field!($field_type),)*
         }
 
         #[allow(dead_code)]
-        impl<'a> $my_struct<'a> {
+        impl $my_struct {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
 
             /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
@@ -63,7 +71,7 @@ macro_rules! trace {
 
                 $my_struct {
                     buffer: Some(buffer),
-                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * Self::ROW_SIZE) },
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * Self::ROW_SIZE).as_mut_ptr() },
                     num_rows,
                     $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, Self::ROW_SIZE),)*
                 }
@@ -82,7 +90,7 @@ macro_rules! trace {
             /// # Preconditions
             ///
             /// * `num_rows` must be greater than or equal to 2 and a power of 2.
-            pub fn from_ptr(ptr: *mut std::ffi::c_void, offset:usize, stride: usize, num_rows: usize) -> Self {
+            pub fn from_ptr(ptr: *mut std::ffi::c_void, num_rows: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
@@ -91,14 +99,14 @@ macro_rules! trace {
 
                 let mut ptr = ptr as *mut u8;
 
-                ptr = unsafe { ptr.add(offset) };
+                ptr = unsafe { ptr.add($offset) };
                 let ptr_x = $crate::trace::trace::Ptr::new(ptr);
 
                 $my_struct {
                     buffer: None,
-                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * stride) },
+                    ptr: unsafe { std::slice::from_raw_parts_mut(ptr, num_rows * $stride).as_mut_ptr() },
                     num_rows,
-                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, stride),)*
+                    $($field_name: $crate::trace_default_value!($field_type, ptr_x, num_rows, $stride),)*
                 }
             }
 
@@ -155,7 +163,7 @@ macro_rules! trace {
             }
         }
 
-        impl<'a> $crate::trace::trace::Trace for $my_struct<'a> {
+        impl $crate::trace::trace::Trace for $my_struct {
             fn num_rows(&self) -> usize {
                 self.num_rows()
             }
@@ -164,10 +172,15 @@ macro_rules! trace {
                 self.row_size()
             }
 
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+
             // TODO! uncomment
             // fn split(&self, num_segments: usize) -> Vec<Self> {
             //     self.split(num_segments)
             // }
+
         }
     };
 }
@@ -214,15 +227,14 @@ mod tests {
 
     #[test]
     fn check() {
-        trace!(Check { a: u8 });
-
-        let offset = 2;
         let stride = 5;
         let num_rows = 8;
 
+        trace!(Check { a: u8 }, offset: 2, stride: 5);
+
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut check = Check::from_ptr(ptr, offset, stride, num_rows);
+        let mut check = Check::from_ptr(ptr, num_rows);
 
         for i in 0..num_rows {
             check.a[i] = i as u8;
@@ -238,13 +250,12 @@ mod tests {
         let num_rows = 256;
 
         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
-        let offset = 3;
         let stride = 15;
 
-        trace!(Simple { field1: usize });
+        trace!(Simple { field1: usize }, offset: 3, stride: 15);
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut simple = Simple::from_ptr(ptr, offset, stride, num_rows);
+        let mut simple = Simple::from_ptr(ptr, num_rows);
 
         let mut simple2 = Simple::new(num_rows);
 
@@ -269,14 +280,14 @@ mod tests {
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_1() {
         trace!(Simple { field1: usize });
-        let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 1);
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 1);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_2() {
         trace!(Simple { field1: usize });
-        let _ = Simple::from_ptr(std::ptr::null_mut(), 0, 0, 3);
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 3);
     }
 
     #[test]
@@ -311,15 +322,14 @@ mod tests {
 
         // QUESTION: why not this syntax? trace!(cols Fibonacci { a: BaseElement, b: BaseElement });
         // and why not this alternative syntax? trace!(buffer Fibonacci { a: BaseElement, b: BaseElement });
-        trace!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] });
+        trace!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] }, offset: 7, stride: 45);
 
         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
-        let offset = 7;
         let stride = 45;
 
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut fibonacci = Fibonacci::from_ptr(ptr, offset, stride, num_rows);
+        let mut fibonacci = Fibonacci::from_ptr(ptr, num_rows);
 
         let mut fibonacci2 = Fibonacci::new(num_rows);
 

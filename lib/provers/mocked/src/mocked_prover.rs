@@ -2,6 +2,7 @@
 
 use log::info;
 use proofman::proof_ctx::ProofCtx;
+use proofman::proof_manager::ProverStatus;
 use proofman::provers_manager::Prover;
 
 pub struct MockedProver<T> {
@@ -17,11 +18,18 @@ impl<T> MockedProver<T> {
 }
 impl<T> Prover<T> for MockedProver<T> {
     fn build(&mut self) {
-        info!("{}: --> Mocked prover - BUILD", Self::MY_NAME);
+        info!("{}: <-> Mocked prover - BUILD", Self::MY_NAME);
     }
 
-    fn compute_stage(&mut self, stage_id: u32, _proof_ctx: &mut ProofCtx<T>) {
-        info!("{}: --> Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
-        info!("{}: <-- Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
+    fn commit_stage(&mut self, stage_id: u32, _proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+        info!("{}: <-> Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
+
+        ProverStatus::StagesPending
+    }
+
+    fn opening_stage(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+        info!("{}: <-> Mocked prover - OPENING {}", Self::MY_NAME, opening_id);
+
+        ProverStatus::StagesCompleted
     }
 }

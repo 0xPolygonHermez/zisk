@@ -1,6 +1,6 @@
 [package]
 name = "proofman"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Polygon Labs"]
 edition = "2021"
 readme = "README.md"
@@ -18,7 +18,7 @@ structopt = { version = "0.3", default-features = false }
 pilout = { path = "../pilout" }
 crossbeam-channel = "0.5.8"
 util = { path = "../util" }
-sysinfo = "0.30"
+colored = "2"
 
 [dev-dependencies]
 rand = "0.8"

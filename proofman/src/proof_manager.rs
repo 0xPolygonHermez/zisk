@@ -1,8 +1,8 @@
-use crate::public_inputs::PublicInputs;
 use crate::provers_manager::ProverBuilder;
+use colored::Colorize;
+// use pilout::pilout::SymbolType;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
-use sysinfo::System;
 
 use crate::provers_manager::ProversManager;
 
@@ -12,7 +12,7 @@ use crate::proof_manager_config::ProofManConfig;
 
 use crate::proof_ctx::ProofCtx;
 
-use util::colors::colors::*;
+use util::cli::*;
 
 // PROOF MANAGER
 // ================================================================================================
@@ -42,17 +42,22 @@ where
         proofman_config: ProofManConfig,
         wc: Vec<Box<dyn Executor<T>>>,
         prover_builder: Box<dyn ProverBuilder<T>>,
-    ) -> Self {
-        Self::print_banner();
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        print_banner(true);
 
-        println!("{}{}············ {}{}", BOLD, PURPLE, proofman_config.get_name(), RESET);
+        println!("············ {}", proofman_config.get_name().bright_purple().bold());
 
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Pilout"), RESET, proofman_config.get_pilout());
+        println!("{} {}", format!("{: >12}", "Pilout").bright_green().bold(), proofman_config.get_pilout());
         println!("");
 
         debug!("{}: Initializing", Self::MY_NAME);
 
-        let pilout = PilOutProxy::new(proofman_config.get_pilout());
+        let pilout = PilOutProxy::new(proofman_config.get_pilout())?;
+
+        //let's filter pilout symbols where type = WitnessColl
+        // let witness_cols =
+        //     pilout.symbols.iter().filter(|s| s.r#type == SymbolType::WitnessCol as i32).collect::<Vec<_>>();
+        // println!("witness_cols: {:?}", witness_cols);
 
         let proof_ctx = ProofCtx::<T>::new(pilout);
 
@@ -64,14 +69,14 @@ where
         debug!("{}: ··· Creating prover manager", Self::MY_NAME);
         let provers_manager = ProversManager::new(prover_builder);
 
-        Self { proofman_config, proof_ctx, wc_manager, provers_manager }
+        Ok(Self { proofman_config, proof_ctx, wc_manager, provers_manager })
     }
 
     pub fn setup() {
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Box<dyn PublicInputs<T>>>) -> &mut ProofCtx<T> {
+    pub fn prove(&mut self, public_inputs: Option<Vec<T>>) -> Result<&mut ProofCtx<T>, &str> {
         if !self.proofman_config.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -82,13 +87,14 @@ where
 
         let mut prover_status = ProverStatus::StagesPending;
         let mut stage_id: u32 = 1;
-        let num_stages = self.proof_ctx.pilout.num_challenges.len() as u32;
+        // TODO! Uncomment this when pilout done!!!!
+        // let num_stages = proof_ctx.pilout.get_num_stages();
+        let num_stages = 3;
 
         while prover_status != ProverStatus::StagesCompleted {
-            let stage_str = if stage_id <= num_stages + 1 { "COMMIT PHASE - STAGE" } else { "OPENINGS PHASE - STAGE" };
-            info!("{}: ==> {} {}", Self::MY_NAME, stage_str, stage_id);
-
-            self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+            if stage_id <= num_stages {
+                self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+            }
 
             // Once the first witness computation is done we assume we have initialized the air instances.
             // So, we know the number of row for each air instance and we can select the setup for each air instance.
@@ -98,8 +104,6 @@ where
             }
 
             prover_status = self.provers_manager.compute_stage(stage_id, &mut self.proof_ctx);
-
-            info!("{}: <== {} {}", Self::MY_NAME, stage_str, stage_id);
 
             // if stage_id == num_stages {
             //     for i in 0..self.proof_ctx.pilout.subproofs.len() {
@@ -141,7 +145,7 @@ where
                     }
 
                     info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
-                    return &mut self.proof_ctx;
+                    return Ok(&mut self.proof_ctx);
                 }
             }
 
@@ -165,56 +169,10 @@ where
         //         subAirValues: this.proofCtx.subAirValues,
         //     };
 
-        &mut self.proof_ctx
+        Ok(&mut self.proof_ctx)
     }
 
     pub fn verify() {
         unimplemented!();
-    }
-
-    fn print_banner() {
-        println!("");
-        println!("    {}{}PROOFMAN by Polygon Labs v{}{}", BOLD, PURPLE, env!("CARGO_PKG_VERSION"), RESET);
-        let system_name = System::name().unwrap_or_else(|| "<unknown>".to_owned());
-        let system_kernel = System::kernel_version().unwrap_or_else(|| "<unknown>".to_owned());
-        let system_version = System::long_os_version().unwrap_or_else(|| "<unknown>".to_owned());
-        println!(
-            "{}{}{} {} {} ({})",
-            GREEN,
-            format!("{: >12}", "System"),
-            RESET,
-            system_name,
-            system_kernel,
-            system_version
-        );
-
-        let system_hostname = System::host_name().unwrap_or_else(|| "<unknown>".to_owned());
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Hostname"), RESET, system_hostname);
-
-        let system = System::new_all();
-
-        let system_cores = system.physical_core_count().map(|c| c.to_string()).unwrap_or_else(|| "Unknown".to_owned());
-        let system_cores_brand = system.cpus()[0].brand();
-        println!("{}{}{} {} cores ({})", GREEN, format!("{: >12}", "CPU"), RESET, system_cores, system_cores_brand);
-
-        let total_mem = system.total_memory() / 1_000_000_000;
-        let available_mem = system.available_memory() / 1_000_000_000;
-        println!(
-            "{}{}{} {}GB total ({}GB available)",
-            GREEN,
-            format!("{: >12}", "Mem"),
-            RESET,
-            total_mem,
-            available_mem
-        );
-
-        println!(
-            "{}{}{} {}",
-            GREEN,
-            format!("{: >12}", "Loaded"),
-            RESET,
-            std::env::current_exe().unwrap().display().to_string().as_str()
-        );
-        println!("{}{}{} {}", GREEN, format!("{: >12}", "Main PID"), RESET, std::process::id().to_string().as_str());
     }
 }

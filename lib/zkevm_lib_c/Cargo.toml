@@ -3,6 +3,9 @@ name = "zkevm-lib-c"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+log = { version = "0.4", default-features = false }
+
 [features]
 default = []
 no_lib_link = []

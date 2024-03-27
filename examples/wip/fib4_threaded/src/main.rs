@@ -2,9 +2,7 @@ use log::debug;
 
 use goldilocks::Goldilocks;
 
-use std::time::Instant;
-
-use estark::estark_prover::{ESTARKProver, ESTARKProverSettings};
+use estark::estark_prover::{STARKProver, STARKProverSettings};
 
 mod executor;
 use crate::executor::FibonacciExecutor;
@@ -75,7 +73,7 @@ fn main() {
         options,
     );
 
-    let now = Instant::now();
+    let now = std::time::Instant::now();
     proofman.prove(None);
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }
