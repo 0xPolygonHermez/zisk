@@ -68,10 +68,15 @@ impl<T> ProversManager<T> {
             self.opening_stage(stage_id - num_stages, proof_ctx)
         };
 
+        // if status != ProverStatus::StagesCompleted {
+        //     let challenge = self.compute_global_challenge(stage_id, proof_ctx);
+        //     self.set_global_challenge(challenge, proof_ctx);
+        // }
+
         status
     }
 
-    pub fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         trace!("{}: ==> COMMIT STAGE {}", Self::MY_NAME, stage_id);
 
         // for prover in self.provers.iter() {
@@ -83,7 +88,7 @@ impl<T> ProversManager<T> {
         status
     }
 
-    pub fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+    fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         trace!("{}: ==> OPENING STAGE {}", Self::MY_NAME, opening_id);
 
         // for prover in self.provers.iter() {
@@ -108,5 +113,78 @@ impl<T> ProversManager<T> {
         trace!("{}: ==> VERIFY GLOBAL CONSTRAINTS", Self::MY_NAME);
 
         false
+    }
+
+    fn _compute_global_challenge(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) -> T {
+        trace!("{}: ··· Compute global challlenge (stage {})", Self::MY_NAME, stage_id);
+
+        if stage_id == 1 {
+            //let public_values;
+            for subproof in proof_ctx.subproofs.iter() {
+                // let challenges = Vec::new();
+
+                for air in subproof.airs.iter() {
+                    let air_instances = &proof_ctx.subproofs[air.subproof_id].airs[air.air_id].instances;
+
+                    for (instance_id, _instance) in air_instances.iter().enumerate() {
+                        trace!(
+                            "{}: ··· Computing global challenge. Adding constTree. Subproof {} Air {} Instance {}",
+                            Self::MY_NAME,
+                            air.subproof_id,
+                            air.air_id,
+                            instance_id
+                        );
+
+                        // challenges.push(air.setup.const_root);
+
+                        // if !publicValues {
+                        //     publicValues = airInstance.ctx.publics;
+                        // }
+                    }
+                }
+            }
+        }
+
+        for subproof in proof_ctx.subproofs.iter() {
+            // let challenges = Vec::new();
+
+            for air in subproof.airs.iter() {
+                let air_instances = &proof_ctx.subproofs[air.subproof_id].airs[air.air_id].instances;
+
+                for (instance_id, _instance) in air_instances.iter().enumerate() {
+                    trace!(
+                        "{}: ··· Computing global challenge. Adding subproof {} Air {} Instance {} value",
+                        Self::MY_NAME,
+                        air.subproof_id,
+                        air.air_id,
+                        instance_id
+                    );
+
+                    // let value = air_instances[instance_id].get_value();
+                    // challenges.push(value);
+
+                    // if (options.vadcop) {
+                    //     if(challenges.length > 0) {
+                    //         const challenge = await hashBTree(challenges);
+                    //         this.proofCtx.addChallengeToTranscript(challenge);
+                    //     }
+                    // } else {
+                    //     for (let k = 0; k < challenges.length; k++) {
+                    //         this.proofCtx.addChallengeToTranscript(challenges[k]);
+                    //     }
+                    // }
+                }
+            }
+        }
+
+        unimplemented!("{}: ==> COMPUTE NEXT CHALLENGE {}", Self::MY_NAME, stage_id);
+    }
+
+    fn _set_global_challenge(&self, _challenge: T, _proof_ctx: &ProofCtx<T>) {
+        // for (const airInstance of this.proofCtx.airInstances) {
+        //     airInstance.ctx.challenges[stageId] = challenges;
+        // }
+
+        unimplemented!("{}: ==> SET GLOBAL CHALLENGE", Self::MY_NAME);
     }
 }

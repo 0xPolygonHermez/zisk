@@ -1,4 +1,4 @@
-use proofman::{executor, executor::Executor, proof_ctx::ProofCtx, trace};
+use proofman::{executor, executor::Executor, ProofCtx, trace};
 
 use goldilocks::Goldilocks;
 

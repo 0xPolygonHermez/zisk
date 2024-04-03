@@ -7,7 +7,7 @@ use proofman::provers_manager::Prover;
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
 use zkevm_lib_c::ffi::*;
-use proofman::proof_ctx::ProofCtx;
+use proofman::ProofCtx;
 use crate::stark_info::StarkInfo;
 use crate::stark_prover_settings::StarkProverSettings;
 
@@ -263,6 +263,7 @@ impl<T: AbstractField> StarkProver<T> {
         self.p_fri_pol = Some(compute_fri_pol_c(p_stark, n_stages + 2, p_params, self.p_steps));
     }
 
+
     fn compute_fri_folding(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
         let p_stark = self.p_stark.unwrap();
         let stark_info = self.stark_info.as_ref().unwrap();
@@ -303,7 +304,7 @@ impl<T: AbstractField> StarkProver<T> {
             transcript.get_challenge(polinomial_get_p_element_c(p_tmp_challenge, 0));
             let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
             let transcript_permutation = FFITranscript::new(p_stark, element_type);
-            
+
             transcript_permutation.add_polinomial(p_tmp_challenge);
             transcript_permutation.get_permutations(
                 fri_queries.as_mut_ptr(),
@@ -320,6 +321,6 @@ impl<T: AbstractField> StarkProver<T> {
 
         compute_fri_queries_c(p_stark, p_proof, p_fri_pol, fri_queries.as_mut_ptr());
 
-        proof_ctx.proof = Some(p_proof);
+        proof_ctx.proof = p_proof;
     }
 }
