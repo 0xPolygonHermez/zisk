@@ -263,7 +263,6 @@ impl<T: AbstractField> StarkProver<T> {
         self.p_fri_pol = Some(compute_fri_pol_c(p_stark, n_stages + 2, p_params, self.p_steps));
     }
 
-
     fn compute_fri_folding(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
         let p_stark = self.p_stark.unwrap();
         let stark_info = self.stark_info.as_ref().unwrap();

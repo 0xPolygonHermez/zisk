@@ -33,8 +33,7 @@ pub struct ProofManager<T> {
     provers_manager: ProversManager<T>,
 }
 
-impl<T: Default + Clone + AbstractField> ProofManager<T>
-{
+impl<T: Default + Clone + AbstractField> ProofManager<T> {
     const MY_NAME: &'static str = "proofMan";
 
     pub fn new(
@@ -110,7 +109,7 @@ impl<T: Default + Clone + AbstractField> ProofManager<T>
             // if stage_id == num_stages {
             //     self.compute_subproof_values()?;
             // }
-            
+
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
             if self.proofman_config.only_check {
                 info!("{}: ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
@@ -127,7 +126,7 @@ impl<T: Default + Clone + AbstractField> ProofManager<T>
                 if stage_id == num_stages {
                     info!("{}: ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
-                  let verified_global = self.provers_manager.verify_global_constraints();
+                    let verified_global = self.provers_manager.verify_global_constraints();
                     if verified_global {
                         info!("{}: GLOBAL CONSTRAINTS VERIFICATION PASSED", Self::MY_NAME);
                     } else {
