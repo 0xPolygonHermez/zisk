@@ -16,15 +16,18 @@ pub trait Prover<T> {
 
 // PROVERS MANAGER
 // ================================================================================================
-pub struct ProversManager<T> {
-    prover_builder: Box<dyn ProverBuilder<T>>,
+pub struct ProversManager<T, PB> {
+    prover_builder: PB,
     provers: Vec<Box<dyn Prover<T>>>,
 }
 
-impl<T> ProversManager<T> {
+impl<T, PB> ProversManager<T, PB>
+where
+    PB: ProverBuilder<T>,
+{
     const MY_NAME: &'static str = "prvrsMan";
 
-    pub fn new(prover_builder: Box<dyn ProverBuilder<T>>) -> Self {
+    pub fn new(prover_builder: PB) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
         Self { prover_builder, provers: Vec::new() }
