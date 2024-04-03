@@ -28,8 +28,6 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        proof_ctx
-            .add_trace_to_air_instance(subproof_id, air_id, Box::new(fib))
-            .expect("Error adding trace to air instance");
+        proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib).expect("Error adding trace to air instance");
     }
 }

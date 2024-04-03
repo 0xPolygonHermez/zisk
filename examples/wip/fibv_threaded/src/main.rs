@@ -115,9 +115,9 @@ fn main() {
 
     let prover = ESTARKProver::new(estark_settings /* prover_options */);
 
-    let executor = Box::new(FibonacciExecutor::new());
-    let module1 = Box::new(ModuleExecutor::new());
-    let module2 = Box::new(ModuleExecutor::new());
+    let executor = FibonacciExecutor::new();
+    let module1 = ModuleExecutor::new();
+    let module2 = ModuleExecutor::new();
 
     let config = Box::new(ConfigNull {});
 

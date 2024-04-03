@@ -125,11 +125,11 @@ impl<T: Default + Clone> ProofCtx<T> {
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance(
+    pub fn add_trace_to_air_instance<TR: Trace>(
         &mut self,
         subproof_id: usize,
         air_id: usize,
-        trace: Box<dyn Trace>,
+        trace: TR,
     ) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
@@ -143,7 +143,7 @@ impl<T: Default + Clone> ProofCtx<T> {
         subproof_id: usize,
         air_id: usize,
         trace_id: usize,
-    ) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    ) -> Result<Arc<dyn Trace>, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
@@ -174,7 +174,7 @@ pub struct AirInstanceCtx<T> {
     pub subproof_id: usize,
     pub air_id: usize,
     pub instance_id: usize,
-    pub trace: RwLock<Arc<Box<dyn Trace>>>,
+    pub trace: RwLock<Arc<dyn Trace>>,
     pub subproof_values: Vec<T>,
 }
 
@@ -194,7 +194,7 @@ impl<T> AirCtx<T> {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace(&mut self, trace: Box<dyn Trace>) -> usize {
+    pub fn add_trace<TR: Trace>(&mut self, trace: TR) -> usize {
         let len = self.instances.len();
 
         self.instances.push(AirInstanceCtx {
@@ -217,7 +217,7 @@ impl<T> AirCtx<T> {
     /// # Returns
     ///
     /// Returns a reference to the trace at the specified index.
-    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<dyn Trace>, &'static str> {
         assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
 
         Ok(Arc::clone(&self.instances[instance_id].trace.read().unwrap()))
@@ -275,7 +275,7 @@ mod tests {
         // Add a trace to the first Air instance of the first subproof
         let subproof_id = 0;
         let air_id = 0;
-        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(MockTrace)).unwrap();
+        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, MockTrace).unwrap();
 
         // Check if the trace was added successfully
         assert_eq!(trace_id, 0);
@@ -308,10 +308,10 @@ mod tests {
             simple2.field1[i] = i * 2;
         }
 
-        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple));
+        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple);
         assert!(result.is_ok());
 
-        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple2));
+        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple2);
         assert!(result2.is_ok());
 
         let index = result.unwrap();
