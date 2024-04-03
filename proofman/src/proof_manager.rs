@@ -26,27 +26,28 @@ pub enum ProverStatus {
 // PROOF MANAGER SEQUENTIAL
 // ================================================================================================
 #[allow(dead_code)]
-pub struct ProofManager<T, PB> {
+pub struct ProofManager<'a, T, PB> {
     proofman_config: ProofManConfig,
     proof_ctx: ProofCtx<T>,
-    wc_manager: ExecutorsManagerSequential<T>,
+    wc_manager: ExecutorsManagerSequential<'a, T>,
     provers_manager: ProversManager<T, PB>,
 }
 
-impl<T, PB> ProofManager<T, PB>
+impl<'a, T, PB> ProofManager<'a, T, PB>
 where
     T: Default + Clone + AbstractField,
     PB: ProverBuilder<T>,
 {
     const MY_NAME: &'static str = "proofMan";
 
-    pub fn new(
+    pub fn new<I>(
         proofman_config: ProofManConfig,
-        wc: Vec<Box<dyn Executor<T>>>,
+        wc: I,
         prover_builder: PB,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         PB: ProverBuilder<T>,
+        I: IntoIterator<Item = &'a dyn Executor<T>>,
     {
         print_banner(true);
 

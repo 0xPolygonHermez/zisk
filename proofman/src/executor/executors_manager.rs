@@ -4,26 +4,35 @@ use log::debug;
 
 // WITNESS CALCULATOR MANAGER TRAIT
 // ================================================================================================
-pub trait ExecutorsManager<T> {
+pub trait ExecutorsManager<'a, T: 'a> {
     const MY_NAME: &'static str;
 
-    fn new(wc: Vec<Box<dyn Executor<T>>>) -> Self;
+    fn new<I>(wc: I) -> Self
+    where
+        I: IntoIterator<Item = &'a dyn Executor<T>>;
     fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
 }
 
 // WITNESS CALCULATOR MANAGER (SEQUENTIAL)
 // ================================================================================================
-pub struct ExecutorsManagerSequential<T> {
-    wc: Vec<Box<dyn Executor<T>>>,
+pub struct ExecutorsManagerSequential<'a, T> {
+    wc: Vec<&'a dyn Executor<T>>,
+    phantom_data: std::marker::PhantomData<T>,
 }
 
-impl<T> ExecutorsManager<T> for ExecutorsManagerSequential<T> {
+impl<'a, T> ExecutorsManager<'a, T> for ExecutorsManagerSequential<'a, T> {
     const MY_NAME: &'static str = "exctrMan";
 
-    fn new(wc: Vec<Box<dyn Executor<T>>>) -> Self {
+    fn new<I>(wc: I) -> Self
+    where
+        I: IntoIterator<Item = &'a dyn Executor<T>>,
+    {
+        // fn new(wc: &'a [&dyn Executor<T>]) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        ExecutorsManagerSequential::<T> { wc }
+        let wc: Vec<&dyn Executor<T>> = wc.into_iter().collect();
+
+        ExecutorsManagerSequential { wc, phantom_data: std::marker::PhantomData }
     }
 
     fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) {

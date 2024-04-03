@@ -10,7 +10,7 @@ use executor_fibo::FibonacciExecutor;
 mod executor_module;
 use executor_module::ModuleExecutor;
 
-use proofman::proof_manager::ProofManager;
+use proofman::{executor::Executor, proof_manager::ProofManager};
 
 use proofman::proof_manager_config::ProofManConfig;
 
@@ -66,19 +66,19 @@ fn main() {
         }
     };
 
-    let fibonacci_executor = Box::new(FibonacciExecutor::new());
-    let module_executor = Box::new(ModuleExecutor::new());
+    let fibonacci_executor = FibonacciExecutor::new();
+    let module_executor = ModuleExecutor::new();
+    let executors: Vec<&dyn Executor<Goldilocks>> = vec![&fibonacci_executor, &module_executor];
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman =
-        match ProofManager::new(proofman_config, vec![fibonacci_executor, module_executor], prover_builder) {
-            Ok(proofman) => proofman,
-            Err(err) => {
-                println!("Error: {:?}", err);
-                return;
-            }
-        };
+    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder) {
+        Ok(proofman) => proofman,
+        Err(err) => {
+            println!("Error: {:?}", err);
+            return;
+        }
+    };
 
     let now = std::time::Instant::now();
     let proof = proofman.prove(Some(public_inputs.into()));

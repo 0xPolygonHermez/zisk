@@ -1,6 +1,7 @@
 use log::debug;
 use goldilocks::Goldilocks;
 
+use proofman::executor::Executor;
 use prover_mocked::mocked_prover_builder::MockedProverBuilder;
 
 mod executor;
@@ -24,11 +25,12 @@ fn main() {
 
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
-    let executor = Box::new(FibonacciExecutor::new());
+    let fibonacci_executor = FibonacciExecutor::new();
+    let executor_vec: Vec<&dyn Executor<Goldilocks>> = vec![&fibonacci_executor];
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = match ProofManager::new(proofman_config, vec![executor], prover_builder) {
+    let mut proofman = match ProofManager::new(proofman_config, executor_vec, prover_builder) {
         Ok(proofman) => proofman,
         Err(err) => {
             println!("Error: {:?}", err);
