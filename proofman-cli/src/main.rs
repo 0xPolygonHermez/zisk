@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 mod commands;
 use commands::new::NewCmd;
 use commands::trace::{TraceSubcommands, TraceCmd};
-use commands::prove::ProveCmd;
 use commands::pilout::{PiloutSubcommands, PiloutCmd};
 use util::cli::print_banner;
 
@@ -19,7 +18,6 @@ pub enum Commands {
     Pilout(PiloutCmd),
     Trace(TraceCmd),
     New(NewCmd),
-    Prove(ProveCmd),
 }
 
 fn main() {
@@ -46,9 +44,6 @@ fn main() {
             }
         },
         Commands::New(args) => {
-            args.run().unwrap();
-        }
-        Commands::Prove(args) => {
             args.run().unwrap();
         }
     };
