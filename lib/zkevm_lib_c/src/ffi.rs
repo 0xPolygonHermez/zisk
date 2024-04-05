@@ -332,6 +332,34 @@ pub fn set_bool_vector_value_c(p_vector: *mut c_void, index: u64, value: bool) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn clean_symbols_calculated_c(pStarks: *mut ::std::os::raw::c_void) {
+    unsafe {
+        clean_symbols_calculated(pStarks);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_symbol_calculated_c(pStarks: *mut ::std::os::raw::c_void, operand: u32, id: u64) {
+    unsafe {
+        set_symbol_calculated(pStarks, operand, id);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_hash_c(pStarks: *mut c_void, pHhash: *mut c_void, pBuffer: *mut c_void, nElements: u64) {
+    unsafe {
+        calculate_hash(pStarks, pHhash, pBuffer, nElements);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_hash_pol_c(pStarks: *mut c_void, pHash: *mut c_void, pPol: *mut c_void) {
+    unsafe {
+        calculate_hash_pol(pStarks, pHash, pPol);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn commit_pols_starks_new_c(
     p_address: *mut c_void,
     degree: u64,
@@ -415,8 +443,8 @@ pub fn zkin_new_c<T>(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn transcript_new_c(element_type: u32) -> *mut ::std::os::raw::c_void {
-    unsafe { transcript_new(element_type) }
+pub fn transcript_new_c(element_type: u32, arity: u64, custom: bool) -> *mut ::std::os::raw::c_void {
+    unsafe { transcript_new(element_type, arity, custom) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -744,6 +772,30 @@ pub fn set_bool_vector_value_c(_p_vector: *mut c_void, _index: u64, _value: bool
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn clean_symbols_calculated_c(_pStarks: *mut ::std::os::raw::c_void) {
+    trace!(
+        "{}: ··· {}",
+        "mckzkevm",
+        "clean_symbols_calculated: This is a mock call because there is no linked library"
+    );
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_symbol_calculated_c(_pStarks: *mut c_void, _operand: u32, _id: u64) {
+    trace!("{}: ··· {}", "mckzkevm", "set_symbol_calculated: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn calculate_hash_c(_pStarks: *mut c_void, _pHhash: *mut c_void, _pBuffer: *mut c_void, _nElements: u64) {
+    trace!("{}: ··· {}", "mckzkevm", "calculate_hash: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn calculate_hash_pol_c(_pStarks: *mut c_void, _pHash: *mut c_void, _pPol: *mut c_void) {
+    trace!("{}: ··· {}", "mckzkevm", "calculate_hash_pol: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn commit_pols_starks_new_c(
     _p_address: *mut c_void,
     _degree: u64,
@@ -802,7 +854,7 @@ pub fn zkin_new_c<T>(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn transcript_new_c(_element_type: u32) -> *mut ::std::os::raw::c_void {
+pub fn transcript_new_c(_element_type: u32, _arity: u64, _custom: bool) -> *mut ::std::os::raw::c_void {
     trace!("{}: ··· {}", "mckzkevm", "transcript_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }

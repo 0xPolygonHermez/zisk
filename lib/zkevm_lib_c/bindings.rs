@@ -167,17 +167,35 @@ extern "C" {
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_S_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, pFriPol: *mut c_void, friQueries: *mut u64);
 
-     #[link_name = "\u{1}_Z18get_vector_pointerPvPc"]
-    pub fn get_vector_pointer(
-        pStarks: *mut c_void,
-        name: *mut ::std::os::raw::c_char,
-    ) -> *mut c_void;
+    #[link_name = "\u{1}_Z18get_vector_pointerPvPc"]
+    pub fn get_vector_pointer(pStarks: *mut c_void, name: *mut ::std::os::raw::c_char) -> *mut c_void;
 
     #[link_name = "\u{1}_Z13resize_vectorPvmb"]
     pub fn resize_vector(pVector: *mut ::std::os::raw::c_void, newSize: u64, value: bool);
 
     #[link_name = "\u{1}_Z21set_bool_vector_valuePvmb"]
     pub fn set_bool_vector_value(pVector: *mut c_void, index: u64, value: bool);
+
+    #[link_name = "\u{1}_Z24clean_symbols_calculatedPv"]
+    pub fn clean_symbols_calculated(pStarks: *mut ::std::os::raw::c_void);
+
+    #[link_name = "\u{1}_Z21set_symbol_calculatedPvjm"]
+    pub fn set_symbol_calculated(pStarks: *mut ::std::os::raw::c_void, operand: u32, id: u64);
+
+    #[link_name = "\u{1}_Z14calculate_hashPvS_S_m"]
+    pub fn calculate_hash(
+        pStarks: *mut ::std::os::raw::c_void,
+        pHhash: *mut ::std::os::raw::c_void,
+        pBuffer: *mut ::std::os::raw::c_void,
+        nElements: u64,
+    );
+
+    #[link_name = "\u{1}_Z14calculate_hashPvS_S_"]
+    pub fn calculate_hash_pol(
+        pStarks: *mut ::std::os::raw::c_void,
+        pHash: *mut ::std::os::raw::c_void,
+        pPol: *mut ::std::os::raw::c_void,
+    );
 
     // CommitPolsStarks
     // ========================================================================================
@@ -223,8 +241,8 @@ extern "C" {
 
     // Transcript
     // ========================================================================================
-    #[link_name = "\u{1}_Z14transcript_newj"]
-    pub fn transcript_new(element_type: u32) -> *mut ::std::os::raw::c_void;
+    #[link_name = "\u{1}_Z14transcript_newjmb"]
+    pub fn transcript_new(elementType: u32, arity: u64, custom: bool) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z14transcript_addPvS_m"]
     pub fn transcript_add(pTranscript: *mut c_void, pInput: *mut c_void, size: u64);
@@ -237,7 +255,7 @@ extern "C" {
 
     #[link_name = "\u{1}_Z13get_challengePvS_S_"]
     pub fn get_challenge(pStarks: *mut c_void, pTranscript: *mut c_void, pElement: *mut c_void);
-    
+
     #[link_name = "\u{1}_Z16get_permutationsPvPmmm"]
     pub fn get_permutations(pTranscript: *mut c_void, res: *mut u64, n: u64, nBits: u64);
 

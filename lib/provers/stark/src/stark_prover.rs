@@ -8,7 +8,7 @@ use log::debug;
 use util::{timer_start, timer_stop_and_log};
 use zkevm_lib_c::ffi::*;
 use proofman::ProofCtx;
-use crate::stark_info::StarkInfo;
+use crate::stark_info::{OpType, StarkInfo};
 use crate::stark_prover_settings::StarkProverSettings;
 
 use std::os::raw::c_void;
@@ -27,6 +27,10 @@ pub struct StarkProver<T: AbstractField> {
     p_fri_pol: Option<*mut c_void>,
     stark_info: Option<StarkInfo>,
 
+    hash_size: usize,
+    merkle_tree_arity: Option<u64>,
+    merkle_tree_custom: Option<bool>,
+
     // Pointers to the bool vector values inside the C++ code
     p_publics_calculated: *mut c_void,
     p_const_calculated: *mut c_void,
@@ -40,7 +44,7 @@ pub struct StarkProver<T: AbstractField> {
 impl<T: AbstractField> StarkProver<T> {
     const MY_NAME: &'static str = "estrkPrv";
 
-    const HASH_SIZE: u64 = 4;
+    const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: u64 = 3;
 
     pub fn new(config: StarkProverSettings, p_steps: *mut c_void, ptr: *mut c_void) -> Self {
@@ -57,6 +61,9 @@ impl<T: AbstractField> StarkProver<T> {
             transcript: None,
             p_fri_pol: None,
             stark_info: None,
+            hash_size: 0,
+            merkle_tree_arity: None,
+            merkle_tree_custom: None,
             p_publics_calculated: std::ptr::null_mut(),
             p_const_calculated: std::ptr::null_mut(),
             p_subproof_values_calculated: std::ptr::null_mut(),
@@ -78,6 +85,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let p_config = config_new_c(&self.config.current_path);
         let stark_info_json = std::fs::read_to_string(&self.config.stark_info_filename)
             .expect(format!("Failed to read file {}", &self.config.stark_info_filename).as_str());
+
         self.stark_info = Some(StarkInfo::from_json(&stark_info_json));
 
         let p_stark = starks_new_c(
@@ -92,16 +100,34 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
 
         self.p_stark = Some(p_stark);
 
-        if self.stark_info.as_ref().unwrap().pil2 {
-            self.p_publics_calculated = get_vector_pointer_c(p_stark, "publicsCalculated");
-            self.p_const_calculated = get_vector_pointer_c(p_stark, "constsCalculated");
-            self.p_subproof_values_calculated = get_vector_pointer_c(p_stark, "subProofValuesCalculated");
-            self.p_challenges_calculated = get_vector_pointer_c(p_stark, "challengesCalculated");
-            self.p_witnesses_calculated = get_vector_pointer_c(p_stark, "witnessCalculated");
-        }
+        let stark_info = self.stark_info.as_ref().unwrap();
+
+        self.p_publics_calculated = get_vector_pointer_c(p_stark, "publicsCalculated");
+        self.p_const_calculated = get_vector_pointer_c(p_stark, "constsCalculated");
+        self.p_subproof_values_calculated = get_vector_pointer_c(p_stark, "subProofValuesCalculated");
+        self.p_challenges_calculated = get_vector_pointer_c(p_stark, "challengesCalculated");
+        self.p_witnesses_calculated = get_vector_pointer_c(p_stark, "witnessCalculated");
 
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
-        self.transcript = Some(FFITranscript::new(p_stark, element_type));
+
+        if stark_info.stark_struct.verification_hash_type == "BN128" {
+            self.hash_size = 1;
+            self.merkle_tree_arity = Some(stark_info.stark_struct.merkle_tree_arity);
+            self.merkle_tree_custom = Some(stark_info.stark_struct.merkle_tree_custom);
+        } else {
+            self.hash_size = Self::HASH_SIZE;
+            self.merkle_tree_arity = Some(2);
+            self.merkle_tree_custom = Some(true);
+        }
+
+        self.transcript = Some(FFITranscript::new(
+            p_stark,
+            element_type,
+            self.merkle_tree_arity.unwrap(),
+            self.merkle_tree_custom.unwrap(),
+        ));
+
+        clean_symbols_calculated_c(p_stark);
 
         self.initialized = true;
 
@@ -119,28 +145,20 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let p_stark = self.p_stark.unwrap();
 
         if stage_id == 1 {
-            const HASH_SIZE: u64 = 4;
-            const FIELD_EXTENSION: u64 = 3;
-
             timer_start!(STARK_INITIALIZATION);
 
             let stark_info = self.stark_info.as_ref().unwrap();
 
-            let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, FIELD_EXTENSION, "");
+            let p_evals = polinomial_new_c(stark_info.ev_map.len() as u64, Self::FIELD_EXTENSION, "");
             self.p_evals = Some(p_evals);
-            let p_challenges = polinomial_new_c(stark_info.n_challenges, FIELD_EXTENSION, "");
+            let p_challenges =
+                polinomial_new_c(stark_info.challenges_map.as_ref().unwrap().len() as u64, Self::FIELD_EXTENSION, "");
             self.p_challenges = Some(p_challenges);
-
-            let p_subproof_values = polinomial_new_c(stark_info.n_subproof_values, FIELD_EXTENSION, "");
+            let p_subproof_values = polinomial_new_c(stark_info.n_subproof_values, Self::FIELD_EXTENSION, "");
 
             let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
             let p_x_div_x_sub_xi =
-                polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, FIELD_EXTENSION, "");
-
-            let hash_size = if stark_info.stark_struct.verification_hash_type == "BN128" { 1 } else { HASH_SIZE };
-            let verkey = vec![T::zero(); hash_size as usize];
-
-            treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut c_void);
+                polinomial_new_c(stark_info.opening_points.len() as u64 * n_extended, Self::FIELD_EXTENSION, "");
 
             self.p_proof = Some(fri_proof_new_c(p_stark));
 
@@ -153,16 +171,13 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
                 proof_ctx.public_inputs.as_ptr() as *mut c_void,
             ));
 
-            if stark_info.pil2 {
-                resize_vector_c(self.p_publics_calculated, stark_info.n_publics, true);
-                resize_vector_c(self.p_subproof_values_calculated, stark_info.n_subproof_values, false);
-                resize_vector_c(self.p_challenges_calculated, stark_info.n_challenges, false);
+            let high_bound = *stark_info.map_sections_n.get("cm1").unwrap() as usize;
+            for i in 0..high_bound {
+                set_symbol_calculated_c(p_stark, OpType::Cm.as_integer(), i as u64);
+            }
 
-                let witness_len = stark_info.cm_pols_map.as_ref().unwrap().len() as u64;
-                resize_vector_c(self.p_witnesses_calculated, witness_len, false);
-                for i in 0..stark_info.n_cm1 {
-                    set_bool_vector_value_c(self.p_witnesses_calculated, i, true)
-                }
+            for i in 0..stark_info.n_publics as usize {
+                set_symbol_calculated_c(p_stark, OpType::Public.as_integer(), i as u64);
             }
 
             timer_stop_and_log!(STARK_INITIALIZATION);
@@ -172,8 +187,23 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             //--------------------------------
             timer_start!(STARK_COMMIT_STAGE_0);
 
-            transcript.add_elements(verkey.as_ptr() as *mut c_void, HASH_SIZE);
-            transcript.add_elements(proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics);
+            let verkey = vec![T::zero(); self.hash_size];
+            treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut c_void);
+
+            transcript.add_elements(verkey.as_ptr() as *mut c_void, self.hash_size);
+
+            if stark_info.stark_struct.hash_commits {
+                let hash = vec![T::zero(); self.hash_size];
+                calculate_hash_c(
+                    p_stark,
+                    hash.as_ptr() as *mut c_void,
+                    proof_ctx.public_inputs.as_ptr() as *mut c_void,
+                    stark_info.n_publics,
+                );
+                transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+            } else {
+                transcript.add_elements(proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics as usize)
+            }
 
             timer_stop_and_log!(STARK_COMMIT_STAGE_0);
         }
@@ -232,23 +262,23 @@ impl<T: AbstractField> StarkProver<T> {
 
         debug!("{}: ··· Computing evaluations", Self::MY_NAME);
 
-        transcript.get_challenge(polinomial_get_p_element_c(p_challenges, stark_info.xi_challenge_index));
-        if stark_info.pil2 {
-            set_bool_vector_value_c(self.p_challenges_calculated, stark_info.xi_challenge_index, true);
+        let challenges_map = stark_info.challenges_map.as_ref().unwrap();
+
+        for i in 0..challenges_map.len() {
+            if challenges_map[i].stage_num == stark_info.n_stages + 2 {
+                transcript.get_challenge(polinomial_get_p_element_c(p_challenges, i as u64));
+                set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
+            }
         }
 
         compute_evals_c(p_stark, p_params, p_proof);
 
-        transcript.add_polinomial(p_evals);
-
-        transcript.get_challenge(polinomial_get_p_element_c(p_challenges, stark_info.fri1_challenge_index));
-        if stark_info.pil2 {
-            set_bool_vector_value_c(self.p_challenges_calculated, stark_info.fri1_challenge_index, true);
-        }
-
-        transcript.get_challenge(polinomial_get_p_element_c(p_challenges, stark_info.fri2_challenge_index));
-        if stark_info.pil2 {
-            set_bool_vector_value_c(self.p_challenges_calculated, stark_info.fri2_challenge_index, true);
+        if stark_info.stark_struct.hash_commits {
+            let hash = vec![T::zero(); self.hash_size];
+            calculate_hash_pol_c(p_stark, hash.as_ptr() as *mut c_void, p_evals);
+            transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+        } else {
+            transcript.add_polinomial(p_evals)
         }
     }
 
@@ -257,8 +287,19 @@ impl<T: AbstractField> StarkProver<T> {
         let p_params = self.p_params.unwrap();
         let stark_info = self.stark_info.as_ref().unwrap();
         let n_stages = stark_info.n_stages;
+        let transcript = self.transcript.as_ref().unwrap();
+        let p_challenges = self.p_challenges.unwrap();
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
+
+        let challenges_map = stark_info.challenges_map.as_ref().unwrap();
+
+        for i in 0..challenges_map.len() {
+            if challenges_map[i].stage_num == stark_info.n_stages + 3 {
+                transcript.get_challenge(polinomial_get_p_element_c(p_challenges, i as u64));
+                set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
+            }
+        }
 
         self.p_fri_pol = Some(compute_fri_pol_c(p_stark, n_stages + 2, p_params, self.p_steps));
     }
@@ -280,9 +321,15 @@ impl<T: AbstractField> StarkProver<T> {
         compute_fri_folding_c(p_stark, p_proof, p_fri_pol, step as u64, challenge);
         if step < stark_info.stark_struct.steps.len() as u32 - 1 {
             let root = fri_proof_get_tree_root_c(p_proof, step as u64 + 1, 0);
-            transcript.add_elements(root, Self::HASH_SIZE);
+            transcript.add_elements(root, self.hash_size);
         } else {
-            transcript.add_polinomial(p_fri_pol);
+            if stark_info.stark_struct.hash_commits {
+                let hash = vec![T::zero(); self.hash_size];
+                calculate_hash_pol_c(p_stark, hash.as_ptr() as *mut c_void, p_fri_pol);
+                transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+            } else {
+                transcript.add_polinomial(p_fri_pol)
+            }
         }
     }
 
@@ -297,26 +344,23 @@ impl<T: AbstractField> StarkProver<T> {
 
         let mut fri_queries = vec![0u64; stark_info.stark_struct.n_queries as usize];
 
-        if stark_info.pil2 {
-            let p_tmp_challenge = polinomial_new_c(1, Self::FIELD_EXTENSION, "");
+        let p_tmp_challenge = polinomial_new_c(1, Self::FIELD_EXTENSION, "");
 
-            transcript.get_challenge(polinomial_get_p_element_c(p_tmp_challenge, 0));
-            let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
-            let transcript_permutation = FFITranscript::new(p_stark, element_type);
+        transcript.get_challenge(polinomial_get_p_element_c(p_tmp_challenge, 0));
+        let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
+        let transcript_permutation = FFITranscript::new(
+            p_stark,
+            element_type,
+            self.merkle_tree_arity.unwrap(),
+            self.merkle_tree_custom.unwrap(),
+        );
 
-            transcript_permutation.add_polinomial(p_tmp_challenge);
-            transcript_permutation.get_permutations(
-                fri_queries.as_mut_ptr(),
-                stark_info.stark_struct.n_queries,
-                stark_info.stark_struct.steps[0].n_bits,
-            );
-        } else {
-            transcript.get_permutations(
-                fri_queries.as_mut_ptr(),
-                stark_info.stark_struct.n_queries,
-                stark_info.stark_struct.steps[0].n_bits,
-            );
-        }
+        transcript_permutation.add_polinomial(p_tmp_challenge);
+        transcript_permutation.get_permutations(
+            fri_queries.as_mut_ptr(),
+            stark_info.stark_struct.n_queries,
+            stark_info.stark_struct.steps[0].n_bits,
+        );
 
         compute_fri_queries_c(p_stark, p_proof, p_fri_pol, fri_queries.as_mut_ptr());
 
