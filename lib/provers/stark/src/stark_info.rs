@@ -165,9 +165,9 @@ pub struct StarkInfo {
     #[serde(rename = "mapSectionsN")]
     pub map_sections_n: HashMap<String, u64>,
 
-    #[serde(rename = "mapOffsets")]
+    #[serde(default, rename = "mapOffsets")]
     pub map_offsets: HashMap<(String, bool), u64>,
-    #[serde(rename = "mapTotalN")]
+    #[serde(default, rename = "mapTotalN")]
     pub map_total_n: u64,
 }
 
@@ -192,75 +192,10 @@ impl StarkInfo {
         timer_start!(STARK_INFO_LOAD);
 
         debug!("strkinfo: ··· Loading StarkInfo JSON");
-        let mut stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
-
-        stark_info.set_map_offsets(true);
+        let stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
 
         timer_stop_and_log!(STARK_INFO_LOAD);
+
         stark_info
-    }
-
-    pub fn set_map_offsets(&mut self, optimize_commit_stage1_pols: bool) {
-        let n = 1 << self.stark_struct.n_bits;
-        let n_extended = 1 << self.stark_struct.n_bits_ext;
-
-        self.map_offsets.insert(("cm1".to_owned(), false), 0);
-        for stage in 2..=self.n_stages {
-            let prev_stage = format!("{}{}", "cm", stage - 1);
-            let curr_stage = format!("{}{}", "cm", stage);
-            self.map_offsets.insert(
-                (curr_stage, false),
-                self.map_offsets[&(prev_stage.clone(), false)] + n * self.map_sections_n[&prev_stage],
-            );
-        }
-
-        if optimize_commit_stage1_pols {
-            self.map_offsets.insert(
-                ("cm1".to_owned(), true),
-                self.map_offsets[&("cm".to_owned() + &self.n_stages.to_string(), false)]
-                    + n * self.map_sections_n[&("cm".to_owned() + &self.n_stages.to_string())],
-            );
-            self.map_offsets.insert(
-                ("tmpExp".to_owned(), false),
-                self.map_offsets[&("cm1".to_owned(), true)] + n_extended * self.map_sections_n["cm1"],
-            );
-            self.map_offsets.insert(
-                ("cm2".to_owned(), true),
-                self.map_offsets[&("tmpExp".to_owned(), false)] + n * self.map_sections_n["tmpExp"],
-            );
-        } else {
-            self.map_offsets.insert(
-                ("tmpExp".to_owned(), false),
-                self.map_offsets[&("cm".to_owned() + &self.n_stages.to_string(), false)]
-                    + n * self.map_sections_n[&("cm".to_owned() + &self.n_stages.to_string())],
-            );
-            self.map_offsets.insert(
-                ("cm1".to_owned(), true),
-                self.map_offsets[&("tmpExp".to_owned(), false)] + n * self.map_sections_n["tmpExp"],
-            );
-            self.map_offsets.insert(
-                ("cm2".to_owned(), true),
-                self.map_offsets[&("cm1".to_owned(), true)] + n_extended * self.map_sections_n["cm1"],
-            );
-        }
-
-        for stage in 3..=self.n_stages + 1 {
-            let prev_stage = format!("{}{}", "cm", stage - 1);
-            let curr_stage = format!("{}{}", "cm", stage);
-            self.map_offsets.insert(
-                (curr_stage, true),
-                self.map_offsets[&(prev_stage.clone(), true)] + n_extended * self.map_sections_n[&prev_stage],
-            );
-        }
-
-        self.map_offsets.insert(
-            ("q".to_owned(), true),
-            self.map_offsets[&("cm".to_owned() + &self.n_stages.to_string(), true)]
-                + n_extended * self.map_sections_n[&("cm".to_owned() + &self.n_stages.to_string())],
-        );
-        self.map_offsets
-            .insert(("f".to_owned(), true), self.map_offsets[&("q".to_owned(), true)] + n_extended * self.q_dim);
-
-        self.map_total_n = self.map_offsets[&("f".to_owned(), true)] + n_extended * 3;
     }
 }

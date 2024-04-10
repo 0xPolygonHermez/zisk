@@ -17,7 +17,8 @@ use std::ffi::CString;
 pub fn zkevm_main_c(
     config_filename: &str,
     p_address: *mut u8,
-    p_secondary_sm_inputs: *mut u8,
+    p_sm_requests: *mut u8,
+    p_sm_requests_out: *mut u8,
 ) -> ::std::os::raw::c_int {
     unsafe {
         let config_filename = CString::new(config_filename).unwrap();
@@ -25,7 +26,8 @@ pub fn zkevm_main_c(
         zkevm_main(
             config_filename.as_ptr() as *mut std::os::raw::c_char,
             p_address as *mut std::os::raw::c_void,
-            p_secondary_sm_inputs as *mut std::os::raw::c_void,
+            p_sm_requests as *mut *mut std::os::raw::c_void,
+            p_sm_requests_out as *mut std::os::raw::c_void,
         )
     }
 }
@@ -140,11 +142,23 @@ pub fn config_free_c(pConfig: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn stark_info_new_c(p_config: *mut c_void, filename: &str) -> *mut c_void {
+pub fn stark_info_new_c(filename: &str) -> *mut c_void {
     unsafe {
         let filename = CString::new(filename).unwrap();
 
-        starkinfo_new(p_config, filename.as_ptr() as *mut std::os::raw::c_char)
+        starkinfo_new(filename.as_ptr() as *mut std::os::raw::c_char)
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_mapTotalN_c(p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
+    unsafe { get_mapTotalN(p_stark_info) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_mapOffsets_c(p_stark_info: *mut c_void, p_chelpers: *mut c_void) {
+    unsafe {
+        set_mapOffsets(p_stark_info, p_chelpers);
     }
 }
 
@@ -161,23 +175,21 @@ pub fn starks_new_c(
     const_pols: &str,
     map_const_pols_file: bool,
     constants_tree: &str,
-    stark_info: &str,
-    chelpers: &str,
+    stark_info: *mut c_void,
+    chelpers: *mut c_void,
     p_address: *mut c_void,
 ) -> *mut c_void {
     unsafe {
         let const_pols = CString::new(const_pols).unwrap();
         let constants_tree = CString::new(constants_tree).unwrap();
-        let stark_info = CString::new(stark_info).unwrap();
-        let chelpers = CString::new(chelpers).unwrap();
 
         starks_new(
             p_config,
             const_pols.as_ptr() as *mut std::os::raw::c_char,
             map_const_pols_file,
             constants_tree.as_ptr() as *mut std::os::raw::c_char,
-            stark_info.as_ptr() as *mut std::os::raw::c_char,
-            chelpers.as_ptr() as *mut std::os::raw::c_char,
+            stark_info,
+            chelpers,
             p_address,
         )
     }
@@ -196,6 +208,27 @@ pub fn starks_free_c(p_stark: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn chelpers_new_c(cHelpers: &str) -> *mut ::std::os::raw::c_void {
+    let cHelpers = CString::new(cHelpers).unwrap();
+
+    unsafe { chelpers_new(cHelpers.as_ptr() as *mut std::os::raw::c_char) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn chelpers_free_c(pChelpers: *mut ::std::os::raw::c_void) {
+    unsafe {
+        chelpers_free(pChelpers);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn init_hints_c() {
+    unsafe {
+        init_hints();
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn steps_params_new_c(
     p_stark: *mut c_void,
     p_challenges: *mut c_void,
@@ -205,6 +238,13 @@ pub fn steps_params_new_c(
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     unsafe { steps_params_new(p_stark, p_challenges, p_subproof_values, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_steps_params_field_c(pStepsParams: *mut ::std::os::raw::c_void, name: &str) -> *mut ::std::os::raw::c_void {
+    let name = CString::new(name).unwrap();
+
+    unsafe { get_steps_params_field(pStepsParams, name.as_ptr() as *mut std::os::raw::c_char) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -229,29 +269,6 @@ pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_h1_h2_c(p_stark: *mut c_void, p_params: *mut c_void) {
-    unsafe {
-        calculate_h1_h2(p_stark, p_params);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_z_c(p_stark: *mut c_void, p_params: *mut c_void) {
-    unsafe {
-        calculate_z(p_stark, p_params);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_expressions_c(p_stark: *mut c_void, step: &str, p_params: *mut c_void, p_chelper_steps: *mut c_void) {
-    let step = CString::new(step).unwrap();
-
-    unsafe {
-        calculate_expressions(p_stark, step.as_ptr() as *mut std::os::raw::c_char, p_params, p_chelper_steps);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn compute_stage_c(
     p_starks: *mut ::std::os::raw::c_void,
     element_type: u32,
@@ -263,13 +280,6 @@ pub fn compute_stage_c(
 ) {
     unsafe {
         compute_stage(p_starks, element_type, step, p_params, p_proof, p_transcript, p_chelpers_steps);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn compute_q_c(p_stark: *mut c_void, p_params: *mut c_void, pProof: *mut c_void) {
-    unsafe {
-        compute_q(p_stark, p_params, pProof);
     }
 }
 
@@ -304,9 +314,9 @@ pub fn compute_fri_folding_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_fri_queries_c(p_stark: *mut c_void, pProof: *mut c_void, pFriPol: *mut c_void, friQueries: *mut u64) {
+pub fn compute_fri_queries_c(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64) {
     unsafe {
-        compute_fri_queries(p_stark, pProof, pFriPol, friQueries);
+        compute_fri_queries(pStarks, pProof, friQueries);
     }
 }
 
@@ -349,13 +359,6 @@ pub fn set_symbol_calculated_c(pStarks: *mut ::std::os::raw::c_void, operand: u3
 pub fn calculate_hash_c(pStarks: *mut c_void, pHhash: *mut c_void, pBuffer: *mut c_void, nElements: u64) {
     unsafe {
         calculate_hash(pStarks, pHhash, pBuffer, nElements);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_hash_pol_c(pStarks: *mut c_void, pHash: *mut c_void, pPol: *mut c_void) {
-    unsafe {
-        calculate_hash_pol(pStarks, pHash, pPol);
     }
 }
 
@@ -511,7 +514,8 @@ pub fn polinomial_free_c(p_polinomial: *mut c_void) {
 pub fn zkevm_main_c(
     config_filename: &str,
     _p_address: *mut u8,
-    _p_secondary_sm_inputs: *mut u8,
+    _p_sm_requests: *mut u8,
+    _p_sm_requests_out: *mut u8,
 ) -> ::std::os::raw::c_int {
     trace!(
         "{}: ··· {} {}",
@@ -617,9 +621,20 @@ pub fn config_free_c(_pConfig: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn stark_info_new_c(_p_config: *mut c_void, _filename: &str) -> *mut c_void {
+pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "starkinfo_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_mapTotalN_c(_p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
+    trace!("{}: ··· {}", "mckzkevm", "get_mapTotalN: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_mapOffsets_c(_pStarkInfo: *mut c_void, _pChelpers: *mut c_void) {
+    trace!("{}: ··· {}", "mckzkevm", "set_mapOffsets: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -633,8 +648,8 @@ pub fn starks_new_c(
     _const_pols: &str,
     _map_const_pols_file: bool,
     _constants_tree: &str,
-    _stark_info: &str,
-    _chelpers: &str,
+    stark_info: *mut c_void,
+    chelpers: *mut c_void,
     _p_address: *mut c_void,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "starks_new: This is a mock call because there is no linked library");
@@ -653,6 +668,24 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn chelpers_new_c(cHelpers: &str) -> *mut ::std::os::raw::c_void {
+    trace!("{}: ··· {}", "mckzkevm", "chelpers_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn chelpers_free_c(pChelpers: *mut ::std::os::raw::c_void) {
+    trace!("{}: ··· {}", "mckzkevm", "chelpers_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn init_hints_c() {
+    unsafe {
+        init_hints();
+    }
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn steps_params_new_c(
     _p_stark: *mut c_void,
     _p_challenges: *mut c_void,
@@ -662,6 +695,12 @@ pub fn steps_params_new_c(
     _p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "steps_params_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_steps_params_field_c(pStepsParams: *mut ::std::os::raw::c_void, name: &str) -> *mut ::std::os::raw::c_void {
+    trace!("{}: ··· {}", "mckzkevm", "get_steps_params_field: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
@@ -681,26 +720,6 @@ pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void)
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_h1_h2_c(_p_stark: *mut c_void, _p_params: *mut c_void) {
-    trace!("{}: ··· {}", "mckzkevm", "calculate_h1_h2: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn calculate_z_c(_p_stark: *mut c_void, _p_params: *mut c_void) {
-    trace!("{}: ··· {}", "mckzkevm", "calculate_z: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn calculate_expressions_c(
-    _p_stark: *mut c_void,
-    _step: &str,
-    _p_params: *mut c_void,
-    _p_chelper_steps: *mut c_void,
-) {
-    trace!("{}: ··· {}", "mckzkevm", "calculate_expressions: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn compute_stage_c(
     _p_starks: *mut ::std::os::raw::c_void,
     _element_type: u32,
@@ -711,11 +730,6 @@ pub fn compute_stage_c(
     _p_chelpers_steps: *mut ::std::os::raw::c_void,
 ) {
     trace!("{}: ··· {}", "mckzkevm", "compute_stage: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn compute_q_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *mut c_void) {
-    trace!("{}: ··· {}", "mckzkevm", "compute_q: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -746,12 +760,7 @@ pub fn compute_fri_folding_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_fri_queries_c(
-    _p_stark: *mut c_void,
-    _pProof: *mut c_void,
-    _pFriPol: *mut c_void,
-    _friQueries: *mut u64,
-) {
+pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64) {
     trace!("{}: ··· {}", "mckzkevm", "compute_fri_queries: This is a mock call because there is no linked library");
 }
 
@@ -788,11 +797,6 @@ pub fn set_symbol_calculated_c(_pStarks: *mut c_void, _operand: u32, _id: u64) {
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_hash_c(_pStarks: *mut c_void, _pHhash: *mut c_void, _pBuffer: *mut c_void, _nElements: u64) {
     trace!("{}: ··· {}", "mckzkevm", "calculate_hash: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn calculate_hash_pol_c(_pStarks: *mut c_void, _pHash: *mut c_void, _pPol: *mut c_void) {
-    trace!("{}: ··· {}", "mckzkevm", "calculate_hash_pol: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
