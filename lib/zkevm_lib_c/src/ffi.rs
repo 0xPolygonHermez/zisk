@@ -208,16 +208,16 @@ pub fn starks_free_c(p_stark: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn chelpers_new_c(cHelpers: &str) -> *mut ::std::os::raw::c_void {
-    let cHelpers = CString::new(cHelpers).unwrap();
+pub fn chelpers_new_c(chelpers_filename: &str) -> *mut ::std::os::raw::c_void {
+    let chelpers_filename = CString::new(chelpers_filename).unwrap();
 
-    unsafe { chelpers_new(cHelpers.as_ptr() as *mut std::os::raw::c_char) }
+    unsafe { chelpers_new(chelpers_filename.as_ptr() as *mut std::os::raw::c_char) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn chelpers_free_c(pChelpers: *mut ::std::os::raw::c_void) {
+pub fn chelpers_free_c(p_chelpers: *mut ::std::os::raw::c_void) {
     unsafe {
-        chelpers_free(pChelpers);
+        chelpers_free(p_chelpers);
     }
 }
 
@@ -241,10 +241,13 @@ pub fn steps_params_new_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_steps_params_field_c(pStepsParams: *mut ::std::os::raw::c_void, name: &str) -> *mut ::std::os::raw::c_void {
+pub fn get_steps_params_field_c(
+    p_steps_params: *mut ::std::os::raw::c_void,
+    name: &str,
+) -> *mut ::std::os::raw::c_void {
     let name = CString::new(name).unwrap();
 
-    unsafe { get_steps_params_field(pStepsParams, name.as_ptr() as *mut std::os::raw::c_char) }
+    unsafe { get_steps_params_field(p_steps_params, name.as_ptr() as *mut std::os::raw::c_char) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -314,9 +317,9 @@ pub fn compute_fri_folding_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_fri_queries_c(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64) {
+pub fn compute_fri_queries_c(p_stark: *mut c_void, p_proof: *mut c_void, p_fri_queries: *mut u64) {
     unsafe {
-        compute_fri_queries(pStarks, pProof, friQueries);
+        compute_fri_queries(p_stark, p_proof, p_fri_queries);
     }
 }
 
@@ -648,8 +651,8 @@ pub fn starks_new_c(
     _const_pols: &str,
     _map_const_pols_file: bool,
     _constants_tree: &str,
-    stark_info: *mut c_void,
-    chelpers: *mut c_void,
+    _stark_info: *mut c_void,
+    _chelpers: *mut c_void,
     _p_address: *mut c_void,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "starks_new: This is a mock call because there is no linked library");
@@ -668,21 +671,19 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn chelpers_new_c(cHelpers: &str) -> *mut ::std::os::raw::c_void {
+pub fn chelpers_new_c(_chelpers_filename: &str) -> *mut ::std::os::raw::c_void {
     trace!("{}: ··· {}", "mckzkevm", "chelpers_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn chelpers_free_c(pChelpers: *mut ::std::os::raw::c_void) {
+pub fn chelpers_free_c(_p_chelpers: *mut ::std::os::raw::c_void) {
     trace!("{}: ··· {}", "mckzkevm", "chelpers_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
 pub fn init_hints_c() {
-    unsafe {
-        init_hints();
-    }
+    trace!("{}: ··· {}", "mckzkevm", "init_hints: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -699,7 +700,7 @@ pub fn steps_params_new_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_steps_params_field_c(pStepsParams: *mut ::std::os::raw::c_void, name: &str) -> *mut ::std::os::raw::c_void {
+pub fn get_steps_params_field_c(_p_steps_params: *mut c_void, _name: &str) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "get_steps_params_field: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -760,7 +761,7 @@ pub fn compute_fri_folding_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64) {
+pub fn compute_fri_queries_c(_p_stark: *mut c_void, _p_proof: *mut c_void, _p_fri_queries: *mut u64) {
     trace!("{}: ··· {}", "mckzkevm", "compute_fri_queries: This is a mock call because there is no linked library");
 }
 
