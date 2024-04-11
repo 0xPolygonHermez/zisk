@@ -20,10 +20,11 @@ pub struct ProofCtx<T> {
     /// The challenges associated with the proof context.
     challenges: Vec<Vec<T>>,
     /// The subproofs associated with the proof context.
-    pub subproofs: Vec<SubproofCtx>,
-    //pub subAirValues = Vec<T>,
+    pub subproofs: Vec<SubproofCtx<T>>,
+    /// The subproof values associated with the proof context.
+    pub subproof_values: Vec<Vec<T>>,
     // NOTE: remove this ptr when vadcops ready, now it's used while developing
-    pub proof: Option<*mut c_void>,
+    pub proof: *mut c_void,
 }
 
 impl<T: Default + Clone> ProofCtx<T> {
@@ -84,7 +85,14 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        let proof_ctx = ProofCtx { pilout, public_inputs: Vec::new(), challenges, subproofs, proof: None };
+        let proof_ctx = ProofCtx {
+            pilout,
+            public_inputs: Vec::new(),
+            challenges,
+            subproofs,
+            subproof_values: Vec::new(),
+            proof: std::ptr::null_mut(),
+        };
 
         timer_stop_and_log!(CREATING_PROOF_CTX);
 
@@ -103,7 +111,7 @@ impl<T: Default + Clone> ProofCtx<T> {
             }
         }
 
-        self.proof = None;
+        self.proof = std::ptr::null_mut();
     }
 
     /// Adds a trace to the specified Air instance.
@@ -117,11 +125,11 @@ impl<T: Default + Clone> ProofCtx<T> {
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance(
+    pub fn add_trace_to_air_instance<TR: Trace>(
         &mut self,
         subproof_id: usize,
         air_id: usize,
-        trace: Box<dyn Trace>,
+        trace: TR,
     ) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
@@ -135,7 +143,7 @@ impl<T: Default + Clone> ProofCtx<T> {
         subproof_id: usize,
         air_id: usize,
         trace_id: usize,
-    ) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    ) -> Result<Arc<dyn Trace>, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
@@ -147,29 +155,30 @@ impl<T: Default + Clone> ProofCtx<T> {
 /// Subproof context for managing subproofs, including information about airs and air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct SubproofCtx {
+pub struct SubproofCtx<T> {
     pub subproof_id: usize,
-    pub airs: Vec<AirCtx>,
+    pub airs: Vec<AirCtx<T>>,
 }
 
 /// Air context for managing airs, including information about air instances.
 #[allow(dead_code)]
-pub struct AirCtx {
+pub struct AirCtx<T> {
     pub subproof_id: usize,
     pub air_id: usize,
-    pub instances: Vec<AirInstanceCtx>,
+    pub instances: Vec<AirInstanceCtx<T>>,
 }
 
 /// Air instance context for managing air instances (traces)
 #[derive(Debug)]
-pub struct AirInstanceCtx {
+pub struct AirInstanceCtx<T> {
     pub subproof_id: usize,
     pub air_id: usize,
     pub instance_id: usize,
-    pub trace: RwLock<Arc<Box<dyn Trace>>>,
+    pub trace: RwLock<Arc<dyn Trace>>,
+    pub subproof_values: Vec<T>,
 }
 
-impl AirCtx {
+impl<T> AirCtx<T> {
     /// Creates a new AirCtx.
     ///
     /// # Arguments
@@ -185,7 +194,7 @@ impl AirCtx {
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace(&mut self, trace: Box<dyn Trace>) -> usize {
+    pub fn add_trace<TR: Trace>(&mut self, trace: TR) -> usize {
         let len = self.instances.len();
 
         self.instances.push(AirInstanceCtx {
@@ -193,6 +202,8 @@ impl AirCtx {
             air_id: self.air_id,
             instance_id: len,
             trace: RwLock::new(Arc::new(trace)),
+            // TODO! Review this, has to be resized from the beginning?????
+            subproof_values: Vec::new(),
         });
         self.instances.len() - 1
     }
@@ -206,19 +217,19 @@ impl AirCtx {
     /// # Returns
     ///
     /// Returns a reference to the trace at the specified index.
-    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<Box<dyn Trace>>, &'static str> {
+    pub fn get_trace(&self, instance_id: usize) -> Result<Arc<dyn Trace>, &'static str> {
         assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
 
         Ok(Arc::clone(&self.instances[instance_id].trace.read().unwrap()))
     }
 }
 
-impl fmt::Debug for AirCtx {
+impl<T> fmt::Debug for AirCtx<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AirCtx")
             .field("subproof_id", &self.subproof_id)
             .field("air_id", &self.air_id)
-            .field("instances", &self.instances)
+            .field("instances", &self.instances.len())
             .finish()
     }
 }
@@ -257,13 +268,14 @@ mod tests {
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
-            proof: None,
+            subproof_values: Vec::new(),
+            proof: std::ptr::null_mut(),
         };
 
         // Add a trace to the first Air instance of the first subproof
         let subproof_id = 0;
         let air_id = 0;
-        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(MockTrace)).unwrap();
+        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, MockTrace).unwrap();
 
         // Check if the trace was added successfully
         assert_eq!(trace_id, 0);
@@ -276,7 +288,8 @@ mod tests {
             public_inputs: Vec::new(),
             challenges: vec![vec![Goldilocks::default(); 0]],
             subproofs: vec![SubproofCtx { subproof_id: 0, airs: vec![AirCtx::new(0, 0)] }],
-            proof: None,
+            subproof_values: Vec::new(),
+            proof: std::ptr::null_mut(),
         };
 
         // Add a trace to the first Air instance of the first subproof
@@ -295,10 +308,10 @@ mod tests {
             simple2.field1[i] = i * 2;
         }
 
-        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple));
+        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple);
         assert!(result.is_ok());
 
-        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, Box::new(simple2));
+        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple2);
         assert!(result2.is_ok());
 
         let index = result.unwrap();

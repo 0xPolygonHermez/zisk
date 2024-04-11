@@ -23,7 +23,7 @@ impl<T: 'static> ProverBuilder<T> for MockedProverBuilder<T> {
 mod tests {
     use super::*;
     use proofman::proof_manager::ProverStatus;
-    use proofman::proof_ctx::ProofCtx;
+    use proofman::ProofCtx;
 
     // Define a struct for testing purposes
     struct TestData;

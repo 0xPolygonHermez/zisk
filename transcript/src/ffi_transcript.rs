@@ -14,14 +14,14 @@ pub struct FFITranscript {
 impl FFITranscript {
     /// Creates a new transcript struct
     /// element_type: 0 for BN128, 1 for Goldilocks
-    pub fn new(p_stark: *mut c_void, element_type: u32) -> Self {
-        let p_transcript = transcript_new_c(element_type);
+    pub fn new(p_stark: *mut c_void, element_type: u32, arity: u64, custom: bool) -> Self {
+        let p_transcript = transcript_new_c(element_type, arity, custom);
 
         Self { element_type, p_stark, p_transcript }
     }
 
-    pub fn add_elements(&self, input: *mut c_void, size: u64) {
-        transcript_add_c(self.p_transcript, input, size);
+    pub fn add_elements(&self, input: *mut c_void, size: usize) {
+        transcript_add_c(self.p_transcript, input, size as u64);
     }
 
     pub fn add_polinomial(&self, p_polinomial: *mut c_void) {

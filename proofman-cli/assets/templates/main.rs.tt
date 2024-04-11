@@ -17,11 +17,14 @@ fn main() \{
     let proofman_config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
     let proofman_config = ProofManConfig::parse_input_json(&proofman_config_json);
 
-    let executors: Vec<Box<dyn Executor<Goldilocks>>> = vec![{{ for wc_context in wc }}Box::new({wc_context.name}WC::new()), {{ endfor }}];
+    {{ for wc_context in wc }}
+    let {wc_context.snake_name}_wc = {wc_context.name}WC::new();
+    {{ endfor }}
+    let executors: Vec<&dyn Executor<Goldilocks>> = vec![{{ for wc_context in wc }}&{wc_context.snake_name}_wc, {{ endfor }}];
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = match ProofManager::<Goldilocks>::new(proofman_config, executors, Box::new(prover_builder)) \{
+    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder) \{
         Ok(proofman) => proofman,
         Err(err) => \{
             println!("Error: \{:?}", err);

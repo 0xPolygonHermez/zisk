@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use log::info;
-use proofman::proof_ctx::ProofCtx;
+use proofman::ProofCtx;
 use proofman::proof_manager::ProverStatus;
 use proofman::provers_manager::Prover;
 

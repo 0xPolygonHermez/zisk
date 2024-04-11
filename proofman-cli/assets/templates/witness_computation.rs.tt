@@ -1,4 +1,4 @@
-use proofman::\{executor, executor::Executor, proof_ctx::ProofCtx, trace};
+use proofman::\{executor, executor::Executor, ProofCtx, trace};
 use goldilocks::\{Goldilocks, AbstractField};
 use super::{wc.snake_name}_traces::*;
 use log::debug;
@@ -15,7 +15,7 @@ impl Executor<Goldilocks> for {wc.name}WC \{
         // add witness computation here...
 
         // proof_ctx
-        //     .add_trace_to_air_instance(subproof_id, air_id, Box::new(...))
+        //     .add_trace_to_air_instance(subproof_id, air_id, trace)
         //     .expect("Error adding trace to air instance");
     }
 }

@@ -1,6 +1,7 @@
 use crate::provers_manager::ProverBuilder;
 use colored::Colorize;
-// use pilout::pilout::SymbolType;
+use goldilocks::AbstractField;
+// use pilout::pilout::AggregationType;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
 
@@ -25,24 +26,29 @@ pub enum ProverStatus {
 // PROOF MANAGER SEQUENTIAL
 // ================================================================================================
 #[allow(dead_code)]
-pub struct ProofManager<T> {
+pub struct ProofManager<'a, T, PB> {
     proofman_config: ProofManConfig,
     proof_ctx: ProofCtx<T>,
-    wc_manager: ExecutorsManagerSequential<T>,
-    provers_manager: ProversManager<T>,
+    wc_manager: ExecutorsManagerSequential<'a, T>,
+    provers_manager: ProversManager<T, PB>,
 }
 
-impl<T> ProofManager<T>
+impl<'a, T, PB> ProofManager<'a, T, PB>
 where
-    T: Default + Clone,
+    T: Default + Clone + AbstractField,
+    PB: ProverBuilder<T>,
 {
     const MY_NAME: &'static str = "proofMan";
 
-    pub fn new(
+    pub fn new<I>(
         proofman_config: ProofManConfig,
-        wc: Vec<Box<dyn Executor<T>>>,
-        prover_builder: Box<dyn ProverBuilder<T>>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+        wc: I,
+        prover_builder: PB,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        PB: ProverBuilder<T>,
+        I: IntoIterator<Item = &'a dyn Executor<T>>,
+    {
         print_banner(true);
 
         println!("············ {}", proofman_config.get_name().bright_purple().bold());
@@ -54,7 +60,7 @@ where
 
         let pilout = PilOutProxy::new(proofman_config.get_pilout())?;
 
-        //let's filter pilout symbols where type = WitnessColl
+        //let's filter pilout symbols where type = WitnessCol
         // let witness_cols =
         //     pilout.symbols.iter().filter(|s| s.r#type == SymbolType::WitnessCol as i32).collect::<Vec<_>>();
         // println!("witness_cols: {:?}", witness_cols);
@@ -76,7 +82,7 @@ where
         unimplemented!();
     }
 
-    pub fn prove(&mut self, public_inputs: Option<Vec<T>>) -> Result<&mut ProofCtx<T>, &str> {
+    pub fn prove(&mut self, public_inputs: Option<Vec<T>>) -> Result<&mut ProofCtx<T>, Box<dyn std::error::Error>> {
         if !self.proofman_config.only_check {
             info!("{}: ==> INITIATING PROOF GENERATION", Self::MY_NAME);
         } else {
@@ -86,10 +92,13 @@ where
         self.proof_ctx.initialize_proof(public_inputs);
 
         let mut prover_status = ProverStatus::StagesPending;
-        let mut stage_id: u32 = 1;
-        // TODO! Uncomment this when pilout done!!!!
-        // let num_stages = proof_ctx.pilout.get_num_stages();
-        let num_stages = 3;
+        let mut stage_id = 1u32;
+        // TODO! Remove this if when we have the correct number of stages in the pilout
+        let num_stages = if self.proof_ctx.pilout.num_challenges.is_empty() {
+            3u32
+        } else {
+            self.proof_ctx.pilout.num_challenges.len() as u32
+        };
 
         while prover_status != ProverStatus::StagesCompleted {
             if stage_id <= num_stages {
@@ -106,32 +115,17 @@ where
             prover_status = self.provers_manager.compute_stage(stage_id, &mut self.proof_ctx);
 
             // if stage_id == num_stages {
-            //     for i in 0..self.proof_ctx.pilout.subproofs.len() {
-            //         let subproof = self.proof_ctx.pilout.subproofs[i];
-            //         let sub_air_values = subproof.subproofvalues;
-            //         if sub_air_values.is_none() {
-            //             continue;
-            //         }
-            //         let instances = self.proof_ctx.air_instances.iter().filter(|air_instance| air_instance.subproof_id == i);
-            //         for j in 0..sub_air_values.unwrap().len() {
-            //             let agg_type = sub_air_values.unwrap()[j].agg_type;
-            //             for instance in instances {
-            //                 let subproof_value = instance.ctx.sub_air_values[j];
-            //                 self.proof_ctx.sub_air_values[i][j] = if agg_type == 0 {
-            //                     self.proof_ctx.F.add(self.proof_ctx.sub_air_values[i][j], subproof_value)
-            //                 } else {
-            //                     self.proof_ctx.F.mul(self.proof_ctx.sub_air_values[i][j], subproof_value)
-            //                 };
-            //             }
-            //         }
-            //     }
+            //     self.compute_subproof_values()?;
             // }
 
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
             if self.proofman_config.only_check {
                 info!("{}: ==> CHECKING CONSTRAINTS STAGE {}", Self::MY_NAME, stage_id);
 
-                if !self.provers_manager.verify_constraints(stage_id) {
+                let verified = self.provers_manager.verify_constraints(stage_id);
+                if verified {
+                    info!("{}: CONSTRAINTS VERIFICATION PASSED", Self::MY_NAME);
+                } else {
                     error!("{}: CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
                 }
 
@@ -140,8 +134,11 @@ where
                 if stage_id == num_stages {
                     info!("{}: ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
-                    if !self.provers_manager.verify_global_constraints() {
-                        error!("{}: Global constraints verification failed", Self::MY_NAME);
+                    let verified_global = self.provers_manager.verify_global_constraints();
+                    if verified_global {
+                        info!("{}: GLOBAL CONSTRAINTS VERIFICATION PASSED", Self::MY_NAME);
+                    } else {
+                        error!("{}: GLOBAL CONSTRAINTS VERIFICATION FAILED", Self::MY_NAME);
                     }
 
                     info!("{}: <== CHECKING GLOBAL CONSTRAINTS FINISHED", Self::MY_NAME);
@@ -170,6 +167,43 @@ where
         //     };
 
         Ok(&mut self.proof_ctx)
+    }
+
+    /// Computes subproof values for the proof context.
+    ///
+    /// This function iterates over the subproofs in the proof context,
+    /// aggregates their subproof values based on aggregation type, and updates
+    /// the proof context accordingly.
+    fn _compute_subproof_values(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        for (subproof_id, subproof_pilout) in self.proof_ctx.pilout.subproofs.iter().enumerate() {
+            let subproof_values_pilout = &subproof_pilout.subproofvalues;
+
+            if subproof_values_pilout.is_empty() {
+                log::warn!("{}: No subproof values for subproof {}", Self::MY_NAME, subproof_id);
+                continue;
+            }
+
+            // let subproof_ctx = &self.proof_ctx.subproofs[subproof_id];
+
+            // for (subproof_value_id, subproof_value_pilout) in subproof_values_pilout.iter().enumerate() {
+            //     for air_ctx in &subproof_ctx.airs {
+            //         for instance_ctx in &air_ctx.instances {
+            //             let subproof_value = instance_ctx.subproof_values[subproof_value_id].clone();
+
+            //             match AggregationType::try_from(subproof_value_pilout.agg_type).unwrap() {
+            //                 AggregationType::Sum => {
+            //                     // self.proof_ctx.subproof_values[subproof_id][subproof_value_id] += subproof_value;
+            //                 }
+            //                 AggregationType::Prod => {
+            //                     // self.proof_ctx.subproof_values[subproof_id][subproof_value_id] *= subproof_value;
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+        }
+
+        Ok(())
     }
 
     pub fn verify() {

@@ -1,6 +1,5 @@
 // extern crate env_logger;
 use clap::Parser;
-use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -18,13 +17,4 @@ pub struct ProveCmd {
     /// Public inputs file path
     #[clap(short, long)]
     pub public_inputs: Option<PathBuf>,
-}
-
-impl ProveCmd {
-    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove command");
-        println!("");
-
-        Ok(())
-    }
 }
