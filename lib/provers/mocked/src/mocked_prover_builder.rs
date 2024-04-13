@@ -38,6 +38,12 @@ mod tests {
         fn opening_stage(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<TestData>) -> ProverStatus {
             ProverStatus::StagesCompleted
         }
+        fn get_challenges(&mut self) -> &mut [TestData] {
+            unimplemented!()
+        }
+        fn get_subproof_values(&mut self) -> &mut [TestData] {
+            unimplemented!()
+        }
     }
 
     #[test]

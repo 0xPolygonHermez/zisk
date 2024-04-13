@@ -110,13 +110,12 @@ extern "C" {
     #[link_name = "\u{1}_Z10init_hintsv"]
     pub fn init_hints();
 
-    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_"]
     pub fn steps_params_new(
         pStarks: *mut ::std::os::raw::c_void,
         pChallenges: *mut ::std::os::raw::c_void,
         pSubproofValues: *mut ::std::os::raw::c_void,
         pEvals: *mut ::std::os::raw::c_void,
-        pXDivXSubXi: *mut ::std::os::raw::c_void,
         pPublicInputs: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 

@@ -44,6 +44,8 @@ where
         proofman_config: ProofManConfig,
         wc: I,
         prover_builder: PB,
+        // TODO! This flag si temporary while implementing vadcops. After that it must be removed.
+        fake_pilout: bool,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         PB: ProverBuilder<T>,
@@ -58,7 +60,7 @@ where
 
         debug!("{}: Initializing", Self::MY_NAME);
 
-        let pilout = PilOutProxy::new(proofman_config.get_pilout())?;
+        let pilout = PilOutProxy::new(proofman_config.get_pilout(), fake_pilout)?;
 
         //let's filter pilout symbols where type = WitnessCol
         // let witness_cols =
@@ -93,12 +95,8 @@ where
 
         let mut prover_status = ProverStatus::StagesPending;
         let mut stage_id = 1u32;
-        // TODO! Remove this if when we have the correct number of stages in the pilout
-        let num_stages = if self.proof_ctx.pilout.num_challenges.is_empty() {
-            3u32
-        } else {
-            self.proof_ctx.pilout.num_challenges.len() as u32
-        };
+
+        let num_stages = self.proof_ctx.pilout.num_stages();
 
         while prover_status != ProverStatus::StagesCompleted {
             if stage_id <= num_stages {

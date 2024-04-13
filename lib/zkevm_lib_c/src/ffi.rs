@@ -234,7 +234,6 @@ pub fn steps_params_new_c(
     p_challenges: *mut c_void,
     p_subproof_values: *mut c_void,
     p_evals: *mut c_void,
-    p_x_div_x_sub_xi: *mut c_void,
     p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     unsafe { steps_params_new(p_stark, p_challenges, p_subproof_values, p_evals, p_x_div_x_sub_xi, p_public_inputs) }
@@ -692,7 +691,6 @@ pub fn steps_params_new_c(
     _p_challenges: *mut c_void,
     _p_subproof_values: *mut c_void,
     _p_evals: *mut c_void,
-    _p_x_div_x_sub_xi: *mut c_void,
     _p_public_inputs: *mut c_void,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "steps_params_new: This is a mock call because there is no linked library");

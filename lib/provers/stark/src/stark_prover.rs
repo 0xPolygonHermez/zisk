@@ -28,9 +28,8 @@ pub struct StarkProver<T: AbstractField> {
     p_starkinfo: *mut c_void,
 
     evals: Vec<T>,
-    challenges: Vec<T>,
-    subproof_values: Vec<T>,
-    x_div_x_sub_xi: Vec<T>,
+    pub challenges: Vec<T>,
+    pub subproof_values: Vec<T>,
 
     hash_size: usize,
     merkle_tree_arity: Option<u64>,
@@ -75,7 +74,6 @@ impl<T: AbstractField> StarkProver<T> {
             evals: Vec::new(),
             challenges: Vec::new(),
             subproof_values: Vec::new(),
-            x_div_x_sub_xi: Vec::new(),
             hash_size: 0,
             merkle_tree_arity: None,
             merkle_tree_custom: None,
@@ -159,20 +157,16 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let transcript = self.transcript.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
 
+        let stark_info = self.stark_info.as_ref().unwrap();
+
         if stage_id == 1 {
             timer_start!(STARK_INITIALIZATION);
-
-            let stark_info = self.stark_info.as_ref().unwrap();
-
-            let n_extended = 1 << stark_info.stark_struct.n_bits_ext;
 
             self.evals = vec![T::zero(); stark_info.ev_map.len() * Self::FIELD_EXTENSION as usize];
             self.challenges =
                 vec![T::zero(); stark_info.challenges_map.as_ref().unwrap().len() * Self::FIELD_EXTENSION as usize];
             self.subproof_values =
                 vec![T::zero(); stark_info.n_subproof_values as usize * Self::FIELD_EXTENSION as usize];
-            self.x_div_x_sub_xi =
-                vec![T::zero(); stark_info.opening_points.len() * n_extended * Self::FIELD_EXTENSION as usize];
 
             self.p_proof = Some(fri_proof_new_c(p_stark));
 
@@ -181,7 +175,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
                 self.challenges.as_ptr() as *mut c_void,
                 self.subproof_values.as_ptr() as *mut c_void,
                 self.evals.as_ptr() as *mut c_void,
-                self.x_div_x_sub_xi.as_ptr() as *mut c_void,
                 proof_ctx.public_inputs.as_ptr() as *mut c_void,
             ));
 
@@ -227,6 +220,16 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
 
         timer_start!(STARK_COMMIT_STAGE_, stage_id);
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
+
+        let challenges_map = stark_info.challenges_map.as_ref().unwrap();
+
+        for i in 0..challenges_map.len() {
+            if challenges_map[i].stage_num == stage_id as u64 {
+                transcript.get_challenge(&self.challenges[i * Self::FIELD_EXTENSION] as *const T as *mut c_void);
+                set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
+            }
+        }
+
         compute_stage_c(
             p_stark,
             element_type,
@@ -236,6 +239,12 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             transcript.p_transcript,
             self.p_steps,
         );
+
+        let root = vec![T::zero(); self.hash_size];
+        treesGL_get_root_c(p_stark, stage_id as u64 - 1, root.as_ptr() as *mut c_void);
+
+        transcript.add_elements(root.as_ptr() as *mut c_void, self.hash_size);
+
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
         ProverStatus::StagesPending
@@ -261,6 +270,14 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         } else {
             ProverStatus::StagesPending
         }
+    }
+
+    fn get_challenges(&mut self) -> &mut [T] {
+        &mut self.challenges
+    }
+
+    fn get_subproof_values(&mut self) -> &mut [T] {
+        &mut self.subproof_values
     }
 }
 

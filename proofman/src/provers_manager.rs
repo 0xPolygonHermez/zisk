@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use util::{timer_start, timer_stop_and_log};
+use crate::AirInstanceCtx;
 use crate::proof_manager::ProverStatus;
 use crate::proof_ctx::ProofCtx;
 
@@ -12,17 +15,20 @@ pub trait Prover<T> {
     fn build(&mut self);
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
     fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
+    fn get_challenges(&mut self) -> &mut [T];
+    fn get_subproof_values(&mut self) -> &mut [T];
 }
 
 // PROVERS MANAGER
 // ================================================================================================
 pub struct ProversManager<T, PB> {
     prover_builder: PB,
-    provers: Vec<Box<dyn Prover<T>>>,
+    provers_map: HashMap<String, Box<dyn Prover<T>>>,
 }
 
 impl<T, PB> ProversManager<T, PB>
 where
+    T: Default + Clone,
     PB: ProverBuilder<T>,
 {
     const MY_NAME: &'static str = "prvrsMan";
@@ -30,7 +36,7 @@ where
     pub fn new(prover_builder: PB) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        Self { prover_builder, provers: Vec::new() }
+        Self { prover_builder, provers_map: HashMap::new() }
     }
 
     pub fn new_proof(&self) {
@@ -41,27 +47,38 @@ where
         debug!("{}: ==> SETUP", Self::MY_NAME);
     }
 
+    fn get_prover_id_from_air_instance(air_instance: &AirInstanceCtx<T>) -> String {
+        format!("{}-{}-{}", air_instance.subproof_id, air_instance.air_id, air_instance.instance_id)
+    }
+
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         // After computing the witness on stage 1, we assume we know the value of N for all air instances.
         // This allows us to construct each air instance prover depending on its features.
         if stage_id == 1 {
-            // TODO! Uncomment when implemented
             // self.new_proof();
 
             timer_start!(BUILDING_PROVERS);
             debug!("{}: ==> CREATING PROVERS {}", Self::MY_NAME, stage_id);
 
-            // TODO! When VADCOPS we will iterate and select the prover for each air instance.
-            let prover = self.prover_builder.build();
-            self.provers.push(prover);
+            for subproof_ctx in proof_ctx.subproofs.iter() {
+                for air_ctx in subproof_ctx.airs.iter() {
+                    for air_instance in air_ctx.instances.iter() {
+                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+                        let name = proof_ctx.pilout.name(air_instance.subproof_id, air_instance.air_id);
+
+                        debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
+
+                        let prover = self.prover_builder.build();
+                        self.provers_map.insert(prover_id, prover);
+                    }
+                }
+            }
 
             debug!("{}: <== CREATING PROVERS {}", Self::MY_NAME, stage_id);
             timer_stop_and_log!(BUILDING_PROVERS);
         }
 
-        // TODO! Uncomment this when pilout done!!!!
-        // let num_stages = proof_ctx.pilout.get_num_stages();
-        let num_stages = 4;
+        let num_stages = proof_ctx.pilout.num_stages();
 
         let status = if stage_id <= num_stages {
             // Commit phase
@@ -82,28 +99,33 @@ where
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         trace!("{}: ==> COMMIT STAGE {}", Self::MY_NAME, stage_id);
 
-        // for prover in self.provers.iter() {
-        //     prover.compute_stage(stage_id, proof_ctx);
-        // }
-        let status = self.provers[0].commit_stage(stage_id, proof_ctx);
+        let mut status: Option<ProverStatus> = None;
+        for (_, prover) in self.provers_map.iter_mut() {
+            let _status = prover.commit_stage(stage_id, proof_ctx);
+            if status.is_none() {
+                status = Some(_status);
+            }
+        }
+
         trace!("{}: <== COMMIT STAGE {}", Self::MY_NAME, stage_id);
 
-        status
+        status.unwrap()
     }
 
     fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         trace!("{}: ==> OPENING STAGE {}", Self::MY_NAME, opening_id);
 
-        // for prover in self.provers.iter() {
-        //     prover.opening_stage(stage_id, proof_ctx);
-        // }
-        // let stage = self.provers[0].opening_stage(stage_id, proof_ctx);
+        let mut status: Option<ProverStatus> = None;
+        for (_, prover) in self.provers_map.iter_mut() {
+            let _status = prover.opening_stage(opening_id, proof_ctx);
+            if status.is_none() {
+                status = Some(_status);
+            }
+        }
 
-        // state
-        let status = self.provers[0].opening_stage(opening_id, proof_ctx);
         trace!("{}: <== OPENING STAGE {}", Self::MY_NAME, opening_id);
 
-        status
+        status.unwrap()
     }
 
     pub fn verify_constraints(&self, stage_id: u32) -> bool {
@@ -118,69 +140,25 @@ where
         false
     }
 
-    fn _compute_global_challenge(&self, stage_id: u32, proof_ctx: &ProofCtx<T>) -> T {
-        trace!("{}: ··· Compute global challlenge (stage {})", Self::MY_NAME, stage_id);
+    fn _compute_global_challenge(&mut self, _stage_id: u32, _proof_ctx: &ProofCtx<T>) -> T {
+        // trace!("{}: ··· Compute global challlenge (stage {})", Self::MY_NAME, stage_id);
 
-        if stage_id == 1 {
-            //let public_values;
-            for subproof in proof_ctx.subproofs.iter() {
-                // let challenges = Vec::new();
+        // for subproof_ctx in proof_ctx.subproofs.iter() {
+        //     for air_ctx in subproof_ctx.airs.iter() {
+        //         for air_instance in air_ctx.instances.iter() {
+        // let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
 
-                for air in subproof.airs.iter() {
-                    let air_instances = &proof_ctx.subproofs[air.subproof_id].airs[air.air_id].instances;
+        // let prover = self.provers_map.get_mut(&prover_id).unwrap();
 
-                    for (instance_id, _instance) in air_instances.iter().enumerate() {
-                        trace!(
-                            "{}: ··· Computing global challenge. Adding constTree. Subproof {} Air {} Instance {}",
-                            Self::MY_NAME,
-                            air.subproof_id,
-                            air.air_id,
-                            instance_id
-                        );
+        //let challenges = prover.get_challenges();
+        // let prover = self.prover_builder.build();
+        // self.provers_map.insert(prover_id, prover);
+        // }
+        //     }
+        // }
 
-                        // challenges.push(air.setup.const_root);
-
-                        // if !publicValues {
-                        //     publicValues = airInstance.ctx.publics;
-                        // }
-                    }
-                }
-            }
-        }
-
-        for subproof in proof_ctx.subproofs.iter() {
-            // let challenges = Vec::new();
-
-            for air in subproof.airs.iter() {
-                let air_instances = &proof_ctx.subproofs[air.subproof_id].airs[air.air_id].instances;
-
-                for (instance_id, _instance) in air_instances.iter().enumerate() {
-                    trace!(
-                        "{}: ··· Computing global challenge. Adding subproof {} Air {} Instance {} value",
-                        Self::MY_NAME,
-                        air.subproof_id,
-                        air.air_id,
-                        instance_id
-                    );
-
-                    // let value = air_instances[instance_id].get_value();
-                    // challenges.push(value);
-
-                    // if (options.vadcop) {
-                    //     if(challenges.length > 0) {
-                    //         const challenge = await hashBTree(challenges);
-                    //         this.proofCtx.addChallengeToTranscript(challenge);
-                    //     }
-                    // } else {
-                    //     for (let k = 0; k < challenges.length; k++) {
-                    //         this.proofCtx.addChallengeToTranscript(challenges[k]);
-                    //     }
-                    // }
-                }
-            }
-        }
-
-        unimplemented!("{}: ==> COMPUTE NEXT CHALLENGE {}", Self::MY_NAME, stage_id);
+        // unimplemented!("{}: ==> COMPUTE NEXT CHALLENGE {}", Self::MY_NAME, stage_id);
+        T::default()
     }
 
     fn _set_global_challenge(&self, _challenge: T, _proof_ctx: &ProofCtx<T>) {
@@ -188,6 +166,6 @@ where
         //     airInstance.ctx.challenges[stageId] = challenges;
         // }
 
-        unimplemented!("{}: ==> SET GLOBAL CHALLENGE", Self::MY_NAME);
+        // unimplemented!("{}: ==> SET GLOBAL CHALLENGE", Self::MY_NAME);
     }
 }

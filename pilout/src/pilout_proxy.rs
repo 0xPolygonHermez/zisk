@@ -11,14 +11,16 @@ use util::{timer_start, timer_stop_and_log};
 #[derive(Debug)]
 pub struct PilOutProxy {
     pub pilout: PilOut,
+    // TODO! This flag si temporary while implementing vadcops. After that it must be removed.
+    fake_pilout: bool,
 }
 
 impl PilOutProxy {
     const MY_NAME: &'static str = "piloutPx";
 
-    pub fn new(pilout_filename: &str) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
+    pub fn new(pilout_filename: &str, fake_pilout: bool) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
         let pilout = Self::load_pilout(pilout_filename)?;
-        Ok(PilOutProxy { pilout })
+        Ok(PilOutProxy { pilout, fake_pilout })
     }
 
     fn load_pilout(pilout_filename: &str) -> Result<PilOut, DecodeError> {
@@ -48,7 +50,19 @@ impl PilOutProxy {
     }
 
     pub fn num_stages(&self) -> u32 {
+        if self.fake_pilout {
+            return 3;
+        }
+
         self.pilout.num_challenges.len() as u32
+    }
+
+    pub fn num_rows(&self, subproof_id: usize, air_id: usize) -> usize {
+        self.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize
+    }
+
+    pub fn name(&self, subproof_id: usize, air_id: usize) -> &str {
+        self.pilout.subproofs[subproof_id].airs[air_id].name.as_ref().unwrap()
     }
 
     pub fn print_pilout_info(&self) {
@@ -116,8 +130,9 @@ impl Deref for PilOutProxy {
     }
 }
 
+// TODO! To be removed
 impl Default for PilOutProxy {
     fn default() -> Self {
-        PilOutProxy { pilout: PilOut::default() }
+        PilOutProxy { pilout: PilOut::default(), fake_pilout: true }
     }
 }
