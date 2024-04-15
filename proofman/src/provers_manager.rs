@@ -24,6 +24,10 @@ pub trait Prover<T> {
 pub struct ProversManager<T, PB> {
     prover_builder: PB,
     provers_map: HashMap<String, Box<dyn Prover<T>>>,
+    // TODO! This flag is used only while developing vadcops. After that it must be removed.
+    // TODO! It allow us to inidicate that we are using a BIG trace matrix instead of a fully enhanced vadcops as it is used in the current zkEVM implementation.
+    // TODO! This flag must be removed after the implementation of vadcops.
+    dev_use_feature: bool,
 }
 
 impl<T, PB> ProversManager<T, PB>
@@ -33,10 +37,10 @@ where
 {
     const MY_NAME: &'static str = "prvrsMan";
 
-    pub fn new(prover_builder: PB) -> Self {
+    pub fn new(prover_builder: PB, dev_use_feature: bool) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        Self { prover_builder, provers_map: HashMap::new() }
+        Self { prover_builder, provers_map: HashMap::new(), dev_use_feature }
     }
 
     pub fn new_proof(&self) {
@@ -63,7 +67,7 @@ where
 
             for subproof_ctx in proof_ctx.subproofs.iter() {
                 for air_ctx in subproof_ctx.airs.iter() {
-                    if true {
+                    if self.dev_use_feature {
                         let prover_id = "0-0-0".to_string();
                         let name = "zkevm";
                         debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
