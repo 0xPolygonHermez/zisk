@@ -2,14 +2,15 @@
 #[allow(dead_code)]
 extern "C" {
 
-    #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_"]
+    #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_S0_"]
     pub fn zkevm_main(
         configFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
         pSMRequests: *mut *mut ::std::os::raw::c_void,
         pSMRequestsOut: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
-    
+
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
         pStarkInfo: *mut ::std::os::raw::c_void,
@@ -75,10 +76,19 @@ extern "C" {
 
     #[link_name = "\u{1}_Z13get_mapTotalNPv"]
     pub fn get_mapTotalN(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-    
+
     #[link_name = "\u{1}_Z14set_mapOffsetsPvS_"]
     pub fn set_mapOffsets(pStarkInfo: *mut c_void, pChelpers: *mut c_void);
 
+    #[link_name = "\u{1}_Z15get_map_offsetsPvPcb"]
+    pub fn get_map_offsets(pStarkInfo: *mut c_void, stage: *mut ::std::os::raw::c_char, flag: bool) -> u64;
+
+    #[link_name = "\u{1}_Z18get_map_sections_nPvPc"]
+    pub fn get_map_sections_n(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        stage: *mut ::std::os::raw::c_char,
+    ) -> u64;
+    
     #[link_name = "\u{1}_Z14starkinfo_freePv"]
     pub fn starkinfo_free(pStarkInfo: *mut ::std::os::raw::c_void);
 
@@ -167,6 +177,13 @@ extern "C" {
 
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64);
+
+    #[link_name = "\u{1}_Z14get_proof_rootPvmm"]
+    pub fn get_proof_root(
+        pProof: *mut ::std::os::raw::c_void,
+        stage_id: u64,
+        index: u64,
+    ) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z18get_vector_pointerPvPc"]
     pub fn get_vector_pointer(pStarks: *mut c_void, name: *mut ::std::os::raw::c_char) -> *mut c_void;

@@ -31,7 +31,7 @@ pub struct StarkProver<T: AbstractField> {
     pub challenges: Vec<T>,
     pub subproof_values: Vec<T>,
 
-    hash_size: usize,
+    n_field_elements: usize,
     merkle_tree_arity: Option<u64>,
     merkle_tree_custom: Option<bool>,
 
@@ -74,7 +74,7 @@ impl<T: AbstractField> StarkProver<T> {
             evals: Vec::new(),
             challenges: Vec::new(),
             subproof_values: Vec::new(),
-            hash_size: 0,
+            n_field_elements: 0,
             merkle_tree_arity: None,
             merkle_tree_custom: None,
             p_publics_calculated: std::ptr::null_mut(),
@@ -124,11 +124,11 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
         if stark_info.stark_struct.verification_hash_type == "BN128" {
-            self.hash_size = 1;
+            self.n_field_elements = 1;
             self.merkle_tree_arity = Some(stark_info.stark_struct.merkle_tree_arity);
             self.merkle_tree_custom = Some(stark_info.stark_struct.merkle_tree_custom);
         } else {
-            self.hash_size = Self::HASH_SIZE;
+            self.n_field_elements = Self::HASH_SIZE;
             self.merkle_tree_arity = Some(2);
             self.merkle_tree_custom = Some(true);
         }
@@ -194,20 +194,20 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             //--------------------------------
             timer_start!(STARK_COMMIT_STAGE_0);
 
-            let verkey = vec![T::zero(); self.hash_size];
+            let verkey = vec![T::zero(); self.n_field_elements];
             treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut c_void);
 
-            transcript.add_elements(verkey.as_ptr() as *mut c_void, self.hash_size);
+            transcript.add_elements(verkey.as_ptr() as *mut c_void, self.n_field_elements);
 
             if stark_info.stark_struct.hash_commits {
-                let hash = vec![T::zero(); self.hash_size];
+                let hash = vec![T::zero(); self.n_field_elements];
                 calculate_hash_c(
                     p_stark,
                     hash.as_ptr() as *mut c_void,
                     proof_ctx.public_inputs.as_ptr() as *mut c_void,
                     stark_info.n_publics,
                 );
-                transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+                transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
             } else {
                 transcript.add_elements(proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics as usize)
             }
@@ -222,7 +222,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
         let challenges_map = stark_info.challenges_map.as_ref().unwrap();
-
         for i in 0..challenges_map.len() {
             if challenges_map[i].stage_num == stage_id as u64 {
                 transcript.get_challenge(&self.challenges[i * Self::FIELD_EXTENSION] as *const T as *mut c_void);
@@ -240,10 +239,8 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             self.p_steps,
         );
 
-        let root = vec![T::zero(); self.hash_size];
-        treesGL_get_root_c(p_stark, stage_id as u64 - 1, root.as_ptr() as *mut c_void);
-
-        transcript.add_elements(root.as_ptr() as *mut c_void, self.hash_size);
+        let proof_root = get_proof_root_c(p_proof, stage_id as u64 - 1, 0);
+        transcript.add_elements(proof_root, self.n_field_elements);
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
@@ -303,14 +300,14 @@ impl<T: AbstractField> StarkProver<T> {
         compute_evals_c(p_stark, p_params, p_proof);
 
         if stark_info.stark_struct.hash_commits {
-            let hash = vec![T::zero(); self.hash_size];
+            let hash = vec![T::zero(); self.n_field_elements];
             calculate_hash_c(
                 p_stark,
                 hash.as_ptr() as *mut c_void,
                 self.evals.as_ptr() as *mut c_void,
                 stark_info.ev_map.len() as u64 * Self::FIELD_EXTENSION as u64,
             );
-            transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+            transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
         } else {
             transcript.add_elements(
                 self.evals.as_ptr() as *mut c_void,
@@ -362,15 +359,15 @@ impl<T: AbstractField> StarkProver<T> {
 
         if step < stark_info.stark_struct.steps.len() as u32 - 1 {
             let root = fri_proof_get_tree_root_c(p_proof, step as u64 + 1, 0);
-            transcript.add_elements(root, self.hash_size);
+            transcript.add_elements(root, self.n_field_elements);
         } else {
             let p_fri_pol = get_steps_params_field_c(self.p_params.unwrap(), "f_2ns");
             let n_elements: usize = (1 << stark_info.stark_struct.steps[step as usize].n_bits) * Self::FIELD_EXTENSION;
             if stark_info.stark_struct.hash_commits {
-                let hash = vec![T::zero(); self.hash_size];
+                let hash = vec![T::zero(); self.n_field_elements];
                 // TODO! get params.f_2ns
                 calculate_hash_c(p_stark, hash.as_ptr() as *mut c_void, p_fri_pol, n_elements as u64);
-                transcript.add_elements(hash.as_ptr() as *mut c_void, self.hash_size);
+                transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
             } else {
                 transcript.add_elements(p_fri_pol, n_elements as usize);
             }

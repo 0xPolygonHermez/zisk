@@ -54,6 +54,7 @@ where
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         // After computing the witness on stage 1, we assume we know the value of N for all air instances.
         // This allows us to construct each air instance prover depending on its features.
+
         if stage_id == 1 {
             // self.new_proof();
 
@@ -62,14 +63,23 @@ where
 
             for subproof_ctx in proof_ctx.subproofs.iter() {
                 for air_ctx in subproof_ctx.airs.iter() {
-                    for air_instance in air_ctx.instances.iter() {
-                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
-                        let name = proof_ctx.pilout.name(air_instance.subproof_id, air_instance.air_id);
-
+                    if true {
+                        let prover_id = "0-0-0".to_string();
+                        let name = "zkevm";
                         debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
 
                         let prover = self.prover_builder.build();
                         self.provers_map.insert(prover_id, prover);
+                    } else {
+                        for air_instance in air_ctx.instances.iter() {
+                            let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+                            let name = proof_ctx.pilout.name(air_instance.subproof_id, air_instance.air_id);
+
+                            debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
+
+                            let prover = self.prover_builder.build();
+                            self.provers_map.insert(prover_id, prover);
+                        }
                     }
                 }
             }
@@ -80,12 +90,12 @@ where
 
         let num_stages = proof_ctx.pilout.num_stages();
 
-        let status = if stage_id <= num_stages {
+        let status = if stage_id <= num_stages + 1 {
             // Commit phase
             self.commit_stage(stage_id, proof_ctx)
         } else {
             // Openings phase
-            self.opening_stage(stage_id - num_stages, proof_ctx)
+            self.opening_stage(stage_id - num_stages - 1, proof_ctx)
         };
 
         // if status != ProverStatus::StagesCompleted {
