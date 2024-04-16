@@ -19,7 +19,7 @@ impl TraceSetupCmd {
         println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Trace setup subcommand");
         println!("");
 
-        let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
+        let pilout = PilOutProxy::new(&self.pilout.display().to_string(), false)?;
         for (subproof_id, _subproof) in pilout.subproofs.iter().enumerate() {
             let output = match trace_setup_handler(&pilout, subproof_id) {
                 Ok(output) => output,

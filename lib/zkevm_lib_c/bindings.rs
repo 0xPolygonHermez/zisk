@@ -6,6 +6,7 @@ extern "C" {
         pAddress: *mut ::std::os::raw::c_void,
         pSMRequests: *const *const ::std::os::raw::c_void,
         pSMRequestsOut: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -303,10 +304,19 @@ extern "C" {
 
     #[link_name = "\u{1}_Z13get_mapTotalNPv"]
     pub fn get_mapTotalN(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-    
+
     #[link_name = "\u{1}_Z14set_mapOffsetsPvS_"]
     pub fn set_mapOffsets(pStarkInfo: *mut c_void, pChelpers: *mut c_void);
 
+    #[link_name = "\u{1}_Z15get_map_offsetsPvPcb"]
+    pub fn get_map_offsets(pStarkInfo: *mut c_void, stage: *mut ::std::os::raw::c_char, flag: bool) -> u64;
+
+    #[link_name = "\u{1}_Z18get_map_sections_nPvPc"]
+    pub fn get_map_sections_n(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        stage: *mut ::std::os::raw::c_char,
+    ) -> u64;
+    
     #[link_name = "\u{1}_Z14starkinfo_freePv"]
     pub fn starkinfo_free(pStarkInfo: *mut ::std::os::raw::c_void);
 
@@ -338,13 +348,12 @@ extern "C" {
     #[link_name = "\u{1}_Z10init_hintsv"]
     pub fn init_hints();
 
-    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_"]
     pub fn steps_params_new(
         pStarks: *mut ::std::os::raw::c_void,
         pChallenges: *mut ::std::os::raw::c_void,
         pSubproofValues: *mut ::std::os::raw::c_void,
         pEvals: *mut ::std::os::raw::c_void,
-        pXDivXSubXi: *mut ::std::os::raw::c_void,
         pPublicInputs: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 
@@ -396,6 +405,13 @@ extern "C" {
 
     #[link_name = "\u{1}_Z19compute_fri_queriesPvS_Pm"]
     pub fn compute_fri_queries(pStarks: *mut c_void, pProof: *mut c_void, friQueries: *mut u64);
+
+    #[link_name = "\u{1}_Z14get_proof_rootPvmm"]
+    pub fn get_proof_root(
+        pProof: *mut ::std::os::raw::c_void,
+        stage_id: u64,
+        index: u64,
+    ) -> *mut ::std::os::raw::c_void;
 
     #[link_name = "\u{1}_Z18get_vector_pointerPvPc"]
     pub fn get_vector_pointer(pStarks: *mut c_void, name: *mut ::std::os::raw::c_char) -> *mut c_void;

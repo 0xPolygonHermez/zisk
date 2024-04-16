@@ -55,7 +55,7 @@ impl NewCmd {
             Err("Pilout file does not exist")?;
         }
 
-        let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
+        let pilout = PilOutProxy::new(&self.pilout.display().to_string(), false)?;
 
         let root_folder = Path::new(&self.name);
         if root_folder.exists() {

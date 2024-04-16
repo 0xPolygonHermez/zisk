@@ -32,4 +32,12 @@ impl<T> Prover<T> for MockedProver<T> {
 
         ProverStatus::StagesCompleted
     }
+
+    fn get_challenges(&mut self) -> &mut [T] {
+        unimplemented!()
+    }
+
+    fn get_subproof_values(&mut self) -> &mut [T] {
+        unimplemented!()
+    }
 }

@@ -72,7 +72,7 @@ fn main() {
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder) {
+    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder, false) {
         Ok(proofman) => proofman,
         Err(err) => {
             println!("Error: {:?}", err);
