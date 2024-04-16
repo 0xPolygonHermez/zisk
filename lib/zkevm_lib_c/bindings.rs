@@ -84,11 +84,8 @@ extern "C" {
     pub fn get_map_offsets(pStarkInfo: *mut c_void, stage: *mut ::std::os::raw::c_char, flag: bool) -> u64;
 
     #[link_name = "\u{1}_Z18get_map_sections_nPvPc"]
-    pub fn get_map_sections_n(
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        stage: *mut ::std::os::raw::c_char,
-    ) -> u64;
-    
+    pub fn get_map_sections_n(pStarkInfo: *mut ::std::os::raw::c_void, stage: *mut ::std::os::raw::c_char) -> u64;
+
     #[link_name = "\u{1}_Z14starkinfo_freePv"]
     pub fn starkinfo_free(pStarkInfo: *mut ::std::os::raw::c_void);
 
@@ -280,4 +277,9 @@ extern "C" {
 
     #[link_name = "\u{1}_Z15polinomial_freePv"]
     pub fn polinomial_free(pPolinomial: *mut c_void);
+
+    // Poseidon
+    // ========================================================================================
+    #[link_name = "\u{1}_Z22goldilocks_linear_hashPvS_"]
+    pub fn goldilocks_linear_hash(pInput: *mut ::std::os::raw::c_void, pOutput: *mut ::std::os::raw::c_void);
 }

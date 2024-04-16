@@ -526,6 +526,13 @@ pub fn polinomial_free_c(p_polinomial: *mut c_void) {
     }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn goldilocks_linear_hash_c(pInput: *mut c_void, pOutput: *mut c_void) {
+    unsafe {
+        goldilocks_linear_hash(pInput, pOutput);
+    }
+}
+
 // ------------------------
 // MOCK METHODS FOR TESTING
 // ------------------------
@@ -943,4 +950,13 @@ pub fn polinomial_get_p_element_c(_p_polinomial: *mut c_void, _index: u64) -> *m
 #[cfg(feature = "no_lib_link")]
 pub fn polinomial_free_c(_p_polinomial: *mut c_void) {
     trace!("{}: ··· {}", "mckzkevm", "polinomial_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn goldilocks_linear_hash_c(pInput: *mut c_void, pOutput: *mut c_void) {
+    trace!(
+        "{}: ··· {}",
+        "mckzkevm",
+        "goldilocks_linear_hash_c: This is a mock call because there is no linked library"
+    );
 }
