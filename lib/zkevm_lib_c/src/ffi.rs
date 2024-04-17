@@ -828,9 +828,10 @@ pub fn goldilocks_linear_hash_c(pInput: *mut c_void, pOutput: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn zkevm_main_c(
     config_filename: &str,
-    p_address: *mut c_void,
-    p_secondary_sm_inputs_c: *const *const ::std::os::raw::c_void,
-    p_secondary_sm_inputs: *mut c_void,
+    p_address: *mut u8,
+    p_sm_requests: *mut u8,
+    p_sm_requests_out: *mut u8,
+    _p_stark_info: *mut c_void,
 ) -> ::std::os::raw::c_int {
     trace!(
         "{}: ··· {} {}",
