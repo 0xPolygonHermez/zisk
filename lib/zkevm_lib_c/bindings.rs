@@ -1,16 +1,244 @@
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
-#[allow(dead_code)]
 extern "C" {
-
     #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_S0_"]
     pub fn zkevm_main(
         configFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
-        pSMRequests: *mut *mut ::std::os::raw::c_void,
+        pSMRequests: *const *const ::std::os::raw::c_void,
         pSMRequestsOut: *mut ::std::os::raw::c_void,
         pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_binary_reqPvS_"]
+    pub fn zkevm_binary_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_delete_sm_requestsPPv"]
+    pub fn zkevm_delete_sm_requests(pSMRequests: *const *const ::std::os::raw::c_void) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15zkevm_mem_alignPviS_"]
+    pub fn zkevm_mem_align(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_mem_align_reqPvS_"]
+    pub fn zkevm_mem_align_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
 
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_sha256PviS_S_S_"]
+    pub fn zkevm_padding_sha256(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_padding_sha256_reqPvS_"]
+    pub fn zkevm_padding_sha256_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_padding_sha256_bitPviS_S_S_"]
+    pub fn zkevm_padding_sha256_bit(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z28zkevm_padding_sha256_bit_reqPvS_"]
+    pub fn zkevm_padding_sha256_bit_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z23zkevm_bits2field_sha256PviS_S_S_"]
+    pub fn zkevm_bits2field_sha256(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z27zkevm_bits2field_sha256_reqPvS_"]
+    pub fn zkevm_bits2field_sha256_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z14zkevm_sha256_fPviS_"]
+    pub fn zkevm_sha256_f(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z18zkevm_sha256_f_reqPvS_"]
+    pub fn zkevm_sha256_f_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_padding_kkPviS_S_S_"]
+    pub fn zkevm_padding_kk(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_kk_reqPvS_"]
+    pub fn zkevm_padding_kk_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_kk_bitPviS_S_S_"]
+    pub fn zkevm_padding_kk_bit(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z24zkevm_padding_kk_bit_reqPvS_"]
+    pub fn zkevm_padding_kk_bit_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_bits2field_kkPviS_S_S_"]
+    pub fn zkevm_bits2field_kk(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+        pSMRequests: *const ::std::os::raw::c_void,
+        pSMRequestsOut: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z23zkevm_bits2field_kk_reqPvS_"]
+    pub fn zkevm_bits2field_kk_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z17zkevm_storage_reqPvS_"]
+    pub fn zkevm_storage_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_padding_pg_reqPvS_"]
+    pub fn zkevm_padding_pg_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19zkevm_climb_key_reqPvS_"]
+    pub fn zkevm_climb_key_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20zkevm_poseidon_g_reqPvS_"]
+    pub fn zkevm_poseidon_g_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z12zkevm_memoryPviS_"]
+    pub fn zkevm_memory(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16zkevm_memory_reqPvS_"]
+    pub fn zkevm_memory_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z11zkevm_arithPviS_"]
+    pub fn zkevm_arith(
+        inputs: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15zkevm_arith_reqPvS_"]
+    pub fn zkevm_arith_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z14zkevm_keccak_fPviS_"]
+    pub fn zkevm_keccak_f(
+        inputs_: *const ::std::os::raw::c_void,
+        ninputs: ::std::os::raw::c_int,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z18zkevm_keccak_f_reqPvS_"]
+    pub fn zkevm_keccak_f_req(
+        pSMRequests: *const ::std::os::raw::c_void,
+        pAddress: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+}
+
+#[allow(dead_code)]
+extern "C" {
     #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
     pub fn save_proof(
         pStarkInfo: *mut ::std::os::raw::c_void,
