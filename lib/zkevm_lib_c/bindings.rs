@@ -1,6 +1,6 @@
 // Rust FFI declaration for the C function `int zkevm_prover_c(char* config_filename)`
 extern "C" {
-    #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_"]
+    #[link_name = "\u{1}_Z10zkevm_mainPcPvPS0_S0_S0_"]
     pub fn zkevm_main(
         configFile: *mut ::std::os::raw::c_char,
         pAddress: *mut ::std::os::raw::c_void,
