@@ -19,7 +19,8 @@ use util::cli::*;
 // ================================================================================================
 #[derive(Debug, PartialEq)]
 pub enum ProverStatus {
-    StagesPending,
+    CommitStage,
+    OpeningStage,
     StagesCompleted,
 }
 
@@ -35,7 +36,7 @@ pub struct ProofManager<'a, T, PB> {
 
 impl<'a, T, PB> ProofManager<'a, T, PB>
 where
-    T: Default + Clone + AbstractField,
+    T: Default + Copy + Clone + AbstractField,
     PB: ProverBuilder<T>,
 {
     const MY_NAME: &'static str = "proofMan";
@@ -96,28 +97,21 @@ where
 
         self.proof_ctx.initialize_proof(public_inputs);
 
-        let mut prover_status = ProverStatus::StagesPending;
+        let mut prover_status = ProverStatus::CommitStage;
         let mut stage_id = 1u32;
 
-        let num_stages = self.proof_ctx.pilout.num_stages();
-
         while prover_status != ProverStatus::StagesCompleted {
-            if stage_id <= num_stages {
+            if prover_status == ProverStatus::CommitStage {
                 self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
             }
 
-            // Once the first witness computation is done we assume we have initialized the air instances.
-            // So, we know the number of row for each air instance and we can select the setup for each air instance.
+            // After computing the witness on stage 1, we assume we know the value of N for all air instances.
+            // This allows us to construct each air instance prover depending on its features.
             if stage_id == 1 {
-                // TODO!
-                self.provers_manager.setup(/*&setup*/);
+                self.provers_manager.init_provers(&self.proof_ctx);
             }
 
             prover_status = self.provers_manager.compute_stage(stage_id, &mut self.proof_ctx);
-
-            // if stage_id == num_stages {
-            //     self.compute_subproof_values()?;
-            // }
 
             // If onlyCheck is true, we check the constraints stage by stage from stage1 to stageQ - 1 and do not generate the proof
             if self.proofman_config.only_check {
@@ -132,7 +126,7 @@ where
 
                 info!("{}: <== CHECKING CONSTRAINTS STAGE {} FINISHED", Self::MY_NAME, stage_id);
 
-                if stage_id == num_stages {
+                if stage_id == self.provers_manager.num_stages().unwrap() {
                     info!("{}: ==> CHECKING GLOBAL CONSTRAINTS", Self::MY_NAME);
 
                     let verified_global = self.provers_manager.verify_global_constraints();

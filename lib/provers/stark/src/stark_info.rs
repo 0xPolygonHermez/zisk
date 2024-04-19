@@ -142,7 +142,7 @@ pub struct StarkInfo {
     pub n_constants: u64,
 
     #[serde(default, rename = "nStages")]
-    pub n_stages: u64,
+    pub n_stages: u32,
 
     #[serde(rename = "cmPolsMap")]
     pub cm_pols_map: Option<Vec<PolMap>>,

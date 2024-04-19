@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
+use goldilocks::AbstractField;
+use pilout::pilout::AggregationType;
 use util::{timer_start, timer_stop_and_log};
 use crate::AirInstanceCtx;
 use crate::proof_manager::ProverStatus;
 use crate::proof_ctx::ProofCtx;
+
+use crate::hash_btree::hash_btree_256;
 
 use log::{debug, trace};
 
@@ -13,10 +17,15 @@ pub trait ProverBuilder<T> {
 
 pub trait Prover<T> {
     fn build(&mut self);
+    fn num_stages(&self) -> u32;
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
     fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
-    fn get_challenges(&mut self) -> &mut [T];
-    fn get_subproof_values(&mut self) -> &mut [T];
+    // Returns a slice representing the root of a Merkle tree with a size of 256 bits.
+    // This root can be inserted into a transcript and used to generate a new challenge.
+    // Due to implementation reasons, we return a slice of 4 elements, each of 64 bits.
+    fn get_commit_stage_root_challenge_256(&self, stage_id: u32) -> Option<[u64; 4]>;
+    fn get_opening_stage_root_challenge_256(&self, opening_id: u32) -> Option<[u64; 4]>;
+    fn add_root_challenge_256_to_transcript(&mut self, root_challenge: [u64; 4]);
 }
 
 // PROVERS MANAGER
@@ -24,6 +33,7 @@ pub trait Prover<T> {
 pub struct ProversManager<T, PB> {
     prover_builder: PB,
     provers_map: HashMap<String, Box<dyn Prover<T>>>,
+    num_stages: Option<u32>,
     // TODO! This flag is used only while developing vadcops. After that it must be removed.
     // TODO! It allow us to inidicate that we are using a BIG trace matrix instead of a fully enhanced vadcops as it is used in the current zkEVM implementation.
     // TODO! This flag must be removed after the implementation of vadcops.
@@ -32,7 +42,7 @@ pub struct ProversManager<T, PB> {
 
 impl<T, PB> ProversManager<T, PB>
 where
-    T: Default + Clone,
+    T: Default + Copy + Clone + AbstractField,
     PB: ProverBuilder<T>,
 {
     const MY_NAME: &'static str = "prvrsMan";
@@ -40,15 +50,53 @@ where
     pub fn new(prover_builder: PB, dev_use_feature: bool) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        Self { prover_builder, provers_map: HashMap::new(), dev_use_feature }
+        Self { prover_builder, provers_map: HashMap::new(), dev_use_feature, num_stages: None }
     }
 
     pub fn new_proof(&self) {
         todo!("{}: ==> NEW PROOF", Self::MY_NAME);
     }
 
-    pub fn setup(&mut self /*&public_inputs, &self.options*/) {
-        debug!("{}: ==> SETUP", Self::MY_NAME);
+    pub fn init_provers(&mut self, proof_ctx: &ProofCtx<T>) {
+        // self.new_proof();
+        timer_start!(SETUP_PROVERS);
+        debug!("{}: ==> CREATING PROVERS", Self::MY_NAME);
+
+        for subproof_ctx in proof_ctx.subproofs.iter() {
+            for air_ctx in subproof_ctx.airs.iter() {
+                // TODO! This flag is used only while developing vadcops. After that it must be removed.
+                if self.dev_use_feature {
+                    let prover_id = "0-0-0".to_string();
+                    let name = "zkevm";
+                    debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
+
+                    let prover = self.prover_builder.build();
+                    self.num_stages = Some(prover.num_stages());
+                    self.provers_map.insert(prover_id, prover);
+                } else {
+                    for air_instance in air_ctx.instances.iter() {
+                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+                        let name = proof_ctx.pilout.name(air_instance.subproof_id, air_instance.air_id);
+
+                        debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
+
+                        let prover = self.prover_builder.build();
+                        if subproof_ctx.subproof_id == 0 && air_ctx.air_id == 0 {
+                            self.num_stages = Some(prover.num_stages());
+                        }
+                        self.provers_map.insert(prover_id, prover);
+                    }
+                }
+            }
+        }
+
+        debug!("{}: <== CREATING PROVERS", Self::MY_NAME);
+        timer_stop_and_log!(SETUP_PROVERS);
+    }
+
+    // This function is used to get the number of stages of the prover.
+    pub fn num_stages(&self) -> Option<u32> {
+        self.num_stages
     }
 
     fn get_prover_id_from_air_instance(air_instance: &AirInstanceCtx<T>) -> String {
@@ -56,56 +104,35 @@ where
     }
 
     pub fn compute_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
-        // After computing the witness on stage 1, we assume we know the value of N for all air instances.
-        // This allows us to construct each air instance prover depending on its features.
+        let status = if stage_id <= self.num_stages.unwrap() + 1 {
+            // Commit phase
+            let status = self.commit_stage(stage_id, proof_ctx);
 
-        if stage_id == 1 {
-            // self.new_proof();
-
-            timer_start!(BUILDING_PROVERS);
-            debug!("{}: ==> CREATING PROVERS {}", Self::MY_NAME, stage_id);
-
-            for subproof_ctx in proof_ctx.subproofs.iter() {
-                for air_ctx in subproof_ctx.airs.iter() {
-                    if self.dev_use_feature {
-                        let prover_id = "0-0-0".to_string();
-                        let name = "zkevm";
-                        debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
-
-                        let prover = self.prover_builder.build();
-                        self.provers_map.insert(prover_id, prover);
-                    } else {
-                        for air_instance in air_ctx.instances.iter() {
-                            let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
-                            let name = proof_ctx.pilout.name(air_instance.subproof_id, air_instance.air_id);
-
-                            debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
-
-                            let prover = self.prover_builder.build();
-                            self.provers_map.insert(prover_id, prover);
-                        }
-                    }
+            if status != ProverStatus::StagesCompleted {
+                let challenge = self.compute_commit_stage_global_challenge(stage_id, proof_ctx);
+                if let Some(ch) = challenge {
+                    self.set_global_challenge(ch, stage_id, proof_ctx);
                 }
             }
-
-            debug!("{}: <== CREATING PROVERS {}", Self::MY_NAME, stage_id);
-            timer_stop_and_log!(BUILDING_PROVERS);
-        }
-
-        let num_stages = proof_ctx.pilout.num_stages();
-
-        let status = if stage_id <= num_stages + 1 {
-            // Commit phase
-            self.commit_stage(stage_id, proof_ctx)
+            status
         } else {
+            let opening_id = stage_id - self.num_stages.unwrap() - 1;
             // Openings phase
-            self.opening_stage(stage_id - num_stages - 1, proof_ctx)
+            let status = self.opening_stage(opening_id, proof_ctx);
+
+            if status != ProverStatus::StagesCompleted {
+                let challenge = self.compute_opening_stage_global_challenge(opening_id, proof_ctx);
+                if let Some(ch) = challenge {
+                    self.set_global_challenge(ch, stage_id, proof_ctx);
+                }
+            }
+            status
         };
 
-        // if status != ProverStatus::StagesCompleted {
-        //     let challenge = self.compute_global_challenge(stage_id, proof_ctx);
-        //     self.set_global_challenge(challenge, proof_ctx);
-        // }
+        // Compute subproof values
+        if stage_id == self.num_stages.unwrap() {
+            self.compute_subproof_values(proof_ctx);
+        }
 
         status
     }
@@ -154,32 +181,150 @@ where
         false
     }
 
-    fn _compute_global_challenge(&mut self, _stage_id: u32, _proof_ctx: &ProofCtx<T>) -> T {
-        // trace!("{}: ··· Compute global challlenge (stage {})", Self::MY_NAME, stage_id);
+    fn compute_commit_stage_global_challenge(&mut self, stage_id: u32, proof_ctx: &ProofCtx<T>) -> Option<[u64; 4]> {
+        trace!("{}: ··· Compute commit stage global challlenge (stage {})", Self::MY_NAME, stage_id);
 
-        // for subproof_ctx in proof_ctx.subproofs.iter() {
-        //     for air_ctx in subproof_ctx.airs.iter() {
-        //         for air_instance in air_ctx.instances.iter() {
-        // let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+        let mut challenges = Vec::new();
 
-        // let prover = self.provers_map.get_mut(&prover_id).unwrap();
+        for subproof_ctx in proof_ctx.subproofs.iter() {
+            for air_ctx in subproof_ctx.airs.iter() {
+                // TODO! This flag is used only while developing vadcops. After that it must be removed.
+                if self.dev_use_feature {
+                    let prover_id = "0-0-0".to_string();
 
-        //let challenges = prover.get_challenges();
-        // let prover = self.prover_builder.build();
-        // self.provers_map.insert(prover_id, prover);
-        // }
-        //     }
-        // }
+                    let prover = self.provers_map.get_mut(&prover_id).unwrap();
 
-        // unimplemented!("{}: ==> COMPUTE NEXT CHALLENGE {}", Self::MY_NAME, stage_id);
-        T::default()
+                    let challenge = prover.get_commit_stage_root_challenge_256(stage_id);
+
+                    if let Some(ch) = challenge {
+                        challenges.push(ch);
+                    }
+                } else {
+                    for air_instance in air_ctx.instances.iter() {
+                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+
+                        let prover = self.provers_map.get(&prover_id).unwrap();
+
+                        let challenge = prover.get_commit_stage_root_challenge_256(stage_id);
+
+                        if let Some(ch) = challenge {
+                            challenges.push(ch);
+                        }
+                    }
+                }
+            }
+        }
+
+        if challenges.is_empty() {
+            return None;
+        }
+
+        let global_challenge = hash_btree_256(&mut challenges)
+            .unwrap_or_else(|_| panic!("{}: Error computing global challenge", Self::MY_NAME));
+
+        Some(global_challenge)
     }
 
-    fn _set_global_challenge(&self, _challenge: T, _proof_ctx: &ProofCtx<T>) {
-        // for (const airInstance of this.proofCtx.airInstances) {
-        //     airInstance.ctx.challenges[stageId] = challenges;
-        // }
+    fn compute_opening_stage_global_challenge(&mut self, opening_id: u32, proof_ctx: &ProofCtx<T>) -> Option<[u64; 4]> {
+        trace!("{}: ··· Compute opening stage global challlenge (stage {})", Self::MY_NAME, opening_id);
 
-        // unimplemented!("{}: ==> SET GLOBAL CHALLENGE", Self::MY_NAME);
+        let mut challenges = Vec::new();
+
+        for subproof_ctx in proof_ctx.subproofs.iter() {
+            for air_ctx in subproof_ctx.airs.iter() {
+                // TODO! This flag is used only while developing vadcops. After that it must be removed.
+                if self.dev_use_feature {
+                    let prover_id = "0-0-0".to_string();
+
+                    let prover = self.provers_map.get_mut(&prover_id).unwrap();
+
+                    let challenge = prover.get_opening_stage_root_challenge_256(opening_id);
+
+                    if let Some(ch) = challenge {
+                        challenges.push(ch);
+                    }
+                } else {
+                    for air_instance in air_ctx.instances.iter() {
+                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+
+                        let prover = self.provers_map.get(&prover_id).unwrap();
+
+                        let challenge = prover.get_opening_stage_root_challenge_256(opening_id);
+
+                        if let Some(ch) = challenge {
+                            challenges.push(ch);
+                        }
+                    }
+                }
+            }
+        }
+
+        if challenges.is_empty() {
+            return None;
+        }
+
+        let global_challenge = hash_btree_256(&mut challenges)
+            .unwrap_or_else(|_| panic!("{}: Error computing global challenge", Self::MY_NAME));
+
+        Some(global_challenge)
+    }
+
+    fn set_global_challenge(&mut self, global_challenge: [u64; 4], stage_id: u32, proof_ctx: &ProofCtx<T>) {
+        trace!(
+            "{}: ··· Set global challlenge (stage {}): [{}, {}, {}, {}]",
+            Self::MY_NAME,
+            stage_id,
+            global_challenge[0],
+            global_challenge[1],
+            global_challenge[2],
+            global_challenge[3]
+        );
+
+        for subproof_ctx in proof_ctx.subproofs.iter() {
+            for air_ctx in subproof_ctx.airs.iter() {
+                // TODO! This flag is used only while developing vadcops. After that it must be removed.
+                if self.dev_use_feature {
+                    let prover_id = "0-0-0".to_string();
+
+                    let prover = self.provers_map.get_mut(&prover_id).unwrap();
+
+                    prover.add_root_challenge_256_to_transcript(global_challenge);
+                } else {
+                    for air_instance in air_ctx.instances.iter() {
+                        let prover_id = Self::get_prover_id_from_air_instance(&air_instance);
+
+                        let prover = self.provers_map.get_mut(&prover_id).unwrap();
+
+                        prover.add_root_challenge_256_to_transcript(global_challenge);
+                    }
+                }
+            }
+        }
+    }
+
+    fn compute_subproof_values(&self, proof_ctx: &mut ProofCtx<T>) {
+        for subproof_ctx in proof_ctx.subproofs.iter() {
+            let subair_values = &proof_ctx.pilout.subproofs[subproof_ctx.subproof_id as usize].subproofvalues;
+
+            for j in 0..subair_values.len() {
+                let agg_type = AggregationType::try_from(subair_values[j].agg_type)
+                    .unwrap_or_else(|_| panic!("{}: Invalid aggregation type", Self::MY_NAME));
+
+                for air_ctx in subproof_ctx.airs.iter() {
+                    for air_instance in air_ctx.instances.iter() {
+                        let subproof_value = air_instance.subproof_values[j];
+
+                        proof_ctx.subproof_values[subproof_ctx.subproof_id][j] = match agg_type {
+                            AggregationType::Sum => {
+                                subproof_value + proof_ctx.subproof_values[subproof_ctx.subproof_id][j]
+                            }
+                            AggregationType::Prod => {
+                                subproof_value * proof_ctx.subproof_values[subproof_ctx.subproof_id][j]
+                            }
+                        };
+                    }
+                }
+            }
+        }
     }
 }

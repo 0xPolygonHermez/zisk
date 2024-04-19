@@ -21,10 +21,16 @@ impl<T> Prover<T> for MockedProver<T> {
         info!("{}: <-> Mocked prover - BUILD", Self::MY_NAME);
     }
 
+    fn num_stages(&self) -> u32 {
+        info!("{}: <-> Mocked prover - NUM STAGES", Self::MY_NAME);
+
+        1
+    }
+
     fn commit_stage(&mut self, stage_id: u32, _proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         info!("{}: <-> Mocked prover - STAGE {}", Self::MY_NAME, stage_id);
 
-        ProverStatus::StagesPending
+        ProverStatus::OpeningStage
     }
 
     fn opening_stage(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
@@ -33,11 +39,15 @@ impl<T> Prover<T> for MockedProver<T> {
         ProverStatus::StagesCompleted
     }
 
-    fn get_challenges(&mut self) -> &mut [T] {
-        unimplemented!()
+    fn get_commit_stage_root_challenge_256(&self, _stage_id: u32) -> Option<[u64; 4]> {
+        unimplemented!();
     }
 
-    fn get_subproof_values(&mut self) -> &mut [T] {
-        unimplemented!()
+    fn get_opening_stage_root_challenge_256(&self, _opening_id: u32) -> Option<[u64; 4]> {
+        unimplemented!();
+    }
+
+    fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {
+        unimplemented!();
     }
 }

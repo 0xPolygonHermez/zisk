@@ -32,16 +32,26 @@ mod tests {
     impl Prover<TestData> for TestData {
         // Dummy implementation for testing
         fn build(&mut self) {}
+
+        fn num_stages(&self) -> u32 {
+            1
+        }
+
         fn commit_stage(&mut self, _stage_id: u32, _proof_ctx: &mut ProofCtx<TestData>) -> ProverStatus {
-            ProverStatus::StagesPending
+            ProverStatus::OpeningStage
         }
         fn opening_stage(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<TestData>) -> ProverStatus {
             ProverStatus::StagesCompleted
         }
-        fn get_challenges(&mut self) -> &mut [TestData] {
+        fn get_commit_stage_root_challenge_256(&self, _stage_id: u32) -> Option<[u64; 4]> {
             unimplemented!()
         }
-        fn get_subproof_values(&mut self) -> &mut [TestData] {
+
+        fn get_opening_stage_root_challenge_256(&self, _opening_id: u32) -> Option<[u64; 4]> {
+            unimplemented!()
+        }
+
+        fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {
             unimplemented!()
         }
     }

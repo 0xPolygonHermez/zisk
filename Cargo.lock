@@ -721,6 +721,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "util",
+ "zkevm-lib-c",
 ]
 
 [[package]]

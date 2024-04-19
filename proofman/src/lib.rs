@@ -2,6 +2,7 @@ pub mod command_handlers;
 pub mod executor;
 pub mod trace;
 pub mod channel;
+mod hash_btree;
 pub mod message;
 mod proof_ctx;
 pub mod proof_manager_config;

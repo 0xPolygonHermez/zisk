@@ -1,6 +1,7 @@
 use goldilocks::{AbstractField, Goldilocks};
 use proofman::proof_manager::ProverStatus;
 use transcript::FFITranscript;
+use core::slice;
 use std::any::type_name;
 
 use proofman::provers_manager::Prover;
@@ -147,6 +148,10 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         timer_stop_and_log!(ESTARK_PROVER_NEW);
     }
 
+    fn num_stages(&self) -> u32 {
+        self.stark_info.as_ref().unwrap().n_stages
+    }
+
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
 
@@ -195,22 +200,18 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             timer_start!(STARK_COMMIT_STAGE_0);
 
             let verkey = vec![T::zero(); self.n_field_elements];
-            treesGL_get_root_c(p_stark, stark_info.n_stages + 1, verkey.as_ptr() as *mut c_void);
+            treesGL_get_root_c(p_stark, stark_info.n_stages as u64 + 1, verkey.as_ptr() as *mut c_void);
 
             transcript.add_elements(verkey.as_ptr() as *mut c_void, self.n_field_elements);
 
-            if stark_info.stark_struct.hash_commits {
-                let hash = vec![T::zero(); self.n_field_elements];
-                calculate_hash_c(
-                    p_stark,
-                    hash.as_ptr() as *mut c_void,
-                    proof_ctx.public_inputs.as_ptr() as *mut c_void,
-                    stark_info.n_publics,
-                );
-                transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
-            } else {
-                transcript.add_elements(proof_ctx.public_inputs.as_ptr() as *mut c_void, stark_info.n_publics as usize)
-            }
+            let hash = vec![T::zero(); self.n_field_elements];
+            calculate_hash_c(
+                p_stark,
+                hash.as_ptr() as *mut c_void,
+                proof_ctx.public_inputs.as_ptr() as *mut c_void,
+                stark_info.n_publics,
+            );
+            transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
 
             timer_stop_and_log!(STARK_COMMIT_STAGE_0);
         }
@@ -221,13 +222,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         timer_start!(STARK_COMMIT_STAGE_, stage_id);
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
-        let challenges_map = stark_info.challenges_map.as_ref().unwrap();
-        for i in 0..challenges_map.len() {
-            if challenges_map[i].stage_num == stage_id as u64 {
-                transcript.get_challenge(&self.challenges[i * Self::FIELD_EXTENSION] as *const T as *mut c_void);
-                set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
-            }
-        }
+        self.compute_stage_challenges(stage_id);
 
         compute_stage_c(
             p_stark,
@@ -239,12 +234,13 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             self.p_steps,
         );
 
-        let proof_root = get_proof_root_c(p_proof, stage_id as u64 - 1, 0);
-        transcript.add_elements(proof_root, self.n_field_elements);
-
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
-        ProverStatus::StagesPending
+        if stage_id < self.num_stages() + 1 {
+            ProverStatus::CommitStage
+        } else {
+            ProverStatus::OpeningStage
+        }
     }
 
     fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
@@ -265,81 +261,130 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         if opening_id == last_stage_id {
             ProverStatus::StagesCompleted
         } else {
-            ProverStatus::StagesPending
+            ProverStatus::OpeningStage
         }
     }
 
-    fn get_challenges(&mut self) -> &mut [T] {
-        &mut self.challenges
+    fn get_commit_stage_root_challenge_256(&self, stage_id: u32) -> Option<[u64; 4]> {
+        let p_root_challenge = get_proof_root_c(self.p_proof.unwrap(), stage_id as u64 - 1, 0);
+        let p_root_challenge = unsafe { &*(p_root_challenge as *mut u64) };
+
+        let challenge: &[u64] = unsafe { slice::from_raw_parts(p_root_challenge, self.n_field_elements as usize) };
+
+        let challenge: [u64; 4] = challenge.try_into().unwrap_or_else(|_| {
+            panic!("Expected a slice of length 4");
+        });
+
+        Some(challenge)
     }
 
-    fn get_subproof_values(&mut self) -> &mut [T] {
-        &mut self.subproof_values
+    fn get_opening_stage_root_challenge_256(&self, opening_id: u32) -> Option<[u64; 4]> {
+        let stark_info = self.stark_info.as_ref().unwrap();
+        let last_stage_id = 2 + stark_info.stark_struct.steps.len() as u32 + 1;
+        let p_stark = self.p_stark.unwrap();
+
+        let mut challenge = vec![0u64; self.n_field_elements];
+
+        match opening_id {
+            1 => {
+                // Compute evals
+                calculate_hash_c(
+                    p_stark,
+                    challenge.as_ptr() as *mut c_void,
+                    self.evals.as_ptr() as *mut c_void,
+                    stark_info.ev_map.len() as u64 * Self::FIELD_EXTENSION as u64,
+                );
+            }
+
+            // Compute FRI polynomial => Nothing to be done
+            // Note: After computing FRI polynomial add a new challenge is not needed because during the first ietration of FRI folding any challenge is needed
+            2 => {
+                return None;
+            }
+
+            opening_id if opening_id < last_stage_id => {
+                // Compute FRI folding
+                let step = opening_id - 3;
+                if step < stark_info.stark_struct.steps.len() as u32 - 1 {
+                    let p_root_challenge = fri_proof_get_tree_root_c(self.p_proof.unwrap(), step as u64 + 1, 0);
+                    let p_root_challenge = unsafe { &*(p_root_challenge as *mut u64) };
+
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(p_root_challenge, challenge.as_mut_ptr(), self.n_field_elements);
+                    }
+                } else {
+                    let p_fri_pol = get_steps_params_field_c(self.p_params.unwrap(), "f_2ns");
+                    let n_elements: usize =
+                        (1 << stark_info.stark_struct.steps[step as usize].n_bits) * Self::FIELD_EXTENSION;
+
+                    calculate_hash_c(p_stark, challenge.as_mut_ptr() as *mut c_void, p_fri_pol, n_elements as u64);
+                }
+            }
+
+            // Compute FRI Queries => Last stage, nothing to be done
+            opening_id if opening_id == last_stage_id => {
+                return None;
+            }
+            _ => {
+                panic!("Opening stage not implemented");
+            }
+        }
+
+        let challenge: [u64; 4] = challenge.try_into().unwrap_or_else(|_| {
+            panic!("Expected a slice of length 4");
+        });
+
+        Some(challenge)
+    }
+
+    fn add_root_challenge_256_to_transcript(&mut self, root_challenge: [u64; 4]) {
+        self.transcript.as_mut().unwrap().add_elements(root_challenge.as_ptr() as *mut c_void, 4);
     }
 }
 
 impl<T: AbstractField> StarkProver<T> {
-    fn compute_evals(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
-        let p_stark = self.p_stark.unwrap();
+    fn compute_stage_challenges(&self, stage_id: u32) {
         let stark_info = self.stark_info.as_ref().unwrap();
-        let p_params = self.p_params.unwrap();
-        let p_proof = self.p_proof.unwrap();
+        let p_stark = self.p_stark.unwrap();
         let transcript = self.transcript.as_ref().unwrap();
-
-        debug!("{}: ··· Computing evaluations", Self::MY_NAME);
 
         let challenges_map = stark_info.challenges_map.as_ref().unwrap();
 
         for i in 0..challenges_map.len() {
-            if challenges_map[i].stage_num == stark_info.n_stages + 2 {
+            if challenges_map[i].stage_num == stage_id as u64 {
                 transcript.get_challenge(&self.challenges[i * Self::FIELD_EXTENSION] as *const T as *mut c_void);
                 set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
             }
-        }
-
-        compute_evals_c(p_stark, p_params, p_proof);
-
-        if stark_info.stark_struct.hash_commits {
-            let hash = vec![T::zero(); self.n_field_elements];
-            calculate_hash_c(
-                p_stark,
-                hash.as_ptr() as *mut c_void,
-                self.evals.as_ptr() as *mut c_void,
-                stark_info.ev_map.len() as u64 * Self::FIELD_EXTENSION as u64,
-            );
-            transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
-        } else {
-            transcript.add_elements(
-                self.evals.as_ptr() as *mut c_void,
-                stark_info.ev_map.len() as usize * Self::FIELD_EXTENSION,
-            );
         }
     }
 
-    fn compute_fri_pol(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+    fn compute_evals(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+        let stark_info = self.stark_info.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
         let p_params = self.p_params.unwrap();
+        let p_proof = self.p_proof.unwrap();
+
+        debug!("{}: ··· Computing evaluations", Self::MY_NAME);
+
+        self.compute_stage_challenges(stark_info.n_stages as u32 + 2);
+
+        compute_evals_c(p_stark, p_params, p_proof);
+    }
+
+    fn compute_fri_pol(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
         let stark_info = self.stark_info.as_ref().unwrap();
-        let n_stages = stark_info.n_stages;
-        let transcript = self.transcript.as_ref().unwrap();
+        let p_stark = self.p_stark.unwrap();
+        let p_params = self.p_params.unwrap();
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
 
-        let challenges_map = stark_info.challenges_map.as_ref().unwrap();
+        self.compute_stage_challenges(stark_info.n_stages as u32 + 3);
 
-        for i in 0..challenges_map.len() {
-            if challenges_map[i].stage_num == stark_info.n_stages + 3 {
-                transcript.get_challenge(&self.challenges[i * Self::FIELD_EXTENSION] as *const T as *mut c_void);
-                set_symbol_calculated_c(p_stark, OpType::Challenge.as_integer(), i as u64);
-            }
-        }
-
-        self.p_fri_pol = Some(compute_fri_pol_c(p_stark, n_stages + 2, p_params, self.p_steps));
+        self.p_fri_pol = Some(compute_fri_pol_c(p_stark, stark_info.n_stages as u64 + 2, p_params, self.p_steps));
     }
 
     fn compute_fri_folding(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
         let p_stark = self.p_stark.unwrap();
-        let stark_info = self.stark_info.as_ref().unwrap();
         let p_proof = self.p_proof.unwrap();
         let transcript = self.transcript.as_ref().unwrap();
         let step = opening_id - 3;
@@ -356,22 +401,6 @@ impl<T: AbstractField> StarkProver<T> {
             step as u64,
             challenge.as_ptr() as *mut c_void,
         );
-
-        if step < stark_info.stark_struct.steps.len() as u32 - 1 {
-            let root = fri_proof_get_tree_root_c(p_proof, step as u64 + 1, 0);
-            transcript.add_elements(root, self.n_field_elements);
-        } else {
-            let p_fri_pol = get_steps_params_field_c(self.p_params.unwrap(), "f_2ns");
-            let n_elements: usize = (1 << stark_info.stark_struct.steps[step as usize].n_bits) * Self::FIELD_EXTENSION;
-            if stark_info.stark_struct.hash_commits {
-                let hash = vec![T::zero(); self.n_field_elements];
-                // TODO! get params.f_2ns
-                calculate_hash_c(p_stark, hash.as_ptr() as *mut c_void, p_fri_pol, n_elements as u64);
-                transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
-            } else {
-                transcript.add_elements(p_fri_pol, n_elements as usize);
-            }
-        }
     }
 
     fn compute_fri_queries(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<T>) {

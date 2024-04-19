@@ -1,4 +1,3 @@
-pub mod hash_btree;
 pub mod stark_config;
 pub mod stark_prover_builder;
 pub mod stark_prover_settings;
