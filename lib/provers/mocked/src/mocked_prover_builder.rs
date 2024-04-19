@@ -14,7 +14,7 @@ impl<T> MockedProverBuilder<T> {
 
 /// ProverBuilder trait implementation for MockedProverBuilder
 impl<T: 'static> ProverBuilder<T> for MockedProverBuilder<T> {
-    fn build(&mut self) -> Box<dyn Prover<T>> {
+    fn build(&self) -> Box<dyn Prover<T>> {
         Box::new(MockedProver::new())
     }
 }
@@ -31,7 +31,7 @@ mod tests {
     // Implement Prover trait for TestData
     impl Prover<TestData> for TestData {
         // Dummy implementation for testing
-        fn build(&mut self) {}
+        fn build(&self) {}
 
         fn num_stages(&self) -> u32 {
             1

@@ -373,6 +373,7 @@ dependencies = [
  "prover-mocked",
  "serde",
  "serde_json",
+ "stark",
 ]
 
 [[package]]

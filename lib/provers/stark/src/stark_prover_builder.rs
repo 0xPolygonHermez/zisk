@@ -26,7 +26,7 @@ impl<T> StarkProverBuilder<T> {
 }
 
 impl<T: 'static + AbstractField> ProverBuilder<T> for StarkProverBuilder<T> {
-    fn build(&mut self) -> Box<dyn Prover<T>> {
+    fn build(&self) -> Box<dyn Prover<T>> {
         let mut prover =
             Box::new(StarkProver::new(self.config.clone(), self.p_starkinfo, self.p_chelpers, self.p_steps, self.ptr));
         prover.build();

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use log::debug;
 use goldilocks::Goldilocks;
 
@@ -30,7 +32,10 @@ fn main() {
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = match ProofManager::new(proofman_config, executor_vec, prover_builder, false) {
+    let mut prover_builders = HashMap::new();
+    prover_builders.insert("Fibonacci".to_string(), prover_builder);
+
+    let mut proofman = match ProofManager::new(proofman_config, executor_vec, prover_builders, false) {
         Ok(proofman) => proofman,
         Err(err) => {
             println!("Error: {:?}", err);

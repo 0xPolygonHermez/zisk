@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use goldilocks::AbstractField;
+use goldilocks::{AbstractField, ExtensionField};
 use pilout::pilout::AggregationType;
 use util::{timer_start, timer_stop_and_log};
 use crate::AirInstanceCtx;
@@ -12,7 +12,7 @@ use crate::hash_btree::hash_btree_256;
 use log::{debug, trace};
 
 pub trait ProverBuilder<T> {
-    fn build(&mut self) -> Box<dyn Prover<T>>;
+    fn build(&self) -> Box<dyn Prover<T>>;
 }
 
 pub trait Prover<T> {
@@ -20,6 +20,7 @@ pub trait Prover<T> {
     fn num_stages(&self) -> u32;
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
     fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus;
+
     // Returns a slice representing the root of a Merkle tree with a size of 256 bits.
     // This root can be inserted into a transcript and used to generate a new challenge.
     // Due to implementation reasons, we return a slice of 4 elements, each of 64 bits.
@@ -31,7 +32,7 @@ pub trait Prover<T> {
 // PROVERS MANAGER
 // ================================================================================================
 pub struct ProversManager<T, PB> {
-    prover_builder: PB,
+    prover_builders: HashMap<String, PB>,
     provers_map: HashMap<String, Box<dyn Prover<T>>>,
     num_stages: Option<u32>,
     // TODO! This flag is used only while developing vadcops. After that it must be removed.
@@ -47,10 +48,10 @@ where
 {
     const MY_NAME: &'static str = "prvrsMan";
 
-    pub fn new(prover_builder: PB, dev_use_feature: bool) -> Self {
+    pub fn new(prover_builders: HashMap<String, PB>, dev_use_feature: bool) -> Self {
         debug!("{}: Initializing", Self::MY_NAME);
 
-        Self { prover_builder, provers_map: HashMap::new(), dev_use_feature, num_stages: None }
+        Self { prover_builders, provers_map: HashMap::new(), dev_use_feature, num_stages: None }
     }
 
     pub fn new_proof(&self) {
@@ -70,7 +71,12 @@ where
                     let name = "zkevm";
                     debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
 
-                    let prover = self.prover_builder.build();
+                    let prover = self
+                        .prover_builders
+                        .get(name)
+                        .unwrap_or_else(|| panic!("{}: Prover '{}' not found", Self::MY_NAME, name))
+                        .build();
+
                     self.num_stages = Some(prover.num_stages());
                     self.provers_map.insert(prover_id, prover);
                 } else {
@@ -80,7 +86,12 @@ where
 
                         debug!("{}: ··· Creating prover '{}' id: {}", Self::MY_NAME, name, prover_id);
 
-                        let prover = self.prover_builder.build();
+                        let prover = self
+                            .prover_builders
+                            .get(name)
+                            .unwrap_or_else(|| panic!("{}: Prover '{}' not found", Self::MY_NAME, name))
+                            .build();
+
                         if subproof_ctx.subproof_id == 0 && air_ctx.air_id == 0 {
                             self.num_stages = Some(prover.num_stages());
                         }

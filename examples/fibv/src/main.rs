@@ -19,6 +19,7 @@ use serde_json;
 
 use clap::Parser;
 use proofman_cli::commands::prove::ProveCmd;
+use stark::stark_prover_settings::StarkProverSettings;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
@@ -56,6 +57,21 @@ fn main() {
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
+    // let stark_config = StarkProverSettings {
+    //     current_path: "",
+    //     const_pols_filename: "",
+    //     map_const_pols_file: "",
+    //     const_tree_filename: "",
+    //     stark_info_filename: "",
+    //     verkey_filename: "",
+    //     chelpers_filename: "",        
+    // }
+
+
+
+
+
+
     //read public inputs file
     let public_inputs_filename = arguments.public_inputs.as_ref().unwrap();
     let public_inputs = match std::fs::read_to_string(&public_inputs_filename) {
@@ -72,19 +88,19 @@ fn main() {
 
     let prover_builder = MockedProverBuilder::<Goldilocks>::new();
 
-    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder, false) {
-        Ok(proofman) => proofman,
-        Err(err) => {
-            println!("Error: {:?}", err);
-            return;
-        }
-    };
+    // let mut proofman = match ProofManager::new(proofman_config, executors, prover_builder, false) {
+    //     Ok(proofman) => proofman,
+    //     Err(err) => {
+    //         println!("Error: {:?}", err);
+    //         return;
+    //     }
+    // };
 
-    let now = std::time::Instant::now();
-    let proof = proofman.prove(Some(public_inputs.into()));
-    if let Err(err) = proof {
-        println!("Error: {}", err);
-    }
+    // let now = std::time::Instant::now();
+    // let proof = proofman.prove(Some(public_inputs.into()));
+    // if let Err(err) = proof {
+    //     println!("Error: {}", err);
+    // }
 
-    debug!("Proof generated in {} ms", now.elapsed().as_millis());
+    // debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::provers_manager::ProverBuilder;
 use colored::Colorize;
 use goldilocks::AbstractField;
@@ -44,7 +46,7 @@ where
     pub fn new<I>(
         proofman_config: ProofManConfig,
         wc: I,
-        prover_builder: PB,
+        prover_builders: HashMap<String, PB>,
         // TODO! This flag is used only while developing vadcops. After that it must be removed.
         // TODO! It allows us to inidicate that we are using a BIG trace matrix instead of a fully enhanced vadcops as it is used in the current zkEVM implementation.
         // TODO! It allows us to indicate we are using a fake pilout instead of a real pilout.
@@ -79,7 +81,7 @@ where
 
         // Add ProverManager
         debug!("{}: ··· Creating prover manager", Self::MY_NAME);
-        let provers_manager = ProversManager::new(prover_builder, dev_use_feature);
+        let provers_manager = ProversManager::new(prover_builders, dev_use_feature);
 
         Ok(Self { proofman_config, proof_ctx, wc_manager, provers_manager })
     }

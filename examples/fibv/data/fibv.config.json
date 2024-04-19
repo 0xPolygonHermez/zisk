@@ -4,11 +4,14 @@
     "prover": {
         "variant": "stark",
         "settings": {
-            "Fibonacci": {
-                "stark_info": "./fibv.prover_config.json"
+            "Fibonacci_2": {
+                "stark_info": "examples/fibv/config/Fibonacci_2.starkinfo.json"
+            },
+            "Fibonacci_4": {
+                "stark_info": "examples/fibv/config/Fibonacci_4.starkinfo.json"
             },
             "Module": {
-                "stark_info": "./fibv.prover_config.json"
+                "stark_info": "examples/fibv/config/Module.starkinfo.json"
             }
         }
     }

@@ -8,6 +8,7 @@ readme = "README.md"
 
 [dependencies]
 proofman = { path = "../../proofman" }
+stark = { path = "../../lib/provers/stark" }
 proofman-cli = { path = "../../proofman-cli" }
 prover-mocked = { path = "../../lib/provers/mocked" }
 log = { version = "0.4", default-features = false }
