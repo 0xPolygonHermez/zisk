@@ -109,6 +109,7 @@ pub fn zkevm_padding_sha256_bit_c(
     }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
 pub fn zkevm_padding_sha256_bit_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
@@ -458,6 +459,7 @@ pub fn get_map_offsets_c(pStarkInfo: *mut c_void, stage: &str, flag: bool) -> u6
     unsafe { get_map_offsets(pStarkInfo, stage.as_ptr() as *mut std::os::raw::c_char, flag) }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
 pub fn get_map_sections_n_c(pStarkInfo: *mut ::std::os::raw::c_void, stage: &str) -> u64 {
     let stage = CString::new(stage).unwrap();
     unsafe { get_map_sections_n(pStarkInfo, stage.as_ptr() as *mut std::os::raw::c_char) }
@@ -624,8 +626,12 @@ pub fn compute_fri_queries_c(p_stark: *mut c_void, p_proof: *mut c_void, p_fri_q
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_proof_root_c(pProof: *mut ::std::os::raw::c_void, stage_id: u64, index: u64) -> *mut ::std::os::raw::c_void {
-    unsafe { get_proof_root(pProof, stage_id, index) }
+pub fn get_proof_root_c(
+    p_proof: *mut ::std::os::raw::c_void,
+    stage_id: u64,
+    index: u64,
+) -> *mut ::std::os::raw::c_void {
+    unsafe { get_proof_root(p_proof, stage_id, index) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -837,7 +843,7 @@ pub fn zkevm_main_c(
         "{}: ··· {} {}",
         "mckzkevm",
         "zkevm_main_c: This is a mock call because there is no linked library. ",
-        config_filename
+        _config_filename
     );
     0
 }
@@ -967,6 +973,15 @@ pub fn zkevm_padding_kk_c(
     _pSMRequestsOut: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
     println!("zkevm_padding_kk_c: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkevm_padding_kk_req_c(
+    _pSMRequests: *const ::std::os::raw::c_void,
+    _pAddress: *const ::std::os::raw::c_void,
+) -> ::std::os::raw::c_int {
+    println!("zkevm_padding_kk_req_c: This is a mock call because there is no linked library");
     0
 }
 
@@ -1217,13 +1232,13 @@ pub fn set_mapOffsets_c(_pStarkInfo: *mut c_void, _pChelpers: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_map_offsets_c(pStarkInfo: *mut c_void, stage: &str, flag: bool) -> u64 {
+pub fn get_map_offsets_c(_p_stark_info: *mut c_void, _stage: &str, _flag: bool) -> u64 {
     trace!("{}: ··· {}", "mckzkevm", "get_map_offsets: This is a mock call because there is no linked library");
     0
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_map_sections_n_c(pStarkInfo: *mut ::std::os::raw::c_void, stage: &str) -> u64 {
+pub fn get_map_sections_n_c(_p_stark_info: *mut ::std::os::raw::c_void, _stage: &str) -> u64 {
     trace!("{}: ··· {}", "mckzkevm", "get_map_sections_n: This is a mock call because there is no linked library");
     0
 }
@@ -1353,7 +1368,11 @@ pub fn compute_fri_queries_c(_p_stark: *mut c_void, _p_proof: *mut c_void, _p_fr
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_proof_root_c(pProof: *mut ::std::os::raw::c_void, stage_id: u64, index: u64) -> *mut ::std::os::raw::c_void {
+pub fn get_proof_root_c(
+    _p_proof: *mut ::std::os::raw::c_void,
+    _stage_id: u64,
+    _index: u64,
+) -> *mut ::std::os::raw::c_void {
     trace!("{}: ··· {}", "mckzkevm", "get_proof_root: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -1504,7 +1523,7 @@ pub fn polinomial_free_c(_p_polinomial: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn goldilocks_linear_hash_c(pInput: *mut c_void, pOutput: *mut c_void) {
+pub fn goldilocks_linear_hash_c(_p_input: *mut c_void, _p_output: *mut c_void) {
     trace!(
         "{}: ··· {}",
         "mckzkevm",

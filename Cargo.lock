@@ -368,12 +368,14 @@ dependencies = [
  "env_logger",
  "goldilocks",
  "log",
+ "pilout",
  "proofman",
  "proofman-cli",
  "prover-mocked",
  "serde",
  "serde_json",
  "stark",
+ "zkevm-lib-c",
 ]
 
 [[package]]

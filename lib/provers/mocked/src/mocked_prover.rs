@@ -40,14 +40,12 @@ impl<T> Prover<T> for MockedProver<T> {
     }
 
     fn get_commit_stage_root_challenge_256(&self, _stage_id: u32) -> Option<[u64; 4]> {
-        unimplemented!();
+        Some([1u64; 4])
     }
 
     fn get_opening_stage_root_challenge_256(&self, _opening_id: u32) -> Option<[u64; 4]> {
-        unimplemented!();
+        Some([1u64; 4])
     }
 
-    fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {
-        unimplemented!();
-    }
+    fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {}
 }

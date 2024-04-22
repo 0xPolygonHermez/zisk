@@ -31,7 +31,7 @@ mod tests {
     // Implement Prover trait for TestData
     impl Prover<TestData> for TestData {
         // Dummy implementation for testing
-        fn build(&self) {}
+        fn build(&mut self) {}
 
         fn num_stages(&self) -> u32 {
             1
@@ -59,9 +59,9 @@ mod tests {
     #[test]
     fn test_mocked_prover_builder() {
         // Create a MockedProverBuilder instance
-        let mut builder = MockedProverBuilder::<TestData>::new();
+        let builder = MockedProverBuilder::<TestData>::new();
 
         // Build a prover using the builder
-        let _prover_box = builder.build();
+        let _ = builder.build();
     }
 }
