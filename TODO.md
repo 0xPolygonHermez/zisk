@@ -1,5 +1,6 @@
 #TODO
 
+
 [X] Change proof_ctx airs[idx] structure to instances[subproof_id][air_id]
 [X] Add macro executor!() to add _witness_computation function to control the entry and the exit of a witness_computation call
 [X] Simplify code for the executors
