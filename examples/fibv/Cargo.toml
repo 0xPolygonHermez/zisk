@@ -10,6 +10,8 @@ readme = "README.md"
 proofman = { path = "../../proofman" }
 stark = { path = "../../lib/provers/stark" }
 proofman-cli = { path = "../../proofman-cli" }
+zkevm-lib-c = { path = "../../lib/zkevm_lib_c" }
+pilout = { path = "../../pilout" }
 prover-mocked = { path = "../../lib/provers/mocked" }
 log = { version = "0.4", default-features = false }
 env_logger = { version = "0.11", default-features = false }

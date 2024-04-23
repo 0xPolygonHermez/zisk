@@ -395,6 +395,18 @@ pub fn _recursive2_steps_free_c(p_recursive2_steps: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn generic_steps_new_c() -> *mut ::std::os::raw::c_void {
+    unsafe { generic_steps_new() }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn generic_steps_free_c(p_generic_steps: *mut ::std::os::raw::c_void) {
+    unsafe {
+        generic_steps_free(p_generic_steps);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(p_stark: *mut c_void) -> *mut c_void {
     unsafe { fri_proof_new(p_stark) }
 }
@@ -1173,6 +1185,17 @@ pub fn _recursive2_steps_new_c() -> *mut std::os::raw::c_void {
 #[cfg(feature = "no_lib_link")]
 pub fn _recursive2_steps_free_c(_p_recursive2_steps: *mut c_void) {
     trace!("{}: ··· {}", "mckzkevm", "recursive2_steps_free_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn generic_steps_new_c() -> *mut ::std::os::raw::c_void {
+    trace!("{}: ··· {}", "mckzkevm", "generic_steps_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn generic_steps_free_c(_p_generic_steps: *mut ::std::os::raw::c_void) {
+    trace!("{}: ··· {}", "mckzkevm", "generic_steps_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

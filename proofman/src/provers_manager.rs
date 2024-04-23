@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use goldilocks::{AbstractField, ExtensionField};
+use goldilocks::AbstractField;
 use pilout::pilout::AggregationType;
 use util::{timer_start, timer_stop_and_log};
 use crate::AirInstanceCtx;
@@ -139,7 +139,8 @@ where
             }
             status
         };
-
+        println!("status: {:?}", status);
+        println!("stage_id: {}, self.num_stages: {:?}", stage_id, self.num_stages);
         // Compute subproof values
         if stage_id == self.num_stages.unwrap() {
             self.compute_subproof_values(proof_ctx);
@@ -314,17 +315,21 @@ where
     }
 
     fn compute_subproof_values(&self, proof_ctx: &mut ProofCtx<T>) {
+        println!("1");
         for subproof_ctx in proof_ctx.subproofs.iter() {
             let subair_values = &proof_ctx.pilout.subproofs[subproof_ctx.subproof_id as usize].subproofvalues;
-
+            println!("subair_values: {:?}", subair_values);
+            println!("proof_ctx.subproof_values: {:?}", proof_ctx.subproof_values);
             for j in 0..subair_values.len() {
+                println!("2");
                 let agg_type = AggregationType::try_from(subair_values[j].agg_type)
                     .unwrap_or_else(|_| panic!("{}: Invalid aggregation type", Self::MY_NAME));
 
                 for air_ctx in subproof_ctx.airs.iter() {
+                    println!("3");
                     for air_instance in air_ctx.instances.iter() {
+                        println!("subproof_value: {:?}", air_instance.subproof_values);
                         let subproof_value = air_instance.subproof_values[j];
-
                         proof_ctx.subproof_values[subproof_ctx.subproof_id][j] = match agg_type {
                             AggregationType::Sum => {
                                 subproof_value + proof_ctx.subproof_values[subproof_ctx.subproof_id][j]

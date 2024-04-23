@@ -15,6 +15,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
 
         let subproof_id = proof_ctx.pilout.find_subproof_id_by_name("Fibonacci").expect("Subproof not found");
         let air_id = 1;
+
         let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci { a: Goldilocks, b: Goldilocks });
@@ -27,6 +28,8 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             fib.a[i] = fib.b[i - 1];
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
+
+        proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib).expect("Error adding trace to air instance");
 
         debug!("FbnccExe: ··· Fibonacci trace generated");
     }

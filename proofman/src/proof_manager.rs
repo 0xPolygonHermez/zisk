@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::provers_manager::ProverBuilder;
 use colored::Colorize;
 use goldilocks::AbstractField;
-// use pilout::pilout::AggregationType;
 use pilout::pilout_proxy::PilOutProxy;
 use log::{debug, info, error};
 
@@ -164,43 +163,6 @@ where
         //     };
 
         Ok(&mut self.proof_ctx)
-    }
-
-    /// Computes subproof values for the proof context.
-    ///
-    /// This function iterates over the subproofs in the proof context,
-    /// aggregates their subproof values based on aggregation type, and updates
-    /// the proof context accordingly.
-    fn _compute_subproof_values(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        for (subproof_id, subproof_pilout) in self.proof_ctx.pilout.subproofs.iter().enumerate() {
-            let subproof_values_pilout = &subproof_pilout.subproofvalues;
-
-            if subproof_values_pilout.is_empty() {
-                log::warn!("{}: No subproof values for subproof {}", Self::MY_NAME, subproof_id);
-                continue;
-            }
-
-            // let subproof_ctx = &self.proof_ctx.subproofs[subproof_id];
-
-            // for (subproof_value_id, subproof_value_pilout) in subproof_values_pilout.iter().enumerate() {
-            //     for air_ctx in &subproof_ctx.airs {
-            //         for instance_ctx in &air_ctx.instances {
-            //             let subproof_value = instance_ctx.subproof_values[subproof_value_id].clone();
-
-            //             match AggregationType::try_from(subproof_value_pilout.agg_type).unwrap() {
-            //                 AggregationType::Sum => {
-            //                     // self.proof_ctx.subproof_values[subproof_id][subproof_value_id] += subproof_value;
-            //                 }
-            //                 AggregationType::Prod => {
-            //                     // self.proof_ctx.subproof_values[subproof_id][subproof_value_id] *= subproof_value;
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
-        }
-
-        Ok(())
     }
 
     pub fn verify() {

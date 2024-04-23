@@ -18,6 +18,9 @@ impl Executor<Goldilocks> for ModuleExecutor {
 
         trace!(Module { x: Goldilocks, q: Goldilocks, x_mod: Goldilocks });
 
+        let subproof_id = proof_ctx.pilout.find_subproof_id_by_name("Module").expect("Subproof not found");
+        let air_id = 0;
+
         let num_rows = proof_ctx.pilout.subproofs[subproof_id_fibo].airs[0].num_rows.unwrap() as usize;
         let mut module = Module::new(num_rows);
 
@@ -35,6 +38,8 @@ impl Executor<Goldilocks> for ModuleExecutor {
             b = a;
             a = module.x_mod[i];
         }
+
+        proof_ctx.add_trace_to_air_instance(subproof_id, air_id, module).expect("Error adding trace to air instance");
 
         debug!("modleExe: ··· Module trace generated");
     }
