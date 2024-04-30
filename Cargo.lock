@@ -358,6 +358,7 @@ dependencies = [
  "proofman",
  "proofman-cli",
  "prover-mocked",
+ "zkevm-lib-c",
 ]
 
 [[package]]
@@ -371,7 +372,6 @@ dependencies = [
  "pilout",
  "proofman",
  "proofman-cli",
- "prover-mocked",
  "serde",
  "serde_json",
  "stark",

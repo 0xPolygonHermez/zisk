@@ -1,3 +1,4 @@
+pub mod stark_buffer_manager;
 pub mod stark_config;
 pub mod stark_prover_builder;
 pub mod stark_prover_settings;

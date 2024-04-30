@@ -1,4 +1,8 @@
-use proofman::{executor, executor::Executor, ProofCtx, trace};
+use proofman::{
+    executor::{BufferManager, Executor},
+    trace, ProofCtx,
+};
+use proofman::executor;
 
 use goldilocks::{Goldilocks, AbstractField};
 
@@ -7,7 +11,12 @@ use log::debug;
 executor!(FibonacciExecutor);
 
 impl Executor<Goldilocks> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<Goldilocks>) {
+    fn witness_computation(
+        &self,
+        stage_id: u32,
+        proof_ctx: &mut ProofCtx<Goldilocks>,
+        _buffer_manager: Option<&Box<dyn BufferManager<Goldilocks>>>,
+    ) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
@@ -28,6 +37,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib).expect("Error adding trace to air instance");
+        let mocked_buffer = vec![0u8; num_rows];
+        proof_ctx.add_instance(subproof_id, air_id, mocked_buffer, fib).expect("Error adding trace to air instance");
     }
 }

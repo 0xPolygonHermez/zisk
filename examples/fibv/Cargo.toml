@@ -1,18 +1,18 @@
 [package]
 name = "fibv"
 version = "0.1.0"
+edition = "2021"
 description = "Examples of how to use the proofman prover and verifier"
 authors = ["Polygon Labs"]
-edition = "2021"
+build = "build.rs"
 readme = "README.md"
 
 [dependencies]
 proofman = { path = "../../proofman" }
+zkevm-lib-c = { path = "../../lib/zkevm_lib_c" }
 stark = { path = "../../lib/provers/stark" }
 proofman-cli = { path = "../../proofman-cli" }
-zkevm-lib-c = { path = "../../lib/zkevm_lib_c" }
 pilout = { path = "../../pilout" }
-prover-mocked = { path = "../../lib/provers/mocked" }
 log = { version = "0.4", default-features = false }
 env_logger = { version = "0.11", default-features = false }
 goldilocks = { path = "../../goldilocks"}

@@ -437,12 +437,12 @@ extern "C" {
         pPublicInputs: *mut c_void,
         numRootC: ::std::os::raw::c_ulong,
         pRootC: *mut c_void,
-    ) -> *mut c_void;
+    ) -> *mut ::std::os::raw::c_void;
 
     // Transcript
     // ========================================================================================
     #[link_name = "\u{1}_Z14transcript_newjmb"]
-    pub fn transcript_new(elementType: u32, arity: u64, custom: bool) -> *mut ::std::os::raw::c_void;
+    pub fn transcript_new(elementType: u32, arity: u64, custom: bool) -> *mut c_void;
 
     #[link_name = "\u{1}_Z14transcript_addPvS_m"]
     pub fn transcript_add(pTranscript: *mut c_void, pInput: *mut c_void, size: u64);

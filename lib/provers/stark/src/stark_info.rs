@@ -152,7 +152,7 @@ pub struct StarkInfo {
     pub ev_map: Vec<EvMap>,
 
     #[serde(default = "default_opening_points", rename = "openingPoints")]
-    pub opening_points: Vec<u64>,
+    pub opening_points: Vec<i64>,
 
     #[serde(default)]
     pub boundaries: Vec<Boundary>,
@@ -171,7 +171,7 @@ pub struct StarkInfo {
     pub map_total_n: u64,
 }
 
-fn default_opening_points() -> Vec<u64> {
+fn default_opening_points() -> Vec<i64> {
     vec![0, 1]
 }
 

@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use log::info;
-use proofman::ProofCtx;
+use proofman::{AirInstanceCtx, ProofCtx};
 use proofman::proof_manager::ProverStatus;
 use proofman::provers_manager::Prover;
 
@@ -17,7 +17,7 @@ impl<T> MockedProver<T> {
     }
 }
 impl<T> Prover<T> for MockedProver<T> {
-    fn build(&mut self) {
+    fn build(&mut self, _air_instance_ctx: &AirInstanceCtx<T>) {
         info!("{}: <-> Mocked prover - BUILD", Self::MY_NAME);
     }
 
@@ -48,4 +48,8 @@ impl<T> Prover<T> for MockedProver<T> {
     }
 
     fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {}
+
+    fn get_subproof_values(&self) -> Vec<T> {
+        vec![]
+    }
 }

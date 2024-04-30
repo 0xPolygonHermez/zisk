@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::ffi::c_void;
+use std::ptr::null_mut;
 
-use log::{debug, info};
+use log::debug;
 
 use goldilocks::{Goldilocks, AbstractField};
 
@@ -19,15 +21,12 @@ use serde_json;
 
 use clap::Parser;
 use proofman_cli::commands::prove::ProveCmd;
+use stark::stark_buffer_manager::StarkBufferManager;
 use stark::stark_prover_builder::StarkProverBuilder;
 use stark::stark_prover_settings::StarkProverSettings;
 
 use pilout::pilout_proxy::PilOutProxy;
 use zkevm_lib_c::ffi::*;
-
-// use zkevm_lib_c::ffi::*;
-
-// use stark::{stark_prover_builder::StarkProverBuilder, stark_prover_settings::StarkProverSettings};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
@@ -61,23 +60,19 @@ fn main() {
     env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
     let arguments: ProveCmd = ProveCmd::parse();
-    println!("{:?}", arguments.config);
+
     let config_json = std::fs::read_to_string(arguments.config).expect("Failed to read file");
     let proofman_config = ProofManConfig::parse_input_json(&config_json);
 
     //read public inputs file
     let public_inputs_filename = arguments.public_inputs.as_ref().unwrap();
-    let public_inputs = match std::fs::read_to_string(&public_inputs_filename) {
-        Ok(public_inputs) => FibVPublicInputs::new(&public_inputs),
-        Err(err) => {
-            println!("Error reading public inputs file '{}': {}", &public_inputs_filename.display(), err);
-            std::process::exit(1);
-        }
-    };
+    let public_inputs_json = std::fs::read_to_string(&public_inputs_filename).unwrap_or_else(|err| {
+        println!("Error reading public inputs file '{}': {}", &public_inputs_filename.display(), err);
+        std::process::exit(1);
+    });
+    let public_inputs = FibVPublicInputs::new(&public_inputs_json);
 
-    let fibonacci_executor = FibonacciExecutor::new();
-    let module_executor = ModuleExecutor::new();
-    let executors: Vec<&dyn Executor<Goldilocks>> = vec![&fibonacci_executor, &module_executor];
+    let mut buffer_manager = StarkBufferManager::<Goldilocks>::new();
 
     let pilout = PilOutProxy::new(proofman_config.get_pilout(), false).unwrap();
 
@@ -109,56 +104,48 @@ fn main() {
             check_file_exists(&stark_config.verkey_filename);
             check_file_exists(&stark_config.chelpers_filename);
 
-            init_hints_c();
-
-            let p_stark_info = stark_info_new_c(&stark_config.stark_info_filename);
-
-            let p_chelpers = chelpers_new_c(&stark_config.chelpers_filename);
-
-            set_mapOffsets_c(p_stark_info, p_chelpers);
-
             let p_steps = generic_steps_new_c();
             p_steps_vec.push(p_steps);
 
-            let map_total_n = get_mapTotalN_c(p_stark_info);
-            let buffer_size = map_total_n * std::mem::size_of::<Goldilocks>() as u64;
+            let prover_builder = StarkProverBuilder::new(stark_config.clone(), p_steps);
+            prover_builders.insert(air.name().to_owned(), prover_builder);
 
-            info!("MAIN: Preallocating a buffer of {}bytes", buffer_size);
-            // TODO!!!! IMPORTANT, buffer must be preallocated when  needed, now it's here while developing
-            let mut buffer = vec![0u8; buffer_size as usize];
-
-            let prover_builder = StarkProverBuilder::new(
-                stark_config.clone(),
-                p_stark_info,
-                p_chelpers,
-                p_steps,
-                buffer.as_mut_ptr() as *mut std::os::raw::c_void,
+            buffer_manager.insert_item(
+                subproof.name(),
+                &stark_config.stark_info_filename,
+                &stark_config.chelpers_filename,
             );
-
-            prover_builders.insert("zkevm".to_string(), prover_builder);
         }
     }
 
-    let mut proofman = match ProofManager::new(proofman_config, executors, prover_builders, false) {
-        Ok(proofman) => proofman,
-        Err(err) => {
-            println!("Error: {:?}", err);
-            return;
-        }
-    };
+    let fibonacci_executor = FibonacciExecutor::new();
+    let module_executor = ModuleExecutor::new();
+    let executors: Vec<&dyn Executor<Goldilocks>> = vec![&fibonacci_executor, &module_executor];
 
-    let now = std::time::Instant::now();
-    let proof = proofman.prove(Some(public_inputs.into()));
-    if let Err(err) = proof {
+    let mut proofman =
+        ProofManager::new(proofman_config, executors, prover_builders, Some(Box::new(buffer_manager)), false)
+            .unwrap_or_else(|err| {
+                println!("Error: {}", err);
+                std::process::exit(1);
+            });
+
+    let proof = proofman.prove(Some(public_inputs.into())).unwrap_or_else(|err| {
         println!("Error: {}", err);
-    }
+        std::process::exit(1);
+    });
 
     // Free memory p_steeps_vec
     for p_steps in p_steps_vec {
         generic_steps_free_c(p_steps);
-    }
+        if p_steps == null_mut() {
+            let void_1: *mut c_void = null_mut();
+            let void_2: *mut c_void = null_mut();
+            let vec_goldi_1 = Vec::<Goldilocks>::new();
+            let vec_goldi_2 = Vec::<Goldilocks>::new();
 
-    debug!("Proof generated in {} ms", now.elapsed().as_millis());
+            zkin_new_c(void_1, void_2, &vec_goldi_1, &vec_goldi_2);
+        }
+    }
 }
 
 fn check_file_exists(filename: &str) {

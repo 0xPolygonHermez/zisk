@@ -8,7 +8,7 @@ use proofman::provers_manager::Prover;
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
 use zkevm_lib_c::ffi::*;
-use proofman::ProofCtx;
+use proofman::{AirInstanceCtx, ProofCtx};
 use crate::stark_info::{OpType, StarkInfo};
 use crate::stark_prover_settings::StarkProverSettings;
 
@@ -19,7 +19,6 @@ pub struct StarkProver<T: AbstractField> {
     config: StarkProverSettings,
     p_chelpers: *mut c_void,
     p_steps: *mut c_void,
-    ptr: *mut c_void,
     pub p_stark: Option<*mut c_void>,
     p_params: Option<*mut c_void>,
     p_proof: Option<*mut c_void>,
@@ -57,14 +56,13 @@ impl<T: AbstractField> StarkProver<T> {
         p_starkinfo: *mut c_void,
         p_chelpers: *mut c_void,
         p_steps: *mut c_void,
-        ptr: *mut c_void,
+        // ptr: *mut c_void,
     ) -> Self {
         Self {
             initialized: false,
             config,
             p_chelpers,
             p_steps,
-            ptr,
             p_stark: None,
             p_params: None,
             p_proof: None,
@@ -93,12 +91,14 @@ impl<T: AbstractField> StarkProver<T> {
 }
 
 impl<T: AbstractField> Prover<T> for StarkProver<T> {
-    fn build(&mut self) {
+    fn build(&mut self, air_instance_ctx: &AirInstanceCtx<T>) {
         timer_start!(ESTARK_PROVER_NEW);
 
         let p_config = config_new_c(&self.config.current_path);
         let stark_info_json = std::fs::read_to_string(&self.config.stark_info_filename)
             .expect(format!("Failed to read file {}", &self.config.stark_info_filename).as_str());
+
+        let ptr = air_instance_ctx.buffer.as_ptr() as *mut c_void;
 
         self.stark_info = Some(StarkInfo::from_json(&stark_info_json));
 
@@ -109,7 +109,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
             self.config.const_tree_filename.as_str(),
             self.p_starkinfo,
             self.p_chelpers,
-            self.ptr,
+            ptr,
         );
 
         self.p_stark = Some(p_stark);
@@ -156,7 +156,10 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
 
         if !self.initialized {
-            self.build();
+            // TODO! When this method is called, the prover should be already initialized
+            // when commit stage will receive airinstanceCtx, the prover can be initialized
+            //TODO! Uncomment when ready!!!!
+            //self.build();
         }
 
         let transcript = self.transcript.as_ref().unwrap();
@@ -223,7 +226,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         let element_type = if type_name::<T>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
         self.compute_stage_challenges(stage_id);
-
+        println!("before compute_stage_c {}", stage_id);
         compute_stage_c(
             p_stark,
             element_type,
@@ -235,6 +238,8 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         );
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
+
+        debug!("!!!!!!!!subproof value: {:?}", self.subproof_values);
 
         if stage_id < self.num_stages() + 1 {
             ProverStatus::CommitStage
@@ -339,6 +344,10 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
 
     fn add_root_challenge_256_to_transcript(&mut self, root_challenge: [u64; 4]) {
         self.transcript.as_mut().unwrap().add_elements(root_challenge.as_ptr() as *mut c_void, 4);
+    }
+
+    fn get_subproof_values(&self) -> Vec<T> {
+        self.subproof_values.clone()
     }
 }
 

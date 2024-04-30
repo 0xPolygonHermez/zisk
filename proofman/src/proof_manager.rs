@@ -8,7 +8,7 @@ use log::{debug, info, error};
 
 use crate::provers_manager::ProversManager;
 
-use crate::executor::Executor;
+use crate::executor::{BufferManager, Executor};
 use crate::executor::executors_manager::{ExecutorsManager, ExecutorsManagerSequential};
 use crate::proof_manager_config::ProofManConfig;
 
@@ -33,6 +33,7 @@ pub struct ProofManager<'a, T, PB> {
     proof_ctx: ProofCtx<T>,
     wc_manager: ExecutorsManagerSequential<'a, T>,
     provers_manager: ProversManager<T, PB>,
+    buffer_manager: Option<Box<dyn BufferManager<T>>>,
 }
 
 impl<'a, T, PB> ProofManager<'a, T, PB>
@@ -46,6 +47,7 @@ where
         proofman_config: ProofManConfig,
         wc: I,
         prover_builders: HashMap<String, PB>,
+        buffer_manager: Option<Box<dyn BufferManager<T>>>,
         // TODO! This flag is used only while developing vadcops. After that it must be removed.
         // TODO! It allows us to inidicate that we are using a BIG trace matrix instead of a fully enhanced vadcops as it is used in the current zkEVM implementation.
         // TODO! It allows us to indicate we are using a fake pilout instead of a real pilout.
@@ -82,7 +84,7 @@ where
         debug!("{}: ··· Creating prover manager", Self::MY_NAME);
         let provers_manager = ProversManager::new(prover_builders, dev_use_feature);
 
-        Ok(Self { proofman_config, proof_ctx, wc_manager, provers_manager })
+        Ok(Self { proofman_config, proof_ctx, wc_manager, provers_manager, buffer_manager })
     }
 
     pub fn setup() {
@@ -102,8 +104,13 @@ where
         let mut stage_id = 1u32;
 
         while prover_status != ProverStatus::StagesCompleted {
+            let buffer_manager_ref = match &self.buffer_manager {
+                Some(bm) => Some(bm),
+                None => None,
+            };
+
             if prover_status == ProverStatus::CommitStage {
-                self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx);
+                self.wc_manager.witness_computation(stage_id, &mut self.proof_ctx, buffer_manager_ref);
             }
 
             // After computing the witness on stage 1, we assume we know the value of N for all air instances.

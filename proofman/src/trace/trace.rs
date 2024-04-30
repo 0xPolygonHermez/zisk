@@ -90,7 +90,7 @@ macro_rules! trace {
             /// # Preconditions
             ///
             /// * `num_rows` must be greater than or equal to 2 and a power of 2.
-            pub fn from_ptr(ptr: *mut std::ffi::c_void, num_rows: usize) -> Self {
+            pub fn from_ptr(ptr: *mut std::ffi::c_void, num_rows: usize, offset: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
@@ -99,7 +99,7 @@ macro_rules! trace {
 
                 let mut ptr = ptr as *mut u8;
 
-                ptr = unsafe { ptr.add($offset) };
+                ptr = unsafe { ptr.add($offset).add(offset) };
                 let ptr_x = $crate::trace::trace::Ptr::new(ptr);
 
                 $my_struct {
@@ -234,7 +234,7 @@ mod tests {
 
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut check = Check::from_ptr(ptr, num_rows);
+        let mut check = Check::from_ptr(ptr, num_rows, 0);
 
         for i in 0..num_rows {
             check.a[i] = i as u8;
@@ -255,7 +255,7 @@ mod tests {
         trace!(Simple { field1: usize }, offset: 3, stride: 15);
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut simple = Simple::from_ptr(ptr, num_rows);
+        let mut simple = Simple::from_ptr(ptr, num_rows, 0);
 
         let mut simple2 = Simple::new(num_rows);
 
@@ -280,14 +280,14 @@ mod tests {
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_1() {
         trace!(Simple { field1: usize });
-        let _ = Simple::from_ptr(std::ptr::null_mut(), 1);
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 1, 0);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_2() {
         trace!(Simple { field1: usize });
-        let _ = Simple::from_ptr(std::ptr::null_mut(), 3);
+        let _ = Simple::from_ptr(std::ptr::null_mut(), 3, 0);
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
 
         let mut buffer = vec![0u8; num_rows * stride];
         let ptr = buffer.as_mut_ptr() as *mut c_void;
-        let mut fibonacci = Fibonacci::from_ptr(ptr, num_rows);
+        let mut fibonacci = Fibonacci::from_ptr(ptr, num_rows, 0);
 
         let mut fibonacci2 = Fibonacci::new(num_rows);
 

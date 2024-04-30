@@ -454,7 +454,7 @@ pub fn stark_info_new_c(filename: &str) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_mapTotalN_c(p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
+pub fn get_map_totaln_c(p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
     unsafe { get_mapTotalN(p_stark_info) }
 }
 
@@ -1244,8 +1244,8 @@ pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_mapTotalN_c(_p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
-    trace!("{}: ··· {}", "mckzkevm", "get_mapTotalN: This is a mock call because there is no linked library");
+pub fn get_map_totaln_c(_p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
+    trace!("{}: ··· {}", "mckzkevm", "get_map_totaln_c: This is a mock call because there is no linked library");
     0
 }
 

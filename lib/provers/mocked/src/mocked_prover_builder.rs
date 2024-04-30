@@ -1,4 +1,7 @@
-use proofman::provers_manager::{Prover, ProverBuilder};
+use proofman::{
+    provers_manager::{Prover, ProverBuilder},
+    AirInstanceCtx,
+};
 use crate::mocked_prover::MockedProver;
 
 /// MockedProverBuilder struct for use in tests
@@ -14,8 +17,12 @@ impl<T> MockedProverBuilder<T> {
 
 /// ProverBuilder trait implementation for MockedProverBuilder
 impl<T: 'static> ProverBuilder<T> for MockedProverBuilder<T> {
-    fn build(&self) -> Box<dyn Prover<T>> {
+    fn build(&mut self, _air_instance_ctx: &AirInstanceCtx<T>) -> Box<dyn Prover<T>> {
         Box::new(MockedProver::new())
+    }
+
+    fn create_buffer(&mut self) -> Vec<u8> {
+        unimplemented!()
     }
 }
 
@@ -31,7 +38,7 @@ mod tests {
     // Implement Prover trait for TestData
     impl Prover<TestData> for TestData {
         // Dummy implementation for testing
-        fn build(&mut self) {}
+        fn build(&mut self, air_instance_ctx: &AirInstanceCtx<TestData>) {}
 
         fn num_stages(&self) -> u32 {
             1
@@ -59,9 +66,9 @@ mod tests {
     #[test]
     fn test_mocked_prover_builder() {
         // Create a MockedProverBuilder instance
-        let builder = MockedProverBuilder::<TestData>::new();
+        let mut _builder = MockedProverBuilder::<TestData>::new();
 
         // Build a prover using the builder
-        let _ = builder.build();
+        // let _ = builder.build(AirInstanceCtx::Dummy);
     }
 }

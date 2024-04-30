@@ -2,8 +2,17 @@ pub mod executors_manager;
 pub mod executors_manager_thread;
 use crate::proof_ctx::ProofCtx;
 
+pub trait BufferManager<T> {
+    fn get_buffer(&self, name: &str) -> Option<(Vec<u8>, usize)>;
+}
+
 pub trait Executor<T> {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<T>);
+    fn witness_computation(
+        &self,
+        stage_id: u32,
+        proof_ctx: &mut ProofCtx<T>,
+        buffer_manager: Option<&Box<dyn BufferManager<T>>>,
+    );
 }
 
 #[macro_export]

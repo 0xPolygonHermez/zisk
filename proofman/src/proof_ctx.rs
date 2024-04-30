@@ -1,4 +1,4 @@
-use std::{os::raw::c_void, sync::RwLock};
+use std::{os::raw::c_void, rc::Rc, sync::RwLock};
 use pilout::pilout_proxy::PilOutProxy;
 
 use std::sync::Arc;
@@ -114,28 +114,56 @@ impl<T: Default + Clone> ProofCtx<T> {
         self.proof = std::ptr::null_mut();
     }
 
-    /// Adds a trace to the specified Air instance.
+    /// Adds a buffer and a trace to the specified Air instance.
     ///
     /// # Arguments
     ///
     /// * `subproof_id` - The subproof ID of the target Air instance.
     /// * `air_id` - The air ID of the target Air instance.
-    /// * `trace` - The trace to add to the Air instance.
+    /// * `buffer` - The buffer to add to the Air instance.
+    /// * `trace` - The trace to add to the Air instance
     ///
     /// # Panics
     ///
     /// Panics if the specified Air instance is not found.
-    pub fn add_trace_to_air_instance<TR: Trace>(
+    pub fn add_instance<TR: Trace>(
         &mut self,
         subproof_id: usize,
         air_id: usize,
+        buffer: Vec<u8>,
         trace: TR,
     ) -> Result<usize, &'static str> {
         // Check if subproof_id and air_id are valid
         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
 
-        Ok(self.subproofs[subproof_id].airs[air_id].add_trace(trace))
+        Ok(self.subproofs[subproof_id].airs[air_id].add_instance(buffer, trace))
+    }
+
+    /// Adds a buffer and a trace to the specified Air instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `subproof_id` - The subproof ID of the target Air instance.
+    /// * `air_id` - The air ID of the target Air instance.
+    /// * `buffer` - The buffer to add to the Air instance.
+    /// * `trace` - The trace to add to the Air instance
+    ///
+    /// # Panics
+    ///
+    /// Panics if the specified Air instance is not found.
+    pub fn add_instance_reusing_buffer(
+        &mut self,
+        subproof_id: usize,
+        air_id: usize,
+        buffer: Rc<Vec<u8>>,
+        // trace: Option<TR>,
+    ) -> Result<usize, &'static str> {
+        // Check if subproof_id and air_id are valid
+        assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+        assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+
+        Ok(self.subproofs[subproof_id].airs[air_id].add_instance_reusing_buffer(buffer, None))
     }
 
     pub fn get_trace(
@@ -170,11 +198,14 @@ pub struct AirCtx<T> {
 
 /// Air instance context for managing air instances (traces)
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AirInstanceCtx<T> {
     pub subproof_id: usize,
     pub air_id: usize,
     pub instance_id: usize,
-    pub trace: RwLock<Arc<dyn Trace>>,
+    pub buffer: Rc<Vec<u8>>,
+    pub trace: Option<RwLock<Arc<dyn Trace>>>,
+
     pub subproof_values: Vec<T>,
 }
 
@@ -189,19 +220,40 @@ impl<T> AirCtx<T> {
         AirCtx { subproof_id, air_id, instances: Vec::new() }
     }
 
-    /// Adds a trace to the AirCtx.
+    /// Adds a buffer and a trace to the AirCtx.
     ///
     /// # Arguments
     ///
     /// * `trace` - The trace to add to the AirCtx.
-    pub fn add_trace<TR: Trace>(&mut self, trace: TR) -> usize {
+    pub fn add_instance<TR: Trace>(&mut self, buffer: Vec<u8>, trace: TR) -> usize {
         let len = self.instances.len();
 
         self.instances.push(AirInstanceCtx {
             subproof_id: self.subproof_id,
             air_id: self.air_id,
             instance_id: len,
-            trace: RwLock::new(Arc::new(trace)),
+            buffer: Rc::new(buffer),
+            trace: Some(RwLock::new(Arc::new(trace))),
+            // TODO! Review this, has to be resized from the beginning?????
+            subproof_values: Vec::new(),
+        });
+        self.instances.len() - 1
+    }
+
+    /// Adds a buffer and a trace to the AirCtx.
+    ///
+    /// # Arguments
+    ///
+    /// * `trace` - The trace to add to the AirCtx.
+    pub fn add_instance_reusing_buffer(&mut self, buffer: Rc<Vec<u8>>, _trace: Option<i32>) -> usize {
+        let len = self.instances.len();
+
+        self.instances.push(AirInstanceCtx {
+            subproof_id: self.subproof_id,
+            air_id: self.air_id,
+            instance_id: len,
+            buffer,
+            trace: None, //Some(RwLock::new(Arc::new(trace)),
             // TODO! Review this, has to be resized from the beginning?????
             subproof_values: Vec::new(),
         });
@@ -220,7 +272,7 @@ impl<T> AirCtx<T> {
     pub fn get_trace(&self, instance_id: usize) -> Result<Arc<dyn Trace>, &'static str> {
         assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
 
-        Ok(Arc::clone(&self.instances[instance_id].trace.read().unwrap()))
+        Ok(Arc::clone(&self.instances[instance_id].trace.as_ref().unwrap().read().unwrap()))
     }
 }
 
@@ -275,7 +327,8 @@ mod tests {
         // Add a trace to the first Air instance of the first subproof
         let subproof_id = 0;
         let air_id = 0;
-        let trace_id = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, MockTrace).unwrap();
+        let buffer: Vec<u8> = vec![0; 16];
+        let trace_id = proof_ctx.add_instance(subproof_id, air_id, buffer, MockTrace).unwrap();
 
         // Check if the trace was added successfully
         assert_eq!(trace_id, 0);
@@ -308,10 +361,13 @@ mod tests {
             simple2.field1[i] = i * 2;
         }
 
-        let result = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple);
+        let buffer: Vec<u8> = vec![0; 16];
+        let buffer2: Vec<u8> = vec![0; 16];
+
+        let result = proof_ctx.add_instance(subproof_id, air_id, buffer, simple);
         assert!(result.is_ok());
 
-        let result2 = proof_ctx.add_trace_to_air_instance(subproof_id, air_id, simple2);
+        let result2 = proof_ctx.add_instance(subproof_id, air_id, buffer2, simple2);
         assert!(result2.is_ok());
 
         let index = result.unwrap();
