@@ -61,6 +61,10 @@ mod tests {
         fn add_root_challenge_256_to_transcript(&mut self, _root_challenge: [u64; 4]) {
             unimplemented!()
         }
+
+        fn get_subproof_values(&self) -> Vec<TestData> {
+            unimplemented!()
+        }
     }
 
     #[test]

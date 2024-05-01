@@ -54,9 +54,6 @@ fn main() {
     };
 
     let now = std::time::Instant::now();
-    let proof = proofman.prove(None);
-    if let Err(err) = proof {
-        println!("Error: {}", err);
-    }
+    let proof = proofman.prove(None).expect("Error generating proof");
     debug!("Proof generated in {} ms", now.elapsed().as_millis());
 }

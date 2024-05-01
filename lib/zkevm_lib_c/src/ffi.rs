@@ -26,7 +26,7 @@ pub fn zkevm_main_c(
         zkevm_main(
             config_filename.as_ptr() as *mut std::os::raw::c_char,
             p_address as *mut std::os::raw::c_void,
-            p_sm_requests as *const *const std::os::raw::c_void,
+            p_sm_requests as *mut *mut std::os::raw::c_void,
             p_sm_requests_out as *mut std::os::raw::c_void,
             p_stark_info,
         )
@@ -35,7 +35,7 @@ pub fn zkevm_main_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn zkevm_delete_sm_requests_c(pSMRequests: *const *const ::std::os::raw::c_void) -> ::std::os::raw::c_int {
-    unsafe { zkevm_delete_sm_requests(pSMRequests) }
+    unsafe { zkevm_delete_sm_requests(pSMRequests as *mut *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -43,7 +43,7 @@ pub fn zkevm_binary_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_binary_req(pSMRequests, pAddress) }
+    unsafe { zkevm_binary_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -52,7 +52,7 @@ pub fn zkevm_mem_align_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_mem_align(inputs_ as *const std::os::raw::c_void, ninputs, pAddress as *const std::os::raw::c_void) }
+    unsafe { zkevm_mem_align(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress  as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -60,7 +60,7 @@ pub fn zkevm_mem_align_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_mem_align_req(pSMRequests, pAddress) }
+    unsafe { zkevm_mem_align_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -73,11 +73,11 @@ pub fn zkevm_padding_sha256_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_sha256(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRquests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -87,7 +87,7 @@ pub fn zkevm_padding_sha256_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_padding_sha256_req(pSMRequests, pAddress) }
+    unsafe { zkevm_padding_sha256_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -100,11 +100,11 @@ pub fn zkevm_padding_sha256_bit_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_sha256_bit(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRquests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -114,7 +114,7 @@ pub fn zkevm_padding_sha256_bit_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_padding_sha256_bit_req(pSMRequests, pAddress) }
+    unsafe { zkevm_padding_sha256_bit_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -127,11 +127,11 @@ pub fn zkevm_bits2field_sha256_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_bits2field_sha256(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRquests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -141,7 +141,7 @@ pub fn zkevm_bits2field_sha256_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_bits2field_sha256_req(pSMRequests, pAddress) }
+    unsafe { zkevm_bits2field_sha256_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -150,7 +150,7 @@ pub fn zkevm_sha256_f_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_sha256_f(inputs_ as *const std::os::raw::c_void, ninputs, pAddress as *const std::os::raw::c_void) }
+    unsafe { zkevm_sha256_f(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -158,7 +158,7 @@ pub fn zkevm_sha256_f_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_sha256_f_req(pSMRequests, pAddress) }
+    unsafe { zkevm_sha256_f_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -171,11 +171,11 @@ pub fn zkevm_padding_kk_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_kk(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRequests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRequests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -185,7 +185,7 @@ pub fn zkevm_padding_kk_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_padding_kk_req(pSMRequests, pAddress) }
+    unsafe { zkevm_padding_kk_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -198,11 +198,11 @@ pub fn zkevm_padding_kk_bit_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_padding_kk_bit(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRquests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -211,7 +211,7 @@ pub fn zkevm_padding_kk_bit_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_padding_kk_bit_req(pSMRequests, pAddress) }
+    unsafe { zkevm_padding_kk_bit_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -224,11 +224,11 @@ pub fn zkevm_bits2field_kk_c(
 ) -> ::std::os::raw::c_int {
     unsafe {
         zkevm_bits2field_kk(
-            inputs_ as *const std::os::raw::c_void,
+            inputs_ as *mut std::os::raw::c_void,
             ninputs,
-            pAddress as *const std::os::raw::c_void,
-            pSMRquests,
-            pSMRequestsOut,
+            pAddress as *mut std::os::raw::c_void,
+            pSMRquests as *mut std::os::raw::c_void,
+            pSMRequestsOut as *mut std::os::raw::c_void,
         )
     }
 }
@@ -238,7 +238,7 @@ pub fn zkevm_bits2field_kk_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_bits2field_kk_req(pSMRequests, pAddress) }
+    unsafe { zkevm_bits2field_kk_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -246,7 +246,7 @@ pub fn zkevm_storage_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_storage_req(pSMRequests, pAddress) }
+    unsafe { zkevm_storage_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -254,7 +254,7 @@ pub fn zkevm_padding_pg_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_padding_pg_req(pSMRequests, pAddress) }
+    unsafe { zkevm_padding_pg_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -262,7 +262,7 @@ pub fn zkevm_climb_key_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_climb_key_req(pSMRequests, pAddress) }
+    unsafe { zkevm_climb_key_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -270,7 +270,7 @@ pub fn zkevm_poseidon_g_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_poseidon_g_req(pSMRequests, pAddress) }
+    unsafe { zkevm_poseidon_g_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 #[cfg(not(feature = "no_lib_link"))]
 pub fn zkevm_memory_c(
@@ -278,7 +278,7 @@ pub fn zkevm_memory_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_memory(inputs_ as *const std::os::raw::c_void, ninputs, pAddress as *const std::os::raw::c_void) }
+    unsafe { zkevm_memory(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -286,7 +286,7 @@ pub fn zkevm_memory_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_memory_req(pSMRequests, pAddress) }
+    unsafe { zkevm_memory_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -295,7 +295,7 @@ pub fn zkevm_arith_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_arith(inputs_ as *const std::os::raw::c_void, ninputs, pAddress as *const std::os::raw::c_void) }
+    unsafe { zkevm_arith(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -303,7 +303,7 @@ pub fn zkevm_arith_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_arith_req(pSMRequests, pAddress) }
+    unsafe { zkevm_arith_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -312,7 +312,7 @@ pub fn zkevm_keccak_f_c(
     ninputs: ::std::os::raw::c_int,
     pAddress: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_keccak_f(inputs_ as *const std::os::raw::c_void, ninputs, pAddress as *const std::os::raw::c_void) }
+    unsafe { zkevm_keccak_f(inputs_ as *mut std::os::raw::c_void, ninputs, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -320,7 +320,7 @@ pub fn zkevm_keccak_f_req_c(
     pSMRequests: *const ::std::os::raw::c_void,
     pAddress: *const ::std::os::raw::c_void,
 ) -> ::std::os::raw::c_int {
-    unsafe { zkevm_keccak_f_req(pSMRequests, pAddress) }
+    unsafe { zkevm_keccak_f_req(pSMRequests as *mut std::os::raw::c_void, pAddress as *mut std::os::raw::c_void) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]

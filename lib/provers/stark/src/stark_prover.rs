@@ -239,8 +239,6 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
-        debug!("!!!!!!!!subproof value: {:?}", self.subproof_values);
-
         if stage_id < self.num_stages() + 1 {
             ProverStatus::CommitStage
         } else {
