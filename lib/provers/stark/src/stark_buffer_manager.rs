@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use log::trace;
 use proofman::executor::BufferManager;
-use zkevm_lib_c::ffi::{
-    chelpers_new_c, get_map_offsets_c, get_map_totaln_c, init_hints_c, set_mapOffsets_c, stark_info_new_c,
-};
+use starks_lib_c::{chelpers_new_c, get_map_offsets_c, get_map_totaln_c, init_hints_c, set_mapOffsets_c, stark_info_new_c};
 
 struct StarkBufferManagerItem {
     stark_info_filename: String,

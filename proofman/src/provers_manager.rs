@@ -293,7 +293,7 @@ where
             let subair_values = &proof_ctx.pilout.subproofs[subproof_ctx.subproof_id as usize].subproofvalues;
             println!("subair_values: {:?}", subair_values);
             for j in 0..subair_values.len() {
-                let agg_type = AggregationType::try_from(subair_values[j].agg_type)
+                let _agg_type = AggregationType::try_from(subair_values[j].agg_type)
                     .unwrap_or_else(|_| panic!("{}: Invalid aggregation type", Self::MY_NAME));
 
                 for air_ctx in subproof_ctx.airs.iter() {

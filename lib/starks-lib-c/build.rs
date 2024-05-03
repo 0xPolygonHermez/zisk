@@ -4,7 +4,7 @@ fn main() {
     if std::env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
         let library_folder = "../../../zkevm-prover/lib";
         let library_sm_folder = "../../../zkevm-prover-rust/target/release";
-        let library_short_name = "zkProver";
+        let library_short_name = "starks";
         let library_name = format!("lib{}.a", library_short_name);
         let library_path = format!("{}/{}", library_folder, library_name);
 
@@ -28,8 +28,6 @@ fn main() {
         println!("cargo:rustc-link-arg=-mavx2");
 
         println!("cargo:rustc-link-lib=static={}", library_short_name);
-
-        println!("cargo:rustc-link-lib=zkevm_sm");
 
         println!("cargo:rustc-link-lib=protobuf");
         println!("cargo:rustc-link-lib=sodium");

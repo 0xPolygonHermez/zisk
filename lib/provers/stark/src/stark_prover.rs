@@ -7,7 +7,7 @@ use std::any::type_name;
 use proofman::provers_manager::Prover;
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
-use zkevm_lib_c::ffi::*;
+use starks_lib_c::*;
 use proofman::{AirInstanceCtx, ProofCtx};
 use crate::stark_info::{OpType, StarkInfo};
 use crate::stark_prover_settings::StarkProverSettings;

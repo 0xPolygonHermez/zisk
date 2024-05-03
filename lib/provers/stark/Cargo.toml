@@ -16,7 +16,7 @@ proofman = { path = "../../../proofman" }
 goldilocks = { path = "../../../goldilocks" }
 util = { path = "../../../util" }
 log = { version = "0.4", default-features = false }
-zkevm-lib-c = { path = "../../zkevm_lib_c" }
+starks-lib-c = { path = "../../starks-lib-c" }
 transcript = { path = "../../../transcript" }
 
 [features]

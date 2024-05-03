@@ -1,5 +1,5 @@
 #[cfg(not(feature = "no_lib_link"))]
-use zkevm_lib_c::ffi::goldilocks_linear_hash_c;
+use starks_lib_c::goldilocks_linear_hash_c;
 
 #[cfg(feature = "no_lib_link")]
 pub fn hash_siblings(left: [u64; 4], right: [u64; 4]) -> [u64; 4] {

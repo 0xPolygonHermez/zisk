@@ -19,7 +19,7 @@ pilout = { path = "../pilout" }
 crossbeam-channel = "0.5.8"
 util = { path = "../util" }
 colored = "2"
-zkevm-lib-c = { path = "../lib/zkevm_lib_c" }
+starks-lib-c = { path = "../lib/starks-lib-c" }
 
 [dev-dependencies]
 rand = "0.8"

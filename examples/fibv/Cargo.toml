@@ -4,12 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "Examples of how to use the proofman prover and verifier"
 authors = ["Polygon Labs"]
-build = "build.rs"
 readme = "README.md"
 
 [dependencies]
 proofman = { path = "../../proofman" }
-zkevm-lib-c = { path = "../../lib/zkevm_lib_c" }
+starks-lib-c = { path = "../../lib/starks-lib-c" }
 stark = { path = "../../lib/provers/stark" }
 proofman-cli = { path = "../../proofman-cli" }
 pilout = { path = "../../pilout" }

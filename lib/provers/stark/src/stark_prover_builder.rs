@@ -3,7 +3,7 @@ use goldilocks::AbstractField;
 use log::debug;
 use proofman::provers_manager::{Prover, ProverBuilder};
 use proofman::AirInstanceCtx;
-use zkevm_lib_c::ffi::{chelpers_new_c, get_map_totaln_c, init_hints_c, set_mapOffsets_c, stark_info_new_c};
+use starks_lib_c::{chelpers_new_c, get_map_totaln_c, init_hints_c, set_mapOffsets_c, stark_info_new_c};
 use crate::stark_prover_settings::StarkProverSettings;
 use crate::stark_prover::StarkProver;
 use std::ffi::c_void;

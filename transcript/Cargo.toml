@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zkevm-lib-c = { path = "../lib/zkevm_lib_c" }
+starks-lib-c = { path = "../lib/starks-lib-c" }

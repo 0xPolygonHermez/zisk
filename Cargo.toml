@@ -6,7 +6,7 @@ members = [
     "goldilocks",
     "lib/provers/stark",
     "lib/provers/mocked",
-    "lib/zkevm_lib_c",
+    "lib/starks-lib-c",
     "transcript",
     "util",
     "examples/fib4",

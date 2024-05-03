@@ -38,7 +38,7 @@ mod tests {
     // Implement Prover trait for TestData
     impl Prover<TestData> for TestData {
         // Dummy implementation for testing
-        fn build(&mut self, air_instance_ctx: &AirInstanceCtx<TestData>) {}
+        fn build(&mut self, _air_instance_ctx: &AirInstanceCtx<TestData>) {}
 
         fn num_stages(&self) -> u32 {
             1

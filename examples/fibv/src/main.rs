@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::ffi::c_void;
-use std::ptr::null_mut;
 
 use log::debug;
 
@@ -26,7 +24,7 @@ use stark::stark_prover_builder::StarkProverBuilder;
 use stark::stark_prover_settings::StarkProverSettings;
 
 use pilout::pilout_proxy::PilOutProxy;
-use zkevm_lib_c::ffi::*;
+use starks_lib_c::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FibVPublicInputs<T> {
@@ -129,7 +127,7 @@ fn main() {
                 std::process::exit(1);
             });
 
-    let proof = proofman.prove(Some(public_inputs.into())).unwrap_or_else(|err| {
+    let _proof = proofman.prove(Some(public_inputs.into())).unwrap_or_else(|err| {
         println!("Error: {}", err);
         std::process::exit(1);
     });
@@ -137,14 +135,6 @@ fn main() {
     // Free memory p_steeps_vec
     for p_steps in p_steps_vec {
         generic_steps_free_c(p_steps);
-        if p_steps == null_mut() {
-            let void_1: *mut c_void = null_mut();
-            let void_2: *mut c_void = null_mut();
-            let vec_goldi_1 = Vec::<Goldilocks>::new();
-            let vec_goldi_2 = Vec::<Goldilocks>::new();
-
-            zkin_new_c(void_1, void_2, &vec_goldi_1, &vec_goldi_2);
-        }
     }
 }
 
