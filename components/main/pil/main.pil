@@ -1,0 +1,459 @@
+const string target = "basic"
+
+include "tools.pil"
+include "rom.pil"
+// TODO: constructive parts out of subproof scope
+// if (target == "full") {
+// include "mem_align.pil";
+// include "arith.pil";
+// include "binary.pil";
+// include "poseidong.pil";
+// include "padding_pg.pil";
+// include "storage.pil";
+// include "padding_kk.pil";
+// include "mem.pil";
+// include "padding_sha256.pil";
+// hash bytes
+// assumeFREE
+// BitRange32
+// memAlign
+// freeBits
+
+
+// TODO: only to compile alone
+const int ARITH_ID = 10;
+const int BINARY_ID = 20;
+const int MEM_ALIGN_ID = 5;
+const int MEMORY_ID = 4;
+const int PADDING_KK_HASH_ID = 50;
+const int PADDING_KK_LEN_DIGEST_ID = 51;
+const int PADDING_PG_HASH_ID = 40;
+const int PADDING_PG_DIGEST_ID = 41;
+const int PADDING_PG_LEN_ID = 42;
+const int PADDING_SHA256_HASH_ID = 60;
+const int PADDING_SHA256_LEN_DIGEST_ID = 61;
+const int POSEIDON_G_ID = 45;
+const int RANGE32_ID = 6;
+const int STORAGE_ID = 90;
+
+const int BINARY_OP_LT4 = 8;
+
+subproof Main(2**23) {
+    const int NR = 8;
+    
+    /////// State Polynomials
+    col witness A[NR], B[NR], C[NR], D[NR], E[NR];   // Generic Registers
+    col witness SR[NR];                              // State Root
+    col witness CTX;                                 // Call Cntext
+    col witness SP;                                  // Stack Pointer
+    col witness PC;                                  // EVM Program counter
+    col witness GAS;
+    col witness zkPC;                           // Program Counter of current micro instruction
+    col witness RR;                             // Micro code return address (subroutines)
+    col witness RCX;
+
+    ///////  Instruction related polynomials
+    col witness CONST[NR];
+    col witness FREE[NR];
+    col witness inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0, inCTX, inSP, inPC, inGAS, inSTEP, inRR, inRCX;
+    col witness setA, setB, setC, setD, setE, setSR, setCTX, setSP, setPC, setGAS, setRR, setRCX;
+    col witness jmp, jmpn, jmpz, offset;
+    col witness incStack;
+    col witness isStack;
+    col witness isMem;
+    col witness ind, indRR;
+    col witness useCTX;
+    col witness doAssert;
+    col witness repeat, call, returnJmp;
+    col witness assumeFREE;
+
+    // operations
+    col witness mOp, mWR;
+    if (target == "full") {
+        col witness HASHPOS;
+        col witness sWR, sRD;
+        col witness arith, arithOp, arithUseCD, arithUseE;
+        col witness memAlignRD, memAlignWR, memAlignWR8;
+        col witness hashK, hashKLen, hashKDigest;
+        col witness hashP, hashPLen, hashPDigest;
+        col witness hashS, hashSLen, hashSDigest;
+        col witness useHashBytes, hashBytes;
+        col witness bin;
+        col witness binOp;
+        col witness carry;
+        col witness carryIn;
+        col witness cntArith, cntBinary, cntMemAlign, cntKeccakF, cntSha256F, cntPoseidonG, cntPaddingPG;
+        col witness inCntArith, inCntBinary, inCntMemAlign, inCntKeccakF, inCntSha256F, inCntPoseidonG, inCntPaddingPG;
+        col witness incCounter;
+
+        col witness inHASHPOS, setHASHPOS, jmpc;
+    }
+    ///////  Intermediary commit polynomials
+    col witness isNeg;
+
+    col witness jmpAddr;
+    col witness elseAddr;
+    col witness useAddrRel;
+    col witness useJmpAddrRel;
+    col witness useElseAddrRel;
+
+    col witness useOpAsParam;
+    col witness useConstAsParam;
+
+    col fixed L1 = [1,0...];
+    col fixed STEP = [0..(N-1)];
+    // op registers with out of expression
+    // av assumed value, could be op or FREE
+    // col witness op[NR];
+    const expr op[NR];
+    const expr assumeInput[NR];
+    const expr zeros[NR];
+    for (int index = 0; index < NR; ++index) {
+        expr _op = 
+            A[index] * inA +
+            B[index] * inB +
+            C[index] * inC +
+            C[(index + NR - 1) % NR] * inROTL_C +
+            D[index] * inD +
+            E[index] * inE +
+            FREE[index] * (inFREE + inFREE0) +
+            SR[index] * inSR +
+            CONST[index];
+
+        if (index == 0) {
+            _op +=             
+                CTX * inCTX +
+                SP * inSP +
+                PC * inPC +
+                GAS * inGAS +
+                STEP * inSTEP +
+                RR * inRR +
+                RCX * inRCX;
+
+            if (target != "full") continue;
+            _op +=
+                HASHPOS * inHASHPOS +
+                cntArith * inCntArith +
+                cntBinary * inCntBinary +
+                cntMemAlign * inCntMemAlign +
+                cntKeccakF * inCntKeccakF +
+                cntSha256F * inCntSha256F +
+                cntPoseidonG * inCntPoseidonG +
+                cntPaddingPG * inCntPaddingPG;
+        }
+        zeros[index] = 0;
+        op[index] = _op;
+        assumeInput[index] = (1 - assumeFREE) * (op[index] - FREE[index]) + FREE[index];
+    }
+
+    /*
+
+        ctxBase = CTX * 0x040000   ctxSize = 256K addresses * 32 bytes (256 bits) = 8MiB
+
+        Memory Region                    Size   isMem  isStack   Content
+        ctxBase + [0x000000 - 0x00FFFF]   2MiB      0        0   Context specific variables
+        ctxBase + [0x010000 - 0x000000]   2MiB      0        1   EVM Stack
+        ctxBase + [0x020000 - 0x03FFFF]   4MiB      1        0   EVM Memory
+
+    */
+
+    const expr addrRel = ind * E[0] + indRR * RR;
+    const expr addr = 2**18 * useCTX * CTX +
+                      2**16 * isStack + isStack*SP + 
+                      2**17 * isMem + useAddrRel * addrRel + offset;
+
+
+    // op0 check zero
+    col witness op0Inv;
+    const expr op0IsZero = 1 - op[0]*op0Inv;
+    op0IsZero * op[0] === 0;
+
+    multiset_assumes(RANGE32_ID, jmpn, [isNeg * 2**32 + op[0], 32]);    
+    isNeg * (1 - isNeg) === 0;
+
+    // RCX check zero
+    col witness RCXInv;
+    const expr RCXIsZero = 1 - RCX * RCXInv;
+    RCXIsZero * RCX === 0;
+
+
+    // Calculate New State
+    for (int index = 0; index < NR; ++index) {
+        A[index]' === setA * (op[index] - A[index]) + A[index];
+        B[index]' === setB * (op[index] - B[index]) + B[index];
+        C[index]' === setC * (op[index] - C[index]) + C[index];
+        D[index]' === setD * (op[index] - D[index]) + D[index];
+        E[index]' === setE * (op[index] - E[index]) + E[index];
+        SR[index]' === setSR * (op[index] - SR[index]) + SR[index];
+    }
+
+    CTX' === setCTX * (op[0] - CTX) + CTX;
+    SP' === setSP * (op[0] - (SP +incStack)) + (SP +incStack);
+    PC' === setPC * (op[0] - PC) + PC;
+
+    // ROM constraint: call * setRR = 0
+    RR' === setRR * (op[0] - RR) + call * (zkPC + 1 - RR) + RR;
+    GAS' === setGAS * (op[0] - GAS) + GAS;
+
+    const expr decRCX = repeat * (1 - RCXIsZero);
+    RCX' === setRCX * (op[0] - (RCX-decRCX)) + (RCX-decRCX);
+
+    if (defined(HASHPOS)) {
+        HASHPOS' === setHASHPOS * (op[0] - HASHPOS) + HASHPOS + (hashK + hashP + hashS)*D[0] + useHashBytes * hashBytes;
+    }
+
+    const expr doJmp;
+    const expr elseJmp;
+    if (defined(carry)) {
+        elseJmp = jmpn * (1-isNeg) + jmpc * (1-carry) + jmpz * (1-op0IsZero);
+        doJmp = jmpn * isNeg + jmp + jmpc * carry + jmpz * op0IsZero + returnJmp + call;
+    } else {
+        elseJmp = jmpn * (1-isNeg) + jmpz * (1-op0IsZero);
+        doJmp = jmpn * isNeg + jmp + jmpz * op0IsZero + returnJmp + call;
+    }
+
+    // ROM/Zkasm constraint: useJmpAddr * returnJmp = 0
+    const expr finalJmpAddr = jmpAddr + useJmpAddrRel * addrRel + returnJmp * (RR' - jmpAddr);
+    const expr nextNoJmpZkPC = zkPC + 1 - ((1-RCXIsZero)*repeat);
+    const expr finalElseAddr = elseAddr + useElseAddrRel * elseAddr;
+
+    // if elseAddr wasn't specified on zkasm, compiler put current address + 1
+    zkPC' === doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC;
+
+    zkPC * L1 === 0;
+
+    // public inputs
+    public oldStateRoot[NR];
+    public oldAccInputHash[NR];
+    public oldBatchNum;
+    public chainId;
+    public forkId;
+    
+    // public outputs
+    public newStateRoot[NR];
+    public newAccInputHash[NR];
+    public localExitRoot[NR];
+    public newBatchNum;
+
+    #pragma debug off
+    for (int index = 0; index < NR; ++index) {
+        (A[index] - op[index]) * doAssert === 0;
+        // oldStateRoot[NR] = B(NR);
+        L1 * (B[index] - oldStateRoot[index]) === 0;
+        // oldBatchNum[NR] = SP(NR);
+        L1 * (C[index] - oldAccInputHash[index]) === 0;
+        // public newStateRoot0 = SR0(%N-1);
+        L1' * (SR[index] - newStateRoot[index]) === 0;
+        // public newAccInputHash0 = D0(%N -1);
+        L1' * (D[index] - newAccInputHash[index]) === 0;
+        // public localExitRoot0 = E0(%N-1);
+        L1' * (E[index] - localExitRoot[index]) === 0;
+    }
+
+    // public oldBatchNum = SP(0);
+    L1 * (SP - oldBatchNum) === 0;
+
+    // public chainId = GAS(0);
+    L1 * (GAS - chainId) === 0;
+
+    // public forkId = CTX(0);
+    L1 * (CTX - forkId) === 0;
+
+    L1' * (PC - newBatchNum) === 0;
+
+    // ROM lookup
+
+    // arithEq0, arithEq1, arithEq2,,arithEq3,arithEq4,arithEq5, => arithOp
+    // hashP1, hashK1, hashS1 =>
+    // ind, indR
+
+    const expr romFlags;
+
+    if (target == "full") {
+        romFlags = compact_bin_cols ([
+            doAssert, bin, carryIn, sRD, sWR, memAlignRD, memAlignWR, memAlignWR8, mOp, mWR,
+            arith, arithUseCD, arithUseCD, 
+            hashK, hashKDigest, hashKLen, hashP, hashPDigest, hashPLen, 
+            hashS, hashSDigest, hashSLen, useHashBytes,
+            isMem, isStack, useCTX, useAddrRel,
+            useJmpAddrRel, useElseAddrRel, jmp, jmpc, jmpn, jmpz, call, returnJmp, repeat,
+            setA, setB, setC, setCTX, setD, setE, 
+            setGAS, setHASHPOS, setPC, setRCX, setRR, setSP, setSR]);
+    } else {
+        #pragma debug off
+        inA === 3 * inA;
+        compact_bin_cols([
+            doAssert, mOp, mWR, isMem, isStack, useCTX, useAddrRel,
+            useJmpAddrRel, useElseAddrRel, jmp, jmpn, jmpz, call, returnJmp, repeat,
+            setA, setB, setC, setCTX, setD, setE, 
+            setGAS, setPC, setRCX, setRR, setSP, setSR]);
+        inA === 4 * inA;
+        #pragma debug off
+    }
+
+    if (target == "full") {
+        lookup_assumes(ROM_ID, 1, [...CONST, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+                               inCTX, inSP, inPC, inGAS, inHASHPOS, inSTEP, inRR, inRCX, ind, indRR,
+                               inCntArith, inCntBinary, inCntKeccakF, inCntSha256F, 
+                               inCntMemAlign, inCntPaddingPG, inCntPoseidonG,
+                               romFlags, offset, incStack, binOp, arithOp, hashBytes, 
+                               jmpAddr, elseAddr, zkPC]);        
+    } else {
+        lookup_assumes(ROM_ID, 1, [...CONST, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+                               inCTX, inSP, inPC, inGAS, inSTEP, inRR, inRCX, ind, indRR,
+                               romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);        
+    }
+
+    if (target == "full") {
+        const expr GL = 0xFFFFFFFF00000001;
+        const expr LSB_GL = GL & 0xFFFFFFFF; 
+        const expr HSB_GL = GL >> 16;
+
+        // TODO:
+        // const expr GL4[8] = [LSB_GL, HSB_GL, LSB_GL, HSB_GL, LSB_GL, HSB_GL, LSB_GL, HSB_GL];
+        const expr GL4[8];
+        GL4[0] = LSB_GL;
+        GL4[1] = HSB_GL;
+        GL4[2] = LSB_GL;
+        GL4[3] = HSB_GL;
+        GL4[4] = LSB_GL;
+        GL4[5] = HSB_GL;
+        GL4[6] = LSB_GL;
+        GL4[7] = HSB_GL;
+
+        // Check that the calculated hash is well formed
+
+        // TODO:
+        // multiset_assumes(BINARY_ID, WR + hashPDigest, [...op, ...GL4, [1, 0:7], BINARY_OP_LT4]);
+        // multiset_assumes(BINARY_ID, WR + hashPDigest, [...op, ...GL4, [1, 0:(NR-1)], BINARY_OP_LT4]);
+        #pragma debug off
+        multiset_assumes(BINARY_ID, sWR + hashPDigest, [...op, ...GL4, 1, 0, 0, 0, 0, 0, 0, 0, BINARY_OP_LT4, 1, 0]);
+
+        // Binary: resultValidRange []...a, ...b, lOpcode, Binary.lCout];
+
+        col witness sKeyI[4];
+        col witness sKey[4];
+
+        // Aritmethic State Machine
+        
+        expr arithC[NR], arithD[NR], arithE[NR];
+        expr paramA[NR], paramB[NR], paramOp[NR];
+        for (int i = 0; i < NR; ++i) {
+            arithC[i] = arithUseCD * (C[i] - A[i]) + A[i];
+            arithD[i] = arithUseCD * (C[i] - B[i]) + B[i];
+            arithE[i] = arithUseE * E[i];
+            paramA[i] = useOpAsParam * (assumeInput[i] - A[i]) + A[i];
+            paramB[i] = useConstAsParam * (CONST[i] - B[i]) + B[i];
+            // if useOpAsParam, res must be zero => managed in SM too (as other flag)
+            paramOp[i] = (1 - useOpAsParam) * op[i];
+        }
+
+        // We group arithmetic operations by the number of inputs they have
+        // 1] 5 inputs (A * B + C = D * 2^256 + E)
+
+        multiset_assumes(ARITH_ID, arith, [arithOp, ...A, ...B, ...arithC, ...arithD, ...arithE, ...assumeInput]);
+        cntArith' === cntArith * (1 - L1) + arith;
+
+        multiset_assumes(BINARY_ID, bin, [binOp, ...paramA, ...paramB, ...paramOp, carryIn, carry]);
+        cntBinary' === cntBinary * (1 - L1) + bin + sWR + hashPDigest;
+
+        // OPTIMIZATION2EVAL: HASHPOSDIGEST = HASHPOS :HASHLEN + $ :HASHDIGEST
+        // optimization reuse CONST as hashBytes or use CONST_LITE to general purpose
+        lookup_assumes(PADDING_KK_HASH_ID, hashK, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...assumeInput]);
+        // PaddingKK: crLatch * PaddingKK.r8valid { addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C }
+
+        multiset_assumes(PADDING_KK_LEN_DIGEST_ID, hashKLen + hashKDigest, [hashKLen, addr, ...assumeInput, hashKDigest * incCounter]);
+        // TODO: check if could be in same, perhaps len and Digest is in same "clock" of keccak
+        // TODO: if use 2 multisets, better use a lookup without selector
+        // REVIEW:
+        // PaddingKK: lastHashLen { addr, len }
+        // PaddingKK: lastHashDigest { addr, hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7, incCounter }
+
+        // ERROR: cntKeccakF' = cntKeccakF * (1 - L1) + incCounter * hashKDigest;
+        cntKeccakF' === cntKeccakF * (1 - L1) + incCounter * hashKDigest;
+
+        // SHA256 lookups and permutation check
+
+        lookup_assumes(PADDING_SHA256_HASH_ID, hashS, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op]);
+        // PaddingKK: crLatch * PaddingKK.r8valid { addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C }
+
+        multiset_assumes(PADDING_SHA256_LEN_DIGEST_ID, hashSLen + hashSDigest, [hashSLen, addr, ...op, hashSDigest * incCounter]);
+        // TODO: check if could be in same, perhaps len and Digest is in same "clock" of keccak
+        // PaddingKK: lastHashLen { addr, len }
+        // PaddingKK: lastHashDigest { addr, hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7, incCounter }
+
+
+        // TODO: modify sha to be aligned with rest of hash, because currently the Sha digest's chunks are ordered 
+        // from most to least significant. (hash0 => op7, hash1 => op6, ..)
+        
+        cntSha256F' === cntSha256F * (1 - L1) + incCounter * hashSDigest;
+
+        // HASHP Plookpups
+        lookup_assumes(PADDING_PG_HASH_ID, hashS, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op]);
+        // lookup_proves(PADDING_PG_HASH_ID, crLatch * r8valid [addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C]);
+
+        assumeInput[1] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[2] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[3] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[4] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[5] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[6] * (hashSLen + hashKLen + hashPLen) === 0;
+        assumeInput[7] * (hashSLen + hashKLen + hashPLen) === 0;
+
+        multiset_assumes(PADDING_PG_LEN_ID, hashSLen, [addr, assumeInput[0], hashSDigest * incCounter]);
+        multiset_assumes(PADDING_PG_DIGEST_ID, hashSLen + hashSDigest, [hashSLen, addr, 
+                                                                        assumeInput[0] + 2**32 * assumeInput[1], 
+                                                                        assumeInput[2] + 2**32 * assumeInput[3], 
+                                                                        assumeInput[4] + 2**32 * assumeInput[5], 
+                                                                        assumeInput[6] + 2**32 * assumeInput[7], 
+                                                                        hashSDigest * incCounter]);
+        // multiset_proves(PADDING_PG_LEN, lastHashLen, [addr, len]);
+        // multiset_proves(PADDING_PG_LEN_DIGEST_ID, lastHashDigest, [addr, ...curHash, incCounter])
+
+        cntPaddingPG' === cntPaddingPG * (1 - L1) + hashPDigest * incCounter;
+
+        // TODO: modify executor
+        cntPoseidonG' === cntPoseidonG * (1 - L1) + (hashPDigest + sRD + sWR) * incCounter + 2 * (sRD + sWR);
+
+        // Memory
+        multiset_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
+        // multiset_proves(MEMORY_ID, mOp, [addr, step, mWr, ...val]);
+
+        // Storage
+
+        multiset_assumes(POSEIDON_G_ID, sRD + sWR, [...C, 0, 0, 0, 0, ...sKeyI]);
+        // multiset_proves(POSEIDON_G_ID, ,[..._in, hashType, ...cap, ...hash]);
+        
+        A[5] * (sRD + sWR) === 0;
+        A[6] * (sRD + sWR) === 0;
+        A[7] * (sRD + sWR) === 0;
+        // ERROR out of bounds A[8] * (sRD + sWR) === 0;
+        B[2] * (sRD + sWR) === 0;
+        B[3] * (sRD + sWR) === 0;
+        B[4] * (sRD + sWR) === 0;
+        B[5] * (sRD + sWR) === 0;
+        B[6] * (sRD + sWR) === 0;
+        B[7] * (sRD + sWR) === 0;
+
+        // ERROR: multiset_assumes(POSEIDON_G_ID, sRD + sWR, [...A[0:4], 0, ...B[0:2], ...sKeyI, sKey]);
+        multiset_assumes(POSEIDON_G_ID, sRD + sWR, [...A[0..4], 0, ...B[0..1], ...sKeyI, ...sKey]);
+        // [...in, hashType, ...cap, ...hash]
+
+        multiset_assumes(STORAGE_ID, sRD, [SR[0] + 2**32*SR[1], SR[2] + 2**32*SR[3], SR[4] + 2**32*SR[5], SR[6] + 2**32*SR[7],
+                                        ...sKey, ...assumeInput, 0, 0, 0, 0, incCounter]);
+        // STORAGE_ID,latchGet,[...oldRoot, ...rkey, ...valueLow, ...valueHigh, incCounter]
+
+        multiset_assumes(STORAGE_ID, sWR, [SR[0] + 2**32*SR[1], SR[2] + 2**32*SR[3], SR[4] + 2**32*SR[5], SR[6] + 2**32*SR[7],
+                                        ...sKey, ...D, 
+                                        op[0] + 2**32*op[1], op[2] + 2**32*op[3], op[4] + 2**32*op[5], op[6] + 2**32*op[7],
+                                        incCounter]);
+        // STORAGE_ID,latchSet,[...oldRoot, ...rkey, ...valueLow, ...valueHigh, ...newRoot, incCounter]
+
+        // MemAlign 
+
+        multiset_assumes(MEM_ALIGN_ID, memAlignRD, [0, C[0], ...A, ...B, ...assumeInput, ...zeros, ...zeros]);
+        multiset_assumes(MEM_ALIGN_ID, memAlignWR, [1, C[0], ...A, ...B, ...assumeInput, ...D, ...E]);
+
+        cntMemAlign' === cntMemAlign * (1 - L1) + memAlignRD + memAlignWR;
+    }
+}

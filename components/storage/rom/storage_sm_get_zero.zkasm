@@ -1,0 +1,74 @@
+Get_Zero:
+
+    ; Root Node (same as before)                # end of tree
+    ;  / \                                      |
+    ;     Intermediate Node (same as before)    ^ climb tree
+    ;      / \                                  |
+    ;         Leaf Value Node (same as before)  * start here
+
+    ; We could not find the key, and therefore value is zero. In this situation, there are
+    ; two possibilities, we start the search on an intermediate node (2A) or on a leaf node.
+    ;
+    ;     2A.- We have to start with old root = 0, and then climb the tree up to the top
+    ;          In case we are already at the top (no siblings) the old root will remain 0
+    ;
+    ;     2B.- We have to start with hash of leaf, to calculate hash need to use values of
+    ;          remaining key and value of the leaf node.
+
+
+GZ_Zero:
+    ; Get the remaining key
+    ; verified building key when "climb up"
+    ${GetRkey()} => RKEY
+
+    ${GetIsOld0()}                  :JMPZ(GZ_LeafNode)
+                                    :JMP(GZ_IntermediateNode)
+
+GZ_LeafNode:
+
+    ; How was a leaf node, will calculate hash of leaf. This leaf really
+    ; isn't a sibling, it's a leaf node of other key found in my path.
+
+    ; FUTURE OPTIMIZATION: directly get hash of old value, save one hash.
+    ${GetSiblingValueLow()} => HASH_LEFT
+    ${GetSiblingValueHigh()} => HASH_RIGHT
+    $ => HASH_RIGHT                 :HASH0
+
+    ${GetSiblingRkey()} => SIBLING_RKEY
+
+    ; backup of value_high
+    VALUE_HIGH => SIBLING_VALUE_HASH
+
+    ; verify that RKEY and SIBLING_RKEY are differents, leave difference
+    ; on VALUE_HIGH to rotate it and verify all chunks. JMPNZ only check
+    ; the less significant chunk (goldilocks)
+
+    RKEY - SIBLING_RKEY => VALUE_HIGH   :JMPNZ(GZ_SiblingRKey_RKey_differents)
+    ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)
+    ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)
+    ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)
+
+    ; MAP. Invalid situation, finish execution of ROM, and not set latch get.
+                                        :JMP(AssertFails)
+
+GZ_SiblingRKey_RKey_differents:
+
+    ; restore original value of value_high
+    SIBLING_VALUE_HASH => VALUE_HIGH
+
+    ; Get the retrieved value
+
+    ; GetSiblingRkey is different than RKEY,
+    SIBLING_RKEY => HASH_LEFT
+    $ => OLD_ROOT                   :HASH1
+                                    :JMP(GZ_InitLevel)
+
+GZ_IntermediateNode:
+
+    ; No need to calculate the hash; the next intermediate node will use simply 0 as a hash
+    0x0 => OLD_ROOT
+
+GZ_InitLevel:
+
+    ; Init LEVEL
+    ${GetLevel()} => LEVEL          :JMP(Get_ClimbUp)

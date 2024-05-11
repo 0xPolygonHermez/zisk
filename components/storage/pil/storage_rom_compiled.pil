@@ -1,0 +1,317 @@
+	source(  0,0x001FFC00, 0,0,0); // #4       0 => HASH_LEFT, HASH_RIGHT, OLD_ROOT, NEW_ROOT, VALUE_LOW, VALUE_HIGH, SIBLING_VALUE_HASH, RKEY, SIBLING_RKEY, RKEY_BIT, LEVEL            # flags = setHASH_LEFT, setHASH_RIGHT, setLEVEL, setNEW_ROOT, setOLD_ROOT, setRKEY, setRKEY_BIT, setSIBLING_RKEY, setSIBLING_VALUE_HASH, setVALUE_HIGH, setVALUE_LOW
+	source(  1,0x00200200, 0,0,0); // #6       ${isValueZero()}                            :JMPNZ(ValueIsZero)                                                                           # flags = jmpnz, inFREE
+	source(  2,0x00380200, 0,0,0); // #7       ${GetValueLow()} => VALUE_LOW,VALUE_HIGH    :JMPNZ(ValueLowIsNonZero)                                                                     # flags = jmpnz, setVALUE_HIGH, setVALUE_LOW, inFREE
+	source(  3,0x20080200, 0,0,0); // #8       ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueLowIsNonZero)                                                                     # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(  4,0x20080200, 0,0,0); // #9       ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueLowIsNonZero)                                                                     # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(  5,0x20080200, 0,0,0); // #10      ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueLowIsNonZero)                                                                     # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(  6,0x00282200, 0,0,0); // #13      ${GetValueHigh()} => VALUE_HIGH,NEW_ROOT    :JMPNZ(ValueHighIsNonZero)                                                                    # flags = jmpnz, setNEW_ROOT, setVALUE_HIGH, inFREE
+	source(  7,0x20080200, 0,0,0); // #14      ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueHighIsNonZero)                                                                    # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(  8,0x20080200, 0,0,0); // #15      ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueHighIsNonZero)                                                                    # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(  9,0x20080200, 0,0,0); // #16      ROTL_VH => VALUE_HIGH                       :JMPNZ(ValueHighIsNonZero)                                                                    # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source( 10,0x00000080, 0,0,0); // #17                                                  :JMP(AssertFails)                                                                             # flags = jmp
+	source( 11,0x00280080, 0,0,0); // #20      ${GetValueHigh()} => VALUE_HIGH             :JMP(ValueIsNonZero)                                                                          # flags = jmp, setVALUE_HIGH, inFREE
+	source( 12,0x00480000, 0,0,0); // #24      NEW_ROOT => VALUE_HIGH                                                                                                                    # flags = setVALUE_HIGH, inNEW_ROOT
+	source( 13,0x00002000, 0,0,0); // #25      0 => NEW_ROOT                                                                                                                             # flags = setNEW_ROOT
+	source( 14,0x00200200, 0,0,0); // #29      ${isGet()}                                  :JMPNZ(Get_NonZero)                                                                           # flags = jmpnz, inFREE
+	source( 15,0x00200200, 0,0,0); // #30      ${isSetUpdate()}                            :JMPNZ(Set_Update)                                                                            # flags = jmpnz, inFREE
+	source( 16,0x00200200, 0,0,0); // #31      ${isSetInsertFound()}                       :JMPNZ(Set_InsertFound)                                                                       # flags = jmpnz, inFREE
+	source( 17,0x00200200, 0,0,0); // #32      ${isSetInsertNotFound()}                    :JMPNZ(Set_InsertNotFound)                                                                    # flags = jmpnz, inFREE
+	source( 18,0x00000080, 0,0,0); // #33                                                  :JMP(SetAllToZero)                                                                            # flags = jmp
+	source( 19,0x00200200, 0,0,0); // #50      ${isGet()}                                  :JMPNZ(Get_Zero)                                                                              # flags = jmpnz, inFREE
+	source( 20,0x00200200, 0,0,0); // #51      ${isSetDeleteFound()}                       :JMPNZ(Set_DeleteFound)                                                                       # flags = jmpnz, inFREE
+	source( 21,0x00200200, 0,0,0); // #52      ${isSetDeleteNotFound()}                    :JMPNZ(Set_DeleteNotFound)                                                                    # flags = jmpnz, inFREE
+	source( 22,0x00200200, 0,0,0); // #53      ${isSetZeroToZero()}                        :JMPNZ(Set_ZeroToZero)                                                                        # flags = jmpnz, inFREE
+	source( 23,0x00000080, 0,0,0); // #54                                                  :JMP(SetAllToZero)                                                                            # flags = jmp
+
+	                               // storage_sm_get_zero.zkasm
+
+	source( 24,0x00208000, 0,0,0); // #22      ${GetRkey()} => RKEY                                                                                                                      # flags = setRKEY, inFREE
+	source( 25,0x00200100, 0,0,0); // #24      ${GetIsOld0()}                  :JMPZ(GZ_LeafNode)                                                                                        # flags = jmpz, inFREE
+	source( 26,0x00000080, 0,0,0); // #25                                      :JMP(GZ_IntermediateNode)                                                                                 # flags = jmp
+	source( 27,0x00200400, 0,0,0); // #33      ${GetSiblingValueLow()} => HASH_LEFT                                                                                                      # flags = setHASH_LEFT, inFREE
+	source( 28,0x00200800, 0,0,0); // #34      ${GetSiblingValueHigh()} => HASH_RIGHT                                                                                                    # flags = setHASH_RIGHT, inFREE
+	source( 29,0x00200801, 0,0,0); // #35      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source( 30,0x00220000, 0,0,0); // #37      ${GetSiblingRkey()} => SIBLING_RKEY                                                                                                       # flags = setSIBLING_RKEY, inFREE
+	source( 31,0x10040000, 0,0,0); // #40      VALUE_HIGH => SIBLING_VALUE_HASH                                                                                                          # flags = setSIBLING_VALUE_HASH, inVALUE_HIGH
+	source( 32,0x01080200, 0,0,0); // #46      RKEY - SIBLING_RKEY => VALUE_HIGH   :JMPNZ(GZ_SiblingRKey_RKey_differents)                                                                # flags = jmpnz, setVALUE_HIGH, inRKEY
+	source( 33,0x20080200, 0,0,0); // #47      ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)                                                                # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source( 34,0x20080200, 0,0,0); // #48      ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)                                                                # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source( 35,0x20080200, 0,0,0); // #49      ROTL_VH => VALUE_HIGH               :JMPNZ(GZ_SiblingRKey_RKey_differents)                                                                # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source( 36,0x00000080, 0,0,0); // #52                                          :JMP(AssertFails)                                                                                     # flags = jmp
+	source( 37,0x04080000, 0,0,0); // #57      SIBLING_VALUE_HASH => VALUE_HIGH                                                                                                          # flags = setVALUE_HIGH, inSIBLING_VALUE_HASH
+	source( 38,0x00000400, 0,0,0); // #62      SIBLING_RKEY => HASH_LEFT                                                                                                                 # flags = setHASH_LEFT
+	source( 39,0x00204003, 0,0,0); // #63      $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source( 40,0x00000080, 0,0,0); // #64                                      :JMP(GZ_InitLevel)                                                                                        # flags = jmp
+	source( 41,0x00004000, 0,0,0); // #69      0x0 => OLD_ROOT                                                                                                                           # flags = setOLD_ROOT
+	source( 42,0x00201080, 0,0,0); // #74      ${GetLevel()} => LEVEL          :JMP(Get_ClimbUp)                                                                                         # flags = jmp, setLEVEL, inFREE
+
+	                               // storage_sm_get_non_zero.zkasm
+
+	source( 43,0x08000400, 0,0,0); // #17      VALUE_LOW => HASH_LEFT                                                                                                                    # flags = setHASH_LEFT, inVALUE_LOW
+	source( 44,0x10000800, 0,0,0); // #18      VALUE_HIGH => HASH_RIGHT                                                                                                                  # flags = setHASH_RIGHT, inVALUE_HIGH
+	source( 45,0x00200801, 0,0,0); // #19      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source( 46,0x00208400, 0,0,0); // #22      ${GetRkey()} => RKEY, HASH_LEFT                                                                                                           # flags = setHASH_LEFT, setRKEY, inFREE
+	source( 47,0x00204003, 0,0,0); // #23      $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source( 48,0x00201080, 0,0,0); // #26      ${GetLevel()} => LEVEL          :JMP(Get_ClimbUp)                                                                                         # flags = jmp, setLEVEL, inFREE
+
+	                               // storage_sm_get_climb_up.zkasm
+
+	source( 49,0x40000100, 0,0,0); // #10      LEVEL                           :JMPZ(GCU_Latch)                                                                                          # flags = jmpz, inLEVEL
+	source( 50,0x40001000,-1,0,0); // #11      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source( 51,0x00210100, 0,0,0); // #14      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(GCU_SiblingIsRight)                                                                                 # flags = jmpz, setRKEY_BIT, inFREE
+	source( 52,0x00200400, 0,0,0); // #19      ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source( 53,0x00800880, 0,0,0); // #20      OLD_ROOT => HASH_RIGHT  :JMP(GCU_HashAndClimbUp)                                                                                          # flags = jmp, setHASH_RIGHT, inOLD_ROOT
+	source( 54,0x00800400, 0,0,0); // #25      OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source( 55,0x00200800, 0,0,0); // #26      ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source( 56,0x00204001, 0,0,0); // #30      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source( 57,0x00208090, 0,0,0); // #33      $ => RKEY                       :CLIMB_RKEY, JMP(Get_ClimbUp)                                                                             # flags = climbRkey, jmp, setRKEY, inFREE
+	source( 58,0x00400100,-1,0,0); // #43      NEW_ROOT - 1                    :JMPZ(Set_ZeroToZero_GetZero_Return)                                                                      # flags = jmpz, inNEW_ROOT
+	source( 59,0x00000084, 0,0,0); // #46                                      :LATCH_GET, JMP(Run)                                                                                      # flags = latchGet, jmp
+
+	                               // storage_sm_set_update.zkasm
+
+	source( 60,0x00208000, 0,0,0); // #17      ${GetRkey()} => RKEY                                                                                                                      # flags = setRKEY, inFREE
+	source( 61,0x00200400, 0,0,0); // #21      ${GetOldValueLow()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source( 62,0x00200800, 0,0,0); // #22      ${GetOldValueHigh()} => HASH_RIGHT                                                                                                        # flags = setHASH_RIGHT, inFREE
+	source( 63,0x00200801, 0,0,0); // #23      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source( 64,0x01000400, 0,0,0); // #26      RKEY => HASH_LEFT                                                                                                                         # flags = setHASH_LEFT, inRKEY
+	source( 65,0x00204003, 0,0,0); // #27      $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source( 66,0x08000400, 0,0,0); // #32      VALUE_LOW => HASH_LEFT                                                                                                                    # flags = setHASH_LEFT, inVALUE_LOW
+	source( 67,0x10000800, 0,0,0); // #33      VALUE_HIGH => HASH_RIGHT                                                                                                                  # flags = setHASH_RIGHT, inVALUE_HIGH
+	source( 68,0x00200801, 0,0,0); // #34      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source( 69,0x01000400, 0,0,0); // #37      RKEY => HASH_LEFT                                                                                                                         # flags = setHASH_LEFT, inRKEY
+	source( 70,0x00202003, 0,0,0); // #38      $ => NEW_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setNEW_ROOT, inFREE
+	source( 71,0x00201000, 0,0,0); // #43      ${GetLevel()} => LEVEL                                                                                                                    # flags = setLEVEL, inFREE
+	source( 72,0x40000100, 0,0,0); // #48      LEVEL                           :JMPZ(SU_Latch)                                                                                           # flags = jmpz, inLEVEL
+	source( 73,0x40001000,-1,0,0); // #49      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source( 74,0x00210100, 0,0,0); // #52      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SU_SiblingIsRight)                                                                                  # flags = jmpz, setRKEY_BIT, inFREE
+	source( 75,0x00200400, 0,0,0); // #57      ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source( 76,0x00400800, 0,0,0); // #58      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source( 77,0x00202001, 0,0,0); // #59      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source( 78,0x00800800, 0,0,0); // #62      OLD_ROOT => HASH_RIGHT                      ; Sibling hash is already in HASH_LEFT, since previous hash                                   # flags = setHASH_RIGHT, inOLD_ROOT
+	source( 79,0x00204001, 0,0,0); // #63      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source( 80,0x00208090, 0,0,0); // #66      $ => RKEY                       :CLIMB_RKEY, JMP(SU_ClimbTree)                                                                            # flags = climbRkey, jmp, setRKEY, inFREE
+	source( 81,0x00400400, 0,0,0); // #71      NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source( 82,0x00200800, 0,0,0); // #72      ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source( 83,0x00202001, 0,0,0); // #73      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source( 84,0x00800400, 0,0,0); // #76      OLD_ROOT => HASH_LEFT                       ; Sibling hash is already in HASH_RIGHT, since previous hash                                  # flags = setHASH_LEFT, inOLD_ROOT
+	source( 85,0x00204001, 0,0,0); // #77      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source( 86,0x00208090, 0,0,0); // #80      $ => RKEY                       :CLIMB_RKEY, JMP(SU_ClimbTree)                                                                            # flags = climbRkey, jmp, setRKEY, inFREE
+	source( 87,0x00000088, 0,0,0); // #86                                      :LATCH_SET, JMP(Run)                                                                                      # flags = latchSet, jmp
+
+	                               // storage_sm_set_insert_found.zkasm
+
+	source( 88,0x00200400, 0,0,0); // #26      ${GetSiblingValueLow()} => HASH_LEFT                                                                                                      # flags = setHASH_LEFT, inFREE
+	source( 89,0x00200800, 0,0,0); // #27      ${GetSiblingValueHigh()} => HASH_RIGHT                                                                                                    # flags = setHASH_RIGHT, inFREE
+	source( 90,0x00240801, 0,0,0); // #28      $ => SIBLING_VALUE_HASH, HASH_RIGHT :HASH0                                                                                                # flags = hash, setHASH_RIGHT, setSIBLING_VALUE_HASH, inFREE
+	source( 91,0x00220000, 0,0,0); // #31      ${GetSiblingRkey()} => SIBLING_RKEY                                                                                                       # flags = setSIBLING_RKEY, inFREE
+	source( 92,0x00000400, 0,0,0); // #32      SIBLING_RKEY => HASH_LEFT                                                                                                                 # flags = setHASH_LEFT
+	source( 93,0x00204003, 0,0,0); // #33      $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source( 94,0x08000400, 0,0,0); // #36      VALUE_LOW => HASH_LEFT                                                                                                                    # flags = setHASH_LEFT, inVALUE_LOW
+	source( 95,0x10000800, 0,0,0); // #37      VALUE_HIGH => HASH_RIGHT                                                                                                                  # flags = setHASH_RIGHT, inVALUE_HIGH
+	source( 96,0x00200801, 0,0,0); // #38      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source( 97,0x00208400, 0,0,0); // #41      ${GetRkey()} => RKEY, HASH_LEFT                                                                                                           # flags = setHASH_LEFT, setRKEY, inFREE
+	source( 98,0x00202003, 0,0,0); // #42      $ => NEW_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setNEW_ROOT, inFREE
+	source( 99,0x00201000, 0,0,0); // #47      ${GetLevel()} => LEVEL                                                                                                                    # flags = setLEVEL, inFREE
+	source(100,0x40001000,-1,0,0); // #53      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(101,0x00210100, 0,0,0); // #56      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SIF_SiblingIsRight1) ; If next key bit is zero, then sibling is right (sibling's next key bit is 1) # flags = jmpz, setRKEY_BIT, inFREE
+	source(102,0x00800400, 0,0,0); // #61      OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(103,0x00400800, 0,0,0); // #62      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(104,0x00202001, 0,0,0); // #63      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(105,0x00208010, 0,0,0); // #66      $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(106,0x002200E0, 0,0,0); // #67      $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY_N, JMP(SIF_ClimbBranch)                                                               # flags = climbSiblingRkey, climbBitN, jmp, setSIBLING_RKEY, inFREE
+	source(107,0x00400400, 0,0,0); // #72      NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(108,0x00800800, 0,0,0); // #73      OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(109,0x00202001, 0,0,0); // #74      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(110,0x00208010, 0,0,0); // #77      $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(111,0x00220060, 0,0,0); // #78      $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY_N                                                                                     # flags = climbSiblingRkey, climbBitN, setSIBLING_RKEY, inFREE
+	source(112,0x00200100, 0,0,0); // #82      ${GetTopOfBranch()}             :JMPZ(SIF_StartOldRoot) ; If we are at the top of the branch, then go to SIF_StartOldRoot                 # flags = jmpz, inFREE
+	source(113,0x40001000,-1,0,0); // #84      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(114,0x00210100, 0,0,0); // #87      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SIF_SiblingIsRight2)                                                                                # flags = jmpz, setRKEY_BIT, inFREE
+	source(115,0x00000400, 0,0,0); // #92      0x0 => HASH_LEFT                                                                                                                          # flags = setHASH_LEFT
+	source(116,0x00400800, 0,0,0); // #93      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(117,0x00202001, 0,0,0); // #94      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(118,0x00208010, 0,0,0); // #97      $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(119,0x002200A0, 0,0,0); // #98      $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY, JMP(SIF_ClimbBranch)                                                                 # flags = climbSiblingRkey, jmp, setSIBLING_RKEY, inFREE
+	source(120,0x00400400, 0,0,0); // #103     NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(121,0x00000800, 0,0,0); // #104     0x0 => HASH_RIGHT                                                                                                                         # flags = setHASH_RIGHT
+	source(122,0x00202001, 0,0,0); // #105     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(123,0x00208010, 0,0,0); // #108     $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(124,0x002200A0, 0,0,0); // #109     $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY, JMP(SIF_ClimbBranch)                                                                 # flags = climbSiblingRkey, jmp, setSIBLING_RKEY, inFREE
+	source(125,0x00000400, 0,0,0); // #113     SIBLING_RKEY => HASH_LEFT                                                                                                                 # flags = setHASH_LEFT
+	source(126,0x04000800, 0,0,0); // #114     SIBLING_VALUE_HASH => HASH_RIGHT                                                                                                          # flags = setHASH_RIGHT, inSIBLING_VALUE_HASH
+	source(127,0x00204003, 0,0,0); // #115     $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source(128,0x40000100, 0,0,0); // #120     LEVEL                           :JMPZ(SIF_Latch)                                                                                          # flags = jmpz, inLEVEL
+	source(129,0x40001000,-1,0,0); // #121     LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(130,0x00210100, 0,0,0); // #124     ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SIF_SiblingIsRight3)                                                                                # flags = jmpz, setRKEY_BIT, inFREE
+	source(131,0x00400800, 0,0,0); // #129     NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(132,0x00200400, 0,0,0); // #130     ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(133,0x00202001, 0,0,0); // #131     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(134,0x00800800, 0,0,0); // #134     OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(135,0x00204001, 0,0,0); // #135     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(136,0x00208010, 0,0,0); // #138     $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(137,0x002200A0, 0,0,0); // #139     $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY, JMP(SIF_ClimbTree)                                                                   # flags = climbSiblingRkey, jmp, setSIBLING_RKEY, inFREE
+	source(138,0x00400400, 0,0,0); // #144     NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(139,0x00200800, 0,0,0); // #145     ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source(140,0x00202001, 0,0,0); // #146     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(141,0x00800400, 0,0,0); // #149     OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(142,0x00204001, 0,0,0); // #150     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(143,0x00208010, 0,0,0); // #153     $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(144,0x002200A0, 0,0,0); // #154     $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY, JMP(SIF_ClimbTree)                                                                   # flags = climbSiblingRkey, jmp, setSIBLING_RKEY, inFREE
+	source(145,0x00000088, 0,0,0); // #160                                     :LATCH_SET, JMP(Run)                                                                                      # flags = latchSet, jmp
+
+	                               // storage_sm_set_insert_not_found.zkasm
+
+	source(146,0x08000400, 0,0,0); // #19      VALUE_LOW => HASH_LEFT                                                                                                                    # flags = setHASH_LEFT, inVALUE_LOW
+	source(147,0x10000800, 0,0,0); // #20      VALUE_HIGH => HASH_RIGHT                                                                                                                  # flags = setHASH_RIGHT, inVALUE_HIGH
+	source(148,0x00200801, 0,0,0); // #22      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source(149,0x00208400, 0,0,0); // #25      ${GetRkey()} => RKEY, HASH_LEFT                                                                                                           # flags = setHASH_LEFT, setRKEY, inFREE
+	source(150,0x00202003, 0,0,0); // #26      $ => NEW_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setNEW_ROOT, inFREE
+	source(151,0x00201000, 0,0,0); // #31      ${GetLevel()} => LEVEL                                                                                                                    # flags = setLEVEL, inFREE
+	source(152,0x00004000, 0,0,0); // #37      0x0 => OLD_ROOT                                                                                                                           # flags = setOLD_ROOT
+	source(153,0x40000100, 0,0,0); // #42      LEVEL                           :JMPZ(SINF_Latch)                                                                                         # flags = jmpz, inLEVEL
+	source(154,0x40001000,-1,0,0); // #43      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(155,0x00210100, 0,0,0); // #46      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SINF_SiblingIsRight3)                                                                               # flags = jmpz, setRKEY_BIT, inFREE
+	source(156,0x00200400, 0,0,0); // #51      ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(157,0x00400800, 0,0,0); // #52      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(158,0x00202001, 0,0,0); // #54      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(159,0x00800800, 0,0,0); // #57      OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(160,0x00204001, 0,0,0); // #58      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(161,0x00208090, 0,0,0); // #61      $ => RKEY                       :CLIMB_RKEY, JMP(SINF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(162,0x00400400, 0,0,0); // #66      NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(163,0x00200800, 0,0,0); // #67      ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source(164,0x00202001, 0,0,0); // #68      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(165,0x00800400, 0,0,0); // #71      OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(166,0x00204001, 0,0,0); // #72      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(167,0x00208090, 0,0,0); // #75      $ => RKEY                       :CLIMB_RKEY, JMP(SINF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(168,0x00000088, 0,0,0); // #81                                      :LATCH_SET, JMP(Run)                                                                                      # flags = latchSet, jmp
+
+	                               // storage_sm_set_delete_found.zkasm
+
+	source(169,0x00200400, 0,0,0); // #22      ${GetOldValueLow()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(170,0x00200800, 0,0,0); // #23      ${GetOldValueHigh()} => HASH_RIGHT                                                                                                        # flags = setHASH_RIGHT, inFREE
+	source(171,0x00200801, 0,0,0); // #24      $ => HASH_RIGHT                             :HASH0                                                                                        # flags = hash, setHASH_RIGHT, inFREE
+	source(172,0x00208400, 0,0,0); // #27      ${GetRkey()} => RKEY, HASH_LEFT                                                                                                           # flags = setHASH_LEFT, setRKEY, inFREE
+	source(173,0x00204003, 0,0,0); // #28      $ => OLD_ROOT                               :HASH1                                                                                        # flags = hash, hashType, setOLD_ROOT, inFREE
+	source(174,0x00200400, 0,0,0); // #32      ${GetSiblingValueLow()} => HASH_LEFT                                                                                                      # flags = setHASH_LEFT, inFREE
+	source(175,0x00200800, 0,0,0); // #33      ${GetSiblingValueHigh()} => HASH_RIGHT                                                                                                    # flags = setHASH_RIGHT, inFREE
+	source(176,0x00240801, 0,0,0); // #34      $ => SIBLING_VALUE_HASH, HASH_RIGHT         :HASH0                                                                                        # flags = hash, setHASH_RIGHT, setSIBLING_VALUE_HASH, inFREE
+	source(177,0x00220400, 0,0,0); // #37      ${GetSiblingRkey()} => SIBLING_RKEY, HASH_LEFT                                                                                            # flags = setHASH_LEFT, setSIBLING_RKEY, inFREE
+	source(178,0x00202003, 0,0,0); // #38      $ => NEW_ROOT                               :HASH1                                                                                        # flags = hash, hashType, setNEW_ROOT, inFREE
+	source(179,0x00201000, 0,0,0); // #49      ${GetLevel()} => LEVEL                                                                                                                    # flags = setLEVEL, inFREE
+	source(180,0x40001000,-1,0,0); // #56      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(181,0x00210100, 0,0,0); // #59      ${GetNextKeyBit()} => RKEY_BIT              :JMPZ(SDF_SiblingIsRight1)                                                                    # flags = jmpz, setRKEY_BIT, inFREE
+	source(182,0x00400400, 0,0,0); // #64      NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(183,0x00800800, 0,0,0); // #65      OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(184,0x00204001, 0,0,0); // #66      $ => OLD_ROOT                               :HASH0                                                                                        # flags = hash, setOLD_ROOT, inFREE
+	source(185,0x00208010, 0,0,0); // #68      $ => RKEY                                   :CLIMB_RKEY                                                                                   # flags = climbRkey, setRKEY, inFREE
+	source(186,0x002200E0, 0,0,0); // #72      $ => SIBLING_RKEY                           :CLIMB_SIBLING_RKEY_N, JMP(SDF_ClimbBranch)                                                   # flags = climbSiblingRkey, climbBitN, jmp, setSIBLING_RKEY, inFREE
+	source(187,0x00800400, 0,0,0); // #77      OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(188,0x00400800, 0,0,0); // #78      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(189,0x00204001, 0,0,0); // #79      $ => OLD_ROOT                               :HASH0                                                                                        # flags = hash, setOLD_ROOT, inFREE
+	source(190,0x00208010, 0,0,0); // #82      $ => RKEY                                   :CLIMB_RKEY                                                                                   # flags = climbRkey, setRKEY, inFREE
+	source(191,0x00220060, 0,0,0); // #86      $ => SIBLING_RKEY                           :CLIMB_SIBLING_RKEY_N                                                                         # flags = climbSiblingRkey, climbBitN, setSIBLING_RKEY, inFREE
+	source(192,0x00200100, 0,0,0); // #94      ${GetTopOfBranch()}                         :JMPZ(SDF_StartNewRoot)                                                                       # flags = jmpz, inFREE
+	source(193,0x40001000,-1,0,0); // #96      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(194,0x00210100, 0,0,0); // #99      ${GetNextKeyBit()} => RKEY_BIT              :JMPZ(SDF_SiblingIsRight2)                                                                    # flags = jmpz, setRKEY_BIT, inFREE
+	source(195,0x00000400, 0,0,0); // #108     0x0 => HASH_LEFT                                                                                                                          # flags = setHASH_LEFT
+	source(196,0x00800880, 0,0,0); // #109     OLD_ROOT => HASH_RIGHT          :JMP(SDF_SiblingClimbKey2)                                                                                # flags = jmp, setHASH_RIGHT, inOLD_ROOT
+	source(197,0x00800400, 0,0,0); // #114     OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(198,0x00000800, 0,0,0); // #115     0x0 => HASH_RIGHT                                                                                                                         # flags = setHASH_RIGHT
+	source(199,0x00204001, 0,0,0); // #118     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(200,0x00208010, 0,0,0); // #120     $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(201,0x002200A0, 0,0,0); // #121     $ => SIBLING_RKEY               :CLIMB_SIBLING_RKEY, JMP(SDF_ClimbBranch)                                                                 # flags = climbSiblingRkey, jmp, setSIBLING_RKEY, inFREE
+	source(202,0x00000400, 0,0,0); // #128     SIBLING_RKEY => HASH_LEFT                                                                                                                 # flags = setHASH_LEFT
+	source(203,0x04000800, 0,0,0); // #129     SIBLING_VALUE_HASH => HASH_RIGHT                                                                                                          # flags = setHASH_RIGHT, inSIBLING_VALUE_HASH
+	source(204,0x00202003, 0,0,0); // #130     $ => NEW_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setNEW_ROOT, inFREE
+	source(205,0x40000100, 0,0,0); // #136     LEVEL                           :JMPZ(SDF_Latch)                                                                                          # flags = jmpz, inLEVEL
+	source(206,0x40001000,-1,0,0); // #138     LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(207,0x00280E00, 0,0,0); // #142     ${GetSiblingHash()} => HASH_LEFT, HASH_RIGHT, VALUE_HIGH :JMPNZ(SDF_SiblingHashIsNotZero) ;VH[0]                                          # flags = jmpnz, setHASH_LEFT, setHASH_RIGHT, setVALUE_HIGH, inFREE
+	source(208,0x20080200, 0,0,0); // #143     ROTL_VH => VALUE_HIGH           :JMPNZ(SDF_SiblingHashIsNotZero) ; VH[3]                                                                  # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(209,0x20080200, 0,0,0); // #144     ROTL_VH => VALUE_HIGH           :JMPNZ(SDF_SiblingHashIsNotZero) ; VH[2]                                                                  # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(210,0x20080200, 0,0,0); // #145     ROTL_VH => VALUE_HIGH           :JMPNZ(SDF_SiblingHashIsNotZero) ; VH[1]                                                                  # flags = jmpnz, setVALUE_HIGH, inROTL_VH
+	source(211,0x00000080, 0,0,0); // #147                                     :JMP(AssertFails)                                                                                         # flags = jmp
+	source(212,0x00080000, 0,0,0); // #150     0 => VALUE_HIGH                                                                                                                           # flags = setVALUE_HIGH
+	source(213,0x00210100, 0,0,0); // #154     ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDF_SiblingIsRight3)                                                                                # flags = jmpz, setRKEY_BIT, inFREE
+	source(214,0x00400800, 0,0,0); // #164     NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(215,0x00202001, 0,0,0); // #165     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(216,0x00800800, 0,0,0); // #168     OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(217,0x00204001, 0,0,0); // #169     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(218,0x00208090, 0,0,0); // #172     $ => RKEY                       :CLIMB_RKEY, JMP(SDF_ClimbTree)                                                                           # flags = climbRkey, jmp, setRKEY, inFREE
+	source(219,0x00400400, 0,0,0); // #178     NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(220,0x00202001, 0,0,0); // #179     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(221,0x00800400, 0,0,0); // #182     OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(222,0x00204001, 0,0,0); // #183     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(223,0x00208010, 0,0,0); // #186     $ => RKEY                       :CLIMB_RKEY                                                                                               # flags = climbRkey, setRKEY, inFREE
+	source(224,0x40000100, 0,0,0); // #194     LEVEL                           :JMPZ(SDF_Latch)                                                                                          # flags = jmpz, inLEVEL
+	source(225,0x40001000,-1,0,0); // #195     LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(226,0x00210100, 0,0,0); // #198     ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDF_SiblingIsRight4)                                                                                # flags = jmpz, setRKEY_BIT, inFREE
+	source(227,0x00200400, 0,0,0); // #203     ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(228,0x00400800, 0,0,0); // #204     NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(229,0x00202001, 0,0,0); // #205     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(230,0x00800800, 0,0,0); // #208     OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(231,0x00204001, 0,0,0); // #209     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(232,0x00208090, 0,0,0); // #212     $ => RKEY                       :CLIMB_RKEY, JMP(SDF_ClimbTree)                                                                           # flags = climbRkey, jmp, setRKEY, inFREE
+	source(233,0x00400400, 0,0,0); // #217     NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(234,0x00200800, 0,0,0); // #218     ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source(235,0x00202001, 0,0,0); // #219     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(236,0x00800400, 0,0,0); // #222     OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(237,0x00204001, 0,0,0); // #223     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(238,0x00208090, 0,0,0); // #226     $ => RKEY                       :CLIMB_RKEY, JMP(SDF_ClimbTree)                                                                           # flags = climbRkey, jmp, setRKEY, inFREE
+	source(239,0x00000088, 0,0,0); // #232                                     :LATCH_SET, JMP(Run)                                                                                      # flags = latchSet, jmp
+
+	                               // storage_sm_set_delete_not_found.zkasm
+
+	source(240,0x00200400, 0,0,0); // #20      ${GetOldValueLow()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(241,0x00200800, 0,0,0); // #21      ${GetOldValueHigh()} => HASH_RIGHT                                                                                                        # flags = setHASH_RIGHT, inFREE
+	source(242,0x00200801, 0,0,0); // #22      $ => HASH_RIGHT                 :HASH0                                                                                                    # flags = hash, setHASH_RIGHT, inFREE
+	source(243,0x00208400, 0,0,0); // #25      ${GetRkey()} => RKEY, HASH_LEFT                                                                                                           # flags = setHASH_LEFT, setRKEY, inFREE
+	source(244,0x00204003, 0,0,0); // #26      $ => OLD_ROOT                   :HASH1                                                                                                    # flags = hash, hashType, setOLD_ROOT, inFREE
+	source(245,0x00201000, 0,0,0); // #31      ${GetLevel()} => LEVEL                                                                                                                    # flags = setLEVEL, inFREE
+	source(246,0x00182000, 0,0,0); // #36      0x0 => NEW_ROOT, VALUE_LOW, VALUE_HIGH                                                                                                    # flags = setNEW_ROOT, setVALUE_HIGH, setVALUE_LOW
+	source(247,0x40000100, 0,0,0); // #39      LEVEL                           :JMPZ(SDNF_Latch)                                                                                         # flags = jmpz, inLEVEL
+	source(248,0x40001000,-1,0,0); // #40      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(249,0x00200400, 0,0,0); // #45      ${GetSiblingLeftChildHash()} => HASH_LEFT                                                                                                 # flags = setHASH_LEFT, inFREE
+	source(250,0x00200800, 0,0,0); // #46      ${GetSiblingRightChildHash()} => HASH_RIGHT                                                                                               # flags = setHASH_RIGHT, inFREE
+	source(251,0x00200C01, 0,0,0); // #47      $ => HASH_LEFT, HASH_RIGHT :HASH0                                                                                                         # flags = hash, setHASH_LEFT, setHASH_RIGHT, inFREE
+	source(252,0x00210100, 0,0,0); // #49      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDNF_SiblingIsRight3)                                                                               # flags = jmpz, setRKEY_BIT, inFREE
+	source(253,0x00400800, 0,0,0); // #54      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(254,0x00202001, 0,0,0); // #57      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(255,0x00800800, 0,0,0); // #60      OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(256,0x00204001, 0,0,0); // #61      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(257,0x00208090, 0,0,0); // #64      $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(258,0x00400400, 0,0,0); // #70      NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(259,0x00202001, 0,0,0); // #71      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(260,0x00800400, 0,0,0); // #74      OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(261,0x00204001, 0,0,0); // #75      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(262,0x00208090, 0,0,0); // #78      $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(263,0x40000100, 0,0,0); // #83      LEVEL                           :JMPZ(SDNF_Latch)                                                                                         # flags = jmpz, inLEVEL
+	source(264,0x40001000,-1,0,0); // #84      LEVEL - 1 => LEVEL                                                                                                                        # flags = setLEVEL, inLEVEL
+	source(265,0x00210100, 0,0,0); // #86      ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDNF_SiblingIsRight4)                                                                               # flags = jmpz, setRKEY_BIT, inFREE
+	source(266,0x00400800, 0,0,0); // #91      NEW_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inNEW_ROOT
+	source(267,0x00200400, 0,0,0); // #92      ${GetSiblingHash()} => HASH_LEFT                                                                                                          # flags = setHASH_LEFT, inFREE
+	source(268,0x00202001, 0,0,0); // #93      $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(269,0x00800800, 0,0,0); // #96      OLD_ROOT => HASH_RIGHT                                                                                                                    # flags = setHASH_RIGHT, inOLD_ROOT
+	source(270,0x00204001, 0,0,0); // #97      $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(271,0x00208090, 0,0,0); // #100     $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(272,0x00400400, 0,0,0); // #105     NEW_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inNEW_ROOT
+	source(273,0x00200800, 0,0,0); // #106     ${GetSiblingHash()} => HASH_RIGHT                                                                                                         # flags = setHASH_RIGHT, inFREE
+	source(274,0x00202001, 0,0,0); // #107     $ => NEW_ROOT                   :HASH0                                                                                                    # flags = hash, setNEW_ROOT, inFREE
+	source(275,0x00800400, 0,0,0); // #110     OLD_ROOT => HASH_LEFT                                                                                                                     # flags = setHASH_LEFT, inOLD_ROOT
+	source(276,0x00204001, 0,0,0); // #111     $ => OLD_ROOT                   :HASH0                                                                                                    # flags = hash, setOLD_ROOT, inFREE
+	source(277,0x00208090, 0,0,0); // #114     $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)                                                                          # flags = climbRkey, jmp, setRKEY, inFREE
+	source(278,0x00000088, 0,0,0); // #120                                     :LATCH_SET, JMP(Run)                                                                                      # flags = latchSet, jmp
+
+	                               // storage_sm_set_zero_to_zero.zkasm
+
+	source(279,0x00002080, 1,0,0); // #6       1 => NEW_ROOT                               :JMP(Get_Zero)                                                                                # flags = jmp, setNEW_ROOT
+	source(280,0x00802000, 0,0,0); // #10      OLD_ROOT => NEW_ROOT                                                                                                                      # flags = setNEW_ROOT, inOLD_ROOT
+	source(281,0x00000088, 0,0,0); // #14                                                  :LATCH_SET, JMP(Run)                                                                          # flags = latchSet, jmp
+
+	                               // storage_sm.zkasm
+
+	source(282,0x001FFC00, 0,0,0); // #68      0 => HASH_LEFT, HASH_RIGHT, OLD_ROOT, NEW_ROOT, VALUE_LOW, VALUE_HIGH, SIBLING_VALUE_HASH, RKEY, SIBLING_RKEY, RKEY_BIT, LEVEL            # flags = setHASH_LEFT, setHASH_RIGHT, setLEVEL, setNEW_ROOT, setOLD_ROOT, setRKEY, setRKEY_BIT, setSIBLING_RKEY, setSIBLING_VALUE_HASH, setVALUE_HIGH, setVALUE_LOW
+	source(283,0x00200100, 0,0,0); // #72      ${isAlmostEndPolynomial()}                  :JMPZ(NotEndPol)                                                                              # flags = jmpz, inFREE
+	source(284,0x00000080, 0,0,0); // #75                                                  :JMP(Run)                                                                                     # flags = jmp
+	source(285,0x00000080, 0,0,0); // #79      :JMP(AssertFails)                                                                                                                         # flags = jmp
+

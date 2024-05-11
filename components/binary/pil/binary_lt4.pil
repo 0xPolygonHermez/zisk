@@ -1,0 +1,61 @@
+// LT4 operation limited to 256 bits
+
+assert(bits == 256);
+assert(bpc == 2 || bpc == 4 || bpc == 8 || bpc == 16 || bpc == 32);
+
+//  LT4 (operation = 8)
+//
+//  This instruction operates over 4 chunks of 64 bits, so we divide the 256-bit values "a" and "b" in 4 chunks of 64 bits. It verifies
+//  that the 4 "a" chunks are LESS THAN the 4 "b" chunks, one-to-one.
+//
+//  Examples:
+//      (0x0FFF...FFFF, 0x0FFF...FFFF, 0x0FFF...FFFF, 0x0FFF...FFFF) LT4 (0xFFFF...FFFF, 0xFFFF...FFFF, 0xFFFF...FFFF, 0xFFFF...FFFF) = 1
+//      (0x0FFF...FFFF, 0x0FFF...FFFF, 0xFFFF...FFFF, 0x0FFF...FFFF) LT4 (0xFFFF...FFFF, 0xFFFF...FFFF, 0xFFFF...FFFF, 0xFFFF...FFFF) = 0
+//                                     ^^^^^^^^^^^^^                                                    ^^^^^^^^^^^^^
+//  In last byte for LT4 operation uses cin and sum of carries out of 3 previous chunks: 7th, 15th and 23th byte carry out. This sum
+//  could be 0,1,2 or 3. This value is an "input" on lookup table for operation == LT4 & last == 1. This sum is multiplied by isLt4 that
+//  it's active only if operation == LT4 and this sum is valid only in last operation lookup.
+//
+// reset4:  [binary value] flag to indicate that cIn must be reset in the LT4 operation. This flag is validated with isLt4 and CLK0.
+//          To validate the flags isLt4, useCarry and cOut, check that the composition P_FLAGS:
+//          cout + 2 * useCarry + 4 * isLt4 
+//          After the last optimization, these flags MUST BE constrained to be binary.
+
+// bpc = 2   needed reset4 and isLt4
+// bpc = 4   needed reset4 and isLt4
+// bpc = 8   reset4 = isLt4, reset4 not necessary
+// bpc = 16  reset4 = isLt4, reset4 not necessary
+// bpc = 32  reset4 = isLt4, reset4 not necessary
+
+col witness _isLt4;
+isLt4 = _isLt4;
+
+_isLt4 * (1 - _isLt4) === 0;
+
+if (bpc < 8) {
+    col witness _reset4;
+    reset4 = _reset4;
+    _reset4 * (1 - _reset4) === 0;      // _reset4 is binary
+    _reset4 * (1 - _isLt4) === 0;       // _reset4 active only in LT4 operation
+    if (bpc == 2) {
+        // bpc == 2 && bits == 256 => clocks = 16
+        // _reset4 only active in CLK3, CLK7, CLK11 (of 16 clocks)
+        _reset4 * (1 - 3'CLK0 - 7'CLK - 11'CLK0) === 0
+    } else if (bpc == 4) {
+        // bpc == 4 && bits == 256 => clocks = 8
+        // _reset4 only active in CLK1, CLK3, CLK5, CLK7 (of 8 clocks)
+        _reset4 * (1 - 'CLK0 - 3'CLK - 5'CLK0) === 0
+    } else {
+        assert(0);
+    }
+} else if (bpc == 2) {
+    reset4 = _isLt4 - 3'CLK;
+} else if (bpc == 4) {
+    reset4 = _isLt4 - 'CLK;
+} else if (bpc == 8) {
+    reset4 = _isLt4 - 3'CLK;
+} else if (bpc == 16) {
+    reset4 = _isLt4 - 'CLK;
+} else if (bpc == 32) {
+    reset4 = _isLt4;
+}

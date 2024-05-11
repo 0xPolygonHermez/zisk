@@ -1,0 +1,67 @@
+const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("../../node_modules/pil2-proofman/test/test_utils.js");
+
+const publicInputs = [5n, 1n, 1n, undefined];
+
+const path = require('path');
+const componentsPath = path.join(__dirname, '..', '..', 'components');
+
+function getSettings() {
+    return {
+        name: "Basic-vadcop-" + Date.now(),
+        airout: {
+            airoutFilename: path.join(componentsPath, 'basic/pil/basic.pilout'),
+        },
+        witnessCalculators: [
+            { filename: path.join(componentsPath, 'basic/js/executor_rom.js'), settings: {}, sm: "Rom" },
+            { filename: path.join(componentsPath, 'basic/js/executor_main.js'), settings: {}, sm: "Main" },
+            { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
+            { filename: `./src/lib/witness_calculators/logup.js`, settings: {} },
+            { filename: `./src/lib/witness_calculators/div_lib.js`, settings: {}, },
+        ],
+        prover: {
+            filename: "./src/lib/provers/stark_fri_prover.js",
+            settings: {
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_16.json') },
+                Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_10.json') },
+            },   
+        },
+        aggregation: {
+            settings: {
+                recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
+                final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
+            },
+            genProof: false,  
+        },
+        verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
+    };
+
+}
+
+describe("Basic Vadcop", async function () {
+    this.timeout(10000000);
+
+    const options = {
+        parallelExec: true,
+        useThreads: true,
+        vadcop: true,
+    };
+
+    const optionsVerifyConstraints = {...options, onlyCheck: true};
+
+    let setup;
+
+    let config;
+
+    before(async () => {
+        config = getSettings();
+        setup = await generateSetupTest(config);
+    });
+
+    it("Verify a Basic Vadcop constraints", async () => {
+        await checkConstraintsTest(setup, publicInputs, optionsVerifyConstraints);
+    });
+
+    it.only("Generate a Basic Vadcop proof", async () => {
+        await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
+    });
+});

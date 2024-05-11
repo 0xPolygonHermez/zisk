@@ -1,0 +1,46 @@
+Get_ClimbUp:
+
+    ; Root Node (same as before)                # end of tree
+    ;  / \                                      |
+    ;     Intermediate Node (same as before)    ^ climb tree
+    ;      / \                                  |
+    ;         Leaf Value Node (same as before)  * start here
+
+    ; If we are at the top of the tree, then goto GCU_Latch
+    LEVEL                           :JMPZ(GCU_Latch)
+    LEVEL - 1 => LEVEL
+
+    ; If next key bit is zero, then the sibling hash must be at the right (sibling's key bit is 1)
+    ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(GCU_SiblingIsRight)
+
+GCU_SiblingIsLeft:
+
+    ; OldRoot = Hash0( SiblingHash, OldRoot );
+    ${GetSiblingHash()} => HASH_LEFT
+    OLD_ROOT => HASH_RIGHT  :JMP(GCU_HashAndClimbUp)
+
+GCU_SiblingIsRight:
+
+    ; OldRoot = Hash0( OldRoot, SiblingHash );
+    OLD_ROOT => HASH_LEFT
+    ${GetSiblingHash()} => HASH_RIGHT
+
+
+GCU_HashAndClimbUp:
+    $ => OLD_ROOT                   :HASH0
+
+    ; Update remaining key
+    $ => RKEY                       :CLIMB_RKEY, JMP(Get_ClimbUp)
+
+GCU_Latch:
+
+    ; If you are at this point in the source you have arrived from
+    ; - get_zero operation (NEW_ROOT == 0)
+    ; - get_non_zero operation (NEW_ROOT == 0)
+    ; - zero_to_zero => get_zero operation (NEW_ROOT == 1)
+    ; In case of zero_to_zero, return zero_to_zero source.
+
+    NEW_ROOT - 1                    :JMPZ(Set_ZeroToZero_GetZero_Return)
+    ; At this point consistency is granted: OLD_ROOT, RKEY (complete key), VALUE_LOW, VALUE_HIGH, LEVEL
+    ; Return to the main loop
+                                    :LATCH_GET, JMP(Run)

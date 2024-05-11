@@ -1,0 +1,43 @@
+include "tools.pil"
+
+const SHA256F_ID = 66;
+
+subproof Sha256F(2**23) {
+
+    const int bits = 7;
+    const int ONES = (2**bits) - 1;
+
+    col fixed FIELD_LATCH = [0:6,1]...;
+    col fixed L1 = [1,0...];
+    col witness bit;
+
+    expr bitToField = 0;
+    for (int index = 0; index < bits; ++index) {
+        bitToField += (bits - index - 1)'bit * 2**index;
+    }
+
+    bit *(1-bit) === 0;
+    FIELD_LATCH * (bitToField - input[0]) === 0;
+
+	col witness input[3], output;
+
+    // GATE_TYPE => script gate sequence
+    // kGateType => type of gate, used to define all combinations of valid values.
+    // input[], output are the witness, gate used in each row defined by GATE_TYPE.
+    lookup_assumes(SHA256F_TABLE_ID, 1, [GATE_TYPE, ...input, output, input[2]' * CARRY_ENABLED]);
+
+	col fixed CONN[4];
+	col fixed GATE_TYPE;
+	col fixed CARRY_ENABLED;  	// 1 WHEN ADD  
+
+    // TODO: loading circuit with connections
+    include "sha256f_script.pil"
+    // wires: conections between gates
+    // {input[0], input[1], input[2], output} connect {Conn[0], Conn[1], Conn[2], Conn[3]};
+
+    // signal constant 0  (conect to use constant 0 in gate)
+    L1 * input[0] === 0;
+
+    // signal constant 1 => 1 x 7 = 1111111 (conect to use constant 1 in gate)
+    L1 * (ONES - input[1]) === 0;
+}

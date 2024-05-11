@@ -1,0 +1,120 @@
+Set_DeleteNotFound:
+
+    ; Root Node             Root Node (modified)                   # end of tree
+    ;  / \                   / \                                   |
+    ;    Intermediate Node      Intermediate Node (modified)       ^ climb tree
+    ;     /\                     / \                               |
+    ;       Old Value Node  --->    Old Value Node (delete)        * start here
+
+
+    ; We have found a leaf node to delete, but the DeleteNotFound name is given since this is the symmetric
+    ; case of InsertNotFound, but swapping old root and new root
+    ; We have to (pretend to) delete the old leaf node and climb the tree until the top, i.e. until the root
+
+    ; Create the a old leaf node for the old value
+
+    ; OldValueHash = Hash0( OLD_VALUE_LOW, OLD_VALUE_HIGH )
+    ; For GetOldValueRow don't verify if was zero, because if not
+    ; has same value, OLD_ROOT not match.
+
+    ${GetOldValueLow()} => HASH_LEFT
+    ${GetOldValueHigh()} => HASH_RIGHT
+    $ => HASH_RIGHT                 :HASH0
+
+    ; OldRoot = LeafNodeHash = Hash1( RKEY, Hash0( OLD_VALUE_LOW, OLD_VALUE_HIGH ) )
+    ${GetRkey()} => RKEY, HASH_LEFT
+    $ => OLD_ROOT                   :HASH1
+
+SDNF_InitLevel:
+
+    ; Init LEVEL register
+    ${GetLevel()} => LEVEL
+
+    ; Create the first leaf empty node
+
+    ; NewRoot = 0, NewValue = 0
+    0x0 => NEW_ROOT, VALUE_LOW, VALUE_HIGH
+
+    ; If we are at the top of the tree, then go to SDNF_Latch
+    LEVEL                           :JMPZ(SDNF_Latch)
+    LEVEL - 1 => LEVEL
+
+    ; Use the sibling childs to be trust that this node is and intermediate node otherwise
+    ; a MAP said it's a intermediate node but really was a leaf node. In case of leaf node
+    ; need to climb up the leaf node, if it isn't done the result tree was invalid.
+    ${GetSiblingLeftChildHash()} => HASH_LEFT
+    ${GetSiblingRightChildHash()} => HASH_RIGHT
+    $ => HASH_LEFT, HASH_RIGHT :HASH0
+
+    ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDNF_SiblingIsRight3)
+
+SDNF_SiblingIsLeft3:
+
+    ; NewRoot = Hash0 ( SiblingHash, NewRoot )
+    NEW_ROOT => HASH_RIGHT
+
+    ; HASH_LEFT = Hash0 (SiblingLeftChildHash, SiblingRightChildHash)
+    $ => NEW_ROOT                   :HASH0
+
+    ; OldRoot = Hash0 ( SiblingHash, OldRoot )
+    OLD_ROOT => HASH_RIGHT
+    $ => OLD_ROOT                   :HASH0
+
+    ; Update remaining key
+    $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)
+
+SDNF_SiblingIsRight3:
+
+    ; NewRoot = Hash0 ( NewRoot, SiblingHash )
+    ; HASH_RIGHT = HASH0 (SiblingLeftChildHash, SiblingRightChildHash)
+    NEW_ROOT => HASH_LEFT
+    $ => NEW_ROOT                   :HASH0
+
+    ; OldRoot = Hash0 ( OldRoot, SiblingHash )
+    OLD_ROOT => HASH_LEFT
+    $ => OLD_ROOT                   :HASH0
+
+    ; Update remaining key
+    $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)
+
+SDNF_ClimbTree:
+
+    ; If we are at the top of the tree, then go to SDNF_Latch
+    LEVEL                           :JMPZ(SDNF_Latch)
+    LEVEL - 1 => LEVEL
+
+    ${GetNextKeyBit()} => RKEY_BIT  :JMPZ(SDNF_SiblingIsRight4)
+
+SDNF_SiblingIsLeft4:
+
+    ; NewRoot = Hash0 ( SiblingHash, NewRoot )
+    NEW_ROOT => HASH_RIGHT
+    ${GetSiblingHash()} => HASH_LEFT
+    $ => NEW_ROOT                   :HASH0
+
+    ; OldRoot = Hash0 ( SiblingHash, OldRoot )
+    OLD_ROOT => HASH_RIGHT
+    $ => OLD_ROOT                   :HASH0
+
+    ; Update remaining key
+    $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)
+
+SDNF_SiblingIsRight4:
+
+    ; NewRoot = Hash0 ( NewRoot, SiblingHash )
+    NEW_ROOT => HASH_LEFT
+    ${GetSiblingHash()} => HASH_RIGHT
+    $ => NEW_ROOT                   :HASH0
+
+    ; OldRoot = Hash0 ( OldRoot, SiblingHash )
+    OLD_ROOT => HASH_LEFT
+    $ => OLD_ROOT                   :HASH0
+
+    ; Update remaining key
+    $ => RKEY                       :CLIMB_RKEY, JMP(SDNF_ClimbTree)
+
+SDNF_Latch:
+
+    ; At this point consistency is granted: OLD_ROOT, NEW_ROOT, RKEY (complete key), VALUE_LOW, VALUE_HIGH, LEVEL
+    ; Return to the main loop
+                                    :LATCH_SET, JMP(Run)

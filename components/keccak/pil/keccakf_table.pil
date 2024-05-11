@@ -1,0 +1,24 @@
+const int KECCAKF_TABLE_ID = 57
+
+subproof KeccakFTable(2**23) {
+    const int bits = 11;
+    const int TO = (2**bits) - 1;
+    const int MASK = (2**bits) - 1;
+    const int TO2 = 2 * TO;
+
+    col fixed GATE_TYPE = [0,1]...;
+    col fixed IN1 = [0:TO2..TO:TO2]...;
+    col fixed IN2 = [0:2..TO:2]...;
+    col fixed OUT;
+    // col fixed OUT = [IN1^IN2,(IN1^MASK) & IN2]...;
+
+    for (int irow = 0; irow < N; irow = irow + 2) {
+        OUT[irow] = IN1[irow] ^ IN2[irow];
+        OUT[irow+1] =  (IN1[irow+1] ^ MASK) & IN2[irow+1];
+    }
+    // GATE_TYPE: 1 bits 
+    // IN1: 11 bits 
+    // IN2: 11 bits 
+    // TOTAL: 23 bits
+    lookup_proves(KECCAKF_TABLE_ID, 1, [GATE_TYPE, IN1, IN2, OUT]);
+}
