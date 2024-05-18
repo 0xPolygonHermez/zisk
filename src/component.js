@@ -76,4 +76,9 @@ module.exports = class Component {
         }
         return v1 === v2;
     }
+    setColArray(col, value, rowIndex) {
+        for (let index = 0; index < value.length; ++index) {
+            col[index][rowIndex] = value[index];
+        }      
+    }
 }

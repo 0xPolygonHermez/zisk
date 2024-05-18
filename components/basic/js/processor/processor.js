@@ -15,6 +15,7 @@ module.exports = class Processor
         this.config = config;
         this.cols = cols;
         this.N = this.cols.zkPC.length;
+        this.proofCtx = config.proofCtx;
         this.setupFr();
         this.setupChunks();
         this.registers = new Registers();
@@ -353,7 +354,8 @@ module.exports = class Processor
         this.registers.setValue('FREE', fi, this.row);
     }
     registerComponents() {
-        this.registerComponent(['mOp'], false, new Memory({fr: this.fr, inputChunks: this.chunks}), this.mainToMemory);
+        this.proofCtx.memory = new Memory({fr: this.fr, inputChunks: this.chunks});
+        this.registerComponent(['mOp'], false, this.proofCtx.memory, this.mainToMemory);
     }
     registerComponent(romFlags, id, helper, method) {
         if (id === false) {

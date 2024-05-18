@@ -44,8 +44,7 @@ module.exports = class Mem extends Component {
     }
     // TO-DO: verify at end of execution that distance beetwen address no exceeds maximum
     execute(cols) {
-
-        this.input.sort((a,b) => {
+        this.inputs.sort((a,b) => {
             if (a.addr == b.addr) {
                 return a.step - b.step;
             } else {
@@ -54,36 +53,46 @@ module.exports = class Mem extends Component {
         });
 
         const n = cols.addr.length;
-        const count = this.input.length;
-
+        const count = this.inputs.length;
+        const doubleEnabled = typeof cols.isDouble !== 'undefined';
         let rowIndex = 0;
         let inputIndex = 0;
         while (inputIndex < count) {
             const [, addr, step, wr, value] = this.inputs[inputIndex];
             const nextAddr = (inputIndex + 1) < count ? this.inputs[inputIndex + 1] : false;
-            const isDouble = nextAddr === addr && !this.inputs[inputIndex + 1].wr;
+            const isDouble = doubleEnabled && nextAddr === addr && !this.inputs[inputIndex + 1].wr;
             cols.addr[rowIndex] = BigInt(addr);
-            cols.step[0][rowIndex] = BigInt(step);
-            cols.step[1][rowIndex] = BigInt(isDouble ? this.inputs[inputIndex + 1].step : step);
-            cols.isDouble[rowIndex] = isDouble ? 1n : 0n;
+            if (doubleEnabled) {
+                cols.step[0][rowIndex] = BigInt(step);
+                cols.step[1][rowIndex] = BigInt(isDouble ? this.inputs[inputIndex + 1].step : step);
+                cols.isDouble[rowIndex] = isDouble ? 1n : 0n;
+            } else {
+                cols.step[rowIndex] = BigInt(step);
+            }
             cols.sel[rowIndex] = 1n;
-            cols.mWr[rowIndex] = wr ? 1n : 0n;
-            cols.lastAccess[rowIndex - 1] = nextAddr === addr ? 0n : 1n;
-            this.assignValues(cols.value, value);
+            cols.wr[rowIndex] = wr ? 1n : 0n;
+            cols.lastAccess[rowIndex] = nextAddr === addr ? 0n : 1n;
+            this.setColArray(cols.value, value, rowIndex);
             inputIndex = inputIndex + (isDouble ? 2 : 1);
             ++rowIndex;
         }
-        const paddingAddress = BigInt(this.inputs.length > 0 ? this.inputs.slice(-1).addr + 1 : 1);
+        const paddingAddress = BigInt(this.inputs.length > 0 ? this.inputs[this.inputs.length-1][1] + 1 : 1);
         while (rowIndex < n) {
             cols.addr[rowIndex] = paddingAddress;
-            cols.step[0][rowIndex] = BigInt(rowIndex);
-            cols.step[1][rowIndex] = BigInt(rowIndex);
+            if (doubleEnabled) {
+                cols.step[0][rowIndex] = BigInt(rowIndex);
+                cols.step[1][rowIndex] = BigInt(rowIndex);
+                cols.isDouble[rowIndex] = 0n;
+            } else {
+                cols.step[rowIndex] = BigInt(rowIndex);
+            }       
             cols.sel[rowIndex] = 0n;
             cols.wr[rowIndex] = 0n;
-            cols.isDouble[rowIndex] = 0n;
-            this.assignValues(cols.value, this.emptyValue);
+            cols.lastAccess[rowIndex] = 0n;
+            this.setColArray(cols.value, this.emptyValue, rowIndex);
             ++rowIndex;
         }   
+        debugger;
         cols.lastAccess[n - 1] = 1n;
     }
 }

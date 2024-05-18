@@ -37,6 +37,11 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
         console.log('createPolynomialTraces (Basic Mem)');
 
         console.log('== MEM ===');
+        const memory = this.proofCtx.memory;
+        memory.execute(cols);
+/*
+        console.log(this.proofCtx.memory);
+        EXIT_HERE;
         console.log(N, Object.keys(cols));
 
         for (let row = 0; row < N; ++row) {
@@ -49,6 +54,6 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
             cols.wr[row] = 0n;
             cols.lastAccess[row] = 0n;
         }
-        console.log(airInstance.wtnsPols.Mem.step[0]);
+        console.log(airInstance.wtnsPols.Mem.step[0]); */
     }   
 }

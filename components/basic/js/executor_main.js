@@ -44,7 +44,7 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
 
         console.log('== MAIN ===');
         console.log(N, Object.keys(cols));
-        const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json')});
+        const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json'), proofCtx: this.proofCtx});
         processor.execute(publics);
     }   
 }
