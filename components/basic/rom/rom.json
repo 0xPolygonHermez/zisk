@@ -45,7 +45,7 @@
   },
   {
    "inA": "1",
-   "CONST": "10",
+   "CONST": "600",
    "offset": 0,
    "offsetLabel": "myvar",
    "mOp": 1,
@@ -54,7 +54,7 @@
    "line": 13,
    "useCTX": 0,
    "fileName": "rom.zkasm",
-   "lineStr": "        A + 10      :MSTORE(myvar)"
+   "lineStr": "        A + 600      :MSTORE(myvar)"
   },
   {
    "freeInTag": {

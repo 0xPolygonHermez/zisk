@@ -17,8 +17,8 @@
 	// rom.zkasm:11                     5           :ASSERT
 	add_rom_line(5,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,5,0,0,0,0,0,0,0]);         // LINE: 5, assert, CONST: 5
 
-	// rom.zkasm:13                     A + 10      :MSTORE(myvar)
-	add_rom_line(6,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,10,0,0,0,0,0,0,0]);        // LINE: 6, mOp, mWR, CONST: 10
+	// rom.zkasm:13                     A + 600      :MSTORE(myvar)
+	add_rom_line(6,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,600,0,0,0,0,0,0,0]);       // LINE: 6, mOp, mWR, CONST: 600
 
 	// rom.zkasm:14                     $ => A      :MLOAD(myvar)
 	add_rom_line(7,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32770,0,0,0,0,0,0,0,0]);     // LINE: 7, mOp, setA

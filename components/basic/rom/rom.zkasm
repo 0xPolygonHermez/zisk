@@ -10,7 +10,7 @@ start:
         A + B => A
         5           :ASSERT
         
-        A + 10      :MSTORE(myvar)
+        A + 600      :MSTORE(myvar)
         $ => A      :MLOAD(myvar)
 
         15          :ASSERT
