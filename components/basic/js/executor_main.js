@@ -1,7 +1,7 @@
 const path = require('path');
 const Processor = require('./processor/processor.js');
-const { WitnessCalculatorComponent } = require("../../../node_modules/pil2-proofman/src/witness_calculator_component.js");
-const log = require("../../../node_modules/pil2-proofman/logger.js");
+const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calculator_component.js');
+const log = require("pil2-proofman/logger.js");
 
 module.exports = class BasicMain extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {

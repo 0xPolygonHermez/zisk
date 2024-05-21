@@ -1,0 +1,20 @@
+require "std_common.pil"
+require "std_sum.pil"
+
+/*
+function permutation_assumes(int opid, expr cols[]) {
+    piop_update(0, 0, opid, 1, cols);
+}
+
+function permutation_proves(int opid, expr cols[]) {
+    piop_update(1, 0, opid, 1, cols);
+}
+*/
+
+function permutation_assumes(int opid, expr sel, expr cols[]) {
+    piop_update(0, 0, opid, sel, cols);
+}
+
+function permutation_proves(int opid, expr sel, expr cols[]) {
+    piop_update(1, 0, opid, sel, cols);
+}

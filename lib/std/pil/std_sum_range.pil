@@ -1,0 +1,49 @@
+include "std_common.pil"
+/*
+// To support vector range checks, we would need to compute a table of all permutations of the range [min,max-1].
+function range_check(int opid, expr cols[], int min, int max) {
+    for (int i = 0; i < length(cols); i = i + 1) {
+        piop_update(0, 1, opid, 1, cols[i]);
+    }
+
+    col fixed RANGE = [min,min+1..+..max-1]; // QUESTION: Does this still work if max - min > N?
+    // col witness mul_count = compute_multiplicities(cols, RANGE);
+    piop_update(1, 1, opid, mul_count, RANGE);
+}
+*/
+
+function range_check(int opid, expr sels[], expr cols[], int min, int max) {
+    for (int i = 0; i < length(cols); i = i + 1) {
+        piop_update(0, 1, opid, sels[i], cols[i]);
+    }
+
+    col fixed RANGE = [min,min+1..+..max-1];
+    // col witness mul_count = compute_multiplicities(cols, RANGE);
+    piop_update(1, 1, opid, mul_count, RANGE);
+}
+
+/*
+// QUESTION: Can the following O(n²) algorithm be implemented faster?
+// Given the proves, it "merges" the repeated ones through their associated multiplicity counters.
+private function lookup_range_proves_batch() {
+    use air.std.piop;
+
+    // int len = length(gsum_proves);
+    int len = gsum_proves_count;
+
+    for (int i = 0; i < len; i = i + 1) {
+        for (int j = 0; j < len; j = j + 1) {
+            if (i == j) continue;
+            // It two proves are the same, add their multiplicity counters to one and remove the other
+            if (gsum_proves[j] == gsum_proves[i] && gsum_proves_type[j] == 1) {
+                gsum_proves_sel[i] = gsum_proves_sel[i] + gsum_proves_sel[j];
+
+                gsum_proves[j] = gsum_proves[len-1];
+                gsum_proves_sel[j] = gsum_proves_sel[len-1];
+                gsum_proves.pop(); // QUESTION: Will array pop be implemented?
+                gsum_proves_sel.pop();
+            }
+        }
+    }
+}
+*/

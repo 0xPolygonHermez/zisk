@@ -1,6 +1,6 @@
 const int MEM_ID = 4;
 
-subproof Mem(2**16) {
+subproof Mem(2**10) {
 
     col fixed INCS = [1,2..N];
     col fixed LLAST = [0...,1];

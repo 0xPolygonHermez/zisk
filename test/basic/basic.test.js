@@ -3,7 +3,9 @@ const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = requir
 const publicInputs = [5n, 1n, 1n, undefined];
 
 const path = require('path');
-const componentsPath = path.join(__dirname, '..', '..', 'components');
+const basePath = path.join(__dirname, '..', '..');
+const componentsPath = path.join(basePath, 'components');
+const libPath = path.join(basePath, 'lib');
 
 function getSettings() {
     return {
@@ -15,14 +17,14 @@ function getSettings() {
             { filename: path.join(componentsPath, 'basic/js/executor_rom.js'), settings: {}, sm: "Rom" },
             { filename: path.join(componentsPath, 'basic/js/executor_main.js'), settings: {}, sm: "Main" },
             { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
-            { filename: `./src/lib/witness_calculators/logup.js`, settings: {} },
-            { filename: `./src/lib/witness_calculators/div_lib.js`, settings: {}, },
+            { filename: path.join(libPath, 'std/js/logup.js'), settings: {} },
+            { filename: path.join(libPath, 'std/js/div_lib.js'), settings: {}, },
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_16.json') },
-                Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_10.json') },
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
+                Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
             },   
         },
         aggregation: {

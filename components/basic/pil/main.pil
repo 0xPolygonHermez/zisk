@@ -5,7 +5,7 @@ include "mem.pil"
 
 const int MEMORY_ID = 4;
 
-subproof Main(2**16) {
+subproof Main(2**10) {
     const int NR = 8;
     
     /////// State Polynomials
@@ -143,41 +143,6 @@ subproof Main(2**16) {
     zkPC' === doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC;
 
     zkPC * L1 === 0;
-
-    // public inputs
-    public oldStateRoot[NR];
-    public oldAccInputHash[NR];
-    public oldBatchNum;
-    public chainId;
-    public forkId;
-    
-    // public outputs
-    public newStateRoot[NR];
-    public newAccInputHash[NR];
-    public localExitRoot[NR];
-    public newBatchNum;
-
-    for (int index = 0; index < NR; ++index) {
-        (A[index] - op[index]) * doAssert === 0;
-        // oldStateRoot[NR] = B(NR);
-        L1 * (B[index] - oldStateRoot[index]) === 0;
-        // oldBatchNum[NR] = SP(NR);
-        L1 * (C[index] - oldAccInputHash[index]) === 0;
-        // public newStateRoot0 = SR0(%N-1);
-        L1' * (SR[index] - newStateRoot[index]) === 0;
-        // public newAccInputHash0 = D0(%N -1);
-        L1' * (D[index] - newAccInputHash[index]) === 0;
-        // public localExitRoot0 = E0(%N-1);
-        L1' * (E[index] - localExitRoot[index]) === 0;
-    }
-
-    // public oldBatchNum = SP(0);
-    L1 * (SP - oldBatchNum) === 0;
-
-    // public forkId = CTX(0);
-    L1 * (CTX - forkId) === 0;
-
-    L1' * (PC - newBatchNum) === 0;
 
     // ROM lookup
 

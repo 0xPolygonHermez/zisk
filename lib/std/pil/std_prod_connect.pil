@@ -1,0 +1,194 @@
+// WIP: Connection Checks
+// --------------------------------------------------------------------------------------------
+private function init_connection_challenges() {
+    if (!defined(std_gamma)) {
+        challenge stage(3) std_gamma;
+    } else if (!defined(std_delta)) {
+        challenge stage(3) std_delta
+    }
+}
+
+// Take care of the redeclaration
+private function init_coset_constants(int len) {
+    global std_ks[len];
+
+    for (int i = 0; i < len; ++i) {
+        std_ks[i] = global constant k[i];
+    }
+}
+
+// Two (incompatible??) user interfaces
+
+// 1] WIP
+function connection_init(int opid, expr cols[]) {
+        // connection_update_assumes(opid, sel, cols);
+}
+
+function connection_connect(int opid, expr cols[]) {
+        // connection_update_proves(opid, sel, cols);
+}
+
+// 2]
+function connection_assumes(int opid, expr cols[]) {
+    use air.std.connection.`id${opid}`;
+
+    colsR = cols;
+
+    if (proves == 1) {
+        connection_update_assumes(opid, cols);
+        connection_update_proves(opid, colsP);
+    } else {
+        connection_update_assumes(opid, cols);
+    }
+}
+
+function connection_proves(int opid, expr cols[]) {
+    use air.std.connection.`id${opid}`;
+
+    if (assumes == 1) {
+        connection_update_proves(opid, cols);
+    } else {
+        colsP = cols;
+    }
+}
+
+/**
+ * Verifies the number of columns of same connection check (assumes, proves) is the same.
+ * @param opid (unique) identifier of the connection check
+ * @param _cols number of columns of the connection check
+ * @param proves 1 if proves, 0 if assumes
+ */
+private function check_connection_opid_and_cols(int opid, int cols_count, int proves) {
+
+    if (cols_count < 1) {
+        error(`The number of columns of connection #${opid} must be at least 1`);
+    }
+
+    container air.std.connection alias conn {
+        int opids[];
+        expr gprod_assumes = 1;
+        expr gprod_proves = 1;
+    }
+
+    container proof.std.connection.`id${opid}` alias connid {
+        int cols;
+        int proves;
+        int assumes;
+
+        expr colsR[];
+        int len_colsR;
+        expr colsP[];
+
+        expr SIDs[];
+
+        expr gprodR = 1;
+        expr gprodP = 1;
+    }
+
+    if (connid.cols == 0) {
+        // first time called
+        connid.cols = cols_count;
+        // add opid on a list to verify at final
+        conn.opids[] = opid;
+    } else if (connid.cols != cols_count) {
+        error(`The number of columns of connection #${opid} should be equal to ${connid.cols}`);
+    }
+
+    if (proves) {
+        if (connid.proves > 0) {
+            error(`Connection #${opid} proves was called previously`);
+        }
+        ++connid.proves;
+    } else {
+        if (connid.assumes > 0) {
+            error(`Connection #${opid} proves was called previously`);
+        }
+        ++connid.assumes;
+    }
+}
+
+/**
+ * Given columns C₀,...,Cₙ₋₁, and selector S, it defines the constraints at the air level
+ * @param proves boolean indicating if updating a proves or a assumes
+ * @param opid (unique) identifier of the argument
+ * @param sel selector of the argument
+ * @param cols columns of the argument
+ */
+private function connection_update_proves(int opid, expr colsP[]) {
+    // verify if correct opid and cols
+    check_connection_opid_and_cols(opid, length(colsP), 1);
+
+    init_connection_challenges();
+
+    use proof.std.connection.`id${opid}`;
+    for (int icol = 0; icol < length(colsP); ++icol) {
+        gprodP = gprodP * (colsR[icol] + std_gamma*colsP[icol] + std_delta);
+    }
+
+    use air.std.connection;
+    gprod_proves = gprod_proves * proof.std.connection.`id${opid}`.gprodP;
+
+    // define constraints at the air level
+    on final air connection_air();
+}
+
+private function connection_update_assumes(int opid, expr colsR[]) {
+    // verify if correct opid and cols
+    check_connection_opid_and_cols(opid, length(colsR), 1);
+
+    init_connection_challenges();
+    init_coset_constants(length(colsR));
+
+    once col fixed IDEN = [1,omega,..*..,omega**(N-1)];
+
+    use proof.std.connection.`id${opid}`;
+    if (length(colsR) > len_colsR) {
+        // Define remaining SIDs[i] = k_i·X polynomials
+        for (int icol = len_colsR; icol < length(colsR); ++icol) {
+            SIDs[icol] = std_ks[icol] * IDEN;
+        }
+    }
+
+    for (int icol = 0; icol < length(colsR); ++icol) {
+        gprodP = gprodP * (colsR[icol] + std_gamma*SIDs[icol] + std_delta);
+    }
+
+    use air.std.connection;
+    gprod_assumes = gprod_assumes * proof.std.connection.`id${opid}`.gprodR;
+
+    // define constraints at the air level
+    on final air connection_air();
+}
+
+private function connection_air() {
+    check_connection_was_completed();
+
+    use air.std.connection;
+
+    col witness stage(3) gprod;
+
+    //                                          (f_0 + gamma·X + delta) · (f_1 + gamma·k_1·X + delta) · ... · (f_N + gamma·k_n·X + delta)
+    //  gprod' === ('gprod * (1 - L1) + L1) * -------------------------------------------------------------------------------------------
+    //                                          (f_0 + gamma·S_0 + delta) · (f_1 + gamma·S_1 + delta) · ... · (f_N + gamma·S_n + delta)
+
+    col fixed L1 = [1,0...];
+
+    expr previous_gprod = 'gprod * (1 - L1) + L1;  // L1 == 1 ? 1 : 'gprod
+
+    grod * gprod_proves === previous_gprod * gprod_assumes;
+
+    L1' * (gprod - 1) === 0;
+}
+
+// It checks wheter there is some connection check without either proves or assumes
+private function check_connection_was_completed() {
+    for (int opid in air.std.connection.opids) {
+        if (air.std.connection.`id${opid}`.assumes == 0) {
+            error(`Connection #${opid} defined without assumes`);
+        }
+        if (air.std.connection.`id${opid}`.proves == 0) {
+            error(`Connection #${opid} defined without proves`);
+        }
+    }
+}
+// --------------------------------------------------------------------------------------------

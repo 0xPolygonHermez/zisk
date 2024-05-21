@@ -92,7 +92,6 @@ module.exports = class Mem extends Component {
             this.setColArray(cols.value, this.emptyValue, rowIndex);
             ++rowIndex;
         }   
-        debugger;
         cols.lastAccess[n - 1] = 1n;
     }
 }

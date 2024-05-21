@@ -1,0 +1,45 @@
+function init_challenges(int challenges) {
+    if (!defined(std_alpha)) {
+        challenge stage(2) std_alpha;
+    }
+    if (!defined(std_beta)) {
+        challenge stage(2) std_beta;
+    }
+}
+/**
+ * Given columns C₀,...,Cₙ₋₁, and a range, computes the multiplicity counter:
+        · mul_count[i] = Σⱼ |{k : Cⱼ[k] = range[i]}|
+ * @param cols
+ * @param range
+ */
+function compute_multiplicities(expr cols[], expr range) {
+    expr mul_count[length(range)] = 0; // [0,0,...,0]
+    for (int i = 0; i < length(range); i = i + 1) {
+        for (int j = 0; j < length(cols); j = j + 1) {
+            for (int k = 0; k < length(cols[j]); k = k + 1) {
+                if (cols[j][k] == range[i]) {
+                    mul_count[i] = mul_count[i] + 1;
+                }
+            }
+        }
+    }
+    // Note: We do not need to normalize the result, since a range has no repeated elements.
+    return mul_count;
+}
+
+/**
+ * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
+ * @param opid (unique) identifier of the PIOP
+ * @param cols columns of the PIOP
+ * @return [opid + C₁·α + C₂·α² + ... + Cₙ·αⁿ] + β
+ */
+function compress_cols(int opid, expr cols[]): expr {
+    expr cols_compressed = 0;
+    for (int icol = length(cols) - 1; icol >= 0; icol = icol - 1) {
+        cols_compressed = (cols_compressed + cols[icol]) * std_alpha;
+    }
+
+    // the opid is added to avoid soundness issues between different PIOP checks
+    cols_compressed = (cols_compressed + opid) + std_beta;
+    return cols_compressed;
+}

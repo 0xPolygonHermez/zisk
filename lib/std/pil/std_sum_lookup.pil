@@ -1,0 +1,22 @@
+require "std_common.pil"
+require "std_sum.pil"
+
+/*
+function lookup_assumes(int opid, expr cols[]) {
+    piop_update(0, 1, opid, 1, cols);
+}
+
+function lookup_proves(int opid, expr cols[]) {
+    piop_update(1, 1, opid, 1, cols);
+}
+*/
+
+// Right now, we assumes that the user proves the multiplicity counter.
+// However, we could let the user to only give us the selector and the columns, and we compute the multiplicity counter.
+function lookup_assumes(int opid, expr mul_count, expr cols[]) {
+    piop_update(0, 1, opid, mul_count, cols);
+}
+
+function lookup_proves(int opid, expr mul_count, expr cols[]) {
+    piop_update(1, 1, opid, mul_count, cols);
+}
