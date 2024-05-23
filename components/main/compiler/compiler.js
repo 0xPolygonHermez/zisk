@@ -1,8 +1,8 @@
 const path = require("path");
 const fs = require("fs");
 const { config } = require("process");
-const zkasmParser = require("../build/zkasm_parser.js").parser;
-const commandParser = require("../build/command_parser.js").parser;
+const zkasmParser = require("./zkasm_parser.js").parser;
+const commandParser = require("./command_parser.js").parser;
 const stringifyBigInts = require("ffjavascript").utils.stringifyBigInts;
 const util = require('util');
 const maxConst = (1n << 32n) - 1n;

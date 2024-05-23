@@ -2,11 +2,9 @@
 
 const path = require("path");
 const fs = require("fs");
-const version = require("../package").version;
 const compile = require("./compiler.js");
 
 const argv = require("yargs")
-    .version(version)
     .usage("zkasm <source.zkasm> -o <output.json> [-D name=value]")
     .alias("o", "output")
     .option('D', {

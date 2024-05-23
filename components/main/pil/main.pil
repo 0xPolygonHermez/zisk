@@ -1,7 +1,8 @@
 const string target = "basic"
 
-include "tools.pil"
-include "rom.pil"
+require "tools.pil"
+require "rom.pil"
+require "std_continuation.pil"
 // TODO: constructive parts out of subproof scope
 // if (target == "full") {
 // include "mem_align.pil";
@@ -37,6 +38,8 @@ const int RANGE32_ID = 6;
 const int STORAGE_ID = 90;
 
 const int BINARY_OP_LT4 = 8;
+
+const int MAIN_CONTINUATION_ID = 200;
 
 subproof Main(2**23) {
     const int NR = 8;
@@ -96,8 +99,15 @@ subproof Main(2**23) {
     col witness useOpAsParam;
     col witness useConstAsParam;
 
+    // continuations
+    // TODO: link finalBlock with Rom.
+    col witness block, finalBlock;
+    continuation_setup(MAIN_CONTINUATION_ID, block, finalBlock);
+
     col fixed L1 = [1,0...];
-    col fixed STEP = [0..(N-1)];
+    col fixed _STEP = [0..(N-1)];
+    const expr STEP = (block * N) + _STEP;
+
     // op registers with out of expression
     // av assumed value, could be op or FREE
     // col witness op[NR];
@@ -166,28 +176,26 @@ subproof Main(2**23) {
     // Calculate New State
     for (int index = 0; index < NR; ++index) {
         // TODO: detect 
-        define_transition(A[index], setA * (op[index] - A[index]) + A[index]);
-        define_transition(B[index], setB * (op[index] - B[index]) + B[index]);
-        define_transition(C[index], setC * (op[index] - C[index]) + C[index]);
-        define_transition(D[index], setD * (op[index] - D[index]) + D[index]);
-        define_transition(E[index], setE * (op[index] - E[index]) + E[index]);
-        define_transition(SR[index], setSR * (op[index] - SR[index]) + SR[index]);
+        continuation_define_transition(A[index], setA * (op[index] - A[index]) + A[index]);
+        continuation_define_transition(B[index], setB * (op[index] - B[index]) + B[index]);
+        continuation_define_transition(C[index], setC * (op[index] - C[index]) + C[index]);
+        continuation_define_transition(D[index], setD * (op[index] - D[index]) + D[index]);
+        continuation_define_transition(E[index], setE * (op[index] - E[index]) + E[index]);
+        continuation_define_transition(SR[index], setSR * (op[index] - SR[index]) + SR[index]);
     }
 
-    define_transition(CTX, setCTX * (op[0] - CTX) + CTX);
-    define_transition(SP, setSP * (op[0] - (SP +incStack)) + (SP +incStack));
-    define_transition(PC, setPC * (op[0] - PC) + PC);
+    continuation_define_transition(CTX, setCTX * (op[0] - CTX) + CTX);
+    continuation_define_transition(SP, setSP * (op[0] - (SP +incStack)) + (SP +incStack));
+    continuation_define_transition(PC, setPC * (op[0] - PC) + PC);
 
     // ROM constraint: call * setRR = 0
-    define_transition(RR, setRR * (op[0] - RR) + call * (zkPC + 1 - RR) + RR);
-    define_transition(GAS, setGAS * (op[0] - GAS) + GAS);
+    continuation_define_transition(RR, setRR * (op[0] - RR) + call * (zkPC + 1 - RR) + RR);
+    continuation_define_transition(GAS, setGAS * (op[0] - GAS) + GAS);
 
     const expr decRCX = repeat * (1 - RCXIsZero);
-    define_transition(RCX, setRCX * (op[0] - (RCX-decRCX)) + (RCX-decRCX));
+    continuation_define_transition(RCX, setRCX * (op[0] - (RCX-decRCX)) + (RCX-decRCX));
 
-    if (defined(HASHPOS)) {
-        define_transition(HASHPOS, setHASHPOS * (op[0] - HASHPOS) + HASHPOS + (hashK + hashP + hashS)*D[0] + useHashBytes * hashBytes);
-    }
+    continuation_define_transition(HASHPOS, setHASHPOS * (op[0] - HASHPOS) + HASHPOS + (hashK + hashP + hashS)*D[0] + useHashBytes * hashBytes);
 
     const expr doJmp;
     const expr elseJmp;
@@ -203,13 +211,10 @@ subproof Main(2**23) {
     const expr finalElseAddr = elseAddr + elseUseAddrRel * elseAddr;
 
     // if elseAddr wasn't specified on zkasm, compiler put current address + 1
-    define_transition(zkPC, doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC);
-
-    zkPC' === doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC);
-    multiset_proves(,LAST,[(block_number+1) * (1-finalProgram), doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC)]);
+    continuation_define_transition(zkPC, doJmp * (finalJmpAddr - nextNoJmpZkPC) + elseJmp * (finalElseAddr - nextNoJmpZkPC) + nextNoJmpZkPC);
 
     // ****
-    zkPC * L1 === 0;
+    // zkPC * L1 === 0;
 
     // public inputs
     public oldStateRoot[NR];

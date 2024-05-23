@@ -1,0 +1,74 @@
+require "std_prod_permutation.pil"
+require "std_tools.pil"
+
+const int MAX_TRANSITIONS = 200;
+
+function continuation_setup(const int id, const expr block, const expr last_transition_flag) {
+    const expr L1 = get_L1();
+
+    container air.std.continuation alias continuation {
+        const expr block;
+        const expr last_transition_flag;
+        const int id;
+        expr values[MAX_TRANSITIONS];
+        expr next_values[MAX_TRANSITIONS];
+        int count = 0;
+        int setup_done = 0;        
+    }
+
+    if (continuation.setup_done) {
+        // error
+    }
+
+    continuation.id = id;
+    continuation.block = block;
+    continuation.last_transition_flag = last_transition_flag;
+    continuation.setup_done = 1;
+
+    block' === block;
+    on final air continuation_close();
+}
+
+function continuation_define_transition(const expr value, const expr next_value) {
+    const expr L1 = get_L1();
+
+    if (!defined(air.std.continuation)) {
+        // error
+    }
+
+    use air.std.continuation;
+
+    values[count] = value;
+    next_values[count] = next_value;
+    ++count;
+
+    (1 - L1') * (value' - next_value) === 0
+}
+
+function continuation_close() {
+    const expr L1 = get_L1();
+
+    use air.std.continuation;
+    
+    // build final permutation cols, using values for assume on first row
+    // and proving next values on last row
+
+    const expr prove_cols[count+1];
+    const expr assume_cols[count+1];
+
+    // first permutation column was block number, on assume, block number must be block + 1, but
+    // in last block it must be 0 to link to first block.
+    
+    assume_cols[0] = block;
+    prove_cols[0] = (block + 1) * (1 - last_block_flag);
+
+    // copy cols to final permutation column
+
+    for (int icol = 0; icol < transition_count; ++icol) {
+        assume_cols[icol + 1] = values[icol];
+        prove_cols[icol + 1] = next_values[icol];        
+    }
+ 
+    permutation_assumes(id, L1, assume_cols);
+    permutation_proves(id, L1', prove_cols);
+}

@@ -1,4 +1,4 @@
-const int MEM_ALIGN_TABLE 6
+const int MEM_ALIGN_TABLE = 52
 
 subproof MemAlignTable(2**19) {
     
@@ -9,170 +9,55 @@ subproof MemAlignTable(2**19) {
     //      2 left/right (0-1)* 
     //      2 le/be (0-1) = 274560 (2^19 = 524288)
 
-    col fixed CLOCK = [0...31]...;
-    col fixed MODE_SELM1_SELM0, T_BYTE_POS;
+    const int CLOCKS = 32;
 
-    lookup_proves(BINARY_TABLE_ID, 1,[LAST, OP, A, B, CIN, C, FLAGS]);
+    const int TIMES = MAX_LEN * MAX_OFFSET * 4;
 
+    col fixed CLOCK = [[0..(CLOCKS-1)]:TIMES,0...];
+    col fixed MODE_SELM1_SELM0;
+    col fixed T_BYTE_POS;
+    
+    const int LA_FLAG_4 = LEFT_ALIGN_FLAG * 4;
+    const int LE_FLAG_4 = LITTLE_ENDIAN_FLAG * 4;
+    const int LALE_FLAGS_4 = (LEFT_ALIGN_FLAG + LITTLE_ENDIAN_FLAG) * 4;
 
-    /*
-    * OPERATIONS
-    *
-    *  (m0,m1,D) => v
-    *  (m0,m1,D,v) => (w0, w1)
-    *
-    *  @m0 = addr   @m1 = addr + 32 (ethereum)
-    *
-    *  Ethereum => BigEndian
-    *  m0[7],m0[6],...,m0[1],m0[0],m1[7],m1[6],...,m1[1],m1[0]
-    *
-    *  inM (8 bits, 32 steps)
-    */
+    int irow = 0;
+    for (int len = 0; len <= MAX_LEN; ++len) {
+        for (int offset = 0; offset <= MAX_OFFSET; ++offset) {
+            const int mode_base = (offset + LEN_FACTOR * len) * 4; 
+            int _len = len == 0 ? 32:0;
+            if (_len + offset > 64) {
+                _len = 64 - offset;
+            }            
+            for (int clock = 0; clock < 32; ++clock) {
+                const int value = (64 - offset + clock);
+                const int byte = value % 32;
+                const int isM0 = value >= 64 ? 1:0;
 
-    // 32 bytes of M0, M1 ordered from HSB to LSB (32, 31, 30, ... == M[7].3, M[7].2, M[7].1, M[7].0, M[6].3, ..)
-    col witness inM[2];
+                const int mode = mode_base + 2 * (byte < len ? 1 - isM0 : 0) + (byte < len ? isM0 : 0);
 
-    // 32 bytes of V
-    col witness inValueShifted;
-    col witness inValueSorted;
+                MODE_SELM1_SELM0[irow] = mode;
+                MODE_SELM1_SELM0[irow + 32] = mode + LA_FLAG_4;
+                MODE_SELM1_SELM0[irow + 64] = mode + LE_FLAG_4;
+                MODE_SELM1_SELM0[irow + 96] = mode + LALE_FLAGS_4;           
 
-    // write 32 bytes (256 bits)
-    col witness wr256;
+                T_BYTE_POS[irow] = (byte + (32 - _len)) % 32;
+                T_BYTE_POS[irow + 32] = byte;
+                T_BYTE_POS[irow + 64] = 31 - byte;
+                T_BYTE_POS[irow + 96] = (31 + _len - byte) % 32;
 
-    // write 1 byte (8 bits), its special case because need to ignore
-    // the rest of bytes, only LSB of V was stored (on w0 with offset)
-    col witness wr8;
-
-    // clk   registers
-    // 0-7   m0[0]-m0[7]
-    // 8-15  m1[0]-m1[7]
-    // 16-23 w0[0]-w0[7]
-    // 23-31 w1[0]-w1[7]
-    col witness mw; 
-
-    // clk   registers
-    // 0-7   v[0]-v[7]
-    col witness v; 
-
-    // col witness m0[8];
-    // col witness m1[8];
-    // col witness w0[8];
-    // col witness w1[8];
-    // col witness v[8];
-
-    // when m1 is "active", means aligned with inV
-    // also when wr8 = 1, used to indicate when store the LSB
-    col witness selM1;
-
-    // factors to build V[] in correct way, because order of V bytes
-    // changes according the offset and wr8
-    col witness factorV[8];
-
-    col witness offset;
-
-    // BYTE_C4096 = 0 (x4096), 1 (x4096), ... , 31 (x4096), 32 (x4096), 0 (x4096), 1 (x4096), ...
-    col fixed BYTE_C4096 = [0:4096..255:4096]...;
-
-    // FACTOR was same for all combinations of offset, wr8, wr256 is a f(step)
-    // FACTOR = 2**24, 2**16, 2**8, 1, 0 (x28)
-    col fixed FACTOR = [2**24, 2**16, 2**8, 1, 0:28]...;
-
-    // FACTOR change according the combinations of offset, wr8, wr256 and step.
-    col fixed FACTORV[8];
-
-    // STEP32
-    //    0 - 1023  WR256 = 0 WR8 = 0
-    // 1024 - 2047  WR256 = 0 WR8 = 0
-    // 2048 - 3071  WR256 = 1 WR8 = 0
-    // 3072 - 4096  WR256 = 0 WR8 = 1
-    col fixed WR256 = [0:2048,1:1024:0:1024]...;
-    col fixed WR8 = [0:3072,1:1024]...;
-    col fixed OFFSET = [0:32..31:32]...;
-    col fixed SELM1;
-
-    col RESET = Global.CLK32[0];
-
-    //              RangeCheck                  Latch   Clock
-    // factorV      Lookup (FACTORV)           no      yes
-    // wr256        Lookup (WR256)             yes     no
-    // wr8          Lookup (WR8)               yes     no
-    // offset       Lookup (OFFSET)            yes     no
-    // inV          RangeCheck (BYTE_C4096)     no      yes
-    // inM[0..1]    RangeCheck (BYTE2A,BYTE2)   no      yes
-    // m0[0..7]     Built                       no      yes
-    // m1[0..7]     Built                       no      yes
-    // w0[0..7]     Built                       no      yes
-    // w1[0..7]     Built                       no      yes
-    // v[0..7]      Built                       no      yes
-    // selM1        Plookup (SELM1)             no      yes
-
-    // 40 => 2 (-38)
-    // +2 inW[2]
-    // factorV 8 => 2 (-6)
-    // +1 inVOrdenat
-    // Latchs
-    (1 - RESET) * wr256' === (1 - RESET) * wr256;
-    (1 - RESET) * offset' === (1 - RESET) * offset;
-    (1 - RESET) * wr8' === (1 - RESET) * wr8;
-
-    col witness resultRd;
-    col witness resultWr8;
-    col witness resultWr256;
-
-    (1 - RESET) * resultRd === 0;
-    (1 - RESET) * resultWr8 === 0;
-    (1 - RESET) * resultWr256 === 0;
-    resultRd * (1 - resultRd) === 0;
-    resultWr8 * (1 - resultWr8) === 0;
-    resultWr256 * (1 - resultWr256) === 0;
-
-    (1 - wr8) * resultWr8 === 0;
-    (1 - wr256) * resultWr256 === 0;
-    (wr8 + wr256) * resultRd === 0;
-
-    // RangeCheck
-    range_check([...inM], 0, 255);
-
-    // Plookup
-    lookup ([STEP32, offset', wr256', wr8', selM1, inV, ...factorV],
-            [STEP32, OFFSET, WR256, WR8, SELM1, BYTE_C4096, ...FACTORV]);
-
-    // selW0 contains data to be store in w0, must be 0 in "reading mode"
-    // in "writting mode", in particular with wr8 only on byte must be
-    // stored, for this reason use selM1 that was active only one clock (in wr8 mode)
-    col selW0 = (1 - selM1) * wr256' + selM1 * wr8';
-
-    // selW1 contains data to be store in w1, must be 0 in "reading mode"
-    col selW1 = selM1 * wr256';
-
-    // NOTE: when wr8 = 1 implies wr256 = 0, check in this situations where use selM1
-    // to verify that non exists collateral effects
-    //
-    // col selW0 = selM1 (because wr256 = 0 and wr8 = 1)
-    //
-    // selM1 used in col _inM, but _inM is only used on dataV
-    // col dataV = (1 - wr256' - wr8') * _inM + (wr256' + wr8') * inV;
-    // col dataV = inV (because wr256 = 0 and wr8 = 1)
-    //
-    // CONCLUSION: it's safe reuse selM1 to indicate when store byte
-
-    // data to "write" on w, if current byte must be override by V contains inV
-    // if not contains inM "in reading mode" must be 0.
-    col dataW0 = (wr8' + wr256') * inM[0] + selW0 * (inV - inM[0]);
-    col dataW1 = (wr8' + wr256') * inM[1] + selW1 * (inV - inM[1]);
-
-    for (int i=0;i<8; ++i) {
-        m0[i]' === (1-RESET) * m0[i] + FACTOR'(i) * inM[0];
-        m1[i]' === (1-RESET) * m1[i] + FACTOR'(i) * inM[1];
-        w0[i]' === (1-RESET) * w0[i] + FACTOR'(i) * dataW0;
-        w1[i]' === (1-RESET) * w1[i] + FACTOR'(i) * dataW1;
-        // factorV === f(STEP, offset, wr8)
-        v[i]' === (1-RESET) * v[i] + factorV[i] * dataV;
+                ++irow;
+            }
+            irow = irow + 96;
+        }
+    }
+    const int T_BYTE_POS_0 = T_BYTE_POS[0];
+    const int MODE_SELM1_SELM0_0 = MODE_SELM1_SELM0[0];
+    while (irow < N) {
+        MODE_SELM1_SELM0[irow] = MODE_SELM1_SELM0_0;
+        T_BYTE_POS[irow] = T_BYTE_POS_0;
+        ++irow;
     }
 
-    // _inM contains "active" value of inM
-    col _inM = (1 - selM1) * inM[0] + selM1 * inM[1];
-
-    // contains data to store in V, could be one of inM if was reading or inV if was writting
-    col dataV = (1 - wr256' - wr8') * _inM + (wr256' + wr8') * inV;
+    lookup_proves(MEM_ALIGN_TABLE, 1, [CLOCK, MODE_SELM1_SELM0, T_BYTE_POS]);
 }

@@ -8,6 +8,10 @@
     "build:basic:rom": "npm run build:basic:zkasm && BDIR=components/basic && node $BDIR/compiler/zkasm.js $BDIR/rom/rom.zkasm -o $BDIR/rom/rom.json",
     "build:basic:rom_compiled": "npm run build:basic:rom && BDIR=components/basic && node $BDIR/tools/rom_json_to_pil2.js > $BDIR/pil/rom_compiled.pil",
     "build:basic": "npm run build:basic:rom_compiled && BDIR=components/basic && npx pil2-compiler components/basic/pil/main.pil -I lib/tools/pil/,components/mem/pil,lib/std/pil -o components/basic/pil/basic.pilout",
+    "build:main:zkasm": "CDIR=components/main/compiler && npx jison $CDIR/zkasm_parser.jison -o $CDIR/zkasm_parser.js && npx jison $CDIR/command_parser.jison -o $CDIR/command_parser.js ",
+    "build:main:rom": "npm run build:main:zkasm && BDIR=components/main && node $BDIR/compiler/zkasm.js $BDIR/rom/rom.zkasm -o $BDIR/rom/rom.json",
+    "build:main:rom_compiled": "npm run build:main:rom && BDIR=components/main && node $BDIR/tools/rom_json_to_pil2.js > $BDIR/pil/rom_compiled.pil",
+    "build:main": "npm run build:main:rom_compiled && BDIR=components/main && npx pil2-compiler components/main/pil/main.pil -I lib/tools/pil/,components/mem/pil,lib/std/pil -o components/main/pil/main.pilout",
     "test:basic": "mocha test/basic/basic.test.js"
   },
   "author": "zkronos73@gmail.com",

@@ -11,31 +11,32 @@
 ### ZKEVM components 
 |ID|subproof|pil2|tools|executor|testexec|testconst|notes|
 |---|----|----|-----|----|----|----|----|
-|1|main processor|90%|-|0%|no|no|
-|2|rom|80%|0%|-|-|no|tool: zkasm => pil|
-|4|mem|100%|-|100%|50%|no||
-|5|mem_align|80%|-|0%|no|no||
-|6|range_32|50%|-|0%|no|no||
-|10|arith|30%|0%|0%|no|no|pending: equation generation from pil and last features added (alias free,diff points)|
-|20|binary|90%|-|0%|no|no||
-|20|binary (one_row)|90%|-|-|no|no|alternative, no generate executor|
-|21|binary_ops_table|90%|-|-|-|no||
-|40-42|padding_pg|90%|-|0%|no|no||
-|45|poseidong|95%|-|0%|no|no||
-|50-52|padding_kk|0%|-|0%|no|no||
-|55|padding_kkbit|0%|-|0%|no|no||
-|56|keccakf|90%|0%|0%|no|no|tool: script/circuit => pil|
-|57|keccakf_table|90%|-|-|no|no||
-||bits2field|-|-|-|no|no|deleted, integrated inside keccakf
-|60-62|padding_sha256|0%|-|0%|no|no||
-|65|padding_sha256bit|10%|-|0%|no|no||
-|66|sha256f|80%|0%|0%|no|no|tool: script/circuit => pil|
-|67|sha256f_table|90%|-|-|no|no||
+|10|main processor|90%|-|0%|no|no|
+|20|rom|80%|0%|-|-|no|tool: zkasm => pil|
+|40|mem|100%|-|100%|50%|no||
+|50-51|mem_align|80%|-|0%|no|no|witness: 45 (pil) => 11 (pil2)|
+|52|mem_align_table|80%|-|-|no|no||
+|60|range_32|50%|-|0%|no|no||
+|70|arith|30%|0%|0%|no|no|pending: equation generation from pil and last features added (alias free,diff points)|
+|80|binary|90%|-|0%|no|no||
+|81|binary (one_row)|90%|-|-|no|no|alternative, no generate executor|
+|82|binary_ops_table|90%|-|-|-|no||
+|100|poseidong|95%|-|0%|no|no||
+|101-102|padding_pg|90%|-|0%|no|no||
+|120|keccakf|90%|0%|0%|no|no|tool: script/circuit => pil|
+|121|keccakf_table|90%|-|-|no|no||
+|123-125|padding_kk|0%|-|0%|no|no||
+|122|padding_kkbit|0%|-|0%|no|no||
+|123|bits2field|-|-|-|no|no|deleted, integrated inside keccakf
+|150|sha256f|80%|0%|0%|no|no|tool: script/circuit => pil|
+|151|sha256f_table|90%|-|-|no|no||
+|152-153|padding_sha256|0%|-|0%|no|no||
+|154|padding_sha256bit|10%|-|0%|no|no||
 ||bits2field_sha256|-|-|-|no|no|deleted, integrated inside sha256f
-|90|storage|80%|-|%0|no|no||
-|91|storage_rom|100%|100%|-|no|no|tool: zkasm => pil|
-|92|climb_key|90%|-|0%|no|no||
-|93|climb_key_table|100%|100%|-|-|no|tool: validate/generate constants|
+|160|storage|80%|-|%0|no|no||
+|161|storage_rom|100%|100%|-|no|no|tool: zkasm => pil|
+|170|climb_key|90%|-|0%|no|no||
+|171|climb_key_table|100%|100%|-|-|no|tool: validate/generate constants|
 
 ### TOOLS
 |tool|status|notes|

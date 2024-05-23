@@ -1,4 +1,4 @@
-const int MEM_ID = 4;
+include "std_prod_permutation.pil"
 
 subproof Mem(2**10) {
 
@@ -16,7 +16,7 @@ subproof Mem(2**10) {
     // The list is sorted by [addr, step]
     lastAccess * (1 - lastAccess) === 0;
 
-    range_check(IS_NOT_LAST, lastAccess * (addr' - addr - step' + step) + step' - step, 1, MAX_STEP);
+    // range_check(IS_NOT_LAST, lastAccess * (addr' - addr - step' + step) + step' - step, 1, MAX_STEP);
 
 
     (1 - lastAccess) * (addr' - addr) === 0;
@@ -39,5 +39,5 @@ subproof Mem(2**10) {
         rdDifferent * value[index]'  ===  0;
     }
 
-    multiset_proves(MEM_ID, sel, [addr, step, wr, ...value]);
+    multiset_proves(MEMORY_ID, sel, [addr, step, wr, ...value]);
 }
