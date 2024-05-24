@@ -1,0 +1,22 @@
+require "std_prod.pil"
+
+// TODO: Find a way to do this without increasing the number of columns or expressions
+// function permutation_assumes(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
+
+//     update_piop_prod(0, opid, ones, cols);
+// }
+
+// function permutation_proves(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
+
+//     update_piop_prod(1, opid, ones, cols);
+// }
+
+function permutation_assumes(int opid, expr sel, expr cols[]) {
+    update_piop_prod(0, opid, sel, cols);
+}
+
+function permutation_proves(int opid, expr sel, expr cols[]) {
+    update_piop_prod(1, opid, sel, cols);
+}

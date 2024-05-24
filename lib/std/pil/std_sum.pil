@@ -1,16 +1,17 @@
 require "std_common.pil"
 
 /**
- * Verifies the number of columns of same PIOP check (assumes, proves) is the same.
- * @param opid (unique) identifier of the PIOP check
- * @param type if 1, it is a lookup or a range check; if 0, it is a permutation
- * @param cols_count number of columns of the PIOP check
+ * TODO: Add description
  * @param proves 1 if proves, 0 if assumes
+ * @param opid (unique) identifier of the PIOP check
+ * @param cols columns of the PIOP
  */
-private function check_gsum_opid_and_cols(int proves, int type, int opid, int cols_count) {
+private function init_piop_sum(int proves, int opid, expr cols[]) {
+    int cols_count = length(cols);
 
     if (cols_count < 1) {
-        error(`The number of columns of PIOP #${opid} must be at least 1`);
+        string side = proves ? "proves" : "assumes";
+        error(`The number of columns of ${side} #${opid} must be at least 1`);
     }
 
     container proof.std.gsum alias gsum {
@@ -26,40 +27,35 @@ private function check_gsum_opid_and_cols(int proves, int type, int opid, int co
     }
 
     container air.std.gsum {
-        // FIX: dynamic arrays not ready
         int gsum_assumes_count = 0;
-        expr gsum_assumes_sel[100];
-        expr gsum_assumes[100];
+        const expr gsum_assumes_sel[100];
+        const expr gsum_assumes[100];
 
         int gsum_proves_count = 0;
-        expr gsum_proves_type[100];
-        expr gsum_proves_sel[100];
-        expr gsum_proves[100];
+        const expr gsum_proves_sel[100];
+        const expr gsum_proves[100];
     }
 
+    // Container used for final checks
     container proof.std.gsum.`id${opid}` alias gsumid {
         int cols;
         int proves = 0;
         int assumes = 0;
-        int type = 0;
     }
 
+    // Assumes and proves of the same opid must have the same number of columns
     if (gsumid.cols == 0) {
         // first time called
         gsumid.cols = cols_count;
-        gsumid.type = type;
         // add opid on a list to verify at final
         gsum.opids[gsum.opids_count] = opid;
         gsum.opids_count = gsum.opids_count + 1;
-    } else {
-        if (gsumid.cols != cols_count) {
-            error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
-        }
-        if (gsumid.type != type) {
-            error(`The #${opid} was declared previously different type, as ${gsumid.type==1?'permutation':'lookup'}`);
-        }
+    } else if (gsumid.cols != cols_count) {
+        error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
     }
 
+    // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
+    // proves and assumes to verify at the end that all of them match
     if (proves) {
         gsumid.proves = gsumid.proves + 1;
     } else {
@@ -68,26 +64,27 @@ private function check_gsum_opid_and_cols(int proves, int type, int opid, int co
 }
 
 /**
- * Given columns C₀,...,Cₙ₋₁, and multiplicity counter M, it 1] defines the constraints at the air level, 2] updates the values at the subproof level, and 3] updates the constraints at the proof level.
+ * Given a selector sel and columns C₀,...,Cₙ₋₁, it:
+ *      · 1] defines the running sum constraints for each air
+ *      · 2] add each subproofvalue of each subproof to the running sum
+ *      · 3] checks that the overall sum is zero
  * @param proves boolean indicating if updating a proves or a assumes
- * @param type if 1, it is a lookup or a range check; if 0, it is a permutation
  * @param opid (unique) identifier of the PIOP
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function piop_update(int proves, int type, int opid, expr sel, expr cols[]) {
-    // verify if correct opid and cols
-    check_gsum_opid_and_cols(proves, type, opid, length(cols));
+private function update_piop_sum(int proves, int opid, expr sel, expr cols[]) {
+    // instanciate necessary containers and make first checks
+    init_piop_sum(proves, opid, cols);
 
-    init_challenges(type == 1 ? 3:2);
+    init_challenges();
 
     // selected vector to simple column reduction
-    expr cols_compressed = compress_cols(opid, cols);
+    const expr cols_compressed = compress_cols(opid, cols);
 
     use air.std.gsum;
     if (proves) {
         // adding all sums of proves called in this air
-        gsum_proves_type[gsum_proves_count] = type;
         gsum_proves_sel[gsum_proves_count] = sel;
         gsum_proves[gsum_proves_count] = cols_compressed;
         gsum_proves_count = gsum_proves_count + 1;
@@ -98,54 +95,61 @@ private function piop_update(int proves, int type, int opid, expr sel, expr cols
         gsum_assumes_count = gsum_assumes_count + 1;
     }
 
-    // QUESTION: Should the user proves the multiplicity counter? Or we should compute it?
-    // 0] computes the multiplicity counter for lookups and range checks
-    // on final air compute_multiplicities_lookup_range();
-
-    // 1] look for repeated proves/assumes's in both lookups and range checks and, if found, optimize
+    // TODO!!
+    // look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
     // on final air lookup_range_proves_batch();
 
-    // 2] define constraints at the air level
-    on final air PIOP_gsum_air_end();
+    // define constraints at the air level
+    on final air piop_gsum_air();
 
-    // 3] update values at the subproof level
-    on final subproof PIOP_gsum_subproof();
+    // update values at the subproof level
+    on final subproof piop_gsum_subproof();
 
-    // 4] update constraints at the proof level
-    on final proof PIOP_gsum_proof();
+    // update constraints at the proof level
+    on final proof piop_gsum_proof();
 }
 
-private function PIOP_gsum_air_end() {
+/**
+ * It defines the constraints for the grandsum at the air level
+ */
+private function piop_gsum_air() {
     use air.std.gsum;
-    
+
     col witness stage(2) gsum;
-    
-    //                                mt1       mt2       mt3       mf1       mf2       mf3
-    //  gsum === 'gsum * (1 - L1) + ------- + ------- + ------- - ------- - ------- - -------
-    //                                t1        t2        t3        f1        f2        f3
+
+    //                              st1·mt1   st2·mt2     sf1      sf2
+    //  gsum === 'gsum * (1 - L1) + ------- + ------- - ------- - -------
+    //                               t1+ɣ      t2+ɣ      f1+ɣ      f2+ɣ
+    //
+    // Note: The ti and fi are not necessarily related to each other
 
     col fixed L1 = [1,0...];
 
     expr LHS = 1;
     expr RHS1 = 0;
 
-    const expr gsP[gsum_proves_count];
-    for (int i = 0; i < gsum_proves_count; i = i + 1) {
-        // ERROR: gsP[i] === gsum_proves[i];
-        gsP[i] = gsum_proves[i];
-    }
-    const expr gsA[gsum_assumes_count];
-    for (int i = 0; i < gsum_assumes_count; i = i + 1) {
-        // ERROR: gsA[i] === gsum_assumes[i];
-        gsA[i] = gsum_assumes[i];
-    }
-    
-    for (int i = 0; i < gsum_proves_count; i = i + 1) {
-        LHS = LHS * gsP[i];
+    // Not needed.
+    // const expr gsP[gsum_proves_count];
+    // for (int i = 0; i < gsum_proves_count; i = i + 1) {
+    //     // ERROR: gsP[i] === gsum_proves[i];
+    //     gsP[i] = gsum_proves[i];
+    // }
+    // const expr gsA[gsum_assumes_count];
+    // for (int i = 0; i < gsum_assumes_count; i = i + 1) {
+    //     // ERROR: gsA[i] === gsum_assumes[i];
+    //     gsA[i] = gsum_assumes[i];
+    // }
 
-        expr tmp = gsum_proves_sel[i];
+    for (int i = 0; i < gsum_proves_count; i = i + 1) {
+        LHS = LHS * (gsum_proves[i] + std_gamma);
+
+        col witness stage(2) muli;
+
+        @muli{reference: muli, selector: gsum_proves_sel[i], column: gsum_proves[i]};
+
+        expr tmp = gsum_proves_sel[i] * muli;
         for (int j = 0; j < gsum_proves_count; j = j + 1) {
-            if (j != i) tmp = tmp * gsP[j];
+            if (j != i) tmp = tmp * (gsum_proves[j] + std_gamma);
         }
         RHS1 = RHS1 + tmp;
     }
@@ -154,30 +158,41 @@ private function PIOP_gsum_air_end() {
     expr RHS2b = 0;
 
     for (int i = 0; i < gsum_assumes_count; i = i + 1) {
-        LHS = LHS * gsA[i];
-        RHS1 = RHS1 * gsA[i];
-    
+        LHS = LHS * (gsum_assumes[i] + std_gamma);
+        RHS1 = RHS1 * (gsum_assumes[i] + std_gamma);
+
         expr tmp = gsum_assumes_sel[i];
         for (int j = 0; j < gsum_assumes_count; j = j + 1) {
-            if (j != i) tmp = tmp * gsA[j];
+            if (j != i) tmp = tmp * (gsum_assumes[j] + std_gamma);
         }
         RHS2b = RHS2b + tmp;
     }
 
-    expr RHS2 = RHS2a * RHS2b;
-    expr RHS = RHS1 - RHS2;
+    const expr RHS2 = RHS2a * RHS2b;
+    const expr RHS = RHS1 - RHS2;
 
-    @gsum{reference: gsum, numerator: LHS, denominator: RHS}
+    @gsum{reference: gsum, numerator: RHS, denominator: LHS}
 
     (gsum - 'gsum * (1 - L1)) * LHS === RHS;
     L1' * (gsum - subproof.std.gsum.gsum_result) === 0;
 }
 
-private function PIOP_gsum_subproof() {
+// Note: We don't "update" the sum at the subproof level (i.e., all the resulting sums generated by each air)
+//       because we don't know how many airs will be generated at compile time. Therefore we use the same
+//       term to refer to both things: the value generated at each air and the value generated at each subproof.
+//       It is like jumping from the air level to the proof (global) level, from the constraint point of view.
+
+/**
+ * It updates the expression for the grandsum at the proof level
+ */
+private function piop_gsum_subproof() {
     proof.std.gsum.gsum = proof.std.gsum.gsum + subproof.std.gsum.gsum_result;
 }
 
-private function PIOP_gsum_proof() {
+/**
+ * It defines the constraints for the grandsum at the proof level
+ */
+private function piop_gsum_proof() {
     check_gsum_was_completed();
 
     proof.std.gsum.gsum === 0;
@@ -189,9 +204,10 @@ private function check_gsum_was_completed() {
         use proof.std.gsum.`id${opid}`;
         if (assumes == 0) {
             error(`PIOP #${opid} defined without assume`);
-        }
-        if (proves == 0) {
+        } else if (proves == 0) {
             error(`PIOP #${opid} defined without proves`);
+        } else if (assumes != proves) {
+            error(`PIOP #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }

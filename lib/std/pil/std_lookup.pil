@@ -1,0 +1,22 @@
+require "std_sum.pil"
+
+// TODO: Find a way to do this without increasing the number of columns or expressions
+// function lookup_assumes(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
+
+//     update_piop_sum(0, opid, ones, cols);
+// }
+
+// function lookup_proves(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
+
+//     update_piop_sum(1, opid, ones, cols);
+// }
+
+function lookup_assumes(int opid, expr sel, expr cols[]) {
+    update_piop_sum(0, opid, sel, cols);
+}
+
+function lookup_proves(int opid, expr sel, expr cols[]) {
+    update_piop_sum(1, opid, sel, cols);
+}
