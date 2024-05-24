@@ -1,62 +1,171 @@
 require "std_common.pil"
 
 /**
- * Verifies the number of columns of same PIOP check (assumes, proves) is the same.
- * @param opid (unique) identifier of the PIOP check
- * @param type if 1, it is a lookup or a range check; if 0, it is a permutation
- * @param cols_count number of columns of the PIOP check
+ * TODO: Add description
  * @param proves 1 if proves, 0 if assumes
+ * @param opid (unique) identifier of the PIOP check
+ * @param cols columns of the PIOP
  */
-private function check_gprod_opid_and_cols(int proves, int type, int opid, int cols_count) {
+private function init_piop_prod(int proves, int opid, expr cols[]) {
+    int cols_count = length(cols);
 
     if (cols_count < 1) {
-        error(`The number of columns of PIOP #${opid} must be at least 1 (${cols_count})`);
+        string side = proves ? "proves" : "assumes";
+        error(`The number of columns of ${side} #${opid} must be at least 1`);
     }
 
     container proof.std.gprod alias gprod {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
         int opids[100];
-        expr gprod = 1;  // Resulting sum of every subproof and every air.
-                        // Declared as expression (unknown at runtime), but used as field element.
+        expr gprod = 1;  // Resulting prod of every subproof and every air.
+                         // Declared as expression (unknown at runtime), but used as field element.
     }
 
-    
     container subproof.std.gprod {
         subproofval aggregate(prod) gprod_result;
     }
 
     container air.std.gprod {
-        expr gprod_assumes = 1;
-        expr gprod_proves = 1;
+        int gprod_assumes_count = 0;
+        const expr gprod_assumes_sel[100];
+        const expr gprod_assumes[100];
+
+        int gprod_proves_count = 0;
+        const expr gprod_proves_sel[100];
+        const expr gprod_proves[100];
     }
 
+    // Container used for final checks
     container proof.std.gprod.`id${opid}` alias gprodid {
         int cols;
         int proves = 0;
         int assumes = 0;
-        int type = 0;
     }
 
+    // Assumes and proves of the same opid must have the same number of columns
     if (gprodid.cols == 0) {
         // first time called
         gprodid.cols = cols_count;
-        gprodid.type = type;
         // add opid on a list to verify at final
         gprod.opids[gprod.opids_count] = opid;
         gprod.opids_count = gprod.opids_count + 1;
-    } else {
-        if (gprodid.cols != cols_count) {
-            error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
-        }
-        if (gprodid.type != type) {
-            error(`The #${opid} was declared previously different type, as ${gprodid.type==1?'permutation':'lookup'}`);
-        }
+    } else if (gprodid.cols != cols_count) {
+        error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
     }
 
+    // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
+    // proves and assumes to verify at the end that all of them match
     if (proves) {
         gprodid.proves = gprodid.proves + 1;
     } else {
         gprodid.assumes = gprodid.assumes + 1;
+    }
+}
+
+/**
+ * Given a selector sel and columns C₀,...,Cₙ₋₁, it:
+ *      · 1] defines the running prod constraints for each air
+ *      · 2] add each subproofvalue of each subproof to the running prod
+ *      · 3] checks that the overall prod is zero
+ * @param proves boolean indicating if updating a proves or a assumes
+ * @param opid (unique) identifier of the PIOP
+ * @param sel selector of the PIOP
+ * @param cols columns of the PIOP
+ */
+private function update_piop_prod(int proves, int opid, expr sel, expr cols[]) {
+    // instanciate necessary containers and make first checks
+    init_piop_prod(proves, opid, cols);
+
+    init_challenges();
+
+    // selected vector to simple column reduction
+    const expr cols_compressed = compress_cols(opid, cols);
+
+    use air.std.gprod;
+    if (proves) {
+        // adding all sums of proves called in this air
+        gprod_proves_sel[gprod_proves_count] = sel;
+        gprod_proves[gprod_proves_count] = cols_compressed;
+        gprod_proves_count = gprod_proves_count + 1;
+    } else {
+        // adding all sums of assumes called in this air
+        gprod_assumes_sel[gprod_assumes_count] = sel;
+        gprod_assumes[gprod_assumes_count] = cols_compressed;
+        gprod_assumes_count = gprod_assumes_count + 1;
+    }
+
+    // define constraints at the air level
+    on final air piop_gprod_air();
+
+    // update values at the subproof level
+    on final subproof piop_gprod_subproof();
+
+    // update constraints at the proof level
+    on final proof piop_gprod_proof();
+}
+
+/**
+ * It defines the constraints for the grandsum at the air level
+ */
+private function piop_gprod_air() {
+    use air.std.gprod;
+
+    col witness stage(2) gprod;
+
+    //                                 (st1·(t1+ɣ-1)+1)·(st2·(t2+ɣ-1)+1)
+    //  gprod === 'gprod * (1 - L1) * -----------------------------------
+    //                                 (sf1·(f1+ɣ-1)+1)·(sf2·(f2+ɣ-1)+1)
+    //
+    // Note: The ti and fi are not necessarily related to each other
+
+    col fixed L1 = [1,0...];
+
+    expr numerator = 1;
+    for (int i = 0; i < gprod_proves_count; i = i + 1) {
+        numerator = numerator * (gprod_proves_sel[i] * (gprod_proves[i] + std_gamma - 1) + 1);
+    }
+
+    expr denominator = 1;
+    for (int i = 0; i < gprod_assumes_count; i = i + 1) {
+        denominator = denominator * (gprod_assumes_sel[i] * (gprod_assumes[i] + std_gamma - 1) + 1);
+    }
+
+    gprod * denominator === 'gprod * (1 - L1) * numerator;
+    L1' * (gprod - subproof.std.gprod.gprod_result) === 0;
+}
+
+// Note: We don't "update" the sum at the subproof level (i.e., all the resulting sums generated by each air)
+//       because we don't know how many airs will be generated at compile time. Therefore we use the same
+//       term to refer to both things: the value generated at each air and the value generated at each subproof.
+//       It is like jumping from the air level to the proof (global) level, from the constraint point of view.
+
+/**
+ * It updates the expression for the grandsum at the proof level
+ */
+private function piop_gprod_subproof() {
+    proof.std.gprod.gprod = proof.std.gprod.gprod * subproof.std.gprod.gprod_result;
+}
+
+/**
+ * It defines the constraints for the grandsum at the proof level
+ */
+private function piop_gprod_proof() {
+    check_gprod_was_completed();
+
+    proof.std.gprod.gprod === 1;
+}
+
+private function check_gprod_was_completed() {
+    for (int index = 0; index < proof.std.gprod.opids_count; index = index + 1) {
+        int opid = proof.std.gprod.opids[index];
+        use proof.std.gprod.`id${opid}`;
+        if (assumes == 0) {
+            error(`PIOP #${opid} defined without assume`);
+        } else if (proves == 0) {
+            error(`PIOP #${opid} defined without proves`);
+        } else if (assumes != proves) {
+            error(`PIOP #${opid} defined with #${assumes} assumes and #${proves} proves`);
+        }
     }
 }
