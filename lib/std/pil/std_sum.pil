@@ -95,16 +95,17 @@ private function update_piop_sum(int proves, int opid, expr sel, expr cols[]) {
         gsum_assumes_count = gsum_assumes_count + 1;
     }
 
-    // 1] look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
+    // TODO!!
+    // look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
     // on final air lookup_range_proves_batch();
 
-    // 2] define constraints at the air level
+    // define constraints at the air level
     on final air piop_gsum_air();
 
-    // 3] update values at the subproof level
+    // update values at the subproof level
     on final subproof piop_gsum_subproof();
 
-    // 4] update constraints at the proof level
+    // update constraints at the proof level
     on final proof piop_gsum_proof();
 }
 
@@ -144,7 +145,7 @@ private function piop_gsum_air() {
 
         col witness stage(2) muli;
 
-        @muli{reference: muli, selector: gsum_proves_sel[i], column: gsum_proves[i]}
+        @muli{reference: muli, selector: gsum_proves_sel[i], column: gsum_proves[i]};
 
         expr tmp = gsum_proves_sel[i] * muli;
         for (int j = 0; j < gsum_proves_count; j = j + 1) {

@@ -1,123 +1,22 @@
-include "std_prod.pil"
+require "std_prod.pil"
 
-// Permutation Checks
-// --------------------------------------------------------------------------------------------
+// TODO: Find a way to do this without increasing the number of columns or expressions
+// function permutation_assumes(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
 
-// User interface for permutation check assumes
+//     update_piop_prod(0, opid, ones, cols);
+// }
+
+// function permutation_proves(int opid, expr cols[]) {
+//     const expr ones = [1,1...];
+
+//     update_piop_prod(1, opid, ones, cols);
+// }
+
 function permutation_assumes(int opid, expr sel, expr cols[]) {
-    permutation_update(0, opid, sel, cols);
+    update_piop_prod(0, opid, sel, cols);
 }
 
-// User interface for permutation check proves
 function permutation_proves(int opid, expr sel, expr cols[]) {
-    permutation_update(1, opid, sel, cols);
-}
-
-/**
- * Given columns C₁,...,Cₙ, and selector S, reduces the selected vector argument to a single column argument.
- * @param opid (unique) identifier of the argument
- * @param sel selector of the argument
- * @param cols array of columns of the argument
- * @return S·([opid + C₁·α + C₂·α² + ... + Cₙ·αⁿ] + β - 1) + 1
- */
-private function permutation_prepare_cols(int opid, expr sel, expr cols[]): expr {
-    expr cols_compressed = 0;
-    for (int icol = length(cols) - 1; icol >= 0; --icol) {
-        cols_compressed = (cols_compressed + cols[icol]) * std_alpha;
-    }
-
-    // the opid is added to avoid soundness issues between different permutation checks
-    cols_compressed = cols_compressed + opid;
-
-    /* if (sel == 1) {
-        return cols_compressed + std_beta;
-    }*/
-    expr cols_selected = sel * (cols_compressed + std_beta - 1) + 1;
-    return cols_selected;
-}
-
-/**
- * Given columns C₀,...,Cₙ₋₁, and selector S, it 1] defines the constraints at the air level, 2] updates the values at the subproof level, and 3] updates the constraints at the proof level.
- * @param proves boolean indicating if updating a proves or a assumes
- * @param opid (unique) identifier of the argument
- * @param sel selector of the argument
- * @param cols columns of the argument
- */
-private function permutation_update(int proves, int opid, expr sel, expr cols[]) {
-    // verify if correct opid and cols
-    check_gprod_opid_and_cols(proves, 0, opid, length(cols));
-
-    init_challenges(2);
-
-    // if (sel != 1) {
-        sel * (1 - sel) === 0;
-    //}
-
-    // selected vector to simple column reduction
-    expr cols_selected = permutation_prepare_cols(opid, sel, cols);
-
-    use air.std.gprod;
-    if (proves) {
-        // adding all products of proves called in this air
-        gprod_proves = gprod_proves * cols_selected;
-    } else {
-        // adding all products of assumes called in this air
-        gprod_assumes = gprod_assumes * cols_selected;
-    }
-
-    // 1] define constraints at the air level
-    on final air gprod_air_end();
-
-    // 2] update values at the subproof level
-    on final subproof gprod_subproof_end();
-
-    // 3] update constraints at the proof level
-    on final proof gprod_proof_end();
-}
-
-private function gprod_air_end() {
-    col witness stage(3) gprod;
-
-    // @std_gprod{type: "gprod", assumes: air.std.gprod.gprod_assumes, proves: air.std.gprod.gprod_proves}
-    @gprod{reference: gprod, numerator: air.std.gprod.gprod_assumes, denominator: air.std.gprod.gprod_proves}
- 
-    //                                              gprod_assumes
-    //  gprod === ('gprod * (1 - L1) + L1) * ----------------------------
-    //                                              gprod_proves
-
-
-    col fixed L1 = [1,0...];
-
-    expr previous_gprod = 'gprod * (1 - L1) + L1;  // L1 == 1 ? 1 : 'gprod
-
-    gprod * air.std.gprod.gprod_proves === previous_gprod * air.std.gprod.gprod_assumes;
-
-    // on last row, gprod and subproof.std.gprod_result must be the same
-    L1' * (gprod - subproof.std.gprod.gprod_result) === 0;
-}
-
-private function gprod_subproof_end() {
-    proof.std.gprod.gprod = proof.std.gprod.gprod * subproof.std.gprod.gprod_result;
-    #pragma dump proof.std.gprod.gprod
-}
-
-private function gprod_proof_end() {
-    check_gprod_was_completed();
-
-    proof.std.gprod.gprod === 1;
-}
-
-// It checks wheter there is some permutation check without either proves or assumes
-private function check_gprod_was_completed() {
-    for (int index = 0; index < proof.std.gprod.opids_count; ++index) {
-        const int opid = proof.std.gprod.opids[index];
-        use proof.std.gprod.`id${opid}`;
-        // TODO: proof.std.gprod.`id${opid}`.assumes
-        if (assumes == 0) {
-            error(`Permutation #${opid} defined without assumes`);
-        }
-        if (proves == 0) {
-            error(`Permutation #${opid} defined without proves`);
-        }
-    }
+    update_piop_prod(1, opid, sel, cols);
 }
