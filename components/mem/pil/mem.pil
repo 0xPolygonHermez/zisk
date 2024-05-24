@@ -1,4 +1,4 @@
-include "std_prod_permutation.pil"
+require "std_prod_permutation.pil"
 
 subproof Mem(2**10) {
 

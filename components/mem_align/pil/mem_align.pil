@@ -61,16 +61,9 @@ subproof MemAlign(2**16) {
     // current inValueShifted byte.
     col witness bytePos;
 
-    // fixed col to code mode and selectors, how mode isn't a free input,
-    // an it must match with main, could be compressed with two selectors
-    col fixed MODE_SELM1_SELM0; //  4*MODE + 2*SELM1 + SELM0
-
     // used to identify each 32-clock input
     col fixed ID = [1:CLOCKS,2:CLOCKS..+..];
     col fixed RESET = [0:(CLOCKS-1),1]...;
-
-    // byte position on rebuild B.
-    col fixed T_BYTE_POS; 
 
     // flag to active permutation check with a valid result
     col witness result;
@@ -92,9 +85,9 @@ subproof MemAlign(2**16) {
 
     // RangeCheck
     // 2^16 * 2^6 = 2^22
-    multi_range_check([...inM,imV], 0, 255);
+    // multi_range_check([...inM,imV], 0, 255);
 
-    lookup_assumes(MEM_ALIGN_TABLE_ID, 1, [CYCLE, mode*4 + selM1 * 2 + selM0, bytePos]);
+    // lookup_assumes(MEM_ALIGN_TABLE_ID, 1, [CYCLE, mode*4 + selM1 * 2 + selM0, bytePos]);
     // lookup_proves(MEM_ALIGN_TABLE_ID, 1, [CYCLE32, MODE_SELM1_SELM0, T_BYTE_POS, C274560_0_3]);
     // reduced for develop: { Global.STEP32, mode*4 + selM1 * 2 + selM0, bytePos } in { Global.STEP32, MODE_SELM1_SELM0, T_BYTE_POS};
 
@@ -112,8 +105,8 @@ subproof MemAlign(2**16) {
     // or "padding" part of v must be zero. But when verifing that a write operation,
     // be more usefull if this part could be dirty.
 
-    multiset_assumes(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, bytePos, selV * inValueByteShifted]);
-    multiset_proves(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, CYCLE, inValueByte]);
+    // multiset_assumes(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, bytePos, selV * inValueByteShifted]);
+    // multiset_proves(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, CYCLE, inValueByte]);
 
     // data to "write" on w, if current byte must be override by V contains inV
     // if not contains inM "in reading mode" value don't matter
@@ -127,7 +120,7 @@ subproof MemAlign(2**16) {
     (1 - wr) * (inW0 - inM[0]) === 0;
     (1 - wr) * (inW1 - inM[1]) === 0;
 
-    expr m0[NR], m1[NR], v[NR], w1[NR], w1[NR];
+    expr m0[NR], m1[NR], v[NR], w0[NR], w1[NR];
 
     // inM bytes: 31,30,29,...,2,1,0
     for (int chunk = 0; chunk < NR; ++chunk) {
@@ -141,13 +134,13 @@ subproof MemAlign(2**16) {
         for (int ibyte = 0; ibyte < BPR; ++ibyte) {
             int prior = chunk * BPR + ibyte;
             m0[chunk] = m0[chunk] + (prior)'inM[0] * base;
-            m1[chunk] = mq[chunk] + (prior)'inM[1] * base;
+            m1[chunk] = m1[chunk] + (prior)'inM[1] * base;
             v[chunk]  = v[chunk]  + (prior)'inValueByte * base;
-            w0[chunk] = w0[chunk] + (prior)'inW0[0] * base;
-            w1[chunk] = w1[chunk] + (prior)'inW1[0] * base;
+            w0[chunk] = w0[chunk] + (prior)'inW0 * base;
+            w1[chunk] = w1[chunk] + (prior)'inW1 * base;
             base = base * 256;
         }
     }
 
-    multiset_proves(MEM_ALIGN_ID, result, [wr, ...m0, ...m1, ...v, mode, wr, ...w0, ...w1]);
+    // multiset_proves(MEM_ALIGN_ID, result, [wr, ...m0, ...m1, ...v, mode, wr, ...w0, ...w1]);
 }

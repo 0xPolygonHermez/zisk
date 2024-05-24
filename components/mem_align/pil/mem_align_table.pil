@@ -22,7 +22,9 @@ subproof MemAlignTable(2**19) {
     const int LALE_FLAGS_4 = (LEFT_ALIGN_FLAG + LITTLE_ENDIAN_FLAG) * 4;
 
     int irow = 0;
-    for (int len = 0; len <= MAX_LEN; ++len) {
+    // #pragma profile on
+    #pragma message loop1-begin
+    for (int len = 0; len <= MAX_LEN; ++len) {    
         for (int offset = 0; offset <= MAX_OFFSET; ++offset) {
             const int mode_base = (offset + LEN_FACTOR * len) * 4; 
             int _len = len == 0 ? 32:0;
@@ -46,18 +48,21 @@ subproof MemAlignTable(2**19) {
                 T_BYTE_POS[irow + 64] = 31 - byte;
                 T_BYTE_POS[irow + 96] = (31 + _len - byte) % 32;
 
-                ++irow;
+                irow = irow + 1;
             }
             irow = irow + 96;
         }
     }
+    // #pragma profile off
+    #pragma message loop1-end
+    #pragma message loop2-begin
     const int T_BYTE_POS_0 = T_BYTE_POS[0];
     const int MODE_SELM1_SELM0_0 = MODE_SELM1_SELM0[0];
     while (irow < N) {
         MODE_SELM1_SELM0[irow] = MODE_SELM1_SELM0_0;
         T_BYTE_POS[irow] = T_BYTE_POS_0;
-        ++irow;
+        irow = irow + 1;
     }
-
-    lookup_proves(MEM_ALIGN_TABLE, 1, [CLOCK, MODE_SELM1_SELM0, T_BYTE_POS]);
+    #pragma message loop2-end
+    // lookup_proves(MEM_ALIGN_TABLE, 1, [CLOCK, MODE_SELM1_SELM0, T_BYTE_POS]);
 }
