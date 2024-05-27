@@ -1,23 +1,26 @@
 require "std_common.pil"
 require "std_sum.pil"
 
+const string name_range_check = "range_check";
+const int MAX_LEN = (PRIME - 1) / 2;
+
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
 
-const int MAX_LEN = (PRIME - 1) / 2;
-
-/*
-function range_check(int opid, expr cols[], int min, int max) {
-    const expr ones = [1,1...];
-    for (int i = 0; i < length(cols); i = i + 1) {
-        piop_update(0, 1, opid, ones, cols[i]);
-    }
-
-    col fixed RANGE = [min,min+1..+..max];
-    piop_update(1, 1, opid, ones, RANGE);
+function range_check(int specific, expr sel, expr colu, int min, int max) {
+    range_check_def(specific, sel, colu, min, max);
 }
-*/
+
+function range_check_nosel(int specific, expr colu, int min, int max) {
+    range_check_def(specific, 1, colu, min, max);
+}
+
+// function range_check_group(int specific, expr sels[], expr cols[], int min, int max) {
+//     for (int i = 0; i < length(cols); i = i + 1) {
+//         range_check_def(specific, sels[i], cols[i], min, max);
+//     }
+// }
 
 /**
  * TODO: Add description
@@ -27,7 +30,7 @@ function range_check(int opid, expr cols[], int min, int max) {
  * @param min minimum value of the range
  * @param max maximum value of the range
  */
-function range_check(int specific, expr sel, expr colu, int min, int max) {
+function range_check_def(int specific, expr sel, expr colu, int min, int max) {
     if (min > max) {
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
@@ -54,17 +57,17 @@ function range_check(int specific, expr sel, expr colu, int min, int max) {
         // Default ranges
         const int byte = 2**8-1;
         const int twobytes = 2**16-1;
-        col fixed U8 = [0,1,..+..,byte];
-        col fixed U16 = [0,1,..+..,twobytes];
+        col fixed U8 = [0,1..+..byte];
+        col fixed U16 = [0,1..+..twobytes];
 
         if (min == 0 && (max == byte || max == twobytes)) {
             int default_range = max == byte ? 1 : 0;
 
             // assume with predefined opid
-            sum_assumes_sel(default_range ? 100 : 101, sel, colu);
+            sum_assumes_sel(name_range_check, default_range ? 100 : 101, sel, [colu]);
 
             // prove
-            sum_proves_nosel(default_range ? 100 : 101, default_range ? U8 : U16);
+            sum_proves_nosel(name_range_check, default_range ? 100 : 101, default_range ? U8 : U16);
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
@@ -73,22 +76,22 @@ function range_check(int specific, expr sel, expr colu, int min, int max) {
                     // reuse U8
 
                     // first prove that colu - min is in U8
-                    sum_assumes_sel(100, sel, colu - min);
-                    sum_proves_nosel(100, U8);
+                    sum_assumes_sel(name_range_check, 100, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, 100, [U8]);
 
                     // second prove that max - colu is in U8
-                    sum_assumes_sel(100, sel, max - colu);
-                    sum_proves_nosel(100, U8);
+                    sum_assumes_sel(name_range_check, 100, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, 100, [U8]);
                 } else if (max <= twobytes) {
                     // reuse U16
 
                     // first prove that colu - min is in U16
-                    sum_assumes_sel(101, sel, colu - min);
-                    sum_proves_nosel(101, U16);
+                    sum_assumes_sel(name_range_check, 101, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, 101, [U16]);
 
                     // second prove that max - colu is in U16
-                    sum_assumes_sel(101, sel, max - colu);
-                    sum_proves_nosel(101, U16);
+                    sum_assumes_sel(name_range_check, 101, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, 101, [U16]);
                 } else {
                     // represent max and min in base twobytes
                     const int nchunks_max = log2(max) / log2(twobytes) + 1; // ceil(log2(max) / log2(twobytes)) + 1
@@ -109,12 +112,12 @@ function range_check(int specific, expr sel, expr colu, int min, int max) {
                         @colu_chunk{reference: colu, base: twobytes};
 
                         if (i < nchunks_min) {
-                            sum_assumes_sel(101, sel, colu_chunk - min_chunk);
-                            sum_proves_nosel(101, U16);
+                            sum_assumes_sel(name_range_check, 101, sel, [colu_chunk - min_chunk]);
+                            sum_proves_nosel(name_range_check, 101, [U16]);
                         }
 
-                        sum_assumes_sel(101, sel, max_chunk - colu_chunk);
-                        sum_proves_nosel(101, U16);
+                        sum_assumes_sel(name_range_check, 101, sel, [max_chunk - colu_chunk]);
+                        sum_proves_nosel(name_range_check, 101, [U16]);
                     }
 
                     // constraint asserting that the decomposition is correct
@@ -125,16 +128,11 @@ function range_check(int specific, expr sel, expr colu, int min, int max) {
             }
         }
     } else {
-        sum_assumes_sel(next_opid_mock(opid), sel, colu);
+        sum_assumes_sel(name_range_check, next_opid_mock(), sel, [colu]);
 
+        // col fixed RANGE = [min,min+1..+..max]...;
         col fixed RANGE = [min,min+1..+..max];
 
-        sum_proves_nosel(next_opid_mock(opid), RANGE);
-    }
-}
-
-function group_range_check(int specific, expr sels[], expr cols[], int min, int max) {
-    for (int i = 0; i < length(cols); i = i + 1) {
-        range_check(specific, sels[i], cols[i], min, max);
+        sum_proves_nosel(name_range_check, next_opid_mock(), [RANGE]);
     }
 }

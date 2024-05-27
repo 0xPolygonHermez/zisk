@@ -1,19 +1,19 @@
 require "std_common.pil"
 
-private function sum_assumes_sel(int opid, expr sel, expr cols[]) {
-    update_piop_sum(0, opid, sel, cols);
+private function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+    update_piop_sum(type, 0, opid, sel, cols);
 }
 
 private function sum_assumes_nosel(int opid, expr cols[]) {
-    update_piop_sum(0, opid, 1, cols);
+    update_piop_sum(type, 0, opid, 1, cols);
 }
 
 private function sum_proves_sel(int opid, expr sel, expr cols[]) {
-    update_piop_sum(1, opid, sel, cols);
+    update_piop_sum(type, 1, opid, sel, cols);
 }
 
 private function sum_proves_nosel(int opid, expr cols[]) {
-    update_piop_sum(1, opid, 1, cols);
+    update_piop_sum(type, 1, opid, 1, cols);
 }
 
 /**
@@ -44,12 +44,12 @@ private function init_piop_sum(int proves, int opid, expr cols[]) {
 
     container air.std.gsum {
         int gsum_assumes_count = 0;
-        const expr gsum_assumes_sel[100];
-        const expr gsum_assumes[100];
+        expr gsum_assumes_sel[100];
+        expr gsum_assumes[100];
 
         int gsum_proves_count = 0;
-        const expr gsum_proves_sel[100];
-        const expr gsum_proves[100];
+        expr gsum_proves_sel[100];
+        expr gsum_proves[100];
     }
 
     // Container used for final checks
@@ -84,19 +84,20 @@ private function init_piop_sum(int proves, int opid, expr cols[]) {
  *      · 1] defines the running sum constraints for each air
  *      · 2] add each subproofvalue of each subproof to the running sum
  *      · 3] checks that the overall sum is zero
+ * @param type type of the PIOP
  * @param proves boolean indicating if updating a proves or a assumes
  * @param opid (unique) identifier of the PIOP
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_sum(int proves, int opid, expr sel, expr cols[]) {
+private function update_piop_sum(string type, int proves, int opid, expr sel, expr cols[]) {
     // instanciate necessary containers and make first checks
     init_piop_sum(proves, opid, cols);
 
     init_challenges();
 
     // selected vector to simple column reduction
-    const expr cols_compressed = compress_cols(opid, cols);
+    expr cols_compressed = compress_cols(opid, cols);
 
     use air.std.gsum;
     if (proves) {
@@ -111,8 +112,7 @@ private function update_piop_sum(int proves, int opid, expr sel, expr cols[]) {
         gsum_assumes_count = gsum_assumes_count + 1;
     }
 
-    // TODO!!
-    // look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
+    // TODO: look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
     // on final air lookup_range_proves_batch();
 
     // define constraints at the air level
@@ -122,7 +122,7 @@ private function update_piop_sum(int proves, int opid, expr sel, expr cols[]) {
     on final subproof piop_gsum_subproof();
 
     // update constraints at the proof level
-    on final proof piop_gsum_proof();
+    on final proof piop_gsum_proof(type);
 }
 
 /**
@@ -141,9 +141,6 @@ private function piop_gsum_air() {
 
     col fixed L1 = [1,0...];
 
-    expr LHS = 1;
-    expr RHS1 = 0;
-
     // Not needed.
     // const expr gsP[gsum_proves_count];
     // for (int i = 0; i < gsum_proves_count; i = i + 1) {
@@ -156,21 +153,24 @@ private function piop_gsum_air() {
     //     gsA[i] = gsum_assumes[i];
     // }
 
+    expr LHS = 1;
+    expr RHS1 = 0;
+
     for (int i = 0; i < gsum_proves_count; i = i + 1) {
         LHS = LHS * (gsum_proves[i] + std_gamma);
 
-        col witness stage(2) muli;
+        col witness stage(1) multiplicity;
 
-        @muli{reference: muli, selector: gsum_proves_sel[i], column: gsum_proves[i]};
+        @multiplicity{reference: multiplicity, selector: gsum_proves_sel[i], column: gsum_proves[i]};
 
-        expr tmp = gsum_proves_sel[i] * muli;
+        expr tmp = gsum_proves_sel[i] * multiplicity;
         for (int j = 0; j < gsum_proves_count; j = j + 1) {
             if (j != i) tmp = tmp * (gsum_proves[j] + std_gamma);
         }
         RHS1 = RHS1 + tmp;
     }
 
-    const expr RHS2a = LHS;
+    expr RHS2a = LHS;
     expr RHS2b = 0;
 
     for (int i = 0; i < gsum_assumes_count; i = i + 1) {
@@ -184,8 +184,8 @@ private function piop_gsum_air() {
         RHS2b = RHS2b + tmp;
     }
 
-    const expr RHS2 = RHS2a * RHS2b;
-    const expr RHS = RHS1 - RHS2;
+    expr RHS2 = RHS2a * RHS2b;
+    expr RHS = RHS1 - RHS2;
 
     @gsum{reference: gsum, numerator: RHS, denominator: LHS}
 
@@ -208,22 +208,22 @@ private function piop_gsum_subproof() {
 /**
  * It defines the constraints for the grandsum at the proof level
  */
-private function piop_gsum_proof() {
-    check_gsum_was_completed();
+private function piop_gsum_proof(string type) {
+    check_gsum_was_completed(type);
 
     proof.std.gsum.gsum === 0;
 }
 
-private function check_gsum_was_completed() {
+private function check_gsum_was_completed(string type) {
     for (int index = 0; index < proof.std.gsum.opids_count; index = index + 1) {
         int opid = proof.std.gsum.opids[index];
         use proof.std.gsum.`id${opid}`;
         if (assumes == 0) {
-            error(`PIOP #${opid} defined without assume`);
+            error(`${type} #${opid} defined without assume`);
         } else if (proves == 0) {
-            error(`PIOP #${opid} defined without proves`);
+            error(`${type} #${opid} defined without proves`);
         } else if (assumes != proves) {
-            error(`PIOP #${opid} defined with #${assumes} assumes and #${proves} proves`);
+            error(`${type} #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }

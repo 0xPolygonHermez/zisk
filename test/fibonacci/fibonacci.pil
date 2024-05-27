@@ -1,0 +1,23 @@
+require "module.pil";
+
+public in1;
+public in2;
+public out;
+
+subproof aggregate FibonacciSquare(2**16, 2**18) {
+
+    // subproof aggregate FibonacciSquare(2**16) {
+    col fixed L1 = [1,0...];
+    col witness a,b;
+
+    // Inputs/Outputs
+    L1 * (a - in1) === 0;
+    L1 * (b - in2) === 0;
+    L1' * (b - out) === 0;
+
+    (a' - b) * (1 - L1') === 0;
+
+    permutation_assumes(MODULE_ID, 1, [a*a + b*b, b']);
+};
+
+

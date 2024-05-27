@@ -1,5 +1,21 @@
 require "std_common.pil"
 
+private function prod_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+    update_piop_prod(type, 0, opid, sel, cols);
+}
+
+private function prod_assumes_nosel(int opid, expr cols[]) {
+    update_piop_prod(type, 0, opid, 1, cols);
+}
+
+private function prod_proves_sel(int opid, expr sel, expr cols[]) {
+    update_piop_prod(type, 1, opid, sel, cols);
+}
+
+private function prod_proves_nosel(int opid, expr cols[]) {
+    update_piop_prod(type, 1, opid, 1, cols);
+}
+
 /**
  * TODO: Add description
  * @param proves 1 if proves, 0 if assumes
@@ -28,12 +44,12 @@ private function init_piop_prod(int proves, int opid, expr cols[]) {
 
     container air.std.gprod {
         int gprod_assumes_count = 0;
-        const expr gprod_assumes_sel[100];
-        const expr gprod_assumes[100];
+        expr gprod_assumes_sel[100];
+        expr gprod_assumes[100];
 
         int gprod_proves_count = 0;
-        const expr gprod_proves_sel[100];
-        const expr gprod_proves[100];
+        expr gprod_proves_sel[100];
+        expr gprod_proves[100];
     }
 
     // Container used for final checks
@@ -68,19 +84,20 @@ private function init_piop_prod(int proves, int opid, expr cols[]) {
  *      · 1] defines the running prod constraints for each air
  *      · 2] add each subproofvalue of each subproof to the running prod
  *      · 3] checks that the overall prod is zero
+ * @param type type of the PIOP
  * @param proves boolean indicating if updating a proves or a assumes
  * @param opid (unique) identifier of the PIOP
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_prod(int proves, int opid, expr sel, expr cols[]) {
+private function update_piop_prod(string type, int proves, int opid, expr sel, expr cols[]) {
     // instanciate necessary containers and make first checks
     init_piop_prod(proves, opid, cols);
 
     init_challenges();
 
     // selected vector to simple column reduction
-    const expr cols_compressed = compress_cols(opid, cols);
+    expr cols_compressed = compress_cols(opid, cols);
 
     use air.std.gprod;
     if (proves) {
@@ -102,7 +119,7 @@ private function update_piop_prod(int proves, int opid, expr sel, expr cols[]) {
     on final subproof piop_gprod_subproof();
 
     // update constraints at the proof level
-    on final proof piop_gprod_proof();
+    on final proof piop_gprod_proof(type);
 }
 
 /**
@@ -121,14 +138,22 @@ private function piop_gprod_air() {
 
     col fixed L1 = [1,0...];
 
+    function update_product(expr sel, expr colu) {
+        if (sel == 1) {
+            return colu + std_gamma;
+        } else {
+            return sel * (colu + std_gamma - 1) + 1;
+        }
+    }
+
     expr numerator = 1;
     for (int i = 0; i < gprod_proves_count; i = i + 1) {
-        numerator = numerator * (gprod_proves_sel[i] * (gprod_proves[i] + std_gamma - 1) + 1);
+        numerator = numerator * update_product(gprod_proves_sel[i], gprod_proves[i]);
     }
 
     expr denominator = 1;
     for (int i = 0; i < gprod_assumes_count; i = i + 1) {
-        denominator = denominator * (gprod_assumes_sel[i] * (gprod_assumes[i] + std_gamma - 1) + 1);
+        denominator = denominator * update_product(gprod_assumes_sel[i], gprod_assumes[i]);
     }
 
     gprod * denominator === 'gprod * (1 - L1) * numerator;
@@ -150,22 +175,22 @@ private function piop_gprod_subproof() {
 /**
  * It defines the constraints for the grandsum at the proof level
  */
-private function piop_gprod_proof() {
-    check_gprod_was_completed();
+private function piop_gprod_proof(string type) {
+    check_gprod_was_completed(type);
 
     proof.std.gprod.gprod === 1;
 }
 
-private function check_gprod_was_completed() {
+private function check_gprod_was_completed(string type) {
     for (int index = 0; index < proof.std.gprod.opids_count; index = index + 1) {
         int opid = proof.std.gprod.opids[index];
         use proof.std.gprod.`id${opid}`;
         if (assumes == 0) {
-            error(`PIOP #${opid} defined without assume`);
+            error(`${type} #${opid} defined without assume`);
         } else if (proves == 0) {
-            error(`PIOP #${opid} defined without proves`);
+            error(`${type} #${opid} defined without proves`);
         } else if (assumes != proves) {
-            error(`PIOP #${opid} defined with #${assumes} assumes and #${proves} proves`);
+            error(`${type} #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }
