@@ -1,5 +1,21 @@
 require "std_common.pil"
 
+private function sum_assumes_sel(int opid, expr sel, expr cols[]) {
+    update_piop_sum(0, opid, sel, cols);
+}
+
+private function sum_assumes_nosel(int opid, expr cols[]) {
+    update_piop_sum(0, opid, 1, cols);
+}
+
+private function sum_proves_sel(int opid, expr sel, expr cols[]) {
+    update_piop_sum(1, opid, sel, cols);
+}
+
+private function sum_proves_nosel(int opid, expr cols[]) {
+    update_piop_sum(1, opid, 1, cols);
+}
+
 /**
  * TODO: Add description
  * @param proves 1 if proves, 0 if assumes

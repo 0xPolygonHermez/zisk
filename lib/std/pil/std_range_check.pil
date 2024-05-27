@@ -1,8 +1,11 @@
+require "std_common.pil"
 require "std_sum.pil"
 
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
+
+const int MAX_LEN = (PRIME - 1) / 2;
 
 /*
 function range_check(int opid, expr cols[], int min, int max) {
@@ -18,19 +21,18 @@ function range_check(int opid, expr cols[], int min, int max) {
 
 /**
  * TODO: Add description
- * @param opid (unique) identifier of the range check
- * @param absorb 1 if absorb to the default range, 0 if create the specified range
+ * @param specific 1 if use the default range, 0 if create the specified range
  * @param sel selection vector
  * @param colu column to be range checked
  * @param min minimum value of the range
  * @param max maximum value of the range
  */
-function range_check(int opid, int absorb, expr sel, expr colu, int min, int max) {
+function range_check(int specific, expr sel, expr colu, int min, int max) {
     if (min > max) {
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
         error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
-    } else if (max - min < 4) { // The 4 was chosen comparing the cost of logup vs the cost of a multiple value check
+    } else if (max - min < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
         int diff = max - min;
 
         string diff_str = `(colu - ${min})`;
@@ -39,14 +41,16 @@ function range_check(int opid, int absorb, expr sel, expr colu, int min, int max
         }
 
         warn(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
+    } else if (max - min > MAX_LEN) {
+        error(`The range [${min}..${max}] is too big, the maximum range length is ${MAX_LEN}`);
+    } else if (max >= PRIME) {
+        error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
+    } else if (min <= -PRIME) {
+        error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
     }
 
-
-    if (opid == 100 || opid == 101) {
-        error(`opid ${opid} is reserved for predefined ranges`);
-    }
-
-    if (absorb) {
+    if (specific) {
+        // TODO: Add in a subproof????
         // Default ranges
         const int byte = 2**8-1;
         const int twobytes = 2**16-1;
@@ -57,80 +61,80 @@ function range_check(int opid, int absorb, expr sel, expr colu, int min, int max
             int default_range = max == byte ? 1 : 0;
 
             // assume with predefined opid
-            update_piop_sum(0, default_range ? 100 : 101, sel, colu);
+            sum_assumes_sel(default_range ? 100 : 101, sel, colu);
 
             // prove
-            update_piop_sum(1, default_range ? 100 : 101, 1, default_range ? U8 : U16);
+            sum_proves_nosel(default_range ? 100 : 101, default_range ? U8 : U16);
         } else {
-            // Here, we need to absorb to some of the default ranges depending
+            // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
-            if (min == 0) {
+            if (min >= 0) {
                 if (max <= byte) {
-                    // absorb to U8
+                    // reuse U8
 
-                    // first prove that colu is in U8
-                    update_piop_sum(0, 100, sel, colu);
-                    update_piop_sum(1, 100, 1, U8);
+                    // first prove that colu - min is in U8
+                    sum_assumes_sel(100, sel, colu - min);
+                    sum_proves_nosel(100, U8);
 
                     // second prove that max - colu is in U8
-                    update_piop_sum(0, 100, sel, max - colu);
-                    update_piop_sum(1, 100, 1, U8);
+                    sum_assumes_sel(100, sel, max - colu);
+                    sum_proves_nosel(100, U8);
                 } else if (max <= twobytes) {
-                    // absorb to U16
+                    // reuse U16
 
-                    // first prove that colu is in U16
-                    update_piop_sum(0, 101, sel, colu);
-                    update_piop_sum(1, 101, 1, U16);
+                    // first prove that colu - min is in U16
+                    sum_assumes_sel(101, sel, colu - min);
+                    sum_proves_nosel(101, U16);
 
                     // second prove that max - colu is in U16
-                    update_piop_sum(0, 101, sel, max - colu);
-                    update_piop_sum(1, 101, 1, U16);
+                    sum_assumes_sel(101, sel, max - colu);
+                    sum_proves_nosel(101, U16);
                 } else {
-                    // TODO!
-
-                    // represent in base twobytes
-                    const int nchunks = log2(max) / log2(twobytes) + 1; // ceil(log2(max) / log2(twobytes)) + 1
+                    // represent max and min in base twobytes
+                    const int nchunks_max = log2(max) / log2(twobytes) + 1; // ceil(log2(max) / log2(twobytes)) + 1
+                    const int nchunks_min = log2(min) / log2(twobytes) + 1;
 
                     int _max = max;
-                    // int _min = min;
-                    for (int i = 0; i < nchunks; i = i + 1) {
+                    int _min = min;
+                    expr colu_repr = 0;
+                    for (int i = 0; i < nchunks_max; i = i + 1) {
                         const int max_chunk = _max % twobytes;
-                        // const int min_chunk = _min % twobytes;
+                        const int min_chunk = _min % twobytes;
                         _max = _max / twobytes;
-                        // _min = _min / twobytes;
+                        _min = _min / twobytes;
 
-                        col witness colu_chunk; // TODO: Save these columns to add the final constraint
+                        col witness colu_chunk;
+                        colu_repr = colu_repr + colu_chunk * twobytes**i;
 
-                        @colu_chunk{reference: colu, base: twobytes, number: nchunks};
+                        @colu_chunk{reference: colu, base: twobytes};
 
-                        if (i < nchunks - 1) {
-                            // update_piop_sum(0, 101, sel, colu_chunk - min_chunk);
-                            update_piop_sum(0, 101, sel, colu_chunk);
-                            update_piop_sum(1, 101, 1, U16);
-
-                            update_piop_sum(0, 101, sel, max_chunk - colu_chunk);
-                            update_piop_sum(1, 101, 1, U16);
-                        } else {
-
+                        if (i < nchunks_min) {
+                            sum_assumes_sel(101, sel, colu_chunk - min_chunk);
+                            sum_proves_nosel(101, U16);
                         }
+
+                        sum_assumes_sel(101, sel, max_chunk - colu_chunk);
+                        sum_proves_nosel(101, U16);
                     }
+
+                    // constraint asserting that the decomposition is correct
+                    colu === colu_repr;
                 }
+            } else {
+                // TO IMPLEMENT
             }
         }
-
     } else {
-        // assume
-        update_piop_sum(0, opid, sel, colu);
+        sum_assumes_sel(next_opid_mock(opid), sel, colu);
 
         col fixed RANGE = [min,min+1..+..max];
 
-        // prove
-        update_piop_sum(1, opid, 1, RANGE);
+        sum_proves_nosel(next_opid_mock(opid), RANGE);
     }
 }
 
-function group_range_check(int opid, int absorb, expr sels[], expr cols[], int min, int max) {
+function group_range_check(int specific, expr sels[], expr cols[], int min, int max) {
     for (int i = 0; i < length(cols); i = i + 1) {
-        range_check(opid, absorb, sels[i], cols[i], min, max);
+        range_check(specific, sels[i], cols[i], min, max);
     }
 }
