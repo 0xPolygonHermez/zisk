@@ -1,8 +1,18 @@
-require "std_common.pil"
-require "std_sum.pil"
+require "std_sum.pil";
 
 const string name_range_check = "range_check";
 const int MAX_LEN = (PRIME - 1) / 2;
+// const int OPIDS[2] = [100, 101];
+// int last_assigned_opid = OPIDS[length(OPIDS) - 1];
+const int OPIDS0 = 100;
+const int OPIDS1 = 101;
+int last_assigned_opid = OPIDS1;
+
+// TODO: Handle opids stuff
+private function next_available_opid(): int {
+    last_assigned_opid = last_assigned_opid + 1;
+    return last_assigned_opid;
+}
 
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
@@ -62,12 +72,14 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
 
         if (min == 0 && (max == byte || max == twobytes)) {
             int default_range = max == byte ? 1 : 0;
+            expr opid = default_range ? OPIDS0 : OPIDS1;
+            expr RANGE = default_range ? U8 : U16;
 
             // assume with predefined opid
-            sum_assumes_sel(name_range_check, default_range ? 100 : 101, sel, [colu]);
+            sum_assumes_sel(name_range_check, opid, sel, [colu]);
 
             // prove
-            sum_proves_nosel(name_range_check, default_range ? 100 : 101, default_range ? U8 : U16);
+            sum_proves_nosel(name_range_check, opid, [RANGE]);
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
@@ -76,22 +88,24 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
                     // reuse U8
 
                     // first prove that colu - min is in U8
-                    sum_assumes_sel(name_range_check, 100, sel, [colu - min]);
-                    sum_proves_nosel(name_range_check, 100, [U8]);
+                    sum_assumes_sel(name_range_check, OPIDS0, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, OPIDS0, [U8]);
 
                     // second prove that max - colu is in U8
-                    sum_assumes_sel(name_range_check, 100, sel, [max - colu]);
-                    sum_proves_nosel(name_range_check, 100, [U8]);
+                    sum_assumes_sel(name_range_check, OPIDS0, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, OPIDS0, [U8]);
+
+                    // println(`Using range [${min}..${max}] for range check of ${colu} on subproof ${__SUBPROOF__}`);
                 } else if (max <= twobytes) {
                     // reuse U16
 
                     // first prove that colu - min is in U16
-                    sum_assumes_sel(name_range_check, 101, sel, [colu - min]);
-                    sum_proves_nosel(name_range_check, 101, [U16]);
+                    sum_assumes_sel(name_range_check, OPIDS1, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, OPIDS1, [U16]);
 
                     // second prove that max - colu is in U16
-                    sum_assumes_sel(name_range_check, 101, sel, [max - colu]);
-                    sum_proves_nosel(name_range_check, 101, [U16]);
+                    sum_assumes_sel(name_range_check, OPIDS1, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, OPIDS1, [U16]);
                 } else {
                     // represent max and min in base twobytes
                     const int nchunks_max = log2(max) / log2(twobytes) + 1; // ceil(log2(max) / log2(twobytes)) + 1
@@ -112,12 +126,12 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
                         @colu_chunk{reference: colu, base: twobytes};
 
                         if (i < nchunks_min) {
-                            sum_assumes_sel(name_range_check, 101, sel, [colu_chunk - min_chunk]);
-                            sum_proves_nosel(name_range_check, 101, [U16]);
+                            sum_assumes_sel(name_range_check, OPIDS1, sel, [colu_chunk - min_chunk]);
+                            sum_proves_nosel(name_range_check, OPIDS1, [U16]);
                         }
 
-                        sum_assumes_sel(name_range_check, 101, sel, [max_chunk - colu_chunk]);
-                        sum_proves_nosel(name_range_check, 101, [U16]);
+                        sum_assumes_sel(name_range_check, OPIDS1, sel, [max_chunk - colu_chunk]);
+                        sum_proves_nosel(name_range_check, OPIDS1, [U16]);
                     }
 
                     // constraint asserting that the decomposition is correct
@@ -128,11 +142,12 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
             }
         }
     } else {
-        sum_assumes_sel(name_range_check, next_opid_mock(), sel, [colu]);
-
         // col fixed RANGE = [min,min+1..+..max]...;
         col fixed RANGE = [min,min+1..+..max];
+        // println(`Using range [${min}..${max}] for range check of ${colu} on subproof ${__SUBPROOF__}`);
 
-        sum_proves_nosel(name_range_check, next_opid_mock(), [RANGE]);
+        const int opid = next_available_opid();
+        sum_assumes_sel(name_range_check, opid, sel, [colu]);
+        sum_proves_nosel(name_range_check, opid, [RANGE]);
     }
 }

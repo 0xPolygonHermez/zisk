@@ -7,10 +7,6 @@ function init_challenges() {
     }
 }
 
-function next_opid_mock(): int {
-    return 102;
-}
-
 /**
  * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
  * @param opid (unique) identifier of the PIOP

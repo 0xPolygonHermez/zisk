@@ -1,4 +1,4 @@
-require "std_common.pil"
+require "std_common.pil";
 
 private function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_sum(type, 0, opid, sel, cols);
