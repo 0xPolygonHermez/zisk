@@ -1,21 +1,12 @@
-// A this moment, connection arguments are only applicable within the same AIR.
-// However, I think they can be extended to the subproof level.
-
-private function init_challenges() {
-    if (!defined(std_alpha)) {
-        challenge stage(2) std_alpha;
-    }
-    if (!defined(std_beta)) {
-        challenge stage(2) std_beta;
-    }
-}
-
 private function init_coset_constants(int len) {
-    global std_ks[len];
+    // Code from https://github.com/0xPolygonHermez/pilcom/blob/develop/src/utils.js#L8
 
-    std_ks[0] = 1;
+    int std_ks[len]; // This is the array of constants that generate distinct cosets of the domain
+                     // Check https://eprint.iacr.org/2019/953.pdf for further details
+
+    std_ks[0] = PRIME.k;
     for (int i = 1; i < len; ++i) {
-        std_ks[i] = global constant k[i-1];
+        std_ks[i] = std_ks[i-1] * std_ks[0];
     }
 }
 
@@ -213,6 +204,7 @@ private function check_opid_and_cols(int opid, int cols_count, int proves, int i
  * Given columns C₀,...,Cₙ₋₁, it computes the polynomial Cᵢ(X) + alpha·kᵢ·X + beta
  * @param opid (unique) identifier of the connection
  * @param colsR assumes columns of the connection
+ * @param is_second_interface 1 if it is the second interface, 0 otherwise
  */
 private function connection_update_assumes(int opid, expr colsR[], int is_second_interface) {
     init_challenges();
@@ -222,7 +214,7 @@ private function connection_update_assumes(int opid, expr colsR[], int is_second
     if (is_second_interface) {
         init_coset_constants(length(colsR));
 
-        once col fixed IDEN = [1,omega,..*..,omega**(N-1)]; // {1,𝛚,𝛚²,...,𝛚ᴺ⁻¹}
+        once col fixed IDEN = [1,omega..*..omega**(N-1)]; // {1,𝛚,𝛚²,...,𝛚ᴺ⁻¹}
 
         // Compute polynomials SID_i(X) := k_i·X
         for (int icol = 0; icol < length(colsR); ++icol) {

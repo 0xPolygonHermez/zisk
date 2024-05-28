@@ -4,25 +4,26 @@ private function prod_assumes_sel(string type, int opid, expr sel, expr cols[]) 
     update_piop_prod(type, 0, opid, sel, cols);
 }
 
-private function prod_assumes_nosel(int opid, expr cols[]) {
+private function prod_assumes_nosel(string type, int opid, expr cols[]) {
     update_piop_prod(type, 0, opid, 1, cols);
 }
 
-private function prod_proves_sel(int opid, expr sel, expr cols[]) {
+private function prod_proves_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_prod(type, 1, opid, sel, cols);
 }
 
-private function prod_proves_nosel(int opid, expr cols[]) {
+private function prod_proves_nosel(string type, int opid, expr cols[]) {
     update_piop_prod(type, 1, opid, 1, cols);
 }
 
 /**
- * TODO: Add description
+ * It performs initial checks and initializes the containers for the grandproduct
+ * @param type type of the PIOP
  * @param proves 1 if proves, 0 if assumes
  * @param opid (unique) identifier of the PIOP check
  * @param cols columns of the PIOP
  */
-private function init_piop_prod(int proves, int opid, expr cols[]) {
+private function init_piop_prod(string type, int proves, int opid, expr cols[]) {
     int cols_count = length(cols);
 
     if (cols_count < 1) {
@@ -54,6 +55,7 @@ private function init_piop_prod(int proves, int opid, expr cols[]) {
 
     // Container used for final checks
     container proof.std.gprod.`id${opid}` alias gprodid {
+        string type = type;
         int cols;
         int proves = 0;
         int assumes = 0;
@@ -81,7 +83,7 @@ private function init_piop_prod(int proves, int opid, expr cols[]) {
 
 /**
  * Given a selector sel and columns C₀,...,Cₙ₋₁, it:
- *      · 1] defines the running prod constraints for each air
+ *      · 1] defines the running grandproduct constraints for each air
  *      · 2] add each subproofvalue of each subproof to the running prod
  *      · 3] checks that the overall prod is zero
  * @param type type of the PIOP
@@ -92,7 +94,7 @@ private function init_piop_prod(int proves, int opid, expr cols[]) {
  */
 private function update_piop_prod(string type, int proves, int opid, expr sel, expr cols[]) {
     // instanciate necessary containers and make first checks
-    init_piop_prod(proves, opid, cols);
+    init_piop_prod(type, proves, opid, cols);
 
     init_challenges();
 
@@ -119,11 +121,11 @@ private function update_piop_prod(string type, int proves, int opid, expr sel, e
     on final subproof piop_gprod_subproof();
 
     // update constraints at the proof level
-    on final proof piop_gprod_proof(type);
+    on final proof piop_gprod_proof();
 }
 
 /**
- * It defines the constraints for the grandsum at the air level
+ * It defines the constraints for the grandproduct based on the rapidUp protocol https://eprint.iacr.org/2022/1050.pdf
  */
 private function piop_gprod_air() {
     use air.std.gprod;
@@ -175,13 +177,17 @@ private function piop_gprod_subproof() {
 /**
  * It defines the constraints for the grandsum at the proof level
  */
-private function piop_gprod_proof(string type) {
-    check_gprod_was_completed(type);
+private function piop_gprod_proof() {
+    check_gprod_was_completed();
 
     proof.std.gprod.gprod === 1;
 }
 
-private function check_gprod_was_completed(string type) {
+/**
+ * It checks that all the assumes and proves of the same opid have been defined
+ * @param type type of the PIOP
+ */
+private function check_gprod_was_completed() {
     for (int index = 0; index < proof.std.gprod.opids_count; index = index + 1) {
         int opid = proof.std.gprod.opids[index];
         use proof.std.gprod.`id${opid}`;
@@ -189,8 +195,6 @@ private function check_gprod_was_completed(string type) {
             error(`${type} #${opid} defined without assume`);
         } else if (proves == 0) {
             error(`${type} #${opid} defined without proves`);
-        } else if (assumes != proves) {
-            error(`${type} #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }

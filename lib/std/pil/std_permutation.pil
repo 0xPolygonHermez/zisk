@@ -3,17 +3,17 @@ require "std_prod.pil"
 const string name_permutation = "permutation";
 
 function permutation_assumes(int opid, expr sel, expr cols[]) {
-    prod_assumes_sel(name_permutation, 0, opid, sel, cols);
+    prod_assumes_sel(name_permutation, opid, sel, cols);
 }
 
 function permutation_assumes_nosel(int opid, expr cols[]) {
-    prod_assumes_nosel(name_permutation, 0, opid, cols);
+    prod_assumes_nosel(name_permutation, opid, cols);
 }
 
 function permutation_proves(int opid, expr sel, expr cols[]) {
-    prod_proves_sel(name_permutation, 1, opid, sel, cols);
+    prod_proves_sel(name_permutation, opid, sel, cols);
 }
 
 function permutation_proves_nosel(int opid, expr cols[]) {
-    prod_proves_nosel(name_permutation, 1, opid, cols);
+    prod_proves_nosel(name_permutation, opid, cols);
 }

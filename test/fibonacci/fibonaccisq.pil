@@ -6,7 +6,6 @@ public out;
 
 subproof aggregate FibonacciSquare(2**16, 2**18) {
 
-    // subproof aggregate FibonacciSquare(2**16) {
     col fixed L1 = [1,0...];
     col witness a,b;
 
@@ -17,7 +16,7 @@ subproof aggregate FibonacciSquare(2**16, 2**18) {
 
     (a' - b) * (1 - L1') === 0;
 
-    permutation_assumes(MODULE_ID, 1, [a*a + b*b, b']);
+    permutation_assumes_nosel(MODULE_ID, [a*a + b*b, b']);
 };
 
 

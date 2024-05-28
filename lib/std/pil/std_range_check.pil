@@ -8,29 +8,29 @@ const int MAX_LEN = (PRIME - 1) / 2;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
 
-function range_check(int specific, expr sel, expr colu, int min, int max) {
-    range_check_def(specific, sel, colu, min, max);
+function range_check(int predefined, expr sel, expr colu, int min, int max) {
+    range_check_def(predefined, sel, colu, min, max);
 }
 
-function range_check_nosel(int specific, expr colu, int min, int max) {
-    range_check_def(specific, 1, colu, min, max);
+function range_check_nosel(int predefined, expr colu, int min, int max) {
+    range_check_def(predefined, 1, colu, min, max);
 }
 
-// function range_check_group(int specific, expr sels[], expr cols[], int min, int max) {
+// function range_check_group(int predefined, expr sels[], expr cols[], int min, int max) {
 //     for (int i = 0; i < length(cols); i = i + 1) {
-//         range_check_def(specific, sels[i], cols[i], min, max);
+//         range_check_def(predefined, sels[i], cols[i], min, max);
 //     }
 // }
 
 /**
  * TODO: Add description
- * @param specific 1 if use the default range, 0 if create the specified range
+ * @param predefined 1 if use the predefined range, 0 if create the specified range
  * @param sel selection vector
  * @param colu column to be range checked
  * @param min minimum value of the range
  * @param max maximum value of the range
  */
-function range_check_def(int specific, expr sel, expr colu, int min, int max) {
+function range_check_def(int predefined, expr sel, expr colu, int min, int max) {
     if (min > max) {
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
@@ -52,9 +52,9 @@ function range_check_def(int specific, expr sel, expr colu, int min, int max) {
         error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
     }
 
-    if (specific) {
+    if (predefined) {
         // TODO: Add in a subproof????
-        // Default ranges
+        // predefined ranges
         const int byte = 2**8-1;
         const int twobytes = 2**16-1;
         col fixed U8 = [0,1..+..byte];
