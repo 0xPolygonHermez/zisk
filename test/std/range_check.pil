@@ -6,8 +6,17 @@ subproof aggregate RangeCheck(2**12, 2**13) {
     col witness b1,c1,d1;
     col witness sel1;
 
-    range_check(0, sel1, a1, 0, 2**7-1);
-    // range_check(1, sel1, a1, 0, 2**7-1);
+    // Errors
+    // range_check(0, sel1, a1, 1, 0);
+    // range_check(0, sel1, a1, 0, 0);
+    // range_check(0, sel1, a1, 0, 6);
+    // range_check(0, sel1, a1, 0, (PRIME - 1) / 2);
+    // range_check(0, sel1, a1, PRIME - 1, PRIME);
+    // range_check(0, sel1, a1, -PRIME, -PRIME + 1);
+
+
+    // range_check(0, sel1, a1, 0, 2**8-1);
+    // range_check(1, sel1, a1, 0, 2**8-1);
 
     // range_check_nosel(0, a1, 0, 2**8-1);
     // range_check_nosel(1, a1, 0, 2**8-1);

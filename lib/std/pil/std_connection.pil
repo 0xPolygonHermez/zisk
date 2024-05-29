@@ -1,0 +1,194 @@
+require "std_constants.pil";
+require "std_prod.pil";
+
+const string name_connection = "connection";
+
+private function init_coset_constants(int len) {
+    // Code from https://github.com/0xPolygonHermez/pilcom/blob/develop/src/utils.js#L8
+
+    fe std_ks[len]; // This is the array of constants that generate distinct cosets of the domain
+                    // Check https://eprint.iacr.org/2019/953.pdf for further details
+
+    std_ks[0] = 1;
+
+    if (len == 1) return;
+
+    std_ks[1] = k;
+    for (int i = 2; i < len; i = i + 1) {
+        std_ks[i] = std_ks[i-1] * std_ks[1];
+    }
+}
+
+// TODO (Héctor): Throw an error if the calling path is not being called correctly?
+// Or if the interface is not followed in the correct order?
+
+// Two user interfaces
+
+// 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
+//    and when it is done, executes the connect() method to perform the connection argument.
+//    The user also needs to execute init() at the beginning.
+
+private function find_col_index(expr column) {
+    use proof.std.connect.`id${opid}`;
+
+    for (int icol = 0; icol < length(map_cols); ++icol) {
+        if (map_cols[icol] == column) {
+            return icol;
+        }
+    }
+
+    error(`Column ${column} has not been initialized in connect #${opid}`);
+}
+
+function connection_init(int opid, expr cols[]) {
+    const int cols_count = length(cols);
+
+    if (cols_count < 1) {
+        error(`The number of columns of connect #${opid} must be at least 1`);
+    }
+
+    container air.std.connect.`id${opid}` alias connid {
+        int cols_num = 0;
+        expr map_cols[100];
+        expr PERs[100];
+    }
+
+    if (connid.cols_num == 0) {
+        connid.cols_num = cols_count;
+    } else {
+        error(`Init of connect #${opid} has already been called`);
+    }
+
+    init_coset_constants(cols_count);
+
+    const fe G = GEN[BITS];
+    const expr domain[N] = [1,G..*..G**(N-1)]; // {1,𝛚,𝛚²,...,𝛚ᴺ⁻¹}
+
+    for (int icol = 0; icol < cols_count; icol = icol + 1) {
+        // Create a mapping of indexes to set a specific order of the columns the first time it is called
+        connid.map_cols[icol] = cols[icol];
+
+        // Initialize polynomial PER_0(X) as X and PER_i(X) as k_i·X, for i >= 0
+        connid.PERs[icol] = std_ks[icol] * domain;
+    }
+}
+
+/**
+ * It connects the cell of a column with a different cell of any other column (including itself)
+ * @param opid (unique) identifier of the connection
+ * @param cols1 columns of the cells to be swapped
+ * @param rows1 rows of the cells to be swapped
+ * @param cols2 columns of the cells to be swapped
+ * @param rows2 rows of the cells to be swapped
+ */
+function connection_update_one_cell(int opid, expr cols1[], int rows1[], expr cols2[], int rows2[]) {
+    use air.std.connect.`id${opid}`;
+
+    if (!(length(cols1) == length(rows1) == length(cols2) == length(rows2))) {
+        error(`The number of columns and rows of connect #${opid} must be the same`);
+    } else if (length(cols1) < 1) {
+        error(`The number of updated columns of connect #${opid} must be at least 1`);
+    } else if (length(cols1) > cols_count) {
+        error(`The number of updated columns of connect #${opid} must be at most ${cols_count}`);
+    }
+
+    // Swap the cells
+    for (int i = 0; i < length(cols1); i = i + 1) {
+        const int col1_index = find_col_index(cols1[i]);
+        const int col2_index = find_col_index(cols2[i]);
+
+        if (col1_index == col2_index && rows1[i] == rows2[i]) {
+            warn(`You are connecting the same cell ${cols1[i]}[${rows1[i]}]. Skipping...`);
+            continue;
+        }
+
+        const fe tmp = PERs[col1_index][rows1[i]]
+        PERs[col1_index][rows1[i]] = PERs[col2_index][rows2[i]];
+        PERs[col2_index][rows2[i]] = tmp;
+    }
+}
+
+/**
+ * It connects the cells of multiple columns
+ * Check https://youtu.be/Crzw7ccuHd0?t=1276&si=M8sVdwvKhmIZQnJZ for a pictorial representation
+ * @param opid (unique) identifier of the connection
+ */
+function connection_update_multiple_cells(int opid, expr cols[], int rows[][]) {
+    use air.std.connect.`id${opid}`;
+
+    const int len = length(cols);
+
+    if (len != length(rows)) {
+        error(`The number of columns and rows of connect #${opid} must be the same`);
+    } else if (len < 1) {
+        error(`The number of updated columns of connect #${opid} must be at least 1`);
+    } else if (len > cols_count) {
+        error(`The number of updated columns of connect #${opid} must be at most ${cols_count}`);
+    }
+
+    fe PER_lasts[len];
+    // To avoid a double loop, we need the last element of each column
+    const int last_col_index = find_col_index(cols[len-1]);
+    const int last_len = length(rows[len-1]);
+    PER_lasts[len-1] = PERs[last_col_index][rows[len-1][last_len-1]];
+
+    for (int i = 0; i < len; ++i) {
+        const expr coli = cols[i];
+        const expr rowi = rows[i];
+        const int col_index = find_col_index(coli);
+        const int row_number = length(rowi);
+
+        const expr PER = PERs[col_index];
+        PER_lasts[i] = PER[rowi[row_number-1]];
+
+        if (row_number == 1) continue;
+
+        for (int j = row_number - 2; j >= 0; j = j - 1) {
+            const fe row1 = rowi[j];
+            const fe row2 = rowi[j+1];
+
+            PER[row2] = PER[row1]
+        }
+
+        // PER[rowi[0]] = PER_lasts[i-1];
+        PER[rowi[0]] = i == 0 ? PER_lasts[len-1] : PER_lasts[i-1];
+
+        // Reassign the PER to the column
+        PERs[col_index] = PER;
+    }
+}
+
+function connection_connect(int opid) {
+    use air.std.connect.`id${opid}`;
+
+    // Compute the fixed columns generated by the connection and send to the bus
+    expr IDs[length(cols)];
+    for (int icol = 0; icol < cols_count; icol = icol + 1) {
+        col fixed PER[icol] = PERs[icol];
+
+        IDs[icol] = std_ks[icol] * domain;
+        prod_assumes_nosel(name_connection, opid, [cols[icol], IDs[icol]]);
+        prod_proves_nosel(name_connection, opid, [cols[icol], PERs[icol]]);
+    }
+}
+
+// 2] Interface where the user knows both the inputs (placed in assumes) and the
+//    permutation (placed in proves) of the argument.
+function connection(int opid, expr cols[], expr maps[]) {
+    init_coset_constants(length(cols));
+    const expr domain = [1,omega..*..omega**(N-1)]; // {1,𝛚,𝛚²,...,𝛚ᴺ⁻¹}
+
+    // We should compute the product:
+    //     (f_0+𝛂·ID_0+ɣ)  · (f_1+𝛂·ID_1+ɣ)  ·...·(f_N+𝛂·ID_N+ɣ)
+    //    ---------------------------------------------------------------------------------
+    //     (f_0+𝛂·PER_0+ɣ) · (f_1+𝛂·PER_1+ɣ) ·...·(f_N+𝛂·PER_N+ɣ)
+    // where ID_0(X) := X and ID_i(X) := k_i·X for i > 0
+    // and PER_i(X) describe a permutation of the domain
+    // as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
+    expr IDs[length(cols)];
+    for (int icol = 0; icol < length(cols); icol = icol + 1) {
+        IDs[icol] = std_ks[icol] * domain;
+        prod_assumes_nosel(name_connection, opid, [cols[icol], IDs[icol]]);
+        prod_proves_nosel(name_connection, opid, [cols[icol], maps[icol]]);
+    }
+}

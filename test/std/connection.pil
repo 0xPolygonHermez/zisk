@@ -1,0 +1,10 @@
+require "std_connection.pil";
+
+subproof aggregate Connection(2**12, 2**13) {
+
+    col witness a1,a2;
+    col witness b1,b2;
+
+    // PIL1 Interface
+    connection(1, [a1, a2], [b1, b2]);
+};

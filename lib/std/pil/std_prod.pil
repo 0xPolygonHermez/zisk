@@ -24,7 +24,7 @@ private function prod_proves_nosel(string type, int opid, expr cols[]) {
  * @param cols columns of the PIOP
  */
 private function init_piop_prod(string type, int proves, int opid, expr cols[]) {
-    int cols_count = length(cols);
+    const int cols_count = length(cols);
 
     if (cols_count < 1) {
         string side = proves ? "proves" : "assumes";
