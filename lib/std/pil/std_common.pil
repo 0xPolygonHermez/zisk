@@ -15,8 +15,8 @@ function init_challenges() {
  */
 function compress_cols(int opid, expr cols[]): expr {
     expr cols_compressed = 0;
-    for (int icol = length(cols) - 1; icol >= 0; icol = icol - 1) {
-        cols_compressed = (cols_compressed + cols[icol]) * std_alpha;
+    for (int i = length(cols) - 1; i >= 0; i = i - 1) {
+        cols_compressed = (cols_compressed + cols[i]) * std_alpha;
     }
     cols_compressed = cols_compressed + opid;
 
