@@ -1,10 +1,36 @@
 require "std_connection.pil";
+require "connection_fixed.pil";
 
-subproof aggregate Connection(2**12, 2**13) {
+subproof aggregate Connection1(2**12, 2**13) {
 
-    col witness a1,a2;
-    col witness b1,b2;
+    col witness a,b,c;
+
+    // col fixed S1 = GROUP12;
+    col fixed S1,S2,S3;
+    if (N == 2**12) {
+        S1 = GROUP12;
+        S2 = GROUP12;
+        S3 = GROUP12;
+    } else if (N == 2**13) {
+        S1 = GROUP13;
+        S2 = GROUP13;
+        S3 = GROUP13;
+    } else {
+        error(`Unsupported N = ${N}`);
+    }
+
+    println(`S1 = ${S1[0]}`);
+    println(`S2 = ${S2[0]}`);
+    println(`S3 = ${S3[0]}`);
 
     // PIL1 Interface
-    connection(1, [a1, a2], [b1, b2]);
+    connection(1, [a, b, c], [S1, S2, S3]);
 };
+
+// subproof aggregate Connection1(2**12, 2**13) {
+
+//     col witness a,b,c;
+
+//     // PIL1 Interface
+//     connection_init(2, [a, b, c]);
+// };
