@@ -5,7 +5,6 @@ subproof aggregate Connection1(2**12, 2**13) {
 
     col witness a,b,c;
 
-    // col fixed S1 = GROUP12;
     col fixed S1,S2,S3;
     if (N == 2**12) {
         S1 = GROUP12;
@@ -19,18 +18,15 @@ subproof aggregate Connection1(2**12, 2**13) {
         error(`Unsupported N = ${N}`);
     }
 
-    println(`S1 = ${S1[0]}`);
-    println(`S2 = ${S2[0]}`);
-    println(`S3 = ${S3[0]}`);
-
     // PIL1 Interface
     connection(1, [a, b, c], [S1, S2, S3]);
 };
 
-// subproof aggregate Connection1(2**12, 2**13) {
+subproof aggregate Connection2(2**4) {
 
-//     col witness a,b,c;
+    col witness a,b,c;
 
-//     // PIL1 Interface
-//     connection_init(2, [a, b, c]);
-// };
+    connection_init(2, [a, b, c]);
+    connection_update_one_cell(2, [c], [3], [a], [5], 2**4);
+    connection_connect(2);
+};
