@@ -1,5 +1,8 @@
 require "std_sum.pil";
 
+// TODO: Finish when creating a subproof inside a function declared in a subproof is possible
+//       That is, finish when subproof instantiation is possible
+
 const string name_range_check = "range_check";
 const int MAX_LEN = (PRIME - 1) / 2;
 // const int OPIDS[2] = [100, 101];
@@ -89,7 +92,13 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
-            if (min >= 0) {
+            if (min >= 0 || (min < 0 && max <= 0)) {
+
+                if (min < 0) {
+                    min = PRIME + min;
+                    max = max == 0 ? 0 : PRIME + max;
+                }
+
                 if (max <= BYTE) {
                     // reuse U8
 
@@ -117,34 +126,72 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
                     const int nchunks_max = log2(max) / log2(TWOBYTES) + 1; // floor(log2(max) / log2(TWOBYTES)) + 1
                     const int nchunks_min = log2(min) / log2(TWOBYTES) + 1;
 
-                    int _max = max;
-                    int _min = min;
-                    expr colu_repr = 0;
-                    for (int i = 0; i < nchunks_max; i = i + 1) {
-                        const int max_chunk = _max % TWOBYTES;
-                        const int min_chunk = _min % TWOBYTES;
-                        _max = _max / TWOBYTES;
-                        _min = _min / TWOBYTES;
+                    // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
+                    // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
+                    // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
+                    // where n = nchunks_max
 
-                        col witness colu_chunk;
-                        colu_repr = colu_repr + colu_chunk * TWOBYTES**i;
+                    // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
+                    // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
+                    // We'll need auxiliar columns to encode this two big OR in terms of constraints
 
-                        @colu_chunk{reference: colu, base: TWOBYTES};
+                    // constraint asserting that the decomposition is correct
+                    prod_assumes_sel(name_range_check, OPIDS1, [colu]);
 
-                        if (i < nchunks_min) {
-                            sum_assumes_sel(name_range_check, OPIDS1, sel, [colu_chunk - min_chunk]);
+                    subproof ChunkCheck(N*nchunks_max) {
+                        col witness chunks;
+
+                        // selectors to indicate whether the current value chunk is greater/smaller than the min/max chunk
+                        col witness chunkValGtChunkMin;
+                        col witness chunkValLtChunkMax;
+
+                        // selectors to indicate whether we can say that the value is greater/smaller than the min/max
+                        col witness valGtMin;
+                        col witness valLtMax;
+
+                        // check they are selectors
+                        valGtMin * (1 - valGtMin) === 0;
+                        valLtMax * (1 - valLtMax) === 0;
+                        chunkValGtChunkMin * (1 - chunkValGtChunkMin) === 0;
+                        chunkValLtChunkMax * (1 - chunkValLtChunkMax) === 0;
+
+                        col fixed MAX_INDICATOR = [0:nchunks_max-1,1]...;
+
+                        // At the beginning of each nchunks_max-clock cycle, valGtMin/valLtMax are ignored because they refer to the previous value
+                        valGtMin' === valGtMin * (1 - 'MAX_INDICATOR) + chunkValGtChunkMin;
+                        valLtMax' === valLtMax * (1 - 'MAX_INDICATOR) + chunkValLtChunkMax;
+
+                        // At the end of each nchunks_max-clock cycle, valGtMin/valLtMax must be equal to 1
+                        (valGtMin - 1) * MAX_INDICATOR === 0;
+                        (valLtMax - 1) * MAX_INDICATOR === 0;
+
+                        int _min = min;
+                        int _max = max;
+                        expr decomp = 0;
+                        for (int i = 0; i < nchunks_max; i = i + 1) {
+                            decomp = decomp + chunks'i * TWOBYTES**i;
+
+                            const int min_chunk = _min % TWOBYTES;
+                            const int max_chunk = _max % TWOBYTES;
+                            _min = _min / TWOBYTES;
+                            _max = _max / TWOBYTES;
+
+                            if (i < nchunks_min) {
+                                sum_assumes_sel(name_range_check, OPIDS1, sel, [(chunks - min_chunk) * (1 - valGtMin)]);
+                                sum_proves_nosel(name_range_check, OPIDS1, [U16]);
+                            }
+
+                            sum_assumes_sel(name_range_check, OPIDS1, sel, [(max_chunk - colu_chunk) * (1 - valLtMax)]);
                             sum_proves_nosel(name_range_check, OPIDS1, [U16]);
                         }
 
-                        sum_assumes_sel(name_range_check, OPIDS1, sel, [max_chunk - colu_chunk]);
-                        sum_proves_nosel(name_range_check, OPIDS1, [U16]);
+                        // constraint asserting that the decomposition is correct
+                        prod_proves_sel(name_range_check, OPIDS1, MAX_INDICATOR', [decomp]);
                     }
-
-                    // constraint asserting that the decomposition is correct
-                    colu === colu_repr;
                 }
             } else {
-                // TO IMPLEMENT
+                // Path where min < 0 and max > 0
+                // We split the range [min,max] into two ranges [min,0] and [0,max]
             }
         }
     } else {
