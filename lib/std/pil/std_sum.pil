@@ -1,18 +1,18 @@
 require "std_common.pil";
 
-private function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_sum(type, 0, opid, sel, cols);
 }
 
-private function sum_assumes_nosel(string type, int opid, expr cols[]) {
+function sum_assumes_nosel(string type, int opid, expr cols[]) {
     update_piop_sum(type, 0, opid, 1, cols);
 }
 
-private function sum_proves_sel(string type, int opid, expr sel, expr cols[]) {
+function sum_proves_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_sum(type, 1, opid, sel, cols);
 }
 
-private function sum_proves_nosel(string type, int opid, expr cols[]) {
+function sum_proves_nosel(string type, int opid, expr cols[]) {
     update_piop_sum(type, 1, opid, 1, cols);
 }
 

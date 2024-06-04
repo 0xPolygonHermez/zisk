@@ -1,18 +1,18 @@
 require "std_common.pil"
 
-private function prod_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+function prod_assumes_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_prod(type, 0, opid, sel, cols);
 }
 
-private function prod_assumes_nosel(string type, int opid, expr cols[]) {
+function prod_assumes_nosel(string type, int opid, expr cols[]) {
     update_piop_prod(type, 0, opid, 1, cols);
 }
 
-private function prod_proves_sel(string type, int opid, expr sel, expr cols[]) {
+function prod_proves_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_prod(type, 1, opid, sel, cols);
 }
 
-private function prod_proves_nosel(string type, int opid, expr cols[]) {
+function prod_proves_nosel(string type, int opid, expr cols[]) {
     update_piop_prod(type, 1, opid, 1, cols);
 }
 

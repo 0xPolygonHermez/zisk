@@ -1,32 +1,47 @@
 require "std_connection.pil";
-require "connection_fixed.pil";
+// require "connection_fixed.pil";
 
-subproof aggregate Connection1(2**12, 2**13) {
+// subproof aggregate Connection1(2**12, 2**13) {
 
-    col witness a,b,c;
+//     col witness a,b,c;
 
-    col fixed S1,S2,S3;
-    if (N == 2**12) {
-        S1 = GROUP12;
-        S2 = GROUP12;
-        S3 = GROUP12;
-    } else if (N == 2**13) {
-        S1 = GROUP13;
-        S2 = GROUP13;
-        S3 = GROUP13;
-    } else {
-        error(`Unsupported N = ${N}`);
-    }
+//     col fixed S1,S2,S3;
+//     if (N == 2**12) {
+//         S1 = GROUP12;
+//         S2 = GROUP12;
+//         S3 = GROUP12;
+//     } else if (N == 2**13) {
+//         S1 = GROUP13;
+//         S2 = GROUP13;
+//         S3 = GROUP13;
+//     } else {
+//         error(`Unsupported N = ${N}`);
+//     }
 
-    // PIL1 Interface
-    connection(1, [a, b, c], [S1, S2, S3]);
-};
+//     // PIL1 Interface
+//     connection(1, [a, b, c], [S1, S2, S3]);
+// };
 
-subproof aggregate Connection2(2**4) {
+subproof aggregate Connection2(2**2) {
 
-    col witness a,b,c;
+    col witness a,b,c,d;
 
+    // TODO: Fix
     connection_init(2, [a, b, c]);
-    connection_update_one_cell(2, [c], [3], [a], [5], 2**4);
+    connection_update_one_cell(2, [c], [2], [a], [3], 2**2);
     connection_connect(2);
+
+    connection_init(3, [a, b, c]);
+    connection_update_one_cell(3, [c], [2], [a], [3], 2**2);
+    connection_update_one_cell(3, [b,a], [2], [a], [3], 2**2);
+    connection_connect(3);
+
+    // connection_init(4, [a, b, c, d]);
+    // connection_update_one_cell(4, [b,a], [2,3], [d,b], [1,2], 2**2);
+    // connection_update_one_cell(4, [c,c], [2,3], [a,b], [1,2], 2**2);
+    // connection_connect(4);
+
+    // connection_init(5, [a, b, c, d]);
+    // connection_update_one_cell(5, [b,a], [2,3], [d,b], [1,2], 2**2);
+    // connection_connect(5);
 };
