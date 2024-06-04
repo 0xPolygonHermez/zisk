@@ -207,20 +207,20 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         components
     }
 
-    fn calculateRelativeAddress(&mut self) {
+    fn calculate_relative_address(&mut self) {
         self.addr_rel = 0;
 
-        let rom_line = self.rom_line.as_ref().unwrap();
+        let program_line = &self.rom_line.as_ref().unwrap().program_line;
 
-        if let Some(_) = rom_line.program_line.get("ind") {
+        if program_line.contains_key("ind") {
             self.addr_rel += self.registers.reg_e.get_value()[0].as_canonical_u64() as usize;
         }
 
-        if let Some(_) = rom_line.program_line.get("indRR") {
+        if program_line.contains_key("indRR") {
             self.addr_rel += self.registers.reg_rr.get_value().as_canonical_u64() as usize;
         }
 
-        let max_ind = rom_line.program_line.get("maxInd");
+        let max_ind = program_line.get("maxInd");
 
         if max_ind.is_none() {
             return;
@@ -229,27 +229,39 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         let max_ind = max_ind.unwrap().as_u64().unwrap_or_else(|| panic!("Failed to parse maxInd"));
 
         if self.addr_rel > max_ind as usize {
-            let offset = rom_line
-                .program_line
-                .get("offset")
-                .unwrap()
-                .as_u64()
-                .unwrap_or_else(|| panic!("Failed to parse offset")) as usize;
-            let base_label = rom_line
-                .program_line
-                .get("baseLabel")
-                .unwrap()
-                .as_u64()
-                .unwrap_or_else(|| panic!("Failed to parse baseLabel")) as usize;
+            let offset = program_line.get("offset").unwrap().as_u64().unwrap_or(0) as usize;
+            let base_label = program_line.get("baseLabel").unwrap().as_u64().unwrap_or(0) as usize;
             let index = offset - base_label + self.addr_rel;
 
             panic!(
                 "Address out of bounds accessing index {} but {}[{}] ind:{}",
                 index,
-                rom_line.program_line.get("offsetLabel").unwrap(),
-                rom_line.program_line.get("sizeLabel").unwrap(),
+                program_line.get("offsetLabel").unwrap(),
+                program_line.get("sizeLabel").unwrap(),
                 self.addr_rel
             );
+        }
+    }
+
+    fn calculate_memory_address(&mut self) {
+        let program_line = &self.rom_line.as_ref().unwrap().program_line;
+
+        self.addr = program_line.get("offset").unwrap().as_u64().unwrap_or(0) as usize;
+
+        if program_line.contains_key("useCTX") {
+            self.addr += self.registers.reg_ctx.get_value().as_canonical_u64() as usize * 0x40000;
+        }
+
+        if program_line.contains_key("isStack") {
+            self.addr += 0x10000;
+        }
+
+        if program_line.contains_key("isMem") {
+            self.addr += 0x20000;
+        }
+
+        if program_line.contains_key("memUseAddrRel") {
+            self.addr += self.addr_rel;
         }
     }
 }
