@@ -6,15 +6,16 @@
 // that we are using.
 // Currently we are using the goldilocks library from Plonky 3.
 
+mod goldilocks_utils;
+
 #[cfg(feature = "goldilocksp3")]
 pub use p3_field::*;
 pub use p3_goldilocks::*;
+pub use goldilocks_utils::*;
 
 #[cfg(test)]
 mod tests {
-    use super::Goldilocks;
-    use super::PrimeField64;
-    use super::AbstractField;
+    use super::{Goldilocks, PrimeField64, AbstractField};
 
     #[test]
     fn test_goldilocks() {
