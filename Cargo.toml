@@ -2,6 +2,7 @@
 members = [
     "proofman",
     "proofman-cli",
+    "components",
     "pilout",
     "goldilocks",
     "lib/provers/stark",
