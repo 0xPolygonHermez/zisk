@@ -1,16 +1,16 @@
-mod basic_processor_common;
-mod basic_processor_config;
-mod basic_processor_rom_link;
-mod basic_processor_trace;
+mod common;
+mod config;
+mod rom_link;
+mod trace;
 mod basic_processor;
-mod basic_processors_registers;
+mod registers;
 
-pub use basic_processor_common::*;
-pub use basic_processor_config::*;
-pub use basic_processor_rom_link::*;
-pub use basic_processor_trace::*;
+pub use common::*;
+pub use config::*;
+pub use rom_link::*;
+pub use trace::*;
 pub use basic_processor::*;
-pub use basic_processors_registers::*;
+pub use registers::*;
 
 #[cfg(test)]
 mod tests {

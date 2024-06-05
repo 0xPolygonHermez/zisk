@@ -5,12 +5,17 @@ use goldilocks::{AbstractField, DeserializeField, PrimeField64};
 use crate::{
     memory::memory::Memory,
     register::{Register, RegisterN, Registerable, VirtualRegister, VirtualRegisterN},
-    Component, BasicProcesssorComponent, RomProgram,
+    Component, RomProgram,
 };
 
-use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, RomLink};
+use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, CallbackReturnType, RomLink};
 
 use log::info;
+
+struct BasicProcessorComponent<'a, T> {
+    pub id: Option<usize>,
+    pub component: Box<dyn Component<T, Output = Option<CallbackReturnType<T>>> + 'a>,
+}
 
 #[allow(dead_code)]
 pub struct BasicProcessor<'a, T> {
@@ -31,7 +36,7 @@ pub struct BasicProcessor<'a, T> {
 
     registers: BasicProcessorRegisters<'a, T>,
     rom_links: HashMap<String, RomLink<T>>,
-    components: HashMap<String, BasicProcesssorComponent<'a>>,
+    components: HashMap<String, BasicProcessorComponent<'a, T>>,
 }
 
 impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicProcessor<'a, T> {
@@ -44,7 +49,7 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
 
         let rom_links = Self::setup_rom_links(&mut trace);
 
-        let components = Self::setup_components();
+        let components = Self::register_components();
 
         let rom =
             RomProgram::from_json(&config.rom_json_path).unwrap_or_else(|_| panic!("Failed to parse ROM program"));
@@ -163,12 +168,13 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         rom_links
     }
 
-    fn setup_components() -> HashMap<String, BasicProcesssorComponent<'a>> {
+    fn register_components() -> HashMap<String, BasicProcessorComponent<'a, T>> {
         let mut components = HashMap::new();
 
+        let component = Memory::<'a, T>::build();
         components.insert(
             "mOp".to_string(),
-            BasicProcesssorComponent { id: None, component: Box::new(Memory::<'a, T>::build()) },
+            BasicProcessorComponent { id: None, component: Box::new(Memory::<'a, T>::build()) },
         );
 
         components
@@ -304,8 +310,45 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         info!("#{:0>8} ROM{} {:0>6}", self.row.borrow().to_string(), self.zk_pc.to_string(), rom_line.line_str);
     }
 
-    fn calculate_free_input() {
-        let fi = 0usize;
+    fn calculate_free_input(&mut self) {
+        // let fi = 0usize;
+
+        // let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+        // let program_line = &rom_line.program_line;
+
+        // if program_line.contains_key("inFREE") || program_line.contains_key("inFREE0") {
+        //     if !program_line.contains_key("freeInTag") {
+        //         panic!("Instruction with freeIn without freeInTag"); //TODO! Add COntext srcRef
+        //     }
+
+        //     let free_in_tag = program_line.get("freeInTag").unwrap();
+
+        //     if free_in_tag.contains_key("op") {
+        //         // fi = this.command.evalCommand(freeInTag);
+        //     } else {
+        //         let mut n_hits = 0;
+
+        //         for (rom_flag, component_info) in &self.components {
+        //             if !program_line.contains_key(rom_flag) {
+        //                 continue;
+        //             }
+
+        //             let res = component_info.component.apply(false, component_info.id, component_info.helper);
+        //             if res == false {
+        //                 continue;
+        //             }
+
+        //             // fi = res;
+        //             n_hits += 1;
+        //         }
+
+        //         if n_hits == 0 {
+        //             panic!("Empty freeIn without a valid instruction"); //TODO! Add COntext srcRef
+        //         } else if n_hits > 1 {
+        //             panic!("Only one instruction that requires freeIn is allowed"); //TODO! Add COntext srcRef
+        //         }
+        //     }
+        // }
 
         // if (this.romline.inFREE || this.romline.inFREE0) {
         //     if (!this.romline.freeInTag) {

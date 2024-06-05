@@ -20,5 +20,5 @@ starks-lib-c = { path = "../../starks-lib-c" }
 transcript = { path = "../../../transcript" }
 
 [features]
-default = []
+default = ["no_lib_link"]
 no_lib_link = []

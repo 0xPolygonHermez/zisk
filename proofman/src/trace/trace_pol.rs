@@ -2,9 +2,10 @@ use std::{
     ops::{Index, IndexMut},
     ptr::null_mut,
 };
-
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct TracePol<T> {
+    buffer: Option<Vec<u8>>,
     ptr: *mut u8,
     stride: usize,
     num_rows: usize,
@@ -12,8 +13,29 @@ pub struct TracePol<T> {
 }
 
 impl<T> TracePol<T> {
-    pub fn new(ptr: *mut u8, stride: usize, num_rows: usize) -> Self {
-        TracePol { ptr, stride, num_rows, _phantom: std::marker::PhantomData }
+    pub fn new(num_rows: usize) -> Self {
+        // PRECONDITIONS
+        // num_rows must be greater than or equal to 2
+        assert!(num_rows >= 2);
+        // num_rows must be a power of 2
+        assert!(num_rows & (num_rows - 1) == 0);
+
+        let stride = std::mem::size_of::<T>();
+        let mut buffer = vec![0u8; num_rows * stride];
+
+        let ptr = buffer.as_mut_ptr();
+
+        TracePol { buffer: Some(buffer), ptr, stride, num_rows, _phantom: std::marker::PhantomData }
+    }
+
+    pub fn from_ptr(ptr: *mut u8, stride: usize, num_rows: usize) -> Self {
+        // PRECONDITIONS
+        // num_rows must be greater than or equal to 2
+        assert!(num_rows >= 2);
+        // num_rows must be a power of 2
+        assert!(num_rows & (num_rows - 1) == 0);
+
+        TracePol { buffer: None, ptr, stride, num_rows, _phantom: std::marker::PhantomData }
     }
 
     pub fn num_rows(&self) -> usize {
@@ -41,7 +63,7 @@ impl<T> IndexMut<usize> for TracePol<T> {
 
 impl<T> Default for TracePol<T> {
     fn default() -> Self {
-        TracePol { ptr: null_mut(), stride: 0, num_rows: 0, _phantom: std::marker::PhantomData }
+        TracePol { buffer: None, ptr: null_mut(), stride: 0, num_rows: 0, _phantom: std::marker::PhantomData }
     }
 }
 
@@ -54,7 +76,7 @@ mod tests {
         let ptr = Box::into_raw(Box::new([0u8; 8])) as *mut u8;
         let row_size = std::mem::size_of::<u8>();
         let num_rows = 8;
-        let trace_pol: TracePol<u8> = TracePol::new(ptr, row_size, num_rows);
+        let trace_pol: TracePol<u8> = TracePol::from_ptr(ptr, row_size, num_rows);
 
         assert_eq!(trace_pol.num_rows(), num_rows);
     }
@@ -64,7 +86,7 @@ mod tests {
         let ptr = Box::into_raw(Box::new([1u8, 2, 3, 4, 5, 6, 7, 8])) as *mut u8;
         let row_size = std::mem::size_of::<u8>();
         let num_rows = 8;
-        let trace_pol: TracePol<u8> = TracePol::new(ptr, row_size, num_rows);
+        let trace_pol: TracePol<u8> = TracePol::from_ptr(ptr, row_size, num_rows);
 
         for i in 0..num_rows {
             assert_eq!(trace_pol[i], i as u8 + 1);
@@ -76,7 +98,7 @@ mod tests {
         let ptr = Box::into_raw(Box::new([0u8; 8])) as *mut u8;
         let row_size = std::mem::size_of::<u8>();
         let num_rows = 8;
-        let mut trace_pol = TracePol::new(ptr, row_size, num_rows);
+        let mut trace_pol = TracePol::from_ptr(ptr, row_size, num_rows);
 
         for i in 0..num_rows {
             trace_pol[i] = i as u8 + 1;

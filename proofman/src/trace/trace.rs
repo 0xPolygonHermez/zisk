@@ -187,9 +187,9 @@ macro_rules! trace {
 
 #[macro_export]
 macro_rules! trace_field {
-    ([$field_type:ty; $num:expr]) => {
-        [$crate::trace::trace_pol::TracePol<$field_type>; $num]
-    };
+    // ([$field_type:ty; $num:expr]) => {
+    //     [$crate::trace::trace_pol::TracePol<$field_type>; $num]
+    // };
     ($field_type:ty) => {
         $crate::trace::trace_pol::TracePol<$field_type>
     };
@@ -206,15 +206,15 @@ macro_rules! trace_row_size {
 
 #[macro_export]
 macro_rules! trace_default_value {
-    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
-        let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
-        for elem in array.iter_mut() {
-            *elem = $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows);
-        }
-        array
-    }};
+    // ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
+    //     let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
+    //     for elem in array.iter_mut() {
+    //         *elem = $crate::trace::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows);
+    //     }
+    //     array
+    // }};
     ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
-        $crate::trace::trace_pol::TracePol::new($ptr.add::<$field_type>(), $stride, $num_rows)
+        $crate::trace::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows)
     };
 }
 

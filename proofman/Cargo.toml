@@ -25,6 +25,10 @@ starks-lib-c = { path = "../lib/starks-lib-c" }
 rand = "0.8"
 criterion = "0.5.1"
 
+[features]
+default = ["no_lib_link"]
+no_lib_link = []
+
 [[bench]]
 name = "trace_bench"
 harness = false

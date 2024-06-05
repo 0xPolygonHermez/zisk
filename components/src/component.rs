@@ -1,8 +1,6 @@
-pub trait Component {
-    fn get_default_id(&self) -> u16;
-}
+pub trait Component<T> {
+    type Output;
 
-pub struct BasicProcesssorComponent<'a> {
-    pub id: Option<usize>,
-    pub component: Box<dyn Component + 'a>,
+    fn get_default_id(&self) -> u16;
+    fn calculate_free_input(&self, values: Vec<T>) -> Self::Output;
 }

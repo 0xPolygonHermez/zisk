@@ -9,5 +9,5 @@ build = "build.rs"
 log = { version = "0.4", default-features = false }
 
 [features]
-default = []
+default = ["no_lib_link"]
 no_lib_link = []
