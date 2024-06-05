@@ -1,6 +1,3 @@
-// include "../std2/std_mset_lookup_range.pil"
-include "std_mock.pil"
-
 function compact_bin_cols(expr cols[]) {
     int factor = 1;
     expr res = 0;

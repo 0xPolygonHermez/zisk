@@ -1,4 +1,4 @@
-require "std_prod_permutation.pil"
+require "std_permutation.pil"
 
 subproof Mem(2**10) {
 
@@ -39,5 +39,5 @@ subproof Mem(2**10) {
         rdDifferent * value[index]'  ===  0;
     }
 
-    multiset_proves(MEMORY_ID, sel, [addr, step, wr, ...value]);
+    permutation_proves(MEMORY_ID, sel, [addr, step, wr, ...value]);
 }

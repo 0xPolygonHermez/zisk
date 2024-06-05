@@ -1,4 +1,4 @@
-require "std_prod.pil"
+require "std_prod.pil";
 
 const string name_permutation = "permutation";
 

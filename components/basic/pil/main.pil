@@ -1,4 +1,5 @@
-
+require "std_permutation.pil"
+require "std_lookup.pil"
 include "tools.pil"
 include "rom.pil"
 include "mem.pil"
@@ -158,5 +159,5 @@ subproof Main(2**10) {
                             inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
                             romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);        
     // Memory
-    multiset_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
+    permutation_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
 }
