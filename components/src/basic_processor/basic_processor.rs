@@ -8,7 +8,7 @@ use crate::{
     Component, RomProgram,
 };
 
-use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, CallbackReturnType, RomLink};
+use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, CallbackReturnType, RomLink, CHUNKS};
 
 use log::info;
 
@@ -311,73 +311,53 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
     }
 
     fn calculate_free_input(&mut self) {
-        // let fi = 0usize;
+        let mut free_input = CallbackReturnType::Single(T::default());
 
-        // let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
-        // let program_line = &rom_line.program_line;
+        let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+        let program_line = &rom_line.program_line;
 
-        // if program_line.contains_key("inFREE") || program_line.contains_key("inFREE0") {
-        //     if !program_line.contains_key("freeInTag") {
-        //         panic!("Instruction with freeIn without freeInTag"); //TODO! Add COntext srcRef
-        //     }
+        if program_line.contains_key("inFREE") || program_line.contains_key("inFREE0") {
+            if !program_line.contains_key("freeInTag") {
+                panic!("Instruction with freeIn without freeInTag"); //TODO! Add COntext srcRef
+            }
 
-        //     let free_in_tag = program_line.get("freeInTag").unwrap();
+            let free_in_tag = program_line.get("freeInTag").unwrap();
 
-        //     if free_in_tag.contains_key("op") {
-        //         // fi = this.command.evalCommand(freeInTag);
-        //     } else {
-        //         let mut n_hits = 0;
+            let op = free_in_tag.get("op");
 
-        //         for (rom_flag, component_info) in &self.components {
-        //             if !program_line.contains_key(rom_flag) {
-        //                 continue;
-        //             }
+            if op.is_some() {
+                // fi = self.eval_command(free_in_tag);
+            } else {
+                let mut n_hits: isize = 0;
 
-        //             let res = component_info.component.apply(false, component_info.id, component_info.helper);
-        //             if res == false {
-        //                 continue;
-        //             }
+                for (rom_flag, component_info) in &self.components {
+                    if !program_line.contains_key(rom_flag) {
+                        continue;
+                    }
 
-        //             // fi = res;
-        //             n_hits += 1;
-        //         }
+                    let res = component_info.component.calculate_free_input(vec![T::one()]);
+                    if res.is_none() {
+                        continue;
+                    }
 
-        //         if n_hits == 0 {
-        //             panic!("Empty freeIn without a valid instruction"); //TODO! Add COntext srcRef
-        //         } else if n_hits > 1 {
-        //             panic!("Only one instruction that requires freeIn is allowed"); //TODO! Add COntext srcRef
-        //         }
-        //     }
-        // }
+                    free_input = res.unwrap();
+                    n_hits += 1;
+                }
 
-        // if (this.romline.inFREE || this.romline.inFREE0) {
-        //     if (!this.romline.freeInTag) {
-        //         throw new Error(`Instruction with freeIn without freeInTag ${Context.sourceRef}`);
-        //     }
+                if n_hits == 0 {
+                    panic!("Empty freeIn without a valid instruction"); //TODO! Add COntext srcRef
+                } else if n_hits > 1 {
+                    panic!("Only one instruction that requires freeIn is allowed");
+                    //TODO! Add COntext srcRef
+                }
+            }
+        }
 
-        //     const freeInTag = this.romline.freeInTag;
-        //     if (freeInTag.op !== '') {
-        //         fi = this.command.evalCommand(freeInTag);
-        //     } else {
-        //         let nHits = 0;
-        //         for (const romFlag in this.components) {
-        //             if (!this.romline[romFlag]) continue;
-        //             const componentInfo = this.components[romFlag];
-        //             const res = componentInfo.method.apply(this, [false, componentInfo.id,  componentInfo.helper]);
-        //             if (res === false) continue;
-        //             fi = res;
-        //             ++nHits;
-        //         }
-        //         if (nHits==0) {
-        //            throw new Error(`Empty freeIn without a valid instruction ${Context.sourceRef}`);
-        //         } else if (nHits>1) {
-        //            throw new Error(`Only one instruction that requires freeIn is allowed ${Context.sourceRef}`);
-        //         }
-        //     }
-        // }
-        // if (!Array.isArray(fi)) {
-        //     fi = this.scalarToFea(fi);
-        // }
-        // this.registers.setValue('FREE', fi, this.row);
+        let free_input: [T; CHUNKS] = match free_input {
+            CallbackReturnType::Single(_) => [T::one(); 8],
+            CallbackReturnType::Array(arr) => arr,
+        };
+
+        self.registers.reg_free.borrow_mut().update_value(*self.row.borrow(), free_input);
     }
 }
