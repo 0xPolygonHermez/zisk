@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, sync::Arc};
+use std::{cell::RefCell, fmt, rc::Rc};
 
 use goldilocks::{AbstractField, DeserializeField};
 use proofman::trace::trace_pol::TracePol;
@@ -11,7 +11,7 @@ pub struct VirtualRegisterN<'a, T, const N: usize> {
     name: String,
     value: [T; N],
     value_col: Box<dyn Fn() -> [T; N] + 'a>,
-    in_col: Arc<RefCell<TracePol<T>>>,
+    in_col: Rc<RefCell<TracePol<T>>>,
     in_rom: String,
 }
 
@@ -19,7 +19,7 @@ impl<'a, T: AbstractField + Copy, const N: usize> VirtualRegisterN<'a, T, N> {
     pub fn new(
         name: &str,
         value_col: Box<dyn Fn() -> [T; N] + 'a>,
-        in_col: Arc<RefCell<TracePol<T>>>,
+        in_col: Rc<RefCell<TracePol<T>>>,
         in_rom: &str,
     ) -> Self {
         VirtualRegisterN { name: name.into(), value: [T::zero(); N], value_col, in_col, in_rom: in_rom.into() }
@@ -92,7 +92,7 @@ impl<'a, T: fmt::Debug + fmt::Display, const N: usize> fmt::Display for VirtualR
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, sync::Arc};
+    use std::{cell::RefCell, rc::Rc};
 
     use goldilocks::{AbstractField, Goldilocks};
     use serde_json::{Map, Value};
@@ -117,7 +117,7 @@ mod tests {
             }
         }
 
-        let in_col = Arc::new(RefCell::new(in_col));
+        let in_col = Rc::new(RefCell::new(in_col));
 
         let mut register = VirtualRegisterN::<Goldilocks, N>::new(
             "A",
@@ -163,7 +163,7 @@ mod tests {
         const NUM_ROWS: usize = 16;
 
         let in_col: TracePol<Goldilocks> = TracePol::new(NUM_ROWS);
-        let in_col = Arc::new(RefCell::new(in_col));
+        let in_col = Rc::new(RefCell::new(in_col));
 
         let mut register =
             VirtualRegisterN::<Goldilocks, 1>::new("A", Box::new(|| [Goldilocks::zero(); 1]), in_col.clone(), "inA");

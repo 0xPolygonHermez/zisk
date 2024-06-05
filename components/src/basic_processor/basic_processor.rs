@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use goldilocks::{AbstractField, DeserializeField, PrimeField64};
 use proofman::trace::trace_pol::TracePol;
@@ -11,17 +11,19 @@ use crate::{
 
 use super::basic_processor_trace::BasicProcessorTrace;
 
+use log::info;
+
 const CHUNKS: usize = 8;
 const CHUNK_BITS: usize = 32;
 const CHUNK_MASK: usize = (1 << CHUNK_BITS) - 1;
 
 pub struct RomLink<T> {
-    col: Arc<RefCell<TracePol<T>>>,
+    col: Rc<RefCell<TracePol<T>>>,
     binary: bool,
 }
 
 impl<T> RomLink<T> {
-    pub fn new(col: Arc<RefCell<TracePol<T>>>, binary: bool) -> Self {
+    pub fn new(col: Rc<RefCell<TracePol<T>>>, binary: bool) -> Self {
         RomLink { col, binary }
     }
 }
@@ -38,11 +40,11 @@ pub struct BasicProcessorConfig {
 pub struct BasicProcessorRegisters<'a, T> {
     reg_a: RegisterN<T, CHUNKS>,
     reg_b: RegisterN<T, CHUNKS>,
-    reg_c: Arc<RegisterN<T, CHUNKS>>,
+    reg_c: Rc<RefCell<RegisterN<T, CHUNKS>>>,
     reg_d: RegisterN<T, CHUNKS>,
     reg_e: RegisterN<T, CHUNKS>,
     reg_sr: RegisterN<T, CHUNKS>,
-    reg_free: Arc<RegisterN<T, CHUNKS>>,
+    reg_free: Rc<RefCell<RegisterN<T, CHUNKS>>>,
     reg_sp: Register<T>,
     reg_pc: Register<T>,
     reg_rr: Register<T>,
@@ -55,33 +57,31 @@ pub struct BasicProcessorRegisters<'a, T> {
 
 #[allow(dead_code)]
 pub struct BasicProcessor<'a, T> {
-    // TODO! config: BasicProcessorConfig,
     trace: BasicProcessorTrace<T>,
-    // TODO! N: BasicProcessorConfig,
-    // TODO! frFirst32BitsNegative: T,
-    // TODO! frLast32BitsPositive: T,
-    row: Arc<RefCell<usize>>,
+    n: usize,
+
+    row: Rc<RefCell<usize>>,
+    row_next: usize,
     addr: usize,
     addr_rel: usize,
 
+    zk_pc: usize,
+
     rom: RomProgram,
-    rom_line: Option<RomProgramLine>,
+    rom_line: usize,
     rom_const: String,
     rom_constl: String,
 
-    // TODO! context: BasicProcessorContext,
     registers: BasicProcessorRegisters<'a, T>,
     rom_links: HashMap<String, RomLink<T>>,
     components: HashMap<String, BasicProcesssorComponent<'a>>,
-    // TODO! helpers: BasicProcessorHelpers,
-
-    // TODO! command: BasicProcessorCommand,
 }
 
 impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicProcessor<'a, T> {
     pub fn new(config: BasicProcessorConfig) -> Self {
-        let mut trace = BasicProcessorTrace::<T>::new(16);
-        let row = Arc::new(RefCell::new(0));
+        let n = 16;
+        let mut trace = BasicProcessorTrace::<T>::new(n);
+        let row: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
 
         let registers = Self::setup_registers(&mut trace, row.clone());
 
@@ -94,11 +94,14 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
 
         Self {
             trace,
+            n,
             row,
+            row_next: 1,
             addr: 0,
             addr_rel: 0,
+            zk_pc: 0,
             rom,
-            rom_line: None,
+            rom_line: 0,
             rom_const: "CONST".to_string(),
             rom_constl: "CONSTL".to_owned(),
             registers,
@@ -107,15 +110,22 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         }
     }
 
-    fn setup_registers(trace: &mut BasicProcessorTrace<T>, row: Arc<RefCell<usize>>) -> BasicProcessorRegisters<'a, T> {
+    fn setup_registers(trace: &mut BasicProcessorTrace<T>, row: Rc<RefCell<usize>>) -> BasicProcessorRegisters<'a, T> {
         let reg_a = RegisterN::new("A", trace.A.clone(), trace.in_A.clone(), trace.set_A.clone(), "inA", "setA");
         let reg_b = RegisterN::new("B", trace.B.clone(), trace.in_B.clone(), trace.set_B.clone(), "inB", "setB");
-        let reg_c =
-            Arc::new(RegisterN::new("C", trace.C.clone(), trace.in_C.clone(), trace.set_C.clone(), "inC", "setC"));
+        let reg_c = Rc::new(RefCell::new(RegisterN::new(
+            "C",
+            trace.C.clone(),
+            trace.in_C.clone(),
+            trace.set_C.clone(),
+            "inC",
+            "setC",
+        )));
         let reg_d = RegisterN::new("D", trace.D.clone(), trace.in_D.clone(), trace.set_D.clone(), "inD", "setD");
         let reg_e = RegisterN::new("E", trace.E.clone(), trace.in_E.clone(), trace.set_E.clone(), "inE", "setE");
         let reg_sr = RegisterN::new("SR", trace.SR.clone(), trace.in_SR.clone(), trace.set_SR.clone(), "inSR", "setSR");
-        let reg_free = Arc::new(RegisterN::new_ro("FREE", trace.FREE.clone(), trace.in_FREE.clone(), "inFREE"));
+        let reg_free =
+            Rc::new(RefCell::new(RegisterN::new_ro("FREE", trace.FREE.clone(), trace.in_FREE.clone(), "inFREE")));
         let reg_sp = Register::new("SP", trace.SP.clone(), trace.in_SP.clone(), trace.set_SP.clone(), "inSP", "setSP");
         let reg_pc = Register::new("PC", trace.PC.clone(), trace.in_PC.clone(), trace.set_PC.clone(), "inPC", "setPC");
         let reg_rr = Register::new("RR", trace.RR.clone(), trace.in_RR.clone(), trace.set_RR.clone(), "inRR", "setRR");
@@ -132,13 +142,13 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
 
         let free0_closure = {
             let reg_free_clone = reg_free.clone();
-            Box::new(move || reg_free_clone.get_value()[0])
+            Box::new(move || reg_free_clone.borrow().get_value()[0])
         };
         let reg_free0 = VirtualRegister::new("FREE0", free0_closure, trace.in_FREE0.clone(), "inFREE0");
 
         let rotl_c_closure = {
             let reg_c_clone = reg_c.clone();
-            Box::new(move || reg_c_clone.rotate_left())
+            Box::new(move || reg_c_clone.borrow_mut().rotate_left())
         };
         let reg_rotl_c = VirtualRegisterN::new("ROTL_C", rotl_c_closure, trace.in_ROTL_C.clone(), "inROTL_C");
 
@@ -210,7 +220,8 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
     fn calculate_relative_address(&mut self) {
         self.addr_rel = 0;
 
-        let program_line = &self.rom_line.as_ref().unwrap().program_line;
+        let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+        let program_line = &rom_line.program_line;
 
         if program_line.contains_key("ind") {
             self.addr_rel += self.registers.reg_e.get_value()[0].as_canonical_u64() as usize;
@@ -244,7 +255,8 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
     }
 
     fn calculate_memory_address(&mut self) {
-        let program_line = &self.rom_line.as_ref().unwrap().program_line;
+        let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+        let program_line = &rom_line.program_line;
 
         self.addr = program_line.get("offset").unwrap().as_u64().unwrap_or(0) as usize;
 
@@ -263,5 +275,76 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         if program_line.contains_key("memUseAddrRel") {
             self.addr += self.addr_rel;
         }
+    }
+
+    fn execute(&mut self) {
+        // execute(input) {
+        self.init_registers();
+        // this.initComponents();
+
+        for step in 0..self.n {
+            self.set_step(step);
+            //     this.setRomLineAndZkPC();
+
+            //     // selectors, component, mapping (lookup/multiset)
+
+            //     this.evalPreCommands();
+            //     this.calculateFreeInput();
+            //     this.opValue = this.addInValues(this.getConstValue());
+            //     // console.log({opValue: this.opValue});
+            //     this.calculateRelativeAddress();
+            //     this.updateRomToMainLinkedCols();
+            //     this.verifyComponents();
+            //     this.manageFlowControl();
+            //     this.applySetValues();
+            //     // this.registers.dump();
+            //     this.evalPostCommands();
+            // }
+            // this.finishComponents();
+        }
+    }
+
+    fn init_registers(&mut self) {
+        // this.opValue = Context.zeroValue;
+        // TODO! initalize publics
+
+        self.registers.reg_a.reset(0);
+        self.registers.reg_b.reset(0);
+        self.registers.reg_c.borrow_mut().reset(0);
+        self.registers.reg_d.reset(0);
+        self.registers.reg_e.reset(0);
+        self.registers.reg_sr.reset(0);
+        self.registers.reg_free.borrow_mut().reset(0);
+        self.registers.reg_sp.reset(0);
+        self.registers.reg_pc.reset(0);
+        self.registers.reg_rr.reset(0);
+        self.registers.reg_ctx.reset(0);
+        self.registers.reg_rcx.reset(0);
+        self.registers.reg_step.reset(0);
+        self.registers.reg_free0.reset(0);
+        self.registers.reg_rotl_c.reset(0);
+
+        self.zk_pc = 0;
+    }
+
+    fn set_step(&mut self, step: usize) {
+        *self.row.borrow_mut() = step;
+        self.row_next = (step + 1) % self.n;
+        // this.context.row = this.row;
+        // this.context.step = step;
+    }
+
+    fn set_rom_line_and_zk_pc(&mut self) {
+        let row = *self.row.borrow();
+        self.trace.zk_pc.borrow_mut()[row] = T::from_canonical_u64(self.zk_pc as u64);
+
+        self.rom_line = self.zk_pc;
+        assert!(self.rom_line < self.rom.program_lines.len());
+
+        // this.context.sourceRef = `${this.romline.fileName}:${this.romline.line} (zkPC:${this.zkPC} row:${this.row})`;
+
+        let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+
+        info!("#{:0>8} ROM{} {:0>6}", self.row.borrow().to_string(), self.zk_pc.to_string(), rom_line.line_str);
     }
 }

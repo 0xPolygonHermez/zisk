@@ -30,6 +30,10 @@ impl RomProgram {
 
         Ok(parsed_json)
     }
+
+    pub fn get_line(&self, line: usize) -> Option<&RomProgramLine> {
+        self.program_lines.get(line)
+    }
 }
 
 #[cfg(test)]

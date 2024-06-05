@@ -757,6 +757,7 @@ name = "pil2-components-rs"
 version = "0.1.0"
 dependencies = [
  "goldilocks",
+ "log",
  "proofman",
  "serde",
  "serde_json",

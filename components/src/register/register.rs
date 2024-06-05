@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, sync::Arc};
+use std::{cell::RefCell, fmt, rc::Rc};
 
 use goldilocks::{AbstractField, DeserializeField};
 use proofman::trace::trace_pol::TracePol;
@@ -10,9 +10,9 @@ use super::Registerable;
 pub struct Register<T> {
     name: String,
     value: T,
-    value_col: Arc<RefCell<TracePol<T>>>,
-    in_col: Arc<RefCell<TracePol<T>>>,
-    set_col: Option<Arc<RefCell<TracePol<T>>>>,
+    value_col: Rc<RefCell<TracePol<T>>>,
+    in_col: Rc<RefCell<TracePol<T>>>,
+    set_col: Option<Rc<RefCell<TracePol<T>>>>,
     in_rom: String,
     set_rom: Option<String>,
 }
@@ -20,9 +20,9 @@ pub struct Register<T> {
 impl<T: AbstractField + Copy> Register<T> {
     pub fn new(
         name: &str,
-        value_col: Arc<RefCell<TracePol<T>>>,
-        in_col: Arc<RefCell<TracePol<T>>>,
-        set_col: Arc<RefCell<TracePol<T>>>,
+        value_col: Rc<RefCell<TracePol<T>>>,
+        in_col: Rc<RefCell<TracePol<T>>>,
+        set_col: Rc<RefCell<TracePol<T>>>,
         in_rom: &str,
         set_rom: &str,
     ) -> Self {
@@ -39,8 +39,8 @@ impl<T: AbstractField + Copy> Register<T> {
 
     pub fn new_ro(
         name: String,
-        value_col: Arc<RefCell<TracePol<T>>>,
-        in_col: Arc<RefCell<TracePol<T>>>,
+        value_col: Rc<RefCell<TracePol<T>>>,
+        in_col: Rc<RefCell<TracePol<T>>>,
         in_rom: String,
     ) -> Self {
         Register { name, value: T::zero(), value_col, in_col, set_col: None, in_rom, set_rom: None }
@@ -118,7 +118,7 @@ impl<T: fmt::Debug + fmt::Display> fmt::Display for Register<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, sync::Arc};
+    use std::{cell::RefCell, rc::Rc};
 
     use goldilocks::{AbstractField, Goldilocks};
     use serde_json::{Map, Value};
@@ -141,9 +141,9 @@ mod tests {
             trace_col[i] = Goldilocks::from_canonical_usize(i);
         }
 
-        let trace_col = Arc::new(RefCell::new(trace_col));
-        let in_col = Arc::new(RefCell::new(in_col));
-        let set_col = Arc::new(RefCell::new(set_col));
+        let trace_col = Rc::new(RefCell::new(trace_col));
+        let in_col = Rc::new(RefCell::new(in_col));
+        let set_col = Rc::new(RefCell::new(set_col));
 
         let mut register = Register::<Goldilocks>::new("A", trace_col, in_col, set_col, "inA", "setA");
 
@@ -191,8 +191,8 @@ mod tests {
             trace_col[i] = Goldilocks::from_canonical_usize(i);
         }
 
-        let trace_col = Arc::new(RefCell::new(trace_col));
-        let in_col = Arc::new(RefCell::new(in_col));
+        let trace_col = Rc::new(RefCell::new(trace_col));
+        let in_col = Rc::new(RefCell::new(in_col));
 
         let mut register = Register::<Goldilocks>::new_ro("A".to_owned(), trace_col, in_col, "inA".to_owned());
 
@@ -236,9 +236,9 @@ mod tests {
         let in_col: TracePol<Goldilocks> = TracePol::new(NUM_ROWS);
         let set_col: TracePol<Goldilocks> = TracePol::new(NUM_ROWS);
 
-        let trace_col = Arc::new(RefCell::new(trace_col));
-        let in_col = Arc::new(RefCell::new(in_col));
-        let set_col = Arc::new(RefCell::new(set_col));
+        let trace_col = Rc::new(RefCell::new(trace_col));
+        let in_col = Rc::new(RefCell::new(in_col));
+        let set_col = Rc::new(RefCell::new(set_col));
 
         let mut register = Register::<Goldilocks>::new("A", trace_col, in_col, set_col, "inA", "setA");
 
