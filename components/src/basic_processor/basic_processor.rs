@@ -1,59 +1,16 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use goldilocks::{AbstractField, DeserializeField, PrimeField64};
-use proofman::trace::trace_pol::TracePol;
 
 use crate::{
     memory::memory::Memory,
     register::{Register, RegisterN, Registerable, VirtualRegister, VirtualRegisterN},
-    Component, RomProgram, RomProgramLine,
+    Component, BasicProcesssorComponent, RomProgram,
 };
 
-use super::basic_processor_trace::BasicProcessorTrace;
+use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, RomLink};
 
 use log::info;
-
-const CHUNKS: usize = 8;
-const CHUNK_BITS: usize = 32;
-const CHUNK_MASK: usize = (1 << CHUNK_BITS) - 1;
-
-pub struct RomLink<T> {
-    col: Rc<RefCell<TracePol<T>>>,
-    binary: bool,
-}
-
-impl<T> RomLink<T> {
-    pub fn new(col: Rc<RefCell<TracePol<T>>>, binary: bool) -> Self {
-        RomLink { col, binary }
-    }
-}
-
-pub struct BasicProcesssorComponent<'a> {
-    id: Option<usize>,
-    component: Box<dyn Component + 'a>,
-}
-
-pub struct BasicProcessorConfig {
-    pub rom_json_path: String,
-}
-
-pub struct BasicProcessorRegisters<'a, T> {
-    reg_a: RegisterN<T, CHUNKS>,
-    reg_b: RegisterN<T, CHUNKS>,
-    reg_c: Rc<RefCell<RegisterN<T, CHUNKS>>>,
-    reg_d: RegisterN<T, CHUNKS>,
-    reg_e: RegisterN<T, CHUNKS>,
-    reg_sr: RegisterN<T, CHUNKS>,
-    reg_free: Rc<RefCell<RegisterN<T, CHUNKS>>>,
-    reg_sp: Register<T>,
-    reg_pc: Register<T>,
-    reg_rr: Register<T>,
-    reg_ctx: Register<T>,
-    reg_rcx: Register<T>,
-    reg_step: VirtualRegister<'a, T>,
-    reg_free0: VirtualRegister<'a, T>,
-    reg_rotl_c: VirtualRegisterN<'a, T, CHUNKS>,
-}
 
 #[allow(dead_code)]
 pub struct BasicProcessor<'a, T> {
@@ -284,10 +241,9 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
 
         for step in 0..self.n {
             self.set_step(step);
-            //     this.setRomLineAndZkPC();
+            self.set_rom_line_and_zk_pc();
 
-            //     // selectors, component, mapping (lookup/multiset)
-
+            // selectors, component, mapping (lookup/multiset)
             //     this.evalPreCommands();
             //     this.calculateFreeInput();
             //     this.opValue = this.addInValues(this.getConstValue());
@@ -346,5 +302,39 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
 
         info!("#{:0>8} ROM{} {:0>6}", self.row.borrow().to_string(), self.zk_pc.to_string(), rom_line.line_str);
+    }
+
+    fn calculate_free_input() {
+        let fi = 0usize;
+
+        // if (this.romline.inFREE || this.romline.inFREE0) {
+        //     if (!this.romline.freeInTag) {
+        //         throw new Error(`Instruction with freeIn without freeInTag ${Context.sourceRef}`);
+        //     }
+
+        //     const freeInTag = this.romline.freeInTag;
+        //     if (freeInTag.op !== '') {
+        //         fi = this.command.evalCommand(freeInTag);
+        //     } else {
+        //         let nHits = 0;
+        //         for (const romFlag in this.components) {
+        //             if (!this.romline[romFlag]) continue;
+        //             const componentInfo = this.components[romFlag];
+        //             const res = componentInfo.method.apply(this, [false, componentInfo.id,  componentInfo.helper]);
+        //             if (res === false) continue;
+        //             fi = res;
+        //             ++nHits;
+        //         }
+        //         if (nHits==0) {
+        //            throw new Error(`Empty freeIn without a valid instruction ${Context.sourceRef}`);
+        //         } else if (nHits>1) {
+        //            throw new Error(`Only one instruction that requires freeIn is allowed ${Context.sourceRef}`);
+        //         }
+        //     }
+        // }
+        // if (!Array.isArray(fi)) {
+        //     fi = this.scalarToFea(fi);
+        // }
+        // this.registers.setValue('FREE', fi, this.row);
     }
 }
