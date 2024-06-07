@@ -1,0 +1,28 @@
+require "std_lookup.pil";
+
+subproof aggregate Lookup1(2**12, 2**13, 2**15) {
+
+    col witness a1,b1,a2,b2,a3,b3,a4,b4;
+    col witness c1,d1,c2,d2;
+    col witness sel1,sel2,sel3;
+
+    lookup_assumes_nosel(1, [a1, b1]);
+    lookup_proves_nosel(1, [c1, d1]);
+
+    lookup_assumes_nosel(2, [a2, b2]);
+
+    lookup_assumes(3, sel1, [a3, b3]);
+    lookup_proves(3, sel2, [c2, d2]);
+
+    lookup_assumes(4, sel3, [a4, b4]);
+};
+
+subproof aggregate Lookup2(2**14) {
+
+    col witness c1,d1,c2,d2;
+    col witness sel;
+
+    lookup_proves_nosel(2, [c1, d1]);
+
+    lookup_proves(4, sel, [c2, d2]);
+};

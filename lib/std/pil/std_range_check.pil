@@ -1,8 +1,24 @@
-require "std_common.pil"
-require "std_sum.pil"
+require "std_sum.pil";
+
+// TODO: Finish when creating a subproof inside a function declared in a subproof is possible
+//       That is, finish when subproof instantiation is possible
 
 const string name_range_check = "range_check";
 const int MAX_LEN = (PRIME - 1) / 2;
+// const int OPIDS[2] = [100, 101];
+// int last_assigned_opid = OPIDS[length(OPIDS) - 1];
+const int OPIDS0 = 100;
+const int OPIDS1 = 101;
+int last_assigned_opid = OPIDS1;
+
+// TODO: Handle opids stuff
+private function next_available_opid(): int {
+    last_assigned_opid = last_assigned_opid + 1;
+    return last_assigned_opid;
+}
+
+const int BYTE = 2**8-1;
+const int TWOBYTES = 2**16-1;
 
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
@@ -35,17 +51,17 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
         error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
-    } else if (max - min < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
-        int diff = max - min;
+    } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
+        int diff = max - min + 1;
 
-        string diff_str = `(colu - ${min})`;
+        string diff_str = `(${colu} - ${min})`;
         for (int i = 1; i < diff; i = i + 1) {
-            diff_str = diff_str + `·(colu - ${min + i})`;
+            diff_str = diff_str + `·(${colu} - ${min + i})`;
         }
 
         warn(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
-    } else if (max - min > MAX_LEN) {
-        error(`The range [${min}..${max}] is too big, the maximum range length is ${MAX_LEN}`);
+    } else if (max - min + 1 > MAX_LEN) {
+        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_LEN}`);
     } else if (max >= PRIME) {
         error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
     } else if (min <= -PRIME) {
@@ -53,86 +69,182 @@ function range_check_def(int predefined, expr sel, expr colu, int min, int max) 
     }
 
     if (predefined) {
-        // TODO: Add in a subproof????
-        // predefined ranges
-        const int byte = 2**8-1;
-        const int twobytes = 2**16-1;
-        col fixed U8 = [0,1..+..byte];
-        col fixed U16 = [0,1..+..twobytes];
+        if (min == 0 && (max == BYTE || max == TWOBYTES)) {
+            const int default_is_u8 = max == BYTE ? 1 : 0;
 
-        if (min == 0 && (max == byte || max == twobytes)) {
-            int default_range = max == byte ? 1 : 0;
+            container proof.std.rcpre alias rcpreprove {
+                int u8_used = 0;
+                int u16_used = 0;
+            }
 
-            // assume with predefined opid
-            sum_assumes_sel(name_range_check, default_range ? 100 : 101, sel, [colu]);
+            int opid;
+            if (default_is_u8) {
+                opid = OPIDS0;
+                rcpreprove.u8_used = 1;
+            } else {
+                opid = OPIDS1;
+                rcpreprove.u16_used = 1;
+            }
 
-            // prove
-            sum_proves_nosel(name_range_check, default_range ? 100 : 101, default_range ? U8 : U16);
+            sum_assumes_sel(name_range_check, opid, sel, [colu]);
+
+            on final proof declarePreRangeSubproof()
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
-            if (min >= 0) {
-                if (max <= byte) {
+            if (min >= 0 || (min < 0 && max <= 0)) {
+
+                if (min < 0) {
+                    min = PRIME + min;
+                    max = max == 0 ? 0 : PRIME + max;
+                }
+
+                if (max <= BYTE) {
                     // reuse U8
 
                     // first prove that colu - min is in U8
-                    sum_assumes_sel(name_range_check, 100, sel, [colu - min]);
-                    sum_proves_nosel(name_range_check, 100, [U8]);
+                    sum_assumes_sel(name_range_check, OPIDS0, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, OPIDS0, [U8]);
 
                     // second prove that max - colu is in U8
-                    sum_assumes_sel(name_range_check, 100, sel, [max - colu]);
-                    sum_proves_nosel(name_range_check, 100, [U8]);
-                } else if (max <= twobytes) {
+                    sum_assumes_sel(name_range_check, OPIDS0, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, OPIDS0, [U8]);
+
+                    // println(`Using range [${min}..${max}] for range check of ${colu} on subproof ${__SUBPROOF__}`);
+                } else if (max <= TWOBYTES) {
                     // reuse U16
 
                     // first prove that colu - min is in U16
-                    sum_assumes_sel(name_range_check, 101, sel, [colu - min]);
-                    sum_proves_nosel(name_range_check, 101, [U16]);
+                    sum_assumes_sel(name_range_check, OPIDS1, sel, [colu - min]);
+                    sum_proves_nosel(name_range_check, OPIDS1, [U16]);
 
                     // second prove that max - colu is in U16
-                    sum_assumes_sel(name_range_check, 101, sel, [max - colu]);
-                    sum_proves_nosel(name_range_check, 101, [U16]);
+                    sum_assumes_sel(name_range_check, OPIDS1, sel, [max - colu]);
+                    sum_proves_nosel(name_range_check, OPIDS1, [U16]);
                 } else {
-                    // represent max and min in base twobytes
-                    const int nchunks_max = log2(max) / log2(twobytes) + 1; // ceil(log2(max) / log2(twobytes)) + 1
-                    const int nchunks_min = log2(min) / log2(twobytes) + 1;
+                    // represent max and min in base TWOBYTES
+                    const int nchunks_max = log2(max) / log2(TWOBYTES) + 1; // floor(log2(max) / log2(TWOBYTES)) + 1
+                    const int nchunks_min = log2(min) / log2(TWOBYTES) + 1;
 
-                    int _max = max;
-                    int _min = min;
-                    expr colu_repr = 0;
-                    for (int i = 0; i < nchunks_max; i = i + 1) {
-                        const int max_chunk = _max % twobytes;
-                        const int min_chunk = _min % twobytes;
-                        _max = _max / twobytes;
-                        _min = _min / twobytes;
+                    // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
+                    // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
+                    // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
+                    // where n = nchunks_max
 
-                        col witness colu_chunk;
-                        colu_repr = colu_repr + colu_chunk * twobytes**i;
-
-                        @colu_chunk{reference: colu, base: twobytes};
-
-                        if (i < nchunks_min) {
-                            sum_assumes_sel(name_range_check, 101, sel, [colu_chunk - min_chunk]);
-                            sum_proves_nosel(name_range_check, 101, [U16]);
-                        }
-
-                        sum_assumes_sel(name_range_check, 101, sel, [max_chunk - colu_chunk]);
-                        sum_proves_nosel(name_range_check, 101, [U16]);
-                    }
+                    // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
+                    // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
+                    // We'll need auxiliar columns to encode this two big OR in terms of constraints
 
                     // constraint asserting that the decomposition is correct
-                    colu === colu_repr;
+                    prod_assumes_sel(name_range_check, OPIDS1, [colu]);
+
+                    subproof ChunkCheck(N*nchunks_max) {
+                        col witness chunks;
+
+                        // selectors to indicate whether the current value chunk is greater/smaller than the min/max chunk
+                        col witness chunkValGtChunkMin;
+                        col witness chunkValLtChunkMax;
+
+                        // selectors to indicate whether we can say that the value is greater/smaller than the min/max
+                        col witness valGtMin;
+                        col witness valLtMax;
+
+                        // check they are selectors
+                        valGtMin * (1 - valGtMin) === 0;
+                        valLtMax * (1 - valLtMax) === 0;
+                        chunkValGtChunkMin * (1 - chunkValGtChunkMin) === 0;
+                        chunkValLtChunkMax * (1 - chunkValLtChunkMax) === 0;
+
+                        col fixed MAX_INDICATOR = [0:nchunks_max-1,1]...;
+
+                        // At the beginning of each nchunks_max-clock cycle, valGtMin/valLtMax are ignored because they refer to the previous value
+                        valGtMin' === valGtMin * (1 - 'MAX_INDICATOR) + chunkValGtChunkMin;
+                        valLtMax' === valLtMax * (1 - 'MAX_INDICATOR) + chunkValLtChunkMax;
+
+                        // At the end of each nchunks_max-clock cycle, valGtMin/valLtMax must be equal to 1
+                        (valGtMin - 1) * MAX_INDICATOR === 0;
+                        (valLtMax - 1) * MAX_INDICATOR === 0;
+
+                        int _min = min;
+                        int _max = max;
+                        expr decomp = 0;
+                        for (int i = 0; i < nchunks_max; i = i + 1) {
+                            decomp = decomp + chunks'i * TWOBYTES**i;
+
+                            const int min_chunk = _min % TWOBYTES;
+                            const int max_chunk = _max % TWOBYTES;
+                            _min = _min / TWOBYTES;
+                            _max = _max / TWOBYTES;
+
+                            if (i < nchunks_min) {
+                                sum_assumes_sel(name_range_check, OPIDS1, sel, [(chunks - min_chunk) * (1 - valGtMin)]);
+                                sum_proves_nosel(name_range_check, OPIDS1, [U16]);
+                            }
+
+                            sum_assumes_sel(name_range_check, OPIDS1, sel, [(max_chunk - colu_chunk) * (1 - valLtMax)]);
+                            sum_proves_nosel(name_range_check, OPIDS1, [U16]);
+                        }
+
+                        // constraint asserting that the decomposition is correct
+                        prod_proves_sel(name_range_check, OPIDS1, MAX_INDICATOR', [decomp]);
+                    }
                 }
             } else {
-                // TO IMPLEMENT
+                // Path where min < 0 and max > 0
+                // We split the range [min,max] into two ranges [min,0] and [0,max]
             }
         }
     } else {
-        sum_assumes_sel(name_range_check, next_opid_mock(), sel, [colu]);
+        const int opid = next_available_opid();
+        sum_assumes_sel(name_range_check, opid, sel, [colu]);
 
-        // col fixed RANGE = [min,min+1..+..max]...;
-        col fixed RANGE = [min,min+1..+..max];
+        container proof.std.rc alias rcprove {
+            // FIX: dynamic arrays not ready
+            int opids_count = 0;
+            int opids[100];
 
-        sum_proves_nosel(name_range_check, next_opid_mock(), [RANGE]);
+            int mins[100];
+            int maxs[100];
+            int max_diff = 0;
+        }
+
+        rcprove.opids[rcprove.opids_count] = opid;
+        rcprove.opids_count = rcprove.opids_count + 1;
+        rcprove.mins[rcprove.opids_count] = min;
+        rcprove.maxs[rcprove.opids_count] = max;
+        rcprove.max_diff = max - min + 1 > rcprove.max_diff ? max - min + 1 : rcprove.max_diff;
+
+        on final proof declareRangeSubproof()
     }
 }
+
+// private function declarePreRangeSubproof() {
+//     subproof PredefinedRanges(2**16) {
+//         if (proof.std.rcpre.u8_used) {
+//             col fixed U8 = [0..BYTE];
+//             sum_proves_nosel(name_range_check, OPIDS0, [U8]);
+//         }
+
+//         if (proof.std.rcpre.u16_used) {
+//             col fixed U16 = [0..TWOBYTES];
+//             sum_proves_nosel(name_range_check, OPIDS1, [U16]);
+//         }
+//     }
+// }
+
+// private function declareRangeSubproof() {
+//     use proof.std.rc;
+
+//     const int next_pow2 = 2**(log2(max_diff) + 1); // 2**ceil(log2(max_diff)) + 1
+
+//     subproof SpecifiedRanges(next_pow2) {
+//         for (int index = 0; index < opids_count; index = index + 1) {
+//             int opid = opids[index];
+//             int min = mins[index];
+//             int max = maxs[index];
+
+//             col fixed RANGE = [min..max];
+//             sum_proves_nosel(name_range_check, opid, [RANGE]);
+//         }
+//     }
+// }

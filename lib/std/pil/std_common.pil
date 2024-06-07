@@ -7,10 +7,6 @@ function init_challenges() {
     }
 }
 
-function next_opid_mock(): int {
-    return 102;
-}
-
 /**
  * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
  * @param opid (unique) identifier of the PIOP
@@ -19,8 +15,8 @@ function next_opid_mock(): int {
  */
 function compress_cols(int opid, expr cols[]): expr {
     expr cols_compressed = 0;
-    for (int icol = length(cols) - 1; icol >= 0; icol = icol - 1) {
-        cols_compressed = (cols_compressed + cols[icol]) * std_alpha;
+    for (int i = length(cols) - 1; i >= 0; i = i - 1) {
+        cols_compressed = (cols_compressed + cols[i]) * std_alpha;
     }
     cols_compressed = cols_compressed + opid;
 

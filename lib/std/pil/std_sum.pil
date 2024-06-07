@@ -1,18 +1,18 @@
-require "std_common.pil"
+require "std_common.pil";
 
-private function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+function sum_assumes_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_sum(type, 0, opid, sel, cols);
 }
 
-private function sum_assumes_nosel(string type, int opid, expr cols[]) {
+function sum_assumes_nosel(string type, int opid, expr cols[]) {
     update_piop_sum(type, 0, opid, 1, cols);
 }
 
-private function sum_proves_sel(string type, int opid, expr sel, expr cols[]) {
+function sum_proves_sel(string type, int opid, expr sel, expr cols[]) {
     update_piop_sum(type, 1, opid, sel, cols);
 }
 
-private function sum_proves_nosel(string type, int opid, expr cols[]) {
+function sum_proves_nosel(string type, int opid, expr cols[]) {
     update_piop_sum(type, 1, opid, 1, cols);
 }
 
@@ -44,10 +44,12 @@ private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
     }
 
     container air.std.gsum {
+        int gsum_assumes_opid[100];
         int gsum_assumes_count = 0;
         expr gsum_assumes_sel[100];
         expr gsum_assumes[100];
 
+        int gsum_proves_opid[100];
         int gsum_proves_count = 0;
         expr gsum_proves_sel[100];
         expr gsum_proves[100];
@@ -65,6 +67,7 @@ private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
     if (gsumid.cols == 0) {
         // first time called
         gsumid.cols = cols_count;
+
         // add opid on a list to verify at final
         gsum.opids[gsum.opids_count] = opid;
         gsum.opids_count = gsum.opids_count + 1;
@@ -104,11 +107,13 @@ private function update_piop_sum(string type, int proves, int opid, expr sel, ex
     use air.std.gsum;
     if (proves) {
         // adding all sums of proves called in this air
+        gsum_proves_opid[gsum_proves_count] = opid;
         gsum_proves_sel[gsum_proves_count] = sel;
         gsum_proves[gsum_proves_count] = cols_compressed;
         gsum_proves_count = gsum_proves_count + 1;
     } else {
         // adding all sums of assumes called in this air
+        gsum_assumes_opid[gsum_assumes_count] = opid;
         gsum_assumes_sel[gsum_assumes_count] = sel;
         gsum_assumes[gsum_assumes_count] = cols_compressed;
         gsum_assumes_count = gsum_assumes_count + 1;
@@ -163,7 +168,7 @@ private function piop_gsum_air() {
 
         col witness stage(1) multiplicity;
 
-        @multiplicity{reference: multiplicity, selector: gsum_proves_sel[i], column: gsum_proves[i]};
+        @sum_proves{reference: multiplicity, opid: gsum_proves_opid[i], selector: gsum_proves_sel[i], columns: gsum_proves[i]};
 
         expr tmp = gsum_proves_sel[i] * multiplicity;
         for (int j = 0; j < gsum_proves_count; j = j + 1) {
@@ -176,6 +181,8 @@ private function piop_gsum_air() {
     expr RHS2b = 0;
 
     for (int i = 0; i < gsum_assumes_count; i = i + 1) {
+        @sum_assumes{opid: gsum_assumes_opid[i], selector: gsum_assumes_sel[i], columns: gsum_assumes[i]};
+
         LHS = LHS * (gsum_assumes[i] + std_gamma);
         RHS1 = RHS1 * (gsum_assumes[i] + std_gamma);
 
@@ -189,7 +196,7 @@ private function piop_gsum_air() {
     expr RHS2 = RHS2a * RHS2b;
     expr RHS = RHS1 - RHS2;
 
-    @gsum{reference: gsum, numerator: RHS, denominator: LHS}
+    @gsum_col{reference: gsum, numerator: RHS, denominator: LHS}
 
     (gsum - 'gsum * (1 - L1)) * LHS === RHS;
     L1' * (gsum - subproof.std.gsum.gsum_result) === 0;
