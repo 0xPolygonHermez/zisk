@@ -1,3 +1,5 @@
+// Constants for the Goldilocks prime p = 2⁶⁴ - 2³² + 1, where p-1 = 2³²·3·5·17·257·65537
+
 // List of generators of groups of size power of 2
 const int GEN[33] = [
     1,18446744069414584320,281474976710656,18446744069397807105,17293822564807737345,70368744161280,
@@ -9,5 +11,14 @@ const int GEN[33] = [
     4614640910117430873,1753635133440165772
 ];
 
-// k = 7^(2^32) => Generator of the group of size 3x5x17x257x65537
-const int k = 12275445934081160404;
+// 7^(2^32) => Generator of the group of size m = 3·5·17·257·65537
+// This element is used to generate distinct cosets of the subgroup of order N | 2^32
+//          H := <w>, k·H := k<w>, k²·H := k²<w>, ...
+// where w is of order N
+//
+// Proof of disjointness:
+// Recall that two elements x,y belong to the same coset iff (x/y)^N = 1
+// Therefore if x,y are such that x = k^i₁·w^j₁, y = k^i₂·w^j₂, with distinct m > i₁,i₂ >= 0 and j₁,j₂ in [N],
+// then the condition translates to (k^i₁·w^j₁)^N = (k^i₂·w^j₂)^N, which simplifies to k^(N·(i₁-i₂)) = 1.
+// But this is only true if N·(i₁-i₂) = 0 mod m, which is impossible since m is coprime with N and i₁-i₂ < m.
+const int Goldilocks_k = 12275445934081160404;
