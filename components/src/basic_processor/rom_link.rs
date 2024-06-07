@@ -1,14 +1,12 @@
-use std::{cell::RefCell, rc::Rc};
-
-use proofman::trace::trace_pol::TracePol;
+use crate::TracePolEnum;
 
 pub struct RomLink<T> {
-    col: Rc<RefCell<TracePol<T>>>,
-    binary: bool,
+    pub col: TracePolEnum<T>,
+    pub binary: bool,
 }
 
 impl<T> RomLink<T> {
-    pub fn new(col: Rc<RefCell<TracePol<T>>>, binary: bool) -> Self {
+    pub fn new(col: TracePolEnum<T>, binary: bool) -> Self {
         RomLink { col, binary }
     }
 }

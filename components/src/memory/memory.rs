@@ -27,4 +27,8 @@ where
     fn calculate_free_input(&self, values: Vec<T>) -> Self::Output {
         Some(CallbackReturnType::Array([T::default(); 8]))
     }
+
+    fn verify(&self, values: Vec<T>) -> bool {
+        unimplemented!()
+    }
 }

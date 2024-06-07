@@ -12,6 +12,7 @@ members = [
     "util",
     "examples/fib4",
     "examples/fibv",
+    "examples/zkevm_basic"
 ]
 
 resolver = "2"

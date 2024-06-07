@@ -5,10 +5,13 @@ use goldilocks::{AbstractField, DeserializeField, PrimeField64};
 use crate::{
     memory::memory::Memory,
     register::{Register, RegisterN, Registerable, VirtualRegister, VirtualRegisterN},
-    Component, RomProgram,
+    Component, Context, RomProgram,
 };
 
-use super::{BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, CallbackReturnType, RomLink, CHUNKS};
+use super::{
+    BasicProcessorConfig, BasicProcessorRegisters, BasicProcessorTrace, CallbackReturnType, TracePolEnum, RomLink,
+    CHUNKS,
+};
 
 use log::info;
 
@@ -19,12 +22,22 @@ struct BasicProcessorComponent<'a, T> {
 
 #[allow(dead_code)]
 pub struct BasicProcessor<'a, T> {
-    trace: BasicProcessorTrace<T>,
-    n: usize,
+    // Configuration for the basic processor
+    config: BasicProcessorConfig,
+    // Trace for the basic processor
+    trace: &'a BasicProcessorTrace<T>,
+    // Number of rows in the trace
+    n: Rc<RefCell<usize>>,
 
+    // Current row
     row: Rc<RefCell<usize>>,
+    // Next row
     row_next: usize,
+    // Current row
+    step: Rc<RefCell<usize>>,
+    // Address
     addr: usize,
+    // Relative address
     addr_rel: usize,
 
     zk_pc: usize,
@@ -34,31 +47,44 @@ pub struct BasicProcessor<'a, T> {
     rom_const: String,
     rom_constl: String,
 
-    registers: BasicProcessorRegisters<'a, T>,
+    context: Rc<RefCell<Context<'a, T>>>,
+    registers: Rc<RefCell<BasicProcessorRegisters<'a, T>>>,
     rom_links: HashMap<String, RomLink<T>>,
     components: HashMap<String, BasicProcessorComponent<'a, T>>,
 }
 
 impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicProcessor<'a, T> {
-    pub fn new(config: BasicProcessorConfig) -> Self {
-        let n = 16;
-        let mut trace = BasicProcessorTrace::<T>::new(n);
-        let row: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
+    pub fn new(config: BasicProcessorConfig, trace: &'a mut BasicProcessorTrace<T>) -> Self {
+        let n = Rc::new(RefCell::new(trace.zk_pc.borrow().num_rows()));
+        let row = Rc::new(RefCell::new(0));
+        let step = Rc::new(RefCell::new(0));
 
-        let registers = Self::setup_registers(&mut trace, row.clone());
+        let registers = Self::setup_registers(trace, row.clone());
+        let registers = Rc::new(RefCell::new(registers));
 
-        let rom_links = Self::setup_rom_links(&mut trace);
+        // TODO! setupFr
+
+        let context = Context::new(n.clone(), row.clone(), step.clone(), registers.clone());
+        let context = Rc::new(RefCell::new(context));
+
+        // TODO! setupCommand
+
+        let rom_links = Self::setup_rom_links(trace);
 
         let components = Self::register_components();
+
+        // TODO! registerHelpers
 
         let rom =
             RomProgram::from_json(&config.rom_json_path).unwrap_or_else(|_| panic!("Failed to parse ROM program"));
 
         Self {
+            config,
             trace,
             n,
             row,
             row_next: 1,
+            step,
             addr: 0,
             addr_rel: 0,
             zk_pc: 0,
@@ -66,6 +92,7 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
             rom_line: 0,
             rom_const: "CONST".to_string(),
             rom_constl: "CONSTL".to_owned(),
+            context,
             registers,
             rom_links,
             components,
@@ -75,19 +102,13 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
     fn setup_registers(trace: &mut BasicProcessorTrace<T>, row: Rc<RefCell<usize>>) -> BasicProcessorRegisters<'a, T> {
         let reg_a = RegisterN::new("A", trace.A.clone(), trace.in_A.clone(), trace.set_A.clone(), "inA", "setA");
         let reg_b = RegisterN::new("B", trace.B.clone(), trace.in_B.clone(), trace.set_B.clone(), "inB", "setB");
-        let reg_c = Rc::new(RefCell::new(RegisterN::new(
-            "C",
-            trace.C.clone(),
-            trace.in_C.clone(),
-            trace.set_C.clone(),
-            "inC",
-            "setC",
-        )));
+        let reg_c = RegisterN::new("C", trace.C.clone(), trace.in_C.clone(), trace.set_C.clone(), "inC", "setC");
+        let reg_c = Rc::new(RefCell::new(reg_c));
         let reg_d = RegisterN::new("D", trace.D.clone(), trace.in_D.clone(), trace.set_D.clone(), "inD", "setD");
         let reg_e = RegisterN::new("E", trace.E.clone(), trace.in_E.clone(), trace.set_E.clone(), "inE", "setE");
         let reg_sr = RegisterN::new("SR", trace.SR.clone(), trace.in_SR.clone(), trace.set_SR.clone(), "inSR", "setSR");
-        let reg_free =
-            Rc::new(RefCell::new(RegisterN::new_ro("FREE", trace.FREE.clone(), trace.in_FREE.clone(), "inFREE")));
+        let reg_free = RegisterN::new_ro("FREE", trace.FREE.clone(), trace.in_FREE.clone(), "inFREE");
+        let reg_free = Rc::new(RefCell::new(reg_free));
         let reg_sp = Register::new("SP", trace.SP.clone(), trace.in_SP.clone(), trace.set_SP.clone(), "inSP", "setSP");
         let reg_pc = Register::new("PC", trace.PC.clone(), trace.in_PC.clone(), trace.set_PC.clone(), "inPC", "setPC");
         let reg_rr = Register::new("RR", trace.RR.clone(), trace.in_RR.clone(), trace.set_RR.clone(), "inRR", "setRR");
@@ -134,44 +155,85 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
     }
 
     fn setup_rom_links(trace: &mut BasicProcessorTrace<T>) -> HashMap<String, RomLink<T>> {
-        let mut rom_links = HashMap::new();
+        let mut rom_links: HashMap<String, RomLink<T>> = HashMap::new();
 
-        rom_links.insert("isStack".to_string(), RomLink::new(trace.is_stack.clone(), true));
-        rom_links.insert("isMem".to_string(), RomLink::new(trace.is_mem.clone(), true));
-        rom_links.insert("mOp".to_string(), RomLink::new(trace.m_op.clone(), true));
-        rom_links.insert("mWR".to_string(), RomLink::new(trace.m_wr.clone(), true));
-        rom_links.insert("memUseAddrRel".to_string(), RomLink::new(trace.mem_use_addr_rel.clone(), true));
-        rom_links.insert("useCTX".to_string(), RomLink::new(trace.use_ctx.clone(), true));
+        rom_links.insert("isStack".to_string(), RomLink::new(TracePolEnum::Single(trace.is_stack.clone()), true));
+        rom_links.insert("isMem".to_string(), RomLink::new(TracePolEnum::Single(trace.is_mem.clone()), true));
+        rom_links.insert("mOp".to_string(), RomLink::new(TracePolEnum::Single(trace.m_op.clone()), true));
+        rom_links.insert("mWR".to_string(), RomLink::new(TracePolEnum::Single(trace.m_wr.clone()), true));
+        rom_links.insert(
+            "memUseAddrRel".to_string(),
+            RomLink::new(TracePolEnum::Single(trace.mem_use_addr_rel.clone()), true),
+        );
+        rom_links.insert("useCTX".to_string(), RomLink::new(TracePolEnum::Single(trace.use_ctx.clone()), true));
 
-        rom_links.insert("incStack".to_string(), RomLink::new(trace.inc_stack.clone(), false));
-        rom_links.insert("ind".to_string(), RomLink::new(trace.ind.clone(), false));
-        rom_links.insert("indRR".to_string(), RomLink::new(trace.ind_rr.clone(), false));
-        rom_links.insert("offset".to_string(), RomLink::new(trace.offset.clone(), false));
+        rom_links.insert("incStack".to_string(), RomLink::new(TracePolEnum::Single(trace.inc_stack.clone()), false));
+        rom_links.insert("ind".to_string(), RomLink::new(TracePolEnum::Single(trace.ind.clone()), false));
+        rom_links.insert("indRR".to_string(), RomLink::new(TracePolEnum::Single(trace.ind_rr.clone()), false));
+        rom_links.insert("offset".to_string(), RomLink::new(TracePolEnum::Single(trace.offset.clone()), false));
 
-        rom_links.insert("doAssert".to_string(), RomLink::new(trace.do_assert.clone(), true));
-        rom_links.insert("assumeFREE".to_string(), RomLink::new(trace.assume_free.clone(), true));
+        rom_links.insert("doAssert".to_string(), RomLink::new(TracePolEnum::Single(trace.do_assert.clone()), true));
+        rom_links.insert("assumeFREE".to_string(), RomLink::new(TracePolEnum::Single(trace.assume_free.clone()), true));
 
-        rom_links.insert("JMP".to_string(), RomLink::new(trace.jmp.clone(), true));
-        rom_links.insert("JMPN".to_string(), RomLink::new(trace.jmpn.clone(), true));
-        rom_links.insert("JMPZ".to_string(), RomLink::new(trace.jmpz.clone(), true));
-        rom_links.insert("call".to_string(), RomLink::new(trace.call.clone(), true));
-        rom_links.insert("return".to_string(), RomLink::new(trace.return_jmp.clone(), true));
+        rom_links.insert("JMP".to_string(), RomLink::new(TracePolEnum::Single(trace.jmp.clone()), true));
+        rom_links.insert("JMPN".to_string(), RomLink::new(TracePolEnum::Single(trace.jmpn.clone()), true));
+        rom_links.insert("JMPZ".to_string(), RomLink::new(TracePolEnum::Single(trace.jmpz.clone()), true));
+        rom_links.insert("call".to_string(), RomLink::new(TracePolEnum::Single(trace.call.clone()), true));
+        rom_links.insert("return".to_string(), RomLink::new(TracePolEnum::Single(trace.return_jmp.clone()), true));
 
-        rom_links.insert("jmpUseAddrRel".to_string(), RomLink::new(trace.jmp_use_addr_rel.clone(), true));
-        rom_links.insert("elseUseAddrRel".to_string(), RomLink::new(trace.else_use_addr_rel.clone(), true));
-        rom_links.insert("repeat".to_string(), RomLink::new(trace.repeat.clone(), true));
+        rom_links.insert(
+            "jmpUseAddrRel".to_string(),
+            RomLink::new(TracePolEnum::Single(trace.jmp_use_addr_rel.clone()), true),
+        );
+        rom_links.insert(
+            "elseUseAddrRel".to_string(),
+            RomLink::new(TracePolEnum::Single(trace.else_use_addr_rel.clone()), true),
+        );
+        rom_links.insert("repeat".to_string(), RomLink::new(TracePolEnum::Single(trace.repeat.clone()), true));
 
-        rom_links.insert("condConst".to_string(), RomLink::new(trace.cond_const.clone(), false));
-        rom_links.insert("jmpAddr".to_string(), RomLink::new(trace.jmp_addr.clone(), false));
-        rom_links.insert("elseAddr".to_string(), RomLink::new(trace.else_addr.clone(), false));
+        rom_links.insert("condConst".to_string(), RomLink::new(TracePolEnum::Single(trace.cond_const.clone()), false));
+        rom_links.insert("jmpAddr".to_string(), RomLink::new(TracePolEnum::Single(trace.jmp_addr.clone()), false));
+        rom_links.insert("elseAddr".to_string(), RomLink::new(TracePolEnum::Single(trace.else_addr.clone()), false));
 
         rom_links
+    }
+
+    fn update_rom_to_main_linked_cols(&mut self) {
+        let rom_line = self.rom.get_line(self.rom_line).unwrap_or_else(|| panic!("Failed to get ROM line"));
+        let program_line = &rom_line.program_line;
+
+        for (rom_flag, rom_link) in &self.rom_links {
+            match &rom_link.col {
+                TracePolEnum::Single(col) => {
+                    let mut col = col.borrow_mut();
+
+                    // single binary links
+                    if rom_link.binary {
+                        col[*self.row.borrow()] =
+                            if program_line.contains_key(rom_flag) { T::one() } else { T::zero() };
+                        continue;
+                    } else {
+                        let value = program_line[rom_flag].as_str().unwrap_or_else(|| panic!("Failed to parse value"));
+                        col[*self.row.borrow()] = T::from_string(value, 10);
+                    }
+                }
+                TracePolEnum::Array(col) => {
+                    let mut col = col.borrow_mut();
+
+                    // multi-chunk non-binary links
+                    let array = program_line[rom_flag].as_array().unwrap_or_else(|| panic!("Failed to parse array value"));
+                    for index in 0..CHUNKS {
+                        let value = array[index].as_str().unwrap_or_else(|| panic!("Failed to parse value"));
+                        col[*self.row.borrow()][index] = T::from_string(value, 10);
+                    }
+                }
+            };
+        }
     }
 
     fn register_components() -> HashMap<String, BasicProcessorComponent<'a, T>> {
         let mut components = HashMap::new();
 
-        let component = Memory::<'a, T>::build();
         components.insert(
             "mOp".to_string(),
             BasicProcessorComponent { id: None, component: Box::new(Memory::<'a, T>::build()) },
@@ -187,11 +249,11 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         let program_line = &rom_line.program_line;
 
         if program_line.contains_key("ind") {
-            self.addr_rel += self.registers.reg_e.get_value()[0].as_canonical_u64() as usize;
+            self.addr_rel += self.registers.borrow().reg_e.get_value()[0].as_canonical_u64() as usize;
         }
 
         if program_line.contains_key("indRR") {
-            self.addr_rel += self.registers.reg_rr.get_value().as_canonical_u64() as usize;
+            self.addr_rel += self.registers.borrow().reg_rr.get_value().as_canonical_u64() as usize;
         }
 
         let max_ind = program_line.get("maxInd");
@@ -224,7 +286,7 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         self.addr = program_line.get("offset").unwrap().as_u64().unwrap_or(0) as usize;
 
         if program_line.contains_key("useCTX") {
-            self.addr += self.registers.reg_ctx.get_value().as_canonical_u64() as usize * 0x40000;
+            self.addr += self.registers.borrow().reg_ctx.get_value().as_canonical_u64() as usize * 0x40000;
         }
 
         if program_line.contains_key("isStack") {
@@ -240,12 +302,13 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         }
     }
 
-    fn execute(&mut self) {
+    pub fn execute(&mut self) {
         // execute(input) {
         self.init_registers();
         // this.initComponents();
 
-        for step in 0..self.n {
+        let n = *self.n.borrow();
+        for step in 0..n {
             self.set_step(step);
             self.set_rom_line_and_zk_pc();
 
@@ -254,8 +317,8 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
             //     this.calculateFreeInput();
             //     this.opValue = this.addInValues(this.getConstValue());
             //     // console.log({opValue: this.opValue});
-            //     this.calculateRelativeAddress();
-            //     this.updateRomToMainLinkedCols();
+            self.calculate_relative_address();
+            self.update_rom_to_main_linked_cols();
             //     this.verifyComponents();
             //     this.manageFlowControl();
             //     this.applySetValues();
@@ -270,28 +333,28 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
         // this.opValue = Context.zeroValue;
         // TODO! initalize publics
 
-        self.registers.reg_a.reset(0);
-        self.registers.reg_b.reset(0);
-        self.registers.reg_c.borrow_mut().reset(0);
-        self.registers.reg_d.reset(0);
-        self.registers.reg_e.reset(0);
-        self.registers.reg_sr.reset(0);
-        self.registers.reg_free.borrow_mut().reset(0);
-        self.registers.reg_sp.reset(0);
-        self.registers.reg_pc.reset(0);
-        self.registers.reg_rr.reset(0);
-        self.registers.reg_ctx.reset(0);
-        self.registers.reg_rcx.reset(0);
-        self.registers.reg_step.reset(0);
-        self.registers.reg_free0.reset(0);
-        self.registers.reg_rotl_c.reset(0);
+        self.registers.borrow_mut().reg_a.reset(0);
+        self.registers.borrow_mut().reg_b.reset(0);
+        self.registers.borrow_mut().reg_c.borrow_mut().reset(0);
+        self.registers.borrow_mut().reg_d.reset(0);
+        self.registers.borrow_mut().reg_e.reset(0);
+        self.registers.borrow_mut().reg_sr.reset(0);
+        self.registers.borrow_mut().reg_free.borrow_mut().reset(0);
+        self.registers.borrow_mut().reg_sp.reset(0);
+        self.registers.borrow_mut().reg_pc.reset(0);
+        self.registers.borrow_mut().reg_rr.reset(0);
+        self.registers.borrow_mut().reg_ctx.reset(0);
+        self.registers.borrow_mut().reg_rcx.reset(0);
+        self.registers.borrow_mut().reg_step.reset(0);
+        self.registers.borrow_mut().reg_free0.reset(0);
+        self.registers.borrow_mut().reg_rotl_c.reset(0);
 
         self.zk_pc = 0;
     }
 
     fn set_step(&mut self, step: usize) {
-        *self.row.borrow_mut() = step;
-        self.row_next = (step + 1) % self.n;
+        // *self.row.borrow_mut() = step;
+        // self.row_next = (step + 1) % self.n;
         // this.context.row = this.row;
         // this.context.step = step;
     }
@@ -358,6 +421,6 @@ impl<'a, T: AbstractField + DeserializeField + PrimeField64 + Copy + 'a> BasicPr
             CallbackReturnType::Array(arr) => arr,
         };
 
-        self.registers.reg_free.borrow_mut().update_value(*self.row.borrow(), free_input);
+        self.registers.borrow().reg_free.borrow_mut().update_value(*self.row.borrow(), free_input);
     }
 }

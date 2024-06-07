@@ -6,6 +6,7 @@ mod register;
 mod rom;
 
 // pub use memory::*;
+pub use basic_processor::*;
 pub use rom::*;
 pub use component::*;
 pub use memory::*;
