@@ -382,7 +382,7 @@ module.exports = class Processor
         this.romline = this.rom[this.zkPC] ?? false;
         this.context.sourceRef = `${this.romline.fileName}:${this.romline.line} (zkPC:${this.zkPC} row:${this.row})`;
         assert(this.romline !== false);
-        console.log(`\x1B[1;35m#${this.row.toString().padStart(8, '_')} ROM${this.zkPC.toString().padStart(6,'_')} ${this.romline.lineStr}\x1B[0m`);
+        // console.log(`\x1B[1;35m#${this.row.toString().padStart(8, '_')} ROM${this.zkPC.toString().padStart(6,'_')} ${this.romline.lineStr}\x1B[0m`);
     }
 
     mainToMemory(verify, helperId, helper) {            
