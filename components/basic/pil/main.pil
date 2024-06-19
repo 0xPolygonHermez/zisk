@@ -4,9 +4,7 @@ include "tools.pil"
 // include "rom.pil"
 include "mem.pil"
 
-const int MEMORY_ID = 4;
-
-subproof Main(2**10) {
+air Main(int N = 2**10) {
     const int NR = 8;
 
     /////// State Polynomials
