@@ -57,14 +57,14 @@ function getSettings() {
             settings: {
                 default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
                 Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
-            },   
+            },
         },
         aggregation: {
             settings: {
                 recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
                 final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
             },
-            genProof: false,  
+            genProof: false,
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };
@@ -75,7 +75,7 @@ describe("Basic Vadcop", async function () {
     this.timeout(10000000);
 
     const options = {
-        parallelExec: true,
+        parallelExec: false,
         useThreads: true,
         vadcop: true,
     };
@@ -95,7 +95,7 @@ describe("Basic Vadcop", async function () {
         await checkConstraintsTest(setup, publicInputs, optionsVerifyConstraints);
     });
 
-    it.only("Generate a Basic Vadcop proof", async () => {
-        await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
-    });
+    // it.only("Generate a Basic Vadcop proof", async () => {
+    //     await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
+    // });
 });

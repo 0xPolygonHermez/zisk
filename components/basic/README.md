@@ -1,5 +1,5 @@
-# Basic 
-Basic is a processor with MEMORY and ROM. 
+# Basic
+Basic is a processor with MEMORY and ROM.
 
 # Build Basic
 npm run build:basic

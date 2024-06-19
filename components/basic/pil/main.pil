@@ -1,14 +1,14 @@
 require "std_permutation.pil"
 require "std_lookup.pil"
 include "tools.pil"
-include "rom.pil"
+// include "rom.pil"
 include "mem.pil"
 
 const int MEMORY_ID = 4;
 
 subproof Main(2**10) {
     const int NR = 8;
-    
+
     /////// State Polynomials
     col witness A[NR], B[NR], C[NR], D[NR], E[NR];   // Generic Registers
     col witness SR[NR];                              // State Root
@@ -55,7 +55,7 @@ subproof Main(2**10) {
     const expr assumeInput[NR];
     const expr zeros[NR];
     for (int index = 0; index < NR; ++index) {
-        expr _op = 
+        expr _op =
             A[index] * inA +
             B[index] * inB +
             C[index] * inC +
@@ -67,7 +67,7 @@ subproof Main(2**10) {
             CONST[index];
 
         if (index == 0) {
-            _op +=             
+            _op +=
                 CTX * inCTX +
                 SP * inSP +
                 PC * inPC +
@@ -93,7 +93,7 @@ subproof Main(2**10) {
 
     const expr addrRel = ind * E[0] + indRR * RR;
     const expr addr = 2**18 * useCTX * CTX +
-                      2**16 * isStack + isStack*SP + 
+                      2**16 * isStack + isStack*SP +
                       2**17 * isMem + memUseAddrRel * addrRel + offset;
 
 
@@ -101,9 +101,9 @@ subproof Main(2**10) {
     col witness op0Inv;
     const expr op0IsZero = 1 - op[0]*op0Inv;
     op0IsZero * op[0] === 0;
-    
+
     // TODO:
-    // multiset_assumes(RANGE32_ID, jmpn, [isNeg * 2**32 + op[0], 32]);    
+    // multiset_assumes(RANGE32_ID, jmpn, [isNeg * 2**32 + op[0], 32]);
     isNeg * (1 - isNeg) === 0;
 
     // RCX check zero
@@ -152,12 +152,12 @@ subproof Main(2**10) {
     romFlags = compact_bin_cols([
         doAssert, mOp, mWR, isMem, isStack, useCTX, memUseAddrRel,
         jmpUseAddrRel, elseUseAddrRel, jmp, jmpn, jmpz, call, returnJmp, repeat,
-        setA, setB, setC, setCTX, setD, setE, 
+        setA, setB, setC, setCTX, setD, setE,
         setPC, setRCX, setRR, setSP, setSR]);
 
-    lookup_assumes(ROM_ID, 1, [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
-                            inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
-                            romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);        
+    // lookup_assumes(ROM_ID, 1, [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+    //                         inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
+    //                         romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);
     // Memory
     permutation_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
 }

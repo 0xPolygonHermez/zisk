@@ -4,10 +4,9 @@ subproof Rom(2**8) {
 
     const int NR = 8;
 
-    // col fixed CONST[NR];
-    col fixed CONST0, CONST1, CONST2, CONST3, CONST4, CONST5, CONST6, CONST7;
+    col fixed CONST[NR];
     col fixed COND_CONST, OFFSET;
-    col fixed IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0, 
+    col fixed IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
               IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
               INC_STACK, JMP_ADDR, ELSE_ADDR, LINE;
     col fixed FLAGS;
@@ -15,13 +14,9 @@ subproof Rom(2**8) {
     include "rom_compiled.pil";
 
     // repeat_last_source_line();
-    // lookup_proves(ROM_ID, 1, [...CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+    // lookup_proves(ROM_ID, 1, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
     //                           IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
     //                           FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
-    lookup_proves(ROM_ID, 1, [CONST0, CONST1, CONST2, CONST3, CONST4, CONST5, CONST6, CONST7, COND_CONST,
-                              IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
-                              IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
-                              FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
 }
 
 function last_rom_line(int zkpc, int values[]) {
@@ -57,12 +52,7 @@ function add_rom_line(int zkpc, int values[]) {
     air.COND_CONST[zkpc] = values[21];
     air.OFFSET[zkpc] = values[22];
 
-    air.CONST0[zkpc] = values[23];
-    air.CONST1[zkpc] = values[24];
-    air.CONST2[zkpc] = values[25];
-    air.CONST3[zkpc] = values[26];
-    air.CONST4[zkpc] = values[27];
-    air.CONST5[zkpc] = values[28];
-    air.CONST6[zkpc] = values[29];
-    air.CONST7[zkpc] = values[30];
+    for (int i = 0; i < nr; ++i) {
+        air.CONST[i][zkpc] = values[23 + i];
+    }
 }

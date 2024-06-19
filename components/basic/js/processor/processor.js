@@ -9,9 +9,9 @@ const Debug = require('./debug.js');
 
 const FF_PRIME = 0xFFFFFFFF00000001n;
 
-module.exports = class Processor 
+module.exports = class Processor
 {
-    constructor(cols, config = {}) {  
+    constructor(cols, config = {}) {
         this.config = config;
         this.cols = cols;
         this.N = this.cols.zkPC.length;
@@ -19,8 +19,8 @@ module.exports = class Processor
         this.setupFr();
         this.setupChunks();
         this.registers = new Registers();
-        this.context = Context.setup({  fr: this.fr, 
-                                        chunks: this.chunks, 
+        this.context = Context.setup({  fr: this.fr,
+                                        chunks: this.chunks,
                                         N: this.N,
                                         registers: this.registers});
         this.romToMainLinks = {};
@@ -66,7 +66,7 @@ module.exports = class Processor
         this.defineSingleRegister('CTX', cols.CTX, cols.inCTX, cols.setCTX, 'inCTX', 'setCTX');
         this.defineSingleRegister('RCX', cols.RCX, cols.inRCX, cols.setRCX, 'inRCX', 'setRCX');
     }
-    defineLargeRegisters() {    
+    defineLargeRegisters() {
         const cols = this.cols;
         this.defineLargeRegister('A', cols.A, cols.inA, cols.setA, 'inA', 'setA');
         this.defineLargeRegister('B', cols.B, cols.inB, cols.setB, 'inB', 'setB');
@@ -101,11 +101,11 @@ module.exports = class Processor
         return this.registers.defineSingle(name, valueCol, inCol, false, inRomProp, false);
     }
     rotateLeft(reg) {
-        const chunkValues = reg.getValue(); 
+        const chunkValues = reg.getValue();
         return [chunkValues[this.chunks - 1],...chunkValues.slice(0, this.chunks - 1)];
     }
     calculateRelativeAddress() {
-        this.addrRel = 0;        
+        this.addrRel = 0;
 
         if (this.romline.ind) {
             this.addrRel += this.registers.getValue('E')[0];
@@ -118,7 +118,7 @@ module.exports = class Processor
         if (typeof this.romline.maxInd !== 'undefined' && this.addrRel > this.romline.maxInd) {
             const index = this.romline.offset - this.romline.baseLabel + this.addrRel;
             throw new Error(`Address out of bounds accessing index ${index} but ${this.romline.offsetLabel}[${this.romline.sizeLabel}] ind:${this.addrRel}`);
-        }   
+        }
     }
     setupRomToMainLinks() {
         this.linkRomFlagToMainCol('isStack', this.cols.isStack);
@@ -177,7 +177,7 @@ module.exports = class Processor
     }
     calculateMemoryAddress() {
         this.addr = this.romline.offset ?? 0;
-        
+
         if (this.romline.useCTX) {
             addr += Number(this.registers.getValue('CTX'))*0x40000;
         }
@@ -207,7 +207,7 @@ module.exports = class Processor
         for (let step = 0; step < stepsN; step++) {
             this.setStep(step);
             this.setRomLineAndZkPC();
-            
+
             // selectors, component, mapping (lookup/multiset)
 
             this.evalPreCommands();
@@ -224,10 +224,10 @@ module.exports = class Processor
         }
         this.finishComponents();
     }
-    manageFlowControl() {        
-        // calculate all flow control values        
+    manageFlowControl() {
+        // calculate all flow control values
         // TODO: call flag
-    
+
         const condConst = this.romline.condConst ?? 0;
 
         const jmpAddr = this.romline.jmpAddr ?? 0;
@@ -255,7 +255,7 @@ module.exports = class Processor
                 throw new Error(`On JMPN value ${op0cond} not a valid 32bit value ${Context.sourceRef}`);
             }
         } else {
-            if (this.romline.JMPZ) {                
+            if (this.romline.JMPZ) {
                 if (this.fr.isZero(op0cond)) {
                     nextZkPC = finalJmpAddr;
                 } else {
@@ -272,7 +272,7 @@ module.exports = class Processor
         this.zkPC = nextZkPC;
 
         this.cols.isNeg[this.row] = this.frZeroOne[isNegative];
-        this.cols.op0Inv[this.row] = op0Inv;    
+        this.cols.op0Inv[this.row] = op0Inv;
         this.cols.RCXInv[this.row] = insideRepeatLoop ? this.fr.inv(this.RCX.getValue()) : this.fr.zero;
     }
     initComponents() {
@@ -314,7 +314,7 @@ module.exports = class Processor
         else if (this.romline[this.romConst]) {
             value[0] = Context.fr.e(this.romline[this.romConst]);
         }
-        
+
         for (let index = 0; index < this.chunks; ++index) {
             this.cols.CONST[index][this.row] = value[index];
         }
@@ -361,7 +361,7 @@ module.exports = class Processor
         if (id === false) {
             id = helper.getDefaultId();
         }
-        for (const romFlag of romFlags) {        
+        for (const romFlag of romFlags) {
             this.components[romFlag] = {id, helper, method};
         }
     }
@@ -385,7 +385,7 @@ module.exports = class Processor
         // console.log(`\x1B[1;35m#${this.row.toString().padStart(8, '_')} ROM${this.zkPC.toString().padStart(6,'_')} ${this.romline.lineStr}\x1B[0m`);
     }
 
-    mainToMemory(verify, helperId, helper) {            
+    mainToMemory(verify, helperId, helper) {
         if (verify) {
             return helper.verify([helperId, this.addr, this.row, this.romline.mWR ? 1n : 0n, ...this.opValue]);
         }
