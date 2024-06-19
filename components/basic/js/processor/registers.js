@@ -42,9 +42,9 @@ module.exports = class Registers {
         }
         return value;
     }
-    applySetValue(row, romline, value) {
+    applySetValue(setRow, regRow, romline, value) {
         for (const regname in this.registers) {
-            this.registers[regname].applySetValue(row, romline, value);
+            this.registers[regname].applySetValue(setRow, regRow, romline, value);
         }
     }
     dump() {

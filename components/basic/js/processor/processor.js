@@ -221,8 +221,10 @@ module.exports = class Processor
             this.applySetValues();
             // this.registers.dump();
             this.evalPostCommands();
+            if (this.row < 8 || this.row > (this.N - 10)) this.dumpRow(this.row, this.romline.lineStr);
         }
         this.finishComponents();
+        this.dumpRow(0, '*** FINAL ***');
     }
     manageFlowControl() {
         // calculate all flow control values
@@ -299,7 +301,7 @@ module.exports = class Processor
         return this.registers.addInValues(this.row, this.romline, constValues);
     }
     applySetValues() {
-        this.registers.applySetValue(this.row, this.romline, this.opValue);
+        this.registers.applySetValue(this.row, this.nextRow, this.romline, this.opValue);
     }
     convertConstlValue(value) {
         return this.scalarToFea(BigInt(value));
@@ -371,7 +373,7 @@ module.exports = class Processor
         helper.init(this);
     }
     setStep(step) {
-        this.row = step;
+        this.row = step;        
         this.nextRow = (this.row + 1) % this.N;
         this.context.row = this.row;
         this.context.step = step;
@@ -404,6 +406,41 @@ module.exports = class Processor
         }
         assert(value === 0n);
         return res;
+    }
+    dumpRow(row, source) {
+        const colnames = Object.keys(this.cols);
+        let values = [];
+        try {
+            for (const colname of colnames) {
+                const col = this.cols[colname];
+                const len = col.length;
+                let changes = false;
+                let value = '';
+                if (len <= 16) {                    
+                    let avalues = [];
+                    for (let index = 0; index < len; ++index) {
+                        const value = col[index][row];
+                        if (row > 0 && value !== col[index][row-1]) {
+                            changes = true;
+                            avalues.push(`\x1B[33m${value}\x1B[0m`);
+                            continue;
+                        }
+                        avalues.push(value);
+                    }
+                    value = '['+avalues.join(',')+']';
+                } else {
+                    value = col[row];
+                    if (row > 0 && value !== col[row-1]) {
+                        changes = true;
+                        value = `\x1B[33m${value}\x1B[0m`;
+                    }
+                }
+                values.push((changes ? `\x1B[1;36m${colname}\x1B[0m: `:`${colname}: `) + value);
+            }
+        } catch(e) {
+        }
+        console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
+        console.log(`ROW[${row}]={${values.join(' ')}}`);
     }
     // required filled when verifys
 }

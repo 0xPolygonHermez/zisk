@@ -22,18 +22,18 @@ module.exports = class Register {
         this.inCol[row] = inColValue;
         return this.applyInToValue(inColValue);
     }
-    applySetValue(row, romline, value) {
+    applySetValue(setRow, regRow, romline, value) {
         if (!romline[this.setRom]) {
-            if (this.setCol !== false) this.setCol[row] = Context.fr.zero;
+            if (this.setCol !== false) this.setCol[setRow] = Context.fr.zero;
             // console.log(`\x1B[35m ==> ${this.label} = ${this.value} (${row})\x1B[0m`);
-            this.updateCols(row);
+            this.updateCols(regRow);
             return;
         }
         assert(this.setCol !== false, `couldn't set value for register ${this.label}`);
-        this.setCol[row] = Context.fr.one;
+        this.setCol[setRow] = Context.fr.one;
 
         // console.log(`\x1B[35m ==> ${this.label} = ${value} (${row})\x1B[0m`);
-        this.updateValue(value, row);
+        this.updateValue(value, regRow);
     }
     applyInToValue(inColValue) {
         throw new Error('applyInToValue not implemented');

@@ -9,6 +9,5 @@ function compact_bin_cols(expr cols[]) {
         res = res + factor * cols[i];
         factor = factor * 2;
     }
-    res === 0;
     return res;
 }
