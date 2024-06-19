@@ -1,8 +1,6 @@
 require "std_permutation.pil"
 require "std_lookup.pil"
 require "tools.pil"
-// require "rom.pil"
-require "mem.pil"
 
 air Main(int N = 2**10) {
     const int NR = 8;
