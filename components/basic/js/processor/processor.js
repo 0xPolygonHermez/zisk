@@ -243,7 +243,7 @@ module.exports = class Processor
         const op0cond = this.fr.e(this.opValue[0] + BigInt(condConst));
 
         let isNegative = 0;
-        let op0Inv = this.fr.zero;
+        const op0Inv = this.fr.isZero(op0cond) ? this.fr.zero : this.fr.inv(op0cond);
 
         if (this.romline.JMPN) {
             if (op0cond >= this.frFirst32BitsNegative) {
@@ -259,7 +259,6 @@ module.exports = class Processor
                 if (this.fr.isZero(op0cond)) {
                     nextZkPC = finalJmpAddr;
                 } else {
-                    op0Inv = this.fr.inv(op0cond);
                     nextZkPC = finalElseAddr;
                 }
             } else if (this.romline.JMP) {
