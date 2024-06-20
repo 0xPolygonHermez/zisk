@@ -6,24 +6,27 @@ module.exports = class BasicRom extends WitnessCalculatorComponent {
         super("Basic Rom Exe", wcManager, proofCtx);
     }
 
-    async witnessComputation(stageId, subproofId, airId, instanceId, publics) {
-        console.log('witnessComputation (Basic Rom)');
+    async witnessComputation(stageId, subproofId, airInstance, publics) {
+        console.log(`witnessComputation (Basic Rom) STAGE(${stageId})`);
         if(stageId === 1) {
+            const instanceId = airInstance.instanceId;
+
             if(instanceId !== -1) {
                 log.error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
             const instanceData = await this.wcManager.receiveData(this, "Rom.createInstances");
+            airInstance.airId = 0; // TODO: This should be updated automatically
 
             const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData[0].airId]; // TODO: Should 0 be hardcoded?
 
-            log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`)
-            let { result, airInstance } = this.proofCtx.addAirInstance(subproofId, instanceData[0].airId, air.numRows);
+            log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`);
+            let result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows)
 
             if (result === false) {
-                log.error(`[${this.name}]`, `New air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
-                throw new Error(`[${this.name}]`, `New air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+                log.error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+                throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
             }
 
             this.createPolynomialTraces(airInstance, publics);

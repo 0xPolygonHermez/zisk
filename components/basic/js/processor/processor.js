@@ -439,8 +439,8 @@ module.exports = class Processor
             }
         } catch(e) {
         }
-        console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
-        console.log(`ROW[${row}]={${values.join(' ')}}`);
+        // console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
+        // console.log(`ROW[${row}]={${values.join(' ')}}`);
     }
     // required filled when verifys
 }

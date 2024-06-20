@@ -8,9 +8,11 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
         super("Basic Main", wcManager, proofCtx);
     }
 
-    async witnessComputation(stageId, subproofId, airId, instanceId, publics) {
+    async witnessComputation(stageId, subproofId, airInstance, publics) {
         console.log(`witnessComputation (Basic Main) STAGE(${stageId})`);
         if(stageId === 1) {
+            const instanceId = airInstance.instanceId;
+
             if(instanceId !== -1) {
                 log.error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
@@ -18,16 +20,16 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
 
             await this.wcManager.sendData(this, "Rom.createInstances", {"airId": 0});
             await this.wcManager.sendData(this, "Mem.createInstances", {"airId": 0});
-            airId = 0;
+            airInstance.airId = 0; // TODO: This should be updated automatically
 
-            const air = this.proofCtx.airout.subproofs[subproofId].airs[airId];
+            const air = this.proofCtx.airout.subproofs[subproofId].airs[airInstance.airId];
 
-            log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`)
-            let { result, airInstance } = this.proofCtx.addAirInstance(subproofId, airId, air.numRows);
+            log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`);
+            let result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows);
 
             if (result === false) {
-                log.error(`[${this.name}]`, `New air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
-                throw new Error(`[${this.name}]`, `New air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+                log.error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+                throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
             }
 
             this.createPolynomialTraces(airInstance, publics);
