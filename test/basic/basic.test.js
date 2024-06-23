@@ -50,7 +50,7 @@ function getSettings() {
             { filename: path.join(componentsPath, 'basic/js/executor_main.js'), settings: {}, sm: "Main" },
             { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
-            { filename: path.join(libPath, 'std/js/div_lib.js'), settings: {}, },
+            // { filename: path.join(libPath, 'std/js/div_lib.js'), settings: {}, }, // TODO: This one should not be imported
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",

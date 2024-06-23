@@ -128,6 +128,14 @@ private function update_piop_prod(string type, int proves, int opid, expr sel, e
  * It defines the constraints for the grandproduct based on the rapidUp protocol https://eprint.iacr.org/2022/1050.pdf
  */
 private function piop_gprod_air() {
+    function update_product(expr sel, expr colu) {
+        if (sel == 1) {
+            return colu + std_gamma;
+        } else {
+            return sel * (colu + std_gamma - 1) + 1;
+        }
+    }
+
     use air.std.gprod;
 
     col witness stage(2) gprod;
@@ -140,14 +148,6 @@ private function piop_gprod_air() {
 
     col fixed L1 = [1,0...];
 
-    function update_product(expr sel, expr colu) {
-        if (sel == 1) {
-            return colu + std_gamma;
-        } else {
-            return sel * (colu + std_gamma - 1) + 1;
-        }
-    }
-
     expr numerator = 1;
     for (int i = 0; i < gprod_proves_count; i = i + 1) {
         numerator = numerator * update_product(gprod_proves_sel[i], gprod_proves[i]);
@@ -158,9 +158,9 @@ private function piop_gprod_air() {
         denominator = denominator * update_product(gprod_assumes_sel[i], gprod_assumes[i]);
     }
 
-    @gprod_col{reference: gprod, numerator: numerator, denominator: denominator}
+    @gprod_col{reference: gprod, numerator: numerator, denominator: denominator, result: subproof.std.gprod.gprod_result};
 
-    gprod * denominator === 'gprod * (1 - L1) * numerator;
+    gprod * denominator === ('gprod * (1 - L1) + L1) * numerator;
     L1' * (gprod - subproof.std.gprod.gprod_result) === 0;
 }
 

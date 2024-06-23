@@ -9,7 +9,7 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
     }
 
     async witnessComputation(stageId, subproofId, airInstance, publics) {
-        console.log(`witnessComputation (Basic Main) STAGE(${stageId})`);
+        log.info(`[${this.name}]`, `Starting witness computation stage ${stageId}.`);
         if(stageId === 1) {
             const instanceId = airInstance.instanceId;
 
@@ -18,8 +18,8 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
-            await this.wcManager.sendData(this, "Rom.createInstances", {"airId": 0});
-            await this.wcManager.sendData(this, "Mem.createInstances", {"airId": 0});
+            // await this.wcManager.sendData("Rom.createInstances", {"airId": 0}); // TODO
+            await this.wcManager.sendData("Basic Mem", {"airId": 0});
             airInstance.airId = 0; // TODO: This should be updated automatically
 
             const air = this.proofCtx.airout.subproofs[subproofId].airs[airInstance.airId];
@@ -32,19 +32,18 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
             }
 
-            this.createPolynomialTraces(airInstance, publics);
+            this.createPolynomialTraces(stageId, airInstance, publics);
         }
 
         return;
     }
 
-    createPolynomialTraces(airInstance, publics) {
-        console.log('createPolynomialTraces (Basic Main)');
+    createPolynomialTraces(stageId, airInstance, publics) {
+        log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
         const cols = airInstance.wtnsPols.Main;
         const N = airInstance.layout.numRows;
 
-        console.log('== MAIN ===');
-        console.log(N, Object.keys(cols));
+        // console.log(N, Object.keys(cols));
         const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json'), proofCtx: this.proofCtx});
         processor.execute(publics);
     }
