@@ -54,18 +54,18 @@
 //     }
 // }
 
-use pil2_components::{BasicProcessor, BasicProcessorConfig, BasicProcessorTrace, BasicProcessorTrace2};
-use goldilocks::Goldilocks;
+// use pil2_components::{BasicProcessor, BasicProcessorConfig, BasicProcessorTrace, BasicProcessorTrace2};
+// use goldilocks::Goldilocks;
 
 fn main() {
-    let config = BasicProcessorConfig { rom_json_path: "examples/zkevm_basic/data/rom.json".to_string() };
-    let n = 16;
-    let mut trace = BasicProcessorTrace::<Goldilocks>::new(n);
-    let mut trace2 = BasicProcessorTrace2::<Goldilocks>::new(n);
+    // let config = BasicProcessorConfig { rom_json_path: "examples/zkevm_basic/data/rom.json".to_string() };
+    // let n = 16;
+    // let mut trace = BasicProcessorTrace::<Goldilocks>::new(n);
+    // let mut trace2 = BasicProcessorTrace2::<Goldilocks>::new(n);
 
-    let mut basic_zkevm_processor = BasicProcessor::<Goldilocks>::new(config, &mut trace, &mut trace2);
+    // let mut basic_zkevm_processor = BasicProcessor::<Goldilocks>::new(config, &mut trace, &mut trace2);
 
-    basic_zkevm_processor.execute();
+    // basic_zkevm_processor.execute();
     // env_logger::builder().format_timestamp(None).format_target(false).filter_level(log::LevelFilter::Trace).init();
 
     // let arguments: ProveCmd = ProveCmd::parse();

@@ -10,7 +10,7 @@ readme = "README.md"
 pil2-components = { path = "../../components" }
 # starks-lib-c = { path = "../../lib/starks-lib-c" }
 # stark = { path = "../../lib/provers/stark" }
-# proofman-cli = { path = "../../proofman-cli" }
+# proofman-cli = { path = "../../cli" }
 # pilout = { path = "../../pilout" }
 # log = { version = "0.4", default-features = false }
 # env_logger = { version = "0.11", default-features = false }

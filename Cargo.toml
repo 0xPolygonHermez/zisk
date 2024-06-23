@@ -1,15 +1,18 @@
 [workspace]
 members = [
-    "proofman",
-    "proofman-cli",
+    "cli",
     "components",
-    "pilout",
     "goldilocks",
     "lib/provers/stark",
     "lib/provers/mocked",
     "lib/starks-lib-c",
+    "pilout",
+    "proofman",
     "transcript",
     "util",
+    "witness",
+    "zisk-prover",
+    
     "examples/fib4",
     "examples/fibv",
     "examples/zkevm_basic",

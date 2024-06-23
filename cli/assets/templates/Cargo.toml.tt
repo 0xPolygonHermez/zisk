@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 proofman = \{ path = "../proofman" }
-proofman-cli = \{ path = "../proofman-cli" }
+proofman-cli = \{ path = "../cli" }
 prover-mocked = \{ path = "../lib/provers/mocked" }
 log = \{ version = "0.4", default-features = false }
 env_logger = \{ version = "0.11", default-features = false }
