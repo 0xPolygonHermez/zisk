@@ -5,6 +5,7 @@ mod context;
 mod registers;
 mod rom_link;
 mod trace;
+mod trace2;
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -15,12 +16,14 @@ pub use context::*;
 pub use registers::*;
 pub use rom_link::*;
 pub use trace::*;
+pub use trace2::*;
+
 
 pub const CHUNKS: usize = 8;
 pub const CHUNK_BITS: usize = 32;
 pub const CHUNK_MASK: usize = (1 << CHUNK_BITS) - 1;
 
-pub enum CallbackReturnType<T> {
+pub enum RegistersEnum<T> {
     Single(T),
     Array([T; CHUNKS]),
 }
@@ -40,7 +43,7 @@ mod tests {
 
     use goldilocks::Goldilocks;
 
-    use super::{BasicProcessor, BasicProcessorConfig, BasicProcessorTrace};
+    use super::{BasicProcessor, BasicProcessorConfig, BasicProcessorTrace, BasicProcessorTrace2};
 
     #[test]
     fn basic_processor_new_works() {
@@ -49,6 +52,8 @@ mod tests {
         let n = 16;
         let mut trace = BasicProcessorTrace::<Goldilocks>::new(n);
 
-        let processor = BasicProcessor::<Goldilocks>::new(config, &mut trace);
+        let mut trace2 = BasicProcessorTrace2::<Goldilocks>::new(n);
+
+        let processor = BasicProcessor::<Goldilocks>::new(config, &mut trace, &mut trace2);
     }
 }

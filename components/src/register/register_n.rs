@@ -7,6 +7,37 @@ use crate::RomProgramLine;
 
 use super::Registerable;
 
+pub struct RegisterN2<'a, T, const N: usize> {
+    name: String,
+    value: [T; N],
+    value_col: &'a mut TracePol<[T; N]>,
+    in_col: &'a mut TracePol<T>,
+    set_col: Option<&'a mut TracePol<T>>,
+    in_rom: String,
+    set_rom: Option<String>,
+}
+
+impl<'a, T: AbstractField + Copy, const N: usize> RegisterN2<'a, T, N> {
+    pub fn new(
+        name: &str,
+        value_col: &'a mut TracePol<[T; N]>,
+        in_col: &'a mut TracePol<T>,
+        set_col: &'a mut TracePol<T>,
+        in_rom: &str,
+        set_rom: &str,
+    ) -> Self {
+        RegisterN2 {
+            name: name.into(),
+            value: [T::zero(); N],
+            value_col,
+            in_col,
+            set_col: Some(set_col),
+            in_rom: in_rom.into(),
+            set_rom: Some(set_rom.to_owned()),
+        }
+    }
+}
+
 pub struct RegisterN<T, const N: usize> {
     name: String,
     value: [T; N],

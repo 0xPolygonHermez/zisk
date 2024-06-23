@@ -1,7 +1,11 @@
 pub trait Component<T> {
     type Output;
 
+
+    fn init(&mut self);
+    fn finish(&mut self);
     fn get_default_id(&self) -> u16;
+
     fn calculate_free_input(&self, values: Vec<T>) -> Self::Output;
     fn verify(&self, values: Vec<T>) -> bool;
 }

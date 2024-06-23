@@ -1,6 +1,6 @@
 use goldilocks::AbstractField;
 
-use crate::{basic_processor::CallbackReturnType, Component};
+use crate::{basic_processor::RegistersEnum, Component};
 
 pub struct Memory<'a, T> {
     phantom: std::marker::PhantomData<&'a T>,
@@ -18,17 +18,25 @@ impl<'a, T> Component<T> for Memory<'a, T>
 where
     T: AbstractField + Copy,
 {
-    type Output = Option<CallbackReturnType<T>>;
+    type Output = Option<RegistersEnum<T>>;
 
     fn get_default_id(&self) -> u16 {
         Self::DEFAULT_ID
     }
 
     fn calculate_free_input(&self, values: Vec<T>) -> Self::Output {
-        Some(CallbackReturnType::Array([T::default(); 8]))
+        Some(RegistersEnum::Array([T::default(); 8]))
     }
 
     fn verify(&self, values: Vec<T>) -> bool {
+        unimplemented!()
+    }
+
+    fn init(&mut self) {
+        unimplemented!()
+    }
+
+    fn finish(&mut self) {
         unimplemented!()
     }
 }
