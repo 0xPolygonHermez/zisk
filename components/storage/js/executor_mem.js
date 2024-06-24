@@ -14,7 +14,7 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
-            const instanceData = await this.wcManager.receiveData(this, "Mem.createInstances");
+            const instanceData = await this.receiveData();
             const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData.airId];
 
             log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`)

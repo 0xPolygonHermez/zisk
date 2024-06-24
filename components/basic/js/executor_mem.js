@@ -16,7 +16,7 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
-            const instanceData = await this.wcManager.receiveData(this.inboxId);
+            const instanceData = await this.receiveData();
             airInstance.airId = 0; // TODO: This should be updated automatically
 
             const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData[0].airId];
