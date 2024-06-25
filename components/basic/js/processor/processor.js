@@ -208,12 +208,11 @@ module.exports = class Processor
             this.setStep(step);
             this.setRomLineAndZkPC();
 
-            // selectors, component, mapping (lookup/multiset)
+            // selectors, component, mapping (lookup/permutation)
 
             this.evalPreCommands();
             this.calculateFreeInput();
             this.opValue = this.addInValues(this.getConstValue());
-            // console.log({opValue: this.opValue});
             this.calculateRelativeAddress();
             this.updateRomToMainLinkedCols();
             this.verifyComponents();
@@ -221,10 +220,14 @@ module.exports = class Processor
             this.applySetValues();
             // this.registers.dump();
             this.evalPostCommands();
-            if (this.row < 8 || this.row > (this.N - 10)) this.dumpRow(this.row, this.romline.lineStr);
+            // if (this.romline.mOp) {
+            //     this.dumpRow(this.row, this.romline.lineStr);
+            //     const inputToMem = this.proofCtx.memory.inputs;
+            //     console.log(inputToMem[inputToMem.length-1]);
+            // }
+
         }
         this.finishComponents();
-        this.dumpRow(0, '*** FINAL ***');
     }
     manageFlowControl() {
         // calculate all flow control values
@@ -439,8 +442,8 @@ module.exports = class Processor
             }
         } catch(e) {
         }
-        // console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
-        // console.log(`ROW[${row}]={${values.join(' ')}}`);
+        console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
+        console.log(`ROW[${row}]={${values.join(' ')}}`);
     }
     // required filled when verifys
 }

@@ -151,9 +151,9 @@ air Main(int N = 2**10) {
         setA, setB, setC, setCTX, setD, setE,
         setPC, setRCX, setRR, setSP, setSR]);
 
-    // lookup_assumes(ROM_ID, 1, [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
-    //                         inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
-    //                         romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);
+    lookup_assumes(ROM_ID, 1, [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+                            inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
+                            romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);
     // Memory
-    permutation_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
+    // permutation_assumes(MEMORY_ID, mOp, [addr, STEP, mWR, ...assumeInput]);
 }

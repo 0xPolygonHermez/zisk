@@ -1,19 +1,11 @@
 require "std_common.pil"
 
-function prod_assumes_sel(string type, int opid, expr sel, expr cols[]) {
+function prod_assumes(const string type, const int opid, const expr sel = 1, const expr cols[]) {
     update_piop_prod(type, 0, opid, sel, cols);
 }
 
-function prod_assumes_nosel(string type, int opid, expr cols[]) {
-    update_piop_prod(type, 0, opid, 1, cols);
-}
-
-function prod_proves_sel(string type, int opid, expr sel, expr cols[]) {
+function prod_proves(const string type, const int opid, const expr sel = 1, const expr cols[]) {
     update_piop_prod(type, 1, opid, sel, cols);
-}
-
-function prod_proves_nosel(string type, int opid, expr cols[]) {
-    update_piop_prod(type, 1, opid, 1, cols);
 }
 
 /**

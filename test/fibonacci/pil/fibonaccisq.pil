@@ -1,10 +1,11 @@
+require "std_permutation.pil";
 require "module.pil";
 
 public in1;
 public in2;
 public out;
 
-subproof aggregate FibonacciSquare(2**16, 2**18) {
+air aggregate FibonacciSquare(const int N = 2**8) {
 
     col fixed L1 = [1,0...];
     col witness a,b;
@@ -16,7 +17,7 @@ subproof aggregate FibonacciSquare(2**16, 2**18) {
 
     (a' - b) * (1 - L1') === 0;
 
-    permutation_assumes_nosel(MODULE_ID, [a*a + b*b, b']);
+    permutation_assumes(MODULE_ID, cols: [a*a + b*b, b']);
 };
 
 

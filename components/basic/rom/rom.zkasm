@@ -1,4 +1,5 @@
-VAR GLOBAL myvar
+VAR GLOBAL myvar1
+VAR GLOBAL myvar2
 
 start:
 
@@ -10,8 +11,10 @@ start:
         A + B => A
         5           :ASSERT
         
-        A + 600      :MSTORE(myvar)
-        $ => A      :MLOAD(myvar)
+        A + 600      :MSTORE(myvar1)
+        $ => A      :MLOAD(myvar1)
+        ; A + 700      :MSTORE(myvar2) // TODO: Fix! Constraints not passing
+        ; $ => A      :MLOAD(myvar2)
 
         15          :ASSERT
 

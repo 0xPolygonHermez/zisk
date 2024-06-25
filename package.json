@@ -4,6 +4,8 @@
   "description": "pil2 components library",
   "main": "index.js",
   "scripts": {
+    "build:fibosq": "BDIR=test/fibonacci/pil && npx pil2-compiler $BDIR/build.pil -I lib/std/pil -o $BDIR/build.pilout",
+    "test:fibosq": "mocha test/fibonacci/js/fibonacci.test.js",
     "build:basic:zkasm": "CDIR=components/basic/compiler && npx jison $CDIR/zkasm_parser.jison -o $CDIR/zkasm_parser.js && npx jison $CDIR/command_parser.jison -o $CDIR/command_parser.js ",
     "build:basic:rom": "npm run build:basic:zkasm && BDIR=components/basic && node $BDIR/compiler/zkasm.js $BDIR/rom/rom.zkasm -o $BDIR/rom/rom.json",
     "build:basic:rom_compiled": "npm run build:basic:rom && BDIR=components/basic && node $BDIR/tools/rom_json_to_pil2.js > $BDIR/pil/rom_compiled.pil",

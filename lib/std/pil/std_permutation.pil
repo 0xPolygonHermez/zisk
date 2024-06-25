@@ -2,18 +2,10 @@ require "std_prod.pil";
 
 const string name_permutation = "permutation";
 
-function permutation_assumes(int opid, expr sel, expr cols[]) {
-    prod_assumes_sel(name_permutation, opid, sel, cols);
+function permutation_assumes(const int opid, const expr sel = 1, const expr cols[]) {
+    prod_assumes(name_permutation, opid, sel, cols);
 }
 
-function permutation_assumes_nosel(int opid, expr cols[]) {
-    prod_assumes_nosel(name_permutation, opid, cols);
-}
-
-function permutation_proves(int opid, expr sel, expr cols[]) {
-    prod_proves_sel(name_permutation, opid, sel, cols);
-}
-
-function permutation_proves_nosel(int opid, expr cols[]) {
-    prod_proves_nosel(name_permutation, opid, cols);
+function permutation_proves(const int opid, const expr sel = 1, const expr cols[]) {
+    prod_proves(name_permutation, opid, sel, cols);
 }
