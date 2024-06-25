@@ -1,7 +1,7 @@
 require "fibonaccisq.pil"
 require "module.pil"
 
-FibonacciSquare(N: 2**2);
+// FibonacciSquare(N: 2**2);
 FibonacciSquare(N: 2**4);
 
 Module(N: 2**4);

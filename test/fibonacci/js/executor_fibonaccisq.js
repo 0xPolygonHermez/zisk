@@ -44,17 +44,18 @@ module.exports = class FibonacciSquare extends WitnessCalculatorComponent {
         const polA = airInstance.wtnsPols.FibonacciSquare.a;
         const polB = airInstance.wtnsPols.FibonacciSquare.b;
 
-        const mod = publics[0];
+        const mod = publics[3]; // TODO: Remove, this should be used by the module SM
 
+        polA[0] = publics[0];
         polB[0] = publics[1];
-        polA[0] = publics[2];
 
+        // TODO: Here we should demand the result to the Modulo SM
 
-        for (let i = 1; i < N; i++) {
-            polA[i] = (polA[i - 1]*polA[i - 1] + polB[i - 1]*polB[i - 1]) % mod;
-            polB[i] = polA[i-1];
+        for (let i = 0; i < N - 1; i++) {
+            polB[i+1] = (polA[i]*polA[i] + polB[i]*polB[i]) % mod;
+            polA[i+1] = polB[i];
         }
 
-        publics[3] = polA[N - 1];
+        publics[2] = polB[N - 1];
     }
 }

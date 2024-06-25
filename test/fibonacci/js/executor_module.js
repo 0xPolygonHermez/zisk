@@ -20,6 +20,7 @@ module.exports = class FibonacciVadcopModule extends WitnessCalculatorComponent 
 
             while (!this.terminate) {
                 let instanceData = await this.receiveData();
+                airInstance.airId = 0; // TODO: This should be updated automatically
                 for (let i = 0; i < instanceData.length; i++) {
                     this.processMessage(stageId, subproofId, airInstance, publics, instanceData[i]);
                 }
@@ -54,18 +55,19 @@ module.exports = class FibonacciVadcopModule extends WitnessCalculatorComponent 
         const polQ = airInstance.wtnsPols.Module.q;
         const polX_mod = airInstance.wtnsPols.Module.x_mod;
 
-        const mod = publics[0];
-        let a = publics[1];
-        let b = publics[2];
+        const mod = publics[3];
+
+        let in1 = publics[0];
+        let in2 = publics[1];
 
         for (let i = 0; i < N; i++) {
-            polX[i] = a * a + b * b;
+            polX[i] = in1 * in1 + in2 * in2;
 
             polQ[i] = polX[i] / mod;
             polX_mod[i] = polX[i] % mod;
 
-            b = a;
-            a = polX_mod[i];
+            in1 = in2;
+            in2 = polX_mod[i];
         }
     }
 }

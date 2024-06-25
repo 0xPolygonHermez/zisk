@@ -1,8 +1,7 @@
 const path = require('path');
+const fs = require('fs').promises;
 
-const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("../test_utils.js");
-
-const publicInputs = [5n, 1n, 1n, undefined];
+const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("../../../node_modules/pil2-proofman/test/test_utils.js");
 
 const basePath = path.join(__dirname, '..');
 const libPath = path.join(basePath, '..', '..', 'lib');
@@ -21,8 +20,8 @@ function getSettings() {
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
-                Fibonacci_2: { starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_4.json') },
+                Fibonacci_2: { starkStruct: path.join(__dirname, 'stark_struct_2_2.json') },
             },
         },
         aggregation: {
@@ -48,20 +47,32 @@ describe("Fibonacci Vadcop", async function () {
 
     const optionsVerifyConstraints = {...options, onlyCheck: true};
 
+    let publics;
     let setup;
-
     let config;
 
     before(async () => {
-        config = getSettings();
-        setup = await generateSetupTest(config);
+        try {
+            const publicsJSON = await fs.readFile(path.join(__dirname, 'publics.json'), 'utf8');
+            publics = JSON.parse(publicsJSON);
+
+            // We only need in1, in2 for this SM
+            // The output is initially set to undefined and computed during the execution
+            publics = [BigInt(publics.in1), BigInt(publics.in2), undefined, BigInt(publics.mod)];
+
+            config = getSettings();
+            setup = await generateSetupTest(config);
+        } catch (error) {
+            console.error('Error reading or parsing JSON file:', error);
+        }
+
     });
 
     it("Verify a Fibonacci Square constraints", async () => {
-        await checkConstraintsTest(setup, publicInputs, optionsVerifyConstraints);
+        await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
     // it.only("Generate a Fibonacci Square proof", async () => {
-    //     await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
+    //     await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
     // });
 });
