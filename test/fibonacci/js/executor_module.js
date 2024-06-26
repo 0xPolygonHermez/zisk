@@ -2,7 +2,7 @@ const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calcul
 
 const log = require("pil2-proofman/logger.js");
 
-module.exports = class FibonacciVadcopModule extends WitnessCalculatorComponent {
+module.exports = class Module extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {
         super("Module", wcManager, proofCtx);
         this.terminate = false;
