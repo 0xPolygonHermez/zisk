@@ -124,7 +124,7 @@ module.exports = class Processor
         this.linkRomFlagToMainCol('isStack', this.cols.isStack);
         this.linkRomFlagToMainCol('isMem', this.cols.isMem);
         this.linkRomFlagToMainCol('mOp', this.cols.mOp);
-        this.linkRomFlagToMainCol('mWr', this.cols.mWR);
+        this.linkRomFlagToMainCol('mWR', this.cols.mWR);
         this.linkRomFlagToMainCol('memUseAddrRel', this.cols.memUseAddrRel);
         this.linkRomFlagToMainCol('useCTX', this.cols.useCTX);
         this.linkRomConstToMainCol('incStack', this.cols.incStack);
@@ -220,12 +220,6 @@ module.exports = class Processor
             this.applySetValues();
             // this.registers.dump();
             this.evalPostCommands();
-            // if (this.romline.mOp) {
-            //     this.dumpRow(this.row, this.romline.lineStr);
-            //     const inputToMem = this.proofCtx.memory.inputs;
-            //     console.log(inputToMem[inputToMem.length-1]);
-            // }
-
         }
         this.finishComponents();
     }

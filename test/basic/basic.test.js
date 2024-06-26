@@ -95,7 +95,7 @@ describe("Basic Vadcop", async function () {
         await checkConstraintsTest(setup, publicInputs, optionsVerifyConstraints);
     });
 
-    // it.only("Generate a Basic Vadcop proof", async () => {
-    //     await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
-    // });
+    it.only("Generate a Basic Vadcop proof", async () => {
+        await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
+    });
 });
