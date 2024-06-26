@@ -9,10 +9,10 @@ module.exports = class FibonacciSquare extends WitnessCalculatorComponent {
 
     async witnessComputation(stageId, subproofId, airInstance, publics) {
         log.info(`[${this.name}       ]`, `Starting witness computation stage ${stageId}.`);
-        if(stageId === 1) {
+        if (stageId === 1) {
             const instanceId = airInstance.instanceId;
 
-            if(instanceId !== -1) {
+            if (instanceId !== -1) {
                 log.error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
@@ -31,31 +31,30 @@ module.exports = class FibonacciSquare extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
             }
 
-            this.createPolynomialTraces(stageId, airInstance, publics);
+            this.#createPolynomialTraces(stageId, airInstance, publics);
         }
 
+        log.info(`[${this.name}       ]`, `Finishing witness computation stage ${stageId}.`);
         return;
     }
 
-    createPolynomialTraces(stageId, airInstance, publics) {
+    #createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
         const N = airInstance.layout.numRows;
 
         const polA = airInstance.wtnsPols.FibonacciSquare.a;
         const polB = airInstance.wtnsPols.FibonacciSquare.b;
 
-        const mod = publics[3]; // TODO: Remove, this should be used by the module SM
+        const mod = publics[0];
 
-        polA[0] = publics[0];
-        polB[0] = publics[1];
-
-        // TODO: Here we should demand the result to the Modulo SM
+        polA[0] = publics[1];
+        polB[0] = publics[2];
 
         for (let i = 0; i < N - 1; i++) {
             polB[i+1] = (polA[i]*polA[i] + polB[i]*polB[i]) % mod;
             polA[i+1] = polB[i];
         }
 
-        publics[2] = polB[N - 1];
+        publics[3] = polB[N - 1];
     }
 }

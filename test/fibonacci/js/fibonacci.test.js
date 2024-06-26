@@ -52,20 +52,16 @@ describe("Fibonacci Vadcop", async function () {
     let config;
 
     before(async () => {
-        try {
-            const publicsJSON = await fs.readFile(path.join(__dirname, 'publics.json'), 'utf8');
-            publics = JSON.parse(publicsJSON);
+        const publicsJSON = await fs.readFile(path.join(__dirname, 'publics.json'), 'utf8');
+        publics = JSON.parse(publicsJSON);
 
-            // We only need in1, in2 for this SM
-            // The output is initially set to undefined and computed during the execution
-            publics = [BigInt(publics.in1), BigInt(publics.in2), undefined, BigInt(publics.mod)];
+        // We only need in1, in2 for this SM
+        // The output is initially set to undefined and computed during the execution
+        // TODO: They have to be in the same order as in the pilout, fix it!
+        publics = [BigInt(publics.mod), BigInt(publics.in1), BigInt(publics.in2), undefined];
 
-            config = getSettings();
-            setup = await generateSetupTest(config);
-        } catch (error) {
-            console.error('Error reading or parsing JSON file:', error);
-        }
-
+        config = getSettings();
+        setup = await generateSetupTest(config);
     });
 
     it("Verify a Fibonacci Square constraints", async () => {
