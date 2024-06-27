@@ -351,37 +351,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 
 [[package]]
-name = "fib4"
-version = "0.1.0"
-dependencies = [
- "clap 4.5.4",
- "env_logger",
- "goldilocks",
- "log",
- "proofman",
- "proofman-cli",
- "prover-mocked",
- "starks-lib-c",
-]
-
-[[package]]
-name = "fibv"
-version = "0.1.0"
-dependencies = [
- "clap 4.5.4",
- "env_logger",
- "goldilocks",
- "log",
- "pilout",
- "proofman",
- "proofman-cli",
- "serde",
- "serde_json",
- "stark",
- "starks-lib-c",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -549,6 +518,16 @@ name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
+
+[[package]]
+name = "libloading"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e310b3a6b5907f99202fcdb4960ff45b93735d7c7d96b760fcff8db2dc0e103d"
+dependencies = [
+ "cfg-if",
+ "windows-targets 0.52.5",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -758,10 +737,21 @@ version = "0.1.0"
 dependencies = [
  "goldilocks",
  "log",
+ "pilout",
  "proofman",
+ "proofman-common",
  "proofman-mock",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "pil2-stark"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "pilout",
+ "proofman-common",
 ]
 
 [[package]]
@@ -891,6 +881,13 @@ dependencies = [
  "serde",
  "tinytemplate",
  "util",
+]
+
+[[package]]
+name = "proofman-common"
+version = "0.1.0"
+dependencies = [
+ "pilout",
 ]
 
 [[package]]
@@ -1576,17 +1573,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bec47e5bfd1bff0eeaf6d8b485cc1074891a197ab4225d504cb7a1ab88b02bf0"
 
 [[package]]
-name = "witness"
-version = "0.1.0"
-
-[[package]]
-name = "zisk-prover"
-version = "0.1.0"
-
-[[package]]
-name = "zkevm-basic"
+name = "zisk-wc"
 version = "0.1.0"
 dependencies = [
  "goldilocks",
  "pil2-components",
+ "pil2-stark",
+ "pilout",
+ "proofman-common",
 ]

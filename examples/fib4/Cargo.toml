@@ -7,7 +7,7 @@ edition = "2021"
 readme = "README.md"
 
 [dependencies]
-proofman = { path = "../../proofman" }
+proofman = { path = "../../proofman-old" }
 starks-lib-c = { path = "../../lib/starks-lib-c" }
 proofman-cli = { path = "../../cli" }
 prover-mocked = { path = "../../lib/provers/mocked" }

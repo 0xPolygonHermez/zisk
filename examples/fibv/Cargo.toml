@@ -7,7 +7,7 @@ authors = ["Polygon Labs"]
 readme = "README.md"
 
 [dependencies]
-proofman = { path = "../../proofman" }
+proofman = { path = "../../proofman-old" }
 starks-lib-c = { path = "../../lib/starks-lib-c" }
 stark = { path = "../../lib/provers/stark" }
 proofman-cli = { path = "../../cli" }

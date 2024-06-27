@@ -17,6 +17,7 @@
 6. Transform Vec<Vec<T>> to slice [u8] and access to the specific element with a function ???
 7. [X] Organize different proof_ctx as in javascript
 8. [ ] Change the way we are "sending" traces from threads. Box is used to be sized and this pushes down the performance to access the elements of a trace when used
+9. type F = Goldilocks must be derived from pilout when creating the wc_manager.rs during a zisk new ...... !!!!
 
 commands:
 execute example

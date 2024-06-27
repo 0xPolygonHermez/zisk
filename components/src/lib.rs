@@ -1,12 +1,12 @@
 // mod memory;
-// mod basic_processor;
+mod zisk_processor;
 // mod component;
 // mod memory;
 // mod register;
 // mod rom;
 
 // // pub use memory::*;
-// pub use basic_processor::*;
+pub use zisk_processor::*;
 // pub use rom::*;
 // pub use component::*;
 // pub use memory::*;
@@ -21,7 +21,6 @@ pub fn get_stdlib_wc<T, I>() -> HashMap<String, Box<dyn AirWitnessComputation<T,
     // stdlib_modules.insert("logup".to_string(), Box::new(Logup::new()));
 
     stdlib_modules
-
 }
 
 #[cfg(test)]

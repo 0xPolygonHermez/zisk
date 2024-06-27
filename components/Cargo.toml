@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-proofman = { path = "../proofman" }
+proofman = { path = "../proofman-old" }
 proofman-mock = { path = "../proofman-mock" }
+proofman-common = { path = "../proofman/common" }
+pilout = { path = "../pilout" }
 goldilocks = { path = "../goldilocks" }
 log = { version = "0.4.20" }

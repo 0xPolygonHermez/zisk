@@ -7,15 +7,11 @@ members = [
     "lib/provers/mocked",
     "lib/starks-lib-c",
     "pilout",
-    "proofman",
+    "proofman/common",
+    "proofman/pil2-stark",
     "transcript",
-    "util",
-    "witness",
-    "zisk-prover",
-    
-    "examples/fib4",
-    "examples/fibv",
-    "examples/zkevm_basic",
+    "util",    
+    "zisk-witness",
 ]
 
 resolver = "2"

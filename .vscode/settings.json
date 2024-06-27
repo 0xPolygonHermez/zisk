@@ -7,10 +7,10 @@
         "./lib/provers/stark/Cargo.toml",
         "./lib/provers/mocked/Cargo.toml",
         "./pilout/Cargo.toml",
-        "./proofman/Cargo.toml",
+        "./proofman/common/Cargo.toml",
+        "./proofman/pil2-stark/Cargo.toml",
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
-        "./witness/Cargo.toml",
-        "./zisk-prover/Cargo.toml"
+        "./zisk-witness/Cargo.toml"
     ]
 }
