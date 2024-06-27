@@ -122,6 +122,9 @@ module.exports = class Processor
         }
     }
     setupRomToMainLinks() {
+
+        // LINE: 9, setA, setB, setC, setCTX, setD, setE, setPC, setSP
+
         this.linkRomFlagToMainCol('isStack', this.cols.isStack);
         this.linkRomFlagToMainCol('isMem', this.cols.isMem);
         this.linkRomFlagToMainCol('mOp', this.cols.mOp);
@@ -132,7 +135,7 @@ module.exports = class Processor
         this.linkRomConstToMainCol('ind', this.cols.ind);
         this.linkRomConstToMainCol('indRR', this.cols.indRR);
         this.linkRomConstToMainCol('offset', this.cols.offset);
-        this.linkRomFlagToMainCol('doAssert', this.cols.doAssert);
+        this.linkRomFlagToMainCol('assert', this.cols.doAssert);
         this.linkRomFlagToMainCol('assumeFREE', this.cols.assumeFREE);
 
         this.linkRomFlagToMainCol('JMP', this.cols.jmp);
