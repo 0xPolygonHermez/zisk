@@ -19,7 +19,7 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
             const instanceData = await this.receiveData();
             airInstance.airId = 0; // TODO: This should be updated automatically
 
-            const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData[0].airId];
+            const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData[0].airId]; // TODO: Should 0 be hardcoded?
 
             log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows...`);
             const result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows);
@@ -38,27 +38,9 @@ module.exports = class BasicMem extends WitnessCalculatorComponent {
     createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
 
-        const N = airInstance.layout.numRows;
         const cols = airInstance.wtnsPols.Mem;
 
-        // console.log(N, Object.keys(cols));
         const memory = this.proofCtx.memory;
         memory.execute(cols);
-/*
-        console.log(this.proofCtx.memory);
-        EXIT_HERE;
-        console.log(N, Object.keys(cols));
-
-        for (let row = 0; row < N; ++row) {
-            cols.addr[row] = 0n;
-            cols.step[row] = 0n;
-            cols.sel[row] = 0n;
-            for (let index = 0; index < 8; ++index) {
-                cols.value[index][row] = 0n;
-            }
-            cols.wr[row] = 0n;
-            cols.lastAccess[row] = 0n;
-        }
-        console.log(airInstance.wtnsPols.Mem.step[0]); */
     }
 }

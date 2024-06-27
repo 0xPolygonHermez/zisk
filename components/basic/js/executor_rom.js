@@ -22,7 +22,7 @@ module.exports = class BasicRom extends WitnessCalculatorComponent {
             const air = this.proofCtx.airout.subproofs[subproofId].airs[instanceData[0].airId]; // TODO: Should 0 be hardcoded?
 
             log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`);
-            let result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows)
+            const result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows);
 
             if (result === false) {
                 log.error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
@@ -38,6 +38,12 @@ module.exports = class BasicRom extends WitnessCalculatorComponent {
     createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
 
-        // rom has not witness cols
+        const cols = airInstance.wtnsPols.Rom;
+
+        const ROM = this.proofCtx.rom;
+        ROM.execute(cols);
+
+
+        console.log("HEY",airInstance.wtnsPols.Rom);
     }
 }

@@ -9,13 +9,11 @@ const INT32_MAX = (2n ** 32n) - 1n;
 const P256_MAX = (2n ** 256n) - 1n;
 const MASK_32 = (2n ** 32n) - 1n;
 
-
 //  doAssert, mOp, mWR, isMem, isStack, useCTX, useAddrRel,
 //  useJmpAddrRel, useElseAddrRel, jmp, jmpn, jmpz, call, returnJmp, repeat,
-//  setA, setB, setC, setCTX, setD, setE, 
+//  setA, setB, setC, setCTX, setD, setE,
 //  setPC, setRCX, setRR, setSP, setSR
-
-const ROM_FLAGS = [ 
+const ROM_FLAGS = [
     'assert', 'mOp', 'mWR', 'isMem', 'isStack', 'useCTX', 'useAddrRel',
     'useJmpAddrRel', 'useElseAddrRel', 'jmp', 'jmpn', 'jmpz', 'call', 'returnJmp', 'repeat',
     'setA', 'setB', 'setC', 'setCTX', 'setD', 'setE',
@@ -42,37 +40,40 @@ class Rom2Pil {
         for (let line = 0; line < rom.length; line++) {
             const l = rom[line];
 
-            // col fixed CONST[NR];
-            // col fixed COND_CONST, OFFSET;
-            // col fixed IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0, 
-            //           IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
-            //           INC_STACK, JMP_ADDR, ELSE_ADDR, LINE;
-            // col fixed FLAGS;
+            // MAIN
+            // =======
+            // lookup_assumes(ROM_ID, cols: [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+            //                         inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
+            //                         romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);
+            // ROM
+            // =======
+            // lookup_proves(ROM_ID, mul, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+            //                           IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
+            //                           FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
 
             this.addValue(BigInt(line), 'LINE');
-            this.addValue(l.IN_A ? BigInt(IN_A) : 0n, 'l.IN_A');
-            this.addValue(l.COND_CONST ? BigInt(COND_CONST) : 0n, 'COND_CONST');
-            this.addValue(l.OFFSET ? BigInt(OFFSET) : 0n, 'OFFSET');
-            this.addValue(l.IN_A ? BigInt(IN_A) : 0n, 'IN_A');
-            this.addValue(l.IN_B ? BigInt(IN_B) : 0n, 'IN_B');
-            this.addValue(l.IN_C ? BigInt(IN_C) : 0n, 'IN_C');
-            this.addValue(l.IN_ROTL_C ? BigInt(IN_ROTL_C) : 0n, 'IN_ROTL_C');
-            this.addValue(l.IN_D ? BigInt(IN_D) : 0n, 'IN_D');
-            this.addValue(l.IN_E ? BigInt(IN_E) : 0n, 'IN_E');
-            this.addValue(l.IN_SR ? BigInt(IN_SR) : 0n, 'IN_SR');
-            this.addValue(l.IN_FREE ? BigInt(IN_FREE) : 0n, 'IN_FREE');
-            this.addValue(l.IN_FREE0 ? BigInt(IN_FREE0) : 0n, 'IN_FREE0');
-            this.addValue(l.IN_CTX ? BigInt(IN_CTX) : 0n, 'IN_CTX');
-            this.addValue(l.IN_SP ? BigInt(IN_SP) : 0n, 'IN_SP');
-            this.addValue(l.IN_PC ? BigInt(IN_PC) : 0n, 'IN_PC');
-            this.addValue(l.IN_STEP ? BigInt(IN_STEP) : 0n, 'IN_STEP');
-            this.addValue(l.IN_RR ? BigInt(IN_RR) : 0n, 'IN_RR');
-            this.addValue(l.IN_RCX ? BigInt(IN_RCX) : 0n, 'IN_RCX');
-            this.addValue(l.IND ? BigInt(IND) : 0n, 'IND');
-            this.addValue(l.IND_RR ? BigInt(IND_RR) : 0n, 'IND_RR');
-            this.addValue(l.INC_STACK ? BigInt(INC_STACK) : 0n, 'INC_STACK');
-            this.addValue(l.JMP_ADDR ? BigInt(JMP_ADDR) : 0n, 'JMP_ADDR');
-            this.addValue(l.ELSE_ADDR ? BigInt(ELSE_ADDR) : 0n, 'ELSE_ADDR');
+            this.addValue(l.condConst ? BigInt(l.condConst) : 0n, 'condConst');
+            this.addValue(l.inA ? BigInt(l.inA) : 0n, 'inA');
+            this.addValue(l.inB ? BigInt(l.inB) : 0n, 'inB');
+            this.addValue(l.inC ? BigInt(l.inC) : 0n, 'inC');
+            this.addValue(l.inROTL_C ? BigInt(l.inROTL_C) : 0n, 'inROTL_C');
+            this.addValue(l.inD ? BigInt(l.inD) : 0n, 'inD');
+            this.addValue(l.inE ? BigInt(l.inE) : 0n, 'inE');
+            this.addValue(l.inSR ? BigInt(l.inSR) : 0n, 'inSR');
+            this.addValue(l.inFREE ? BigInt(l.inFREE) : 0n, 'inFREE');
+            this.addValue(l.inFREE0 ? BigInt(l.inFREE0) : 0n, 'inFREE0');
+            this.addValue(l.inCTX ? BigInt(l.inCTX) : 0n, 'inCTX');
+            this.addValue(l.inSP ? BigInt(l.inSP) : 0n, 'inSP');
+            this.addValue(l.inPC ? BigInt(l.inPC) : 0n, 'inPC');
+            this.addValue(l.inSTEP ? BigInt(l.inSTEP) : 0n, 'inSTEP');
+            this.addValue(l.inRR ? BigInt(l.inRR) : 0n, 'inRR');
+            this.addValue(l.inRCX ? BigInt(l.inRCX) : 0n, 'inRCX');
+            this.addValue(l.ind ? BigInt(l.ind) : 0n, 'ind');
+            this.addValue(l.indRR ? BigInt(l.indRR) : 0n, 'indRR');
+            this.addValue(l.offset ? BigInt(l.offset) : 0n, 'offset');
+            this.addValue(l.incStack ? BigInt(l.incStack) : 0n, 'incStack');
+            this.addValue(l.jmpAddr ? BigInt(l.jmpAddr) : 0n, 'jmpAddr');
+            this.addValue(l.elseAddr ? BigInt(l.elseAddr) : 0n, 'elseAddr');
 
             let flags = 0n;
             let factor = 1n;
@@ -111,11 +112,11 @@ class Rom2Pil {
             }
 
             this.flushValues(l.fileName, l.line, l.lineStr, line == rom.length - 1);
-//            const extraLn = (previousFileName !== false && previousFileName !== l.fileName) ? '\n':'';
-//            previousFileName = l.fileName;
-        
-//            // [LINE, ROM_FLAGS, CONST0, JMP_ADDRESS, IN_SIBLING_RKEY]);
-//            data.push({values: [line, '0x'+flags.toString(16).toUpperCase().padStart(FLAGS_DIGITS, '0'), CONST0, JMP_ADDRESS, IN_SIBLING_RKEY], source:l.fileName, line: l.line, linestr: l.lineStr.trimEnd(), extraLn, flags: activeFlags.join(', ')});
+            //            const extraLn = (previousFileName !== false && previousFileName !== l.fileName) ? '\n':'';
+            //            previousFileName = l.fileName;
+
+            //            // [LINE, ROM_FLAGS, CONST0, JMP_ADDRESS, IN_SIBLING_RKEY]);
+            //            data.push({values: [line, '0x'+flags.toString(16).toUpperCase().padStart(FLAGS_DIGITS, '0'), CONST0, JMP_ADDRESS, IN_SIBLING_RKEY], source:l.fileName, line: l.line, linestr: l.lineStr.trimEnd(), extraLn, flags: activeFlags.join(', ')});
         }
 /*        let widths = data.length ? data[0].values.map(x => 0) : [];
         let sourceWidth = 0;
@@ -157,7 +158,7 @@ class Rom2Pil {
     }
     addLabel(label) {
         this.labels.push(label);
-    }        
+    }
     flushValues(fileName, line, lineStr, last = false) {
         const extraLn = (this.previousFileName !== false && this.previousFileName !== fileName) ? '\n':'';
         this.previousFileName = fileName;

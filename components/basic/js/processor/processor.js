@@ -4,6 +4,7 @@ const Registers = require('./registers.js');
 const F1Field = require('ffjavascript').F1Field;
 const fs = require('fs');
 const Memory = require('../../../mem/js/mem.js');
+const ROM = require('../../rom/rom.js')
 const Command = require('./command.js');
 const Debug = require('./debug.js');
 
@@ -220,7 +221,16 @@ module.exports = class Processor
             this.applySetValues();
             // this.registers.dump();
             this.evalPostCommands();
+
+            console.log(step, this.romline.lineStr);
+            console.log(this.cols.CONST[0][step]);
+            this.dumpRow(step, this.context.sourceRef);
         }
+        // for (let step = 0; step < stepsN; step++) {
+        //     console.log(step, this.romline.lineStr);
+        //     console.log(this.cols.CONST[0][step]);
+        //     this.dumpRow(step, this.context.sourceRef);
+        // }
         this.finishComponents();
     }
     manageFlowControl() {
@@ -280,7 +290,7 @@ module.exports = class Processor
     }
     verifyComponents() {
         for (const romFlag in this.components) {
-            if (!this.romline[romFlag]) continue;
+            if (romFlag !== 'ROM' && !this.romline[romFlag]) continue;
             const componentInfo = this.components[romFlag];
             componentInfo.method.apply(this, [true, componentInfo.id, componentInfo.helper]);
         }
@@ -354,6 +364,9 @@ module.exports = class Processor
     registerComponents() {
         this.proofCtx.memory = new Memory({fr: this.fr, inputChunks: this.chunks});
         this.registerComponent(['mOp'], false, this.proofCtx.memory, this.mainToMemory);
+
+        this.proofCtx.rom = new ROM({fr: this.fr});
+        this.registerComponent(['ROM'], false, this.proofCtx.rom, this.mainToROM);
     }
     registerComponent(romFlags, id, helper, method) {
         if (id === false) {
@@ -370,7 +383,7 @@ module.exports = class Processor
         helper.init(this);
     }
     setStep(step) {
-        this.row = step;        
+        this.row = step;
         this.nextRow = (this.row + 1) % this.N;
         this.context.row = this.row;
         this.context.step = step;
@@ -389,6 +402,13 @@ module.exports = class Processor
         }
         return helper.calculateFreeInput([helperId, this.addr, this.row, this.romline.mWR ? 1n : 0n]);
     }
+    mainToROM(verify, helperId, helper) {
+        if (verify) {
+            return helper.verify([this.zkPC, this.romline.fileName, this.romline.line]);
+        }
+        throw new Error('ROM only operates in verify mode');
+    }
+
     scalarToFea(value) {
         let res = []
         let index = 0;
@@ -413,7 +433,7 @@ module.exports = class Processor
                 const len = col.length;
                 let changes = false;
                 let value = '';
-                if (len <= 16) {                    
+                if (len <= 16) {
                     let avalues = [];
                     for (let index = 0; index < len; ++index) {
                         const value = col[index][row];

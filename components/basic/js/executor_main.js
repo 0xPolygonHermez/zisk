@@ -13,13 +13,11 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
         if(stageId === 1) {
             const instanceId = airInstance.instanceId;
 
-            if(instanceId !== -1) {
+            if (instanceId !== -1) {
                 log.error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
-            // await this.wcManager.sendData("Basic Rom", {"airId": 0}); // TODO
-            await this.wcManager.sendData("Basic Mem", {"airId": 0}); // TODO
             airInstance.airId = 0; // TODO: This should be updated automatically
 
             const air = this.proofCtx.airout.subproofs[subproofId].airs[airInstance.airId];
@@ -33,6 +31,10 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
             }
 
             this.createPolynomialTraces(stageId, airInstance, publics);
+
+            // Create a Rom instance and a Mem instance
+            await this.wcManager.sendData("Basic Rom", {"airId": 0});
+            await this.wcManager.sendData("Basic Mem", {"airId": 0});
         }
 
         return;
@@ -40,10 +42,9 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
 
     createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
-        const cols = airInstance.wtnsPols.Main;
-        const N = airInstance.layout.numRows;
 
-        // console.log(N, Object.keys(cols));
+        const cols = airInstance.wtnsPols.Main;
+
         const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json'), proofCtx: this.proofCtx});
         processor.execute(publics);
     }
