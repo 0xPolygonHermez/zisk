@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error};
 
 use pilout::pilout_proxy::PilOutProxy;
-use proofman_common::{AirInstanceWitnessComputation, ExecutionCtx, WitnessExecutor, ProofCtx};
+use pil2_stark::{AirInstanceWitnessComputation, ExecutionCtx, WitnessExecutor, ProofCtx};
 
 use super::{arith::ArithSM, binary::BinarySM, main::MainSM, mem::MemSM};
 

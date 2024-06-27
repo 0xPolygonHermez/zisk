@@ -1,8 +1,0 @@
-[package]
-name = "proofman-mock"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-proofman = { path = "../proofman-old" }
-goldilocks = { path = "../goldilocks" }

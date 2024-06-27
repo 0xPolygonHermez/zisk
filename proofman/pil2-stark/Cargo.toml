@@ -1,9 +1,0 @@
-[package]
-name = "pil2-stark"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-pilout ={ path = "../../pilout" }
-proofman-common = { path = "../common" }
-libloading = "0.8.4"

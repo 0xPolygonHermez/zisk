@@ -1,9 +1,7 @@
-extern crate proofman_common;
-
 use goldilocks::Goldilocks;
 use pil2_components::ZiskProcessor;
 use pilout::pilout_proxy::PilOutProxy;
-use proofman_common::{AirInstanceMap, DefaultWitnessPlanner, ExecutionCtx, ProofCtx, WitnessManager, WitnessPlanner};
+use pil2_stark::{AirInstanceMap, DefaultWitnessPlanner, ExecutionCtx, ProofCtx, WitnessManager, WitnessPlanner};
 use std::env;
 
 type F = Goldilocks;
@@ -18,7 +16,7 @@ pub struct BasicZiskWCPlugin<F> {
 impl<F: 'static> BasicZiskWCPlugin<F> {
     pub fn new(witness_planner: Option<Box<dyn WitnessPlanner<F>>>) -> Self {
         let current_dir = env::current_dir().unwrap();
-        let pilout_path = current_dir.join("../../zisk-witness/src/pil/pilout/basic.pilout");
+        let pilout_path = current_dir.join("../zisk-witness/src/pil/pilout/basic.pilout");
         let pilout = PilOutProxy::new(pilout_path.to_str().unwrap(), false).unwrap_or_else(|error| {
             panic!("Failed to load pilout: {}", error);
         });

@@ -737,9 +737,9 @@ version = "0.1.0"
 dependencies = [
  "goldilocks",
  "log",
+ "pil2-stark",
  "pilout",
  "proofman",
- "proofman-common",
  "proofman-mock",
  "serde",
  "serde_json",
@@ -751,7 +751,6 @@ version = "0.1.0"
 dependencies = [
  "libloading",
  "pilout",
- "proofman-common",
 ]
 
 [[package]]
@@ -881,13 +880,6 @@ dependencies = [
  "serde",
  "tinytemplate",
  "util",
-]
-
-[[package]]
-name = "proofman-common"
-version = "0.1.0"
-dependencies = [
- "pilout",
 ]
 
 [[package]]
@@ -1580,5 +1572,4 @@ dependencies = [
  "pil2-components",
  "pil2-stark",
  "pilout",
- "proofman-common",
 ]

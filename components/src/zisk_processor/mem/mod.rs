@@ -1,4 +1,4 @@
-use proofman_common::*;
+use pil2_stark::*;
 
 pub struct MemSM<F> {
     _phantom: std::marker::PhantomData<F>,

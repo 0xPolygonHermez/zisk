@@ -1,4 +1,6 @@
-use proofman_common::*;
+extern crate pil2_stark;
+
+use pil2_stark::*;
 
 pub struct ArithSM<F> {
     _phantom: std::marker::PhantomData<F>,

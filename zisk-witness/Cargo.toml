@@ -7,8 +7,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-proofman-common = { path ="../proofman/common" }
-pil2-stark = { path ="../proofman/pil2-stark" }
+pil2-stark = { path ="../pil2-stark" }
 pilout = { path = "../pilout" }
 goldilocks = { path = "../goldilocks" }
 pil2-components = { path = "../components" }

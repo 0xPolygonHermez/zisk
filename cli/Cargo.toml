@@ -6,7 +6,7 @@ edition = "2021"
 readme = "README.md"
 
 [dependencies]
-proofman = { path = "../proofman-old" }
+proofman = { path = "../old/proofman-old" }
 pilout = { path = "../pilout" }
 log = { version = "0.4.20" }
 env_logger = "0.11"
