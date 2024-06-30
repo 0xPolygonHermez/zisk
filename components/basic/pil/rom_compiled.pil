@@ -30,10 +30,10 @@
 	add_rom_line(9,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20938752,0,0,0,0,0,0,0,0]);    // LINE: 9, setA, setB, setC, setCTX, setD, setE, setPC, setSP
 
 	// rom.zkasm:25                     ${beforeLast()}  : JMPN(finalWait)
-	add_rom_line(10,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,10,11,0,0,0,0,0,0,0,0,0]);        // LINE: 10, inFREE: 1, jmpAddr: 10, elseAddr: 11
+	add_rom_line(10,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,10,11,1024,0,0,0,0,0,0,0,0]);     // LINE: 10, inFREE: 1, jmpAddr: 10, elseAddr: 11, JMPN
 
 	// rom.zkasm:27                                      : JMP(start)
-	add_rom_line(11,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);          // LINE: 11
+	add_rom_line(11,[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,512,0,0,0,0,0,0,0,0]);        // LINE: 11, JMP
 
 	// rom.zkasm:29                     A + 1 :ASSERT
 	last_rom_line(12,[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0]);         // LINE: 12, inA: 1, assert, CONST: 1

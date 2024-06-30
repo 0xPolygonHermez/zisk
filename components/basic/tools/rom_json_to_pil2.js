@@ -15,7 +15,7 @@ const MASK_32 = (2n ** 32n) - 1n;
 //  setPC, setRCX, setRR, setSP, setSR
 const ROM_FLAGS = [
     'assert', 'mOp', 'mWR', 'isMem', 'isStack', 'useCTX', 'useAddrRel',
-    'useJmpAddrRel', 'useElseAddrRel', 'jmp', 'jmpn', 'jmpz', 'call', 'returnJmp', 'repeat',
+    'useJmpAddrRel', 'useElseAddrRel', 'JMP', 'JMPN', 'JMPZ', 'call', 'returnJmp', 'repeat',
     'setA', 'setB', 'setC', 'setCTX', 'setD', 'setE',
     'setPC', 'setRCX', 'setRR', 'setSP', 'setSR']
 

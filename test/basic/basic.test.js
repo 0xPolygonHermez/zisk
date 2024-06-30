@@ -45,17 +45,16 @@ function getSettings() {
         airout: {
             airoutFilename: path.join(componentsPath, 'basic/pil/basic.pilout'),
         },
-        witnessCalculators: [ // TODO: The order seems important
+        witnessCalculators: [
             { filename: path.join(componentsPath, 'basic/js/executor_main.js'), settings: {}, sm: "Main" },
             { filename: path.join(componentsPath, 'basic/js/executor_rom.js'), settings: {}, sm: "Rom" },
             { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
-            // { filename: path.join(libPath, 'std/js/div_lib.js'), settings: {}, }, // TODO: This one should not be imported
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_4.json') },
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
                 Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
             },
         },
@@ -95,7 +94,7 @@ describe("Basic Vadcop", async function () {
         await checkConstraintsTest(setup, publicInputs, optionsVerifyConstraints);
     });
 
-    // it.only("Generate a Basic Vadcop proof", async () => {
-    //     await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
-    // });
+    it.only("Generate a Basic Vadcop proof", async () => {
+        await executeFullProveTest(setup, publicInputs, options, config.aggregation?.genProof);
+    });
 });

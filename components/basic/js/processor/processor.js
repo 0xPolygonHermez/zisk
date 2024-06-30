@@ -224,10 +224,6 @@ module.exports = class Processor
             this.applySetValues();
             // this.registers.dump();
             this.evalPostCommands();
-
-            console.log(step, this.romline.lineStr);
-            console.log(this.cols.CONST[0][step]);
-            this.dumpRow(step, this.context.sourceRef);
         }
         // for (let step = 0; step < stepsN; step++) {
         //     console.log(step, this.romline.lineStr);

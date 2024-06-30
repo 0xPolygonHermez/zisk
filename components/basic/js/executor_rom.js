@@ -42,8 +42,5 @@ module.exports = class BasicRom extends WitnessCalculatorComponent {
 
         const ROM = this.proofCtx.rom;
         ROM.execute(cols);
-
-
-        console.log("HEY",airInstance.wtnsPols.Rom);
     }
 }
