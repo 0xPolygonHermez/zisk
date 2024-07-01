@@ -35,6 +35,9 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
             // Create a Rom instance and a Mem instance
             await this.wcManager.sendData("Basic Rom", {"airId": 0});
             await this.wcManager.sendData("Basic Mem", {"airId": 0});
+            // Note: We do it after the witness computation of the main component because the rest are dependent on it,
+            //       and there is no better way to do it in this model. The optimal would be do it in parallel every time
+            //       the main provides with an input to the rest of the components.
         }
 
         return;

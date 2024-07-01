@@ -54,8 +54,9 @@ function getSettings() {
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
-                Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_12.json') },
+                Mem_10: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
+                Rom_8: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
             },
         },
         aggregation: {

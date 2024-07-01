@@ -26,6 +26,8 @@ module.exports = class ROM extends Component {
         } else {
             this.inputs[zkPC].count++;
         }
+
+        // Note: Since the trace Rom is injective, there is no need to normalize the multiplicity
     }
 
     execute(cols) {

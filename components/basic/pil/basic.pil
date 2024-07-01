@@ -2,7 +2,6 @@ require "main.pil"
 require "rom.pil"
 require "mem.pil"
 
-// Rom(N: 2**8);
-Rom(N: 2**10); // TODO: Change to 2**8!
+Rom(N: 2**8);
 Mem(N: 2**10);
-Main(N: 2**10);
+Main(N: 2**12);
