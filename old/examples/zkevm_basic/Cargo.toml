@@ -13,7 +13,7 @@ pil2-components = { path = "../../../components" }
 # proofman-cli = { path = "../../cli" }
 # pilout = { path = "../../pilout" }
 # log = { version = "0.4", default-features = false }
-# env_logger = { version = "0.11", default-features = false }
+env_logger = { workspace = true }
 goldilocks = { path = "../../../goldilocks"}
 # serde = { version = "1.0.130", features = ["derive"] }
 # serde_json = "1.0.68"

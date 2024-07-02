@@ -11,4 +11,4 @@ proofman = { path = "../old/proofman-old" }
 proofman-mock = { path = "../old/proofman-mock" }
 pilout = { path = "../pilout" }
 goldilocks = { path = "../goldilocks" }
-log = { version = "0.4.20" }
+log = { workspace = true }

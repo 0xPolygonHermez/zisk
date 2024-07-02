@@ -11,4 +11,4 @@ path = "src/lib.rs"
 [dependencies]
 proofman = { path = "../../../old/proofman-old" }
 util = { path = "../../../util" }
-log = { version = "0.4", default-features = false }
+log = { workspace = true }

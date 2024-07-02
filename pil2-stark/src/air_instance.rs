@@ -4,7 +4,7 @@ use crate::{ExecutionCtx, ProofCtx};
 
 #[allow(dead_code)]
 pub struct AirInstanceId {
-    subproof_id: i32,
+    airgroup_id: i32,
     air_id: i32,
     instance_id: i32,
 }
@@ -17,9 +17,9 @@ pub enum AirInstancesSet {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct AirInstance {
-    subproof_id: i32,
-    air_id: i32,
-    instance_id: i32,
+    pub airgroup_id: i32,
+    pub air_id: i32,
+    pub instance_id: i32,
     pub meta: Option<Box<dyn std::any::Any>>,
 }
 

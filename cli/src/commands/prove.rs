@@ -1,20 +1,41 @@
 // extern crate env_logger;
 use clap::Parser;
+use pil2_stark::Pil2StarkProver;
 use std::path::PathBuf;
+use colored::Colorize;
+use goldilocks::Goldilocks;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ProveCmd {
     /// Proofman configuration file path
-    #[clap(short, long, default_value = "proofman.config.json")]
-    pub config: PathBuf,
-
-    /// Output file path
-    #[clap(short, long, default_value = "proof.json")]
-    pub output: PathBuf,
+    #[clap(short, long)]
+    pub lib: PathBuf,
 
     /// Public inputs file path
     #[clap(short, long)]
     pub public_inputs: Option<PathBuf>,
+
+    /// Output file path
+    #[clap(short, long, default_value = "proof.json")]
+    pub output: PathBuf,
+}
+
+impl ProveCmd {
+    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
+        println!("");
+        // println!("witness lib: {}", self.lib.display());
+        // println!("Output file: {}", self.output.display());
+        // println!("Public inputs file: {:?}", self.public_inputs);
+
+        type Field = Goldilocks;
+
+        let _proof = Pil2StarkProver::<Field>::prove(self.lib.clone(), self.public_inputs.clone());
+
+        // TODO! Save proof
+
+        Ok(())
+    }
 }

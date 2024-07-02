@@ -4,13 +4,13 @@ use crate::AirInstancesSet;
 /// Represents the context when executing a witness computer plugin
 pub struct ExecutionCtx {
     /// If true, the plugin must generate the public outputs
-    public_output: bool,
+    pub public_output: bool,
 
     /// If true, the plugin must generate the air instances map
-    air_instances_map: bool,
+    pub air_instances_map: bool,
 
     /// If Some, it must generate the witness computation for the given set of air instances
-    witness_computation: Option<AirInstancesSet>,
+    pub witness_computation: Option<AirInstancesSet>,
 }
 
 impl ExecutionCtx {

@@ -3,6 +3,8 @@ use pilout::pilout_proxy::PilOutProxy;
 use crate::{AirInstanceMap, ExecutionCtx, ProofCtx};
 
 pub trait WitnessManager<F> {
+    fn initialize(&self);
+
     fn get_pilout(&self) -> &PilOutProxy;
 
     fn start_proof(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);

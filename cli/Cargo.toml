@@ -8,9 +8,11 @@ readme = "README.md"
 [dependencies]
 proofman = { path = "../old/proofman-old" }
 pilout = { path = "../pilout" }
-log = { version = "0.4.20" }
-env_logger = "0.11"
+log = { workspace = true }
+env_logger = { workspace = true }
 clap = { version = "4.5", features = ["derive", "env"] }
+goldilocks = { path = "../goldilocks" }
+pil2-stark = { path = "../pil2-stark"}
 util = { path = "../util" }
 colored = "2"
 tinytemplate = "1.1"

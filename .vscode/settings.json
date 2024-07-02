@@ -11,6 +11,6 @@
         // "./proofman/pil2-stark/Cargo.toml",
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
-        "./zisk-witness/Cargo.toml"
+        "./zisk-wc/Cargo.toml"
     ]
 }

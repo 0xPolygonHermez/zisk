@@ -11,3 +11,5 @@ pil2-stark = { path ="../pil2-stark" }
 pilout = { path = "../pilout" }
 goldilocks = { path = "../goldilocks" }
 pil2-components = { path = "../components" }
+log = { workspace = true }
+env_logger = { workspace = true }

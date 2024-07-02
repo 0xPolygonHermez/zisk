@@ -1,7 +1,6 @@
 pub trait Component<T> {
     type Output;
 
-
     fn init(&mut self);
     fn finish(&mut self);
     fn get_default_id(&self) -> u16;

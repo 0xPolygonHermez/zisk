@@ -1,28 +1,32 @@
+use log::trace;
 use pil2_stark::*;
 
-pub struct MemSM<F> {
+pub struct BinarySM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F> MemSM<F> {
+impl<F> BinarySM<F> {
+    const MY_NAME: &'static str = "BinarySM";
+
     pub fn new() -> Self {
         Self { _phantom: std::marker::PhantomData }
     }
 }
+
 #[allow(dead_code)]
-pub struct MemSMMetadata {}
+pub struct BinarySMMetadata {}
 
 #[allow(unused_variables)]
-impl<F> AirInstanceWitnessComputation<F> for MemSM<F> {
+impl<F> AirInstanceWitnessComputation<F> for BinarySM<F> {
     fn start_proof(&self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
-        unimplemented!()
+        trace!("{}: ··· Starting proof", Self::MY_NAME);
     }
 
     fn end_proof(&self, proof_ctx: &ProofCtx<F>) {
-        unimplemented!()
+        trace!("Ending proof for BinarySM");
     }
 
     fn calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, air_instance: &AirInstance) {
-        unimplemented!()
+        trace!("Calculating witness for BinarySM at stage {}", stage);
     }
 }

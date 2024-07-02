@@ -15,7 +15,7 @@ serde_derive = "1.0.196"
 proofman = { path = "../../../old/proofman-old" }
 goldilocks = { path = "../../../goldilocks" }
 util = { path = "../../../util" }
-log = { version = "0.4", default-features = false }
+log = { workspace = true }
 starks-lib-c = { path = "../../starks-lib-c" }
 transcript = { path = "../../../transcript" }
 

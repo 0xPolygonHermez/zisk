@@ -1,15 +1,11 @@
-// mod memory;
+mod arith;
+mod binary;
+#[allow(special_module_name)]
+mod main;
+mod mem;
 mod zisk_processor;
-// mod component;
-// mod memory;
-// mod register;
-// mod rom;
 
-// // pub use memory::*;
 pub use zisk_processor::*;
-// pub use rom::*;
-// pub use component::*;
-// pub use memory::*;
 
 use std::collections::HashMap;
 
@@ -21,18 +17,4 @@ pub fn get_stdlib_wc<T, I>() -> HashMap<String, Box<dyn AirWitnessComputation<T,
     // stdlib_modules.insert("logup".to_string(), Box::new(Logup::new()));
 
     stdlib_modules
-}
-
-#[cfg(test)]
-mod tests {
-
-    pub fn add(left: usize, right: usize) -> usize {
-        left + right
-    }
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 }
