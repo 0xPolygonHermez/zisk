@@ -63,17 +63,21 @@ impl<'a, F> WitnessManager<'a, F> {
 ////////
 
 pub trait WitnessModule<'a, F>: HasSubcomponents<'a, F> {
-    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+    fn _start_proof(&self, public_inputs: &[u8], proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx) {
         log::trace!("{}: ··· Starting proof", self.name());
+        self.start_proof(public_inputs, proof_ctx, execution_ctx);
+
         for subcomponent in self.get_subcomponents() {
-            subcomponent.start_proof(proof_ctx, execution_ctx);
+            subcomponent._start_proof(public_inputs, proof_ctx, execution_ctx);
         }
     }
 
-    fn end_proof(&self, proof_ctx: &ProofCtx<F>) {
+    fn _end_proof(&self, proof_ctx: &ProofCtx<F>) {
         log::trace!("{}: ··· Ending proof", self.name());
+        self.end_proof(proof_ctx);
+
         for subcomponent in self.get_subcomponents() {
-            subcomponent.end_proof(proof_ctx);
+            subcomponent._end_proof(proof_ctx);
         }
     }
 
@@ -86,18 +90,22 @@ pub trait WitnessModule<'a, F>: HasSubcomponents<'a, F> {
         }
     }
 
-    fn _calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+    fn _calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
         log::trace!("{}: ··· Calculating Witness for stage {}", self.name(), stage);
-        self.calculate_witness(stage, proof_ctx, execution_ctx);
+        self.calculate_witness(stage, public_inputs, proof_ctx, execution_ctx);
 
         for subcomponent in self.get_subcomponents() {
-            subcomponent._calculate_witness(stage, proof_ctx, execution_ctx);
+            subcomponent._calculate_witness(stage, public_inputs, proof_ctx, execution_ctx);
         }
     }
 
+    fn start_proof(&self, public_inputs: &[u8], proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx);
+
+    fn end_proof(&self, proof_ctx: &ProofCtx<F>);
+
     fn calculate_air_instances_map(&self, proof_ctx: &ProofCtx<F>);
 
-    fn calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);
+    fn calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);
 
     fn name(&self) -> String;
 }

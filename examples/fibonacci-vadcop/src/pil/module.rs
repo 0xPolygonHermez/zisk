@@ -1,12 +1,6 @@
 use common::{ExecutionCtx, ProofCtx, TracePol, WitnessPilOut};
 use wcmanager::{HasSubcomponents, WitnessModule};
 
-#[allow(dead_code)]
-pub struct ModuleTrace<F> {
-    pub a: TracePol<F>,
-    pub b: TracePol<F>,
-}
-
 pub struct Module<'a, F> {
     subcomponents: Vec<Box<dyn WitnessModule<'a, F> + 'a>>,
 }
@@ -19,9 +13,16 @@ impl<'a, F> Module<'a, F> {
 }
 
 impl<'a, F> WitnessModule<'a, F> for Module<'a, F> {
+    fn start_proof(&self, public_inputs: &[u8], proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+    }
+
+    fn end_proof(&self, proof_ctx: &ProofCtx<F>) {}
+
     fn calculate_air_instances_map(&self, proof_ctx: &ProofCtx<F>) {}
 
-    fn calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {}
+    fn calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+        
+    }
 
     fn name(&self) -> String {
         format!("{}", Self::MY_NAME)

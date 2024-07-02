@@ -1,5 +1,6 @@
 mod pil;
-use pil::{Fibonacci, Module};
+use goldilocks::AbstractField;
+use pil::{Fibonacci, FibonacciVadcopInputs, Module};
 
 use wcmanager::{WitnessModule, HasSubcomponents, WitnessManagerAPI};
 
@@ -15,7 +16,7 @@ impl<'a, F> FibonacciVadcop<'a, F> {
     }
 }
 
-impl<'a, F> WitnessManagerAPI<'a, F> for FibonacciVadcop<'a, F> {
+impl<'a, F: AbstractField> WitnessManagerAPI<'a, F> for FibonacciVadcop<'a, F> {
     fn build_wcmanager(&self) -> Box<dyn WitnessModule<'a, F> + 'a> {
         let mut fibonacci = Box::new(Fibonacci::<'a, F>::new());
         let module = Box::new(Module::<'a, F>::new());

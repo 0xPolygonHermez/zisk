@@ -5,13 +5,13 @@ use std::{
 
 use std::cell::UnsafeCell;
 
-pub struct Ptr {
+pub struct TracePtr {
     pub ptr: UnsafeCell<*mut u8>,
 }
 
-impl Ptr {
+impl TracePtr {
     pub fn new(ptr: *mut u8) -> Self {
-        Ptr { ptr: UnsafeCell::new(ptr) }
+        TracePtr { ptr: UnsafeCell::new(ptr) }
     }
 
     pub fn add<T>(&self) -> *mut u8 {

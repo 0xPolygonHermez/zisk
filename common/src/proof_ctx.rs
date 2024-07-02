@@ -19,7 +19,6 @@ use crate::AirGroupInstanceMap;
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
     /// The public inputs associated with the proof context.
-    pub public_inputs: Option<Vec<u8>>,
     // /// The challenges associated with the proof context.
     // challenges: Vec<Vec<T>>,
     /// Airgroups
@@ -37,14 +36,14 @@ impl<T: Default + Clone> ProofCtx<T> {
     const MY_NAME: &'static str = "proofCtx";
 
     /// Creates a new `ProofCtx` given a `Pilout`.
-    pub fn new(public_inputs: Option<Vec<u8>>, pilout: &PilOutProxy) -> Self {
+    pub fn new(pilout: &PilOutProxy) -> Self {
         debug!("{}: ··· Creating proof context", Self::MY_NAME);
 
         if pilout.subproofs.len() == 0 {
             panic!("No subproofs found in PilOut");
         }
 
-        pilout.print_pilout_info();
+        // pilout.print_pilout_info();
 
         let mut challenges = Vec::<Vec<T>>::new();
 
@@ -91,7 +90,6 @@ impl<T: Default + Clone> ProofCtx<T> {
 
         let proof_ctx = ProofCtx {
             //     pilout,
-            public_inputs,
             //     challenges,
             air_groups,
             //     subproof_values: Vec::new(),

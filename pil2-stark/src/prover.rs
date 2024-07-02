@@ -55,14 +55,15 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
             return Err("Hashes do not match".into());
         }
 
-        let public_inputs = Some(Vec::new()); // TODO! Change this line by reading the inputs from the file
+        info!("{}: ··· Creating proof context", Self::MY_NAME);
+        let mut proof_ctx = Self::create_proof_context(&pilout);
 
-        let mut proof_ctx = Self::create_proof_context(public_inputs, &pilout);
         info!("{}: ··· Creating execution context", Self::MY_NAME);
         let execution_ctx = ExecutionCtx::builder().with_air_instances_map().with_all_instances().build();
 
         info!("{}: ··· Starting proof", Self::MY_NAME);
-        wcm.start_proof(&mut proof_ctx, &execution_ctx);
+        let public_inputs: Vec<u8> = vec![17u8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0];
+        wcm._start_proof(&public_inputs, &mut proof_ctx, &execution_ctx);
 
         info!("{}: ··· Calculating Air instances map", Self::MY_NAME);
         wcm._calculate_air_instances_map(&proof_ctx);
@@ -73,7 +74,7 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
             }
 
             info!("{}: ··· Calculating Witness for stage {}", Self::MY_NAME, stage);
-            wcm._calculate_witness(stage, &proof_ctx, &execution_ctx);
+            wcm._calculate_witness(stage, &public_inputs, &proof_ctx, &execution_ctx);
 
             Self::commit_stage(stage, &mut proof_ctx);
 
@@ -85,15 +86,15 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
         Self::opening_stages(&proof_ctx);
 
         info!("{}: ··· Ending proof", Self::MY_NAME);
-        wcm.end_proof(&proof_ctx);
+        wcm._end_proof(&proof_ctx);
 
         let proof = Self::finalize_proof(&proof_ctx);
 
         Ok(proof)
     }
 
-    fn create_proof_context(inputs: Option<Vec<u8>>, pilout: &PilOutProxy) -> ProofCtx<F> {
-        ProofCtx::new(inputs, pilout)
+    fn create_proof_context(pilout: &PilOutProxy) -> ProofCtx<F> {
+        ProofCtx::new(pilout)
     }
 
     fn create_buffers(stage: u32, air_instances_map: &AirGroupInstanceMap) {

@@ -6,13 +6,13 @@ pub struct FibonacciVadcopInputs {
 }
 
 impl FibonacciVadcopInputs {
-    pub fn get_inputs(_inputs_path: Option<PathBuf>) -> Vec<u8> {
-        let inputs: Vec<usize> = vec![1, 2];
+    pub fn to_bytes(_inputs_path: Option<PathBuf>) -> Vec<u8> {
+        let inputs: Vec<usize> = vec![17, 1, 2];
 
         inputs.iter().flat_map(|input| input.to_le_bytes().to_vec()).collect()
     }
 
-    fn from_bytes(input_bytes: Vec<u8>) -> Vec<usize> {
+    pub fn from_bytes(input_bytes: &[u8]) -> Vec<usize> {
         let usize_size = std::mem::size_of::<usize>();
         assert_eq!(input_bytes.len() % usize_size, 0);
 
@@ -24,5 +24,4 @@ impl FibonacciVadcopInputs {
 
         inputs
     }
-
 }

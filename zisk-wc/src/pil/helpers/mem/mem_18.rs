@@ -1,6 +1,6 @@
 extern crate pil2_stark;
 
-use common::{Ptr, TracePol};
+use common::{TracePtr, TracePol};
 
 pub struct Mem18<T> {
     pub buffer: Option<Vec<u8>>,
@@ -19,7 +19,7 @@ impl<T> Mem18<T> {
         let mut buffer = vec![0u8; Self::NUM_ROWS * Self::ROW_SIZE];
         let ptr = buffer.as_mut_ptr();
 
-        let ptr_x = Ptr::new(ptr);
+        let ptr_x = TracePtr::new(ptr);
 
         Self {
             buffer: Some(buffer),
@@ -37,7 +37,7 @@ impl<T> Mem18<T> {
         let mut ptr = ptr as *mut u8;
         ptr = unsafe { ptr.add(offset) };
 
-        let ptr_x = Ptr::new(ptr);
+        let ptr_x = TracePtr::new(ptr);
 
         Self {
             buffer: None,

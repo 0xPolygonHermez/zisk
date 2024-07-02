@@ -34,7 +34,8 @@ impl ProveCmd {
 
         type Field = Goldilocks;
 
-        let _proof = Pil2StarkProver::<Field>::prove(self.lib.clone(), self.pilout.clone(), self.public_inputs.clone())?;
+        let _proof =
+            Pil2StarkProver::<Field>::prove(self.lib.clone(), self.pilout.clone(), self.public_inputs.clone())?;
 
         // TODO! Save proof
 
