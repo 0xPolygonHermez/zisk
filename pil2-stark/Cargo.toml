@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pilout ={ path = "../pilout" }
-libloading = "0.8.4"
+pilout = { path = "../pilout" }
+common = { path = "../common" }
+wcmanager = { path = "../wcmanager" }
 log = { workspace = true }
-tokio = { version = "1.0", features = ["full"] }
+# tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"

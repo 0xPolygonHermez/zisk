@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+common = { path = "../common" }
+wcmanager = { path = "../wcmanager" }
 pil2-stark = { path = "../pil2-stark"}
 proofman = { path = "../old/proofman-old" }
 proofman-mock = { path = "../old/proofman-mock" }

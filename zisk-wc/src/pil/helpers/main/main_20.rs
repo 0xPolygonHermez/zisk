@@ -1,6 +1,6 @@
 extern crate pil2_stark;
 
-use pil2_stark::{Ptr, TracePol};
+use common::{Ptr, TracePol};
 
 pub struct Main20<T> {
     pub buffer: Option<Vec<u8>>,

@@ -12,14 +12,14 @@ use std::fmt;
 use log::debug;
 use pilout::pilout_proxy::PilOutProxy;
 
-use crate::AirInstanceMap;
+use crate::AirGroupInstanceMap;
 
 /// Proof context for managing proofs, including information about airs and air instances.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProofCtx<T> {
     /// The public inputs associated with the proof context.
-    pub public_inputs: Option<Vec<T>>,
+    pub public_inputs: Option<Vec<u8>>,
     // /// The challenges associated with the proof context.
     // challenges: Vec<Vec<T>>,
     /// Airgroups
@@ -28,8 +28,8 @@ pub struct ProofCtx<T> {
     // pub subproof_values: Vec<Vec<T>>,
     // // NOTE: remove this ptr when vadcops ready, now it's used while developing
     // pub proof: *mut c_void,
-    pub async_tasks: Vec<tokio::task::JoinHandle<()>>,
-    pub air_instance_map: AirInstanceMap,
+    // pub async_tasks: Vec<tokio::task::JoinHandle<()>>,
+    pub air_instances_map: AirGroupInstanceMap,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
@@ -37,7 +37,7 @@ impl<T: Default + Clone> ProofCtx<T> {
     const MY_NAME: &'static str = "proofCtx";
 
     /// Creates a new `ProofCtx` given a `Pilout`.
-    pub fn new(public_inputs: Option<Vec<T>>, pilout: &PilOutProxy) -> Self {
+    pub fn new(public_inputs: Option<Vec<u8>>, pilout: &PilOutProxy) -> Self {
         debug!("{}: ··· Creating proof context", Self::MY_NAME);
 
         if pilout.subproofs.len() == 0 {
@@ -96,8 +96,8 @@ impl<T: Default + Clone> ProofCtx<T> {
             air_groups,
             //     subproof_values: Vec::new(),
             //     proof: std::ptr::null_mut(),
-            async_tasks: Vec::new(),
-            air_instance_map: AirInstanceMap::new(),
+            // async_tasks: Vec::new(),
+            air_instances_map: AirGroupInstanceMap::new(pilout.subproofs.len()),
             _phantom: std::marker::PhantomData,
         };
 

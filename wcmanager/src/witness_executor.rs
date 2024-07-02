@@ -1,6 +1,7 @@
-use crate::{ExecutionCtx, ProofCtx};
+extern crate common;
+use common::{ExecutionCtx, ProofCtx};
 
-pub trait WitnessExecutor<F> {
+pub trait WitnessExecutor<'a, F> {
     fn start_execute(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);
 
     fn execute(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);

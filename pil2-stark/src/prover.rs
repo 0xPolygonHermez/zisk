@@ -1,92 +1,119 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use log::trace;
+use log::{info, trace};
 use pilout::pilout_proxy::PilOutProxy;
-use crate::{AirInstanceMap, ExecutionCtx, ProofCtx, WitnessManager};
+use common::{AirGroupInstanceMap, ExecutionCtx, ProofCtx};
+use wcmanager::{WitnessManagerAPI, WitnessModule};
 
-use crate::{load_plugin, Proof};
+use crate::Proof;
+use wcmanager::load_plugin;
 
-pub struct Pil2StarkProver<F> {
-    _phantom: std::marker::PhantomData<F>,
+pub struct Pil2StarkProver<'a, F> {
+    _phantom: std::marker::PhantomData<&'a F>,
 }
 
 #[allow(unused_variables)]
-impl<F: Default + Clone> Pil2StarkProver<F> {
+impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
     const MY_NAME: &'static str = "StrkPrvr";
 
-    pub fn prove(lib_path: PathBuf, inputs: Option<PathBuf>) -> Result<Proof<F>, Box<dyn Error>> {
-        let mut loaded_inputs: Option<Vec<F>> = None;
-
+    pub fn prove(
+        lib_path: PathBuf,
+        pilout_path: PathBuf,
+        inputs_path: Option<PathBuf>,
+    ) -> Result<Proof<F>, Box<dyn Error>> {
         // Check input parameters
-        if let Some(path) = inputs {
-            if path.exists() {
-                if path.is_file() {
-                    loaded_inputs = Some(vec![F::default(); 32]);
-                } else {
-                    return Err(format!("Path exists but is not a file: {:?}", path).into());
-                }
-            } else {
-                return Err(format!("Path does not exist: {:?}", path).into());
+        if !lib_path.exists() {
+            return Err(format!("Path does not exist: {:?}", lib_path).into());
+        }
+
+        if !pilout_path.exists() {
+            return Err(format!("Path does not exist: {:?}", pilout_path).into());
+        }
+        if !pilout_path.is_file() {
+            return Err(format!("Path is not a file: {:?}", pilout_path).into());
+        }
+
+        if let Some(ref inputs_path) = inputs_path {
+            if !inputs_path.exists() {
+                return Err(format!("Path does not exist: {:?}", inputs_path).into());
+            }
+            if !inputs_path.is_file() {
+                return Err(format!("Path is not a file: {:?}", inputs_path).into());
             }
         }
 
         trace!("{}: ··· Loading plugin: {:?}", Self::MY_NAME, lib_path);
-        let mut wc_plugin: Box<dyn WitnessManager<F>> = load_plugin(lib_path).expect("Failed to load plugin");
-        wc_plugin.initialize();
+        let wc_plugin: Box<dyn WitnessManagerAPI<'a, F>> = load_plugin(lib_path).expect("Failed to load plugin");
 
-        let mut proof_ctx = Self::create_proof_context(loaded_inputs, wc_plugin.get_pilout());
-        trace!("{}: ··· Creating execution context", Self::MY_NAME);
+        let wcm: Box<dyn WitnessModule<'a, F> + 'a> = wc_plugin.build_wcmanager();
+
+        let pilout = PilOutProxy::new(&pilout_path.display().to_string(), false).unwrap();
+
+        // Check hashes from proving key and plugin match
+        if wc_plugin.get_pilout_hash() != b"fibonacci-vadcop-hash" {
+            return Err("Hashes do not match".into());
+        }
+
+        let public_inputs = Some(Vec::new()); // TODO! Change this line by reading the inputs from the file
+
+        let mut proof_ctx = Self::create_proof_context(public_inputs, &pilout);
+        info!("{}: ··· Creating execution context", Self::MY_NAME);
         let execution_ctx = ExecutionCtx::builder().with_air_instances_map().with_all_instances().build();
 
-        wc_plugin.start_proof(&proof_ctx, &execution_ctx);
+        info!("{}: ··· Starting proof", Self::MY_NAME);
+        wcm.start_proof(&mut proof_ctx, &execution_ctx);
 
-        let air_instances_map = wc_plugin.get_air_instances_map(&proof_ctx);
+        info!("{}: ··· Calculating Air instances map", Self::MY_NAME);
+        wcm._calculate_air_instances_map(&proof_ctx);
 
-        for stage in 1..=wc_plugin.get_pilout().num_stages() {
+        for stage in 1..=pilout.num_stages() {
             if stage == 1 {
-                Self::create_buffers(stage, &air_instances_map)
+                Self::create_buffers(stage, &proof_ctx.air_instances_map)
             }
 
-            wc_plugin.calculate_witness(stage, wc_plugin.get_pilout(), &proof_ctx);
+            info!("{}: ··· Calculating Witness for stage {}", Self::MY_NAME, stage);
+            wcm._calculate_witness(stage, &proof_ctx, &execution_ctx);
 
             Self::commit_stage(stage, &mut proof_ctx);
 
-            if stage < wc_plugin.get_pilout().num_stages() {
+            if stage < pilout.num_stages() {
                 Self::update_challenges(stage, &mut proof_ctx);
             }
         }
-        wc_plugin.end_proof(&proof_ctx);
 
         Self::opening_stages(&proof_ctx);
+
+        info!("{}: ··· Ending proof", Self::MY_NAME);
+        wcm.end_proof(&proof_ctx);
 
         let proof = Self::finalize_proof(&proof_ctx);
 
         Ok(proof)
     }
 
-    fn create_proof_context(inputs: Option<Vec<F>>, pilout: &PilOutProxy) -> ProofCtx<F> {
+    fn create_proof_context(inputs: Option<Vec<u8>>, pilout: &PilOutProxy) -> ProofCtx<F> {
         ProofCtx::new(inputs, pilout)
     }
 
-    fn create_buffers(stage: u32, air_instances_map: &AirInstanceMap) {
-        trace!("Creating buffers for stage {}", stage);
+    fn create_buffers(stage: u32, air_instances_map: &AirGroupInstanceMap) {
+        info!("{}: ··· Creating buffers for stage", Self::MY_NAME);
     }
 
     fn update_challenges(stage: u32, proof_ctx: &mut ProofCtx<F>) {
-        trace!("Updating challenges for stage {}", stage);
+        info!("{}: ··· Updating challenges for stage {}", Self::MY_NAME, stage);
     }
 
     fn commit_stage(stage: u32, proof_ctx: &mut ProofCtx<F>) {
-        trace!("Committing stage {}", stage);
+        info!("{}: ··· Committing stage", Self::MY_NAME);
     }
 
     fn opening_stages(proof_ctx: &ProofCtx<F>) {
-        trace!("Opening stages");
+        info!("{}: ··· Opening stages", Self::MY_NAME);
     }
 
     fn finalize_proof(proof_ctx: &ProofCtx<F>) -> Proof<F> {
-        trace!("Finalizing proof");
+        info!("{}: ··· Finalizing proof", Self::MY_NAME);
         Proof::new()
     }
 }
@@ -100,6 +127,6 @@ mod tests {
         // TODO The library must be generated during the test
         let path = "/Users/xpinsach/dev/pil2-proofman/target/debug/libzisk_wc.dylib";
 
-        let _proof = Pil2StarkProver::prove::<u8>(PathBuf::from(path), None);
+        // let _proof = Pil2StarkProver::prove::<u8>(PathBuf::from(path), None);
     }
 }

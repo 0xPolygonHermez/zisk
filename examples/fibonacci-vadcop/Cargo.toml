@@ -1,0 +1,14 @@
+[package]
+name = "fibonacci-vadcop"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+common = { path = "../../common" }
+goldilocks = { path = "../../goldilocks" }
+wcmanager = { path = "../../wcmanager" }
+log = { workspace = true }
+env_logger = { workspace = true }

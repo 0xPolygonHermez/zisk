@@ -49,6 +49,14 @@ impl PilOutProxy {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
+    pub fn find_air_id_by_name(&self, air_group_id: usize, name: &str) -> Option<usize> {
+        self.pilout.subproofs[air_group_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
+    }
+
+    pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &crate::pilout::BasicAir {
+        &self.pilout.subproofs[air_group_id].airs[air_id]
+    }
+
     pub fn num_stages(&self) -> u32 {
         if self.fake_pilout {
             return 3;

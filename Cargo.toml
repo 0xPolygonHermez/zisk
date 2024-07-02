@@ -11,6 +11,8 @@ members = [
     "transcript",
     "util",    
     "zisk-wc",
+    "examples/fibonacci-vadcop",
+    "wcmanager", "common",
 ]
 
 resolver = "2"

@@ -7,9 +7,11 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+common = { path = "../common" }
 pil2-stark = { path ="../pil2-stark" }
 pilout = { path = "../pilout" }
 goldilocks = { path = "../goldilocks" }
 pil2-components = { path = "../components" }
+wcmanager = { path = "../wcmanager" }
 log = { workspace = true }
 env_logger = { workspace = true }

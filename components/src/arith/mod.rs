@@ -1,16 +1,20 @@
 extern crate pil2_stark;
 
+use common::{AirInstance, AirInstanceWitnessComputation, ExecutionCtx, ProofCtx, WitnessPilOut};
+use goldilocks::AbstractField;
 use log::trace;
-use pil2_stark::*;
+
+use crate::component::{Component, ComponentOutput};
 // use proofman::trace;
 
-pub struct ArithSM<F> {
-    _phantom: std::marker::PhantomData<F>,
+pub struct ArithSM<'a, F> {
+    _phantom: std::marker::PhantomData<&'a F>,
 }
 
 #[allow(dead_code, unused_variables)]
-impl<F> ArithSM<F> {
+impl<'a, F> ArithSM<'a, F> {
     const MY_NAME: &'static str = "ArithSM ";
+    const DEFAULT_ID: u16 = 4;
 
     pub fn new() -> Self {
         Self { _phantom: std::marker::PhantomData }
@@ -43,31 +47,35 @@ impl<F> ArithSM<F> {
     }
 }
 
-// async fn async_task(id: usize) -> usize {
-//     println!("Task {} started", id);
-//     sleep(Duration::from_secs(id as u64)).await;
-//     println!("Task {} completed", id);
-//     id
-// }
-
 #[allow(dead_code)]
 pub struct ArithSMMetadata {}
 
 #[allow(unused_variables)]
-impl<F> AirInstanceWitnessComputation<F> for ArithSM<F> {
-    fn start_proof(&self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+impl<'a, F> AirInstanceWitnessComputation<'a, F> for ArithSM<'a, F> {
+    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx, pilout: &WitnessPilOut) {
         trace!("{}: ··· Starting proof", Self::MY_NAME);
 
-        // For testing purposes only we decide to add some mock data here.
-        proof_ctx.air_instance_map = true;
+        // TO BE REMOVED For testing purposes only we decide to add some mock data here.
+        // let air_id = pilout.find_air_id_by_name(0, "Arith_16").unwrap();
         if execution_ctx.air_instances_map {
-            let mut xxx = Vec::new();
-            xxx.push(AirInstance {
-                airgroup_id: 0,
-                air_id: 0,
-                instance_id: 0,
-                meta: Some(Box::new(ArithSMMetadata {})),
-            });
+            proof_ctx.air_instances_map.add_air_instance(
+                0,
+                AirInstance {
+                    air_group_id: 0,
+                    air_id: 0, // Hardcoded, to be removed
+                    instance_id: None,
+                    meta: Some(Box::new(ArithSMMetadata {})),
+                },
+            );
+            proof_ctx.air_instances_map.add_air_instance(
+                0,
+                AirInstance {
+                    air_group_id: 0,
+                    air_id: 1, // Hardcoded, to be removed
+                    instance_id: None,
+                    meta: Some(Box::new(ArithSMMetadata {})),
+                },
+            );
         }
     }
 
@@ -77,5 +85,24 @@ impl<F> AirInstanceWitnessComputation<F> for ArithSM<F> {
 
     fn calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, air_instance: &AirInstance) {
         trace!("Calculating witness for ArithSM at stage {}", stage);
+    }
+}
+
+#[allow(dead_code)]
+impl<'a, F: AbstractField> Component<F> for ArithSM<'a, F> {
+    fn init(&mut self) {}
+
+    fn finish(&mut self) {}
+
+    fn get_default_id(&self) -> u16 {
+        Self::DEFAULT_ID
+    }
+
+    fn calculate_free_input(&self, _values: Vec<F>) -> ComponentOutput<F> {
+        ComponentOutput::Single(F::one())
+    }
+
+    fn verify(&self, _values: Vec<F>) -> bool {
+        unimplemented!()
     }
 }

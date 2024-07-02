@@ -1,7 +1,8 @@
 // extern crate env_logger;
-use clap::Parser;
+use clap::{Parser};
 use pil2_stark::Pil2StarkProver;
-use std::path::PathBuf;
+use tinytemplate::error;
+use std::{fmt::Error, path::PathBuf};
 use colored::Colorize;
 use goldilocks::Goldilocks;
 
@@ -17,6 +18,10 @@ pub struct ProveCmd {
     #[clap(short, long)]
     pub public_inputs: Option<PathBuf>,
 
+    /// Pilout path, here until setup ready
+    #[clap(long)]
+    pub pilout: PathBuf,
+
     /// Output file path
     #[clap(short, long, default_value = "proof.json")]
     pub output: PathBuf,
@@ -26,13 +31,10 @@ impl ProveCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
         println!("");
-        // println!("witness lib: {}", self.lib.display());
-        // println!("Output file: {}", self.output.display());
-        // println!("Public inputs file: {:?}", self.public_inputs);
 
         type Field = Goldilocks;
 
-        let _proof = Pil2StarkProver::<Field>::prove(self.lib.clone(), self.public_inputs.clone());
+        let _proof = Pil2StarkProver::<Field>::prove(self.lib.clone(), self.pilout.clone(), self.public_inputs.clone())?;
 
         // TODO! Save proof
 

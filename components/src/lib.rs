@@ -1,5 +1,6 @@
 mod arith;
 mod binary;
+mod component;
 #[allow(special_module_name)]
 mod main;
 mod mem;

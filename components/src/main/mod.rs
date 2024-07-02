@@ -1,11 +1,12 @@
+use common::{AirInstance, AirInstanceWitnessComputation, ExecutionCtx, ProofCtx, WitnessPilOut};
 use log::trace;
-use pil2_stark::*;
+use wcmanager::WitnessExecutor;
 
-pub struct MainSM<F> {
-    _phantom: std::marker::PhantomData<F>,
+pub struct MainSM<'a, F> {
+    _phantom: std::marker::PhantomData<&'a F>,
 }
 
-impl<F> MainSM<F> {
+impl<'a, F> MainSM<'a, F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     pub fn new() -> Self {
@@ -16,9 +17,32 @@ impl<F> MainSM<F> {
 pub struct MainSMMetadata {}
 
 #[allow(unused_variables)]
-impl<F> AirInstanceWitnessComputation<F> for MainSM<F> {
-    fn start_proof(&self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+impl<'a, F> AirInstanceWitnessComputation<'a, F> for MainSM<'a, F> {
+    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx, pilout: &WitnessPilOut) {
         trace!("{}: ··· Starting proof", Self::MY_NAME);
+
+        // TO BE REMOVED For testing purposes only we decide to add some mock data here.
+        // let air_id = pilout.find_air_id_by_name(0, "Arith_16").unwrap();
+        if execution_ctx.air_instances_map {
+            proof_ctx.air_instances_map.add_air_instance(
+                0,
+                AirInstance {
+                    air_group_id: 0,
+                    air_id: 3, // Hardcoded, to be removed
+                    instance_id: None,
+                    meta: Some(Box::new(MainSMMetadata {})),
+                },
+            );
+            proof_ctx.air_instances_map.add_air_instance(
+                0,
+                AirInstance {
+                    air_group_id: 0,
+                    air_id: 4, // Hardcoded, to be removed
+                    instance_id: None,
+                    meta: Some(Box::new(MainSMMetadata {})),
+                },
+            );
+        }
     }
 
     fn end_proof(&self, proof_ctx: &ProofCtx<F>) {
@@ -30,14 +54,14 @@ impl<F> AirInstanceWitnessComputation<F> for MainSM<F> {
     }
 }
 
-#[allow(unused_variables)]
-impl<F> WitnessExecutor<F> for MainSM<F> {
+#[allow(dead_code, unused_variables)]
+impl<'a, F> WitnessExecutor<'a, F> for MainSM<'a, F> {
     fn start_execute(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
-        trace!("Starting execution for MainSM");
+        trace!("{}: ··· Starting execution", Self::MY_NAME);
     }
 
     fn execute(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
-        trace!("Executing for MainSM");
+        trace!("{}: ··· Executing", Self::MY_NAME);
         // arith.startExecute(ctx, ectx);
         // bin.starteExecute(ctx, ectx);
         // let mainCtx = proofs.get(ctx.idProof);
@@ -51,6 +75,6 @@ impl<F> WitnessExecutor<F> for MainSM<F> {
     }
 
     fn end_execute(&mut self, proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
-        trace!("Ending execution for MainSM");
+        trace!("{}: ··· Ending execution", Self::MY_NAME);
     }
 }
