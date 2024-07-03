@@ -1,0 +1,16 @@
+profile = "compiler"
+change-id = 126701
+
+[build]
+target = ["riscv64ima-polygon-ziskos-elf", "x86_64-unknown-linux-gnu"]
+#extended = true
+tools = ["library/std","rustfmt"]
+configure-args = []
+
+[llvm]
+download-ci-llvm = false
+
+[rust]
+lld = true
+#llvm-tools = true
+#channel = "nightly"

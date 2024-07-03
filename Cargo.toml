@@ -1,0 +1,16 @@
+[package]
+name = "cargo-zisk"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
+
+[dependencies]
+anyhow = { version = "1.0.86", features = ["backtrace"] }
+clap = { version = "4.5.7", features = ["derive", "env"] }
+target-lexicon = "0.12.14"
