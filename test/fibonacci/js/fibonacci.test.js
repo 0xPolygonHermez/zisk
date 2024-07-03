@@ -20,8 +20,8 @@ function getSettings() {
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_4.json') },
-                Fibonacci_2: { starkStruct: path.join(__dirname, 'stark_struct_2_2.json') },
+                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
+                FibonacciSquare_4: { starkStruct: path.join(__dirname, 'stark_struct_2_4.json') },
             },
         },
         aggregation: {
@@ -68,7 +68,7 @@ describe("Fibonacci Vadcop", async function () {
         await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
-    // it.only("Generate a Fibonacci Square proof", async () => {
-    //     await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
-    // });
+    it.only("Generate a Fibonacci Square proof", async () => {
+        await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
+    });
 });

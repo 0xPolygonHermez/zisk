@@ -11,7 +11,7 @@ air Module(const int N = 2**8) {
     x === q * mod + x_mod;
 
     // Ensure that x_mod < mod <--> 0 < mod - x_mod
-    // range_check_nosel(0, mod - x_mod, 1, N);
+    // range_check(0, colu: mod - x_mod, min: 1, max: N);
 
     permutation_proves(MODULE_ID, cols: [x, x_mod]);
 }
