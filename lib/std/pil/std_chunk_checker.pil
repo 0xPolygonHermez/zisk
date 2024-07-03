@@ -1,6 +1,6 @@
 const int CHUNK_CHECKER_ID = 99;
 
-// represent max and min in base TWOBYTES
+// represent max and min in base 2¹⁶
 // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
 // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
 // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
@@ -8,11 +8,9 @@ const int CHUNK_CHECKER_ID = 99;
 
 // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
 // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
-air ChunkChecker(const int N, const int min, const int max) {
-    const int maxChunkNum = log2(max) / log2(TWOBYTES) + 1; // floor(log2(max) / log2(TWOBYTES)) + 1
-    const int minChunkNum = log2(min) / log2(TWOBYTES) + 1;
-
-    // TODO: Finish!
+air ChunkChecker(const int N, const int min, const int max, const int BASE = 2**16) {
+    const int maxChunkNum = log2(max) / log2(BASE) + 1; // floor(log2(max) / log2(BASE)) + 1
+    const int minChunkNum = log2(min) / log2(BASE) + 1;
 
     // column used to store the chunks of the value to be checked
     col witness chunks;
@@ -45,12 +43,12 @@ air ChunkChecker(const int N, const int min, const int max) {
     int _max = max;
     expr decomp = 0;
     for (int i = 0; i < maxChunkNum; i++) {
-        decomp = decomp + chunks'i * TWOBYTES**i;
+        decomp = decomp + chunks'i * BASE**i;
 
-        const int min_chunk = _min % TWOBYTES;
-        const int max_chunk = _max % TWOBYTES;
-        _min = _min / TWOBYTES;
-        _max = _max / TWOBYTES;
+        const int min_chunk = _min % BASE;
+        const int max_chunk = _max % BASE;
+        _min = _min / BASE;
+        _max = _max / BASE;
 
         if (i < minChunkNum) {
             sum_assumes(name_range_check, OPIDS[1], sel, [(chunks - min_chunk) * (1 - valGtMin)]);
