@@ -60,7 +60,7 @@ pub fn is_supported_target() -> bool {
     false
 }
 
-pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
+pub async fn get_toolchain_download_url(client: &Client, _target: String) -> String {
     // Get latest tag from https://api.github.com/repos/0xPolygonHermez/rust/releases/latest
     // and use it to construct the download URL.
     let url = format!(

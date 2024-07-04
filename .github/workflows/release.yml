@@ -1,0 +1,133 @@
+# Reference: https://github.com/foundry-rs/foundry/blob/master/.github/workflows/release.yml
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: ${{ matrix.target }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      matrix:
+        include:
+          # `runner`: GHA runner label
+          # `target`: Rust build target triple
+          # `platform` and `arch`: Used in tarball names
+          # `svm`: target platform to use for the Solc binary: https://github.com/roynalnaruto/svm-rs/blob/84cbe0ac705becabdc13168bae28a45ad2299749/svm-builds/build.rs#L4-L24
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            svm_target_platform: linux-amd64
+            platform: linux
+            arch: amd64
+          #- runner: warp-ubuntu-latest-arm64-4x
+          #  target: aarch64-unknown-linux-gnu
+          #  svm_target_platform: linux-aarch64
+          #  platform: linux
+          #  arch: arm64
+          #- runner: macos-latest-large
+          #  target: x86_64-apple-darwin
+          #  svm_target_platform: macosx-amd64
+          #  platform: darwin
+          #  arch: amd64
+          #- runner: macos-latest-xlarge
+          #  target: aarch64-apple-darwin
+          #  svm_target_platform: macosx-aarch64
+          #  platform: darwin
+          #  arch: arm64
+          # - runner: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   svm_target_platform: windows-amd64
+          #   platform: win32
+          #   arch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        id: rustc-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-04-17
+          profile: minimal
+          override: true
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+    
+      - name: Build binaries
+        env:
+          SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
+        shell: bash
+        run: |
+          set -eo pipefail
+          target="${{ matrix.target }}"
+          flags=()
+
+          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk --target "$target" "${flags[@]}"
+
+          bins=(cargo-zisk)
+          for name in "${bins[@]}"; do
+            bin=./target/$target/release/$name$exe
+            file "$bin" || true
+            ldd "$bin" || true
+            $bin --version || true
+          done
+
+      - name: Archive binaries
+        id: artifacts
+        env:
+          PLATFORM_NAME: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+          VERSION_NAME: ${{ (env.IS_NIGHTLY && 'nightly') || needs.prepare.outputs.tag_name }}
+        shell: bash
+        run: |
+          if [ "$PLATFORM_NAME" == "linux" ]; then
+            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
+          else [ "$PLATFORM_NAME" == "darwin" ]; then
+            # We need to use gtar here otherwise the archive is corrupt.
+            # See: https://github.com/actions/virtual-environments/issues/2619
+            gtar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Archive build output
+        uses: actions/upload-artifact@v3
+        env:
+          PLATFORM_NAME: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+        with:
+          name: cargo_zisk_${PLATFORM_NAME}_${TARGET}.tar.gz
+          path: |
+            ./target/${TARGET}/release/cargo-zisk
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+          
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Installing gh CLI..."
+          curl -L https://github.com/cli/cli/releases/download/v2.17.0/gh_2.17.0_linux_amd64.tar.gz | \
+            tar xvz  --strip-components=2 --exclude=man
+          chmod +x ./gh
+          mkdir tars
+          mv ./artifacts/*/*.tar.gz tars/
+
+          ./gh release create --repo "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" ./tars/* || \
+          ./gh release upload --repo "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" ./tars/*
