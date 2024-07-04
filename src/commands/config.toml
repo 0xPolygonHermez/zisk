@@ -3,14 +3,18 @@ change-id = 126701
 
 [build]
 target = ["riscv64ima-polygon-ziskos-elf"]
-#extended = true
-tools = ["library/std","rustfmt"]
+extended = true
+tools = ["library/std","rustfmt","cargo", "cargo-clippy", "clippy", "rustfmt"]
 configure-args = []
+
+
+[target.riscv64ima-polygon-ziskos-elf]
+cc = "riscv64-unknown-elf-gcc"
 
 [llvm]
 download-ci-llvm = false
 
 [rust]
 lld = true
-#llvm-tools = true
-#channel = "nightly"
+llvm-tools = true
+channel = "nightly"
