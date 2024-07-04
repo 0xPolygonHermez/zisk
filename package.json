@@ -22,7 +22,7 @@
     "ffjavascript": "^0.2.63",
     "jison": "^0.4.18",
     "lodash": "^4.17.21",
-    "pil2-compiler": "github:0xPolygonHermez/pil2-compiler#feature/buf2bint",
+    "pil2-compiler": "github:0xPolygonHermez/pil2-compiler#develop",
     "yaml": "^2.3.4"
   },
   "devDependencies": {

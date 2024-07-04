@@ -2,6 +2,20 @@ require "std_sum.pil";
 require "std_permutation.pil";
 // require "std_chunk_checker.pil";
 
+// TODO: When the bug is fixed, control last element or specified ranges, they must have the last element repeated, not a 0
+// air Feli(const int N) {
+//     if (N == 4) {
+//         col fixed A = [0..3];
+//     } else {
+//         col fixed A = [0..3,3...]
+//     }
+
+//     println(A); // bug
+// }
+
+// Feli(N: 4);
+// Feli(N: 8);
+
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
@@ -93,13 +107,13 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
         error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
     }
 
-    if (min < 0 && max > 0) {
-        println(`The provided min=${min} is negative and max=${max} is positive. Falling back to specified range...`);
+    if (min < 0) {
+        println(`The provided min=${min} is negative. Falling back to specified range...`);
     } else if (max > TWOBYTES) {
         println(`The provided max=${max} is greater than the maximum predefined ${TWOBYTES}. Falling back to specified range...`);
     }
 
-    if (predefined && !(min < 0 && max > 0) && max <= TWOBYTES) {
+    if (predefined && min > 0 && max <= TWOBYTES) {
         container proof.std.rcpre alias rcpreprove {
             int max_subproof_id = 0;
             int u8_used = 0;
@@ -120,73 +134,68 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
-            if (min >= 0 || (min < 0 && max <= 0)) {
+            if (max <= BYTE) {
+                // reuse U8
+                rcpreprove.u8_used = 1;
 
-                if (min < 0) {
-                    min = PRIME + min;
-                    max = max == 0 ? 0 : PRIME + max;
-                    colu = -colu; // TODO: Should I add PRIME here as well??
-                }
+                // first prove that colu - min is in U8
+                sum_assumes(name_range_check, OPIDS[0], sel, [colu - min]);
 
-                if (max <= BYTE) {
-                    println("HEY",colu,min,max);
-                    // reuse U8
-                    rcpreprove.u8_used = 1;
+                // then prove that max - colu is in U8
+                sum_assumes(name_range_check, OPIDS[0], sel, [max - colu]);
+            } else if (max <= TWOBYTES) {
+                // reuse U16
+                rcpreprove.u16_used = 1;
 
-                    // first prove that colu - min is in U8
-                    sum_assumes(name_range_check, OPIDS[0], sel, [colu - min]);
+                // first prove that colu - min is in U16
+                sum_assumes(name_range_check, OPIDS[1], sel, [colu - min]);
 
-                    // then prove that max - colu is in U8
-                    sum_assumes(name_range_check, OPIDS[0], sel, [max - colu]);
-                } else if (max <= TWOBYTES) {
-                    // reuse U16
-                    rcpreprove.u16_used = 1;
+                // second prove that max - colu is in U16
+                sum_assumes(name_range_check, OPIDS[1], sel, [max - colu]);
 
-                    // first prove that colu - min is in U16
-                    sum_assumes(name_range_check, OPIDS[1], sel, [colu - min]);
+            // TODO: This is for the big case, to be decided!
+            // } else {
+            //     error("Not implemented yet");
 
-                    // second prove that max - colu is in U16
-                    sum_assumes(name_range_check, OPIDS[1], sel, [max - colu]);
-                } else {
-                    error("Not implemented yet");
+            //     // reuse U16
+            //     rcpreprove.u16_used = 1;
 
-                    // reuse U16
-                    rcpreprove.u16_used = 1;
+            //     // represent max and min in base TWOBYTES
+            //     // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
+            //     // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
+            //     // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
+            //     // where n = nchunks_max
 
-                    // represent max and min in base TWOBYTES
-                    // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
-                    // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
-                    // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
-                    // where n = nchunks_max
+            //     // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
+            //     // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
+            //     // We'll need auxiliar columns to encode this two big OR in terms of constraints
+            //     // ChunkChecker(N*nchunks_max, min, max);
 
-                    // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
-                    // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
-                    // We'll need auxiliar columns to encode this two big OR in terms of constraints
-                    // ChunkChecker(N*nchunks_max, min, max);
+            //     // Moreover, we should check the decomposition is correct
+            //     permutation_assumes(CHUNK_CHECKER_ID, cols: [colu]);
+            // }
 
-                    // Moreover, we should check the decomposition is correct
-                    permutation_assumes(CHUNK_CHECKER_ID, cols: [colu]);
-                }
-            } else {
-                error("Not implemented yet");
+            // TODO: This is for the negative case, to be decided!
+            // } else {
+            //     error("Not implemented yet");
 
-                // Path where min < 0 and max > 0
-                // We split the range [min,max] into two ranges [min,0] and [0,max]
-                // and we prove that either val is in the first range or the second one
-                // choosing it based on a new selector
-                // These are four range checks in total, two for each range (either to U8 or U16 based on the values of min max)
+            //     // Path where min < 0 and max > 0
+            //     // We split the range [min,max] into two ranges [min,0] and [0,max]
+            //     // and we prove that either val is in the first range or the second one
+            //     // choosing it based on a new selector
+            //     // These are four range checks in total, two for each range (either to U8 or U16 based on the values of min max)
 
-                // col witness rangeSel;
+            //     // col witness rangeSel;
 
-                // // first prove that colu - min is in U16
-                // sum_assumes(name_range_check, OPIDS[1], rangeSel*sel, [colu - (PRIME + min)]);
+            //     // // first prove that colu - min is in U16
+            //     // sum_assumes(name_range_check, OPIDS[1], rangeSel*sel, [colu - (PRIME + min)]);
 
-                // // second prove that max - colu is in U16
-                // sum_assumes(name_range_check, OPIDS[1], rangeSel*sel, [- colu]);
+            //     // // second prove that max - colu is in U16
+            //     // sum_assumes(name_range_check, OPIDS[1], rangeSel*sel, [- colu]);
             }
         }
 
-        on final subproof declarePreRangeAir()
+        on final subproof declarePreRangeAir();
     } else {
         container proof.std.rc alias rcprove {
             int max_subproof_id = 0;
@@ -251,19 +260,12 @@ private function declarePreRangeAir() {
 private function declareRangeAir() {
     use proof.std.rc;
 
-    println("MAX",SUBPROOF_ID);
-
     if (SUBPROOF_ID != max_subproof_id) {
         return;
     }
 
     const int next_pow2 = 2**(log2(max_diff));
 
-    println("NEXT",`2**${log2(proof.std.rc.max_diff)}`);
-    println(opids);
-    println(opids_count);
-    println(mins);
-    println(maxs);
     _SpecifiedRanges( // TODO: Remove this function
                     next_pow2,
                     opids,
