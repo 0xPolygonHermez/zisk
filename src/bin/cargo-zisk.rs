@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use cargo_zisk::commands::build_toolchain::BuildToolchainCmd;
+use cargo_zisk::commands::install_toolchain::InstallToolchainCmd;
+
 use cargo_zisk::ZISK_VERSION_MESSAGE;
 use clap::{Parser, Subcommand};
 
@@ -22,6 +24,7 @@ pub struct ZiskSdk {
 #[derive(Subcommand)]
 pub enum ZiskSdkCommands {
     BuildToolchain(BuildToolchainCmd),
+    InstallToolchain(InstallToolchainCmd),
 }
 
 fn main() -> Result<()> {
@@ -32,6 +35,10 @@ fn main() -> Result<()> {
     if let Some(command) = args.command {
         match command {
             ZiskSdkCommands::BuildToolchain(cmd) => {
+                cmd.run()
+                    .context("Error executing BuildToolchain command")?;
+            }
+            ZiskSdkCommands::InstallToolchain(cmd) => {
                 cmd.run()
                     .context("Error executing BuildToolchain command")?;
             }
