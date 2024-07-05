@@ -25,3 +25,4 @@ tokio = { version = "1", features = ["full"] }
 serde_json = "1.0.120"
 indicatif = "0.17.8"
 futures = "0.3.30"
+yansi = "1.0.1"

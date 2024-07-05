@@ -18,7 +18,7 @@ use crate::{
 #[derive(Parser)]
 #[command(
     name = "install-toolchain",
-    about = "Install the cargo-prove toolchain."
+    about = "Install the cargo-zisk toolchain."
 )]
 pub struct InstallToolchainCmd {}
 
