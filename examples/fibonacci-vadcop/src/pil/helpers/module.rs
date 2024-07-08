@@ -1,6 +1,6 @@
-use common::{TracePol, TracePtr};
+use wcmanager::{TracePol, Ptr};
 
-
+#[allow(dead_code)]
 pub struct ModuleTrace<F> {
     pub x: TracePol<F>,
     pub q: TracePol<F>,
@@ -10,6 +10,7 @@ pub struct ModuleTrace<F> {
     pub ptr: *mut u8,
 }
 
+#[allow(dead_code)]
 impl<F> ModuleTrace<F> {
     const ROW_SIZE: usize = 2 * std::mem::size_of::<F>();
 
@@ -23,7 +24,7 @@ impl<F> ModuleTrace<F> {
         let mut buffer = vec![0u8; num_rows * Self::ROW_SIZE];
 
         let ptr = buffer.as_mut_ptr();
-        let ptr_x = TracePtr::new(ptr);
+        let ptr_x = Ptr::new(ptr);
 
         ModuleTrace {
             x: TracePol::from_ptr(ptr, std::mem::size_of::<F>(), num_rows),
@@ -45,7 +46,7 @@ impl<F> ModuleTrace<F> {
         let mut ptr = ptr as *mut u8;
 
         ptr = unsafe { ptr.add(offset) };
-        let ptr_x = TracePtr::new(ptr);
+        let ptr_x = Ptr::new(ptr);
 
         ModuleTrace {
             x: TracePol::from_ptr(ptr, std::mem::size_of::<F>(), num_rows),

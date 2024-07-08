@@ -2,13 +2,12 @@ use common::{AirGroup, BasicAir};
 use common::WitnessPilOut;
 
 pub fn get_fibonacci_vadcop_pilout() -> WitnessPilOut {
-    let fibo_10 = BasicAir { name: Some("Fibo_10".to_string()), num_rows: Some(10) };
+    let fibo = BasicAir { name: Some("FibonacciSquare".to_string()), num_rows: 8 };
 
-    let module_10 = BasicAir { name: Some("Module_10".to_string()), num_rows: Some(10) };
-    let module_12 = BasicAir { name: Some("Module_12".to_string()), num_rows: Some(12) };
+    let module = BasicAir { name: Some("Module".to_string()), num_rows: 8 };
 
     WitnessPilOut {
         name: "FibonacciVadcopPilOut".to_string(),
-        air_groups: vec![AirGroup { name: Some("AirGroup_1".to_string()), airs: vec![fibo_10, module_10, module_12] }],
+        air_groups: vec![AirGroup { name: Some("AirGroup_1".to_string()), airs: vec![fibo, module] }],
     }
 }

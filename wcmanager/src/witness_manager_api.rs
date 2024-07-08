@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::WitnessModule;
 
 pub trait WitnessManagerAPI<'a, F> {

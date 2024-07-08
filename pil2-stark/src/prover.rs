@@ -48,6 +48,7 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
 
         let wcm: Box<dyn WitnessModule<'a, F> + 'a> = wc_plugin.build_wcmanager();
 
+        // Proving key
         let pilout = PilOutProxy::new(&pilout_path.display().to_string(), false).unwrap();
 
         // Check hashes from proving key and plugin match
@@ -61,8 +62,9 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
         info!("{}: ··· Creating execution context", Self::MY_NAME);
         let execution_ctx = ExecutionCtx::builder().with_air_instances_map().with_all_instances().build();
 
-        info!("{}: ··· Starting proof", Self::MY_NAME);
         let public_inputs: Vec<u8> = vec![17u8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0];
+
+        info!("{}: ··· Starting proof", Self::MY_NAME);
         wcm._start_proof(&public_inputs, &mut proof_ctx, &execution_ctx);
 
         info!("{}: ··· Calculating Air instances map", Self::MY_NAME);
@@ -83,10 +85,11 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
             }
         }
 
-        Self::opening_stages(&proof_ctx);
-
         info!("{}: ··· Ending proof", Self::MY_NAME);
+        // end_calculate_witness
         wcm._end_proof(&proof_ctx);
+
+        Self::opening_stages(&proof_ctx);
 
         let proof = Self::finalize_proof(&proof_ctx);
 

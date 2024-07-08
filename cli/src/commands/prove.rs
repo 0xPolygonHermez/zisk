@@ -1,8 +1,7 @@
 // extern crate env_logger;
-use clap::{Parser};
+use clap::Parser;
 use pil2_stark::Pil2StarkProver;
-use tinytemplate::error;
-use std::{fmt::Error, path::PathBuf};
+use std::path::PathBuf;
 use colored::Colorize;
 use goldilocks::Goldilocks;
 

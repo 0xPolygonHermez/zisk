@@ -2,25 +2,6 @@ use std::{
     ops::{Index, IndexMut},
     ptr::null_mut,
 };
-
-use std::cell::UnsafeCell;
-
-pub struct TracePtr {
-    pub ptr: UnsafeCell<*mut u8>,
-}
-
-impl TracePtr {
-    pub fn new(ptr: *mut u8) -> Self {
-        TracePtr { ptr: UnsafeCell::new(ptr) }
-    }
-
-    pub fn add<T>(&self) -> *mut u8 {
-        let ptr = unsafe { *self.ptr.get() };
-        unsafe { *self.ptr.get() = ptr.add(std::mem::size_of::<T>() as usize) };
-        ptr
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct TracePol<T> {

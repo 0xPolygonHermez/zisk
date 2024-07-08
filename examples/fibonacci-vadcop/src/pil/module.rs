@@ -1,4 +1,4 @@
-use common::{ExecutionCtx, ProofCtx, TracePol, WitnessPilOut};
+use common::{ExecutionCtx, ProofCtx};
 use wcmanager::{HasSubcomponents, WitnessModule};
 
 pub struct Module<'a, F> {
@@ -13,15 +13,15 @@ impl<'a, F> Module<'a, F> {
 }
 
 impl<'a, F> WitnessModule<'a, F> for Module<'a, F> {
-    fn start_proof(&self, public_inputs: &[u8], proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+    fn start_proof(&self, _public_inputs: &[u8], _proof_ctx: &mut ProofCtx<F>, _execution_ctx: &ExecutionCtx) {
     }
 
-    fn end_proof(&self, proof_ctx: &ProofCtx<F>) {}
+    fn end_proof(&self, _proof_ctx: &ProofCtx<F>) {}
 
-    fn calculate_air_instances_map(&self, proof_ctx: &ProofCtx<F>) {}
+    fn calculate_air_instances_map(&self, _proof_ctx: &ProofCtx<F>) {}
 
-    fn calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
-        
+    fn calculate_witness(&self, _stage: u32, _public_inputs: &[u8], _proof_ctx: &ProofCtx<F>, _execution_ctx: &ExecutionCtx) {
+
     }
 
     fn name(&self) -> String {

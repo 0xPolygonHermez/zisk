@@ -1,6 +1,6 @@
 mod pil;
 use goldilocks::AbstractField;
-use pil::{Fibonacci, FibonacciVadcopInputs, Module};
+use pil::{Fibonacci, Module};
 
 use wcmanager::{WitnessModule, HasSubcomponents, WitnessManagerAPI};
 
