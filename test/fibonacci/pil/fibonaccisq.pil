@@ -17,7 +17,7 @@ air aggregate FibonacciSquare(const int N = 2**8) {
 
     (a' - b) * (1 - L1') === 0;
 
-    permutation_assumes(MODULE_ID, cols: [a*a + b*b, b']);
+    permutation_assumes(MODULE_ID, 1 - L1', [a*a + b*b, b']);
 };
 
 

@@ -5,7 +5,29 @@ const log = require("pil2-proofman/logger.js");
 module.exports = class Module extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {
         super("Module", wcManager, proofCtx);
-        this.terminate = false;
+
+        this.inputs = [];
+    }
+
+    computeVerify(verify, values) {
+        const x = values[0];
+        const x_mod = values[1];
+        if (!verify) {
+            return this.#calculate(x);
+        }
+        const _x_mod = this.#calculate(x);
+
+        if (x_mod !== _x_mod) {
+            throw new Error(`[${this.name}]`, `Verification failed for x=${x} and x_mod=${x_mod}.`);
+        }
+
+        this.inputs.push([x, x_mod]);
+    }
+
+    #calculate(x) {
+        const mod = this.proofCtx.publics[0];
+
+        return x % mod;
     }
 
     async witnessComputation(stageId, subproofId, airInstance, publics) {
@@ -18,12 +40,11 @@ module.exports = class Module extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
             }
 
-            while (!this.terminate) {
-                let instanceData = await this.receiveData();
-                airInstance.airId = 0; // TODO: This should be updated automatically
-                for (let i = 0; i < instanceData.length; i++) {
-                    this.#processMessage(stageId, subproofId, airInstance, publics, instanceData[i]);
-                }
+            airInstance.airId = 0; // TODO: This should be updated automatically
+
+            let mailbox = await this.receiveData();
+            for (let i = 0; i < mailbox.length; i++) {
+                await this.#processMessage(stageId, subproofId, airInstance, publics, mailbox[i]);
             }
         }
 
@@ -31,8 +52,8 @@ module.exports = class Module extends WitnessCalculatorComponent {
         return;
     }
 
-    #processMessage(stageId, subproofId, airInstance, publics, instanceData) {
-        if (instanceData.command && instanceData.command === "createInstances") {
+    async #processMessage(stageId, subproofId, airInstance, publics, msg) {
+        if ((msg.sender && msg.payload.data) && (msg.sender === "FibonacciSq" && msg.payload.data === "finished")) {
             const air = this.proofCtx.airout.subproofs[subproofId].airs[airInstance.airId];
 
             log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`);
@@ -44,13 +65,15 @@ module.exports = class Module extends WitnessCalculatorComponent {
             }
 
             this.#createPolynomialTraces(stageId, airInstance, publics);
-            this.terminate = true;
         }
     }
 
     #createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
+
         const N = airInstance.layout.numRows;
+
+        const STD = this.wcManager.wc.find(wc => wc.name === "STD");
 
         const polX = airInstance.wtnsPols.Module.x;
         const polQ = airInstance.wtnsPols.Module.q;
@@ -58,17 +81,23 @@ module.exports = class Module extends WitnessCalculatorComponent {
 
         const mod = publics[0];
 
-        let in1 = publics[1];
-        let in2 = publics[2];
+        for (let i = 0; i < this.inputs.length; i++) {
+            const [x, x_mod] = this.inputs[i];
 
-        for (let i = 0; i < N; i++) {
-            polX[i] = in1 * in1 + in2 * in2;
+            polX[i] = x;
 
             polQ[i] = polX[i] / mod;
-            polX_mod[i] = polX[i] % mod;
+            polX_mod[i] = x_mod;
 
-            in1 = in2;
-            in2 = polX_mod[i];
+            STD.redirectValues(airInstance, mod - polX_mod[i]);
+        }
+
+        for (let i = this.inputs.length; i < N; i++) {
+            polX[i] = 0n;
+            polQ[i] = 0n;
+            polX_mod[i] = 0n;
+
+            STD.redirectValues(airInstance, mod - polX_mod[i]); // TODO: is this necessary at all?
         }
     }
 }

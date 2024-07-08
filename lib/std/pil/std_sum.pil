@@ -166,7 +166,7 @@ private function piop_gsum_air() {
     expr RHS2 = RHS2a * RHS2b;
     expr RHS = RHS1 - RHS2;
 
-    @gsum_col{reference: gsum, numerator: RHS, denominator: LHS, result: subproof.std.gsum.gsum_result}
+    @gsum_col{reference: gsum, numerator: RHS, denominator: LHS, result: subproof.std.gsum.gsum_result};
 
     (gsum - 'gsum * (1 - __L1)) * LHS === RHS;
     __L1' * (gsum - subproof.std.gsum.gsum_result) === 0;
