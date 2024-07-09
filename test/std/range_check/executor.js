@@ -38,11 +38,12 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
 
     #createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
-        const N = airInstance.layout.numRows;
 
         const STD = this.wcManager.wc.find(wc => wc.name === "STD");
 
         if (airInstance.wtnsPols.RangeCheck1) {
+            const N = airInstance.layout.numRows;
+
             // TODO: Alternative: User does not receive ranges
             // but he calls range check function with specific range and must coincide with PIL's one
             const [range1, range2, range3, range4] = STD.setupRange(airInstance);
@@ -81,6 +82,8 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 }
             }
         } else if (airInstance.wtnsPols.RangeCheck2) {
+            const N = airInstance.layout.numRows;
+
             const [range1,range2,range3] = STD.setupRange(airInstance);
 
             const b1 = airInstance.wtnsPols.RangeCheck2.b1;
@@ -97,6 +100,8 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 STD.rangeCheck(range3, b3[i]);
             }
         } else if (airInstance.wtnsPols.RangeCheck3) {
+            const N = airInstance.layout.numRows;
+
             const [range1,range2] = STD.setupRange(airInstance);
 
             const c1 = airInstance.wtnsPols.RangeCheck3.c1;
@@ -109,11 +114,57 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 STD.rangeCheck(range1, c1[i]);
                 STD.rangeCheck(range2, c2[i]);
             }
+        } else if (airInstance.wtnsPols.RangeCheck4) {
+            const N = airInstance.layout.numRows;
+
+            const [range1,range2,range3,range4] = STD.setupRange(airInstance);
+
+            const a1 = airInstance.wtnsPols.RangeCheck4.a1;
+            const a2 = airInstance.wtnsPols.RangeCheck4.a2;
+            const a3 = airInstance.wtnsPols.RangeCheck4.a3;
+            const a4 = airInstance.wtnsPols.RangeCheck4.a4;
+            const a5 = airInstance.wtnsPols.RangeCheck4.a5;
+
+            const sel1 = airInstance.wtnsPols.RangeCheck4.sel1;
+            const sel2 = airInstance.wtnsPols.RangeCheck4.sel2;
+
+            for (let i = 0; i < N; i++) {
+                a1[i] = 1n;
+                a2[i] = -1n;
+                a3[i] = getRandom(0, 2**8-1);
+                a4[i] = getRandom(50, 2**7-1);
+                a5[i] = getRandom(127, 2**8);
+
+                sel1[i] = getRandom(0, 1);
+                sel2[i] = getRandom(0, 1);
+
+                if (sel1[i]) {
+                    // STD.rangeCheck(range1, a1[i]);
+                    // STD.rangeCheck(range1, a2[i]);
+                    STD.rangeCheck(range2, a3[i]);
+                }
+                if (sel2[i]) {
+                    STD.rangeCheck(range1, a3[i]);
+                    STD.rangeCheck(range3, a4[i]);
+                    STD.rangeCheck(range4, a5[i]);
+                }
+            }
         }
     }
 }
 
 // Note: It works as expected for number up to Number.MAX_SAFE_INTEGER=2^53-1
 function getRandom(min, max) {
-    return BigInt(Math.floor(Math.random()*(max-min+1)+min));
+    min = BigInt(min);
+    max = BigInt(max);
+
+    if (min > max) {
+        throw new Error("min must be less than or equal to max");
+    }
+
+    const range = max - min + 1n;
+
+    const rand = BigInt(Math.floor(Math.random() * Number(range)));
+
+    return rand + min;
 }

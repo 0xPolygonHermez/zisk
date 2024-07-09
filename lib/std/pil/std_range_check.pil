@@ -101,7 +101,7 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
         println(`The provided max=${max} is greater than the maximum predefined ${TWOBYTES}. Falling back to specified range...`);
     }
 
-    if (predefined && min > 0 && max <= TWOBYTES) {
+    if (predefined && min >= 0 && max <= TWOBYTES) {
         container proof.std.rcpre alias rcpreprove {
             int max_subproof_id = 0;
             int u8_used = 0;

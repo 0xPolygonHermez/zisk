@@ -16,6 +16,7 @@ function getSettings() {
             { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck1" },
             { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck2" },
             { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck3" },
+            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck4" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
         prover: {
