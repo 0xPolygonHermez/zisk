@@ -200,6 +200,8 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
             rcprove.max_subproof_id = SUBPROOF_ID;
         }
 
+        on final subproof declareRangeAir();
+
         // If the range has already been introduced, we reuse the same opid
         for (int i = 0; i < rcprove.opids_count; i++) {
             if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
@@ -224,8 +226,6 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
         rcprove.opids[rcprove.opids_count] = opid;
         rcprove.opids_count++;
         rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
-
-        on final subproof declareRangeAir();
     }
 }
 

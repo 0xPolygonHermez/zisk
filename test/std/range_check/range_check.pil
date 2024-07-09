@@ -2,8 +2,8 @@ require "std_range_check.pil";
 
 air aggregate RangeCheck1(const int N = 2**3) {
 
-    col witness a1,a2;
-    col witness sel1,sel2;
+    col witness a1,a2,a3,a4,a5;
+    col witness sel1,sel2,sel3;
 
     // Compilation Errors
     // range_check(0, sel1, a1, 1, 0);
@@ -15,33 +15,31 @@ air aggregate RangeCheck1(const int N = 2**3) {
 
     range_check(0, sel1, a1, 0, 2**8-1);
     range_check(0, sel2, a2, 0, 2**4-1);
-    // range_check(0, sel2, a2, 0, 2**16-1);
-    // range_check(1, sel1, a1, 0, 2**8-1);
+    range_check(0, sel1, a3, 60, 2**16-1);
+    range_check(0, sel2, a4, 8228, 17400);
+    range_check(0, sel3, a5, 0, 2**8-1);
 };
 
-// air aggregate RangeCheck2(const int N = 2**12) {
+air aggregate RangeCheck2(const int N = 2**12) {
 
-//     col witness a1,a2;
-//     col witness sel1,sel2;
+    col witness b1,b2,b3;
 
-//     range_check(0, sel1, a1, 0, 2**8-1);
-//     range_check(0, sel1, a1, 0, 2**9-1);
-//     range_check(0, sel2, a2, 0, 2**10-1);
-// };
+    range_check(0, colu: b1, min: 0, max: 2**8-1);
+    range_check(0, colu: b2, min: 0, max: 2**9-1);
+    range_check(0, colu: b3, min: 0, max: 2**10-1);
+};
 
-// air aggregate RangeCheck3(const int N = 2**12) {
+air aggregate RangeCheck3(const int N = 2**12) {
 
-//     col witness a1,a2;
-//     col witness sel1,sel2;
+    col witness c1,c2;
 
-//     range_check(0, sel1, a1, 0, 2**4-1);
-//     range_check(0, sel1, a1, 0, 2**8-1);
-// };
+    range_check(0, colu: c1, min: 0, max: 2**4-1);
+    range_check(0, colu: c2, min: 0, max: 2**8-1);
+};
 
-// RangeCheck3();
+RangeCheck3();
 RangeCheck1();
-// RangeCheck2();
-// RangeCheck1(N: 2**13);
+RangeCheck2();
 
 // air aggregate RangeCheck4(const int N = 2**12) {
 
