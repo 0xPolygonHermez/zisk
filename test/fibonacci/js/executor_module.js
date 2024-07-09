@@ -74,6 +74,7 @@ module.exports = class Module extends WitnessCalculatorComponent {
         const N = airInstance.layout.numRows;
 
         const STD = this.wcManager.wc.find(wc => wc.name === "STD");
+        const [range] = STD.setupRange(airInstance);
 
         const polX = airInstance.wtnsPols.Module.x;
         const polQ = airInstance.wtnsPols.Module.q;
@@ -89,7 +90,7 @@ module.exports = class Module extends WitnessCalculatorComponent {
             polQ[i] = polX[i] / mod;
             polX_mod[i] = x_mod;
 
-            STD.redirectValues(airInstance, mod - polX_mod[i]);
+            STD.rangeCheck(range, mod - polX_mod[i]);
         }
 
         for (let i = this.inputs.length; i < N; i++) {
@@ -97,7 +98,7 @@ module.exports = class Module extends WitnessCalculatorComponent {
             polQ[i] = 0n;
             polX_mod[i] = 0n;
 
-            STD.redirectValues(airInstance, mod - polX_mod[i]); // TODO: is this necessary at all?
+            STD.rangeCheck(range, mod - polX_mod[i]); // TODO: is this necessary at all?
         }
     }
 }

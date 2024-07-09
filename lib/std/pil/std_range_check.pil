@@ -2,20 +2,6 @@ require "std_sum.pil";
 require "std_permutation.pil";
 // require "std_chunk_checker.pil";
 
-// TODO: When the bug is fixed, control last element or specified ranges, they must have the last element repeated, not a 0
-// air Feli(const int N) {
-//     if (N == 4) {
-//         col fixed A = [0..3];
-//     } else {
-//         col fixed A = [0..3,3...]
-//     }
-
-//     println(A); // bug
-// }
-
-// Feli(N: 4);
-// Feli(N: 8);
-
 // With the logup protocol, it is more performant to look up to the same range;
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
@@ -66,7 +52,7 @@ air SpecifiedRanges(const int N, const int opids[], const int opids_count, const
             error(`The range [min,max]=[${min},${max}] is too big, the maximum range length is ${N}`);
         }
 
-        col fixed RANGE = [min..max]; // TODO: fix repetitions when range is lower than N [min..max,max...]
+        col fixed RANGE = [min..max-1,max...];
         sum_proves(name_range_check, opid, mul[j], [RANGE]);
     }
 }
