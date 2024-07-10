@@ -19,11 +19,7 @@ impl<F> Zisk<F> {
         let mem_sm = MemSM::new(&mut wcm);
         let main_sm = MainSM::new(&mut wcm, &mem_sm);
 
-        Zisk {
-            wcm,
-            main_sm,
-            mem_sm,
-        }
+        Zisk { wcm, main_sm, mem_sm }
     }
 }
 

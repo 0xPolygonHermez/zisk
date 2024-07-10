@@ -15,9 +15,7 @@ impl MainSM {
     const MY_NAME: &'static str = "MainSM   ";
 
     pub fn new<F>(wcm: &mut WCManager<F>, mem_sm: &Rc<MemSM>) -> Rc<Self> {
-        let main_sm = Rc::new(Self {
-            mem_sm: Rc::clone(&mem_sm),
-        });
+        let main_sm = Rc::new(Self { mem_sm: Rc::clone(&mem_sm) });
         wcm.register_component(Rc::clone(&main_sm) as Rc<dyn WCComponent<F>>);
         wcm.register_executor(Rc::clone(&main_sm) as Rc<dyn WCExecutor<F>>);
         main_sm
