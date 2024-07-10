@@ -1,0 +1,113 @@
+require "goldilocks.pil"
+require "gl_groups_small.pil";
+// require "gl_groups_big.pil";
+
+require "std_connection.pil";
+
+const int TEST_OPID = 44;
+
+// TODO: Finish Connection2 and Connection3, compute examples of permutations
+
+air aggregate Connection1(const int N = 2**3) {
+    if (N != 2**3) error(`Unsupported N = ${N}`);
+
+    col witness a,b,c;
+
+    const int k = Goldilocks_k;
+    const int k2 = Goldilocks_k**2;
+    col fixed S1,S2,S3;
+    for (int i = 0; i < N; i++) {
+        S1[i] = GROUP3[i];
+        S2[i] = k * GROUP3[i];
+        S3[i] = k2 * GROUP3[i];
+    }
+
+    // Trivial case: permutation is the identity
+
+    // Old Interface
+    connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
+};
+
+air aggregate Connection2(const int N = 2**4) {
+    if (N != 2**4) error(`Unsupported N = ${N}`);
+
+    col witness a,b,c;
+
+    const int k = Goldilocks_k;
+    const int k2 = Goldilocks_k**2;
+    col fixed S1,S2,S3;
+    for (int i = 0; i < N; i++) {
+        S1[i] = GROUP4[i];
+        S2[i] = k * GROUP4[i];
+        S3[i] = k2 * GROUP4[i];
+    }
+
+    // 1] Shift elements of the same column
+    int tmp = S1[0];
+    S1[0] = S1[1];
+    S1[1] = tmp;
+
+    // Old Interface
+    connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
+};
+
+air aggregate Connection3(const int N = 2**12) {
+    if (N != 2**12) error(`Unsupported N = ${N}`);
+
+    col witness a,b,c;
+
+    const int k = Goldilocks_k;
+    const int k2 = Goldilocks_k**2;
+    col fixed S1,S2,S3;
+    for (int i = 0; i < N; i++) {
+        S1[i] = GROUP12[i];
+        S2[i] = k * GROUP12[i];
+        S3[i] = k2 * GROUP12[i];
+    }
+
+    // Old Interface
+    connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
+};
+
+// Connection1();
+// Connection2();
+// Connection3();
+
+air aggregate ConnectionNew(const int N = 2**3) {
+
+    // TODO: Change syntax of the batch version of one_cell
+
+    const int OPID[5] = [2,3,4,5,6];
+
+    col witness a,b,c,d;
+
+    // Trivial case: do nothing
+    connection_init(OPID[0], [a, b, c]);
+    connection_connect(OPID[0]);
+
+    connection_init(OPID[1], [a, b, c]);
+    connection_update_one_cell(OPID[1], [c,1,c,1], 2**2);
+    // connection_update_one_cell(OPID[1], [c,2,c,3], 2**2);
+    connection_connect(OPID[1]);
+
+    // connection_init(OPID[2], [a, b, c]);
+    // connection_update_one_cell(OPID[2], [c,2,a,3], 2**2);
+    // expr row[2][4];
+    // row[0] = [b,3,c,0];
+    // row[1] = [a,1,c,0];
+    // println(row);
+    // // connection_update_one_cell(3, [[b,3,c,0],[a,1,c,0]], 2**2); // TODO: Fix, it does not work!
+    // connection_update_one_cell(OPID[2], [b,3,c,0,a,1,c,0], 2**2);
+    // connection_connect(OPID[2]);
+
+    // connection_init(OPID[3], [a, b, c, d]);
+    // connection_update_one_cell(OPID[3], [b,2,d,1,a,3,b,2], 2**2);
+    // connection_update_one_cell(OPID[3], [c,2,a,1,c,3,b,2], 2**2);
+    // connection_connect(OPID[3]);
+
+    // connection_init(OPID[4], [a, b, c, d]);
+    // connection_update_multiple_cells(OPID[4], [d,2,d,3,b,0], 2**2);
+    // connection_connect(OPID[4]);
+};
+
+ConnectionNew();
