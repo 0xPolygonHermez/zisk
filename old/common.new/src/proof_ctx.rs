@@ -1,28 +1,82 @@
-use std::{any::Any, path::PathBuf};
+// use std::{os::raw::c_void, rc::Rc, sync::RwLock};
+// use pilout::pilout_proxy::PilOutProxy;
+
+// use std::sync::Arc;
+
+// use crate::trace::trace::Trace;
+use std::fmt;
+
+// use log::debug;
+// use util::{timer_start, timer_stop_and_log};
+
+use log::debug;
 use pilout::pilout_proxy::PilOutProxy;
 
+use crate::AirGroupInstanceMap;
+
+/// Proof context for managing proofs, including information about airs and air instances.
+#[derive(Debug)]
 #[allow(dead_code)]
-pub struct ProofCtx<F> {
-    pub public_inputs: Vec<u8>,
-    proving_key: PathBuf,
-    _phantom: std::marker::PhantomData<F>,
+pub struct ProofCtx<T> {
+    /// The public inputs associated with the proof context.
+    // /// The challenges associated with the proof context.
+    // challenges: Vec<Vec<T>>,
+    /// Airgroups
     pub air_groups: Vec<AirGroupCtx>,
-    pub pilout: PilOutProxy,
+    // /// The subproof values associated with the proof context.
+    // pub subproof_values: Vec<Vec<T>>,
+    // // NOTE: remove this ptr when vadcops ready, now it's used while developing
+    // pub proof: *mut c_void,
+    // pub async_tasks: Vec<tokio::task::JoinHandle<()>>,
+    pub air_instances_map: AirGroupInstanceMap,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
-impl<F> ProofCtx<F> {
-    const MY_NAME: &'static str = "ProofCtx";
+impl<T: Default + Clone> ProofCtx<T> {
+    const MY_NAME: &'static str = "proofCtx";
 
-    pub fn create_ctx(proving_key: PathBuf, public_inputs: Vec<u8>) -> Self {
-        println!("{}: ··· Creating proof context", Self::MY_NAME);
-
-        let pilout = PilOutProxy::new(&proving_key.display().to_string()).unwrap();
+    /// Creates a new `ProofCtx` given a `Pilout`.
+    pub fn new(pilout: &PilOutProxy) -> Self {
+        debug!("{}: ··· Creating proof context", Self::MY_NAME);
 
         if pilout.subproofs.len() == 0 {
             panic!("No subproofs found in PilOut");
         }
 
-        pilout.print_pilout_info();
+        // pilout.print_pilout_info();
+        println!("pilout {:?}", pilout);
+
+        let mut challenges = Vec::<Vec<T>>::new();
+
+        if !pilout.num_challenges.is_empty() {
+            for i in 0..pilout.num_challenges.len() {
+                challenges.push(vec![T::default(); pilout.num_challenges[i] as usize]);
+            }
+        } else {
+            challenges.push(vec![]);
+        }
+
+        // qStage, evalsStage and friStage
+        challenges.push(vec![T::default(); 1]);
+        challenges.push(vec![T::default(); 1]);
+        challenges.push(vec![T::default(); 2]);
+
+        //TODO!
+        // for i in 0..pilout.num_challenges.len() {
+        //     println!("pilout.num_challenges[{}]: {}", i, pilout.num_challenges[i]);
+        // }
+
+        //TODO!
+        // proofCtx.stepsFRI = stepsFRI;
+
+        //TODO!
+        // for(let i = 0; i < airout.subproofs.length; i++) {
+        //     proofCtx.subAirValues[i] = [];
+        //     for(let j = 0; j < airout.subproofs[i].subproofvalues?.length; j++) {
+        //         const aggType = airout.subproofs[i].subproofvalues[j].aggType;
+        //         proofCtx.subAirValues[i][j] = aggType === 0 ? zero : one;
+        //     }
+        // }
 
         let mut air_groups = Vec::new();
         for i in 0..pilout.subproofs.len() {
@@ -35,8 +89,101 @@ impl<F> ProofCtx<F> {
             }
         }
 
-        ProofCtx { public_inputs, proving_key, _phantom: std::marker::PhantomData, air_groups, pilout }
+        let proof_ctx = ProofCtx {
+            //     pilout,
+            //     challenges,
+            air_groups,
+            //     subproof_values: Vec::new(),
+            //     proof: std::ptr::null_mut(),
+            // async_tasks: Vec::new(),
+            air_instances_map: AirGroupInstanceMap::new(pilout.subproofs.len()),
+            _phantom: std::marker::PhantomData,
+        };
+
+        // timer_stop_and_log!(CREATING_PROOF_CTX);
+
+        proof_ctx
     }
+
+    //     /// Initializes the proof context with optional public inputs
+    //     pub fn initialize_proof<U: Into<Vec<T>>>(&mut self, public_inputs: Option<U>) {
+    //         if let Some(public_inputs) = public_inputs {
+    //             self.public_inputs = public_inputs.into();
+    //         }
+
+    //         for subproof in self.subproofs.iter_mut() {
+    //             for air in subproof.airs.iter_mut() {
+    //                 air.instances.clear();
+    //             }
+    //         }
+
+    //         self.proof = std::ptr::null_mut();
+    //     }
+
+    //     /// Adds a buffer and a trace to the specified Air instance.
+    //     ///
+    //     /// # Arguments
+    //     ///
+    //     /// * `air_group_id` - The subproof ID of the target Air instance.
+    //     /// * `air_id` - The air ID of the target Air instance.
+    //     /// * `buffer` - The buffer to add to the Air instance.
+    //     /// * `trace` - The trace to add to the Air instance
+    //     ///
+    //     /// # Panics
+    //     ///
+    //     /// Panics if the specified Air instance is not found.
+    //     pub fn add_instance<TR: Trace>(
+    //         &mut self,
+    //         subproof_id: usize,
+    //         air_id: usize,
+    //         buffer: Vec<u8>,
+    //         trace: TR,
+    //     ) -> Result<usize, &'static str> {
+    //         // Check if subproof_id and air_id are valid
+    //         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+    //         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+
+    //         Ok(self.subproofs[subproof_id].airs[air_id].add_instance(buffer, trace))
+    //     }
+
+    //     /// Adds a buffer and a trace to the specified Air instance.
+    //     ///
+    //     /// # Arguments
+    //     ///
+    //     /// * `air_group_id` - The subproof ID of the target Air instance.
+    //     /// * `air_id` - The air ID of the target Air instance.
+    //     /// * `buffer` - The buffer to add to the Air instance.
+    //     /// * `trace` - The trace to add to the Air instance
+    //     ///
+    //     /// # Panics
+    //     ///
+    //     /// Panics if the specified Air instance is not found.
+    //     pub fn add_instance_reusing_buffer(
+    //         &mut self,
+    //         subproof_id: usize,
+    //         air_id: usize,
+    //         buffer: Rc<Vec<u8>>,
+    //         // trace: Option<TR>,
+    //     ) -> Result<usize, &'static str> {
+    //         // Check if subproof_id and air_id are valid
+    //         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+    //         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+
+    //         Ok(self.subproofs[subproof_id].airs[air_id].add_instance_reusing_buffer(buffer, None))
+    //     }
+
+    //     pub fn get_trace(
+    //         &self,
+    //         subproof_id: usize,
+    //         air_id: usize,
+    //         trace_id: usize,
+    //     ) -> Result<Arc<dyn Trace>, &'static str> {
+    //         // Check if subproof_id and air_id are valid
+    //         assert!(subproof_id < self.subproofs.len(), "Subproof ID out of bounds");
+    //         assert!(air_id < self.subproofs[subproof_id].airs.len(), "Air ID out of bounds");
+
+    //         self.subproofs[subproof_id].airs[air_id].get_trace(trace_id)
+    //     }
 }
 
 /// Air group context for managing airs
@@ -77,15 +224,6 @@ impl AirCtx {
         AirCtx { air_group_id: subproof_id, air_id, air_instances: Vec::new() }
     }
 
-    pub fn add_trace(&mut self, trace: Box<dyn Any>) {
-        let air_instance = AirInstanceCtx {
-            air_group_id: self.air_group_id,
-            air_id: self.air_id,
-            air_instance_id: self.air_instances.len(),
-            trace: Box::new(trace),
-        };
-        self.air_instances.push(air_instance);
-    }
     // /// Adds a buffer and a trace to the AirCtx.
     // ///
     // /// # Arguments
@@ -142,10 +280,10 @@ impl AirCtx {
     // }
 }
 
-impl std::fmt::Debug for AirCtx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AirCtx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AirCtx")
-            .field("air_group_id", &self.air_group_id)
+            .field("subproof_id", &self.air_group_id)
             .field("air_id", &self.air_id)
             .field("instances", &self.air_instances.len())
             .finish()

@@ -3,17 +3,15 @@
         "./Cargo.toml",
         "./cli/Cargo.toml",
         "./common/Cargo.toml",
-        "./components/Cargo.toml",
-        "./goldilocks/Cargo.toml",
-        "./lib/provers/stark/Cargo.toml",
-        "./lib/provers/mocked/Cargo.toml",
-        "./pil2-stark/Cargo.toml",
+        // "./lib/provers/stark/Cargo.toml",
+        // "./lib/provers/mocked/Cargo.toml",
         "./pilout/Cargo.toml",
+        "./proofman/Cargo.toml",
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
-        "./wcmanager/Cargo.toml",
-        "./zisk-wc/Cargo.toml",
+        "./wchelpers/Cargo.toml",
 
         "./examples/fibonacci-vadcop/Cargo.toml",
+        "./examples/zisk-basic/Cargo.toml"
     ]
 }

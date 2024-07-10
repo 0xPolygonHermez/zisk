@@ -11,16 +11,14 @@ use util::{timer_start, timer_stop_and_log};
 #[derive(Debug)]
 pub struct PilOutProxy {
     pub pilout: PilOut,
-    // TODO! This flag si temporary while implementing vadcops. After that it must be removed.
-    fake_pilout: bool,
 }
 
 impl PilOutProxy {
-    const MY_NAME: &'static str = "Pilout  ";
+    const MY_NAME: &'static str = "Pilout   ";
 
-    pub fn new(pilout_filename: &str, fake_pilout: bool) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
+    pub fn new(pilout_filename: &str) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
         let pilout = Self::load_pilout(pilout_filename)?;
-        Ok(PilOutProxy { pilout, fake_pilout })
+        Ok(PilOutProxy { pilout })
     }
 
     fn load_pilout(pilout_filename: &str) -> Result<PilOut, DecodeError> {
@@ -45,11 +43,11 @@ impl PilOutProxy {
         result
     }
 
-    pub fn find_subproof_id_by_name(&self, name: &str) -> Option<usize> {
+    pub fn get_air_group_idx(&self, name: &str) -> Option<usize> {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
-    pub fn find_air_id_by_name(&self, air_group_id: usize, name: &str) -> Option<usize> {
+    pub fn get_air_idx(&self, air_group_id: usize, name: &str) -> Option<usize> {
         self.pilout.subproofs[air_group_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
@@ -57,11 +55,13 @@ impl PilOutProxy {
         &self.pilout.subproofs[air_group_id].airs[air_id]
     }
 
-    pub fn num_stages(&self) -> u32 {
-        if self.fake_pilout {
-            return 3;
-        }
+    pub fn find_air(&self, air_group_name: &str, air_name: &str) -> Option<&crate::pilout::BasicAir> {
+        let air_group_id = self.get_air_group_idx(air_group_name)?;
+        let air_id = self.get_air_idx(air_group_id, air_name)?;
+        Some(&self.pilout.subproofs[air_group_id].airs[air_id])
+    }
 
+    pub fn num_stages(&self) -> u32 {
         self.pilout.num_challenges.len() as u32
     }
 
@@ -141,6 +141,6 @@ impl Deref for PilOutProxy {
 // TODO! To be removed
 impl Default for PilOutProxy {
     fn default() -> Self {
-        PilOutProxy { pilout: PilOut::default(), fake_pilout: true }
+        PilOutProxy { pilout: PilOut::default() }
     }
 }

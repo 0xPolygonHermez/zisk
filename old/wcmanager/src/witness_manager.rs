@@ -90,7 +90,13 @@ pub trait WitnessModule<'a, F>: HasSubcomponents<'a, F> {
         }
     }
 
-    fn _calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx) {
+    fn _calculate_witness(
+        &self,
+        stage: u32,
+        public_inputs: &[u8],
+        proof_ctx: &ProofCtx<F>,
+        execution_ctx: &ExecutionCtx,
+    ) {
         log::trace!("{}: ··· Calculating Witness for stage {}", self.name(), stage);
         self.calculate_witness(stage, public_inputs, proof_ctx, execution_ctx);
 
@@ -105,7 +111,13 @@ pub trait WitnessModule<'a, F>: HasSubcomponents<'a, F> {
 
     fn calculate_air_instances_map(&self, proof_ctx: &ProofCtx<F>);
 
-    fn calculate_witness(&self, stage: u32, public_inputs: &[u8], proof_ctx: &ProofCtx<F>, execution_ctx: &ExecutionCtx);
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        public_inputs: &[u8],
+        proof_ctx: &ProofCtx<F>,
+        execution_ctx: &ExecutionCtx,
+    );
 
     fn name(&self) -> String;
 }

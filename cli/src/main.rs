@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 mod commands;
-use commands::new::NewCmd;
+// use commands::new::NewCmd;
 use commands::prove::ProveCmd;
-use commands::trace::{TraceSubcommands, TraceCmd};
+// use commands::trace::{TraceSubcommands, TraceCmd};
 use commands::pilout::{PiloutSubcommands, PiloutCmd};
 use util::cli::print_banner;
 
@@ -17,8 +17,8 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Pilout(PiloutCmd),
-    Trace(TraceCmd),
-    New(NewCmd),
+    // Trace(TraceCmd),
+    // New(NewCmd),
     Prove(ProveCmd),
 }
 
@@ -40,14 +40,14 @@ fn main() {
                 args.run().unwrap();
             }
         },
-        Commands::Trace(args) => match &args.trace_commands {
-            TraceSubcommands::Setup(args) => {
-                args.run().unwrap();
-            }
-        },
-        Commands::New(args) => {
-            args.run().unwrap();
-        }
+        // Commands::Trace(args) => match &args.trace_commands {
+        //     TraceSubcommands::Setup(args) => {
+        //         args.run().unwrap();
+        //     }
+        // },
+        // Commands::New(args) => {
+        //     args.run().unwrap();
+        // }
         Commands::Prove(args) => {
             args.run().unwrap();
         }

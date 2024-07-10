@@ -10,7 +10,7 @@ pub struct ExecutionCtx {
     pub air_instances_map: bool,
 
     /// If Some, it must generate the witness computation for the given set of air instances
-    pub generate_dependencies: AirInstancesSet,
+    pub witness_computation: Option<AirInstancesSet>,
 }
 
 impl ExecutionCtx {
@@ -22,16 +22,12 @@ impl ExecutionCtx {
 pub struct ExecutionCtxBuilder {
     public_output: bool,
     air_instances_map: bool,
-    witness_computation: AirInstancesSet,
+    witness_computation: Option<AirInstancesSet>,
 }
 
 impl ExecutionCtxBuilder {
     pub fn new() -> Self {
-        ExecutionCtxBuilder {
-            public_output: false,
-            air_instances_map: false,
-            witness_computation: AirInstancesSet::None,
-        }
+        ExecutionCtxBuilder { public_output: false, air_instances_map: false, witness_computation: None }
     }
 
     pub fn with_public_output(mut self) -> Self {
@@ -45,12 +41,12 @@ impl ExecutionCtxBuilder {
     }
 
     pub fn with_instances(mut self, instances_set: AirInstancesSet) -> Self {
-        self.witness_computation = instances_set;
+        self.witness_computation = Some(instances_set);
         self
     }
 
     pub fn with_all_instances(mut self) -> Self {
-        self.witness_computation = AirInstancesSet::All;
+        self.witness_computation = Some(AirInstancesSet::All);
         self
     }
 
@@ -58,15 +54,7 @@ impl ExecutionCtxBuilder {
         ExecutionCtx {
             public_output: self.public_output,
             air_instances_map: self.air_instances_map,
-            generate_dependencies: self.witness_computation,
+            witness_computation: self.witness_computation,
         }
-    }
-
-    pub fn slow_execution_ctx() -> ExecutionCtx {
-        ExecutionCtx { public_output: true, air_instances_map: false, generate_dependencies: AirInstancesSet::All }
-    }
-
-    pub fn fast_execution_ctx() -> ExecutionCtx {
-        ExecutionCtx { public_output: false, air_instances_map: true, generate_dependencies: AirInstancesSet::None }
     }
 }

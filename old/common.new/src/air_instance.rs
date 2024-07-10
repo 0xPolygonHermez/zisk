@@ -1,7 +1,6 @@
-use crate::{ExecutionCtx, ProofCtx};
+use crate::{ExecutionCtx, ProofCtx, WitnessPilOut};
 
 pub enum AirInstancesSet {
-    None,
     All,
     Set(Vec<AirInstance>),
 }
@@ -16,7 +15,7 @@ pub struct AirInstance {
 }
 
 pub trait AirInstanceWitnessComputation<'a, F> {
-    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx);
+    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx, pilout: &WitnessPilOut);
 
     fn end_proof(&self, proof_ctx: &ProofCtx<F>);
 

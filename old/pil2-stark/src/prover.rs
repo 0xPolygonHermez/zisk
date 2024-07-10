@@ -49,7 +49,7 @@ impl<'a, F: Default + Clone> Pil2StarkProver<'a, F> {
         let wcm: Box<dyn WitnessModule<'a, F> + 'a> = wc_plugin.build_wcmanager();
 
         // Proving key
-        let pilout = PilOutProxy::new(&pilout_path.display().to_string(), false).unwrap();
+        let pilout = PilOutProxy::new(&pilout_path.display().to_string()).unwrap();
 
         // Check hashes from proving key and plugin match
         if wc_plugin.get_pilout_hash() != b"fibonacci-vadcop-hash" {

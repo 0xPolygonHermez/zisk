@@ -1,9 +1,11 @@
 // extern crate env_logger;
 use clap::Parser;
-use pil2_stark::Pil2StarkProver;
 use std::path::PathBuf;
 use colored::Colorize;
-use goldilocks::Goldilocks;
+
+use p3_goldilocks::Goldilocks;
+
+use proofman::ProofMan;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -31,12 +33,13 @@ impl ProveCmd {
         println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
         println!("");
 
-        type Field = Goldilocks;
+        type GL = Goldilocks;
 
-        let _proof =
-            Pil2StarkProver::<Field>::prove(self.lib.clone(), self.pilout.clone(), self.public_inputs.clone())?;
-
-        // TODO! Save proof
+        let _proof = ProofMan::generate_proof::<GL>(
+            self.lib.clone(),
+            self.pilout.clone(),
+            vec![1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0],
+        );
 
         Ok(())
     }

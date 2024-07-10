@@ -1,5 +1,5 @@
 [package]
-name = "proofman"
+name = "proofman-old"
 version = "0.1.0"
 authors = ["Polygon Labs"]
 edition = "2021"

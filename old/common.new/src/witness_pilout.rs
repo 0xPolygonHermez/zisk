@@ -1,18 +1,9 @@
 pub struct WitnessPilOut {
     pub name: String,
-    pub num_stages: usize,
     pub air_groups: Vec<AirGroup>,
 }
 
 impl WitnessPilOut {
-    pub fn new(name: &str, num_stages: usize) -> Self {
-        WitnessPilOut { name: name.to_string(), num_stages, air_groups: Vec::new() }
-    }
-
-    pub fn add_air_group(&mut self, air_group: AirGroup) {
-        self.air_groups.push(air_group);
-    }
-
     pub fn get_air(&self, airgroup_name: &str, air_name: &str) -> Option<&BasicAir> {
         for airgroup in &self.air_groups {
             if let Some(name) = &airgroup.name {
@@ -36,24 +27,8 @@ pub struct AirGroup {
     pub airs: Vec<BasicAir>,
 }
 
-impl AirGroup {
-    pub fn new(name: &str) -> Self {
-        AirGroup { name: Some(name.to_string()), airs: Vec::new() }
-    }
-
-    pub fn add_air(&mut self, air: BasicAir) {
-        self.airs.push(air);
-    }
-}
-
 pub struct BasicAir {
     pub name: Option<String>,
     /// log2(n), where n is the number of rows
     pub num_rows: usize,
-}
-
-impl BasicAir {
-    pub fn new(name: &str, num_rows: usize) -> Self {
-        BasicAir { name: Some(name.to_string()), num_rows }
-    }
 }

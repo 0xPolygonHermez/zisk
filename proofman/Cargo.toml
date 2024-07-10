@@ -1,0 +1,12 @@
+[package]
+name = "proofman"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libloading = "0.8.4"
+pilout = { path = "../pilout" }
+log = { workspace = true }
+env_logger = { workspace = true }
+wchelpers = { path = "../wchelpers" }
+common = { path = "../common" }
