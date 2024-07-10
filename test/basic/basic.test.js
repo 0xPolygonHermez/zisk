@@ -54,7 +54,7 @@ function getSettings() {
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_12.json') },
+                default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
                 Mem_10: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
                 Rom_8: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
             },

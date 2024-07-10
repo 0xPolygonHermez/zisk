@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs').promises;
 
 const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("pil2-proofman/test/test_utils.js");
 
@@ -61,7 +60,7 @@ describe("Range Check tests", async function () {
         await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
-    // it.only("Generate a Fibonacci Square proof", async () => {
-    //     await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
-    // });
+    it.only("Generate a Fibonacci Square proof", async () => {
+        await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
+    });
 });

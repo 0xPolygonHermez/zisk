@@ -117,37 +117,47 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
         } else if (airInstance.wtnsPols.RangeCheck4) {
             const N = airInstance.layout.numRows;
 
-            const [range1,range2,range3,range4] = STD.setupRange(airInstance);
+            const [range1,range2,range3,range4,range5,range6,range7,range8,range9] = STD.setupRange(airInstance);
 
             const a1 = airInstance.wtnsPols.RangeCheck4.a1;
             const a2 = airInstance.wtnsPols.RangeCheck4.a2;
             const a3 = airInstance.wtnsPols.RangeCheck4.a3;
             const a4 = airInstance.wtnsPols.RangeCheck4.a4;
             const a5 = airInstance.wtnsPols.RangeCheck4.a5;
+            const a6 = airInstance.wtnsPols.RangeCheck4.a6;
+            const a7 = airInstance.wtnsPols.RangeCheck4.a7;
+            const a8 = airInstance.wtnsPols.RangeCheck4.a8;
 
             const sel1 = airInstance.wtnsPols.RangeCheck4.sel1;
             const sel2 = airInstance.wtnsPols.RangeCheck4.sel2;
 
             for (let i = 0; i < N; i++) {
-                a1[i] = 1n;
-                a2[i] = -1n;
-                a3[i] = getRandom(0, 2**8-1);
-                a4[i] = getRandom(50, 2**7-1);
-                a5[i] = getRandom(127, 2**8);
+                a1[i] = getRandom(0, 2**8-1);
+                a2[i] = getRandom(50, 2**7-1);
+                a3[i] = getRandom(127, 2**8);
+                a4[i] = getRandom(1, 2**16+1);
+                a5[i] = getRandom(127, 2**16);
+                a6[i] = getRandom(-1, 2**3);
+                a7[i] = getRandom(-(2**7)+1, -50);
+                a8[i] = getRandom(-(2**8)+1, -127);
 
                 sel1[i] = getRandom(0, 1);
                 sel2[i] = getRandom(0, 1);
 
                 if (sel1[i]) {
-                    // STD.rangeCheck(range1, a1[i]);
-                    // STD.rangeCheck(range1, a2[i]);
-                    STD.rangeCheck(range2, a3[i]);
+                    STD.rangeCheck(range2, a1[i]);
+                    STD.rangeCheck(range6, a5[i]);
+                    STD.rangeCheck(range7, a6[i]);
                 }
                 if (sel2[i]) {
-                    STD.rangeCheck(range1, a3[i]);
-                    STD.rangeCheck(range3, a4[i]);
-                    STD.rangeCheck(range4, a5[i]);
+                    STD.rangeCheck(range1, a1[i]);
+                    STD.rangeCheck(range3, a2[i]);
+                    STD.rangeCheck(range4, a3[i]);
+                    STD.rangeCheck(range5, a4[i]);
                 }
+
+                STD.rangeCheck(range8, a7[i]);
+                STD.rangeCheck(range9, a8[i]);
             }
         }
     }

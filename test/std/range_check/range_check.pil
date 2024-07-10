@@ -43,24 +43,27 @@ RangeCheck2();
 
 air aggregate RangeCheck4(const int N = 2**6) {
 
-    col witness a1,a2,a3,a4,a5;
+    col witness a1,a2,a3,a4,a5,a6,a7,a8;
     col witness sel1,sel2;
 
     // Positive and predefined ranges
-    range_check(1, sel2, a3, 0, 2**8-1);
-    range_check(1, sel1, a3, 0, 2**16-1);
+    range_check(1, sel2, a1, 0, 2**8-1);
+    range_check(1, sel1, a1, 0, 2**16-1);
 
     // Positive, non-predefined but absorbed ranges
-    range_check(1, sel2, a4, 50, 2**7-1); // absorbed to two U8
-    range_check(1, sel2, a5, 127, 2**8); // absorbed to two U16
+    range_check(1, sel2, a2, 50, 2**7-1); // absorbed to two U8
+    range_check(1, sel2, a3, 127, 2**8); // absorbed to two U16
 
-    // // Edge cases
-    // range_check(1, sel1, a1, 127, 2**16); // One greater than the maximum predefined
-    // range_check(1, sel1, a2, -1, 2**3);  // One less than the minimum predefined
+    // Positive, non-predefined and larger-than-predetermined ranges
+    range_check(1, sel2, a4, 1, 2**16+1);
 
-    // // Negative
-    // range_check(1, sel1, a1, -2**7+1, -50);
-    // range_check(1, sel1, a1, -2**8+1, -127);
+    // Edge cases
+    range_check(1, sel1, a5, 127, 2**16); // One greater than the maximum predefined
+    range_check(1, sel1, a6, -1, 2**3);  // One less than the minimum predefined
+
+    // Negative
+    range_check(1, colu: a7, min: -2**7+1, max: -50);
+    range_check(1, colu: a8, min: -2**8+1, max: -127);
 };
 
 RangeCheck4();
