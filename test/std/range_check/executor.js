@@ -44,9 +44,7 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
         if (airInstance.wtnsPols.RangeCheck1) {
             const N = airInstance.layout.numRows;
 
-            // TODO: Alternative: User does not receive ranges
-            // but he calls range check function with specific range and must coincide with PIL's one
-            const [range1, range2, range3, range4] = STD.setupRange(airInstance);
+            STD.setupRangeCheck(airInstance);
 
             const a1 = airInstance.wtnsPols.RangeCheck1.a1;
             const a2 = airInstance.wtnsPols.RangeCheck1.a2;
@@ -70,21 +68,21 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 sel3[i] = getRandom(0, 1);
 
                 if (sel1[i]) {
-                    STD.rangeCheck(range1, a1[i]);
-                    STD.rangeCheck(range3, a3[i]);
+                    STD.rangeCheck(a1[i], 0n, 2n**8n-1n);
+                    STD.rangeCheck(a3[i], 60n, 2n**16n-1n);
                 }
                 if (sel2[i]) {
-                    STD.rangeCheck(range2, a2[i]);
-                    STD.rangeCheck(range4, a4[i]);
+                    STD.rangeCheck(a2[i], 0n, 2n**4n-1n);
+                    STD.rangeCheck(a4[i], 8228n, 17400n);
                 }
                 if (sel3[i]) {
-                    STD.rangeCheck(range1, a5[i]);
+                    STD.rangeCheck(a5[i], 0n, 2n**8n-1n);
                 }
             }
         } else if (airInstance.wtnsPols.RangeCheck2) {
             const N = airInstance.layout.numRows;
 
-            const [range1,range2,range3] = STD.setupRange(airInstance);
+            STD.setupRangeCheck(airInstance);
 
             const b1 = airInstance.wtnsPols.RangeCheck2.b1;
             const b2 = airInstance.wtnsPols.RangeCheck2.b2;
@@ -95,14 +93,14 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 b2[i] = getRandom(0, 2**9-1);
                 b3[i] = getRandom(0, 2**10-1);
 
-                STD.rangeCheck(range1, b1[i]);
-                STD.rangeCheck(range2, b2[i]);
-                STD.rangeCheck(range3, b3[i]);
+                STD.rangeCheck(b1[i], 0n, 2n**8n-1n);
+                STD.rangeCheck(b2[i], 0n, 2n**9n-1n);
+                STD.rangeCheck(b3[i], 0n, 2n**10n-1n);
             }
         } else if (airInstance.wtnsPols.RangeCheck3) {
             const N = airInstance.layout.numRows;
 
-            const [range1,range2] = STD.setupRange(airInstance);
+            STD.setupRangeCheck(airInstance);
 
             const c1 = airInstance.wtnsPols.RangeCheck3.c1;
             const c2 = airInstance.wtnsPols.RangeCheck3.c2;
@@ -111,13 +109,13 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 c1[i] = getRandom(0, 2**4-1);
                 c2[i] = getRandom(0, 2**8-1);
 
-                STD.rangeCheck(range1, c1[i]);
-                STD.rangeCheck(range2, c2[i]);
+                STD.rangeCheck(c1[i], 0n, 2n**4n-1n);
+                STD.rangeCheck(c2[i], 0n, 2n**8n-1n);
             }
         } else if (airInstance.wtnsPols.RangeCheck4) {
             const N = airInstance.layout.numRows;
 
-            const [range1,range2,range3,range4,range5,range6,range7,range8,range9] = STD.setupRange(airInstance);
+            STD.setupRangeCheck(airInstance);
 
             const a1 = airInstance.wtnsPols.RangeCheck4.a1;
             const a2 = airInstance.wtnsPols.RangeCheck4.a2;
@@ -145,19 +143,19 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 sel2[i] = getRandom(0, 1);
 
                 if (sel1[i]) {
-                    STD.rangeCheck(range2, a1[i]);
-                    STD.rangeCheck(range6, a5[i]);
-                    STD.rangeCheck(range7, a6[i]);
+                    STD.rangeCheck(a1[i], 0n, 2n**16n-1n);
+                    STD.rangeCheck(a5[i], 127n, 2n**16n);
+                    STD.rangeCheck(a6[i], -1n, 2n**3n);
                 }
                 if (sel2[i]) {
-                    STD.rangeCheck(range1, a1[i]);
-                    STD.rangeCheck(range3, a2[i]);
-                    STD.rangeCheck(range4, a3[i]);
-                    STD.rangeCheck(range5, a4[i]);
+                    STD.rangeCheck(a1[i], 0n, 2n**8n-1n);
+                    STD.rangeCheck(a2[i], 50n, 2n**7n-1n);
+                    STD.rangeCheck(a3[i], 127n, 2n**8n);
+                    STD.rangeCheck(a4[i], 1n, 2n**16n+1n);
                 }
 
-                STD.rangeCheck(range8, a7[i]);
-                STD.rangeCheck(range9, a8[i]);
+                STD.rangeCheck(a7[i], -(2n**7n)+1n, -50n);
+                STD.rangeCheck(a8[i], -(2n**8n)+1n, -127n);
             }
         }
     }
