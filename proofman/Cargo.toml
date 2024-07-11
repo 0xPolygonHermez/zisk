@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 libloading = "0.8.4"
 pilout = { path = "../pilout" }
-stark = { path = "../lib/provers/stark" }
+stark = { path = "../provers/stark" }
 log = { workspace = true }
 env_logger = { workspace = true }
 wchelpers = { path = "../wchelpers" }
