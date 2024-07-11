@@ -39,6 +39,8 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
     #createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
 
+        const F = this.proofCtx.F;
+
         const N = airInstance.layout.numRows;
         if (airInstance.wtnsPols.Connection1) {
             const a = airInstance.wtnsPols.Connection1.a;
@@ -84,18 +86,102 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
                 throw new Error(`N=${N} is not supported for this test`);
             }
         } else if (airInstance.wtnsPols.ConnectionNew) {
-            const a = airInstance.wtnsPols.ConnectionNew.a;
-            const b = airInstance.wtnsPols.ConnectionNew.b;
-            const c = airInstance.wtnsPols.ConnectionNew.c;
-            const d = airInstance.wtnsPols.ConnectionNew.d;
+            const len = airInstance.wtnsPols.ConnectionNew.a.length;
+            let a = new Array(len).fill(0n);
+            let b = new Array(len).fill(0n);
+            let c = new Array(len).fill(0n);
+            let d = new Array(len).fill(0n);
+            for (let i = 0; i < len; i++) {
+                a[i] = airInstance.wtnsPols.ConnectionNew.a[i];
+                b[i] = airInstance.wtnsPols.ConnectionNew.b[i];
+                c[i] = airInstance.wtnsPols.ConnectionNew.c[i];
+                d[i] = airInstance.wtnsPols.ConnectionNew.d[i];
+            }
 
-            console.log("HEYYY");
+            for (let i = 0; i < len; i++) {
+                if (i == 0) {
+                    for (let j = 0; j < N; j++) {
+                        a[i][j] = F.random()[0];
+                        b[i][j] = F.random()[0];
+                        c[i][j] = F.random()[0];
+                    }
+                } else if (i == 1) {
+                    let frame = 0;
+                    for (let j = 0; j < N; j++) {
+                        a[i][j] = F.random()[0];
+                        b[i][j] = F.random()[0];
+                        c[i][j] = F.random()[0];
+                        if (j == 3 + frame) {
+                            c[i][j-1] = c[i][j];
+                            frame += N/2;
+                        }
+                    }
+                } else if (i == 2) {
+                    let frame = 0;
+                    let conn_len = 0;
+                    for (let j = 0; j < N; j++) {
+                        a[i][j] = F.random()[0];
+                        b[i][j] = F.random()[0];
+                        c[i][j] = F.random()[0];
+                        if (j == 2 + frame) {
+                            c[i][j-1] = a[i][j];
+                            conn_len++;
+                        }
 
-            for (let i = 0; i < N; i++) {
-                a[i] = BigInt(i);
-                b[i] = BigInt(i);
-                c[i] = BigInt(i);
-                d[i] = BigInt(i);
+                        if (j == 3 + frame) {
+                            c[i][0 + frame] = b[i][j];
+                            a[i][1 + frame] = b[i][j];
+                            conn_len += 2;
+                        }
+
+                        if (conn_len == 3) {
+                            frame += N/2;
+                            conn_len = 0;
+                        }
+                    }
+                } else if (i == 3) {
+                    let frame = 0;
+                    let conn_len = 0;
+                    for (let j = 0; j < N; j++) {
+                        a[i][j] = F.random()[0];
+                        b[i][j] = F.random()[0];
+                        c[i][j] = F.random()[0];
+                        d[i][j] = F.random()[0];
+                        if (j == 2 + frame) {
+                            d[i][j-1] = b[i][j-1];
+                            a[i][j-1] = c[i][j];
+                            conn_len += 2;
+                        }
+                        if (j == 3 + frame) {
+                            b[i][j-1] = a[i][j];
+                            c[i][j] = a[i][j];
+                            conn_len += 2;
+                        }
+
+                        if (conn_len == 4) {
+                            frame += N/2;
+                            conn_len = 0;
+                        }
+                    }
+                } else if (i == 4) {
+                    let frame = 0;
+                    let conn_len = 0;
+                    for (let j = 0; j < N; j++) {
+                        a[i][j] = F.random()[0];
+                        b[i][j] = F.random()[0];
+                        c[i][j] = F.random()[0];
+                        d[i][j] = F.random()[0];
+                        if ((j == 2 + frame) || (j == 3 + frame)) {
+                            d[i][j] = b[i][0 + frame];
+                            conn_len++;
+                        }
+
+                        if (conn_len == 2) {
+                            frame += N/2;
+                            conn_len = 0;
+                        }
+                    }
+                }
             }
         } else {
             throw new Error(`Connection not found in air instance`);

@@ -60,7 +60,7 @@ describe("Range Check tests", async function () {
         await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
-    // it.only("Generate a Connection proof", async () => {
-    //     await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
-    // });
+    it.only("Generate a Connection proof", async () => {
+        await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
+    });
 });
