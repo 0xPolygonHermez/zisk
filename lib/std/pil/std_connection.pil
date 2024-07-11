@@ -238,7 +238,7 @@ private function define_connection(int opid, int col1_index, int row1_index, int
 
     int alreay_connected = 0;
     for (int i = 0; i < counter; i++) {
-        // const int conn = conn_indicator[i]; // Fix: No implemented yet
+        // const int conn[5] = conn_indicator[i]; // Fix: No implemented yet
         const int cond1 = col1_index == conn_indicator[i][1] && row1_index == conn_indicator[i][2];
         const int cond2 = col2_index == conn_indicator[i][3] && row2_index == conn_indicator[i][4];
         const int cond3 = col1_index == conn_indicator[i][3] && row1_index == conn_indicator[i][4] && col2_index == conn_indicator[i][1] && row2_index == conn_indicator[i][2];
@@ -260,11 +260,7 @@ private function define_connection(int opid, int col1_index, int row1_index, int
     }
 
     // Store the connection
-    // conn_indicator[counter] = [counter, col1_index, row1_index, col2_index, row2_index]; // TODO: No implemented yet
-    conn_indicator[counter][1] = col1_index;
-    conn_indicator[counter][2] = row1_index;
-    conn_indicator[counter][3] = col2_index;
-    conn_indicator[counter][4] = row2_index;
+    conn_indicator[counter] = [counter, col1_index, row1_index, col2_index, row2_index];
 
     counter = counter + 1;
 }
