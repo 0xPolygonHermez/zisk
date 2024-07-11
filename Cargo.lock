@@ -609,7 +609,9 @@ dependencies = [
  "env_logger",
  "libloading",
  "log",
+ "p3-field",
  "pilout",
+ "stark",
  "wchelpers",
 ]
 
@@ -820,6 +822,22 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "stark"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "starks-lib-c",
+ "transcript",
+ "util",
 ]
 
 [[package]]
@@ -1155,18 +1173,3 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
-
-[[package]]
-name = "zisk-basic"
-version = "0.1.0"
-dependencies = [
- "common",
- "env_logger",
- "log",
- "p3-field",
- "p3-goldilocks",
- "proofman",
- "serde",
- "serde_json",
- "wchelpers",
-]

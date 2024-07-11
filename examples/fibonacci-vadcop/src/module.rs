@@ -7,33 +7,34 @@ use wchelpers::WCComponent;
 
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
-use crate::FibonacciVadcopInputs;
+use crate::{FibonacciVadcopInputs, ModuleTrace0};
 
 trace!(ModuleTrace { x: Goldilocks, q: Goldilocks, x_mod: Goldilocks });
 
 pub struct Module;
 
 impl Module {
-    pub fn new<F: AbstractField>(wcm: &mut WCManager<F>) -> Rc<Self> {
+    pub fn new(wcm: &mut WCManager) -> Rc<Self> {
         let module = Rc::new(Module);
-        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>);
+        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent>);
 
         module
     }
 }
 
-impl<F: AbstractField> WCComponent<F> for Module {
-    fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {
+impl WCComponent for Module {
+    fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx, _ectx: &ExecutionCtx) {
         if stage != 1 {
             return;
         }
 
         debug!("Module   : Calculating witness");
         let air = pctx.pilout.get_air("Module", "Module").unwrap_or_else(|| panic!("Air group not found"));
+        let air_instance_ctx = &mut pctx.air_instances[air.air_id()];
 
         let num_rows: usize = 1 << air.num_rows();
 
-        let mut trace = Box::new(ModuleTrace::new(num_rows));
+        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows));
 
         let pi: FibonacciVadcopInputs = pctx.public_inputs.as_slice().into();
         let mut a = pi.a as u64;
@@ -53,6 +54,6 @@ impl<F: AbstractField> WCComponent<F> for Module {
             b = x_mod;
         }
 
-        pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
+        // pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
     }
 }

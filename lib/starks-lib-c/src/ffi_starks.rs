@@ -646,7 +646,7 @@ pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
 #[cfg(feature = "no_lib_link")]
 pub fn get_map_totaln_c(_p_stark_info: *mut ::std::os::raw::c_void) -> u64 {
     trace!("{}: ··· {}", "mckzkevm", "get_map_totaln_c: This is a mock call because there is no linked library");
-    0
+    10000
 }
 
 #[cfg(feature = "no_lib_link")]

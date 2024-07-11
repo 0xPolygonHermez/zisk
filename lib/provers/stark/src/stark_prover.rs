@@ -1,16 +1,18 @@
-use goldilocks::{AbstractField, Goldilocks};
-use proofman::proof_manager::ProverStatus;
+use std::path::PathBuf;
+
 use transcript::FFITranscript;
 use core::slice;
 use std::any::type_name;
 
-use proofman::provers_manager::Prover;
+use common::{Prover, ProverStatus};
 use log::debug;
 use util::{timer_start, timer_stop_and_log};
 use starks_lib_c::*;
-use proofman::{AirInstanceCtx, ProofCtx};
+use common::{AirInstanceCtx, ProofCtx};
 use crate::stark_info::{OpType, StarkInfo};
 use crate::stark_prover_settings::StarkProverSettings;
+use p3_goldilocks::Goldilocks;
+use p3_field::AbstractField;
 
 use std::os::raw::c_void;
 
@@ -51,6 +53,65 @@ impl<T: AbstractField> StarkProver<T> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
+    pub fn new2(setup_air_folder: PathBuf) -> Self {
+        // Check path exists and is a folder
+        if !setup_air_folder.exists() {
+            panic!("Setup AIR folder not found at path: {:?}", setup_air_folder);
+        }
+        if !setup_air_folder.is_dir() {
+            panic!("Setup AIR path is not a folder: {:?}", setup_air_folder);
+        }
+
+        let air_name = setup_air_folder.components().last().and_then(|comp| comp.as_os_str().to_str()).unwrap();
+
+        let base_filename = setup_air_folder.join(air_name).to_str().unwrap().to_string();
+        let stark_info_path = base_filename.clone() + ".stark_info.json";
+        let chelpers_path = base_filename.clone() + ".bin";
+
+        let p_starkinfo = stark_info_new_c(&stark_info_path);
+        let p_chelpers = chelpers_new_c(&chelpers_path);
+
+        set_mapOffsets_c(p_starkinfo, p_chelpers);
+
+        let config = StarkProverSettings {
+            current_path: setup_air_folder.to_str().unwrap().to_string(),
+            const_pols_filename: base_filename.clone() + ".const",
+            map_const_pols_file: false,
+            const_tree_filename: base_filename.clone() + ".consttree",
+            stark_info_filename: stark_info_path,
+            verkey_filename: base_filename.clone() + ".verkey.json",
+            chelpers_filename: chelpers_path,
+        };
+
+        let p_steps = generic_steps_new_c();
+
+        Self {
+            initialized: true,
+            config,
+            p_chelpers,
+            p_steps,
+            p_stark: None,
+            p_params: None,
+            p_proof: None,
+            transcript: None,
+            p_fri_pol: None,
+            stark_info: None,
+            p_starkinfo,
+            evals: Vec::new(),
+            challenges: Vec::new(),
+            subproof_values: Vec::new(),
+            n_field_elements: 0,
+            merkle_tree_arity: None,
+            merkle_tree_custom: None,
+            p_publics_calculated: std::ptr::null_mut(),
+            p_const_calculated: std::ptr::null_mut(),
+            p_subproof_values_calculated: std::ptr::null_mut(),
+            p_challenges_calculated: std::ptr::null_mut(),
+            p_witnesses_calculated: std::ptr::null_mut(),
+            phantom: std::marker::PhantomData,
+        }
+    }
+
     pub fn new(
         config: StarkProverSettings,
         p_starkinfo: *mut c_void,
@@ -90,15 +151,15 @@ impl<T: AbstractField> StarkProver<T> {
     }
 }
 
-impl<T: AbstractField> Prover<T> for StarkProver<T> {
-    fn build(&mut self, air_instance_ctx: &AirInstanceCtx<T>) {
+impl<T: AbstractField> Prover for StarkProver<T> {
+    fn build(&mut self, air_instance_ctx: &mut AirInstanceCtx) {
         timer_start!(ESTARK_PROVER_NEW);
 
         let p_config = config_new_c(&self.config.current_path);
         let stark_info_json = std::fs::read_to_string(&self.config.stark_info_filename)
             .expect(format!("Failed to read file {}", &self.config.stark_info_filename).as_str());
 
-        let ptr = air_instance_ctx.buffer.as_ptr() as *mut c_void;
+        let ptr = air_instance_ctx.get_buffer_ptr() as *mut c_void;
 
         self.stark_info = Some(StarkInfo::from_json(&stark_info_json));
 
@@ -152,7 +213,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         self.stark_info.as_ref().unwrap().n_stages
     }
 
-    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx) -> ProverStatus {
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
 
         if !self.initialized {
@@ -246,7 +307,7 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         }
     }
 
-    fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<T>) -> ProverStatus {
+    fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx) -> ProverStatus {
         let last_stage_id = 2 + self.stark_info.as_ref().unwrap().stark_struct.steps.len() as u32 + 1;
 
         if opening_id == 1 {
@@ -344,12 +405,17 @@ impl<T: AbstractField> Prover<T> for StarkProver<T> {
         self.transcript.as_mut().unwrap().add_elements(root_challenge.as_ptr() as *mut c_void, 4);
     }
 
-    fn get_subproof_values(&self) -> Vec<T> {
-        self.subproof_values.clone()
-    }
+    // fn get_subproof_values(&self) -> Vec<T> {
+    //     self.subproof_values.clone()
+    // }
 }
 
 impl<T: AbstractField> StarkProver<T> {
+    // Return the total number of elements needed to compute the STARK
+    pub fn get_total_bytes(&self) -> usize {
+        get_map_totaln_c(self.p_starkinfo) as usize * std::mem::size_of::<T>()
+    }
+
     fn compute_stage_challenges(&self, stage_id: u32) {
         let stark_info = self.stark_info.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
@@ -365,7 +431,7 @@ impl<T: AbstractField> StarkProver<T> {
         }
     }
 
-    fn compute_evals(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+    fn compute_evals(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx) {
         let stark_info = self.stark_info.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
         let p_params = self.p_params.unwrap();
@@ -378,7 +444,7 @@ impl<T: AbstractField> StarkProver<T> {
         compute_evals_c(p_stark, p_params, p_proof);
     }
 
-    fn compute_fri_pol(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+    fn compute_fri_pol(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx) {
         let stark_info = self.stark_info.as_ref().unwrap();
         let p_stark = self.p_stark.unwrap();
         let p_params = self.p_params.unwrap();
@@ -390,7 +456,7 @@ impl<T: AbstractField> StarkProver<T> {
         self.p_fri_pol = Some(compute_fri_pol_c(p_stark, stark_info.n_stages as u64 + 2, p_params, self.p_steps));
     }
 
-    fn compute_fri_folding(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx<T>) {
+    fn compute_fri_folding(&mut self, opening_id: u32, _proof_ctx: &mut ProofCtx) {
         let p_stark = self.p_stark.unwrap();
         let p_proof = self.p_proof.unwrap();
         let transcript = self.transcript.as_ref().unwrap();
@@ -410,7 +476,7 @@ impl<T: AbstractField> StarkProver<T> {
         );
     }
 
-    fn compute_fri_queries(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<T>) {
+    fn compute_fri_queries(&mut self, _opening_id: u32, _proof_ctx: &mut ProofCtx) {
         let p_stark = self.p_stark.unwrap();
         let stark_info = self.stark_info.as_ref().unwrap();
         let p_proof = self.p_proof.unwrap();
@@ -441,6 +507,7 @@ impl<T: AbstractField> StarkProver<T> {
 
         compute_fri_queries_c(p_stark, p_proof, fri_queries.as_mut_ptr());
 
-        proof_ctx.proof = p_proof;
+        // NOTE: Check!
+        // proof_ctx.proof = p_proof;
     }
 }

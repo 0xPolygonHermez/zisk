@@ -1,4 +1,4 @@
-use crate::AirInstancesSet;
+use crate::{AirInstance, AirInstancesSet};
 
 #[allow(dead_code)]
 /// Represents the context when executing a witness computer plugin
@@ -8,6 +8,9 @@ pub struct ExecutionCtx {
 
     /// If true, the plugin must generate the air instances map
     pub air_instances_map: bool,
+
+    pub instances: Vec<AirInstance>,
+    pub owned_instances: Vec<usize>,
 
     /// If Some, it must generate the witness computation for the given set of air instances
     pub generate_dependencies: AirInstancesSet,
@@ -59,14 +62,28 @@ impl ExecutionCtxBuilder {
             public_output: self.public_output,
             air_instances_map: self.air_instances_map,
             generate_dependencies: self.witness_computation,
+            instances: vec![],
+            owned_instances: vec![],
         }
     }
 
     pub fn slow_execution_ctx() -> ExecutionCtx {
-        ExecutionCtx { public_output: true, air_instances_map: false, generate_dependencies: AirInstancesSet::All }
+        ExecutionCtx {
+            public_output: true,
+            air_instances_map: false,
+            generate_dependencies: AirInstancesSet::All,
+            instances: vec![],
+            owned_instances: vec![],
+        }
     }
 
     pub fn fast_execution_ctx() -> ExecutionCtx {
-        ExecutionCtx { public_output: false, air_instances_map: true, generate_dependencies: AirInstancesSet::None }
+        ExecutionCtx {
+            public_output: false,
+            air_instances_map: true,
+            generate_dependencies: AirInstancesSet::None,
+            instances: vec![],
+            owned_instances: vec![],
+        }
     }
 }

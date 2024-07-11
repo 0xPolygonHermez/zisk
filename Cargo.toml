@@ -2,9 +2,9 @@
 members = [
     "cli",
     "common",
-    # "lib/provers/stark",
+    "lib/provers/stark",
     # "lib/provers/mocked",
-    # "lib/starks-lib-c",
+    "lib/starks-lib-c",
     "pilout",
     "proofman",
     "transcript",
@@ -12,7 +12,7 @@ members = [
     "wchelpers", 
 
     "examples/fibonacci-vadcop",
-    "examples/zisk-basic",
+    # "examples/zisk-basic",
 ]
 
 resolver = "2"

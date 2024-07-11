@@ -1,40 +1,27 @@
-use crate::{ExecutionCtx, ProofCtx};
+use crate::AirInstanceCtx;
+
+#[derive(Debug)]
+pub struct AirInstance {
+    air_group_id: usize,
+    air_id: usize,
+    air_instance_id: usize,
+    pub meta: Option<Box<dyn std::any::Any>>,
+}
+
+impl AirInstance {
+    pub fn new(air_group_id: usize, air_id: usize, instance_id: usize) -> Self {
+        AirInstance { air_group_id, air_id, air_instance_id: instance_id, meta: None }
+    }
+}
+
+impl Into<AirInstanceCtx> for &AirInstance {
+    fn into(self) -> AirInstanceCtx {
+        AirInstanceCtx::new(self.air_group_id, self.air_id, self.air_instance_id)
+    }
+}
 
 pub enum AirInstancesSet {
     None,
     All,
-    Set(Vec<AirInstance>),
-}
-
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct AirInstance {
-    pub air_group_id: i32,
-    pub air_id: i32,
-    pub instance_id: Option<i32>,
-    pub meta: Option<Box<dyn std::any::Any>>,
-}
-
-pub trait AirInstanceWitnessComputation<'a, F> {
-    fn start_proof(&self, proof_ctx: &mut ProofCtx<F>, execution_ctx: &ExecutionCtx);
-
-    fn end_proof(&self, proof_ctx: &ProofCtx<F>);
-
-    fn calculate_witness(&self, stage: u32, proof_ctx: &ProofCtx<F>, air_instance: &AirInstance);
-}
-
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct AirGroupInstanceMap {
-    pub inner: Vec<Vec<AirInstance>>,
-}
-
-impl AirGroupInstanceMap {
-    pub fn new(num_air_groups: usize) -> Self {
-        Self { inner: (0..num_air_groups).map(|_| Vec::new()).collect() }
-    }
-
-    pub fn add_air_instance(&mut self, air_group_id: usize, air_instance: AirInstance) {
-        self.inner[air_group_id].push(air_instance);
-    }
+    Set(Vec<usize>),
 }

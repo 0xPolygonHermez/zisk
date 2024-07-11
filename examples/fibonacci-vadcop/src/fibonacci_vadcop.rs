@@ -1,34 +1,31 @@
 use std::rc::Rc;
 
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
-
 use common::{ExecutionCtx, ProofCtx, WitnessPilOut};
 use wchelpers::WCLibrary;
 use proofman::WCManager;
 
-use crate::{Fibonacci, Module};
+use crate::{FibonacciSquare, Module};
 use crate::pilout::get_fibonacci_vadcop_pilout;
 
-pub struct FibonacciVadcop<F> {
-    pub wcm: WCManager<F>,
-    pub fibonacci: Rc<Fibonacci>,
+pub struct FibonacciVadcop {
+    pub wcm: WCManager,
+    pub fibonacci: Rc<FibonacciSquare>,
     pub module: Rc<Module>,
 }
 
-impl<F: PrimeField64> FibonacciVadcop<F> {
+impl FibonacciVadcop {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
-        
-        let fibonacci = Fibonacci::new(&mut wcm);
+
+        let fibonacci = FibonacciSquare::new(&mut wcm);
         let module = Module::new(&mut wcm);
 
         FibonacciVadcop { wcm, fibonacci, module }
     }
 }
 
-impl<F> WCLibrary<F> for FibonacciVadcop<F> {
-    fn start_proof(&mut self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx) {
+impl WCLibrary for FibonacciVadcop {
+    fn start_proof(&mut self, pctx: &mut ProofCtx, ectx: &mut ExecutionCtx) {
         self.wcm.start_proof(pctx, ectx);
     }
 
@@ -36,11 +33,16 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.end_proof();
     }
 
-    fn calculate_plan(&mut self, _pctx: &ProofCtx<F>) {
-        self.wcm.calculate_plan();
+    fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {
+        self.wcm.calculate_plan(ectx);
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+    fn initialize_air_instances(&mut self, pctx: &mut ProofCtx, ectx: &ExecutionCtx) {
+        for id in ectx.owned_instances.iter() {
+            pctx.air_instances.push((&ectx.instances[*id]).into());
+        }
+    }
+    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx, ectx: &ExecutionCtx) {
         self.wcm.calculate_witness(stage, pctx, ectx);
     }
 
@@ -49,11 +51,8 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
     }
 }
 
-// This is a mock for Goldilocks type
-type GL = Goldilocks;
-
 #[no_mangle]
-pub extern "Rust" fn init_library<'a>() -> Box<dyn WCLibrary<GL>> {
+pub extern "Rust" fn init_library<'a>() -> Box<dyn WCLibrary> {
     env_logger::builder()
         .format_timestamp(None)
         .format_level(true)

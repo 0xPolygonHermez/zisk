@@ -1,5 +1,7 @@
+use p3_goldilocks::Goldilocks;
+use p3_field::AbstractField;
+
 use serde::{Deserialize, Serialize};
-use goldilocks::{AbstractField, Goldilocks};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VerificationKey<T> {
@@ -17,7 +19,9 @@ impl VerificationKey<Goldilocks> {
 
 #[cfg(test)]
 mod tests {
-    use goldilocks::Goldilocks;
+    use p3_goldilocks::Goldilocks;
+    use p3_field::AbstractField;
+
     use super::*;
 
     #[test]

@@ -1,16 +1,16 @@
 use std::any::Any;
 
-use crate::WitnessPilOut;
+use crate::{Prover, WitnessPilOut};
 
 #[allow(dead_code)]
-pub struct ProofCtx<F> {
+pub struct ProofCtx {
     pub public_inputs: Vec<u8>,
     pub pilout: WitnessPilOut,
-    _phantom: std::marker::PhantomData<F>,
-    pub air_groups: Vec<AirGroupCtx>,
+    pub air_instances: Vec<AirInstanceCtx>,
+    pub provers: Vec<Box<dyn Prover>>,
 }
 
-impl<F> ProofCtx<F> {
+impl ProofCtx {
     const MY_NAME: &'static str = "ProofCtx";
 
     pub fn create_ctx(pilout: WitnessPilOut, public_inputs: Vec<u8>) -> Self {
@@ -22,18 +22,18 @@ impl<F> ProofCtx<F> {
 
         // pilout.print_pilout_info();
 
-        let mut air_groups = Vec::new();
-        for i in 0..pilout.air_groups().len() {
-            let air_group = AirGroupCtx::new(i);
-            air_groups.push(air_group);
+        // let mut air_groups = Vec::new();
+        // for i in 0..pilout.air_groups().len() {
+        //     let air_group = AirGroupCtx::new(i);
+        //     air_groups.push(air_group);
 
-            for j in 0..pilout.air_groups()[i].airs().len() {
-                let air = AirCtx::new(i, j);
-                air_groups[i].airs.push(air);
-            }
-        }
+        //     for j in 0..pilout.air_groups()[i].airs().len() {
+        //         let air = AirCtx::new(i, j);
+        //         air_groups[i].airs.push(air);
+        //     }
+        // }
 
-        ProofCtx { public_inputs, pilout, _phantom: std::marker::PhantomData, air_groups }
+        ProofCtx { public_inputs, pilout, air_instances: Vec::new(), provers: Vec::new() }
     }
 }
 
@@ -80,7 +80,8 @@ impl AirCtx {
             air_group_id: self.air_group_id,
             air_id: self.air_id,
             air_instance_id: self.air_instances.len(),
-            trace: Box::new(trace),
+            trace: Some(Box::new(trace)),
+            buffer: Vec::new(),
         };
         self.air_instances.push(air_instance);
     }
@@ -157,7 +158,18 @@ pub struct AirInstanceCtx {
     pub air_group_id: usize,
     pub air_id: usize,
     pub air_instance_id: usize,
-    pub trace: Box<dyn std::any::Any>,
+    pub trace: Option<Box<dyn std::any::Any>>,
+    pub buffer: Vec<u8>,
+}
+
+impl AirInstanceCtx {
+    pub fn new(air_group_id: usize, air_id: usize, air_instance_id: usize) -> Self {
+        AirInstanceCtx { air_group_id, air_id, air_instance_id, trace: None, buffer: Vec::new() }
+    }
+
+    pub fn get_buffer_ptr(&mut self) -> *mut u8 {
+        self.buffer.as_mut_ptr() as *mut u8
+    }
 }
 
 // #[cfg(test)]

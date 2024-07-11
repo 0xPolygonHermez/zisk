@@ -79,7 +79,8 @@ impl ProveCmd {
 
         match self.field {
             Field::Goldilocks => {
-                let _proof = ProofMan::generate_proof::<GL>(self.wc_lib.clone(), self.proving_key.clone(), public_inputs_u8);
+                let _proof =
+                    ProofMan::<GL>::generate_proof(self.wc_lib.clone(), self.proving_key.clone(), public_inputs_u8);
             }
         }
 

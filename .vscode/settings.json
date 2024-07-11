@@ -3,8 +3,9 @@
         "./Cargo.toml",
         "./cli/Cargo.toml",
         "./common/Cargo.toml",
-        // "./lib/provers/stark/Cargo.toml",
+        "./lib/provers/stark/Cargo.toml",
         // "./lib/provers/mocked/Cargo.toml",
+        "./lib/starks-lib-c/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",
         "./transcript/Cargo.toml",
@@ -12,6 +13,6 @@
         "./wchelpers/Cargo.toml",
 
         "./examples/fibonacci-vadcop/Cargo.toml",
-        "./examples/zisk-basic/Cargo.toml"
+        // "./examples/zisk-basic/Cargo.toml"
     ]
 }
