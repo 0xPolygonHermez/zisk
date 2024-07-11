@@ -1,0 +1,7 @@
+require "fibonaccisq.pil"
+require "module.pil"
+
+// Notice that these two components have a one-to-one reationship, so they must have the same number of rows
+// for them to make sense and for the relationshhip to be satisfied
+FibonacciSquare(N: 2**10);
+Module(N: 2**10);

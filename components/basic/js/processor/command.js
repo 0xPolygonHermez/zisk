@@ -138,7 +138,7 @@ module.exports = class Command {
     beforeLast(cmd) {
         // console.log({step: Context.step, N: Context.N});
         let res = Context.zeroValue;
-        if (Context.step < (Context.N-1)) {
+        if (Context.step < (Context.N-2)) {
             res[0] = Context.fr.negone;
         }
         return res;

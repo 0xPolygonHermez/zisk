@@ -85,13 +85,13 @@ module.exports = class Mem extends Component {
                 cols.isDouble[rowIndex] = 0n;
             } else {
                 cols.step[rowIndex] = BigInt(rowIndex);
-            }       
+            }
             cols.sel[rowIndex] = 0n;
             cols.wr[rowIndex] = 0n;
             cols.lastAccess[rowIndex] = 0n;
             this.setColArray(cols.value, this.emptyValue, rowIndex);
             ++rowIndex;
-        }   
+        }
         cols.lastAccess[n - 1] = 1n;
     }
 }

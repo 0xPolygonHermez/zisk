@@ -1,0 +1,69 @@
+require "std_range_check.pil";
+
+air aggregate RangeCheck1(const int N = 2**3) {
+
+    col witness a1,a2,a3,a4,a5;
+    col witness sel1,sel2,sel3;
+
+    // Compilation Errors
+    // range_check(0, sel1, a1, 1, 0);
+    // range_check(0, sel1, a1, 0, 0);
+    // range_check(0, sel1, a1, 0, 6);
+    // range_check(0, sel1, a1, 0, (PRIME - 1) / 2);
+    // range_check(0, sel1, a1, PRIME - 1, PRIME);
+    // range_check(0, sel1, a1, -PRIME, -PRIME + 1);
+
+    range_check(0, sel1, a1, 0, 2**8-1);
+    range_check(0, sel2, a2, 0, 2**4-1);
+    range_check(0, sel1, a3, 60, 2**16-1);
+    range_check(0, sel2, a4, 8228, 17400);
+    range_check(0, sel3, a5, 0, 2**8-1);
+};
+
+air aggregate RangeCheck2(const int N = 2**4) {
+
+    col witness b1,b2,b3;
+
+    range_check(0, colu: b1, min: 0, max: 2**8-1);
+    range_check(0, colu: b2, min: 0, max: 2**9-1);
+    range_check(0, colu: b3, min: 0, max: 2**10-1);
+};
+
+air aggregate RangeCheck3(const int N = 2**5) {
+
+    col witness c1,c2;
+
+    range_check(0, colu: c1, min: 0, max: 2**4-1);
+    range_check(0, colu: c2, min: 0, max: 2**8-1);
+};
+
+RangeCheck3();
+RangeCheck1();
+RangeCheck2();
+
+air aggregate RangeCheck4(const int N = 2**6) {
+
+    col witness a1,a2,a3,a4,a5,a6,a7,a8;
+    col witness sel1,sel2;
+
+    // Positive and predefined ranges
+    range_check(1, sel2, a1, 0, 2**8-1);
+    range_check(1, sel1, a1, 0, 2**16-1);
+
+    // Positive, non-predefined but absorbed ranges
+    range_check(1, sel2, a2, 50, 2**7-1); // absorbed to two U8
+    range_check(1, sel2, a3, 127, 2**8); // absorbed to two U16
+
+    // Positive, non-predefined and larger-than-predetermined ranges
+    range_check(1, sel2, a4, 1, 2**16+1);
+
+    // Edge cases
+    range_check(1, sel1, a5, 127, 2**16); // One greater than the maximum predefined
+    range_check(1, sel1, a6, -1, 2**3);  // One less than the minimum predefined
+
+    // Negative
+    range_check(1, colu: a7, min: -2**7+1, max: -50);
+    range_check(1, colu: a8, min: -2**8+1, max: -127);
+};
+
+RangeCheck4();

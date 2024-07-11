@@ -1,6 +1,8 @@
 require "std_permutation.pil"
 
-subproof Mem(2**10) {
+const int MEMORY_ID = 4;
+
+air Mem(int N = 2**10) {
 
     col fixed INCS = [1,2..N];
     col fixed LLAST = [0...,1];
@@ -27,8 +29,8 @@ subproof Mem(2**10) {
     (1 - sel) * wr === 0;
 
     // const expr isWrite = sel' * wr';
-    const expr rdSame = (1 - wr) * (1-lastAccess);
-    const expr rdDifferent = (1 - wr) * lastAccess;
+    const expr rdSame = sel * (1 - wr) * (1-lastAccess);
+    const expr rdDifferent = sel * (1 - wr) * lastAccess;
 
     // lastAccess has to be 1 in the last evaluation. This is necessary to
     // validate [rdDifferent * (val[0]') = 0;] correctly (in a cyclic way)

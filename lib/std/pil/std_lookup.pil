@@ -2,18 +2,10 @@ require "std_sum.pil"
 
 const string name_lookup = "lookup";
 
-function lookup_assumes(int opid, expr sel, expr cols[]) {
-    sum_assumes_sel(name_lookup, opid, sel, cols);
+function lookup_assumes(const int opid, const expr sel = 1, const expr cols[]) {
+    sum_assumes(name_lookup, opid, sel, cols);
 }
 
-function lookup_assumes_nosel(int opid, expr cols[]) {
-    sum_assumes_nosel(name_lookup, opid, cols);
-}
-
-function lookup_proves(int opid, expr sel, expr cols[]) {
-    sum_proves_sel(name_lookup, opid, sel, cols);
-}
-
-function lookup_proves_nosel(int opid, expr cols[]) {
-    sum_proves_nosel(name_lookup, opid, cols);
+function lookup_proves(const int opid, const expr mul = 1, const expr cols[]) {
+    sum_proves(name_lookup, opid, mul, cols);
 }

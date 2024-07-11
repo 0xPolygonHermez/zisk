@@ -4,14 +4,15 @@ const Registers = require('./registers.js');
 const F1Field = require('ffjavascript').F1Field;
 const fs = require('fs');
 const Memory = require('../../../mem/js/mem.js');
+const ROM = require('../../rom/rom.js')
 const Command = require('./command.js');
 const Debug = require('./debug.js');
 
 const FF_PRIME = 0xFFFFFFFF00000001n;
 
-module.exports = class Processor 
+module.exports = class Processor
 {
-    constructor(cols, config = {}) {  
+    constructor(cols, config = {}) {
         this.config = config;
         this.cols = cols;
         this.N = this.cols.zkPC.length;
@@ -19,8 +20,8 @@ module.exports = class Processor
         this.setupFr();
         this.setupChunks();
         this.registers = new Registers();
-        this.context = Context.setup({  fr: this.fr, 
-                                        chunks: this.chunks, 
+        this.context = Context.setup({  fr: this.fr,
+                                        chunks: this.chunks,
                                         N: this.N,
                                         registers: this.registers});
         this.romToMainLinks = {};
@@ -66,7 +67,7 @@ module.exports = class Processor
         this.defineSingleRegister('CTX', cols.CTX, cols.inCTX, cols.setCTX, 'inCTX', 'setCTX');
         this.defineSingleRegister('RCX', cols.RCX, cols.inRCX, cols.setRCX, 'inRCX', 'setRCX');
     }
-    defineLargeRegisters() {    
+    defineLargeRegisters() {
         const cols = this.cols;
         this.defineLargeRegister('A', cols.A, cols.inA, cols.setA, 'inA', 'setA');
         this.defineLargeRegister('B', cols.B, cols.inB, cols.setB, 'inB', 'setB');
@@ -101,11 +102,11 @@ module.exports = class Processor
         return this.registers.defineSingle(name, valueCol, inCol, false, inRomProp, false);
     }
     rotateLeft(reg) {
-        const chunkValues = reg.getValue(); 
+        const chunkValues = reg.getValue();
         return [chunkValues[this.chunks - 1],...chunkValues.slice(0, this.chunks - 1)];
     }
     calculateRelativeAddress() {
-        this.addrRel = 0;        
+        this.addrRel = 0;
 
         if (this.romline.ind) {
             this.addrRel += this.registers.getValue('E')[0];
@@ -118,20 +119,23 @@ module.exports = class Processor
         if (typeof this.romline.maxInd !== 'undefined' && this.addrRel > this.romline.maxInd) {
             const index = this.romline.offset - this.romline.baseLabel + this.addrRel;
             throw new Error(`Address out of bounds accessing index ${index} but ${this.romline.offsetLabel}[${this.romline.sizeLabel}] ind:${this.addrRel}`);
-        }   
+        }
     }
     setupRomToMainLinks() {
+
+        // LINE: 9, setA, setB, setC, setCTX, setD, setE, setPC, setSP
+
         this.linkRomFlagToMainCol('isStack', this.cols.isStack);
         this.linkRomFlagToMainCol('isMem', this.cols.isMem);
         this.linkRomFlagToMainCol('mOp', this.cols.mOp);
-        this.linkRomFlagToMainCol('mWr', this.cols.mWR);
+        this.linkRomFlagToMainCol('mWR', this.cols.mWR);
         this.linkRomFlagToMainCol('memUseAddrRel', this.cols.memUseAddrRel);
         this.linkRomFlagToMainCol('useCTX', this.cols.useCTX);
         this.linkRomConstToMainCol('incStack', this.cols.incStack);
         this.linkRomConstToMainCol('ind', this.cols.ind);
         this.linkRomConstToMainCol('indRR', this.cols.indRR);
         this.linkRomConstToMainCol('offset', this.cols.offset);
-        this.linkRomFlagToMainCol('doAssert', this.cols.doAssert);
+        this.linkRomFlagToMainCol('assert', this.cols.doAssert);
         this.linkRomFlagToMainCol('assumeFREE', this.cols.assumeFREE);
 
         this.linkRomFlagToMainCol('JMP', this.cols.jmp);
@@ -177,7 +181,7 @@ module.exports = class Processor
     }
     calculateMemoryAddress() {
         this.addr = this.romline.offset ?? 0;
-        
+
         if (this.romline.useCTX) {
             addr += Number(this.registers.getValue('CTX'))*0x40000;
         }
@@ -207,13 +211,12 @@ module.exports = class Processor
         for (let step = 0; step < stepsN; step++) {
             this.setStep(step);
             this.setRomLineAndZkPC();
-            
-            // selectors, component, mapping (lookup/multiset)
+
+            // selectors, component, mapping (lookup/permutation)
 
             this.evalPreCommands();
             this.calculateFreeInput();
             this.opValue = this.addInValues(this.getConstValue());
-            // console.log({opValue: this.opValue});
             this.calculateRelativeAddress();
             this.updateRomToMainLinkedCols();
             this.verifyComponents();
@@ -222,12 +225,17 @@ module.exports = class Processor
             // this.registers.dump();
             this.evalPostCommands();
         }
+        // for (let step = 0; step < stepsN; step++) {
+        //     console.log(step, this.romline.lineStr);
+        //     console.log(this.cols.CONST[0][step]);
+        //     this.dumpRow(step, this.context.sourceRef);
+        // }
         this.finishComponents();
     }
-    manageFlowControl() {        
-        // calculate all flow control values        
+    manageFlowControl() {
+        // calculate all flow control values
         // TODO: call flag
-    
+
         const condConst = this.romline.condConst ?? 0;
 
         const jmpAddr = this.romline.jmpAddr ?? 0;
@@ -243,7 +251,7 @@ module.exports = class Processor
         const op0cond = this.fr.e(this.opValue[0] + BigInt(condConst));
 
         let isNegative = 0;
-        let op0Inv = this.fr.zero;
+        const op0Inv = this.fr.isZero(op0cond) ? this.fr.zero : this.fr.inv(op0cond);
 
         if (this.romline.JMPN) {
             if (op0cond >= this.frFirst32BitsNegative) {
@@ -255,11 +263,10 @@ module.exports = class Processor
                 throw new Error(`On JMPN value ${op0cond} not a valid 32bit value ${Context.sourceRef}`);
             }
         } else {
-            if (this.romline.JMPZ) {                
+            if (this.romline.JMPZ) {
                 if (this.fr.isZero(op0cond)) {
                     nextZkPC = finalJmpAddr;
                 } else {
-                    op0Inv = this.fr.inv(op0cond);
                     nextZkPC = finalElseAddr;
                 }
             } else if (this.romline.JMP) {
@@ -272,7 +279,7 @@ module.exports = class Processor
         this.zkPC = nextZkPC;
 
         this.cols.isNeg[this.row] = this.frZeroOne[isNegative];
-        this.cols.op0Inv[this.row] = op0Inv;    
+        this.cols.op0Inv[this.row] = op0Inv;
         this.cols.RCXInv[this.row] = insideRepeatLoop ? this.fr.inv(this.RCX.getValue()) : this.fr.zero;
     }
     initComponents() {
@@ -282,7 +289,7 @@ module.exports = class Processor
     }
     verifyComponents() {
         for (const romFlag in this.components) {
-            if (!this.romline[romFlag]) continue;
+            if (romFlag !== 'ROM' && !this.romline[romFlag]) continue;
             const componentInfo = this.components[romFlag];
             componentInfo.method.apply(this, [true, componentInfo.id, componentInfo.helper]);
         }
@@ -300,7 +307,7 @@ module.exports = class Processor
         return this.registers.addInValues(this.row, this.romline, constValues);
     }
     applySetValues() {
-        this.registers.applySetValue(this.row, this.romline, this.opValue);
+        this.registers.applySetValue(this.row, this.nextRow, this.romline, this.opValue);
     }
     convertConstlValue(value) {
         return this.scalarToFea(BigInt(value));
@@ -314,7 +321,7 @@ module.exports = class Processor
         else if (this.romline[this.romConst]) {
             value[0] = Context.fr.e(this.romline[this.romConst]);
         }
-        
+
         for (let index = 0; index < this.chunks; ++index) {
             this.cols.CONST[index][this.row] = value[index];
         }
@@ -356,12 +363,15 @@ module.exports = class Processor
     registerComponents() {
         this.proofCtx.memory = new Memory({fr: this.fr, inputChunks: this.chunks});
         this.registerComponent(['mOp'], false, this.proofCtx.memory, this.mainToMemory);
+
+        this.proofCtx.rom = new ROM({fr: this.fr});
+        this.registerComponent(['ROM'], false, this.proofCtx.rom, this.mainToROM);
     }
     registerComponent(romFlags, id, helper, method) {
         if (id === false) {
             id = helper.getDefaultId();
         }
-        for (const romFlag of romFlags) {        
+        for (const romFlag of romFlags) {
             this.components[romFlag] = {id, helper, method};
         }
     }
@@ -385,12 +395,19 @@ module.exports = class Processor
         // console.log(`\x1B[1;35m#${this.row.toString().padStart(8, '_')} ROM${this.zkPC.toString().padStart(6,'_')} ${this.romline.lineStr}\x1B[0m`);
     }
 
-    mainToMemory(verify, helperId, helper) {            
+    mainToMemory(verify, helperId, helper) {
         if (verify) {
             return helper.verify([helperId, this.addr, this.row, this.romline.mWR ? 1n : 0n, ...this.opValue]);
         }
         return helper.calculateFreeInput([helperId, this.addr, this.row, this.romline.mWR ? 1n : 0n]);
     }
+    mainToROM(verify, helperId, helper) {
+        if (verify) {
+            return helper.verify([this.zkPC, this.romline.fileName, this.romline.line]);
+        }
+        throw new Error('ROM only operates in verify mode');
+    }
+
     scalarToFea(value) {
         let res = []
         let index = 0;
@@ -405,6 +422,41 @@ module.exports = class Processor
         }
         assert(value === 0n);
         return res;
+    }
+    dumpRow(row, source) {
+        const colnames = Object.keys(this.cols);
+        let values = [];
+        try {
+            for (const colname of colnames) {
+                const col = this.cols[colname];
+                const len = col.length;
+                let changes = false;
+                let value = '';
+                if (len <= 16) {
+                    let avalues = [];
+                    for (let index = 0; index < len; ++index) {
+                        const value = col[index][row];
+                        if (row > 0 && value !== col[index][row-1]) {
+                            changes = true;
+                            avalues.push(`\x1B[33m${value}\x1B[0m`);
+                            continue;
+                        }
+                        avalues.push(value);
+                    }
+                    value = '['+avalues.join(',')+']';
+                } else {
+                    value = col[row];
+                    if (row > 0 && value !== col[row-1]) {
+                        changes = true;
+                        value = `\x1B[33m${value}\x1B[0m`;
+                    }
+                }
+                values.push((changes ? `\x1B[1;36m${colname}\x1B[0m: `:`${colname}: `) + value);
+            }
+        } catch(e) {
+        }
+        console.log(`\x1B[32m${source.trimStart()}\x1B[0m`);
+        console.log(`ROW[${row}]={${values.join(' ')}}`);
     }
     // required filled when verifys
 }

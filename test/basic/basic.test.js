@@ -46,25 +46,25 @@ function getSettings() {
             airoutFilename: path.join(componentsPath, 'basic/pil/basic.pilout'),
         },
         witnessCalculators: [
-            { filename: path.join(componentsPath, 'basic/js/executor_rom.js'), settings: {}, sm: "Rom" },
             { filename: path.join(componentsPath, 'basic/js/executor_main.js'), settings: {}, sm: "Main" },
+            { filename: path.join(componentsPath, 'basic/js/executor_rom.js'), settings: {}, sm: "Rom" },
             { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
-            { filename: path.join(libPath, 'std/js/div_lib.js'), settings: {}, },
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
-                Rom: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
-            },   
+                default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
+                Mem_10: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
+                Rom_8: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
+            },
         },
         aggregation: {
             settings: {
                 recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
                 final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
             },
-            genProof: false,  
+            genProof: false,
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };
@@ -75,7 +75,7 @@ describe("Basic Vadcop", async function () {
     this.timeout(10000000);
 
     const options = {
-        parallelExec: true,
+        parallelExec: false,
         useThreads: true,
         vadcop: true,
     };

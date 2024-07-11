@@ -1,16 +1,15 @@
-const path = require('path');
-const Processor = require('./processor/processor.js');
 const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calculator_component.js');
+
 const log = require("pil2-proofman/logger.js");
 
-module.exports = class BasicMain extends WitnessCalculatorComponent {
+module.exports = class FibonacciSquare extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {
-        super("Basic Main", wcManager, proofCtx);
+        super("FibonacciSq", wcManager, proofCtx);
     }
 
     async witnessComputation(stageId, subproofId, airInstance, publics) {
-        log.info(`[${this.name}]`, `Starting witness computation stage ${stageId}.`);
-        if(stageId === 1) {
+        log.info(`[${this.name}       ]`, `Starting witness computation stage ${stageId}.`);
+        if (stageId === 1) {
             const instanceId = airInstance.instanceId;
 
             if (instanceId !== -1) {
@@ -30,25 +29,38 @@ module.exports = class BasicMain extends WitnessCalculatorComponent {
                 throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
             }
 
-            this.createPolynomialTraces(stageId, airInstance, publics);
+            this.#createPolynomialTraces(stageId, airInstance, publics);
 
-            // Create a Rom instance and a Mem instance
-            await this.wcManager.sendData("Basic Rom", {"airId": 0});
-            await this.wcManager.sendData("Basic Mem", {"airId": 0});
-            // Note: We do it after the witness computation of the main component because the rest are dependent on it,
-            //       and there is no better way to do it in this model. The optimal would be do it in parallel every time
-            //       the main provides with an input to the rest of the components.
+            // Not needed for this example, one case use the "finished" message
+            // // NOTE: Here we send a notification to the module to begin the computation
+            // await this.sendData("Module", {sender: this.name, command: "createInstances"});
         }
 
+        log.info(`[${this.name}       ]`, `Finishing witness computation stage ${stageId}.`);
         return;
     }
 
-    createPolynomialTraces(stageId, airInstance, publics) {
+    #createPolynomialTraces(stageId, airInstance, publics) {
         log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
+        const N = airInstance.layout.numRows;
 
-        const cols = airInstance.wtnsPols.Main;
+        const Module = this.wcManager.wc.find(wc => wc.name === "Module");
 
-        const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json'), proofCtx: this.proofCtx});
-        processor.execute(publics);
+        const polA = airInstance.wtnsPols.FibonacciSquare.a;
+        const polB = airInstance.wtnsPols.FibonacciSquare.b;
+
+        polA[0] = publics[1];
+        polB[0] = publics[2];
+
+        for (let i = 0; i < N - 1; i++) {
+            const sumsq = polA[i]*polA[i] + polB[i]*polB[i];
+
+            polB[i+1] = Module.computeVerify(false, [sumsq]);
+            polA[i+1] = polB[i];
+
+            Module.computeVerify(true, [sumsq, polB[i+1]]);
+        }
+
+        publics[3] = polB[N - 1];
     }
 }

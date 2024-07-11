@@ -25,9 +25,9 @@ module.exports = class Registers {
     }
     defineSingle(name, valueCol, inCol, setCol, inRomProp, setRomProp) {
         this.checkDefine(name, valueCol, inCol, setCol, inRomProp, setRomProp);
-        return this.registers[name] = new SingleRegister(name, valueCol, inCol, setCol, inRomProp, setRomProp);        
+        return this.registers[name] = new SingleRegister(name, valueCol, inCol, setCol, inRomProp, setRomProp);
     }
-    addInValues(row, romline, value) {        
+    addInValues(row, romline, value) {
         for (const regname in this.registers) {
             const register = this.registers[regname];
             const regValue = register.getInValue(row, romline);
@@ -35,16 +35,16 @@ module.exports = class Registers {
             if (!Array.isArray(regValue)) {
                 value[0] = Context.fr.add(value[0], regValue);
                 continue;
-            } 
+            }
             for (let index = 0; index < regValue.length; ++index) {
                 value[index] = Context.fr.add(value[index], regValue[index]);
             }
         }
         return value;
     }
-    applySetValue(row, romline, value) {
+    applySetValue(setRow, regRow, romline, value) {
         for (const regname in this.registers) {
-            this.registers[regname].applySetValue(row, romline, value);
+            this.registers[regname].applySetValue(setRow, regRow, romline, value);
         }
     }
     dump() {

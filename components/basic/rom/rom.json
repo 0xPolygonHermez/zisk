@@ -3,28 +3,28 @@
   {
    "inSTEP": "1",
    "setA": 1,
-   "line": 5,
+   "line": 6,
    "fileName": "rom.zkasm",
    "lineStr": "        STEP => A"
   },
   {
    "CONST": "0",
    "assert": 1,
-   "line": 6,
+   "line": 7,
    "fileName": "rom.zkasm",
    "lineStr": "        0 :ASSERT"
   },
   {
    "CONST": "2",
    "setB": 1,
-   "line": 8,
+   "line": 9,
    "fileName": "rom.zkasm",
    "lineStr": "        2 => B"
   },
   {
    "CONST": "3",
    "setA": 1,
-   "line": 9,
+   "line": 10,
    "fileName": "rom.zkasm",
    "lineStr": "        3 => A"
   },
@@ -32,14 +32,14 @@
    "inA": "1",
    "inB": "1",
    "setA": 1,
-   "line": 10,
+   "line": 11,
    "fileName": "rom.zkasm",
    "lineStr": "        A + B => A"
   },
   {
    "CONST": "5",
    "assert": 1,
-   "line": 11,
+   "line": 12,
    "fileName": "rom.zkasm",
    "lineStr": "        5           :ASSERT"
   },
@@ -47,14 +47,14 @@
    "inA": "1",
    "CONST": "600",
    "offset": 0,
-   "offsetLabel": "myvar",
+   "offsetLabel": "myvar1",
    "mOp": 1,
    "mWR": 1,
    "assumeFree": 0,
-   "line": 13,
+   "line": 14,
    "useCTX": 0,
    "fileName": "rom.zkasm",
-   "lineStr": "        A + 600      :MSTORE(myvar)"
+   "lineStr": "        A + 600      :MSTORE(myvar1)"
   },
   {
    "freeInTag": {
@@ -64,19 +64,19 @@
    "inFREE0": "0",
    "setA": 1,
    "offset": 0,
-   "offsetLabel": "myvar",
+   "offsetLabel": "myvar1",
    "mOp": 1,
    "mWR": 0,
    "assumeFree": 0,
-   "line": 14,
+   "line": 15,
    "useCTX": 0,
    "fileName": "rom.zkasm",
-   "lineStr": "        $ => A      :MLOAD(myvar)"
+   "lineStr": "        $ => A      :MLOAD(myvar1)"
   },
   {
    "CONST": "15",
    "assert": 1,
-   "line": 16,
+   "line": 19,
    "fileName": "rom.zkasm",
    "lineStr": "        15          :ASSERT"
   },
@@ -90,7 +90,7 @@
    "setCTX": 1,
    "setSP": 1,
    "setPC": 1,
-   "line": 19,
+   "line": 22,
    "fileName": "rom.zkasm",
    "lineStr": "        0 => A,B,C,D,E,CTX, SP, PC"
   },
@@ -113,7 +113,7 @@
    "jmpAddrLabel": "finalWait",
    "elseAddr": 11,
    "elseAddrLabel": "next",
-   "line": 22,
+   "line": 25,
    "fileName": "rom.zkasm",
    "lineStr": "        ${beforeLast()}  : JMPN(finalWait)"
   },
@@ -126,7 +126,7 @@
    "call": 0,
    "jmpAddr": 0,
    "jmpAddrLabel": "start",
-   "line": 24,
+   "line": 27,
    "fileName": "rom.zkasm",
    "lineStr": "                         : JMP(start)"
   },
@@ -134,7 +134,7 @@
    "inA": "1",
    "CONST": "1",
    "assert": 1,
-   "line": 26,
+   "line": 29,
    "fileName": "rom.zkasm",
    "lineStr": "        A + 1 :ASSERT"
   }
