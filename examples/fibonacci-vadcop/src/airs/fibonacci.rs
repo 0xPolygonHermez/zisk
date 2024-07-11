@@ -30,19 +30,17 @@ impl<F: AbstractField> WCComponent<F> for Fibonacci {
         }
 
         debug!("Fibonacci: Calculating witness");
-        let air_group_id =
-            pctx.pilout.get_air_group_idx("FibonacciSquare").unwrap_or_else(|| panic!("Air group not found"));
-        let air_id =
-            pctx.pilout.get_air_idx(air_group_id, "FibonacciSquare").unwrap_or_else(|| panic!("Air not found"));
-        let air = &pctx.pilout.subproofs[air_group_id].airs[air_id];
+        let air =
+            pctx.pilout.get_air("FibonacciSquare", "FibonacciSquare").unwrap_or_else(|| panic!("Air group not found"));
 
-        let num_rows: usize = 1 << air.num_rows.unwrap();
+        let num_rows: usize = 1 << air.num_rows();
 
         let mut trace = Box::new(FibonacciTrace::new(num_rows));
 
         let pi: FibonacciVadcopInputs = pctx.public_inputs.as_slice().into();
         let mut a = pi.a as u64;
         let mut b = pi.b as u64;
+
         let module = pi.module as u64;
 
         trace.a[0] = Goldilocks::from_canonical_u64(a);
@@ -57,6 +55,6 @@ impl<F: AbstractField> WCComponent<F> for Fibonacci {
             trace.a[i] = Goldilocks::from_canonical_u64(a);
         }
 
-        pctx.air_groups[air_group_id].airs[air_id].add_trace(trace);
+        pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
     }
 }

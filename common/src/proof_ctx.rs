@@ -1,41 +1,39 @@
-use std::{any::Any, path::PathBuf};
-use pilout::pilout_proxy::PilOutProxy;
+use std::any::Any;
+
+use crate::WitnessPilOut;
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
-    proving_key: PathBuf,
+    pub pilout: WitnessPilOut,
     _phantom: std::marker::PhantomData<F>,
     pub air_groups: Vec<AirGroupCtx>,
-    pub pilout: PilOutProxy,
 }
 
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(proving_key: PathBuf, public_inputs: Vec<u8>) -> Self {
+    pub fn create_ctx(pilout: WitnessPilOut, public_inputs: Vec<u8>) -> Self {
         println!("{}: ··· Creating proof context", Self::MY_NAME);
 
-        let pilout = PilOutProxy::new(&proving_key.display().to_string()).unwrap();
-
-        if pilout.subproofs.len() == 0 {
+        if pilout.air_groups().len() == 0 {
             panic!("No subproofs found in PilOut");
         }
 
-        pilout.print_pilout_info();
+        // pilout.print_pilout_info();
 
         let mut air_groups = Vec::new();
-        for i in 0..pilout.subproofs.len() {
+        for i in 0..pilout.air_groups().len() {
             let air_group = AirGroupCtx::new(i);
             air_groups.push(air_group);
 
-            for j in 0..pilout.subproofs[i].airs.len() {
+            for j in 0..pilout.air_groups()[i].airs().len() {
                 let air = AirCtx::new(i, j);
                 air_groups[i].airs.push(air);
             }
         }
 
-        ProofCtx { public_inputs, proving_key, _phantom: std::marker::PhantomData, air_groups, pilout }
+        ProofCtx { public_inputs, pilout, _phantom: std::marker::PhantomData, air_groups }
     }
 }
 

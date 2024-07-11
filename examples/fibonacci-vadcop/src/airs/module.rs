@@ -29,11 +29,9 @@ impl<F: AbstractField> WCComponent<F> for Module {
         }
 
         debug!("Module   : Calculating witness");
-        let air_group_id = pctx.pilout.get_air_group_idx("Module").unwrap_or_else(|| panic!("Air group not found"));
-        let air_id = pctx.pilout.get_air_idx(air_group_id, "Module").unwrap_or_else(|| panic!("Air not found"));
-        let air = &pctx.pilout.subproofs[air_group_id].airs[air_id];
+        let air = pctx.pilout.get_air("Module", "Module").unwrap_or_else(|| panic!("Air group not found"));
 
-        let num_rows: usize = 1 << air.num_rows.unwrap();
+        let num_rows: usize = 1 << air.num_rows();
 
         let mut trace = Box::new(ModuleTrace::new(num_rows));
 
@@ -55,6 +53,6 @@ impl<F: AbstractField> WCComponent<F> for Module {
             b = x_mod;
         }
 
-        pctx.air_groups[air_group_id].airs[air_id].add_trace(trace);
+        pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
     }
 }

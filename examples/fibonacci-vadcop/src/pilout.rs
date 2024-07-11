@@ -1,14 +1,17 @@
-use common::{AirGroup, BasicAir};
 use common::WitnessPilOut;
 
 pub fn get_fibonacci_vadcop_pilout() -> WitnessPilOut {
-    let mut pilout = WitnessPilOut::new("FibonacciVadcopPilOut", 2);
+    let mut pilout = WitnessPilOut::new("FibonacciVadcopPilOut", 2, b"fibonacci-vadcop-hash".to_vec());
 
-    let mut air_group = AirGroup::new("AirGroup_1");
-    air_group.add_air(BasicAir::new("FibonacciSquare", 8));
-    air_group.add_air(BasicAir::new("Module", 8));
+    let air_group = pilout.add_air_group(Some("FibonacciSquare"));
+    println!("air_group: {:?}", air_group);
+    air_group.add_air(Some("FibonacciSquare"), 10);
 
-    pilout.add_air_group(air_group);
+    let air_group = pilout.add_air_group(Some("Module"));
+    air_group.add_air(Some("Module"), 10);
+
+    let air_group = pilout.add_air_group(Some("U8Air"));
+    air_group.add_air(Some("U8Air"), 8);
 
     pilout
 }

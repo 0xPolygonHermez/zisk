@@ -1,10 +1,12 @@
 use std::rc::Rc;
 
-use common::{ExecutionCtx, ProofCtx};
+use common::{ExecutionCtx, ProofCtx, WitnessPilOut};
 use wchelpers::WCLibrary;
 use proofman::WCManager;
 
 use crate::{MainSM, MemSM};
+
+use crate::pilout::get_fibonacci_vadcop_pilout;
 
 pub struct Zisk<F> {
     pub wcm: WCManager<F>,
@@ -38,6 +40,10 @@ impl<F> WCLibrary<F> for Zisk<F> {
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         self.wcm.calculate_witness(stage, pctx, ectx);
+    }
+
+    fn get_pilout(&self) -> WitnessPilOut {
+        get_fibonacci_vadcop_pilout()
     }
 }
 

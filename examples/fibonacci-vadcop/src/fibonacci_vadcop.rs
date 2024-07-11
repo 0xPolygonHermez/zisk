@@ -3,11 +3,12 @@ use std::rc::Rc;
 use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 
-use common::{ExecutionCtx, ProofCtx};
+use common::{ExecutionCtx, ProofCtx, WitnessPilOut};
 use wchelpers::WCLibrary;
 use proofman::WCManager;
 
 use crate::{Fibonacci, Module};
+use crate::pilout::get_fibonacci_vadcop_pilout;
 
 pub struct FibonacciVadcop<F> {
     pub wcm: WCManager<F>,
@@ -18,7 +19,7 @@ pub struct FibonacciVadcop<F> {
 impl<F: PrimeField64> FibonacciVadcop<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
-
+        
         let fibonacci = Fibonacci::new(&mut wcm);
         let module = Module::new(&mut wcm);
 
@@ -41,6 +42,10 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         self.wcm.calculate_witness(stage, pctx, ectx);
+    }
+
+    fn get_pilout(&self) -> WitnessPilOut {
+        get_fibonacci_vadcop_pilout()
     }
 }
 
