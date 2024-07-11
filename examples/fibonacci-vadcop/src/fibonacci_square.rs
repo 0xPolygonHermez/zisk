@@ -28,10 +28,13 @@ impl WCComponent for FibonacciSquare {
         }
 
         debug!("Fibonacci: Calculating witness");
-        let air =
-            pctx.pilout.get_air("FibonacciSquare", "FibonacciSquare").unwrap_or_else(|| panic!("Air group not found"));
-        let air_instance_ctx = &mut pctx.air_instances[air.air_id()];
+        const AIR_GROUP_ID: usize = 0;
+        const AIR_ID: usize = 0;
+        const INSTANCE_ID: usize = 0;
 
+        let air = pctx.pilout.find_air(AIR_GROUP_ID, AIR_ID);
+        let air_instance_ctx = &mut pctx.air_instances[INSTANCE_ID];
+        println!("air.air_id(): {}", air.air_id());
         let num_rows: usize = 1 << air.num_rows();
 
         let mut trace = Box::new(FibonacciSquareTrace0::from_buffer(&air_instance_ctx.buffer, num_rows));
@@ -53,8 +56,6 @@ impl WCComponent for FibonacciSquare {
             trace.b[i] = Goldilocks::from_canonical_u64(b);
             trace.a[i] = Goldilocks::from_canonical_u64(a);
         }
-
-        // pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
     }
 }
 

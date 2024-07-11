@@ -19,6 +19,10 @@
 8. [ ] Change the way we are "sending" traces from threads. Box is used to be sized and this pushes down the performance to access the elements of a trace when used
 9. type F = Goldilocks must be derived from pilout when creating the wc_manager.rs during a zisk new ...... !!!!
 
+100. golbalinfo parser
+101. modify buffer[u8] -> buffer[F]
+102. remove redundancies between ectx and pctx
+
 commands:
 execute example
 ../target/debug/fibonacci prove -a ./src/fibonacci/fibonacci.airout -o ./src/fibonacci/proof.json -p ./src/fibonacci/settings.json

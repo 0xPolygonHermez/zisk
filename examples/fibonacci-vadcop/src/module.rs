@@ -29,8 +29,12 @@ impl WCComponent for Module {
         }
 
         debug!("Module   : Calculating witness");
-        let air = pctx.pilout.get_air("Module", "Module").unwrap_or_else(|| panic!("Air group not found"));
-        let air_instance_ctx = &mut pctx.air_instances[air.air_id()];
+        const AIR_GROUP_ID: usize = 1;
+        const AIR_ID: usize = 0;
+        const INSTANCE_ID: usize = 1;
+
+        let air = pctx.pilout.find_air(AIR_GROUP_ID, AIR_ID);
+        let air_instance_ctx = &mut pctx.air_instances[INSTANCE_ID];
 
         let num_rows: usize = 1 << air.num_rows();
 
@@ -53,7 +57,5 @@ impl WCComponent for Module {
             a = b;
             b = x_mod;
         }
-
-        // pctx.air_groups[air.air_group_id()].airs[air.air_id()].add_trace(trace);
     }
 }

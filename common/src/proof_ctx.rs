@@ -1,13 +1,11 @@
-use std::any::Any;
-
-use crate::{Prover, WitnessPilOut};
+use crate::WitnessPilOut;
 
 #[allow(dead_code)]
 pub struct ProofCtx {
     pub public_inputs: Vec<u8>,
     pub pilout: WitnessPilOut,
+    // pub challenges: Vec<Vec<F>>,
     pub air_instances: Vec<AirInstanceCtx>,
-    pub provers: Vec<Box<dyn Prover>>,
 }
 
 impl ProofCtx {
@@ -22,132 +20,7 @@ impl ProofCtx {
 
         // pilout.print_pilout_info();
 
-        // let mut air_groups = Vec::new();
-        // for i in 0..pilout.air_groups().len() {
-        //     let air_group = AirGroupCtx::new(i);
-        //     air_groups.push(air_group);
-
-        //     for j in 0..pilout.air_groups()[i].airs().len() {
-        //         let air = AirCtx::new(i, j);
-        //         air_groups[i].airs.push(air);
-        //     }
-        // }
-
-        ProofCtx { public_inputs, pilout, air_instances: Vec::new(), provers: Vec::new() }
-    }
-}
-
-/// Air group context for managing airs
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct AirGroupCtx {
-    pub air_group_id: usize,
-    pub airs: Vec<AirCtx>,
-}
-
-impl AirGroupCtx {
-    /// Creates a new AirGroupCtx.
-    ///
-    /// # Arguments
-    ///
-    /// * `air_group_id` - The subproof ID associated with the AirGroupCtx.
-    pub fn new(air_group_id: usize) -> Self {
-        AirGroupCtx { air_group_id, airs: Vec::new() }
-    }
-}
-
-/// Air context for managing airs
-#[allow(dead_code)]
-pub struct AirCtx {
-    pub air_group_id: usize,
-    pub air_id: usize,
-    pub air_instances: Vec<AirInstanceCtx>,
-}
-
-impl AirCtx {
-    /// Creates a new AirCtx.
-    ///
-    /// # Arguments
-    ///
-    /// * `air_group_id` - The subproof ID associated with the AirCtx.
-    /// * `air_id` - The air ID associated with the AirCtx.
-    pub fn new(subproof_id: usize, air_id: usize) -> Self {
-        AirCtx { air_group_id: subproof_id, air_id, air_instances: Vec::new() }
-    }
-
-    pub fn add_trace(&mut self, trace: Box<dyn Any>) {
-        let air_instance = AirInstanceCtx {
-            air_group_id: self.air_group_id,
-            air_id: self.air_id,
-            air_instance_id: self.air_instances.len(),
-            trace: Some(Box::new(trace)),
-            buffer: Vec::new(),
-        };
-        self.air_instances.push(air_instance);
-    }
-    // /// Adds a buffer and a trace to the AirCtx.
-    // ///
-    // /// # Arguments
-    // ///
-    // /// * `trace` - The trace to add to the AirCtx.
-    // pub fn add_instance<TR: Trace>(&mut self, buffer: Vec<u8>, trace: TR) -> usize {
-    //     let len = self.instances.len();
-
-    //     self.instances.push(AirInstanceCtx {
-    //         subproof_id: self.subproof_id,
-    //         air_id: self.air_id,
-    //         instance_id: len,
-    //         buffer: Rc::new(buffer),
-    //         trace: Some(RwLock::new(Arc::new(trace))),
-    //         // TODO! Review this, has to be resized from the beginning?????
-    //         subproof_values: Vec::new(),
-    //     });
-    //     self.instances.len() - 1
-    // }
-
-    // /// Adds a buffer and a trace to the AirCtx.
-    // ///
-    // /// # Arguments
-    // ///
-    // /// * `trace` - The trace to add to the AirCtx.
-    // pub fn add_instance_reusing_buffer(&mut self, buffer: Rc<Vec<u8>>, _trace: Option<i32>) -> usize {
-    //     let len = self.instances.len();
-
-    //     self.instances.push(AirInstanceCtx {
-    //         subproof_id: self.subproof_id,
-    //         air_id: self.air_id,
-    //         instance_id: len,
-    //         buffer,
-    //         trace: None, //Some(RwLock::new(Arc::new(trace)),
-    //         // TODO! Review this, has to be resized from the beginning?????
-    //         subproof_values: Vec::new(),
-    //     });
-    //     self.instances.len() - 1
-    // }
-
-    // /// Returns a reference to the trace at the specified index.
-    // ///
-    // /// # Arguments
-    // ///
-    // /// * `trace_id` - The index of the trace to return.
-    // ///
-    // /// # Returns
-    // ///
-    // /// Returns a reference to the trace at the specified index.
-    // pub fn get_trace(&self, instance_id: usize) -> Result<Arc<dyn Trace>, &'static str> {
-    //     assert!(instance_id < self.instances.len(), "Trace ID out of bounds");
-
-    //     Ok(Arc::clone(&self.instances[instance_id].trace.as_ref().unwrap().read().unwrap()))
-    // }
-}
-
-impl std::fmt::Debug for AirCtx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AirCtx")
-            .field("air_group_id", &self.air_group_id)
-            .field("air_id", &self.air_id)
-            .field("instances", &self.air_instances.len())
-            .finish()
+        ProofCtx { public_inputs, pilout, air_instances: Vec::new() }
     }
 }
 
@@ -158,13 +31,12 @@ pub struct AirInstanceCtx {
     pub air_group_id: usize,
     pub air_id: usize,
     pub air_instance_id: usize,
-    pub trace: Option<Box<dyn std::any::Any>>,
     pub buffer: Vec<u8>,
 }
 
 impl AirInstanceCtx {
     pub fn new(air_group_id: usize, air_id: usize, air_instance_id: usize) -> Self {
-        AirInstanceCtx { air_group_id, air_id, air_instance_id, trace: None, buffer: Vec::new() }
+        AirInstanceCtx { air_group_id, air_id, air_instance_id, buffer: Vec::new() }
     }
 
     pub fn get_buffer_ptr(&mut self) -> *mut u8 {

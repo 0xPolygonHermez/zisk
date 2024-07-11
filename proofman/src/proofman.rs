@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use wchelpers::WCLibrary;
 
-use common::{ExecutionCtx, ProofCtx};
+use common::{ExecutionCtx, ProofCtx, Prover};
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -49,12 +49,12 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         wc_lib.initialize_air_instances(&mut pctx, &ectx);
 
         // Initialize prover and buffers to fit the proof
-        Self::initialize_prover(&proving_key, &mut pctx);
+        let provers = Self::initialize_provers(&proving_key, &mut pctx);
 
         for stage in 1..=pctx.pilout.num_stages() {
             wc_lib.calculate_witness(stage, &mut pctx, &ectx);
 
-            Self::commit_stage(stage, &mut pctx);
+            Self::commit_stage(stage, &provers, &mut pctx);
             if stage <= pctx.pilout.num_stages() {
                 Self::calculate_challenges(stage, &pctx);
             }
@@ -62,18 +62,21 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         wc_lib.end_proof();
 
-        Self::opening_stages(&pctx);
+        Self::opening_stages(&provers, &pctx);
 
         let proof = Self::finalize_proof(&pctx);
 
         Ok(proof)
     }
 
-    fn initialize_prover(proving_key: &PathBuf, pctx: &mut ProofCtx) {
+    fn initialize_provers(proving_key: &PathBuf, pctx: &mut ProofCtx) -> Vec<Box<dyn Prover>> {
         println!("{}: Initializing prover and creating buffers", Self::MY_NAME);
+
+        let mut provers: Vec<Box<dyn Prover>> = Vec::new();
 
         for air_instance in pctx.air_instances.iter_mut() {
             println!("{}: Initializing prover for air instance {:?}", Self::MY_NAME, air_instance);
+
             let folder = match air_instance.air_group_id {
                 0 => "build/FibonacciSquare/airs/FibonacciSquare_0/air",
                 1 => "build/Module/airs/Module_0/air",
@@ -85,11 +88,13 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             info!("{}: Preallocating a buffer of {} bytes", Self::MY_NAME, buffer_size);
             air_instance.buffer = vec![0u8; buffer_size];
 
-            pctx.provers.push(prover);
+            provers.push(prover);
         }
+
+        provers
     }
 
-    pub fn commit_stage(stage: u32, _pctx: &ProofCtx) {
+    pub fn commit_stage(stage: u32, _provers: &Vec<Box<dyn Prover>>, _pctx: &ProofCtx) {
         println!("{}: Committing stage {}", Self::MY_NAME, stage);
     }
 
@@ -98,7 +103,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         println!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
     }
 
-    pub fn opening_stages(_pctx: &ProofCtx) {
+    pub fn opening_stages(_provers: &Vec<Box<dyn Prover>>, _pctx: &ProofCtx) {
         println!("{}: Opening stages", Self::MY_NAME);
     }
 

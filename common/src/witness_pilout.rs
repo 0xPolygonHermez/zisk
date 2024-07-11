@@ -35,6 +35,10 @@ impl WitnessPilOut {
         None
     }
 
+    pub fn find_air(&self, air_group_id: usize, air_id: usize) -> &BasicAir {
+        &self.air_groups[air_group_id].airs[air_id]
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
