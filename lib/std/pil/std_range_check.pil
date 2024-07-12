@@ -62,6 +62,35 @@ function range_check_group(const int predefined = 1, const expr sels[], const ex
         range_check(predefined, sels[i], cols[i], min, max);
     }
 }
+/**
+ * If range_sel = 1, then the range [min1,max1] is checked, otherwise [min2,max2]
+ * @param predefined 1 if use the predefined range, 0 if create the specified range
+ * @param sel selection vector
+ * @param colu column to be range checked
+ * @param min minimum value of the range
+ * @param max maximum value of the range
+ */
+function multi_range_check(const expr sel = 1, const expr range_sel = 1, const expr colu, const int min1, const int max1, const int min2, const int max2) {
+    range_check(1, sel*range_sel, colu, min1, max1);
+    range_check(1, sel*(1-range_sel), colu, min2, max2);
+    // return;
+
+    // error("Not implemented yet");
+
+    // // The idea is that if range_sel = 0 then we check the first range, otherwise the second one
+    // // We can "prove" both ranges and then use the range_sel to choose the right one
+
+    // // [min1,max1] -> opid1
+    // // [min2,max2] -> opid2
+
+    // sum_assumes(name_range_check, range_sel*(opid1-opid2) - opid2, sel, [colu]);
+
+    // sum_assumes(name_range_check, opid1, sel*range_sel, [colu]);
+    // sum_assumes(name_range_check, opid2, sel*(1-range_sel), [colu]);
+
+    // sum_proves(name_range_check, opid1, mul1, [min1..max1-1,max1...]);
+    // sum_proves(name_range_check, opid2, mul2, [min2..max2-1,max2...]);
+}
 
 /**
  * TODO: Add description
