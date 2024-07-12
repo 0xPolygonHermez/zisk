@@ -2,15 +2,35 @@ use crate::AirInstanceCtx;
 
 #[derive(Debug)]
 pub struct AirInstance {
-    air_group_id: usize,
-    air_id: usize,
-    air_instance_id: usize,
-    pub meta: Option<Box<dyn std::any::Any>>,
+    pub air_group_id: usize,
+    pub air_id: usize,
+    pub air_instance_id: usize,
+    pub inputs_interval: Option<(usize, usize)>,
+    pub wc_component_idx: Option<usize>,
 }
 
 impl AirInstance {
-    pub fn new(air_group_id: usize, air_id: usize, instance_id: usize) -> Self {
-        AirInstance { air_group_id, air_id, air_instance_id: instance_id, meta: None }
+    pub fn new(
+        air_group_id: usize,
+        air_id: usize,
+        instance_id: usize,
+        inputs_interval: Option<(usize, usize)>,
+    ) -> Self {
+        AirInstance {
+            air_group_id,
+            air_id,
+            air_instance_id: instance_id,
+            inputs_interval: inputs_interval,
+            wc_component_idx: None,
+        }
+    }
+
+    pub fn set_wc_component_idx(&mut self, idx: usize) {
+        self.wc_component_idx = Some(idx);
+    }
+
+    pub fn get_wc_component_idx(&self) -> Option<usize> {
+        self.wc_component_idx
     }
 }
 
@@ -18,10 +38,4 @@ impl Into<AirInstanceCtx> for &AirInstance {
     fn into(self) -> AirInstanceCtx {
         AirInstanceCtx::new(self.air_group_id, self.air_id, self.air_instance_id)
     }
-}
-
-pub enum AirInstancesSet {
-    None,
-    All,
-    Set(Vec<usize>),
 }

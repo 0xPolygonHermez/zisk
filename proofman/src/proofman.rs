@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use wchelpers::WCLibrary;
 
-use common::{ExecutionCtx, ProofCtx, Prover};
+use common::{ExecutionCtx, ProofCtx};
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -35,26 +35,21 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         }
 
         // Load the wtiness computation dynamic library
-        let mut wc_lib: Box<dyn WCLibrary> = init_library(wc_lib).expect("Failed to load plugin");
+        let mut wc_lib: Box<dyn WCLibrary<F>> = init_library(wc_lib).expect("Failed to load plugin");
 
         let pilout = wc_lib.get_pilout();
 
         let mut pctx = ProofCtx::create_ctx(pilout, public_inputs);
-        let mut ectx = ExecutionCtx::builder().with_air_instances_map().with_all_instances().build();
+        let mut ectx = ExecutionCtx::builder().is_discovery_execution().build();
 
-        wc_lib.start_proof(&mut pctx, &mut ectx);
+        Self::init_proof(&mut wc_lib, &mut pctx, &mut ectx, proving_key);
 
-        wc_lib.calculate_plan(&mut ectx);
-
-        wc_lib.initialize_air_instances(&mut pctx, &ectx);
-
-        // Initialize prover and buffers to fit the proof
-        let provers = Self::initialize_provers(&proving_key, &mut pctx);
+        ectx.is_discovery_execution = false;
 
         for stage in 1..=pctx.pilout.num_stages() {
             wc_lib.calculate_witness(stage, &mut pctx, &ectx);
 
-            Self::commit_stage(stage, &provers, &mut pctx);
+            Self::commit_stage(stage, &mut pctx);
             if stage <= pctx.pilout.num_stages() {
                 Self::calculate_challenges(stage, &pctx);
             }
@@ -62,17 +57,33 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         wc_lib.end_proof();
 
-        Self::opening_stages(&provers, &pctx);
+        Self::opening_stages(&pctx);
 
         let proof = Self::finalize_proof(&pctx);
 
         Ok(proof)
     }
 
-    fn initialize_provers(proving_key: &PathBuf, pctx: &mut ProofCtx) -> Vec<Box<dyn Prover>> {
+    fn init_proof(
+        wc_lib: &mut Box<dyn WCLibrary<F>>,
+        pctx: &mut ProofCtx<F>,
+        ectx: &mut ExecutionCtx,
+        proving_key: PathBuf,
+    ) {
+        wc_lib.start_proof(pctx, ectx);
+
+        wc_lib.calculate_plan(ectx);
+
+        wc_lib.initialize_air_instances(pctx, &*ectx);
+
+        // Initialize prover and buffers to fit the proof
+        Self::initialize_provers(&proving_key, pctx);
+    }
+
+    fn initialize_provers(proving_key: &PathBuf, pctx: &mut ProofCtx<F>) {
         println!("{}: Initializing prover and creating buffers", Self::MY_NAME);
 
-        let mut provers: Vec<Box<dyn Prover>> = Vec::new();
+        pctx.provers = Vec::new();
 
         for air_instance in pctx.air_instances.iter_mut() {
             println!("{}: Initializing prover for air instance {:?}", Self::MY_NAME, air_instance);
@@ -85,38 +96,38 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             };
             let prover = Box::new(StarkProver::<F>::new2(proving_key.join(folder)));
             let buffer_size = prover.get_total_bytes();
+
             info!("{}: Preallocating a buffer of {} bytes", Self::MY_NAME, buffer_size);
+
             air_instance.buffer = vec![0u8; buffer_size];
 
-            provers.push(prover);
+            pctx.provers.push(prover);
         }
-
-        provers
     }
 
-    pub fn commit_stage(stage: u32, _provers: &Vec<Box<dyn Prover>>, _pctx: &ProofCtx) {
+    pub fn commit_stage(stage: u32, _pctx: &ProofCtx<F>) {
         println!("{}: Committing stage {}", Self::MY_NAME, stage);
     }
 
-    fn calculate_challenges(stage: u32, _proof_ctx: &ProofCtx) {
+    fn calculate_challenges(stage: u32, _proof_ctx: &ProofCtx<F>) {
         // This is a mock implementation
         println!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
     }
 
-    pub fn opening_stages(_provers: &Vec<Box<dyn Prover>>, _pctx: &ProofCtx) {
+    pub fn opening_stages(_pctx: &ProofCtx<F>) {
         println!("{}: Opening stages", Self::MY_NAME);
     }
 
-    fn finalize_proof(_proof_ctx: &ProofCtx) -> Vec<F> {
+    fn finalize_proof(_proof_ctx: &ProofCtx<F>) -> Vec<F> {
         // This is a mock implementation
         vec![]
     }
 }
 
-fn init_library(path: PathBuf) -> Result<Box<dyn WCLibrary>, libloading::Error> {
+fn init_library<F>(path: PathBuf) -> Result<Box<dyn WCLibrary<F>>, libloading::Error> {
     let library = unsafe { Library::new(path)? };
 
-    let library: Symbol<fn() -> Box<dyn WCLibrary>> = unsafe { library.get(b"init_library")? };
+    let library: Symbol<fn() -> Box<dyn WCLibrary<F>>> = unsafe { library.get(b"init_library")? };
 
     Ok(library())
 }

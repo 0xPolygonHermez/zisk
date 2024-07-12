@@ -1,14 +1,15 @@
-use crate::WitnessPilOut;
+use crate::{Prover, WitnessPilOut};
 
 #[allow(dead_code)]
-pub struct ProofCtx {
+pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
     pub pilout: WitnessPilOut,
-    // pub challenges: Vec<Vec<F>>,
+    pub challenges: Vec<Vec<F>>,
     pub air_instances: Vec<AirInstanceCtx>,
+    pub provers: Vec<Box<dyn Prover<F>>>,
 }
 
-impl ProofCtx {
+impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
     pub fn create_ctx(pilout: WitnessPilOut, public_inputs: Vec<u8>) -> Self {
@@ -20,7 +21,31 @@ impl ProofCtx {
 
         // pilout.print_pilout_info();
 
-        ProofCtx { public_inputs, pilout, air_instances: Vec::new() }
+        // NOTE: consider Vec::with_capacity() instead of Vec::new()
+        let mut challenges = Vec::<Vec<F>>::new();
+
+        // TODO! Review this
+        // if !pilout.num_challenges.is_empty() {
+        //     for i in 0..pilout.num_challenges.len() {
+        //         challenges.push(vec![T::default(); pilout.num_challenges[i] as usize]);
+        //     }
+        // } else {
+        //     challenges.push(vec![]);
+        // }
+
+        // // qStage, evalsStage and friStage
+        // challenges.push(vec![T::default(); 1]);
+        // challenges.push(vec![T::default(); 1]);
+        // challenges.push(vec![T::default(); 2]);
+
+        Self { public_inputs, pilout, challenges, air_instances: Vec::new(), provers: Vec::new() }
+    }
+
+    pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<&AirInstanceCtx> {
+        self.air_instances
+            .iter()
+            .filter(|air_instance| air_instance.air_group_id == air_group_id && air_instance.air_id == air_id)
+            .collect()
     }
 }
 

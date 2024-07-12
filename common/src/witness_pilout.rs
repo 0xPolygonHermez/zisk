@@ -18,7 +18,7 @@ impl WitnessPilOut {
         &mut self.air_groups[air_group_id]
     }
 
-    pub fn get_air(&self, airgroup_name: &str, air_name: &str) -> Option<&BasicAir> {
+    pub fn find_air(&self, airgroup_name: &str, air_name: &str) -> Option<&BasicAir> {
         for airgroup in &self.air_groups {
             if let Some(name) = &airgroup.name {
                 if name == airgroup_name {
@@ -35,7 +35,7 @@ impl WitnessPilOut {
         None
     }
 
-    pub fn find_air(&self, air_group_id: usize, air_id: usize) -> &BasicAir {
+    pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &BasicAir {
         &self.air_groups[air_group_id].airs[air_id]
     }
 

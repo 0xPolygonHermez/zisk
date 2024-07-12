@@ -40,4 +40,8 @@ impl<F> FibonacciSquareTrace0<F> {
 
         Self { a, b }
     }
+
+    pub fn new(num_rows: usize) -> Self {
+        Self { a: TracePol::new(num_rows), b: TracePol::new(num_rows) }
+    }
 }

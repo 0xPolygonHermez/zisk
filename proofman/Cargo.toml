@@ -11,4 +11,5 @@ log = { workspace = true }
 env_logger = { workspace = true }
 wchelpers = { path = "../wchelpers" }
 common = { path = "../common" }
+p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }

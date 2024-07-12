@@ -7,11 +7,11 @@ pub enum ProverStatus {
     StagesCompleted,
 }
 
-pub trait Prover {
+pub trait Prover<F> {
     fn build(&mut self, air_instance_ctx: &mut AirInstanceCtx);
     fn num_stages(&self) -> u32;
-    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx) -> ProverStatus;
-    fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx) -> ProverStatus;
+    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus;
+    fn opening_stage(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus;
 
     // Returns a slice representing the root of a Merkle tree with a size of 256 bits.
     // This root can be inserted into a transcript and used to generate a new challenge.
