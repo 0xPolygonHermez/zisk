@@ -8,7 +8,7 @@ use wchelpers::{WCComponent, WCExecutor};
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
 
-use crate::{/*FibonacciSquareTrace0,*/ FibonacciVadcopInputs, Module};
+use crate::{FibonacciVadcopInputs, Module};
 
 trace!(FibonacciSquareTrace0 { a: Goldilocks, b: Goldilocks });
 
@@ -72,7 +72,7 @@ impl<F> WCComponent<F> for FibonacciSquare {
             return;
         }
 
-        debug!("Fibonacci: Calculating witness");
+        debug!("Fiboncci: Calculating witness");
         Self::calculate_fibonacci(&self, air_instance.air_group_id, air_instance.air_id, pctx, ectx);
     }
 

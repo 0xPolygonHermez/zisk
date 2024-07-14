@@ -1,3 +1,5 @@
+use log::info;
+
 use crate::{Prover, WitnessPilOut};
 
 #[allow(dead_code)]
@@ -13,7 +15,7 @@ impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
     pub fn create_ctx(pilout: WitnessPilOut, public_inputs: Vec<u8>) -> Self {
-        println!("{}: ··· Creating proof context", Self::MY_NAME);
+        info!("{}: ··· Creating proof context", Self::MY_NAME);
 
         if pilout.air_groups().len() == 0 {
             panic!("No subproofs found in PilOut");
@@ -33,10 +35,10 @@ impl<F> ProofCtx<F> {
         //     challenges.push(vec![]);
         // }
 
-        // // qStage, evalsStage and friStage
-        // challenges.push(vec![T::default(); 1]);
-        // challenges.push(vec![T::default(); 1]);
-        // challenges.push(vec![T::default(); 2]);
+        // qStage, evalsStage and friStage
+        // challenges.push(vec![F::default(); 1]);
+        // challenges.push(vec![F::default(); 1]);
+        // challenges.push(vec![F::default(); 2]);
 
         Self { public_inputs, pilout, challenges, air_instances: Vec::new(), provers: Vec::new() }
     }

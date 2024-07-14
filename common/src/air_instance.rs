@@ -12,14 +12,6 @@ impl AirInstance {
     pub fn new(air_group_id: usize, air_id: usize, inputs_interval: Option<(usize, usize)>) -> Self {
         AirInstance { air_group_id, air_id, inputs_interval, wc_component_idx: None }
     }
-
-    pub fn set_wc_component_idx(&mut self, idx: usize) {
-        self.wc_component_idx = Some(idx);
-    }
-
-    pub fn get_wc_component_idx(&self) -> Option<usize> {
-        self.wc_component_idx
-    }
 }
 
 impl Into<AirInstanceCtx> for &AirInstance {

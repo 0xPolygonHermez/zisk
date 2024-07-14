@@ -5,17 +5,19 @@ use core::slice;
 use std::any::type_name;
 
 use common::{Prover, ProverStatus};
-use log::debug;
+use log::{debug, trace};
 use util::{timer_start, timer_stop_and_log};
 use starks_lib_c::*;
 use common::{AirInstanceCtx, ProofCtx};
 use crate::stark_info::{OpType, StarkInfo};
 use crate::stark_prover_settings::StarkProverSettings;
+use crate::GlobalInfo;
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
 
 use std::os::raw::c_void;
 
+#[allow(dead_code)]
 pub struct StarkProver<T: AbstractField> {
     initialized: bool,
     config: StarkProverSettings,
@@ -43,8 +45,6 @@ pub struct StarkProver<T: AbstractField> {
     p_subproof_values_calculated: *mut c_void,
     p_challenges_calculated: *mut c_void,
     p_witnesses_calculated: *mut c_void,
-
-    phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: AbstractField> StarkProver<T> {
@@ -53,20 +53,22 @@ impl<T: AbstractField> StarkProver<T> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
-    pub fn new2(setup_air_folder: PathBuf) -> Self {
+    pub fn new(proving_key_path: &PathBuf, global_info: &GlobalInfo , air_group_id: usize, air_id: usize) -> Self {
+        let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(air_group_id, air_id));
+        trace!("{}: ··· Setup AIR folder: {:?}", Self::MY_NAME , air_setup_folder);
+
         // Check path exists and is a folder
-        if !setup_air_folder.exists() {
-            panic!("Setup AIR folder not found at path: {:?}", setup_air_folder);
+        if !air_setup_folder.exists() {
+            panic!("Setup AIR folder not found at path: {:?}", air_setup_folder);
         }
-        if !setup_air_folder.is_dir() {
-            panic!("Setup AIR path is not a folder: {:?}", setup_air_folder);
+        if !air_setup_folder.is_dir() {
+            panic!("Setup AIR path is not a folder: {:?}", air_setup_folder);
         }
 
-        let air_name = setup_air_folder.components().last().and_then(|comp| comp.as_os_str().to_str()).unwrap();
+        let base_filename_path = air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
 
-        let base_filename = setup_air_folder.join(air_name).to_str().unwrap().to_string();
-        let stark_info_path = base_filename.clone() + ".stark_info.json";
-        let chelpers_path = base_filename.clone() + ".bin";
+        let stark_info_path = base_filename_path.clone() + ".stark_info.json";
+        let chelpers_path = base_filename_path.clone() + ".bin";
 
         let p_starkinfo = stark_info_new_c(&stark_info_path);
         let p_chelpers = chelpers_new_c(&chelpers_path);
@@ -74,12 +76,12 @@ impl<T: AbstractField> StarkProver<T> {
         set_mapOffsets_c(p_starkinfo, p_chelpers);
 
         let config = StarkProverSettings {
-            current_path: setup_air_folder.to_str().unwrap().to_string(),
-            const_pols_filename: base_filename.clone() + ".const",
+            current_path: air_setup_folder.to_str().unwrap().to_string(),
+            const_pols_filename: base_filename_path.clone() + ".const",
             map_const_pols_file: false,
-            const_tree_filename: base_filename.clone() + ".consttree",
+            const_tree_filename: base_filename_path.clone() + ".consttree",
             stark_info_filename: stark_info_path,
-            verkey_filename: base_filename.clone() + ".verkey.json",
+            verkey_filename: base_filename_path.clone() + ".verkey.json",
             chelpers_filename: chelpers_path,
         };
 
@@ -108,41 +110,6 @@ impl<T: AbstractField> StarkProver<T> {
             p_subproof_values_calculated: std::ptr::null_mut(),
             p_challenges_calculated: std::ptr::null_mut(),
             p_witnesses_calculated: std::ptr::null_mut(),
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    pub fn new(
-        config: StarkProverSettings,
-        p_starkinfo: *mut c_void,
-        p_chelpers: *mut c_void,
-        p_steps: *mut c_void,
-        // ptr: *mut c_void,
-    ) -> Self {
-        Self {
-            initialized: false,
-            config,
-            p_chelpers,
-            p_steps,
-            p_stark: None,
-            p_params: None,
-            p_proof: None,
-            transcript: None,
-            p_fri_pol: None,
-            stark_info: None,
-            p_starkinfo,
-            evals: Vec::new(),
-            challenges: Vec::new(),
-            subproof_values: Vec::new(),
-            n_field_elements: 0,
-            merkle_tree_arity: None,
-            merkle_tree_custom: None,
-            p_publics_calculated: std::ptr::null_mut(),
-            p_const_calculated: std::ptr::null_mut(),
-            p_subproof_values_calculated: std::ptr::null_mut(),
-            p_challenges_calculated: std::ptr::null_mut(),
-            p_witnesses_calculated: std::ptr::null_mut(),
-            phantom: std::marker::PhantomData,
         }
     }
 

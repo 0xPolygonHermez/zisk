@@ -46,7 +46,7 @@ impl<F> WCComponent<F> for Module {
             return;
         }
 
-        debug!("Module   : Calculating witness");
+        debug!("Module  : Calculating witness");
 
         let pi: FibonacciVadcopInputs = pctx.public_inputs.as_slice().into();
         let module = pi.module as u64;
