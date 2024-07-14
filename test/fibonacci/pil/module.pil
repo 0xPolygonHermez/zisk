@@ -4,7 +4,7 @@ const int MODULE_ID = 1;
 
 public mod;
 
-air Module(const int N = 2**8) {
+airtemplate Module(const int N = 2**8) {
 
     col fixed LN = [0...,1];
     col witness x, q, x_mod;

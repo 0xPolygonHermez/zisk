@@ -1,6 +1,6 @@
 require "std_range_check.pil";
 
-air aggregate RangeCheck1(const int N = 2**3) {
+airtemplate RangeCheck1(const int N = 2**3) {
 
     col witness a1,a2,a3,a4,a5;
     col witness sel1,sel2,sel3;
@@ -20,7 +20,7 @@ air aggregate RangeCheck1(const int N = 2**3) {
     range_check(0, sel3, a5, 0, 2**8-1);
 };
 
-air aggregate RangeCheck2(const int N = 2**4) {
+airtemplate RangeCheck2(const int N = 2**4) {
 
     col witness b1,b2,b3;
 
@@ -29,7 +29,7 @@ air aggregate RangeCheck2(const int N = 2**4) {
     range_check(0, colu: b3, min: 0, max: 2**10-1);
 };
 
-air aggregate RangeCheck3(const int N = 2**5) {
+airtemplate RangeCheck3(const int N = 2**5) {
 
     col witness c1,c2;
 
@@ -41,7 +41,7 @@ RangeCheck3();
 RangeCheck1();
 RangeCheck2();
 
-air aggregate RangeCheck4(const int N = 2**6) {
+airtemplate RangeCheck4(const int N = 2**6) {
 
     col witness a1,a2,a3,a4,a5,a6,a7,a8;
     col witness sel1,sel2;
