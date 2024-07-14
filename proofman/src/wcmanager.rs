@@ -5,16 +5,19 @@ use log::info;
 use common::{ExecutionCtx, ProofCtx};
 use wchelpers::{WCComponent, WCExecutor};
 
+use crate::{DefaultPlanner, Planner};
+
 pub struct WCManager<F> {
     components: Vec<Rc<dyn WCComponent<F>>>,
     executors: Vec<Rc<dyn WCExecutor<F>>>,
+    planner: Box<dyn Planner<F>>,
 }
 
 impl<F> WCManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
     pub fn new() -> Self {
-        WCManager { components: Vec::new(), executors: Vec::new() }
+        WCManager { components: Vec::new(), executors: Vec::new(), planner: Box::new(DefaultPlanner)}
     }
 
     pub fn register_component(&mut self, component: Rc<dyn WCComponent<F>>) {
@@ -23,6 +26,10 @@ impl<F> WCManager<F> {
 
     pub fn register_executor(&mut self, executor: Rc<dyn WCExecutor<F>>) {
         self.executors.push(executor);
+    }
+
+    pub fn set_planner(&mut self, planner: Box<dyn Planner<F>>) {
+        self.planner = planner;
     }
 
     pub fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
@@ -42,17 +49,7 @@ impl<F> WCManager<F> {
     }
 
     pub fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
-        info!("{}: Calculating plan", Self::MY_NAME);
-        let mut last_idx;
-        for (component_idx, component) in self.components.iter().enumerate() {
-            last_idx = ectx.instances.len();
-            component.calculate_plan(ectx);
-            for i in last_idx..ectx.instances.len() {
-                ectx.instances[i].wc_component_idx = Some(component_idx);
-            }
-        }
-
-        ectx.owned_instances = (0..ectx.instances.len()).collect();
+        self.planner.calculate_plan(&self.components, ectx);
     }
 
     pub fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {

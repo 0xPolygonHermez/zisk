@@ -5,7 +5,7 @@ pub struct U8AirTrace0<F> {
 }
 
 impl<F> U8AirTrace0<F> {
-    pub fn from_buffer(ptr: &Vec<u8>, num_rows: usize) -> Self {
+    pub fn from_buffer(ptr: &[u8], num_rows: usize) -> Self {
         Self::from_ptr(ptr.as_ptr(), num_rows, 0)
     }
 

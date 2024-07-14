@@ -17,7 +17,7 @@ use std::ffi::CString;
 pub fn save_proof_c<T>(
     p_stark_info: *mut ::std::os::raw::c_void,
     p_fri_proof: *mut ::std::os::raw::c_void,
-    public_inputs: &Vec<T>,
+    public_inputs: &[T],
     public_outputs_file: &str,
     file_prefix: &str,
 ) {
@@ -446,8 +446,8 @@ pub fn circom_recursive1_get_commited_pols_c(
 pub fn zkin_new_c<T>(
     p_stark_info: *mut c_void,
     p_fri_proof: *mut c_void,
-    public_inputs: &Vec<T>,
-    root_c: &Vec<T>,
+    public_inputs: &[T],
+    root_c: &[T],
 ) -> *mut c_void {
     unsafe {
         zkin_new(
@@ -536,7 +536,7 @@ pub fn goldilocks_linear_hash_c(pInput: *mut c_void, pOutput: *mut c_void) {
 pub fn save_proof_c<T>(
     _p_stark_info: *mut ::std::os::raw::c_void,
     _p_fri_proof: *mut ::std::os::raw::c_void,
-    _public_inputs: &Vec<T>,
+    _public_inputs: &[T],
     _public_outputs_file: &str,
     _file_prefix: &str,
 ) {
@@ -886,8 +886,8 @@ pub fn circom_recursive1_get_commited_pols_c(
 pub fn zkin_new_c<T>(
     _p_stark_info: *mut c_void,
     _p_fri_proof: *mut c_void,
-    _public_inputs: &Vec<T>,
-    _root_c: &Vec<T>,
+    _public_inputs: &[T],
+    _root_c: &[T],
 ) -> *mut c_void {
     trace!("{}: ··· {}", "mckzkevm", "zkin_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()

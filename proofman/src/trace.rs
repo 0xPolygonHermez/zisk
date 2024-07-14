@@ -72,7 +72,7 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            pub fn from_buffer(buffer: &Vec<u8>, num_rows: usize, offset: usize) -> Self {
+            pub fn from_buffer(buffer: &[u8], num_rows: usize, offset: usize) -> Self {
                 Self::from_ptr(buffer.as_ptr(), num_rows, offset)
             }
 
