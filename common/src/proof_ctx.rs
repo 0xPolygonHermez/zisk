@@ -55,13 +55,12 @@ impl<F> ProofCtx<F> {
 pub struct AirInstanceCtx {
     pub air_group_id: usize,
     pub air_id: usize,
-    pub air_instance_id: usize,
     pub buffer: Vec<u8>,
 }
 
 impl AirInstanceCtx {
-    pub fn new(air_group_id: usize, air_id: usize, air_instance_id: usize) -> Self {
-        AirInstanceCtx { air_group_id, air_id, air_instance_id, buffer: Vec::new() }
+    pub fn new(air_group_id: usize, air_id: usize) -> Self {
+        AirInstanceCtx { air_group_id, air_id, buffer: Vec::new() }
     }
 
     pub fn get_buffer_ptr(&mut self) -> *mut u8 {

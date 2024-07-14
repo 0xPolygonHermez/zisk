@@ -7,9 +7,9 @@ use wchelpers::WCComponent;
 
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
-use crate::{FibonacciVadcopInputs, ModuleTrace0};
+use crate::FibonacciVadcopInputs;
 
-trace!(ModuleTrace { x: Goldilocks, q: Goldilocks, x_mod: Goldilocks });
+trace!(ModuleTrace0 { x: Goldilocks, q: Goldilocks, x_mod: Goldilocks });
 
 pub struct Module {
     inputs: RefCell<Vec<(u64, u64)>>,
@@ -26,14 +26,17 @@ impl Module {
         module
     }
 
-    pub fn calculate(&self, x: u64, module: u64, generate_inputs: bool) -> u64 {
+    // 0:x, 1:module
+    pub fn calculate_verify(&self, verify: bool, values: Vec<u64>) -> Vec<u64> {
+        let (x, module) = (values[0], values[1]);
+
         let x_mod = x % module;
 
-        if generate_inputs {
+        if verify {
             self.inputs.borrow_mut().push((x, x_mod));
         }
 
-        x_mod
+        vec![x_mod]
     }
 }
 
@@ -54,7 +57,7 @@ impl<F> WCComponent<F> for Module {
         let inputs = &self.inputs.borrow()[interval.0..interval.1];
 
         let num_rows = 1 << pctx.pilout.get_air(Self::AIR_GROUP_ID, Self::AIR_ID).num_rows();
-        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows));
+        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0));
 
         for (i, input) in inputs.iter().enumerate() {
             let x = input.0;
@@ -74,11 +77,6 @@ impl<F> WCComponent<F> for Module {
     }
 
     fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
-        ectx.instances.push(AirInstance::new(
-            Self::AIR_GROUP_ID,
-            Self::AIR_ID,
-            1 << 10,
-            Some((0, self.inputs.borrow().len())),
-        ));
+        ectx.instances.push(AirInstance::new(Self::AIR_GROUP_ID, Self::AIR_ID, Some((0, self.inputs.borrow().len()))));
     }
 }

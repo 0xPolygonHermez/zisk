@@ -1,5 +1,4 @@
 use std::cell::UnsafeCell;
-use std::any::Any;
 
 pub struct Ptr {
     pub ptr: UnsafeCell<*mut u8>,
@@ -12,17 +11,9 @@ impl Ptr {
 
     pub fn add<T>(&self) -> *mut u8 {
         let ptr = unsafe { *self.ptr.get() };
-        unsafe { *self.ptr.get() = ptr.add(std::mem::size_of::<T>() as usize) };
+        unsafe { *self.ptr.get() = ptr.add(std::mem::size_of::<T>()) };
         ptr
     }
-}
-
-/// A trait representing a trace within a proof.
-pub trait Trace: std::fmt::Debug + Any {
-    fn num_rows(&self) -> usize;
-    fn row_size(&self) -> usize;
-    // TODO! uncomment fn split(&self, num_segments: usize) -> Vec<Self> where Self: Sized;
-    fn as_any(&self) -> &dyn Any;
 }
 
 /// Macro for defining trace structures with specified fields.
@@ -53,10 +44,6 @@ macro_rules! trace {
             /// # Arguments
             ///
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            ///
-            /// # Preconditions
-            ///
-            /// * `num_rows` must be greater than or equal to 2 and a power of 2.
             pub fn new(num_rows: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
@@ -78,7 +65,18 @@ macro_rules! trace {
             }
 
             /// Create a new instance of $my_struct using an outside buffer.
-            /// TODO! Explain it better
+            ///
+            /// # Arguments
+            ///
+            /// * `buffer` - A mutable raw pointer to the starting memory location.
+            /// * `offset` - The offset (in bytes) to the first element.
+            /// * `stride` - The stride (in bytes) between consecutive elements.
+            /// * `num_rows` - The number of rows in all the TraceCol fields defined.
+            pub fn from_buffer(buffer: &Vec<u8>, num_rows: usize, offset: usize) -> Self {
+                Self::from_ptr(buffer.as_ptr(), num_rows, offset)
+            }
+
+            /// Create a new instance of $my_struct using an outside buffer.
             ///
             /// # Arguments
             ///
@@ -86,20 +84,15 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            ///
-            /// # Preconditions
-            ///
-            /// * `num_rows` must be greater than or equal to 2 and a power of 2.
-            pub fn from_ptr(ptr: *mut std::ffi::c_void, num_rows: usize, offset: usize) -> Self {
+            pub fn from_ptr(ptr: *const u8, num_rows: usize, offset: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
                 // num_rows must be a power of 2
                 assert!(num_rows & (num_rows - 1) == 0);
 
-                let mut ptr = ptr as *mut u8;
+                let ptr = unsafe { ptr.add($offset).add(offset) as *mut u8 };
 
-                ptr = unsafe { ptr.add($offset).add(offset) };
                 let ptr_x = $crate::trace::Ptr::new(ptr);
 
                 $my_struct {
@@ -110,86 +103,26 @@ macro_rules! trace {
                 }
             }
 
-            // TODO! uncomment
-            /// Splits the TraceCol into multiple segments.
-            ///
-            /// # Arguments
-            ///
-            /// * `num_segments` - The number of segments to split the TraceCol into.
-            ///
-            /// # Preconditions
-            ///
-            /// * `num_segments` must be greater than 0.
-            /// * `num_segments` must be less than or equal to the length of the TraceCol.
-            ///
-            /// # Returns
-            ///
-            /// Returns a vector of TraceCols, each representing a segment of the original TraceCol.
-            // pub fn split(&self, num_segments: usize) -> Vec<Vec<TraceCol>> {
-            //     // PRECONDITIONS
-            //     // · num_segments must be greater than 0
-            //     // · num_segments must be less than or equal to the length of the trace
-            //     assert!(num_segments > 0 && num_segments <= self.num_rows());
-
-            //     let segments = Vec::with_capacity(num_segments);
-            //     let segment_size = self.num_rows() / num_segments;
-
-            //     let mut start = 0;
-            //     for _ in 0..num_segments {
-            //         segments.push(Self {
-            //             buffer: self.buffer[start * Self::ROW_SIZE..(start + segment_size) * Self::ROW_SIZE].to_vec(),
-            //             num_rows: segment_size,
-            //             $($field_name: $crate::trace_field!($field_type, $crate::trace::trace::Ptr::new(self.buffer.as_mut_ptr().add(start * Self::ROW_SIZE)), segment_size)),*
-            //         });
-            //     }
-            //     segments
-            // }
+            pub fn row_size(&self) -> usize {
+                Self::ROW_SIZE
+            }
 
             pub fn num_rows(&self) -> usize {
                 self.num_rows
-            }
-
-            /// Returns the size of a row in bytes.
-            ///
-            /// # Returns
-            ///
-            /// The size of a row in bytes.
-            pub fn row_size(&self) -> usize {
-                Self::ROW_SIZE
             }
 
             pub fn buffer_size(&self) -> usize {
                 self.buffer.as_ref().unwrap().len()
             }
         }
-
-        impl $crate::trace::Trace for $my_struct {
-            fn num_rows(&self) -> usize {
-                self.num_rows()
-            }
-
-            fn row_size(&self) -> usize {
-                self.row_size()
-            }
-
-            fn as_any(&self) -> &dyn std::any::Any {
-                self
-            }
-
-            // TODO! uncomment
-            // fn split(&self, num_segments: usize) -> Vec<Self> {
-            //     self.split(num_segments)
-            // }
-
-        }
     };
 }
 
 #[macro_export]
 macro_rules! trace_field {
-    // ([$field_type:ty; $num:expr]) => {
-    //     [$crate::trace::trace_pol::TracePol<$field_type>; $num]
-    // };
+    ([$field_type:ty; $num:expr]) => {
+        [$crate::trace::trace_pol::TracePol<$field_type>; $num]
+    };
     ($field_type:ty) => {
         $crate::trace_pol::TracePol<$field_type>
     };
@@ -206,182 +139,83 @@ macro_rules! trace_row_size {
 
 #[macro_export]
 macro_rules! trace_default_value {
-    // ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
-    //     let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
-    //     for elem in array.iter_mut() {
-    //         *elem = $crate::trace::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows);
-    //     }
-    //     array
-    // }};
+    ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
+        let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
+        for elem in array.iter_mut() {
+            *elem = $crate::trace::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows);
+        }
+        array
+    }};
     ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
         $crate::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows)
     };
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::ffi::c_void;
+#[cfg(test)]
+mod tests {
+    // use rand::Rng;
 
-//     use goldilocks::{Goldilocks, AbstractField};
-//     use rand::Rng;
+    #[test]
+    fn check() {
+        const OFFSET: usize = 2;
+        let offset = 1;
+        const STRIDE: usize = 16;
+        let num_rows = 8;
 
-//     #[test]
-//     fn check() {
-//         let stride = 5;
-//         let num_rows = 8;
+        trace!(Trace { a: usize, b: usize }, offset: OFFSET, stride: STRIDE);
 
-//         trace!(Check { a: u8 }, offset: 2, stride: 5);
+        let buffer = vec![0u8; num_rows * 2 * std::mem::size_of::<usize>() + OFFSET + offset];
+        let mut trace = Trace::from_buffer(&buffer, num_rows, offset);
 
-//         let mut buffer = vec![0u8; num_rows * stride];
-//         let ptr = buffer.as_mut_ptr() as *mut c_void;
-//         let mut check = Check::from_ptr(ptr, num_rows, 0);
+        for i in 0..num_rows {
+            trace.a[i] = i;
+            trace.b[i] = i * 10;
+        }
 
-//         for i in 0..num_rows {
-//             check.a[i] = i as u8;
-//         }
+        for i in 0..num_rows {
+            assert_eq!(trace.a[i], i);
+            assert_eq!(trace.b[i], i * 10);
+        }
 
-//         for i in 0..num_rows {
-//             assert_eq!(check.a[i], i as u8);
-//         }
-//     }
+        for i in 0..num_rows {
+            let value_a = unsafe { &*(buffer.as_ptr().add(OFFSET).add(offset).add(i * STRIDE) as *const usize) };
+            let value_b = unsafe {
+                &*(buffer.as_ptr().add(OFFSET).add(offset).add(i * STRIDE + std::mem::size_of::<usize>())
+                    as *const usize)
+            };
 
-//     #[test]
-//     fn test_simple_trace_creation() {
-//         let num_rows = 256;
+            assert_eq!(*value_a, i);
+            assert_eq!(*value_b, i * 10);
+        }
+    }
 
-//         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
-//         let stride = 15;
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_1() {
+        let buffer = vec![0u8; 3];
+        trace!(Simple { field1: usize });
+        let _ = Simple::from_buffer(&buffer, 1, 0);
+    }
 
-//         trace!(Simple { field1: usize }, offset: 3, stride: 15);
-//         let mut buffer = vec![0u8; num_rows * stride];
-//         let ptr = buffer.as_mut_ptr() as *mut c_void;
-//         let mut simple = Simple::from_ptr(ptr, num_rows, 0);
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_2() {
+        let buffer = vec![0u8; 3];
+        trace!(Simple { field1: usize });
+        let _ = Simple::from_buffer(&buffer, 3, 0);
+    }
 
-//         let mut simple2 = Simple::new(num_rows);
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_3() {
+        trace!(Simple { field1: usize });
+        let _ = Simple::new(1);
+    }
 
-//         assert_eq!(simple.field1.num_rows(), num_rows);
-//         assert_eq!(simple2.field1.num_rows(), num_rows);
-
-//         for i in 0..num_rows {
-//             simple.field1[i] = i;
-//             simple2.field1[i] = i;
-//         }
-
-//         for i in 0..num_rows {
-//             assert_eq!(simple.field1[i], i);
-//             assert_eq!(simple2.field1[i], i);
-//         }
-
-//         assert_eq!(simple.num_rows(), num_rows);
-//         assert_eq!(simple2.num_rows(), num_rows);
-//     }
-
-//     #[test]
-//     #[should_panic]
-//     fn test_errors_are_launched_when_num_rows_is_invalid_1() {
-//         trace!(Simple { field1: usize });
-//         let _ = Simple::from_ptr(std::ptr::null_mut(), 1, 0);
-//     }
-
-//     #[test]
-//     #[should_panic]
-//     fn test_errors_are_launched_when_num_rows_is_invalid_2() {
-//         trace!(Simple { field1: usize });
-//         let _ = Simple::from_ptr(std::ptr::null_mut(), 3, 0);
-//     }
-
-//     #[test]
-//     #[should_panic]
-//     fn test_errors_are_launched_when_num_rows_is_invalid_3() {
-//         trace!(Simple { field1: usize });
-//         let _ = Simple::new(1);
-//     }
-
-//     #[test]
-//     #[should_panic]
-//     fn test_errors_are_launched_when_num_rows_is_invalid_4() {
-//         trace!(Simple { field1: usize });
-//         let _ = Simple::new(3);
-//     }
-
-//     #[test]
-//     fn test_fibonacci_trace_creation() {
-//         // NOTE: we are looking for a syntaxis like this:
-//         // fibonacci = trace!{ { a: BaseField, b: BaseField }::new(num_rows);
-//         // let fibs = fibonacci.split(8);
-//         // use fibonacci {
-//         //     a[0] = BaseElement::new(1);
-//         //     b[0] = BaseElement::new(1);
-//         //     for i in 1..num_rows {
-//         //         a[i] = b[i - 1];
-//         //         b[i] = a[i - 1] + b[i - 1];
-//         //     }
-//         // }
-//         let mut rng = rand::thread_rng();
-//         let num_rows = 2_u8.pow(rng.gen_range(2..7)) as usize;
-
-//         // QUESTION: why not this syntax? trace!(cols Fibonacci { a: BaseElement, b: BaseElement });
-//         // and why not this alternative syntax? trace!(buffer Fibonacci { a: BaseElement, b: BaseElement });
-//         trace!(Fibonacci { a: Goldilocks, b: Goldilocks, c: [u64; 2] }, offset: 7, stride: 45);
-
-//         // We simulate a buffer containing more data where row_size is 15 bytes and out data start at byte 3
-//         let stride = 45;
-
-//         let mut buffer = vec![0u8; num_rows * stride];
-//         let ptr = buffer.as_mut_ptr() as *mut c_void;
-//         let mut fibonacci = Fibonacci::from_ptr(ptr, num_rows, 0);
-
-//         let mut fibonacci2 = Fibonacci::new(num_rows);
-
-//         fibonacci.a[0] = Goldilocks::from_canonical_u64(1);
-//         fibonacci.b[0] = Goldilocks::from_canonical_u64(1);
-//         fibonacci.c[0][0] = 2;
-//         fibonacci.c[1][0] = 3;
-
-//         fibonacci2.a[0] = Goldilocks::from_canonical_u64(1);
-//         fibonacci2.b[0] = Goldilocks::from_canonical_u64(1);
-//         fibonacci2.c[0][0] = 2;
-//         fibonacci2.c[1][0] = 3;
-
-//         for i in 1..num_rows {
-//             fibonacci.a[i] = fibonacci.b[i - 1];
-//             fibonacci.b[i] = fibonacci.a[i - 1] + fibonacci.b[i - 1];
-//             fibonacci.c[0][i] = fibonacci.c[0][i - 1];
-//             fibonacci.c[1][i] = fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1];
-
-//             fibonacci2.a[i] = fibonacci2.b[i - 1];
-//             fibonacci2.b[i] = fibonacci2.a[i - 1] + fibonacci2.b[i - 1];
-//             fibonacci2.c[0][i] = fibonacci2.c[0][i - 1];
-//             fibonacci2.c[1][i] = fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1];
-//         }
-
-//         for i in 1..num_rows {
-//             assert_eq!(fibonacci.a[i - 1] + fibonacci.b[i - 1], fibonacci.b[i]);
-//             assert_eq!(fibonacci.c[0][i - 1] + fibonacci.c[1][i - 1], fibonacci.c[1][i]);
-
-//             assert_eq!(fibonacci2.a[i - 1] + fibonacci2.b[i - 1], fibonacci2.b[i]);
-//             assert_eq!(fibonacci2.c[0][i - 1] + fibonacci2.c[1][i - 1], fibonacci2.c[1][i]);
-//         }
-
-//         // let num_segments = 2;
-//         // let splitted = fibonacci.split(num_segments);
-
-//         // assert_eq!(splitted[0].num_rows(), num_rows / num_segments);
-
-//         // for i in 0..num_segments {
-//         //     for j in 1..num_rows / num_segments {
-//         //         assert_eq!(
-//         //             splitted[i].a[j - 1] + splitted[i].b[j - 1],
-//         //             splitted[i].b[j]
-//         //         );
-//         //     }
-//         //     if i != 0 {
-//         //         assert_eq!(
-//         //             splitted[i - 1].a[splitted[i - 1].num_rows() - 1]
-//         //                 + splitted[i - 1].b[splitted[i - 1].num_rows() - 1],
-//         //             splitted[i].b[0]
-//         //         );
-//         //     }
-//         // }
-//     }
-// }
+    #[test]
+    #[should_panic]
+    fn test_errors_are_launched_when_num_rows_is_invalid_4() {
+        trace!(Simple { field1: usize });
+        let _ = Simple::new(3);
+    }
+}

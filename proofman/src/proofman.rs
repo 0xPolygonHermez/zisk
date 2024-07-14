@@ -34,7 +34,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             return Err(format!("Proving key path is not a folder: {:?}", proving_key).into());
         }
 
-        // Load the wtiness computation dynamic library
+        // Load the witness computation dynamic library
         let mut wc_lib: Box<dyn WCLibrary<F>> = init_library(wc_lib).expect("Failed to load plugin");
 
         let pilout = wc_lib.get_pilout();
