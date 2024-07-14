@@ -73,6 +73,13 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         wc_lib.calculate_plan(ectx);
 
+        trace!("{}: Plan: ", Self::MY_NAME);
+        for air_instance in ectx.instances.iter() {
+            let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+            let name = if air.name().is_some() { air.name().unwrap() } else { "Unnamed" };
+            trace!("{}:     + Air[{}][{}] {}", Self::MY_NAME, air_instance.air_group_id, air_instance.air_id, name);
+        }
+
         wc_lib.initialize_air_instances(pctx, &*ectx);
     }
 
@@ -84,7 +91,12 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         pctx.provers = Vec::new();
 
         for air_instance in pctx.air_instances.iter_mut() {
-            debug!("{}: Initializing prover for air instance ({}, {})", Self::MY_NAME, air_instance.air_group_id, air_instance.air_id);
+            debug!(
+                "{}: Initializing prover for air instance ({}, {})",
+                Self::MY_NAME,
+                air_instance.air_group_id,
+                air_instance.air_id
+            );
 
             let prover = Box::new(StarkProver::new(
                 &proving_key_path,
