@@ -37,9 +37,15 @@ airtemplate RangeCheck3(const int N = 2**5) {
     range_check(0, colu: c2, min: 0, max: 2**8-1);
 };
 
-RangeCheck3();
-RangeCheck1();
-RangeCheck2();
+airgroup RangeCheck3 {
+    RangeCheck3();
+}
+airgroup RangeCheck2 {
+    RangeCheck2();
+}
+airgroup RangeCheck1 {
+    RangeCheck1();
+}
 
 airtemplate RangeCheck4(const int N = 2**6) {
 
@@ -66,4 +72,6 @@ airtemplate RangeCheck4(const int N = 2**6) {
     range_check(1, colu: a8, min: -2**8+1, max: -127);
 };
 
-RangeCheck4();
+airgroup RangeCheck4 {
+    RangeCheck4();
+}

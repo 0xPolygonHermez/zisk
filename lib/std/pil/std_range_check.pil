@@ -237,11 +237,15 @@ private function declarePreRangeAir() {
     }
 
     if (u8_used) {
-        U8Air();
+        airgroup U8Air {
+            U8Air();
+        }
     }
 
     if (u16_used) {
-        U16Air();
+        airgroup U16Air {
+            U16Air();
+        }
     }
 }
 
@@ -264,5 +268,7 @@ private function declareRangeAir() {
 }
 
 function _SpecifiedRanges(int a,int b[],int c,int d[],int e[]) {
-    SpecifiedRanges(a,b,c,d,e);
+    airgroup SpecifiedRanges {
+        SpecifiedRanges(a,b,c,d,e);
+    }
 }

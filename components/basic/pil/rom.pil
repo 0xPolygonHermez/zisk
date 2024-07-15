@@ -1,6 +1,6 @@
 const int ROM_ID = 2;
 
-air Rom(int N = 2**8) {
+airtemplate Rom(int N = 2**8) {
 
     const int NR = 8;
 
