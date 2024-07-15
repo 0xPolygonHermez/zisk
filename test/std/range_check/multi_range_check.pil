@@ -1,6 +1,6 @@
 require "std_range_check.pil";
 
-air MultiRangeCheck(const int N = 2**3) {
+airtemplate MultiRangeCheck(const int N = 2**3) {
 
     col witness a;
     col witness sel;
@@ -9,4 +9,6 @@ air MultiRangeCheck(const int N = 2**3) {
     multi_range_check(sel, range_sel, a, 0, 2**7-1, 0, 2**8-1);
 };
 
-MultiRangeCheck();
+airgroup MultiRangeCheck {
+    MultiRangeCheck();
+}

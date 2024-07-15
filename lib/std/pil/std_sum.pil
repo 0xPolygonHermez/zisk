@@ -1,11 +1,15 @@
 require "std_common.pil";
 
-function sum_assumes(const string type, const int opid, const expr sel = 1, const expr cols[]) {
-    update_piop_sum(type, 0, opid, sel, cols);
+function sum_assumes(string type, int opid, expr sel = 1, expr cols[]) {
+    update_piop_sum(type, 0, [opid], opid, sel, cols);
 }
 
-function sum_proves(const string type, const int opid, const expr mul = 1, const expr cols[]) {
-    update_piop_sum(type, 1, opid, mul, cols);
+function sum_proves(string type, int opid, expr mul = 1, expr cols[]) {
+    update_piop_sum(type, 1, [opid], opid, mul, cols);
+}
+
+function sum_assumes_dynamic(string type, int opid[], expr sumid, expr sel = 1, expr cols[]) {
+    update_piop_sum(type, 0, opid, sumid, sel, cols);
 }
 
 /**
@@ -15,12 +19,12 @@ function sum_proves(const string type, const int opid, const expr mul = 1, const
  * @param opid (unique) identifier of the PIOP check
  * @param cols columns of the PIOP
  */
-private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
-    int cols_count = length(cols);
+private function init_piop_sum(string type, int proves, int opid[], expr cols[]) {
+    const int cols_count = length(cols);
 
     if (cols_count < 1) {
         string side = proves ? "proves" : "assumes";
-        error(`The number of columns of ${side} #${opid} must be at least 1`);
+        error(`The number of columns in ${side} of ${type} #${opid} must be at least 1`);
     }
 
     container proof.std.gsum alias gsum {
@@ -46,31 +50,35 @@ private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
     }
 
     // Container used for final checks
-    container proof.std.gsum.`id${opid}` alias gsumid {
-        string type = type;
-        int cols;
-        int proves = 0;
-        int assumes = 0;
-    }
+    for (int i = 0; i < length(opid); i++) {
+        container proof.std.gsum.`id${opid[i]}` alias gsumid {
+            string type = type;
+            int cols;
+            int proves = 0;
+            int assumes = 0;
+        }
 
-    // Assumes and proves of the same opid must have the same number of columns
-    if (gsumid.cols == 0) {
-        // first time called
-        gsumid.cols = cols_count;
+        // Assumes and proves of the same opid must have the same number of columns
+        if (gsumid.cols == 0) {
+            // first time called
+            gsumid.cols = cols_count;
 
-        // add opid on a list to verify at final
-        gsum.opids[gsum.opids_count] = opid;
-        gsum.opids_count = gsum.opids_count + 1;
-    } else if (gsumid.cols != cols_count) {
-        error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
-    }
+            // add opid on a list to verify at final
+            for (int j = 0; j < length(opid); j++) {
+                gsum.opids[gsum.opids_count] = opid[j];
+                gsum.opids_count = gsum.opids_count + 1;
+            }
+        } else if (gsumid.cols != cols_count) {
+            error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
+        }
 
-    // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
-    // proves and assumes to verify at the end that all of them match
-    if (proves) {
-        gsumid.proves = gsumid.proves + 1;
-    } else {
-        gsumid.assumes = gsumid.assumes + 1;
+        // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
+        // proves and assumes to verify at the end that all of them match
+        if (proves) {
+            gsumid.proves += length(opid);
+        } else {
+            gsumid.assumes += length(opid);
+        }
     }
 }
 
@@ -85,14 +93,14 @@ private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_sum(string type, int proves, int opid, expr sel, expr cols[]) {
+private function update_piop_sum(string type, int proves, int opid[], expr sumid, expr sel, expr cols[]) {
     // instanciate necessary containers and make first checks
     init_piop_sum(type, proves, opid, cols);
 
     init_challenges();
 
     // selected vector to simple column reduction
-    expr cols_compressed = compress_cols(opid, cols);
+    const expr cols_compressed = compress_cols(sumid, cols);
 
     use air.std.gsum;
     if (proves) {

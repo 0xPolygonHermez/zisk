@@ -17,6 +17,22 @@ private function next_available_opid(): int {
     return last_assigned_opid;
 }
 
+function get_opid(int min, int max, int no_update = 0): int {
+    if (min == 0) {
+        if (max == BYTE) {
+            return OPIDS[0];
+        } else if (max == TWOBYTES) {
+            return OPIDS[1];
+        }
+    }
+
+    if (no_update) {
+        return last_assigned_opid + 1;
+    } else {
+        return next_available_opid();
+    }
+}
+
 const int BYTE = 2**8-1;
 const int TWOBYTES = 2**16-1;
 
@@ -71,25 +87,30 @@ function range_check_group(const int predefined = 1, const expr sels[], const ex
  * @param max maximum value of the range
  */
 function multi_range_check(const expr sel = 1, const expr range_sel = 1, const expr colu, const int min1, const int max1, const int min2, const int max2) {
-    range_check(1, sel*range_sel, colu, min1, max1);
-    range_check(1, sel*(1-range_sel), colu, min2, max2);
-    // return;
 
-    // error("Not implemented yet");
+    // Naive
+    // range_check(0, sel*range_sel, colu, min1, max1);
+    // range_check(0, sel*(1-range_sel), colu, min2, max2);
 
-    // // The idea is that if range_sel = 0 then we check the first range, otherwise the second one
-    // // We can "prove" both ranges and then use the range_sel to choose the right one
+    int opid1 = get_opid(min1, max1, 1);
+    int opid2 = 0;
+    if (min2 == 0 && max2 == BYTE) {
+        opid2 =  OPIDS[0];
+    } else if (min2 == 0 && max2 == TWOBYTES) {
+        opid2 =  OPIDS[1];
+    } else {
+        opid2 = opid1 + 1;
+    }
 
-    // // [min1,max1] -> opid1
-    // // [min2,max2] -> opid2
+    // TODO: Can we use predefined columns without the need of a refactor?
+    sum_assumes_dynamic(name_range_check, [opid1,opid2], range_sel*(opid1-opid2) + opid2, sel, [colu]);
 
-    // sum_assumes(name_range_check, range_sel*(opid1-opid2) - opid2, sel, [colu]);
+    range_check(0, sel, colu, min1, max1, 0);
+    range_check(0, sel, colu, min2, max2, 0);
 
-    // sum_assumes(name_range_check, opid1, sel*range_sel, [colu]);
-    // sum_assumes(name_range_check, opid2, sel*(1-range_sel), [colu]);
-
-    // sum_proves(name_range_check, opid1, mul1, [min1..max1-1,max1...]);
-    // sum_proves(name_range_check, opid2, mul2, [min2..max2-1,max2...]);
+    // Q: Can I do it with 1 assume and 1 prove?
+    // sum_assumes_dynamic(name_range_check, [opid1,opid2], range_sel*(opid1-opid2) - opid2, sel, [colu]);
+    // sum_proves(name_range_check, opid, mul, [min1..max1-1,max1...]U[min2..max2-1,max2...]);
 }
 
 /**
@@ -100,7 +121,7 @@ function multi_range_check(const expr sel = 1, const expr range_sel = 1, const e
  * @param min minimum value of the range
  * @param max maximum value of the range
  */
-function range_check(const int predefined = 1, const expr sel = 1, const expr colu, const int min, const int max) {
+function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int max, int update_assume = 1) {
     @range_check{predefined:predefined, colu: colu, min: min, max: max};
 
     if (min > max) {
@@ -234,21 +255,18 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
         // If the range has already been introduced, we reuse the same opid
         for (int i = 0; i < rcprove.opids_count; i++) {
             if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
-                sum_assumes(name_range_check, rcprove.opids[i], sel, [colu]);
+                if (update_assume) {
+                    sum_assumes(name_range_check, rcprove.opids[i], sel, [colu]);
+                }
                 return;
             }
         }
 
-        int opid = 0;
-        if (min == 0 && max == BYTE) {
-            opid = OPIDS[0];
-        } else if (min == 0 && max == TWOBYTES) {
-            opid = OPIDS[1];
-        } else {
-            opid = next_available_opid();
-        }
+        int opid = get_opid(min, max);
 
-        sum_assumes(name_range_check, opid, sel, [colu]);
+        if (update_assume) {
+            sum_assumes(name_range_check, opid, sel, [colu]);
+        }
 
         rcprove.mins[rcprove.opids_count] = min;
         rcprove.maxs[rcprove.opids_count] = max;
@@ -287,13 +305,7 @@ private function declareRangeAir() {
 
     const int next_pow2 = 2**(log2(max_diff));
 
-    _SpecifiedRanges( // TODO: Remove this function
-                    next_pow2,
-                    opids,
-                    opids_count,
-                    mins,
-                    maxs
-                );
+    _SpecifiedRanges(next_pow2,opids,opids_count,mins,maxs);
 }
 
 function _SpecifiedRanges(int a,int b[],int c,int d[],int e[]) {
