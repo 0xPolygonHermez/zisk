@@ -1,0 +1,12 @@
+[book]
+authors = ["Eduardo Antuña Díez"]
+language = "en"
+multilingual = false
+src = "book"
+title = "ZisK Documentation"
+
+[output.html.playground]
+runnable = false
+
+[build]
+build-dir = "target/book"
