@@ -47,23 +47,64 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
 
         STD.setupRangeCheck(airInstance);
 
-        const a = airInstance.wtnsPols.MultiRangeCheck.a;
+        const len = airInstance.wtnsPols.MultiRangeCheck.a.length;
+        let a = new Array(len).fill(0n);
+        let sel = new Array(len).fill(0n);
+        let range_sel = new Array(len).fill(0n);
+        for (let i = 0; i < len; i++) {
+            a[i] = airInstance.wtnsPols.MultiRangeCheck.a[i];
+            sel[i] = airInstance.wtnsPols.MultiRangeCheck.sel[i];
+            range_sel[i] = airInstance.wtnsPols.MultiRangeCheck.range_sel[i];
+        }
 
-        const sel = airInstance.wtnsPols.MultiRangeCheck.sel;
-        const range_sel = airInstance.wtnsPols.MultiRangeCheck.range_sel;
+        for (let i = 0; i < len; i++) {
+            if (i === 0) {
+                for (let j = 0; j < N; j++) {
+                    sel[i][j] = getRandom(0, 1);
+                    range_sel[i][j] = j % 2 === 0 ? 1n : 0n;
 
-        for (let i = 0; i < N; i++) {
-            sel[i] = 1n;
-            range_sel[i] = i % 2 === 0 ? 1n : 0n;
-
-            if (sel[i]) {
-                if (range_sel[i] === 1n) {
-                    a[i] = getRandom(0, 2**7-1);
-                    STD.rangeCheck(a[i], 0n, 2n**7n-1n);
-                } else {
-                    a[i] = getRandom(0, 2**8-1);
-                    STD.rangeCheck(a[i], 0n, 2n**8n-1n);
+                    if (sel[i][j]) {
+                        if (range_sel[i][j] === 1n) {
+                            a[i][j] = getRandom(0, 2**7-1);
+                            STD.rangeCheck(a[i][j], 0n, 2n**7n-1n);
+                        } else {
+                            a[i][j] = getRandom(0, 2**8-1);
+                            STD.rangeCheck(a[i][j], 0n, 2n**8n-1n);
+                        }
+                    }
                 }
+            } else if (i === 1) {
+                for (let j = 0; j < N; j++) {
+                    sel[i][j] = getRandom(0, 1);
+                    range_sel[i][j] = j % 2 === 0 ? 1n : 0n;
+
+                    if (sel[i][j]) {
+                        if (range_sel[i][j] === 1n) {
+                            a[i][j] = getRandom(0, 2**7-1);
+                            STD.rangeCheck(a[i][j], 0n, 2n**7n-1n);
+                        } else {
+                            a[i][j] = getRandom(0, 2**6-1);
+                            STD.rangeCheck(a[i][j], 0n, 2n**6n-1n);
+                        }
+                    }
+                }
+            } else if (i === 2) {
+                for (let j = 0; j < N; j++) {
+                    sel[i][j] = getRandom(0, 1);
+                    range_sel[i][j] = j % 2 === 0 ? 1n : 0n;
+
+                    if (sel[i][j]) {
+                        if (range_sel[i][j] === 1n) {
+                            a[i][j] = getRandom(2**5, 2**8-1);
+                            STD.rangeCheck(a[i][j], 2n**5n, 2n**8n-1n);
+                        } else {
+                            a[i][j] = getRandom(2**8, 2**9-1);
+                            STD.rangeCheck(a[i][j], 2n**8n, 2n**9n-1n);
+                        }
+                    }
+                }
+            } else {
+                throw new Error(`Invalid index ${i}`);
             }
         }
     }

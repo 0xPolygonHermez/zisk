@@ -100,7 +100,7 @@ private function update_piop_sum(string type, int proves, int opid[], expr sumid
     init_challenges();
 
     // selected vector to simple column reduction
-    const expr cols_compressed = compress_cols(sumid, cols);
+    expr cols_compressed = compress_cols(sumid, cols);
 
     use air.std.gsum;
     if (proves) {
