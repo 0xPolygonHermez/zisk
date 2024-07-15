@@ -2,7 +2,7 @@ require "std_permutation.pil"
 
 const int MEMORY_ID = 4;
 
-air Mem(int N = 2**10) {
+airtemplate Mem(int N = 2**10) {
 
     col fixed INCS = [1,2..N];
     col fixed LLAST = [0...,1];

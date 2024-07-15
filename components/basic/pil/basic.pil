@@ -2,6 +2,14 @@ require "main.pil"
 require "rom.pil"
 require "mem.pil"
 
-Rom(N: 2**8);
-Mem(N: 2**10);
-Main(N: 2**12);
+airgroup Rom {
+    Rom(N: 2**8);
+}
+
+airgroup Mem {
+    Mem(N: 2**10);
+}
+
+airgroup Main {
+    Main(N: 2**12);
+}

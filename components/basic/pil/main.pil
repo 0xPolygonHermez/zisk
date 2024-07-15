@@ -2,7 +2,7 @@ require "std_permutation.pil"
 require "std_lookup.pil"
 require "tools.pil"
 
-air Main(int N = 2**10) {
+airtemplate Main(int N = 2**10) {
     const int NR = 8;
 
     /////// State Polynomials

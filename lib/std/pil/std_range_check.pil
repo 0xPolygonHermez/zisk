@@ -20,7 +20,7 @@ private function next_available_opid(): int {
 const int BYTE = 2**8-1;
 const int TWOBYTES = 2**16-1;
 
-air U8Air(const int N = 2**8) {
+airtemplate U8Air(const int N = 2**8) {
     if (N != 2**8) {
         error(`The number of rows N should be 2**8 to use the predefined range U8, got N=${N} instead`);
     }
@@ -30,7 +30,7 @@ air U8Air(const int N = 2**8) {
     sum_proves(name_range_check, OPIDS[0], mul, [U8]);
 }
 
-air U16Air(const int N = 2**16) {
+airtemplate U16Air(const int N = 2**16) {
     if (N != 2**16) {
         error(`The number of rows N should be 2**16 to use the predefined range U16, got N=${N} instead`);
     }
@@ -40,7 +40,7 @@ air U16Air(const int N = 2**16) {
     sum_proves(name_range_check, OPIDS[1], mul, [U16]);
 }
 
-air SpecifiedRanges(const int N, const int opids[], const int opids_count, const int mins[], const int maxs[]) {
+airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int mins[], const int maxs[]) {
     col witness mul[opids_count];
 
     for (int j = 0; j < opids_count; j++) {
@@ -103,13 +103,13 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
 
     if (predefined && min >= 0 && max <= TWOBYTES) {
         container proof.std.rcpre alias rcpreprove {
-            int max_subproof_id = 0;
+            int max_airgroup_id = 0;
             int u8_used = 0;
             int u16_used = 0;
         }
 
-        if (rcpreprove.max_subproof_id < SUBPROOF_ID) {
-            rcpreprove.max_subproof_id = SUBPROOF_ID;
+        if (rcpreprove.max_airgroup_id < AIRGROUP_ID) {
+            rcpreprove.max_airgroup_id = AIRGROUP_ID;
         }
 
         if (min == 0 && (max == BYTE || max == TWOBYTES)) {
@@ -183,10 +183,10 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
             }
         }
 
-        on final subproof declarePreRangeAir();
+        on final airgroup declarePreRangeAir();
     } else {
         container proof.std.rc alias rcprove {
-            int max_subproof_id = 0;
+            int max_airgroup_id = 0;
             int opids_count = 0;
             int max_diff = 0;
 
@@ -196,11 +196,11 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
             int maxs[100];
         }
 
-        if (rcprove.max_subproof_id < SUBPROOF_ID) {
-            rcprove.max_subproof_id = SUBPROOF_ID;
+        if (rcprove.max_airgroup_id < AIRGROUP_ID) {
+            rcprove.max_airgroup_id = AIRGROUP_ID;
         }
 
-        on final subproof declareRangeAir();
+        on final airgroup declareRangeAir();
 
         // If the range has already been introduced, we reuse the same opid
         for (int i = 0; i < rcprove.opids_count; i++) {
@@ -232,23 +232,27 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
 private function declarePreRangeAir() {
     use proof.std.rcpre;
 
-    if (SUBPROOF_ID != max_subproof_id) {
+    if (AIRGROUP_ID != max_airgroup_id) {
         return;
     }
 
     if (u8_used) {
-        U8Air();
+        airgroup U8Air {
+            U8Air();
+        }
     }
 
     if (u16_used) {
-        U16Air();
+        airgroup U16Air {
+            U16Air();
+        }
     }
 }
 
 private function declareRangeAir() {
     use proof.std.rc;
 
-    if (SUBPROOF_ID != max_subproof_id) {
+    if (AIRGROUP_ID != max_airgroup_id) {
         return;
     }
 
@@ -264,5 +268,7 @@ private function declareRangeAir() {
 }
 
 function _SpecifiedRanges(int a,int b[],int c,int d[],int e[]) {
-    SpecifiedRanges(a,b,c,d,e);
+    airgroup SpecifiedRanges {
+        SpecifiedRanges(a,b,c,d,e);
+    }
 }

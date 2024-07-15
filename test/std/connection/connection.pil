@@ -9,7 +9,7 @@ const int TEST_OPID = 44;
 // TODO: Finish Connection2 and Connection3, compute examples of permutations
 // TODO: Add examples combining both approaches
 
-air aggregate Connection1(const int N = 2**3) {
+airtemplate Connection1(const int N = 2**3) {
     if (N != 2**3) error(`Unsupported N = ${N}`);
 
     col witness a,b,c;
@@ -29,7 +29,7 @@ air aggregate Connection1(const int N = 2**3) {
     connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
 };
 
-air aggregate Connection2(const int N = 2**4) {
+airtemplate Connection2(const int N = 2**4) {
     if (N != 2**4) error(`Unsupported N = ${N}`);
 
     col witness a,b,c;
@@ -52,7 +52,7 @@ air aggregate Connection2(const int N = 2**4) {
     connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
 };
 
-air aggregate Connection3(const int N = 2**12) {
+airtemplate Connection3(const int N = 2**12) {
     if (N != 2**12) error(`Unsupported N = ${N}`);
 
     col witness a,b,c;
@@ -70,7 +70,7 @@ air aggregate Connection3(const int N = 2**12) {
     connection(TEST_OPID, [a, b, c], [S1, S2, S3]);
 };
 
-air aggregate ConnectionNew(const int N = 2**4) {
+airtemplate ConnectionNew(const int N = 2**4) {
 
     const int OPID[5] = [2,3,4,5,6];
 
@@ -110,8 +110,15 @@ air aggregate ConnectionNew(const int N = 2**4) {
     connection_update_multiple_cells(OPID[4], [d[4],2,d[4],3,b[4],0], N/2);
     connection_connect(OPID[4]);
 };
-
-Connection1();
-// Connection2();
-// Connection3();
-ConnectionNew();
+airgroup Connection1 {
+    Connection1();
+}
+// airgroup Connection2 {
+//     Connection2();
+// }
+// airgroup Connection3 {
+//     Connection3();
+// }
+airgroup ConnectionNew {
+    ConnectionNew();
+}

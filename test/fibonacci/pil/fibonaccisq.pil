@@ -5,7 +5,7 @@ public in1;
 public in2;
 public out;
 
-air aggregate FibonacciSquare(const int N = 2**8) {
+airtemplate FibonacciSquare(const int N = 2**8) {
 
     col fixed L1 = [1,0...];
     col witness a,b;
@@ -18,6 +18,4 @@ air aggregate FibonacciSquare(const int N = 2**8) {
     (a' - b) * (1 - L1') === 0;
 
     permutation_assumes(MODULE_ID, 1 - L1', [a*a + b*b, b']);
-};
-
-
+}
