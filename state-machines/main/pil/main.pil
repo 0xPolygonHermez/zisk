@@ -1,0 +1,175 @@
+%STEPS_PERCHUNK = 2**21
+
+// Registers
+
+col commit a[2];
+col commit b[2];
+col commit c[2];
+col commit flag;
+col commit last_c[2];
+
+col commit sp;   // Stack pointer
+col commit pc;   // Program counter
+col commit chunk;   // Chunk number in the continuation
+col constant step;
+
+// Instruction
+
+// Source A
+
+col commit a_src_imm;           // Selector
+col commit a_src_mem;           // Selector
+col commit a_src_sp;            // Selector
+col commit a_src_step;          // Selector
+
+col commit a_use_sp_imm1;
+col commit a_offset_imm0;
+
+// Source B
+
+col commit b_src_imm;
+col commit b_src_mem;
+col commit b_src_ind;
+
+col commit b_use_sp_imm1;
+col commit b_offset_imm0;
+
+col commit ind_width;  // 8 , 4, 2, 1
+
+// Operatio related
+
+
+col commit is_external_op;    // Only if op is external
+col commit op;      // if is_external_op1== is_external_op2 == 0 if op=0  then a->c, flag->1
+                    //                                           if op=1 then  b->c, flag->0;
+                    // else then this op is passed to the bus.
+
+
+// Dest C
+
+// What to store
+col commit store_ra;  // Store the return address instead of the C register.
+
+// Where to store
+col commit store_mem;
+col commit store_ind;
+
+col commit store_use_sp;
+col commit store_offset;
+
+col commit set_sp;
+col commit set_pc;
+
+
+
+// Offset destinations
+
+col commit inc_sp;
+col commit jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
+col commit end;
+
+///////////////////////
+
+permutation_assume(
+    MEMORY_ID
+    a_src_mem,            // only if a_src_mem is set
+    [
+        LOAD,
+        8,      // If is indirect jorce a read of an address of 32bits
+        step*3,
+        a_offset_imm0 + a_use_sp_imm1*sp,
+        a,
+    ]
+)
+
+permutation_assume(
+    MEMORY_ID
+    b_src_mem + b_src_ind,            // only if b_src_mem is set
+    [
+        LOAD
+        ind_width,
+        step*3+1,
+        b_offset_imm0 + b_use_sp_imm1*sp + b_src_ind*(a[0] + 2**32*a[1]), // addr
+        b,      // value
+    ]
+)
+
+permutation_assume(
+    MEMORY_ID,           // Function in the BUS
+    store_mem + store_ind,
+    [
+        STORE,
+        ind_width,
+        step*3+2,
+        store_offset + store_use_sp*sp + store_ind*a[0],
+        store_ra*(pc + jmp_offset2 -c) + c,
+    ]
+)
+
+permutation_assume(
+    op,           // Function in the BUS
+    is_external_op,            // only if opBin is set
+    [
+        op,
+        a[0] , a[1]
+        b[0] , b[1]
+        c[0] , c[1]
+        flag,
+    ]
+)
+
+pol a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
+pol b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
+
+a_src_step*(a[0] - step) === 0;
+a_src_step*(a[1])      === 0;
+
+a_src_sp*(a[0] - sp) === 0;
+a_src_sp*(a[1])      === 0;
+
+a_src_c*(a[0] - last_c[0]) === 0;
+a_src_c*(a[1] - last_c[1]) == 0;
+
+b_src_c*(b[0] - last_c[0]) === 0;
+b_src_c*(b[1] - last_c[1]) === 0;
+
+a_src_imm*(a[0] - a_offset_imm0) === 0;
+a_src_imm*(a[1] - a_use_sp_imm1) === 0;
+
+b_src_imm*(b[0] - b_offset_imm0) === 0;
+b_src_imm*(b[1] - a_use_sp_imm1) === 0;
+
+// if is not an external op and op=0 c <- 0 and set flag = 1
+(1 - is_external_op) * ( 1 - op) * (c[0]) = 0;
+(1 - is_external_op) * ( 1 - op) * (c[1]) = 0;
+(1 - is_external_op) * ( 1 - op) * (1-flag) = 0;
+
+// if is not an external op and op=1 c <- b and set flag = 0
+(1 - is_external_op) * op * (b[0] - c[0]) = 0;
+(1 - is_external_op) * op * (b[1] - c[1]) = 0;
+(1 - is_external_op) * op * (flag) = 0;
+
+sp' === set_sp*(c - sp) +  sp +inc_sp  + end*L1'*(0 - sp);  // assume that when end=1 then set_sp=0 and inc_sp=0
+sp*L1 === 0;     // Force sp == 0 at the begining
+
+step*(1-L1) === 'step +  1;
+step*L1 === 0;
+
+
+pol newPC = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
+pc' === set_pc * ( c[0] + jmp_offset1  - newPC) + newPC  +end*L1'*(0x8000_0000 - (pc + jmp_offset1 ));  // Assume that when end=1 then  set_pc = 0 and flag = 0
+L1*(pc - 0x8000_0000) === 0
+
+end*(1-L1')*(end' - 1) === 0;
+
+flag*(flag -1) === 0;
+
+last_c[0]' = c[0];
+last_c[1]' = c[1];
+
+
+
+
+
+
+

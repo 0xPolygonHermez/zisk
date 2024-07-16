@@ -1,0 +1,444 @@
+// Operation
+pol commit o[8];   // 1 in the offeset
+pol commit b, h, w, d;
+pol commit rd, wr;
+
+pol commit step;
+pol commit addr;
+
+// Bytes of the reads and writes
+pol commit byte[8];
+
+
+//
+
+pol commit st[4]; // State
+
+pol double = h*o[7] +
+    w*(o[6] + o[5] + + o[4]) +
+    d*(o[1] + o[2] + o[3] + o[4] + o[5]);
+
+pol addrAlign =
+    addr * o[0];
+    (addr -1) * o[1];
+    (addr -2) * o[2];
+    (addr -3) * o[3];
+    (addr -4) * o[4];
+    (addr -5) * o[5];
+    (addr -6) * o[6];
+    (addr -7) * o[7];
+
+pol rd1 = st[0] * (rd + wr);
+pol rd2 = st[1] * double;
+pol wr1 = (st[1] * (1- double) + st[2]*double)*wr;
+pol wr2 = st[3];
+
+
+permutation_assume(
+    MEMORY_ID
+    rd + wr,            // only if asrcMem is set
+    [
+        LOAD*(rd1 + rd2) + STORE*(wr1 + wr2),
+        8,     // Read write the full quad word
+        step - (st[0] * 4 + st[1]*3 + st[2]*2 + st[3] * 1),
+        addrAlign + rd2 + wr2,
+        byte[0] + byte[1]*2**8 + byte[2]*2**16 + byte[3]*2**24,
+        byte[4] + byte[5]*2**8 + byte[6]*2**16 + byte[7]*2**24
+    ]
+)
+
+pol latchRd1 = (1-double) * rd * st[0];
+pol latchRd2 = double * rd * st[1];
+pol latchWr1 = (1-double) * wr * st[1];
+pol latchWr1 = double * wr * st[3];
+
+
+pol by[0] =
+    b * (
+        byte[0] * o[0] +
+        byte[1] * o[1] +
+        byte[2] * o[2] +
+        byte[3] * o[3] +
+        byte[4] * o[4] +
+        byte[5] * o[5] +
+        byte[6] * o[6] +
+        byte[7] * o[7]
+    ) +
+    h * [
+        byte[0] * o[0] +
+        byte[1] * o[1] +
+        byte[2] * o[2] +
+        byte[3] * o[3] +
+        byte[4] * o[4] +
+        byte[5] * o[5] +
+        byte[6] * o[6] +
+        'byte[7] * o[7]
+    ]
+    w * [
+        byte[0] * o[0] +
+        byte[1] * o[1] +
+        byte[2] * o[2] +
+        byte[3] * o[3] +
+        byte[4] * o[4] +
+        'byte[5] * o[5] +
+        'byte[6] * o[6] +
+        'byte[7] * o[7]
+    ]
+    d * [
+        byte[0] * o[0] +
+        'byte[1] * o[1] +
+        'byte[2] * o[2] +
+        'byte[3] * o[3] +
+        'byte[4] * o[4] +
+        'byte[5] * o[5] +
+        'byte[6] * o[6] +
+        'byte[7] * o[7]
+    ];
+
+pol by[1] =
+    h * [
+        byte[1] * o[0] +
+        byte[2] * o[1] +
+        byte[3] * o[2] +
+        byte[4] * o[3] +
+        byte[5] * o[4] +
+        byte[6] * o[5] +
+        byte[7] * o[6] +
+        byte[0] * o[7]
+    ]
+    w * [
+        byte[1] * o[0] +
+        byte[2] * o[1] +
+        byte[3] * o[2] +
+        byte[4] * o[3] +
+        byte[5] * o[4] +
+        'byte[6] * o[5] +
+        'byte[7] * o[6] +
+        byte[0] * o[7]
+    ]
+    d * [
+        byte[1] * o[0] +
+        'byte[2] * o[1] +
+        'byte[3] * o[2] +
+        'byte[4] * o[3] +
+        'byte[5] * o[4] +
+        'byte[6] * o[5] +
+        'byte[7] * o[6] +
+        byte[0] * o[7]
+    ];
+
+pol by[2] =
+    w * [
+        byte[2] * o[0] +
+        byte[3] * o[1] +
+        byte[4] * o[2] +
+        byte[5] * o[3] +
+        byte[6] * o[4] +
+        'byte[7] * o[5] +
+        byte[0] * o[6] +
+        byte[1] * o[7]
+    ]
+    d * [
+        byte[2] * o[0] +
+        'byte[3] * o[1] +
+        'byte[4] * o[2] +
+        'byte[5] * o[3] +
+        'byte[6] * o[4] +
+        'byte[7] * o[5] +
+        byte[0] * o[6] +
+        byte[1] * o[7]
+    ];
+
+pol by[3] =
+    w * [
+        byte[3] * o[0] +
+        byte[4] * o[1] +
+        byte[5] * o[2] +
+        byte[6] * o[3] +
+        byte[7] * o[4] +
+        byte[0] * o[5] +
+        byte[1] * o[6] +
+        byte[2] * o[7]
+    ]
+    d * [
+        byte[3] * o[0] +
+        'byte[4] * o[1] +
+        'byte[5] * o[2] +
+        'byte[6] * o[3] +
+        'byte[7] * o[4] +
+        byte[0] * o[5] +
+        byte[1] * o[6] +
+        byte[2] * o[7]
+    ];
+
+pol by[4] =
+    d * [
+        byte[4] * o[0] +
+        'byte[5] * o[1] +
+        'byte[6] * o[2] +
+        'byte[7] * o[3] +
+        byte[0] * o[4] +
+        byte[1] * o[5] +
+        byte[2] * o[6] +
+        byte[3] * o[7]
+    ];
+
+pol by[5] =
+    d * [
+        byte[5] * o[0] +
+        'byte[6] * o[1] +
+        'byte[7] * o[2] +
+        byte[0] * o[3] +
+        byte[1] * o[4] +
+        byte[2] * o[5] +
+        byte[3] * o[6] +
+        byte[4] * o[7]
+    ];
+
+pol by[6] =
+    d * [
+        byte[6] * o[0] +
+        'byte[7] * o[1] +
+        byte[0] * o[2] +
+        byte[1] * o[3] +
+        byte[2] * o[4] +
+        byte[3] * o[5] +
+        byte[4] * o[6] +
+        byte[5] * o[7]
+    ];
+
+pol by[7] =
+    d * [
+        byte[7] * o[0] +
+        byte[0] * o[1] +
+        byte[1] * o[2] +
+        byte[2] * o[3] +
+        byte[3] * o[4] +
+        byte[4] * o[5] +
+        byte[5] * o[6] +
+        byte[6] * o[7]
+    ];
+
+
+permutation_probe(
+    MEMORY_ID
+    latchRd1 + latchRd2 + latchWr1 + latchWr2,            // only if asrcMem is set
+    [
+        LOAD*(latchRd1 + latchRd2) + STORE*(latchWr1 + latchWr2),
+        b + h*2 + w*4 + d*8,      // If is indirect jorce a read of an address of 32bits
+        step,
+        addr,
+        by[0] + by[1]*2**8 + by[2]*2**16 + by[3]*2**24,
+        by[4] + by[5]*2**8 + by[6]*2**16 + by[7]*2**24
+    ]
+)
+
+pol same1_0 = (byte[0] - 'byte[0]) * (1 - double) * wr;
+pol same1_1 = (byte[1] - 'byte[1]) * (1 - double) * wr;
+pol same1_2 = (byte[2] - 'byte[2]) * (1 - double) * wr;
+pol same1_3 = (byte[3] - 'byte[3]) * (1 - double) * wr;
+pol same1_4 = (byte[4] - 'byte[4]) * (1 - double) * wr;
+pol same1_5 = (byte[5] - 'byte[5]) * (1 - double) * wr;
+pol same1_6 = (byte[6] - 'byte[6]) * (1 - double) * wr;
+pol same1_7 = (byte[7] - 'byte[7]) * (1 - double) * wr;
+
+pol same2a_0 = (byte[0] - ''byte[0]) * st[2];
+pol same2a_1 = (byte[1] - ''byte[1]) * st[2];
+pol same2a_2 = (byte[2] - ''byte[2]) * st[2];
+pol same2a_3 = (byte[3] - ''byte[3]) * st[2];
+pol same2a_4 = (byte[4] - ''byte[4]) * st[2];
+pol same2a_5 = (byte[5] - ''byte[5]) * st[2];
+pol same2a_6 = (byte[6] - ''byte[6]) * st[2];
+pol same2a_7 = (byte[7] - ''byte[7]) * st[2];
+
+pol same2b_0 = (byte[0] - ''byte[0]) * st[3];
+pol same2b_1 = (byte[1] - ''byte[1]) * st[3];
+pol same2b_2 = (byte[2] - ''byte[2]) * st[3];
+pol same2b_3 = (byte[3] - ''byte[3]) * st[3];
+pol same2b_4 = (byte[4] - ''byte[4]) * st[3];
+pol same2b_5 = (byte[5] - ''byte[5]) * st[3];
+pol same2b_6 = (byte[6] - ''byte[6]) * st[3];
+pol same2b_7 = (byte[7] - ''byte[7]) * st[3];
+
+same1_0 * (
+    b * (o[1] + o[2] + o[3] + o[4] + o[5] + o[6] + o[7]) +
+    h * (o[1] + o[2] + o[3] + o[4] + o[5] + o[6]) +
+    w * (o[1] + o[2] + o[3] + o[4])
+) === 0;
+
+same1_1 * (
+    b * (o[0] + o[2] + o[3] + o[4] + o[5] + o[6] + o[7]) +
+    h * (o[2] + o[3] + o[4] + o[5] + o[6]) +
+    w * (o[2] + o[3] + o[4])
+) === 0;
+
+same1_2 * (
+    b * (o[0] + o[1] + o[3] + o[4] + o[5] + o[6] + o[7]) +
+    h * (o[0] + o[3] + o[4] + o[5] + o[6]) +
+    w * (o[3] + o[4])
+) === 0;
+
+same1_3 * (
+    b * (o[0] + o[1] + o[2] + o[4] + o[5] + o[6] + o[7]) +
+    h * (o[0] + o[1] + o[4] + o[5] + o[6]) +
+    w * (o[4])
+) === 0;
+
+same1_4 * (
+    b * (o[0] + o[1] + o[2] + o[3] + o[5] + o[6] + o[7]) +
+    h * (o[0] + o[1] + o[2] + o[5] + o[6]) +
+    w * (o[0])
+) === 0;
+
+same1_5 * (
+    b * (o[0] + o[1] + o[2] + o[3] + o[4] + o[6] + o[7]) +
+    h * (o[0] + o[1] + o[2] +o[3] + o[6]) +
+    w * (o[0] + o[1]])
+) === 0;
+
+same1_6 * (
+    b * (o[0] + o[1] + o[2] + o[3] + o[5] + o[5] + o[7]) +
+    h * (o[0] + o[1] + o[2] +o[3] + o[4]) +
+    w * (o[0] + o[1] + o[2])
+) === 0;
+
+same1_7 * (
+    b * (o[0] + o[1] + o[2] + o[3] + o[4] + o[5] + o[6]) +
+    h * (o[0] + o[1] + o[2] +o[3] + o[4] + o[5]) +
+    w * (o[0] + o[1] + o[2] + o[3])
+) === 0;
+
+same2a_0 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3] + o[4] + o[5] + o[6] +o[7])
+) === 0;
+
+same2a_1 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[2] + o[3] + o[4] + o[5] + o[6] +o[7])
+) === 0;
+
+same2a_2 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[3] + o[4] + o[5] + o[6] +o[7])
+) === 0;
+
+same2a_3 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[4] + o[5] + o[6] +o[7])
+) === 0;
+
+same2a_4 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[5] + o[6] +o[7])
+) === 0;
+
+same2a_5 * (
+    h * (o[7]) +
+    w * (o[6] + o[7]) +
+    d * (o[6] +o[7])
+) === 0;
+
+same2a_6 * (
+    h * (o[7]) +
+    w * (o[7]) +
+    d * (o[7])
+) === 0;
+
+
+same2b_1 * (
+    h * (o[7]) +
+    w * (o[5]) +
+    d * (o[1])
+) === 0;
+
+same2b_2 * (
+    h * (o[7]) +
+    w * (o[5] + o[6]) +
+    d * (o[1] + o[2])
+) === 0;
+
+same2b_3 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3])
+) === 0;
+
+same2b_4 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3] + o[4])
+) === 0;
+
+same2b_5 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3] + o[4] + o[5])
+) === 0;
+
+same2b_6 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3] + o[4] + o[5] + o[6])
+) === 0;
+
+same2b_7 * (
+    h * (o[7]) +
+    w * (o[5] + o[6] + o[7]) +
+    d * (o[1] + o[2] + o[3] + o[4] + o[5] + o[6] + o[7])
+) === 0;
+
+
+
+st[0]' === latchRd1 + latchRd2 + latchWr1 + latchWr2 + (1-op);
+st[1]' === st[0] * ((1 - latchRd1) + (1-op));
+st[2]' === st[1] * (1 - latchRd2 -latchWr1) ;
+st[3]' === st[2];
+
+(st[0] - 1) * L1 === 0;
+st[1] * L1 === 0;
+st[2] * L1 === 0;
+st[3] * L1 === 0;
+
+rd *( 1- rd ) === 0;
+wr *( 1- wr ) === 0;
+
+b *( 1- b ) === 0;
+h *( 1- h ) === 0;
+w *( 1- w ) === 0;
+d *( 1- d ) === 0;
+
+o[0] * (1 -o[0]) === 0;
+o[1] * (1 -o[1]) === 0;
+o[2] * (1 -o[2]) === 0;
+o[3] * (1 -o[3]) === 0;
+o[4] * (1 -o[4]) === 0;
+o[5] * (1 -o[5]) === 0;
+o[6] * (1 -o[6]) === 0;
+o[7] * (1 -o[7]) === 0;
+
+(o[0] - 'o[0]) * (1-st[0]) === 0;
+(o[1] - 'o[1]) * (1-st[0]) === 0;
+(o[2] - 'o[2]) * (1-st[0]) === 0;
+(o[3] - 'o[3]) * (1-st[0]) === 0;
+(o[4] - 'o[4]) * (1-st[0]) === 0;
+(o[5] - 'o[5]) * (1-st[0]) === 0;
+(o[6] - 'o[6]) * (1-st[0]) === 0;
+(o[7] - 'o[7]) * (1-st[0]) === 0;
+
+(b - 'b) * (1-st[0]) === 0;
+(h - 'h) * (1-st[0]) === 0;
+(w - 'w) * (1-st[0]) === 0;
+(d - 'd) * (1-st[0]) === 0;
+
+(rd - 'rd) * (1-st[0]) === 0;
+(wr - 'wr) * (1-st[0]) === 0;
+
+(step - 'step) * (1-st[0]) === 0;
+(addr - 'addr) * (1-st[0]) === 0;
+

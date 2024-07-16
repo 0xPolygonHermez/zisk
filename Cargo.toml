@@ -1,5 +1,14 @@
 [workspace]
-members = ["cli","examples/fib"]
+members = [
+    "cli",
+    "common",
+    "examples/fib",
+    "riscv/riscv2zisk",
+    "simulator",
+    "state-machines/main",
+    "state-machines/mem",
+    "witness-computation"
+]
 
 resolver = "2"
 
