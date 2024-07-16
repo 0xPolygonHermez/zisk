@@ -5,9 +5,9 @@ name: book
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "book/**"
   merge_group:
@@ -116,8 +116,8 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    # Only deploy if a push to main
-    if: github.ref_name == 'main' && github.event_name == 'push'
+    # Only deploy if a push to develop
+    if: github.ref_name == 'develop' && github.event_name == 'develop'
     runs-on: ubuntu-latest
     needs: [lint, build]
 
