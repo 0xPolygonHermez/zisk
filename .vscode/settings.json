@@ -1,14 +1,18 @@
 {
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
-        "./examples/fib4/Cargo.toml",
-        "./examples/fibv/Cargo.toml",
-        "./goldilocks/Cargo.toml",
-        "./lib/provers/stark/Cargo.toml",
-        "./lib/provers/mocked/Cargo.toml",
+        "./cli/Cargo.toml",
+        "./common/Cargo.toml",
+        "./provers/stark/Cargo.toml",
+        "./provers/starks-lib-c/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",
-        "./proofman-cli/Cargo.toml",
-        "./util/Cargo.toml"
+        "./transcript/Cargo.toml",
+        "./util/Cargo.toml",
+        "./wchelpers/Cargo.toml",
+
+        "./examples/fibonacci-vadcop/Cargo.toml",
+        "./examples/zisk-wc/Cargo.toml",
+        // "./examples/zisk-basic/Cargo.toml"
     ]
 }

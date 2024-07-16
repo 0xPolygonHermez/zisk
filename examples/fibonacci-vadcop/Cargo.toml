@@ -1,0 +1,20 @@
+[package]
+name = "fibonacci-vadcop"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+common = { path = "../../common" }
+proofman = { path = "../../proofman" }
+wchelpers = { path = "../../wchelpers" }
+
+env_logger = { workspace = true }
+log = { workspace = true }
+p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.68"

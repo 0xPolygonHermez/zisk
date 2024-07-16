@@ -1,0 +1,15 @@
+[package]
+name = "{project_name}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman = \{ path = "../proofman" }
+proofman-cli = \{ path = "../cli" }
+prover-mocked = \{ path = "../lib/provers/mocked" }
+log = \{ workspace = true }
+env_logger = \{ workspace = true }
+goldilocks = \{ path = "../goldilocks" }
+clap = \{ version = "4.5", features = ["derive", "env"] }
+
+[workspace]

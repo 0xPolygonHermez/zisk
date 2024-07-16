@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 bytes = "1.5"
-prost = "0.12.3"
-log = { version = "0.4.20" }
+prost = "0.13"
+log = { workspace = true }
 util = { path = "../util" }
 
 [build-dependencies]
-prost-build = "0.12.3"
+prost-build = "0.13.0"

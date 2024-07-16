@@ -1,0 +1,20 @@
+[package]
+name = "proofman-cli"
+version = "0.1.0"
+authors = ["Polygon Labs"]
+edition = "2021"
+readme = "README.md"
+
+[dependencies]
+pilout = { path = "../pilout" }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
+util = { path = "../util" }
+colored = "2"
+tinytemplate = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+convert_case = "0.6"
+proofman = { path = "../proofman" }
+p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }

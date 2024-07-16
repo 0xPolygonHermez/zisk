@@ -1,19 +1,26 @@
 [workspace]
 members = [
-    "proofman",
-    "proofman-cli",
-    "components",
+    "cli",
+    "common",
+    "provers/stark",
+    "provers/starks-lib-c",
     "pilout",
-    "goldilocks",
-    "lib/provers/stark",
-    "lib/provers/mocked",
-    "lib/starks-lib-c",
+    "proofman",
     "transcript",
-    "util",
-    "examples/fib4",
-    "examples/fibv",
-    "examples/zkevm_basic",
+    "util",    
+    "wchelpers", 
+
+    "examples/fibonacci-vadcop",
+    "examples/zisk-wc",
+    # "examples/zisk-basic",
 ]
 
 resolver = "2"
 
+[workspace.dependencies]
+log = { version = "0.4", default-features = false }
+env_logger = "0.11"
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+
+# Local development

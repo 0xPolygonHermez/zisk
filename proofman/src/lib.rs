@@ -1,14 +1,9 @@
-pub mod command_handlers;
-pub mod executor;
+mod planner;
+mod proofman;
 pub mod trace;
-pub mod channel;
-mod hash_btree;
-pub mod message;
-mod proof_ctx;
-pub mod proof_manager_config;
-pub mod proof_manager_threaded;
-pub mod proof_manager;
-pub mod provers_manager;
-pub mod task;
+pub mod trace_pol;
+mod wcmanager;
 
-pub use proof_ctx::*;
+pub use planner::*;
+pub use proofman::*;
+pub use wcmanager::*;

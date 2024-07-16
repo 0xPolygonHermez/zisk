@@ -1,0 +1,8 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pilout = { path = "../pilout" }
+log = { workspace = true }

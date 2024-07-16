@@ -5,22 +5,20 @@ use std::fs::File;
 use std::io::Read;
 use std::ops::Deref;
 
-use log::{debug, info};
+use log::{debug, trace};
 use util::{timer_start, timer_stop_and_log};
 
 #[derive(Debug)]
 pub struct PilOutProxy {
     pub pilout: PilOut,
-    // TODO! This flag si temporary while implementing vadcops. After that it must be removed.
-    fake_pilout: bool,
 }
 
 impl PilOutProxy {
-    const MY_NAME: &'static str = "piloutPx";
+    const MY_NAME: &'static str = "Pilout   ";
 
-    pub fn new(pilout_filename: &str, fake_pilout: bool) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
+    pub fn new(pilout_filename: &str) -> Result<PilOutProxy, Box<dyn std::error::Error>> {
         let pilout = Self::load_pilout(pilout_filename)?;
-        Ok(PilOutProxy { pilout, fake_pilout })
+        Ok(PilOutProxy { pilout })
     }
 
     fn load_pilout(pilout_filename: &str) -> Result<PilOut, DecodeError> {
@@ -45,15 +43,25 @@ impl PilOutProxy {
         result
     }
 
-    pub fn find_subproof_id_by_name(&self, name: &str) -> Option<usize> {
+    pub fn get_air_group_idx(&self, name: &str) -> Option<usize> {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
-    pub fn num_stages(&self) -> u32 {
-        if self.fake_pilout {
-            return 3;
-        }
+    pub fn get_air_idx(&self, air_group_id: usize, name: &str) -> Option<usize> {
+        self.pilout.subproofs[air_group_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
+    }
 
+    pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &crate::pilout::BasicAir {
+        &self.pilout.subproofs[air_group_id].airs[air_id]
+    }
+
+    pub fn find_air(&self, air_group_name: &str, air_name: &str) -> Option<&crate::pilout::BasicAir> {
+        let air_group_id = self.get_air_group_idx(air_group_name)?;
+        let air_id = self.get_air_idx(air_group_id, air_name)?;
+        Some(&self.pilout.subproofs[air_group_id].airs[air_id])
+    }
+
+    pub fn num_stages(&self) -> u32 {
         self.pilout.num_challenges.len() as u32
     }
 
@@ -67,18 +75,18 @@ impl PilOutProxy {
 
     pub fn print_pilout_info(&self) {
         // Print PilOut subproofs and airs names and degrees
-        info!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
+        trace!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
 
         let base_field: &Vec<u8> = self.pilout.base_field.as_ref();
         let mut hex_string = "0x".to_owned();
         for &byte in base_field {
             hex_string.push_str(&format!("{:02X}", byte));
         }
-        info!("{}:     Base field: {}", Self::MY_NAME, hex_string);
+        trace!("{}:     Base field: {}", Self::MY_NAME, hex_string);
 
-        info!("{}:     Subproofs:", Self::MY_NAME);
+        trace!("{}:     Subproofs:", Self::MY_NAME);
         for (subproof_index, subproof) in self.pilout.subproofs.iter().enumerate() {
-            info!(
+            trace!(
                 "{}:     + [{}] {} (aggregable: {}, subproof values: {})",
                 Self::MY_NAME,
                 subproof_index,
@@ -88,7 +96,7 @@ impl PilOutProxy {
             );
 
             for (air_index, air) in self.pilout.subproofs[subproof_index].airs.iter().enumerate() {
-                info!(
+                trace!(
                     "{}:       [{}][{}] {} (rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {})",
                     Self::MY_NAME,
                     subproof_index,
@@ -104,12 +112,12 @@ impl PilOutProxy {
             }
         }
 
-        info!("{}:     Challenges: {}", Self::MY_NAME, self.pilout.num_challenges.len());
+        trace!("{}:     Challenges: {}", Self::MY_NAME, self.pilout.num_challenges.len());
         for i in 0..self.pilout.num_challenges.len() {
-            info!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
+            trace!("{}:       stage {}: {}", Self::MY_NAME, i, self.pilout.num_challenges[i]);
         }
 
-        info!(
+        trace!(
             "{}:     #Proof values: {}, #Public values: {}, #Global expressions: {}, #Global constraints: {}",
             Self::MY_NAME,
             self.pilout.num_proof_values,
@@ -117,8 +125,8 @@ impl PilOutProxy {
             self.pilout.expressions.len(),
             self.pilout.constraints.len()
         );
-        info!("{}:     #Hints: {}, #Symbols: {}", Self::MY_NAME, self.pilout.hints.len(), self.pilout.symbols.len());
-        info!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
+        trace!("{}:     #Hints: {}, #Symbols: {}", Self::MY_NAME, self.pilout.hints.len(), self.pilout.symbols.len());
+        trace!("{}:     Public tables: {}", Self::MY_NAME, self.pilout.public_tables.len());
     }
 }
 
@@ -133,6 +141,6 @@ impl Deref for PilOutProxy {
 // TODO! To be removed
 impl Default for PilOutProxy {
     fn default() -> Self {
-        PilOutProxy { pilout: PilOut::default(), fake_pilout: true }
+        PilOutProxy { pilout: PilOut::default() }
     }
 }
