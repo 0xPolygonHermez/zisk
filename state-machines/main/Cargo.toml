@@ -1,10 +1,10 @@
 [package]
-name = "zisk-sm"
+name = "sm-main"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-core = { path = "../../core" }
+zisk-common = { path = "../../common" }
 # common = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }

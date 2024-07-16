@@ -40,6 +40,5 @@ impl WCOpCalculator for MemSM {
 impl<F> WCComponent<F> for MemSM {
     fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {}
 
-    fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
-    }
+    fn calculate_plan(&self, ectx: &mut ExecutionCtx) {}
 }

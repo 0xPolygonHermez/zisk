@@ -1,11 +1,12 @@
-use std::{borrow::Borrow, rc::Rc};
+use std::rc::Rc;
 
 use common::{ExecutionCtx, ProofCtx, WCPilOut};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use proofman::WCManager;
-use wchelpers::{WCComponent, WCLibrary, WCOpCalculator};
-use zisk_sm::{MainSM, MemSM};
+use sm_main::MainSM;
+use sm_mem::MemSM;
+use wchelpers::{WCLibrary, WCOpCalculator};
 
 use crate::FibonacciVadcopPilout;
 
@@ -24,11 +25,7 @@ impl<F: AbstractField> FibonacciVadcop<F> {
         let sm = vec![Rc::clone(&mem_sm) as Rc<dyn WCOpCalculator>];
         let main_sm = MainSM::new(&mut wcm, sm);
 
-        FibonacciVadcop {
-            wcm,
-            main_sm,
-            mem_sm,
-        }
+        FibonacciVadcop { wcm, main_sm, mem_sm }
     }
 }
 

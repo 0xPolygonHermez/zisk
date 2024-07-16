@@ -7,16 +7,17 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-zisk-sm = { path = "../zisk-sm" }
+sm-main = { path = "../state-machines/main" }
+sm-mem = { path = "../state-machines/mem" }
 
 # common = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
 
 #Local development
-common = { path = "../../../pil2-proofman/common" }
-proofman = { path = "../../../pil2-proofman/proofman" }
-wchelpers = { path = "../../../pil2-proofman/wchelpers" }
+common = { path = "../../pil2-proofman/common" }
+proofman = { path = "../../pil2-proofman/proofman" }
+wchelpers = { path = "../../pil2-proofman/wchelpers" }
 
 log = { version = "0.4", default-features = false }
 env_logger = "0.11"

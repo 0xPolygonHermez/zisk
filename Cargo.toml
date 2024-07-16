@@ -1,9 +1,13 @@
 [workspace]
 members = [
-    "cli", "core",
+    "cli",
+    "common",
     "examples/fib",
-    "zkvm/zisk-sm",
-    "zkvm/zisk-wc"
+    "riscv/riscv2zisk",
+    "simulator",
+    "state-machines/main",
+    "state-machines/mem",
+    "witness-computation"
 ]
 
 resolver = "2"

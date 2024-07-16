@@ -2,7 +2,6 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
-
 use crate::ZiskOperator;
 
 #[allow(dead_code)]
