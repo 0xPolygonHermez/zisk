@@ -1,8 +1,0 @@
-[build]
-target = ["riscv64ima-polygon-ziskos-elf", "x86_64-unknown-linux-gnu"]
-
-
-[target.riscv64ima-polygon-ziskos-elf]
-#linker = "/opt/riscv/bin/riscv64-unknown-elf-ld"
-#rustflags = ["-C", "link-arg=-Tsrc/script.ld"]
-runner = ".cargo/sim.sh"

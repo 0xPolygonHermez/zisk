@@ -5,14 +5,15 @@ edition = "2021"
 
 [dependencies]
 zisk-common = { path = "../../common" }
-# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
-# wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
+common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+
 log = { version = "0.4", default-features = false }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 
 #Local development
-common = { path = "../../../pil2-proofman/common" }
-proofman = { path = "../../../pil2-proofman/proofman" }
-wchelpers = { path = "../../../pil2-proofman/wchelpers" }
+# common = { path = "../../../pil2-proofman/common" }
+# proofman = { path = "../../../pil2-proofman/proofman" }
+# wchelpers = { path = "../../../pil2-proofman/wchelpers" }
