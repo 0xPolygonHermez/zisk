@@ -1,9 +1,0 @@
-syntax = "proto3";
-package inputs;
-
-message Input {
-  string msg = 1;
-  uint64 n = 2;
-  uint64 a = 3;
-  uint64 b = 4;
-}
