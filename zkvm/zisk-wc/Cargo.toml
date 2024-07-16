@@ -1,0 +1,24 @@
+[package]
+name = "zisk-wc"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+zisk-sm = { path = "../zisk-sm" }
+
+# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
+# wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman" }
+
+#Local development
+common = { path = "../../../pil2-proofman/common" }
+proofman = { path = "../../../pil2-proofman/proofman" }
+wchelpers = { path = "../../../pil2-proofman/wchelpers" }
+
+log = { version = "0.4", default-features = false }
+env_logger = "0.11"
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
