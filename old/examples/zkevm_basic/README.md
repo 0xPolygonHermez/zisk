@@ -1,1 +1,0 @@
-# zkEVM Basic Example
