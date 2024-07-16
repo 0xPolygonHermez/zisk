@@ -16,25 +16,15 @@ impl MemSM {
 
         mem_sm
     }
-}
 
-impl WCOpCalculator for MemSM {
-    // 0:x, 1:module
-    fn calculate_verify(&self, verify: bool, values: Vec<u64>) -> Result<Vec<u64>, Box<dyn std::error::Error>> {
-        let (x, module) = (values[0], values[1]);
+    pub fn read(&self, ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx, addr: u64, width: usize) -> u64 {
 
-        let x_mod = x % module;
-
-        if verify {
-            self.inputs.borrow_mut().push((x.into(), x_mod.into()));
-        }
-
-        Ok(vec![x_mod])
     }
 
-    fn codes(&self) -> Vec<&str> {
-        vec!["mOp"]
+    pub fn write(&self, ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx, addr: u64, width: usize, val: u64) {
+
     }
+
 }
 
 impl<F> WCComponent<F> for MemSM {

@@ -1617,6 +1617,10 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+<<<<<<< Updated upstream
+=======
+ "sm-mem",
+>>>>>>> Stashed changes
  "wchelpers",
  "zisk-common",
 ]

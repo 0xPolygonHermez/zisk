@@ -10,22 +10,23 @@ use wchelpers::{WCLibrary, WCOpCalculator};
 
 use crate::FibonacciVadcopPilout;
 
-pub struct FibonacciVadcop<F> {
+pub struct ZiskWC<F> {
     pub wcm: WCManager<F>,
     pub main_sm: Rc<MainSM>,
     pub mem_sm: Rc<MemSM>,
 }
 
-impl<F: AbstractField> FibonacciVadcop<F> {
+impl<F: AbstractField> ZiskWC<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
 
-        let mem_sm = MemSM::new(&mut wcm);
+        let mem_aligned_sm = MemSM::new(&mut wcm, pil_helpers::mem_aligned::air_id);
+        let mem_unaligned_sm = MemSM::new(&mut wcm, pil_helpers::mem_unaligned::air_id);
+        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm, mem_unaligned_sm);
 
-        let sm = vec![Rc::clone(&mem_sm) as Rc<dyn WCOpCalculator>];
-        let main_sm = MainSM::new(&mut wcm, sm);
+        let main_sm = MainSM::new(&mut wcm, mem_sm);
 
-        FibonacciVadcop { wcm, main_sm, mem_sm }
+        ZiskWC { wcm, main_sm, mem_sm }
     }
 }
 
