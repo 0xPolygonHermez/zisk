@@ -35,8 +35,9 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         }
 
         // Load the witness computation dynamic library
-        let mut wc_lib: Box<dyn WCLibrary<F>> = init_library(wc_lib_path.clone())
-            .expect(format!("Failed to load witness computation library '{}'", wc_lib_path.display()).as_str());
+        let library = unsafe { Library::new(wc_lib_path.clone())? };
+        let wc_lib: Symbol<fn() -> Box<dyn WCLibrary<F>>> = unsafe { library.get(b"init_library")? };
+        let mut wc_lib = wc_lib();
 
         let pilout = wc_lib.get_pilout();
         // TODO! Check hash
@@ -131,12 +132,4 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         // This is a mock implementation
         vec![]
     }
-}
-
-fn init_library<F>(path: PathBuf) -> Result<Box<dyn WCLibrary<F>>, libloading::Error> {
-    let library = unsafe { Library::new(path)? };
-
-    let library: Symbol<fn() -> Box<dyn WCLibrary<F>>> = unsafe { library.get(b"init_library")? };
-
-    Ok(library())
 }
