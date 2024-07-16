@@ -12,7 +12,5 @@
         "./wchelpers/Cargo.toml",
 
         "./examples/fibonacci-vadcop/Cargo.toml",
-        "./examples/zisk-wc/Cargo.toml",
-        // "./examples/zisk-basic/Cargo.toml"
     ]
 }
