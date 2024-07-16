@@ -26,11 +26,15 @@ impl<F: AbstractField> ZiskWC<F> {
 
         let main_sm = MainSM::new(&mut wcm, mem_sm);
 
+        wcm.onExecute( || -> {
+            main_sm.execute()
+        });
+
         ZiskWC { wcm, main_sm, mem_sm }
     }
 }
 
-impl<F> WCLibrary<F> for FibonacciVadcop<F> {
+impl<F> WCLibrary<F> for ZiskWC<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         self.wcm.start_proof(pctx, ectx);
     }
@@ -43,11 +47,6 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.calculate_plan(ectx);
     }
 
-    fn initialize_air_instances(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        for id in ectx.owned_instances.iter() {
-            pctx.air_instances.push((&ectx.instances[*id]).into());
-        }
-    }
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         self.wcm.calculate_witness(stage, pctx, ectx);
     }
@@ -66,5 +65,5 @@ pub extern "Rust" fn init_library<'a>() -> Box<dyn WCLibrary<Goldilocks>> {
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    Box::new(FibonacciVadcop::new())
+    Box::new(ZiskWC::new())
 }

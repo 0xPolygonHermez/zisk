@@ -22,6 +22,10 @@ impl MainSM {
 
         main
     }
+
+    pub fn execute() {
+        
+    }
 }
 
 impl<F> WCComponent<F> for MainSM {
