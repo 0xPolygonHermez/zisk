@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use common::{ExecutionCtx, ProofCtx, WitnessPilOut};
+use common::{ExecutionCtx, ProofCtx, WCPilOut};
+use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use wchelpers::WCLibrary;
 use proofman::WCManager;
 
-use crate::{FibonacciSquare, Module};
-use crate::pilout::get_fibonacci_vadcop_pilout;
+use crate::{FibonacciSquare, FibonacciVadcopPilout, Module};
 
 pub struct FibonacciVadcop<F> {
     pub wcm: WCManager<F>,
@@ -14,7 +14,7 @@ pub struct FibonacciVadcop<F> {
     pub module: Rc<Module>,
 }
 
-impl<F> FibonacciVadcop<F> {
+impl<F: AbstractField> FibonacciVadcop<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
 
@@ -47,8 +47,8 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.calculate_witness(stage, pctx, ectx);
     }
 
-    fn get_pilout(&self) -> WitnessPilOut {
-        get_fibonacci_vadcop_pilout()
+    fn get_pilout(&self) -> WCPilOut {
+        FibonacciVadcopPilout::get_fibonacci_vadcop_pilout()
     }
 }
 

@@ -1,11 +1,11 @@
 use log::info;
 
-use crate::{Prover, WitnessPilOut};
+use crate::{Prover, WCPilOut};
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
-    pub pilout: WitnessPilOut,
+    pub pilout: WCPilOut,
     pub challenges: Vec<Vec<F>>,
     pub air_instances: Vec<AirInstanceCtx>,
     pub provers: Vec<Box<dyn Prover<F>>>,
@@ -14,7 +14,7 @@ pub struct ProofCtx<F> {
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(pilout: WitnessPilOut, public_inputs: Vec<u8>) -> Self {
+    pub fn create_ctx(pilout: WCPilOut, public_inputs: Vec<u8>) -> Self {
         info!("{}: ··· Creating proof context", Self::MY_NAME);
 
         if pilout.air_groups().len() == 0 {
@@ -24,7 +24,7 @@ impl<F> ProofCtx<F> {
         // pilout.print_pilout_info();
 
         // NOTE: consider Vec::with_capacity() instead of Vec::new()
-        let mut challenges = Vec::<Vec<F>>::new();
+        let challenges = Vec::<Vec<F>>::new();
 
         // TODO! Review this
         // if !pilout.num_challenges.is_empty() {

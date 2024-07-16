@@ -17,7 +17,7 @@ impl<F> WCManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
     pub fn new() -> Self {
-        WCManager { components: Vec::new(), executors: Vec::new(), planner: Box::new(DefaultPlanner)}
+        WCManager { components: Vec::new(), executors: Vec::new(), planner: Box::new(DefaultPlanner) }
     }
 
     pub fn register_component(&mut self, component: Rc<dyn WCComponent<F>>) {

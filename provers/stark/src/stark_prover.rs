@@ -53,9 +53,9 @@ impl<T: AbstractField> StarkProver<T> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
-    pub fn new(proving_key_path: &PathBuf, global_info: &GlobalInfo , air_group_id: usize, air_id: usize) -> Self {
+    pub fn new(proving_key_path: &PathBuf, global_info: &GlobalInfo, air_group_id: usize, air_id: usize) -> Self {
         let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(air_group_id, air_id));
-        trace!("{}: ··· Setup AIR folder: {:?}", Self::MY_NAME , air_setup_folder);
+        trace!("{}: ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
 
         // Check path exists and is a folder
         if !air_setup_folder.exists() {
@@ -65,7 +65,8 @@ impl<T: AbstractField> StarkProver<T> {
             panic!("Setup AIR path is not a folder: {:?}", air_setup_folder);
         }
 
-        let base_filename_path = air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
+        let base_filename_path =
+            air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
 
         let stark_info_path = base_filename_path.clone() + ".stark_info.json";
         let chelpers_path = base_filename_path.clone() + ".bin";

@@ -39,6 +39,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             .expect(format!("Failed to load witness computation library '{}'", wc_lib_path.display()).as_str());
 
         let pilout = wc_lib.get_pilout();
+        // TODO! Check hash
 
         let mut pctx = ProofCtx::create_ctx(pilout, public_inputs);
         let mut ectx = ExecutionCtx::builder().is_discovery_execution().build();
@@ -48,7 +49,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         // Initialize prover and buffers to fit the proof
         Self::initialize_provers(&proving_key_path, &mut pctx);
 
-        ectx.is_discovery_execution = false;
+        ectx.discovering = false;
 
         for stage in 1..=pctx.pilout.num_stages() {
             wc_lib.calculate_witness(stage, &mut pctx, &ectx);

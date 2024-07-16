@@ -6,7 +6,7 @@ pub struct ExecutionCtx {
     /// If true, the plugin must generate the public outputs
     pub public_output: bool,
 
-    pub is_discovery_execution: bool,
+    pub discovering: bool,
 
     pub instances: Vec<AirInstance>,
     pub owned_instances: Vec<usize>,
@@ -36,7 +36,7 @@ impl ExecutionCtxBuilder {
     pub fn build(self) -> ExecutionCtx {
         ExecutionCtx {
             public_output: self.public_output,
-            is_discovery_execution: self.is_discovery_execution,
+            discovering: self.is_discovery_execution,
             instances: vec![],
             owned_instances: vec![],
         }

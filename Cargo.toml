@@ -11,6 +11,7 @@ members = [
     "wchelpers", 
 
     "examples/fibonacci-vadcop",
+    "examples/zisk-wc",
     # "examples/zisk-basic",
 ]
 
