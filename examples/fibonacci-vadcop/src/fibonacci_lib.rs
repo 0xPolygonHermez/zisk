@@ -3,7 +3,7 @@ use std::rc::Rc;
 use common::{ExecutionCtx, ProofCtx, WCPilout};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
-use wchelpers::WCLibrary;
+use wchelpers::{WCLibrary, WCExecutor};
 use proofman::WCManager;
 
 use crate::{FibonacciSquare, FibonacciVadcopPilout, Module};
@@ -32,6 +32,10 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
 
     fn end_proof(&mut self) {
         self.wcm.end_proof();
+    }
+
+    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+        self.fibonacci.execute(pctx, ectx);
     }
 
     fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {

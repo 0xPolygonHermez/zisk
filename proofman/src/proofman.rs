@@ -72,6 +72,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
     fn init_proof(wc_lib: &mut Box<dyn WCLibrary<F>>, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         wc_lib.start_proof(pctx, ectx);
+        wc_lib.execute(pctx, ectx);
 
         wc_lib.calculate_plan(ectx);
 

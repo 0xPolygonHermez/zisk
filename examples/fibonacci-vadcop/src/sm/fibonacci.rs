@@ -17,8 +17,7 @@ pub struct FibonacciSquare {
 impl FibonacciSquare {
     pub fn new<F>(wcm: &mut WCManager<F>, module: &Rc<Module>) -> Rc<Self> {
         let fibonacci = Rc::new(Self { module: Rc::clone(&module) });
-        wcm.register_component(Rc::clone(&fibonacci) as Rc<dyn WCComponent<F>>);
-        wcm.register_executor(Rc::clone(&fibonacci) as Rc<dyn WCExecutor<F>>);
+        wcm.register_component(Rc::clone(&fibonacci) as Rc<dyn WCComponent<F>>, None);
         fibonacci
     }
 

@@ -16,7 +16,7 @@ pub struct Module {
 impl Module {
     pub fn new<F>(wcm: &mut WCManager<F>) -> Rc<Self> {
         let module = Rc::new(Module { inputs: RefCell::new(Vec::new()) });
-        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>);
+        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>, None);
 
         module
     }
