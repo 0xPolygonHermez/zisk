@@ -14,10 +14,7 @@ impl MainSM {
     pub fn new<F>(wcm: &mut WCManager<F>, mem: Rc<MemSM>, air_ids: &[usize]) -> Rc<Self> {
         let main = Rc::new(Self { mem });
 
-        wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>);
-        wcm.register_executor(Rc::clone(&main) as Rc<dyn WCExecutor<F>>);
-        wcm.register_airs(air_ids, Rc::clone(&main) as Rc<dyn WCComponent<F>>)
-            .expect(format!("Failed to register AIRs {:?}", air_ids).as_str());
+        wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>, Some(air_ids));
 
         main
     }

@@ -11,9 +11,7 @@ pub struct MemUnalignedSM {}
 impl MemUnalignedSM {
     pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Rc<Self> {
         let mem_unaligned_sm = Rc::new(MemUnalignedSM {});
-        wcm.register_component(Rc::clone(&mem_unaligned_sm) as Rc<dyn WCComponent<F>>);
-        wcm.register_airs(air_ids, Rc::clone(&mem_unaligned_sm) as Rc<dyn WCComponent<F>>)
-            .expect(format!("Failed to register AIRs {:?}", air_ids).as_str());
+        wcm.register_component(Rc::clone(&mem_unaligned_sm) as Rc<dyn WCComponent<F>>, Some(air_ids));
 
         mem_unaligned_sm
     }

@@ -19,7 +19,7 @@ impl MemSM {
         mem_unaligned: Rc<MemUnalignedSM>,
     ) -> Rc<Self> {
         let mem_sm = Rc::new(Self { mem_aligned, mem_unaligned });
-        wcm.register_component(Rc::clone(&mem_sm) as Rc<dyn WCComponent<F>>);
+        wcm.register_component(Rc::clone(&mem_sm) as Rc<dyn WCComponent<F>>, None);
 
         mem_sm
     }

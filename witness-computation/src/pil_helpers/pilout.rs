@@ -18,8 +18,11 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("Main"));
         air_group.add_air(Some("Main"), 10);
 
-        let air_group = pilout.add_air_group(Some("Mem"));
-        air_group.add_air(Some("Mem"), 10);
+        let air_group = pilout.add_air_group(Some("MemAligned"));
+        air_group.add_air(Some("MemAligned"), 10);
+
+        let air_group = pilout.add_air_group(Some("MemUnaligned"));
+        air_group.add_air(Some("MemUnaligned"), 10);
 
         pilout
     }
