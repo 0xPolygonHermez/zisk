@@ -13,7 +13,7 @@ export ZISK_TOKEN=...
 
 ```bash
 curl -H "Authorization: token ${ZISK_TOKEN}" \
-https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
+https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
 
 This will enable the ziskup command in your CLI.
