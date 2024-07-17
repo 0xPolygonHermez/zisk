@@ -1,19 +1,11 @@
 [package]
-name = "zisk-wc"
+name = "sm-mem-unaligned"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
-sm-main = { path = "../state-machines/main" }
-sm-mem = { path = "../state-machines/mem" }
-sm-mem-aligned = { path = "../state-machines/mem_aligned" }
-sm-mem-unaligned = { path = "../state-machines/mem_unaligned" }
-
+zisk-common = { path = "../../common" }
 log = { version = "0.4", default-features = false }
-env_logger = "0.11"
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 
@@ -21,6 +13,6 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { path = "../../pil2-proofman/common" }
-proofman = { path = "../../pil2-proofman/proofman" }
-wchelpers = { path = "../../pil2-proofman/wchelpers" }
+common = { path = "../../../pil2-proofman/common" }
+proofman = { path = "../../../pil2-proofman/proofman" }
+wchelpers = { path = "../../../pil2-proofman/wchelpers" }

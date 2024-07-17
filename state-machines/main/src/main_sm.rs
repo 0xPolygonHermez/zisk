@@ -11,21 +11,18 @@ pub struct MainSM {
 }
 
 impl MainSM {
-    pub fn new<F>(wcm: &mut WCManager<F>, mem: Rc<MemSM>) -> Rc<Self> {
-
-        let main = Rc::new(Self {
-            mem
-        });
+    pub fn new<F>(wcm: &mut WCManager<F>, mem: Rc<MemSM>, air_ids: &[usize]) -> Rc<Self> {
+        let main = Rc::new(Self { mem });
 
         wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>);
         wcm.register_executor(Rc::clone(&main) as Rc<dyn WCExecutor<F>>);
+        wcm.register_airs(air_ids, Rc::clone(&main) as Rc<dyn WCComponent<F>>)
+            .expect(format!("Failed to register AIRs {:?}", air_ids).as_str());
 
         main
     }
 
-    pub fn execute() {
-        
-    }
+    pub fn execute<F>(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {}
 }
 
 impl<F> WCComponent<F> for MainSM {
@@ -36,14 +33,12 @@ impl<F> WCComponent<F> for MainSM {
 
 impl<F> WCExecutor<F> for MainSM {
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-
         let mut end = false;
 
         let mem = self.mem.as_ref();
         while (!end) {
             let addr = 3;
-            let val = mem.read(pctx, ectx, addr);
-
+            // let val = mem.read(addr, pctx, ectx);
         }
     }
 }

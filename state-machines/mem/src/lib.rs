@@ -1,7 +1,7 @@
 #[allow(dead_code, unused)]
 
-mod mem_sm;
+mod mem;
 mod mem_trace;
 
-pub use mem_sm::*;
+pub use mem::*;
 pub use mem_trace::*;

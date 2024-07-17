@@ -1,36 +1,40 @@
 use std::rc::Rc;
 
-use common::{ExecutionCtx, ProofCtx, WCPilOut};
+use common::{ExecutionCtx, ProofCtx, WCPilout};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use proofman::WCManager;
 use sm_main::MainSM;
 use sm_mem::MemSM;
-use wchelpers::{WCLibrary, WCOpCalculator};
+use sm_mem_aligned::MemAlignedSM;
+use sm_mem_unaligned::MemUnalignedSM;
+use wchelpers::WCLibrary;
 
-use crate::FibonacciVadcopPilout;
+use crate::{Pilout, MAIN_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_UNALIGNED_AIR_IDS};
 
 pub struct ZiskWC<F> {
     pub wcm: WCManager<F>,
     pub main_sm: Rc<MainSM>,
     pub mem_sm: Rc<MemSM>,
+    pub mem_aligned_sm: Rc<MemAlignedSM>,
+    pub mem_unaligned_sm: Rc<MemUnalignedSM>,
 }
 
 impl<F: AbstractField> ZiskWC<F> {
-    pub fn new() -> Self {
+    pub fn new(pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) -> Self {
         let mut wcm = WCManager::new();
 
-        let mem_aligned_sm = MemSM::new(&mut wcm, pil_helpers::mem_aligned::air_id);
-        let mem_unaligned_sm = MemSM::new(&mut wcm, pil_helpers::mem_unaligned::air_id);
-        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm, mem_unaligned_sm);
+        let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_ALIGN_AIR_IDS);
+        let mem_unaligned_sm = MemUnalignedSM::new(&mut wcm, MEM_UNALIGNED_AIR_IDS);
+        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let main_sm = MainSM::new(&mut wcm, mem_sm);
+        let main_sm = MainSM::new(&mut wcm, mem_sm.clone(), MAIN_AIR_IDS);
 
-        wcm.onExecute( || -> {
-            main_sm.execute()
-        });
+        // wcm.on_execute(|main_sm: Rc<MainSM>, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx| {
+        //     main_sm.execute(pctx, ectx);
+        // });
 
-        ZiskWC { wcm, main_sm, mem_sm }
+        ZiskWC { wcm, main_sm, mem_sm, mem_aligned_sm, mem_unaligned_sm }
     }
 }
 
@@ -51,13 +55,16 @@ impl<F> WCLibrary<F> for ZiskWC<F> {
         self.wcm.calculate_witness(stage, pctx, ectx);
     }
 
-    fn get_pilout(&self) -> WCPilOut {
-        FibonacciVadcopPilout::get_fibonacci_vadcop_pilout()
+    fn pilout(&self) -> WCPilout {
+        Pilout::pilout()
     }
 }
 
 #[no_mangle]
-pub extern "Rust" fn init_library<'a>() -> Box<dyn WCLibrary<Goldilocks>> {
+pub extern "Rust" fn init_library(
+    pctx: &mut ProofCtx<Goldilocks>,
+    ectx: &ExecutionCtx,
+) -> Box<dyn WCLibrary<Goldilocks>> {
     env_logger::builder()
         .format_timestamp(None)
         .format_level(true)
@@ -65,5 +72,5 @@ pub extern "Rust" fn init_library<'a>() -> Box<dyn WCLibrary<Goldilocks>> {
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    Box::new(ZiskWC::new())
+    Box::new(ZiskWC::new(pctx, ectx))
 }

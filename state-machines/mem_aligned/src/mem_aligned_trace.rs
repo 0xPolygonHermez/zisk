@@ -1,4 +1,4 @@
 use proofman::trace;
 use p3_goldilocks::Goldilocks;
 
-trace!(MemTrace0 {});
+trace!(MemALignedTrace0 {});
