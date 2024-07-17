@@ -73,7 +73,7 @@ impl<F> WCComponent<F> for Module {
         }
     }
 
-    fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
+    fn suggest_plan(&self, ectx: &mut ExecutionCtx) {
         ectx.instances.push(AirInstance::new(
             MODULE_AIR_GROUP_ID,
             MODULE_0_AIR_ID,

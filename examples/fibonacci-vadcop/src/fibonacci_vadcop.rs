@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use common::{ExecutionCtx, ProofCtx, WCPilOut};
+use common::{ExecutionCtx, ProofCtx, WCPilout};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use wchelpers::WCLibrary;
@@ -38,16 +38,11 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.calculate_plan(ectx);
     }
 
-    fn initialize_air_instances(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        for id in ectx.owned_instances.iter() {
-            pctx.air_instances.push((&ectx.instances[*id]).into());
-        }
-    }
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         self.wcm.calculate_witness(stage, pctx, ectx);
     }
 
-    fn get_pilout(&self) -> WCPilOut {
+    fn pilout(&self) -> WCPilout {
         FibonacciVadcopPilout::get_fibonacci_vadcop_pilout()
     }
 }

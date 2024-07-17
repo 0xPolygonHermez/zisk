@@ -39,7 +39,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         let wc_lib: Symbol<fn() -> Box<dyn WCLibrary<F>>> = unsafe { library.get(b"init_library")? };
         let mut wc_lib = wc_lib();
 
-        let pilout = wc_lib.get_pilout();
+        let pilout = wc_lib.pilout();
         // TODO! Check hash
 
         let mut pctx = ProofCtx::create_ctx(pilout, public_inputs);
@@ -82,7 +82,10 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             trace!("{}:     + Air[{}][{}] {}", Self::MY_NAME, air_instance.air_group_id, air_instance.air_id, name);
         }
 
-        wc_lib.initialize_air_instances(pctx, &*ectx);
+        // Initialize air instances
+        for id in ectx.owned_instances.iter() {
+            pctx.air_instances.push((&ectx.instances[*id]).into());
+        }
     }
 
     fn initialize_provers(proving_key_path: &PathBuf, pctx: &mut ProofCtx<F>) {

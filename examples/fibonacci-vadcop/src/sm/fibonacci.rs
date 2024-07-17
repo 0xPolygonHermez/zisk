@@ -70,7 +70,7 @@ impl<F> WCComponent<F> for FibonacciSquare {
         Self::calculate_fibonacci(&self, air_instance.air_group_id, air_instance.air_id, pctx, ectx).unwrap();
     }
 
-    fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
+    fn suggest_plan(&self, ectx: &mut ExecutionCtx) {
         ectx.instances.push(AirInstance::new(FIBONACCI_AIR_GROUP_ID, FIBONACCI_0_AIR_ID, None));
     }
 }
