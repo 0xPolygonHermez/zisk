@@ -62,7 +62,7 @@ private function init_piop_sum(string type, int proves, int opid, expr cols[]) {
         gsum.opids[gsum.opids_count] = opid;
         gsum.opids_count = gsum.opids_count + 1;
     } else if (gsumid.cols != cols_count) {
-        error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
+        error(`The number of columns of PIOP #${opid} must be ${gsumid.cols} but was ${cols_count}`);
     }
 
     // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
