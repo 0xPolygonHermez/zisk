@@ -3,14 +3,17 @@ require "std_permutation.pil";
 airtemplate DirectPermutation(const int N = 2**4) {
 
     const int OPID = 19;
-    const int VALUE = 256;
+    const int VALUE1 = 256;
+    const int VALUE2 = 111;
+    const int SEL = 1;
 
     col witness a,b;
 
     permutation_assumes(OPID, cols: [a]);
     permutation_proves(OPID, cols: [b]);
 
-    permutation_proves_upcd(OPID, [VALUE]);
+    permutation_proves_upcd(OPID, SEL, [VALUE1]);
+    permutation_proves_upcd(OPID, 1-SEL, [VALUE2]);
 }
 
 airgroup DirectPermutation {

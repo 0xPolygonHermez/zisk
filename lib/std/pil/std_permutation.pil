@@ -10,6 +10,6 @@ function permutation_proves(const int opid, const expr sel = 1, const expr cols[
     prod_proves(name_permutation, opid, sel, cols);
 }
 
-function permutation_proves_upcd(const int opid, const expr cols[]) {
-    prod_proves(name_permutation, opid, 1, cols, 1);
+function permutation_proves_upcd(const int opid, const expr sel = 1, const expr cols[]) {
+    prod_proves(name_permutation, opid, sel, cols, 1);
 }

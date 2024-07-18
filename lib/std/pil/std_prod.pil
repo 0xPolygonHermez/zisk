@@ -95,7 +95,7 @@ private function update_piop_prod(string type, int proves, int opid, expr sel, e
     if (is_direct) {
         use airgroup.std.gprod;
         if (proves) {
-            direct_gprod_proves[direct_gprod_proves_count] = cols_compressed;
+            direct_gprod_proves[direct_gprod_proves_count] = sel * (cols_compressed - 1) + 1;
             direct_gprod_proves_count++;
         } else {
             error("Direct access is not allowed for assumes");
