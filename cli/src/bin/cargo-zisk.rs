@@ -1,15 +1,17 @@
 use anyhow::{anyhow, Context, Result};
-use cargo_zisk::commands::build_toolchain::BuildToolchainCmd;
-use cargo_zisk::commands::install_toolchain::InstallToolchainCmd;
-use cargo_zisk::commands::new::NewCmd;
-use cargo_zisk::ZISK_VERSION_MESSAGE;
+use cargo_zisk::{
+    commands::{
+        build_toolchain::BuildToolchainCmd, install_toolchain::InstallToolchainCmd, new::NewCmd,
+    },
+    ZISK_VERSION_MESSAGE,
+};
 use clap::{Parser, Subcommand};
-use std::env;
-use std::process::{Command, Stdio};
+use std::{
+    env,
+    process::{Command, Stdio},
+};
 
-use std::fs::File;
-use std::io::{self, Read, Write};
-use std::path::Path;
+use std::{fs::File, io::Write, path::Path};
 
 // Main enum defining cargo subcommands.
 #[derive(Parser)]
@@ -60,7 +62,7 @@ pub enum ZiskSdkCommands {
 // Implement the run functionality for ZiskRun
 impl ZiskRun {
     fn run(&self) -> Result<()> {
-        let mut runner_command: String = String::new();
+        let runner_command: String;
         // Construct the cargo run command
         let mut command = Command::new("cargo");
         command.args(["+zisk", "run"]);
@@ -122,9 +124,8 @@ impl ZiskRun {
                 gdb_command
             );
         }
-        
 
-        env::set_var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER", runner_command.to_string());
+        env::set_var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER", runner_command);
         // Verify the environment variable is set
         println!(
             "CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER: {}",
@@ -136,7 +137,6 @@ impl ZiskRun {
         // Add any additional arguments passed to the run command
         command.args(&self.args);
 
-        println!("running {:?}", command);
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());

@@ -2,6 +2,8 @@
 
 ## Requirements
 * [Rust (Nightly)](https://www.rust-lang.org/tools/install)
+* [xz]()
+* [jq]()
 
 ## Option 1: Prebuilt Binaries (Recommended)
 

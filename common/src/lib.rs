@@ -1,5 +1,5 @@
-mod zisk_opcodes;
 mod rom;
+mod zisk_opcodes;
 
-pub use zisk_opcodes::*;
 pub use rom::*;
+pub use zisk_opcodes::*;
