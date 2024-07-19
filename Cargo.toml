@@ -2,7 +2,6 @@
 members = [
     "cli",
     "common",
-    "examples/fibonacci",
     "riscv/riscv2zisk",
     "simulator",
     "state-machines/main",
