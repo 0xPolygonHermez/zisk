@@ -2,11 +2,13 @@
 members = [
     "cli",
     "common",
+    "examples/fibonacci",
     "riscv/riscv2zisk",
     "simulator",
     "state-machines/main",
     "state-machines/mem",
-    "witness-computation"
+    "witness-computation",
+    "ziskos/entrypoint",
 ]
 
 resolver = "2"
