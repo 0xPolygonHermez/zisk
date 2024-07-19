@@ -34,9 +34,13 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.end_proof();
     }
 
+    fn start_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
+
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         self.fibonacci.execute(pctx, ectx);
     }
+
+    fn end_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
 
     fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {
         self.wcm.calculate_plan(ectx);

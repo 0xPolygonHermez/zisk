@@ -1,5 +1,8 @@
+use std::process::exit;
+
 use clap::{Parser, Subcommand};
 mod commands;
+use commands::pil_helpers::PilHelpersCmd;
 // use commands::new::NewCmd;
 use commands::prove::ProveCmd;
 // use commands::trace::{TraceSubcommands, TraceCmd};
@@ -20,6 +23,7 @@ pub enum Commands {
     // Trace(TraceCmd),
     // New(NewCmd),
     Prove(ProveCmd),
+    PilHelpers(PilHelpersCmd),
 }
 
 fn main() {
@@ -34,10 +38,10 @@ fn main() {
 
     let cli = Cli::parse();
 
-    match &cli.command {
+    let result = match &cli.command {
         Commands::Pilout(args) => match &args.pilout_commands {
             PiloutSubcommands::Inspect(args) => {
-                args.run().unwrap();
+                args.run()
             }
         },
         // Commands::Trace(args) => match &args.trace_commands {
@@ -49,7 +53,17 @@ fn main() {
         //     args.run().unwrap();
         // }
         Commands::Prove(args) => {
-            args.run().unwrap();
+            args.run()
+        },
+        Commands::PilHelpers(args) => {
+            args.run()
         }
     };
+
+    if let Err(e) = result {
+        log::error!("{}", e);
+        exit(1);
+    }
+
+    log::info!("Done");
 }

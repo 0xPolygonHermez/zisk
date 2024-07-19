@@ -1,0 +1,144 @@
+// extern crate env_logger;
+use clap::Parser;
+use pilout::pilout_proxy::PilOutProxy;
+use serde::Serialize;
+use tinytemplate::TinyTemplate;
+use std::{fs, path::PathBuf};
+use colored::Colorize;
+use convert_case::{Case, Casing};
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+#[command(propagate_version = true)]
+pub struct PilHelpersCmd {
+    #[clap(long)]
+    pub pilout: PathBuf,
+
+    #[clap(long)]
+    pub path: PathBuf,
+
+    #[clap(short)]
+    pub overide: bool,
+}
+
+#[derive(Serialize)]
+struct ProofCtx {
+    project_name: String,
+    pilout_filename: String,
+    air_groups: Vec<AirGroupsCtx>,
+    constant_subproofs: Vec<(String, usize)>,
+    constant_airs: Vec<(String, Vec<usize>, String)>,
+}
+
+#[derive(Debug, Serialize)]
+struct AirGroupsCtx {
+    subproof_id: usize,
+    name: String,
+    snake_name: String,
+    airs: Vec<AirCtx>,
+}
+
+#[derive(Debug, Serialize)]
+struct AirCtx {
+    name: String,
+    num_rows: u32,
+}
+
+impl PilHelpersCmd {
+    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
+        println!("");
+
+        // Check if the pilout file exists
+        if !self.pilout.exists() {
+            return Err(format!("Pilout file '{}' does not exist", self.pilout.display()).into());
+        }
+
+        // Check if the path exists
+        let pil_helpers_path = self.path.join("pil_helpers");
+        if !pil_helpers_path.exists() {
+            std::fs::create_dir_all(&pil_helpers_path)?;
+        } else {
+            if !pil_helpers_path.is_dir() {
+                return Err(format!("Path '{}' already exists and is not a folder", pil_helpers_path.display()).into());
+            }
+        }
+
+        let files = ["mod.rs", "pilout.rs"];
+
+        if !self.overide {
+            // Check if the files already exist and launch an error if they do
+            for file in files.iter() {
+                let dst = pil_helpers_path.join(file);
+                if dst.exists() {
+                    return Err(format!("{} already exists, skipping", dst.display()).into());
+                }
+            }
+        }
+
+        // Read the pilout file
+        let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
+
+        let mut wcctxs = Vec::new();
+        let mut constant_subproofs: Vec<(String, usize)> = Vec::new();
+        let mut constant_airs: Vec<(String, Vec<usize>, String)> = Vec::new();
+
+        for (index, subproof) in pilout.subproofs.iter().enumerate() {
+            let subproof_id = index;
+            wcctxs.push(AirGroupsCtx {
+                subproof_id,
+                name: subproof.name.as_ref().unwrap().clone().to_case(Case::Pascal),
+                snake_name: subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
+                airs: subproof
+                    .airs
+                    .iter()
+                    .map(|air| AirCtx { name: air.name.as_ref().unwrap().clone(), num_rows: air.num_rows.unwrap() })
+                    .collect(),
+            });
+
+            // Prepare constants
+            constant_subproofs.push((subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), subproof_id));
+
+            for (air_idx, air) in subproof.airs.iter().enumerate() {
+                let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();
+                let contains_key = constant_airs.iter().position(|(name, _, _)| name == &air_name);
+                let idx = if contains_key.is_none() {
+                    constant_airs.push((air_name.clone(), Vec::new(), "".to_owned()));
+                    constant_airs.len() - 1
+                } else {
+                    contains_key.unwrap()
+                };
+
+                constant_airs[idx].1.push(air_idx);
+            }
+
+            for constant in constant_airs.iter_mut() {
+                constant.2 = constant.1.iter().map(|&num| num.to_string()).collect::<Vec<String>>().join(",");
+            }
+        }
+
+        let context = ProofCtx {
+            project_name: pilout.name.clone().unwrap().to_case(Case::Pascal),
+            pilout_filename: self.pilout.file_name().unwrap().to_str().unwrap().to_string(),
+            air_groups: wcctxs,
+            constant_airs,
+            constant_subproofs,
+        };
+
+        const MOD_RS: &str = include_str!("../../assets/templates/pil_helpers_mod.rs.tt");
+
+        let mut tt = TinyTemplate::new();
+        tt.add_template("mod.rs", MOD_RS)?;
+        tt.add_template("pilout.rs", include_str!("../../assets/templates/pil_helpers_pilout.rs.tt"))?;
+
+        // Write the files
+        // --------------------------------------------
+        // Write mod.rs
+        fs::write(pil_helpers_path.join("mod.rs"), MOD_RS)?;
+
+        // Write pilout.rs
+        fs::write(pil_helpers_path.join("pilout.rs"), tt.render("pilout.rs", &context)?)?;
+
+        Ok(())
+    }
+}

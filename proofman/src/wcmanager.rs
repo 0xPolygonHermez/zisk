@@ -17,11 +17,7 @@ impl<F> WCManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
     pub fn new() -> Self {
-        WCManager {
-            components: Vec::new(),
-            airs: HashMap::new(),
-            planner: Box::new(DefaultPlanner),
-        }
+        WCManager { components: Vec::new(), airs: HashMap::new(), planner: Box::new(DefaultPlanner) }
     }
 
     pub fn register_component(&mut self, component: Rc<dyn WCComponent<F>>, air_ids: Option<&[usize]>) {
@@ -55,20 +51,24 @@ impl<F> WCManager<F> {
         for component in self.components.iter() {
             component.start_proof(pctx, ectx);
         }
-
-        for component in self.components.iter() {
-            component.start_execute(pctx, ectx);
-        }
     }
 
     pub fn end_proof(&mut self) {
         info!("{}: Ending proof", Self::MY_NAME);
         for component in self.components.iter() {
-            component.end_execute();
-        }
-
-        for component in self.components.iter() {
             component.end_proof();
+        }
+    }
+
+    pub fn start_execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        for component in self.components.iter() {
+            component.start_execute(pctx, ectx);
+        }
+    }
+
+    pub fn end_execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        for component in self.components.iter() {
+            component.end_execute(pctx, ectx);
         }
     }
 

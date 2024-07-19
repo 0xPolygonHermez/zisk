@@ -1,5 +1,4 @@
 use crate::AirInstance;
-
 #[allow(dead_code)]
 /// Represents the context when executing a witness computer plugin
 pub struct ExecutionCtx {
@@ -20,23 +19,23 @@ impl ExecutionCtx {
 
 pub struct ExecutionCtxBuilder {
     public_output: bool,
-    pub is_discovery_execution: bool,
+    pub discovering: bool,
 }
 
 impl ExecutionCtxBuilder {
     pub fn new() -> Self {
-        ExecutionCtxBuilder { public_output: true, is_discovery_execution: false }
+        ExecutionCtxBuilder { public_output: true, discovering: false }
     }
 
     pub fn is_discovery_execution(mut self) -> Self {
-        self.is_discovery_execution = true;
+        self.discovering = true;
         self
     }
 
     pub fn build(self) -> ExecutionCtx {
         ExecutionCtx {
             public_output: self.public_output,
-            discovering: self.is_discovery_execution,
+            discovering: self.discovering,
             instances: vec![],
             owned_instances: vec![],
         }
