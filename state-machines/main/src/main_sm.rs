@@ -18,19 +18,24 @@ impl MainSM {
                 _sm.insert(code.to_string(), Rc::clone(&s));
             }
         }
-        let main = Rc::new(Self { sm: _sm });
+        Rc::new(Self { sm: _sm })
 
-        wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>);
-        wcm.register_executor(Rc::clone(&main) as Rc<dyn WCExecutor<F>>);
-
-        main
+        // wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>);
+        // wcm.register_executor(Rc::clone(&main) as Rc<dyn WCExecutor<F>>);
     }
 }
 
 impl<F> WCComponent<F> for MainSM {
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {}
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+    ) {
+    }
 
-    fn calculate_plan(&self, ectx: &mut ExecutionCtx) {}
+    fn suggest_plan(&self, ectx: &mut ExecutionCtx) {}
 }
 
 impl<F> WCExecutor<F> for MainSM {

@@ -1,4 +1,5 @@
 #![feature(asm_const)]
+#![allow(unexpected_cfgs)]
 
 pub mod ziskos_definitions;
 
@@ -26,14 +27,14 @@ pub fn read_input() -> Vec<u8> {
     // Convert the slice to a u64 (little-endian)
     let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
 
-    let input = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) };
+    let input =
+        unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) };
     input.to_vec()
 }
 
 #[cfg(not(target_os = "ziskos"))]
 pub fn read_input() -> Vec<u8> {
-    use std::fs::File;
-    use std::io::Read;
+    use std::{fs::File, io::Read};
 
     let mut file = File::open("output/input.bin").unwrap();
     let mut buffer = Vec::new();
@@ -76,7 +77,7 @@ pub fn write_output(write_ptr: &[u8], _nbytes: usize) {
     };
 
     // Create the output string
-    let output = format!("{}", write_str);
+    let output = write_str.to_string();
 
     // Print the output string
     print!("{}", output);
@@ -84,8 +85,8 @@ pub fn write_output(write_ptr: &[u8], _nbytes: usize) {
 
 #[cfg(target_os = "ziskos")]
 mod ziskos {
-    use core::arch::asm;
     use crate::ziskos_definitions::ziskos_config::*;
+    use core::arch::asm;
 
     #[no_mangle]
     #[link_section = ".text.init"]
@@ -221,12 +222,4 @@ mod ziskos {
 
         ptr
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
 }

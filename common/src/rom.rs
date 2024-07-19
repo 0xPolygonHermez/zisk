@@ -128,7 +128,9 @@ where
     let value: IndexMap<String, Value> = Deserialize::deserialize(deserializer)?;
     value
         .into_iter()
-        .map(|(k, v)| serde_json::from_value(v).map(|inst| (k, inst)).map_err(serde::de::Error::custom))
+        .map(|(k, v)| {
+            serde_json::from_value(v).map(|inst| (k, inst)).map_err(serde::de::Error::custom)
+        })
         .collect()
 }
 

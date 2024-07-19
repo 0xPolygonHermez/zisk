@@ -1,10 +1,10 @@
-use common::WCPilOut;
+use common::WCPilout;
 
-pub struct FibonacciVadcopPilout;
+pub struct ZiskPilout;
 
-impl FibonacciVadcopPilout {
-    pub fn get_fibonacci_vadcop_pilout() -> WCPilOut {
-        let mut pilout = WCPilOut::new("Zisk", 2, b"zisk-hash".to_vec());
+impl ZiskPilout {
+    pub fn get_pilout() -> WCPilout {
+        let mut pilout = WCPilout::new("Zisk", 2, b"zisk-hash".to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
         air_group.add_air(Some("FibonacciSquare"), 10);

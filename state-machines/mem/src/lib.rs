@@ -1,5 +1,4 @@
 #[allow(dead_code, unused)]
-
 mod mem_sm;
 mod mem_trace;
 
