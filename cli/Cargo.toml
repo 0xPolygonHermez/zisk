@@ -3,6 +3,10 @@ name = "cargo-zisk"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "cargo-zisk"
+path = "src/bin/cargo-zisk.rs"
+
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [
     "build",

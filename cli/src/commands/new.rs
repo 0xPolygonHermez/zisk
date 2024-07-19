@@ -9,7 +9,7 @@ pub struct NewCmd {
     name: String,
 }
 
-const TEMPLATE_REPOSITORY_URL: &str = "https://github.com/0xPolygonHermez/hellozisk_rust";
+const TEMPLATE_REPOSITORY_URL: &str = "https://github.com/0xPolygonHermez/zisk_template";
 
 impl NewCmd {
     pub fn run(&self) -> Result<()> {
