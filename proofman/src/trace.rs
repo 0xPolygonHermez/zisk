@@ -72,8 +72,8 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            pub fn from_buffer(buffer: &[u8], num_rows: usize, offset: usize) -> Self {
-                Self::from_ptr(buffer.as_ptr(), num_rows, offset)
+            pub unsafe fn from_buffer(buffer: &[u8], num_rows: usize, offset: usize) -> Self {
+                unsafe { Self::from_ptr(buffer.as_ptr(), num_rows, offset) }
             }
 
             /// Create a new instance of $my_struct using an outside buffer.
@@ -84,7 +84,7 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            pub fn from_ptr(ptr: *const u8, num_rows: usize, offset: usize) -> Self {
+            pub unsafe fn from_ptr(ptr: *const u8, num_rows: usize, offset: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
