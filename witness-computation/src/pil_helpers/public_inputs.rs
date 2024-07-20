@@ -13,7 +13,11 @@ impl ZiskPublicInputs {
 impl From<&[u8]> for ZiskPublicInputs {
     fn from(input_bytes: &[u8]) -> Self {
         const U64_SIZE: usize = std::mem::size_of::<u64>();
-        assert_eq!(input_bytes.len(), U64_SIZE * 3, "Input bytes length must be 3 * size_of::<u64>()");
+        assert_eq!(
+            input_bytes.len(),
+            U64_SIZE * 3,
+            "Input bytes length must be 3 * size_of::<u64>()"
+        );
 
         ZiskPublicInputs {
             a: u64::from_le_bytes(input_bytes[0..U64_SIZE].try_into().unwrap()),

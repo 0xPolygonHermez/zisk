@@ -19,25 +19,54 @@ main() {
 
   while [[ -n $1 ]]; do
     case $1 in
-      --)               shift; break;;
+    --)
+      shift
+      break
+      ;;
 
-      -r|--repo)        shift; ZISKUP_REPO=$1;;
-      -b|--branch)      shift; ZISKUP_BRANCH=$1;;
-      -v|--version)     shift; ZISKUP_VERSION=$1;;
-      -p|--path)        shift; ZISKUP_LOCAL_REPO=$1;;
-      -P|--pr)          shift; ZISKUP_PR=$1;;
-      -C|--commit)      shift; ZISKUP_COMMIT=$1;;
-      --arch)           shift; ZISKUP_ARCH=$1;;
-      --platform)       shift; ZISKUP_PLATFORM=$1;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        warn "unknown option: $1"
-        usage
-        exit 1
-    esac; shift
+    -r | --repo)
+      shift
+      ZISKUP_REPO=$1
+      ;;
+    -b | --branch)
+      shift
+      ZISKUP_BRANCH=$1
+      ;;
+    -v | --version)
+      shift
+      ZISKUP_VERSION=$1
+      ;;
+    -p | --path)
+      shift
+      ZISKUP_LOCAL_REPO=$1
+      ;;
+    -P | --pr)
+      shift
+      ZISKUP_PR=$1
+      ;;
+    -C | --commit)
+      shift
+      ZISKUP_COMMIT=$1
+      ;;
+    --arch)
+      shift
+      ZISKUP_ARCH=$1
+      ;;
+    --platform)
+      shift
+      ZISKUP_PLATFORM=$1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      warn "unknown option: $1"
+      usage
+      exit 1
+      ;;
+    esac
+    shift
   done
 
   # Print the banner after successfully parsing args
@@ -95,17 +124,17 @@ main() {
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
     EXT="tar.gz"
     case $PLATFORM in
-      linux) ;;
-      darwin|mac*)
-        PLATFORM="darwin"
-        ;;
-      mingw*|win*)
-        EXT="zip"
-        PLATFORM="win32"
-        ;;
-      *)
-        err "unsupported platform: $PLATFORM"
-        ;;
+    linux) ;;
+    darwin | mac*)
+      PLATFORM="darwin"
+      ;;
+    mingw* | win*)
+      EXT="zip"
+      PLATFORM="win32"
+      ;;
+    *)
+      err "unsupported platform: $PLATFORM"
+      ;;
     esac
 
     uname_m=$(uname -m)
@@ -117,7 +146,7 @@ main() {
       else
         ARCHITECTURE="amd64" # Intel.
       fi
-    elif [ "${ARCHITECTURE}" = "arm64" ] ||[ "${ARCHITECTURE}" = "aarch64" ] ; then
+    elif [ "${ARCHITECTURE}" = "arm64" ] || [ "${ARCHITECTURE}" = "aarch64" ]; then
       ARCHITECTURE="arm64" # Arm.
     else
       ARCHITECTURE="amd64" # Amd.
@@ -264,25 +293,53 @@ ensure() {
 # Downloads $1 into $2 or stdout
 download() {
   if [ -n "$2" ]; then
+
+    # Fetch the URL from the GitHub API
+    if check_cmd curl; then
+      API_RESPONSE=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+    else
+      API_RESPONSE=$(wget -qO- --header="Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+    fi
+
+    # Extract the browser_download_url for the given file name ($1)
+    URL=$(echo "$API_RESPONSE" | jq -r --arg FILENAME "$1" '.[] | .assets[] | select(.browser_download_url == $FILENAME) | .url')
+
+    if [ -z "$URL" ]; then
+      echo "No matching URL found for file name: $1"
+      return 1
+    fi
+
     # output into $2
     if check_cmd curl; then
-      URL=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases  | jq -r '.[] | .assets[].url ')
-      curl -H "Accept: application/octet-stream" -H "Authorization: Bearer ${ZISK_TOKEN}" -#o "$2" -L $URL
+      curl -H "Accept: application/octet-stream" -H "Authorization: Bearer ${ZISK_TOKEN}" -#o "$2" -L "$URL"
     else
-      wget -H "Accept: application/octet-stream"   -H "Authorization: Bearer ${ZISK_TOKEN}" --show-progress -qO "$2" "$1"
+      wget --header="Accept: application/octet-stream" --header="Authorization: Bearer ${ZISK_TOKEN}" --show-progress -qO "$2" "$URL"
     fi
   else
-    # output to stdout
+    # Fetch the URL from the GitHub API
     if check_cmd curl; then
-      URL=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases  | jq -r '.[] | .assets[].url ')
-      curl -H "Accept: application/octet-stream"   -H "Authorization: Bearer ${ZISK_TOKEN}" -L $URL
+      API_RESPONSE=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
     else
-      wget -H "Accept: application/octet-stream"   -H "Authorization: Bearer " --show-progress -qO- "$1"
+      API_RESPONSE=$(wget -qO- --header="Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+    fi
+    # Extract the browser_download_url for the given file name ($1)
+    URL=$(echo "$API_RESPONSE" | jq -r --arg FILENAME "$1" '.[] | .assets[] | select(.browser_download_url == $FILENAME) | .url')
+
+    if [ -z "$URL" ]; then
+      echo "No matching URL found for file name: $1"
+      return 1
+    fi
+
+    # output into $2
+    if check_cmd curl; then
+      curl -H "Accept: application/octet-stream" -H "Authorization: Bearer ${ZISK_TOKEN}" -L "$URL"
+    else
+      wget --header="Accept: application/octet-stream" --header="Authorization: Bearer ${ZISK_TOKEN}" --show-progress -qO- "$URL"
     fi
   fi
 }
 
-# Banner Function for zisk 
+# Banner Function for zisk
 banner() {
   printf "
 ########################################################################################
@@ -298,6 +355,5 @@ Ziskup - The Zisk Installer
 
 "
 }
-
 
 main "$@"

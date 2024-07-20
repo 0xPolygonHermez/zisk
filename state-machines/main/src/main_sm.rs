@@ -23,7 +23,14 @@ impl MainSM {
 }
 
 impl<F> WCComponent<F> for MainSM {
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {}
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+    ) {
+    }
 
     fn suggest_plan(&self, ectx: &mut ExecutionCtx) {}
 }

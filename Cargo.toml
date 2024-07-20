@@ -8,7 +8,8 @@ members = [
     "state-machines/mem",
     "state-machines/mem_aligned",
     "state-machines/mem_unaligned",
-    "witness-computation"
+    "witness-computation",
+    "ziskos/entrypoint",
 ]
 
 resolver = "2"
