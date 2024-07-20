@@ -11,16 +11,33 @@ pub struct MemUnalignedSM {}
 impl MemUnalignedSM {
     pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Rc<Self> {
         let mem_unaligned_sm = Rc::new(MemUnalignedSM {});
-        wcm.register_component(Rc::clone(&mem_unaligned_sm) as Rc<dyn WCComponent<F>>, Some(air_ids));
+        wcm.register_component(
+            Rc::clone(&mem_unaligned_sm) as Rc<dyn WCComponent<F>>,
+            Some(air_ids),
+        );
 
         mem_unaligned_sm
     }
 
-    pub fn read<F>(&self, addr: u64, width: usize, ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) -> u64 {
+    pub fn read<F>(
+        &self,
+        addr: u64,
+        width: usize,
+        ctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+    ) -> u64 {
         0
     }
 
-    pub fn write<F>(&self, addr: u64, width: usize, val: u64, ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {}
+    pub fn write<F>(
+        &self,
+        addr: u64,
+        width: usize,
+        val: u64,
+        ctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+    ) {
+    }
 }
 
 impl<F> WCComponent<F> for MemUnalignedSM {

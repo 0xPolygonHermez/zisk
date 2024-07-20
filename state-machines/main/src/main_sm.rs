@@ -3,8 +3,8 @@ use std::{collections::HashMap, rc::Rc};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use wchelpers::{WCComponent, WCExecutor, WCOpCalculator};
 use sm_mem::MemSM;
+use wchelpers::{WCComponent, WCExecutor, WCOpCalculator};
 
 pub struct MainSM {
     mem: Rc<MemSM>,
@@ -37,12 +37,12 @@ impl<F> WCComponent<F> for MainSM {
 
 impl<F> WCExecutor<F> for MainSM {
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        let mut end = false;
+        // let mut end = false;
 
-        let mem = self.mem.as_ref();
-        while (!end) {
-            let addr = 3;
-            // let val = mem.read(addr, pctx, ectx);
-        }
+        // let mem = self.mem.as_ref();
+        // while !end {
+        //     let addr = 3;
+        //     // let val = mem.read(addr, pctx, ectx);
+        // }
     }
 }

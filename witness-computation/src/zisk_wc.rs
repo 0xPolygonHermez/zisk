@@ -20,6 +20,12 @@ pub struct ZiskWC<F> {
     pub mem_unaligned_sm: Rc<MemUnalignedSM>,
 }
 
+impl<F: AbstractField> Default for ZiskWC<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: AbstractField> ZiskWC<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
@@ -43,7 +49,7 @@ impl<F> WCLibrary<F> for ZiskWC<F> {
         self.wcm.end_proof();
     }
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-    // fn execute(&self, pctx: &mut ProofCtx<F>, wneeds: &WitnessNeeds) {
+        // fn execute(&self, pctx: &mut ProofCtx<F>, wneeds: &WitnessNeeds) {
         // Creates the ectx with the workers pool inside
         // TODO! let mut ectx = self.wcm.createExecutionContext(wneeds);
         self.main_sm.execute(pctx, ectx);
