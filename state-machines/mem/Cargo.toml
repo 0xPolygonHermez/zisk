@@ -15,6 +15,6 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { path = "../../../pil2-proofman/common" }
-proofman = { path = "../../../pil2-proofman/proofman" }
-wchelpers = { path = "../../../pil2-proofman/wchelpers" }
+common = { workspace = true }
+proofman = { workspace = true }
+wchelpers = { workspace = true }
