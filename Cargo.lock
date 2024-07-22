@@ -2379,10 +2379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-simulator"
-version = "0.1.0"
-
-[[package]]
 name = "zisk-wc"
 version = "0.1.0"
 dependencies = [
@@ -2400,3 +2396,10 @@ dependencies = [
 [[package]]
 name = "ziskos"
 version = "0.1.0"
+
+[[package]]
+name = "zisksim"
+version = "0.1.0"
+dependencies = [
+ "riscv2zisk",
+]
