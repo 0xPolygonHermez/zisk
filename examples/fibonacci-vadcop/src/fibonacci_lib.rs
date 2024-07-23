@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use common::{ExecutionCtx, ProofCtx, WCPilout};
 use p3_field::AbstractField;
@@ -10,8 +10,8 @@ use crate::{FibonacciSquare, FibonacciVadcopPilout, Module};
 
 pub struct FibonacciVadcop<F> {
     pub wcm: WCManager<F>,
-    pub fibonacci: Rc<FibonacciSquare>,
-    pub module: Rc<Module>,
+    pub fibonacci: Arc<FibonacciSquare>,
+    pub module: Arc<Module>,
 }
 
 impl<F: AbstractField> FibonacciVadcop<F> {
@@ -34,13 +34,13 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
         self.wcm.end_proof();
     }
 
-    fn start_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
+    // fn start_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         self.fibonacci.execute(pctx, ectx);
     }
 
-    fn end_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
+    // fn end_execute(&mut self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {}
 
     fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {
         self.wcm.calculate_plan(ectx);

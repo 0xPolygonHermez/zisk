@@ -40,9 +40,7 @@ fn main() {
 
     let result = match &cli.command {
         Commands::Pilout(args) => match &args.pilout_commands {
-            PiloutSubcommands::Inspect(args) => {
-                args.run()
-            }
+            PiloutSubcommands::Inspect(args) => args.run(),
         },
         // Commands::Trace(args) => match &args.trace_commands {
         //     TraceSubcommands::Setup(args) => {
@@ -52,12 +50,8 @@ fn main() {
         // Commands::New(args) => {
         //     args.run().unwrap();
         // }
-        Commands::Prove(args) => {
-            args.run()
-        },
-        Commands::PilHelpers(args) => {
-            args.run()
-        }
+        Commands::Prove(args) => args.run(),
+        Commands::PilHelpers(args) => args.run(),
     };
 
     if let Err(e) = result {

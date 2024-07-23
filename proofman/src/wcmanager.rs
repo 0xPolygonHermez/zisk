@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, sync::Arc};
 
 use log::info;
 
@@ -8,8 +8,8 @@ use wchelpers::WCComponent;
 use crate::{DefaultPlanner, Planner};
 
 pub struct WCManager<F> {
-    components: Vec<Rc<dyn WCComponent<F>>>,
-    airs: HashMap<usize, Rc<dyn WCComponent<F>>>,
+    components: Vec<Arc<dyn WCComponent<F>>>,
+    airs: HashMap<usize, Arc<dyn WCComponent<F>>>,
     planner: Box<dyn Planner<F>>,
 }
 
@@ -20,7 +20,7 @@ impl<F> WCManager<F> {
         WCManager { components: Vec::new(), airs: HashMap::new(), planner: Box::new(DefaultPlanner) }
     }
 
-    pub fn register_component(&mut self, component: Rc<dyn WCComponent<F>>, air_ids: Option<&[usize]>) {
+    pub fn register_component(&mut self, component: Arc<dyn WCComponent<F>>, air_ids: Option<&[usize]>) {
         if let Some(air_ids) = air_ids {
             self.register_airs(air_ids, component.clone());
         }
@@ -28,13 +28,13 @@ impl<F> WCManager<F> {
         self.components.push(component);
     }
 
-    pub fn register_airs(&mut self, air_ids: &[usize], air: Rc<dyn WCComponent<F>>) {
+    pub fn register_airs(&mut self, air_ids: &[usize], air: Arc<dyn WCComponent<F>>) {
         for air_id in air_ids.iter() {
             self.register_air(*air_id, air.clone());
         }
     }
 
-    pub fn register_air(&mut self, air_id: usize, air: Rc<dyn WCComponent<F>>) {
+    pub fn register_air(&mut self, air_id: usize, air: Arc<dyn WCComponent<F>>) {
         if self.airs.contains_key(&air_id) {
             panic!("{}: Air ID {} already registered", Self::MY_NAME, air_id);
         }

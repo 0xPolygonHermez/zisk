@@ -97,7 +97,8 @@ impl PilHelpersCmd {
             });
 
             // Prepare constants
-            constant_subproofs.push((subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), subproof_id));
+            constant_subproofs
+                .push((subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), subproof_id));
 
             for (air_idx, air) in subproof.airs.iter().enumerate() {
                 let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();

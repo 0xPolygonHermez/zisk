@@ -1,5 +1,5 @@
 use log::debug;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, sync::Arc};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
@@ -14,9 +14,9 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new<F>(wcm: &mut WCManager<F>) -> Rc<Self> {
-        let module = Rc::new(Module { inputs: RefCell::new(Vec::new()) });
-        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>, None);
+    pub fn new<F>(wcm: &mut WCManager<F>) -> Arc<Self> {
+        let module = Arc::new(Module { inputs: RefCell::new(Vec::new()) });
+        wcm.register_component(Arc::clone(&module) as Arc<dyn WCComponent<F>>, None);
 
         module
     }
@@ -54,7 +54,7 @@ impl<F> WCComponent<F> for Module {
         let inputs = &self.inputs.borrow()[interval.0..interval.1];
 
         let num_rows = 1 << pctx.pilout.get_air(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID).num_rows();
-        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0));
+        let mut trace = Box::new(unsafe { ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0) });
 
         for (i, input) in inputs.iter().enumerate() {
             let x = input.0;

@@ -9,7 +9,6 @@ members = [
     "transcript",
     "util",    
     "wchelpers", 
-
     "examples/fibonacci-vadcop",
 ]
 

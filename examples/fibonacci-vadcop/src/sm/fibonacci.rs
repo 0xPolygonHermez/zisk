@@ -1,5 +1,6 @@
+use std::sync::Arc;
+
 use log::debug;
-use std::rc::Rc;
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
@@ -11,13 +12,13 @@ use p3_field::AbstractField;
 use crate::{FibonacciSquareTrace0, FibonacciVadcopPublicInputs, Module, FIBONACCI_0_AIR_ID, FIBONACCI_AIR_GROUP_ID};
 
 pub struct FibonacciSquare {
-    module: Rc<Module>,
+    module: Arc<Module>,
 }
 
 impl FibonacciSquare {
-    pub fn new<F>(wcm: &mut WCManager<F>, module: &Rc<Module>) -> Rc<Self> {
-        let fibonacci = Rc::new(Self { module: Rc::clone(&module) });
-        wcm.register_component(Rc::clone(&fibonacci) as Rc<dyn WCComponent<F>>, None);
+    pub fn new<F>(wcm: &mut WCManager<F>, module: &Arc<Module>) -> Arc<Self> {
+        let fibonacci = Arc::new(Self { module: Arc::clone(&module) });
+        wcm.register_component(Arc::clone(&fibonacci) as Arc<dyn WCComponent<F>>, None);
         fibonacci
     }
 
@@ -37,7 +38,8 @@ impl FibonacciSquare {
             None
         } else {
             let air_instance_ctx = &mut pctx.find_air_instances(air_group_id, air_id)[0];
-            let mut trace = Box::new(FibonacciSquareTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0));
+            let mut trace =
+                Box::new(unsafe { FibonacciSquareTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0) });
 
             trace.a[0] = Goldilocks::from_canonical_u64(a);
             trace.b[0] = Goldilocks::from_canonical_u64(b);
