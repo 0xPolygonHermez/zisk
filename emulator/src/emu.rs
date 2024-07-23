@@ -1,4 +1,4 @@
-use crate::{SimContext, SimOptions};
+use crate::{EmuContext, EmuOptions};
 use riscv2zisk::{
     ZiskOperations, ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
@@ -12,9 +12,9 @@ const REG_NAMES: [&str; 32] = [
     "t5", "t6",
 ];
 
-/// ZisK simulator structure, containing the ZisK rom, the list of ZisK operations, and the
+/// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
-pub struct Sim {
+pub struct Emu {
     /// ZisK rom, containing the program to execute, which is constant for this program except for
     /// the input data
     pub rom: ZiskRom,
@@ -23,15 +23,15 @@ pub struct Sim {
     operations: ZiskOperations,
 
     /// Context, where the state of the execution is stored and modified at every execution step
-    ctx: SimContext,
+    ctx: EmuContext,
 }
 
-/// ZisK simulator structure implementation
-impl Sim {
-    //// ZisK simulator structure constructor
-    pub fn new(rom: ZiskRom, input: Vec<u8>) -> Sim {
+/// ZisK emulator structure implementation
+impl Emu {
+    //// ZisK emulator structure constructor
+    pub fn new(rom: ZiskRom, input: Vec<u8>) -> Emu {
         // Initialize an empty instance
-        let mut sim = Sim { ctx: SimContext::new(input), operations: ZiskOperations::new(), rom };
+        let mut sim = Emu { ctx: EmuContext::new(input), operations: ZiskOperations::new(), rom };
 
         // Create a new read section for every RO data entry of the rom
         for i in 0..sim.rom.ro_data.len() {
@@ -44,19 +44,19 @@ impl Sim {
         sim
     }
 
-    /// Performs one single step of the simulation
+    /// Performs one single step of the emulation
     pub fn step(&mut self) {
-        // Get a mutable reference to the simulation context
+        // Get a mutable reference to the emulation context
         let ctx = &mut self.ctx;
 
         // Get the ZisK instruction corresponding to the current program counter
         if !self.rom.insts.contains_key(&ctx.pc) {
-            panic!("Sim::step() cound not find a rom instruction for pc={}={:x}", ctx.pc, ctx.pc);
+            panic!("Emu::step() cound not find a rom instruction for pc={}={:x}", ctx.pc, ctx.pc);
         }
         let inst = &self.rom.insts[&ctx.pc];
 
-        //println!("Sim::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Sim::step() step={} pc={}", ctx.step, ctx.pc);
+        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // If this is the last instruction, stop executing
         if inst.i.end == 1 {
@@ -77,7 +77,7 @@ impl Sim {
             SRC_IMM => ctx.a = inst.i.a_offset_imm0 | (inst.i.a_use_sp_imm1 << 32),
             SRC_STEP => ctx.a = ctx.step,
             SRC_SP => ctx.a = ctx.sp,
-            _ => panic!("Sim::step() Invalid a_src={} pc={}", inst.i.a_src, ctx.pc),
+            _ => panic!("Emu::step() Invalid a_src={} pc={}", inst.i.a_src, ctx.pc),
         }
 
         // Build the value of the b register based on the source specified by the current
@@ -99,12 +99,12 @@ impl Sim {
                 }
                 ctx.b = ctx.mem.read(addr, inst.i.ind_width);
             }
-            _ => panic!("Sim::step() Invalid b_src={} pc={}", inst.i.b_src, ctx.pc),
+            _ => panic!("Emu::step() Invalid b_src={} pc={}", inst.i.b_src, ctx.pc),
         }
 
         // Check the instruction opcode range
         if inst.i.op > 0xFF {
-            panic!("Sim::step() invalid opcode={}", inst.i.op);
+            panic!("Emu::step() invalid opcode={}", inst.i.op);
         }
 
         // Get the ZisK operation for this opcode
@@ -128,7 +128,7 @@ impl Sim {
                     addr += ctx.sp as i64;
                 }
                 ctx.mem.write(addr as u64, val as u64, 8);
-                //println!{"Sim::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
+                //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
                 // ctx.pc, addr, val as u64};
             }
             STORE_IND => {
@@ -143,10 +143,10 @@ impl Sim {
                 }
                 addr += ctx.a as i64;
                 ctx.mem.write(addr as u64, val as u64, inst.i.ind_width);
-                //println!{"Sim::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
+                //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
                 // ctx.pc, addr, val as u64};
             }
-            _ => panic!("Sim::step() Invalid store={} pc={}", inst.i.store, ctx.pc),
+            _ => panic!("Emu::step() Invalid store={} pc={}", inst.i.store, ctx.pc),
         }
 
         // Set SP, if specified by the current instruction
@@ -212,16 +212,16 @@ impl Sim {
     }
 
     /// Run the whole program
-    pub fn run(&mut self, opts: &SimOptions) {
+    pub fn run(&mut self, opts: &EmuOptions) {
         // While not done
         while !self.ctx.end {
-            //println!("Sim::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc); // 2147483828
+            //println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc); // 2147483828
             // Check trace PC
             if self.ctx.tracerv_on && (self.ctx.pc % 4 == 0) {
                 self.ctx.trace_pc = self.ctx.pc;
             }
 
-            // Log simulation step, if requested
+            // Log emulation step, if requested
             if opts.print_step.is_some() &&
                 (opts.print_step.unwrap() != 0) &&
                 ((self.ctx.step % opts.print_step.unwrap()) == 0)
@@ -266,7 +266,7 @@ impl Sim {
                 self.ctx.tracerv_step += 1;
             }
 
-            //println!("Sim::run() done ctx.pc={}", self.ctx.pc); // 2147483828
+            //println!("Emu::run() done ctx.pc={}", self.ctx.pc); // 2147483828
         }
     }
 
@@ -305,7 +305,7 @@ impl Sim {
         self.ctx.tracerv.clone()
     }
 
-    /// Returns if the simulation ended
+    /// Returns if the emulation ended
     pub fn terminated(&self) -> bool {
         self.ctx.end
     }

@@ -1,11 +1,11 @@
 use clap::Parser;
 use std::fmt;
 
-/// ZisK simulator options structure
+/// ZisK emulator options structure
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
-pub struct SimOptions {
+pub struct EmuOptions {
     /// Sets the Zisk ROM data file path
     #[clap(short, long, value_name = "ROM_FILE")]
     pub rom: Option<String>,
@@ -32,7 +32,7 @@ pub struct SimOptions {
     pub verbose: bool,
 }
 
-impl fmt::Display for SimOptions {
+impl fmt::Display for EmuOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

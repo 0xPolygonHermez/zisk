@@ -25,14 +25,14 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'zisksim'",
+            "name": "Debug executable 'ziskemu'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=zisksim"
+                    "--bin=ziskemu"
                 ],
                 "filter": {
-                    "name": "zisksim",
+                    "name": "ziskemu",
                     "kind": "bin"
                 }
             },

@@ -1,5 +1,5 @@
 [package]
-name = "zisksim"
+name = "ziskemu"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,9 +8,9 @@ clap = { version = "4.5.9", features = ["derive", "env"] }
 riscv2zisk = {path="../riscv/riscv2zisk"}
 
 [lib]
-name = "zisksim"
+name = "ziskemu"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zisksim"
-path = "src/bin/zisksim.rs"
+name = "ziskemu"
+path = "src/bin/ziskemu.rs"

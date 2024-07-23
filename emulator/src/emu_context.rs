@@ -1,8 +1,8 @@
 use crate::Mem;
 use riscv2zisk::{INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
-/// ZisK simulator context data container, storing the state of the simulation
-pub struct SimContext {
+/// ZisK emulator context data container, storing the state of the emuulation
+pub struct EmuContext {
     pub mem: Mem,
     pub a: u64,
     pub b: u64,
@@ -19,11 +19,11 @@ pub struct SimContext {
     pub trace_pc: u64,
 }
 
-/// RisK simulator context implementation
-impl SimContext {
-    /// RisK simulator context constructor
-    pub fn new(input: Vec<u8>) -> SimContext {
-        let mut ctx = SimContext {
+/// RisK emulator context implementation
+impl EmuContext {
+    /// RisK emulator context constructor
+    pub fn new(input: Vec<u8>) -> EmuContext {
+        let mut ctx = EmuContext {
             mem: Mem::new(),
             a: 0,
             b: 0,
@@ -42,7 +42,7 @@ impl SimContext {
 
         // Check the input data size is inside the proper range
         if input.len() > (MAX_INPUT_SIZE - 8) as usize {
-            panic!("SimContext::new() input size too big size={}", input.len());
+            panic!("EmuContext::new() input size too big size={}", input.len());
         }
 
         // Create a new empty vector

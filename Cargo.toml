@@ -3,7 +3,7 @@ members = [
     "cli",
     "common",
     "riscv/riscv2zisk",
-    "simulator",
+    "emulator",
     "state-machines/main",
     "state-machines/mem",
     "witness-computation",

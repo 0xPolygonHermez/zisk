@@ -2394,13 +2394,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "ziskos"
-version = "0.1.0"
-
-[[package]]
-name = "zisksim"
+name = "ziskemu"
 version = "0.1.0"
 dependencies = [
  "clap",
  "riscv2zisk",
 ]
+
+[[package]]
+name = "ziskos"
+version = "0.1.0"
