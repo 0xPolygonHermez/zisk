@@ -2401,5 +2401,6 @@ version = "0.1.0"
 name = "zisksim"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "riscv2zisk",
 ]

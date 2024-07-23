@@ -1,87 +1,39 @@
-use riscv2zisk::Riscv2zisk;
-use std::{
-    env, fs,
-    fs::metadata,
-    path::{Path, PathBuf},
-    process,
-};
+use clap::Parser;
+use riscv2zisk::{Riscv2zisk, ZiskRom};
+use std::{fs, process};
 use zisksim::{Sim, SimOptions};
 
-fn _list_files(vec: &mut Vec<PathBuf>, path: &Path) {
-    if metadata(path).unwrap().is_dir() {
-        let paths = fs::read_dir(path).unwrap();
-        for path_result in paths {
-            let full_path = path_result.unwrap().path();
-            if metadata(&full_path).unwrap().is_dir() {
-                _list_files(vec, &full_path);
-            } else {
-                vec.push(full_path);
-            }
-        }
-    }
-}
-
-fn list_files(path: &Path) -> Vec<PathBuf> {
-    let mut vec = Vec::new();
-    _list_files(&mut vec, path);
-    vec
-}
-
 fn main() {
-    //println!("zisk_tester converts an ELF RISCV file into a ZISK ASM program, simulates it, and
-    // copies the output to console");
+    // Create a simulator options instance based on arguments or default values
+    let sim_options: SimOptions = SimOptions::parse();
 
-    // Get program arguments
-    let args: Vec<String> = env::args().collect();
-
-    // Check program arguments length
-    if args.len() != 2 {
-        eprintln!("Error parsing arguments: number of arguments should be 1.  Usage: zisk_tester <elf_riscv_file>");
-        process::exit(1);
+    // Log the simulator options if requested
+    if sim_options.verbose {
+        println!("zisksim converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, simulates it with the provided input, and copies the output to console or a file");
+        println!("{}", sim_options);
     }
 
-    let argument = &args[1];
-    let mut multiple_files = false;
-    let md = metadata(argument).unwrap();
-    let mut elf_files: Vec<String> = Vec::new();
-    if md.is_file() {
-        elf_files.push(argument.clone());
-    } else if md.is_dir() {
-        multiple_files = true;
-        let path = Path::new(argument);
-        let files = list_files(path);
-        for file in files {
-            let file_name = file.display().to_string();
-            if file_name.contains("dut") && file_name.ends_with(".elf") {
-                elf_files.push(file_name.to_string().clone());
-                println!("found DUT ELF file: {}", file_name);
-            }
+    // INPUT:
+    // build input data either from the provided input path, or leave it empty (default input)
+    let input: Vec<u8> = if sim_options.input.is_some() {
+        // Read input data from the provided input path
+        let path = std::path::PathBuf::from(sim_options.input.clone().unwrap());
+        std::fs::read(path).expect("Could not read input file")
+    } else {
+        // If no input data is provided, input will remain empty
+        // This normally means that input data is self-contained in the program
+        Vec::new()
+    };
+
+    // ROM:
+    // convert it from the ELF file (if provided) or get it from ROM file (if provided)
+    let rom: ZiskRom = if sim_options.elf.is_some() {
+        if sim_options.rom.is_some() {
+            eprintln!("Error parsing arguments: ROM file and ELF file are incompatible; use only one of them");
+            process::exit(1);
         }
-    }
-
-    let elf_files_len = elf_files.len();
-
-    if multiple_files {
-        println!("Going to process {} ELF files", elf_files_len);
-    }
-
-    //const FIRST_ELF_FILE: u64 = 0;
-
-    for (elf_file_counter, elf_file) in elf_files.into_iter().enumerate() {
-        // Get the input parameters: ELF (RISCV) file name (input data)
-        //let elf_file = args[1].clone();
-        let zisk_file = String::new();
-
-        if multiple_files {
-            println!("ELF file {}/{}: {}", elf_file_counter, elf_files_len, elf_file);
-        }
-        /*if (FIRST_ELF_FILE > 0) && (elf_file_counter < FIRST_ELF_FILE) {
-            println!("Skipping file {}", elf_file);
-            continue;
-        }*/
-
-        // Create an instance of the program converter
-        let rv2zk = Riscv2zisk::new(elf_file, zisk_file);
+        // Create an instance of the RISCV -> ZisK program converter
+        let rv2zk = Riscv2zisk::new(sim_options.elf.clone().unwrap(), String::new());
 
         // Convert program to rom
         let result = rv2zk.run();
@@ -89,32 +41,44 @@ fn main() {
             println!("Application error: {}", result.err().unwrap());
             process::exit(1);
         }
-        let rom = result.unwrap();
 
-        // Create an empty input
-        let input: Vec<u8> = Vec::new();
+        // Get the result
+        result.unwrap()
+    } else if sim_options.rom.is_some() {
+        // TODO: load rom from file
+        ZiskRom::new()
+    } else {
+        eprintln!("Error parsing arguments: either a ROM file or an ELF file must be provided");
+        process::exit(1);
+    };
 
-        // Create a simulator instance with this rom and input
-        let mut sim = Sim::new(rom, input);
+    // Create a simulator instance with this rom and input
+    let mut sim = Sim::new(rom, input.clone());
 
-        // Create a simulator options instance with the default values
-        let sim_options = SimOptions::new();
+    // Run the simulation
+    sim.run(&sim_options);
+    if !sim.terminated() {
+        println!("Simulation did not complete");
+        process::exit(1);
+    }
 
-        // Run the simulations
-        sim.run(sim_options);
-        if !sim.terminated() {
-            println!("Simulation did not complete");
-            process::exit(1);
-        }
+    // OUTPUT:
+    // if requested, save output to file, or log it to console
+    if sim_options.output.is_some() {
+        // Get the simulation output as a u8 vector
+        let output = sim.get_output_8();
 
-        if !multiple_files {
-            // Get the simulation outpus as a u32 vector
-            let output = sim.get_output_32();
+        // Save the output to file
+        fs::write("/tmp/foo", output).expect("Unable to write output file");
+    }
+    // Log output to console
+    else {
+        // Get the simulation output as a u32 vector
+        let output = sim.get_output_32();
 
-            // Log the output in console
-            for o in &output {
-                println!("{:08x}", o);
-            }
+        // Log the output to console
+        for o in &output {
+            println!("{:08x}", o);
         }
     }
 

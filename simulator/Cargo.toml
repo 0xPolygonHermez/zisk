@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.9", features = ["derive", "env"] }
 riscv2zisk = {path="../riscv/riscv2zisk"}
 
 [lib]

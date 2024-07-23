@@ -1,0 +1,54 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'riscv2zisk'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=riscv2zisk",
+                    "--package=riscv"
+                ],
+                "filter": {
+                    "name": "riscv",
+                    "kind": "bin"
+                }
+            },
+            "args": ["testvectors/I-BNE-01.elf", "rom.json"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'zisksim'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=zisksim"
+                ],
+                "filter": {
+                    "name": "zisksim",
+                    "kind": "bin"
+                }
+            },
+            //"args": ["testvectors/I-BNE-01.elf"],
+            //"args": ["riscof/riscof_work/rv64i_m"],
+            //"args": ["riscof/riscof_work/rv64i_m/I/src/add-01.S/dut/my.elf"],
+            //"args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf"],
+            "args": [
+                "-e",
+                "../riscv2zisk/riscof/riscof_work/rv64i_m/A/src/amoswap.d-01.S/dut/my.elf",
+                //"-p",
+                //"0",
+                //"-o",
+                //"output"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

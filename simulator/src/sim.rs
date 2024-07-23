@@ -195,8 +195,24 @@ impl Sim {
         output
     }
 
+    /// Get the output as a vector of u8
+    pub fn get_output_8(&self) -> Vec<u8> {
+        let ctx = &self.ctx;
+        let n = ctx.mem.read(OUTPUT_ADDR, 4);
+        let mut addr = OUTPUT_ADDR + 4;
+        let mut output: Vec<u8> = Vec::new();
+        for _i in 0..n {
+            output.push(ctx.mem.read(addr, 1) as u8);
+            output.push(ctx.mem.read(addr + 1, 1) as u8);
+            output.push(ctx.mem.read(addr + 2, 1) as u8);
+            output.push(ctx.mem.read(addr + 3, 1) as u8);
+            addr += 4;
+        }
+        output
+    }
+
     /// Run the whole program
-    pub fn run(&mut self, opts: SimOptions) {
+    pub fn run(&mut self, opts: &SimOptions) {
         // While not done
         while !self.ctx.end {
             //println!("Sim::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc); // 2147483828
@@ -206,12 +222,15 @@ impl Sim {
             }
 
             // Log simulation step, if requested
-            if (opts.print_step != 0) && ((self.ctx.step % opts.print_step) == 0) {
+            if opts.print_step.is_some() &&
+                (opts.print_step.unwrap() != 0) &&
+                ((self.ctx.step % opts.print_step.unwrap()) == 0)
+            {
                 println!("step={}", self.ctx.step);
             }
 
             // Stop the execution if we exceeded the specified running conditions
-            if (self.ctx.pc as i64 == opts.to) || (self.ctx.step >= opts.max_steps) {
+            if self.ctx.step >= opts.max_steps {
                 break;
             }
 

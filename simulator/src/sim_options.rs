@@ -1,21 +1,43 @@
+use clap::Parser;
+use std::fmt;
+
 /// ZisK simulator options structure
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+#[command(propagate_version = true)]
 pub struct SimOptions {
-    pub to: i64,
+    /// Sets the Zisk ROM data file path
+    #[clap(short, long, value_name = "ROM_FILE")]
+    pub rom: Option<String>,
+    /// Sets the ELF data file path, to be converted to ZisK ROM data
+    #[clap(short, long, value_name = "ELF_FILE")]
+    pub elf: Option<String>,
+    /// Sets the input data file path
+    #[clap(short, long, value_name = "INPUT_FILE")]
+    pub input: Option<String>,
+    /// Sets the output data file path
+    #[clap(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<String>,
+    /// Sets the maximum number of steps to execute
+    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "100000000")]
     pub max_steps: u64,
-    pub print_step: u64,
+    /// Sets the print step period in number of steps
+    #[clap(short, long, value_name = "PRINT_STEP", default_value = "0")]
+    pub print_step: Option<u64>,
+    /// Sets the trace oputput file
+    #[clap(short, long, value_name = "TRACE_FILE")]
+    pub trace: Option<String>,
+    /// Sets the verbose mode
+    #[clap(short, long, value_name = "VERBOSE")]
+    pub verbose: bool,
 }
 
-/// Default constructor for SimOptions structure
-impl Default for SimOptions {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// ZisK simulator options structure implementation
-impl SimOptions {
-    /// Zisk simulator options constructor
-    pub fn new() -> SimOptions {
-        SimOptions { to: -1, max_steps: 1_000_000, print_step: 0 }
+impl fmt::Display for SimOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}",
+            self.rom, self.elf, self.input, self.max_steps, self.print_step, self.trace, self.output, self.verbose
+        )
     }
 }
