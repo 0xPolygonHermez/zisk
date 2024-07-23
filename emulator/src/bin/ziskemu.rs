@@ -54,7 +54,7 @@ fn main() {
     process::exit(0);
 }
 
-fn process_directory(directory: String, input: &Vec<u8>, options: &EmuOptions) {
+fn process_directory(directory: String, input: &[u8], options: &EmuOptions) {
     let files = list_files(&directory);
     for file in files {
         if file.contains("dut") && file.ends_with(".elf") {
@@ -63,7 +63,7 @@ fn process_directory(directory: String, input: &Vec<u8>, options: &EmuOptions) {
     }
 }
 
-fn process_elf_file(elf_file: String, input: &Vec<u8>, options: &EmuOptions) {
+fn process_elf_file(elf_file: String, input: &[u8], options: &EmuOptions) {
     // Convert the ELF file to ZisK ROM
     let rom: ZiskRom = {
         // Create an instance of the RISCV -> ZisK program converter
@@ -83,15 +83,15 @@ fn process_elf_file(elf_file: String, input: &Vec<u8>, options: &EmuOptions) {
     process_rom(&rom, input, options);
 }
 
-fn process_rom_file(_rom_file: String, input: &Vec<u8>, options: &EmuOptions) {
+fn process_rom_file(_rom_file: String, input: &[u8], options: &EmuOptions) {
     // TODO: load from file
     let rom: ZiskRom = ZiskRom::new();
     process_rom(&rom, input, options);
 }
 
-fn process_rom(rom: &ZiskRom, input: &Vec<u8>, options: &EmuOptions) {
+fn process_rom(rom: &ZiskRom, input: &[u8], options: &EmuOptions) {
     // Create a emulator instance with this rom and input
-    let mut emu = Emu::new(rom, input.clone(), options.clone());
+    let mut emu = Emu::new(rom, input.to_owned(), options.clone());
 
     // Run the emulation
     emu.run();
