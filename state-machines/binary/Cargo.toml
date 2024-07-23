@@ -1,13 +1,11 @@
 [package]
-name = "sm-main"
+name = "sm-binary"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 zisk-common = { path = "../../common" }
-sm-arith = { path = "../arith" }
-sm-mem = { path = "../mem" }
-
+sm-common = { path = "../common" }
 log = { version = "0.4", default-features = false }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
@@ -19,3 +17,7 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9
 common = { workspace = true }
 proofman = { workspace = true }
 wchelpers = { workspace = true }
+
+sm-binary-32 = { path = "../binary-32" }
+sm-binary-64 = { path = "../binary-64" }
+sm-binary-3264 = { path = "../binary-3264" }

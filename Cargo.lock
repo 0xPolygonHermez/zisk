@@ -1605,6 +1605,142 @@ dependencies = [
 ]
 
 [[package]]
+name = "sm-arith"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-arith-32",
+ "sm-arith-3264",
+ "sm-arith-64",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-arith-32"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-arith-3264"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-arith-64"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-binary"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-binary-32",
+ "sm-binary-3264",
+ "sm-binary-64",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-binary-32"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-binary-3264"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-binary-64"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
+name = "sm-common"
+version = "0.1.0"
+
+[[package]]
+name = "sm-freq-ops"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman",
+ "sm-common",
+ "wchelpers",
+ "zisk-common",
+]
+
+[[package]]
 name = "sm-main"
 version = "0.1.0"
 dependencies = [
@@ -1613,6 +1749,7 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "sm-arith",
  "sm-mem",
  "wchelpers",
  "zisk-common",
@@ -1627,6 +1764,7 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "sm-common",
  "sm-mem-aligned",
  "sm-mem-unaligned",
  "wchelpers",
@@ -1642,6 +1780,7 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "sm-common",
  "wchelpers",
  "zisk-common",
 ]
@@ -1655,6 +1794,7 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "sm-common",
  "wchelpers",
  "zisk-common",
 ]
@@ -2397,6 +2537,12 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "sm-arith",
+ "sm-arith-32",
+ "sm-arith-3264",
+ "sm-arith-64",
+ "sm-common",
+ "sm-freq-ops",
  "sm-main",
  "sm-mem",
  "sm-mem-aligned",

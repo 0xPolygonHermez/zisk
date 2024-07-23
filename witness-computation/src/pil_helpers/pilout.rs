@@ -8,6 +8,9 @@ pub const PILOUT_HASH: &[u8] = b"zisk-hash";
 pub const MAIN_AIR_IDS: &[usize] = &[0];
 pub const MEM_ALIGN_AIR_IDS: &[usize] = &[1, 2];
 pub const MEM_UNALIGNED_AIR_IDS: &[usize] = &[3, 4];
+pub const ARITH32_AIR_IDS: &[usize] = &[5];
+pub const ARITH64_AIR_IDS: &[usize] = &[6];
+pub const ARITH3264_AIR_IDS: &[usize] = &[7];
 
 pub struct Pilout;
 

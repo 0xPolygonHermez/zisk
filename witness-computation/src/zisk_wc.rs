@@ -1,23 +1,33 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use common::{ExecutionCtx, ProofCtx, WCPilout};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use proofman::WCManager;
+use sm_arith::ArithSM;
+use sm_arith_32::Arith32SM;
+use sm_arith_3264::Arith3264SM;
+use sm_arith_64::Arith64SM;
+use sm_common::Sessions;
 use sm_main::MainSM;
 use sm_mem::MemSM;
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
 use wchelpers::WCLibrary;
 
-use crate::{Pilout, MAIN_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_UNALIGNED_AIR_IDS};
+use crate::{
+    Pilout, ARITH3264_AIR_IDS, ARITH32_AIR_IDS, ARITH64_AIR_IDS, MAIN_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_UNALIGNED_AIR_IDS,
+};
 
 pub struct ZiskWC<F> {
     pub wcm: WCManager<F>,
-    pub main_sm: Rc<MainSM>,
-    pub mem_sm: Rc<MemSM>,
-    pub mem_aligned_sm: Rc<MemAlignedSM>,
-    pub mem_unaligned_sm: Rc<MemUnalignedSM>,
+    pub main_sm: Arc<MainSM>,
+    pub mem_sm: Arc<MemSM>,
+    pub mem_aligned_sm: Arc<MemAlignedSM>,
+    pub mem_unaligned_sm: Arc<MemUnalignedSM>,
+    pub arith_sm: Arc<ArithSM>,
+    pub arith_32_sm: Arc<Arith32SM>,
 }
 
 impl<F: AbstractField> Default for ZiskWC<F> {
@@ -29,14 +39,31 @@ impl<F: AbstractField> Default for ZiskWC<F> {
 impl<F: AbstractField> ZiskWC<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
+        let sessions = Arc::new(Sessions::new());
 
         let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm = MemUnalignedSM::new(&mut wcm, MEM_UNALIGNED_AIR_IDS);
-        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
+        let mem_sm = MemSM::new(
+            &mut wcm,
+            sessions.clone(),
+            mem_aligned_sm.clone(),
+            mem_unaligned_sm.clone(),
+        );
 
-        let main_sm = MainSM::new(&mut wcm, mem_sm.clone(), MAIN_AIR_IDS);
+        let arith_32_sm = Arith32SM::new(&mut wcm, ARITH32_AIR_IDS);
+        let arith_64_sm = Arith64SM::new(&mut wcm, ARITH64_AIR_IDS);
+        let arith_3264_sm = Arith3264SM::new(&mut wcm, ARITH3264_AIR_IDS);
+        let arith_sm = ArithSM::new(
+            &mut wcm,
+            sessions,
+            arith_32_sm.clone(),
+            arith_64_sm.clone(),
+            arith_3264_sm.clone(),
+        );
 
-        ZiskWC { wcm, main_sm, mem_sm, mem_aligned_sm, mem_unaligned_sm }
+        let main_sm = MainSM::new(&mut wcm, mem_sm.clone(), arith_sm.clone(), MAIN_AIR_IDS);
+
+        ZiskWC { wcm, main_sm, mem_sm, mem_aligned_sm, mem_unaligned_sm, arith_sm, arith_32_sm }
     }
 }
 

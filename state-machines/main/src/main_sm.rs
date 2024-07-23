@@ -1,5 +1,6 @@
 use log::debug;
-use std::{collections::HashMap, rc::Rc};
+use sm_arith::ArithSM;
+use std::{collections::HashMap, sync::Arc};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
@@ -7,14 +8,20 @@ use sm_mem::MemSM;
 use wchelpers::{WCComponent, WCExecutor, WCOpCalculator};
 
 pub struct MainSM {
-    mem: Rc<MemSM>,
+    arith_sm: Arc<ArithSM>,
+    mem_sm: Arc<MemSM>,
 }
 
 impl MainSM {
-    pub fn new<F>(wcm: &mut WCManager<F>, mem: Rc<MemSM>, air_ids: &[usize]) -> Rc<Self> {
-        let main = Rc::new(Self { mem });
+    pub fn new<F>(
+        wcm: &mut WCManager<F>,
+        mem_sm: Arc<MemSM>,
+        arith_sm: Arc<ArithSM>,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
+        let main = Arc::new(Self { mem_sm, arith_sm });
 
-        wcm.register_component(Rc::clone(&main) as Rc<dyn WCComponent<F>>, Some(air_ids));
+        wcm.register_component(main.clone() as Arc<dyn WCComponent<F>>, Some(air_ids));
 
         main
     }
@@ -32,7 +39,7 @@ impl<F> WCComponent<F> for MainSM {
     ) {
     }
 
-    fn suggest_plan(&self, ectx: &mut ExecutionCtx) {}
+    fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }
 
 impl<F> WCExecutor<F> for MainSM {

@@ -1,10 +1,11 @@
 [package]
-name = "sm-mem-unaligned"
+name = "sm-arith"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 zisk-common = { path = "../../common" }
+sm-common = { path = "../common" }
 log = { version = "0.4", default-features = false }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
@@ -16,3 +17,7 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9
 common = { workspace = true }
 proofman = { workspace = true }
 wchelpers = { workspace = true }
+
+sm-arith-32 = { path = "../arith-32" }
+sm-arith-64 = { path = "../arith-64" }
+sm-arith-3264 = { path = "../arith-3264" }
