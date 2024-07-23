@@ -31,10 +31,10 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { path = "../pil2-proofman/common" }
-proofman = { path = "../pil2-proofman/proofman" }
-wchelpers = { path = "../pil2-proofman/wchelpers" }
+# common = { path = "../pil2-proofman/common" }
+# proofman = { path = "../pil2-proofman/proofman" }
+# wchelpers = { path = "../pil2-proofman/wchelpers" }
