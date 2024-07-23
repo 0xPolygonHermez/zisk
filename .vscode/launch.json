@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'riscv2zisk'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=riscv2zisk"
+                ],
+                "filter": {
+                    "name": "riscv2zisk",
+                    "kind": "bin"
+                }
+            },
+            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'ziskemu'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ziskemu"
+                ],
+                "filter": {
+                    "name": "ziskemu",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-e",
+                "riscof/riscof_work/rv64i_m",
+                "-l",
+                "-o",
+                "output.txt"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
