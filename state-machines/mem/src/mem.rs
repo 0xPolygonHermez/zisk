@@ -1,5 +1,5 @@
 use log::debug;
-use sm_common::{MemOp, MemOpResult, Provable, Sessionable, Sessions};
+use sm_common::{MemOp, OpResult, Provable, Sessionable, Sessions};
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
 use std::{
@@ -73,8 +73,8 @@ impl<F> WCComponent<F> for MemSM {
     fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }
 
-impl Provable<MemOp, MemOpResult> for MemSM {
-    fn calculate(&self, operation: MemOp) -> Result<MemOpResult, Box<dyn std::error::Error>> {
+impl Provable<MemOp, OpResult> for MemSM {
+    fn calculate(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemOp::Read(addr) => {
                 if addr % 8 == 0 {
@@ -137,7 +137,7 @@ impl Provable<MemOp, MemOpResult> for MemSM {
         }
     }
 
-    fn calculate_prove(&self, operation: MemOp) -> Result<MemOpResult, Box<dyn std::error::Error>> {
+    fn calculate_prove(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

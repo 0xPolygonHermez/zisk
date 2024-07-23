@@ -7,7 +7,7 @@ use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use sm_common::{Arith64Op, Provable, Sessionable, WorkerHandler, WorkerTask, ZiskResult};
+use sm_common::{Arith64Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
@@ -41,8 +41,12 @@ impl Arith64SM {
         arith64_sm
     }
 
-    pub fn add(&self, a: u64, b: u64) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    pub fn add(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a + b, true))
+    }
+
+    pub fn sub(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((a - b, true))
     }
 
     fn launch_thread(
@@ -86,10 +90,11 @@ impl<F> WCComponent<F> for Arith64SM {
     }
 }
 
-impl Provable<Arith64Op, ZiskResult> for Arith64SM {
-    fn calculate(&self, operation: Arith64Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Arith64Op, OpResult> for Arith64SM {
+    fn calculate(&self, operation: Arith64Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             Arith64Op::Add(a, b) => self.add(a, b),
+            Arith64Op::Sub(a, b) => self.sub(a, b),
         }
     }
 
@@ -112,7 +117,7 @@ impl Provable<Arith64Op, ZiskResult> for Arith64SM {
     fn calculate_prove(
         &self,
         operation: Arith64Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

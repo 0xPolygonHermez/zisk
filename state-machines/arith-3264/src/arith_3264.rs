@@ -7,13 +7,15 @@ use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use sm_common::{Arith64Op, Provable, Sessionable, WorkerHandler, WorkerTask, ZiskResult};
+use sm_common::{
+    Arith3264Op, Arith64Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask,
+};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
 pub struct Arith3264SM {
-    inputs: Arc<RwLock<Vec<Arith64Op>>>,
+    inputs: Arc<RwLock<Vec<Arith3264Op>>>,
     worker_handler: Vec<WorkerHandler>,
     last_proved_idx: AtomicUsize,
 }
@@ -41,12 +43,24 @@ impl Arith3264SM {
         arith3264_sm
     }
 
-    fn add(&self, a: u64, b: u64) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    fn add32(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok(((a + b) as u64, true))
+    }
+
+    fn sub32(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok(((a - b) as u64, true))
+    }
+
+    fn add64(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a + b, true))
     }
 
+    fn sub64(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((a - b, true))
+    }
+
     fn launch_thread(
-        inputs_clone: Arc<RwLock<Vec<Arith64Op>>>,
+        inputs_clone: Arc<RwLock<Vec<Arith3264Op>>>,
         rx: mpsc::Receiver<WorkerTask>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
@@ -86,14 +100,17 @@ impl<F> WCComponent<F> for Arith3264SM {
     }
 }
 
-impl Provable<Arith64Op, ZiskResult> for Arith3264SM {
-    fn calculate(&self, operation: Arith64Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Arith3264Op, OpResult> for Arith3264SM {
+    fn calculate(&self, operation: Arith3264Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
-            Arith64Op::Add(a, b) => self.add(a, b),
+            Arith3264Op::Add32(a, b) => self.add32(a, b),
+            Arith3264Op::Sub32(a, b) => self.sub32(a, b),
+            Arith3264Op::Add64(a, b) => self.add64(a, b),
+            Arith3264Op::Sub64(a, b) => self.sub64(a, b),
         }
     }
 
-    fn prove(&self, operations: &[Arith64Op]) {
+    fn prove(&self, operations: &[Arith3264Op]) {
         // Create a scoped block to hold the write lock only the necessary
         let num_inputs = {
             let mut inputs = self.inputs.write().unwrap();
@@ -111,8 +128,8 @@ impl Provable<Arith64Op, ZiskResult> for Arith3264SM {
 
     fn calculate_prove(
         &self,
-        operation: Arith64Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+        operation: Arith3264Op,
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

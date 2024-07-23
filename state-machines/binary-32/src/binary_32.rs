@@ -7,7 +7,7 @@ use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use sm_common::{Binary32Op, Provable, Sessionable, WorkerHandler, WorkerTask, ZiskResult};
+use sm_common::{Binary32Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
@@ -40,8 +40,12 @@ impl Binary32SM {
         binary32_sm
     }
 
-    pub fn and(&self, a: u32, b: u32) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    pub fn and(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok(((a & b) as u64, true))
+    }
+
+    pub fn or(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok(((a | b) as u64, true))
     }
 
     fn launch_thread(
@@ -85,10 +89,11 @@ impl<F> WCComponent<F> for Binary32SM {
     }
 }
 
-impl Provable<Binary32Op, ZiskResult> for Binary32SM {
-    fn calculate(&self, operation: Binary32Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Binary32Op, OpResult> for Binary32SM {
+    fn calculate(&self, operation: Binary32Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             Binary32Op::And(a, b) => self.and(a, b),
+            Binary32Op::Or(a, b) => self.or(a, b),
         }
     }
 
@@ -111,7 +116,7 @@ impl Provable<Binary32Op, ZiskResult> for Binary32SM {
     fn calculate_prove(
         &self,
         operation: Binary32Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

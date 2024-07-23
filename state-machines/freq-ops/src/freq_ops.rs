@@ -6,7 +6,7 @@ use std::sync::{
 use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
-use sm_common::{FreqOp, Provable, Sessionable, WorkerHandler, WorkerTask, ZiskResult};
+use sm_common::{FreqOp, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
@@ -40,7 +40,7 @@ impl FreqOpSM {
         }
     }
 
-    fn add(&self, a: u64, b: u64) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    fn add(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a + b, true))
     }
 
@@ -85,8 +85,8 @@ impl<F> WCComponent<F> for FreqOpSM {
     }
 }
 
-impl Provable<FreqOp, ZiskResult> for FreqOpSM {
-    fn calculate(&self, operation: FreqOp) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<FreqOp, OpResult> for FreqOpSM {
+    fn calculate(&self, operation: FreqOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             FreqOp::Add(a, b) => self.add(a, b),
         }
@@ -108,7 +108,7 @@ impl Provable<FreqOp, ZiskResult> for FreqOpSM {
         }
     }
 
-    fn calculate_prove(&self, operation: FreqOp) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    fn calculate_prove(&self, operation: FreqOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

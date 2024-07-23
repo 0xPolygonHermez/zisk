@@ -10,8 +10,8 @@ use sm_binary_32::Binary32SM;
 use sm_binary_3264::Binary3264SM;
 use sm_binary_64::Binary64SM;
 use sm_common::{
-    Binary3264Op, Binary32Op, Binary64Op, Provable, Sessionable, Sessions, WorkerHandler,
-    WorkerTask, ZiskResult,
+    Binary3264Op, Binary32Op, Binary64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
+    WorkerTask,
 };
 use wchelpers::WCComponent;
 
@@ -76,11 +76,13 @@ impl<F> WCComponent<F> for BinarySM {
     }
 }
 
-impl Provable<Binary3264Op, ZiskResult> for BinarySM {
-    fn calculate(&self, operation: Binary3264Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Binary3264Op, OpResult> for BinarySM {
+    fn calculate(&self, operation: Binary3264Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             Binary3264Op::And32(a, b) => self.binary32_sm.and(a, b),
             Binary3264Op::And64(a, b) => self.binary64_sm.and(a, b),
+            Binary3264Op::Or32(a, b) => self.binary32_sm.or(a, b),
+            Binary3264Op::Or64(a, b) => self.binary64_sm.or(a, b),
         }
     }
 
@@ -91,10 +93,10 @@ impl Provable<Binary3264Op, ZiskResult> for BinarySM {
             let mut inputs64 = self.inputs64.write().unwrap();
             for operation in operations {
                 match operation {
-                    Binary3264Op::And32(a, b) => {
+                    Binary3264Op::And32(a, b) | Binary3264Op::Or32(a, b) => {
                         inputs32.push(operation.clone().into());
                     }
-                    Binary3264Op::And64(a, b) => {
+                    Binary3264Op::And64(a, b) | Binary3264Op::Or64(a, b) => {
                         inputs64.push(operation.clone().into());
                     }
                 }
@@ -118,7 +120,7 @@ impl Provable<Binary3264Op, ZiskResult> for BinarySM {
     fn calculate_prove(
         &self,
         operation: Binary3264Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

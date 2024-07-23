@@ -7,7 +7,7 @@ use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use sm_common::{Binary3264Op, Provable, Sessionable, WorkerHandler, WorkerTask, ZiskResult};
+use sm_common::{Binary3264Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
@@ -41,12 +41,20 @@ impl Binary3264SM {
         binary3264_sm
     }
 
-    pub fn and32(&self, a: u32, b: u32) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    pub fn and32(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok(((a & b) as u64, true))
     }
 
-    pub fn and64(&self, a: u64, b: u64) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    pub fn and64(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a & b, true))
+    }
+
+    pub fn or32(&self, a: u32, b: u32) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok(((a | b) as u64, true))
+    }
+
+    pub fn or64(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((a | b, true))
     }
 
     fn launch_thread(
@@ -90,11 +98,13 @@ impl<F> WCComponent<F> for Binary3264SM {
     }
 }
 
-impl Provable<Binary3264Op, ZiskResult> for Binary3264SM {
-    fn calculate(&self, operation: Binary3264Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Binary3264Op, OpResult> for Binary3264SM {
+    fn calculate(&self, operation: Binary3264Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             Binary3264Op::And32(a, b) => self.and32(a, b),
             Binary3264Op::And64(a, b) => self.and64(a, b),
+            Binary3264Op::Or32(a, b) => self.or32(a, b),
+            Binary3264Op::Or64(a, b) => self.or64(a, b),
         }
     }
 
@@ -117,7 +127,7 @@ impl Provable<Binary3264Op, ZiskResult> for Binary3264SM {
     fn calculate_prove(
         &self,
         operation: Binary3264Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

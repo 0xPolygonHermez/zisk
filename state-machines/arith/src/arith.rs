@@ -10,8 +10,8 @@ use sm_arith_32::Arith32SM;
 use sm_arith_3264::Arith3264SM;
 use sm_arith_64::Arith64SM;
 use sm_common::{
-    Arith3264Op, Arith32Op, Arith64Op, Provable, Sessionable, Sessions, WorkerHandler, WorkerTask,
-    ZiskResult,
+    Arith3264Op, Arith32Op, Arith64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
+    WorkerTask,
 };
 use wchelpers::WCComponent;
 
@@ -76,11 +76,13 @@ impl<F> WCComponent<F> for ArithSM {
     }
 }
 
-impl Provable<Arith3264Op, ZiskResult> for ArithSM {
-    fn calculate(&self, operation: Arith3264Op) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+impl Provable<Arith3264Op, OpResult> for ArithSM {
+    fn calculate(&self, operation: Arith3264Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             Arith3264Op::Add32(a, b) => self.arith32_sm.add(a, b),
             Arith3264Op::Add64(a, b) => self.arith64_sm.add(a, b),
+            Arith3264Op::Sub32(a, b) => self.arith32_sm.sub(a, b),
+            Arith3264Op::Sub64(a, b) => self.arith64_sm.sub(a, b),
         }
     }
 
@@ -91,10 +93,10 @@ impl Provable<Arith3264Op, ZiskResult> for ArithSM {
             let mut inputs64 = self.inputs64.write().unwrap();
             for operation in operations {
                 match operation {
-                    Arith3264Op::Add32(a, b) => {
+                    Arith3264Op::Add32(a, b) | Arith3264Op::Sub32(a, b) => {
                         inputs32.push(operation.clone().into());
                     }
-                    Arith3264Op::Add64(a, b) => {
+                    Arith3264Op::Add64(a, b) | Arith3264Op::Sub64(a, b) => {
                         inputs64.push(operation.clone().into());
                     }
                 }
@@ -118,7 +120,7 @@ impl Provable<Arith3264Op, ZiskResult> for ArithSM {
     fn calculate_prove(
         &self,
         operation: Arith3264Op,
-    ) -> Result<ZiskResult, Box<dyn std::error::Error>> {
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result

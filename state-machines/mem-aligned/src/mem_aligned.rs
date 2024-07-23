@@ -8,7 +8,7 @@ use std::{
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
-use sm_common::{MemOp, MemOpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
+use sm_common::{MemOp, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
@@ -45,16 +45,16 @@ impl MemAlignedSM {
     fn read(
         &self,
         _addr: u64, /* , _ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx */
-    ) -> Result<MemOpResult, Box<dyn std::error::Error>> {
-        Ok(MemOpResult::Read(0))
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((0, true))
     }
 
     fn write(
         &self,
         _addr: u64,
         _val: u64, /* , _ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx */
-    ) -> Result<MemOpResult, Box<dyn std::error::Error>> {
-        Ok(MemOpResult::Write)
+    ) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((0, true))
     }
 
     fn launch_thread(
@@ -100,8 +100,8 @@ impl<F> WCComponent<F> for MemAlignedSM {
     fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }
 
-impl Provable<MemOp, MemOpResult> for MemAlignedSM {
-    fn calculate(&self, operation: MemOp) -> Result<MemOpResult, Box<dyn std::error::Error>> {
+impl Provable<MemOp, OpResult> for MemAlignedSM {
+    fn calculate(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemOp::Read(addr) => self.read(addr),
             MemOp::Write(addr, val) => self.write(addr, val),
@@ -124,7 +124,7 @@ impl Provable<MemOp, MemOpResult> for MemAlignedSM {
         }
     }
 
-    fn calculate_prove(&self, operation: MemOp) -> Result<MemOpResult, Box<dyn std::error::Error>> {
+    fn calculate_prove(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
         self.prove(&[operation]);
         result
