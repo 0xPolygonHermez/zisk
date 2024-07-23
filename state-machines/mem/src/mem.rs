@@ -1,12 +1,12 @@
 use log::debug;
-use sm_common::{MemOp, OpResult, Provable, Sessionable, Sessions};
+use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, Sessionable, Sessions};
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
 use std::{
     cell::RefCell,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
     },
 };
 
@@ -17,10 +17,8 @@ use wchelpers::{WCComponent, WCOpCalculator};
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
 pub struct MemSM {
-    inputs_aligned: Arc<RwLock<Vec<MemOp>>>,
-    inputs_unaligned: Arc<RwLock<Vec<MemOp>>>,
-    last_proved_aligned_idx: AtomicUsize,
-    last_proved_unaligned_idx: AtomicUsize,
+    inputs_aligned: Mutex<Vec<MemOp>>,
+    inputs_unaligned: Mutex<Vec<MemUnalignedOp>>,
     mem_aligned_sm: Arc<MemAlignedSM>,
     mem_unaligned_sm: Arc<MemUnalignedSM>,
     sessions: Arc<Sessions>,
@@ -34,19 +32,14 @@ impl MemSM {
         mem_aligned_sm: Arc<MemAlignedSM>,
         mem_unaligned_sm: Arc<MemUnalignedSM>,
     ) -> Arc<Self> {
-        let inputs_aligned = Arc::new(RwLock::new(Vec::new()));
-        let inputs_unaligned = Arc::new(RwLock::new(Vec::new()));
-
         let opened_sessions = vec![
             sessions.open_session(mem_aligned_sm.clone()),
             sessions.open_session(mem_unaligned_sm.clone()),
         ];
 
         let mem_sm = Self {
-            inputs_aligned,
-            inputs_unaligned,
-            last_proved_aligned_idx: AtomicUsize::new(0),
-            last_proved_unaligned_idx: AtomicUsize::new(0),
+            inputs_aligned: Mutex::new(Vec::new()),
+            inputs_unaligned: Mutex::new(Vec::new()),
             mem_aligned_sm,
             mem_unaligned_sm,
             sessions,
@@ -80,60 +73,54 @@ impl Provable<MemOp, OpResult> for MemSM {
                 if addr % 8 == 0 {
                     self.mem_aligned_sm.calculate(operation)
                 } else {
-                    self.mem_unaligned_sm.calculate(operation)
+                    let width = 8; // TODO!
+                    self.mem_unaligned_sm.calculate(sm_common::MemUnalignedOp::Read(addr, width))
                 }
             }
             MemOp::Write(addr, val) => {
                 if addr % 8 == 0 {
                     self.mem_aligned_sm.calculate(operation)
                 } else {
-                    self.mem_unaligned_sm.calculate(operation)
+                    let width = 8; // TODO!
+                    self.mem_unaligned_sm
+                        .calculate(sm_common::MemUnalignedOp::Write(addr, width, val))
                 }
             }
         }
     }
 
     fn prove(&self, operations: &[MemOp]) {
-        // Create a scoped block to hold the write lock only the necessary
-        let (num_inputs_aligned, num_inputs_unaligned) = {
-            let mut inputs_aligned = self.inputs_aligned.write().unwrap();
-            let mut inputs_unaligned = self.inputs_unaligned.write().unwrap();
-            for operation in operations {
-                match operation {
-                    MemOp::Read(addr) => {
-                        if addr % 8 == 0 {
-                            inputs_aligned.push(operation.clone());
-                        } else {
-                            inputs_unaligned.push(operation.clone());
-                        }
+        let mut inputs_aligned = self.inputs_aligned.lock().unwrap();
+        let mut inputs_unaligned = self.inputs_unaligned.lock().unwrap();
+        for operation in operations {
+            match operation {
+                MemOp::Read(addr) => {
+                    if addr % 8 == 0 {
+                        inputs_aligned.push(operation.clone());
+                    } else {
+                        let width = 8; // TODO!
+                        inputs_unaligned.push(sm_common::MemUnalignedOp::Read(*addr, width));
                     }
-                    MemOp::Write(addr, val) => {
-                        if addr % 8 == 0 {
-                            inputs_aligned.push(operation.clone());
-                        } else {
-                            inputs_unaligned.push(operation.clone());
-                        }
+                }
+                MemOp::Write(addr, val) => {
+                    if addr % 8 == 0 {
+                        inputs_aligned.push(operation.clone());
+                    } else {
+                        let width = 8; // TODO!
+                        inputs_unaligned.push(sm_common::MemUnalignedOp::Write(*addr, width, *val));
                     }
                 }
             }
-            (inputs_aligned.len(), inputs_unaligned.len())
-        };
-
-        if num_inputs_aligned % PROVE_CHUNK_SIZE == 0 {
-            let last_proved_aligned_idx = self.last_proved_aligned_idx.load(Ordering::Relaxed);
-            self.mem_aligned_sm.prove(
-                &self.inputs_aligned.read().unwrap()[last_proved_aligned_idx..num_inputs_aligned],
-            );
-            self.last_proved_aligned_idx.store(num_inputs_aligned, Ordering::Relaxed);
         }
 
-        if num_inputs_unaligned % PROVE_CHUNK_SIZE == 0 {
-            let last_proved_unaligned_idx = self.last_proved_unaligned_idx.load(Ordering::Relaxed);
-            self.mem_unaligned_sm.prove(
-                &self.inputs_unaligned.read().unwrap()
-                    [last_proved_unaligned_idx..num_inputs_unaligned],
-            );
-            self.last_proved_unaligned_idx.store(num_inputs_unaligned, Ordering::Relaxed);
+        if inputs_aligned.len() >= PROVE_CHUNK_SIZE {
+            let old_inputs = std::mem::take(&mut *inputs_aligned);
+            self.mem_aligned_sm.prove(&old_inputs);
+        }
+
+        if inputs_unaligned.len() >= PROVE_CHUNK_SIZE {
+            let old_inputs = std::mem::take(&mut *inputs_unaligned);
+            self.mem_unaligned_sm.prove(&old_inputs);
         }
     }
 
@@ -146,20 +133,19 @@ impl Provable<MemOp, OpResult> for MemSM {
 
 impl Sessionable for MemSM {
     fn when_closed(&self) {
-        // Prove remaining inputs if any
-        // TODO We need to prove the remaining inputs. If the number of inputs32 and inputs64 fits
-        // in a single proof, we can prove them together using 3264.
-        let num_inputs_aligned = { self.inputs_aligned.read().unwrap().len() };
-        let last_proved_aligned_idx = self.last_proved_aligned_idx.load(Ordering::Relaxed);
-        self.mem_aligned_sm.prove(
-            &self.inputs_aligned.read().unwrap()[last_proved_aligned_idx..num_inputs_aligned],
-        );
+        if let Ok(mut inputs) = self.inputs_aligned.lock() {
+            if !inputs.is_empty() {
+                let old_inputs = std::mem::take(&mut *inputs);
+                self.mem_aligned_sm.prove(&old_inputs);
+            }
+        }
 
-        let num_inputs_unaligned = { self.inputs_unaligned.read().unwrap().len() };
-        let last_proved_unaligned_idx = self.last_proved_unaligned_idx.load(Ordering::Relaxed);
-        self.mem_unaligned_sm.prove(
-            &self.inputs_unaligned.read().unwrap()[last_proved_unaligned_idx..num_inputs_unaligned],
-        );
+        if let Ok(mut inputs) = self.inputs_unaligned.lock() {
+            if !inputs.is_empty() {
+                let old_inputs = std::mem::take(&mut *inputs);
+                self.mem_unaligned_sm.prove(&old_inputs);
+            }
+        }
 
         // Close open sessions for the current thread
         for session_id in &self.opened_sessions {

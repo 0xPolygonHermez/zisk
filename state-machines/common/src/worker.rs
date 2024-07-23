@@ -1,24 +1,24 @@
 use std::{
-    sync::{mpsc::Sender, Mutex},
+    sync::{mpsc::Sender, Arc, Mutex},
     thread,
 };
 
-pub enum WorkerTask {
-    Prove(usize, usize),
+pub enum WorkerTask<T> {
+    Prove(Arc<Vec<T>>),
     Finish,
 }
 
-pub struct WorkerHandler {
-    tx: Sender<WorkerTask>,
+pub struct WorkerHandler<T> {
+    tx: Sender<WorkerTask<T>>,
     worker_handle: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
-impl WorkerHandler {
-    pub fn new(tx: Sender<WorkerTask>, worker_handle: thread::JoinHandle<()>) -> Self {
+impl<T> WorkerHandler<T> {
+    pub fn new(tx: Sender<WorkerTask<T>>, worker_handle: thread::JoinHandle<()>) -> Self {
         Self { tx, worker_handle: Mutex::new(Some(worker_handle)) }
     }
 
-    pub fn send(&self, task: WorkerTask) {
+    pub fn send(&self, task: WorkerTask<T>) {
         if let Err(e) = self.tx.send(task) {
             eprintln!("Failed to send a task: {:?}", e);
         }

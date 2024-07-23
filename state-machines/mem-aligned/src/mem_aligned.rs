@@ -1,8 +1,5 @@
 use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        mpsc, Arc, RwLock,
-    },
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 
@@ -14,26 +11,20 @@ use wchelpers::WCComponent;
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
 pub struct MemAlignedSM {
-    inputs: Arc<RwLock<Vec<MemOp>>>,
-    worker_handler: Vec<WorkerHandler>,
-    last_proved_idx: AtomicUsize,
+    inputs: Mutex<Vec<MemOp>>,
+    worker_handlers: Vec<WorkerHandler<MemOp>>,
 }
 
 #[allow(unused, unused_variables)]
 impl MemAlignedSM {
     pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let inputs = RwLock::new(Vec::new());
         let (tx, rx) = mpsc::channel();
 
-        let inputs = Arc::new(inputs);
-        let inputs_clone = Arc::clone(&inputs);
-
-        let worker_handle = Self::launch_thread(inputs_clone, rx);
+        let worker_handle = Self::launch_thread(rx);
 
         let mem_aligned_sm = Self {
-            inputs,
-            worker_handler: vec![WorkerHandler::new(tx, worker_handle)],
-            last_proved_idx: AtomicUsize::new(0),
+            inputs: Mutex::new(Vec::new()),
+            worker_handlers: vec![WorkerHandler::new(tx, worker_handle)],
         };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
@@ -57,23 +48,12 @@ impl MemAlignedSM {
         Ok((0, true))
     }
 
-    fn launch_thread(
-        inputs_clone: Arc<RwLock<Vec<MemOp>>>,
-        rx: mpsc::Receiver<WorkerTask>,
-    ) -> thread::JoinHandle<()> {
+    fn launch_thread(rx: mpsc::Receiver<WorkerTask<MemOp>>) -> thread::JoinHandle<()> {
         thread::spawn(move || {
-            let inputs = inputs_clone;
             while let Ok(task) = rx.recv() {
                 match task {
-                    WorkerTask::Prove(low_idx, high_idx) => {
-                        {
-                            let inputs = inputs.read().unwrap();
-                            println!(
-                                "Mem: Proving [{:?}..[{:?}]",
-                                inputs[low_idx],
-                                inputs[high_idx - 1]
-                            );
-                        }
+                    WorkerTask::Prove(inputs) => {
+                        println!("Mem: Proving buffer");
                         // thread::sleep(Duration::from_millis(1000));
                     }
                     WorkerTask::Finish => {
@@ -109,18 +89,12 @@ impl Provable<MemOp, OpResult> for MemAlignedSM {
     }
 
     fn prove(&self, operations: &[MemOp]) {
-        // Create a scoped block to hold the write lock only the necessary
-        let num_inputs = {
-            let mut inputs = self.inputs.write().unwrap();
+        if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
-            inputs.len()
-        };
-
-        if num_inputs % PROVE_CHUNK_SIZE == 0 {
-            let last_proved_idx = self.last_proved_idx.load(Ordering::Relaxed);
-            println!("Mem: Sending Task::Prove[{}..{}]", last_proved_idx, num_inputs);
-            self.worker_handler[0].send(WorkerTask::Prove(last_proved_idx, num_inputs));
-            self.last_proved_idx.store(num_inputs, Ordering::Relaxed);
+            if inputs.len() >= PROVE_CHUNK_SIZE {
+                let old_inputs = std::mem::take(&mut *inputs);
+                self.worker_handlers[0].send(WorkerTask::Prove(Arc::new(old_inputs)));
+            }
         }
     }
 
@@ -133,14 +107,14 @@ impl Provable<MemOp, OpResult> for MemAlignedSM {
 
 impl Sessionable for MemAlignedSM {
     fn when_closed(&self) {
-        let num_inputs = { self.inputs.read().unwrap().len() };
-
-        let last_proved_idx = self.last_proved_idx.load(Ordering::Relaxed);
-        if num_inputs - last_proved_idx > 0 {
-            self.worker_handler[0].send(WorkerTask::Prove(last_proved_idx, num_inputs));
+        if let Ok(mut inputs) = self.inputs.lock() {
+            if !inputs.is_empty() {
+                let old_inputs = std::mem::take(&mut *inputs);
+                self.worker_handlers[0].send(WorkerTask::Prove(Arc::new(old_inputs)));
+            }
         }
 
-        for worker in &self.worker_handler {
+        for worker in &self.worker_handlers {
             worker.send(WorkerTask::Finish);
             worker.terminate();
         }
