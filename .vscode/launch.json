@@ -11,15 +11,14 @@
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=riscv2zisk",
-                    "--package=riscv"
+                    "--bin=riscv2zisk"
                 ],
                 "filter": {
-                    "name": "riscv",
+                    "name": "riscv2zisk",
                     "kind": "bin"
                 }
             },
-            "args": ["testvectors/I-BNE-01.elf", "rom.json"],
+            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json"],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -36,17 +35,12 @@
                     "kind": "bin"
                 }
             },
-            //"args": ["testvectors/I-BNE-01.elf"],
-            //"args": ["riscof/riscof_work/rv64i_m"],
-            //"args": ["riscof/riscof_work/rv64i_m/I/src/add-01.S/dut/my.elf"],
-            //"args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf"],
             "args": [
                 "-e",
-                "../riscv2zisk/riscof/riscof_work/rv64i_m/A/src/amoswap.d-01.S/dut/my.elf",
-                //"-p",
-                //"0",
-                //"-o",
-                //"output"
+                "riscof/riscof_work/rv64i_m",
+                "-l",
+                "-o",
+                "output.txt"
             ],
             "cwd": "${workspaceFolder}"
         }
