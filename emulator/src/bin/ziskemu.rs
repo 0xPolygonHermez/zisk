@@ -1,23 +1,28 @@
 use clap::Parser;
 use riscv2zisk::{Riscv2zisk, ZiskRom};
-use std::{fs, process};
+use std::{
+    fs,
+    fs::metadata,
+    path::{Path, PathBuf},
+    process,
+};
 use ziskemu::{Emu, EmuOptions};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
-    let emu_options: EmuOptions = EmuOptions::parse();
+    let options: EmuOptions = EmuOptions::parse();
 
     // Log the emulator options if requested
-    if emu_options.verbose {
+    if options.verbose {
         println!("ziskemu converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, emulates it with the provided input, and copies the output to console or a file");
-        println!("{}", emu_options);
+        println!("{}", options);
     }
 
     // INPUT:
     // build input data either from the provided input path, or leave it empty (default input)
-    let input: Vec<u8> = if emu_options.input.is_some() {
+    let input: Vec<u8> = if options.input.is_some() {
         // Read input data from the provided input path
-        let path = std::path::PathBuf::from(emu_options.input.clone().unwrap());
+        let path = std::path::PathBuf::from(options.input.clone().unwrap());
         std::fs::read(path).expect("Could not read input file")
     } else {
         // If no input data is provided, input will remain empty
@@ -25,15 +30,44 @@ fn main() {
         Vec::new()
     };
 
-    // ROM:
-    // convert it from the ELF file (if provided) or get it from ROM file (if provided)
-    let rom: ZiskRom = if emu_options.elf.is_some() {
-        if emu_options.rom.is_some() {
-            eprintln!("Error parsing arguments: ROM file and ELF file are incompatible; use only one of them");
-            process::exit(1);
+    if options.rom.is_some() && options.elf.is_some() {
+        eprintln!(
+            "Error parsing arguments: ROM file and ELF file are incompatible; use only one of them"
+        );
+        process::exit(1);
+    } else if options.rom.is_some() {
+        process_rom_file(options.rom.clone().unwrap(), &input, &options);
+    } else if options.elf.is_some() {
+        let elf_file = options.elf.clone().unwrap();
+        let md = metadata(elf_file.clone()).unwrap();
+        if md.is_file() {
+            process_elf_file(elf_file, &input, &options);
+        } else if md.is_dir() {
+            process_directory(elf_file, &input, &options);
         }
+    } else {
+        eprintln!("Error parsing arguments: ROM file or ELF file must be provided");
+        process::exit(1);
+    }
+
+    // Return successfully
+    process::exit(0);
+}
+
+fn process_directory(directory: String, input: &Vec<u8>, options: &EmuOptions) {
+    let files = list_files(&directory);
+    for file in files {
+        if file.contains("dut") && file.ends_with(".elf") {
+            process_elf_file(file, input, options);
+        }
+    }
+}
+
+fn process_elf_file(elf_file: String, input: &Vec<u8>, options: &EmuOptions) {
+    // Convert the ELF file to ZisK ROM
+    let rom: ZiskRom = {
         // Create an instance of the RISCV -> ZisK program converter
-        let rv2zk = Riscv2zisk::new(emu_options.elf.clone().unwrap(), String::new());
+        let rv2zk = Riscv2zisk::new(elf_file, String::new());
 
         // Convert program to rom
         let result = rv2zk.run();
@@ -44,32 +78,37 @@ fn main() {
 
         // Get the result
         result.unwrap()
-    } else if emu_options.rom.is_some() {
-        // TODO: load rom from file
-        ZiskRom::new()
-    } else {
-        eprintln!("Error parsing arguments: either a ROM file or an ELF file must be provided");
-        process::exit(1);
     };
 
+    process_rom(&rom, input, options);
+}
+
+fn process_rom_file(_rom_file: String, input: &Vec<u8>, options: &EmuOptions) {
+    // TODO: load from file
+    let rom: ZiskRom = ZiskRom::new();
+    process_rom(&rom, input, options);
+}
+
+fn process_rom(rom: &ZiskRom, input: &Vec<u8>, options: &EmuOptions) {
     // Create a emulator instance with this rom and input
-    let mut emu = Emu::new(rom, input.clone());
+    let mut emu = Emu::new(rom, input.clone(), options.clone());
 
     // Run the emulation
-    emu.run(&emu_options);
+    emu.run();
     if !emu.terminated() {
-        println!("Emuulation did not complete");
+        println!("Emulation did not complete");
         process::exit(1);
     }
 
     // OUTPUT:
     // if requested, save output to file, or log it to console
-    if emu_options.output.is_some() {
+    if options.output.is_some() {
         // Get the emulation output as a u8 vector
         let output = emu.get_output_8();
 
         // Save the output to file
-        fs::write("/tmp/foo", output).expect("Unable to write output file");
+        let output_file = <Option<std::string::String> as Clone>::clone(&options.output).unwrap();
+        fs::write(output_file, output).expect("Unable to write output file");
     }
     // Log output to console
     else {
@@ -81,7 +120,34 @@ fn main() {
             println!("{:08x}", o);
         }
     }
+}
 
-    // Return successfully
-    process::exit(0);
+fn list_files(directory: &String) -> Vec<String> {
+    let path = Path::new(directory);
+    let paths = list_files_paths(path);
+    let mut vec: Vec<String> = Vec::new();
+    for p in paths {
+        vec.push(p.display().to_string());
+    }
+    vec
+}
+
+fn list_files_paths(path: &Path) -> Vec<PathBuf> {
+    let mut vec = Vec::new();
+    _list_files(&mut vec, path);
+    vec
+}
+
+fn _list_files(vec: &mut Vec<PathBuf>, path: &Path) {
+    if metadata(path).unwrap().is_dir() {
+        let paths = fs::read_dir(path).unwrap();
+        for path_result in paths {
+            let full_path = path_result.unwrap().path();
+            if metadata(&full_path).unwrap().is_dir() {
+                _list_files(vec, &full_path);
+            } else {
+                vec.push(full_path);
+            }
+        }
+    }
 }

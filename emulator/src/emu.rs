@@ -14,34 +14,38 @@ const REG_NAMES: [&str; 32] = [
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
-pub struct Emu {
+pub struct Emu<'a> {
     /// ZisK rom, containing the program to execute, which is constant for this program except for
     /// the input data
-    pub rom: ZiskRom,
+    pub rom: &'a ZiskRom,
 
     /// ZisK operations (c, flag) = f(a, b), one per supported opcode
     operations: ZiskOperations,
 
     /// Context, where the state of the execution is stored and modified at every execution step
     ctx: EmuContext,
+
+    /// Emulator options
+    options: EmuOptions,
 }
 
 /// ZisK emulator structure implementation
-impl Emu {
+impl Emu<'_> {
     //// ZisK emulator structure constructor
-    pub fn new(rom: ZiskRom, input: Vec<u8>) -> Emu {
+    pub fn new(rom: &ZiskRom, input: Vec<u8>, options: EmuOptions) -> Emu {
         // Initialize an empty instance
-        let mut sim = Emu { ctx: EmuContext::new(input), operations: ZiskOperations::new(), rom };
+        let mut emu =
+            Emu { ctx: EmuContext::new(input), operations: ZiskOperations::new(), rom, options };
 
         // Create a new read section for every RO data entry of the rom
-        for i in 0..sim.rom.ro_data.len() {
-            sim.ctx.mem.add_read_section(sim.rom.ro_data[i].from, &sim.rom.ro_data[i].data);
+        for i in 0..emu.rom.ro_data.len() {
+            emu.ctx.mem.add_read_section(emu.rom.ro_data[i].from, &emu.rom.ro_data[i].data);
         }
 
         // Get registers
-        //sim.get_regs(); // TODO: ask Jordi
+        //emu.get_regs(); // TODO: ask Jordi
 
-        sim
+        emu
     }
 
     /// Performs one single step of the emulation
@@ -165,6 +169,13 @@ impl Emu {
             ctx.pc = (ctx.pc as i64 + inst.i.jmp_offset2) as u64;
         }
 
+        // Log the step, if requested
+        if self.options.log_step {
+            println!(
+                "step={} pc={} op={}={} a={} b={} c={} flag={}",
+                ctx.step, ctx.pc, inst.i.op, inst.i.op_str, ctx.a, ctx.b, ctx.c, ctx.flag
+            );
+        }
         // Increment step counter
         ctx.step += 1;
     }
@@ -212,7 +223,7 @@ impl Emu {
     }
 
     /// Run the whole program
-    pub fn run(&mut self, opts: &EmuOptions) {
+    pub fn run(&mut self) {
         // While not done
         while !self.ctx.end {
             //println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc); // 2147483828
@@ -222,15 +233,15 @@ impl Emu {
             }
 
             // Log emulation step, if requested
-            if opts.print_step.is_some() &&
-                (opts.print_step.unwrap() != 0) &&
-                ((self.ctx.step % opts.print_step.unwrap()) == 0)
+            if self.options.print_step.is_some() &&
+                (self.options.print_step.unwrap() != 0) &&
+                ((self.ctx.step % self.options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.step);
             }
 
             // Stop the execution if we exceeded the specified running conditions
-            if self.ctx.step >= opts.max_steps {
+            if self.ctx.step >= self.options.max_steps {
                 break;
             }
 

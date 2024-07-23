@@ -2,7 +2,7 @@ use clap::Parser;
 use std::fmt;
 
 /// ZisK emulator options structure
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct EmuOptions {
@@ -24,12 +24,15 @@ pub struct EmuOptions {
     /// Sets the print step period in number of steps
     #[clap(short, long, value_name = "PRINT_STEP", default_value = "0")]
     pub print_step: Option<u64>,
-    /// Sets the trace oputput file
+    /// Sets the trace output file
     #[clap(short, long, value_name = "TRACE_FILE")]
     pub trace: Option<String>,
     /// Sets the verbose mode
-    #[clap(short, long, value_name = "VERBOSE")]
+    #[clap(short, long, value_name = "VERBOSE", default_value = "false")]
     pub verbose: bool,
+    /// Sets the log step mode
+    #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
+    pub log_step: bool,
 }
 
 impl fmt::Display for EmuOptions {
