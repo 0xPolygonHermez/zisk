@@ -1,5 +1,5 @@
 use crate::ZiskOperation;
-use std::{collections::HashMap, num::Wrapping, sync::WaitTimeoutResult};
+use std::{collections::HashMap, num::Wrapping};
 
 // Constant values used in operation functions
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
