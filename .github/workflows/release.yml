@@ -12,6 +12,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  IS_NIGHTLY: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
 permissions:
   contents: write
@@ -169,9 +170,9 @@ jobs:
 
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk --target "$target" "${flags[@]}"
+          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv2zisk --target "$target" "${flags[@]}"
 
-          bins=(cargo-zisk)
+          bins=(cargo-zisk ziskemu)
           for name in "${bins[@]}"; do
             bin=./target/$target/release/$name$exe
             file "$bin" || true
@@ -189,16 +190,16 @@ jobs:
         shell: bash
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
             # See: https://github.com/actions/virtual-environments/issues/2619
-            gtar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            gtar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           else
             cd ./target/${TARGET}/release
-            7z a -tzip "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" cargo-zisk.exe
+            7z a -tzip "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" cargo-zisk.exe ziskemu.exe riscv2zisk.exe
             mv "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" >> $GITHUB_OUTPUT
           fi
@@ -215,7 +216,6 @@ jobs:
           body: ${{ needs.prepare.outputs.changelog }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
-            ${{ steps.man.outputs.cargo_zisk_man }}
 
       # If this is a nightly release, it also updates the release
       # tagged `nightly` for compatibility with `ziskup`
@@ -229,7 +229,6 @@ jobs:
           body: ${{ needs.prepare.outputs.changelog }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
-            ${{ steps.man.outputs.cargo_zisk_man }}
 
   cleanup:
     name: Release cleanup
