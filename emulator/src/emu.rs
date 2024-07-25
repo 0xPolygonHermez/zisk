@@ -236,8 +236,9 @@ impl Emu<'_> {
             };
             mem::swap(&mut emu_trace.mem_trace, &mut self.ctx.mem_trace);
             self.ctx.emu_trace.push(emu_trace);
-            if (self.ctx.step % self.options.trace_steps.unwrap()) ==
-                (self.options.trace_steps.unwrap() - 1)
+            if self.ctx.end ||
+                ((self.ctx.step % self.options.trace_steps.unwrap()) ==
+                    (self.options.trace_steps.unwrap() - 1))
             {
                 if self.callback.is_none() {
                     panic!("Emu::step() found empty callback");
