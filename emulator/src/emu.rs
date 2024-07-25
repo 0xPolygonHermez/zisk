@@ -1,9 +1,9 @@
-use crate::{EmuContext, EmuOptions};
+use crate::{EmuContext, EmuOptions, EmuTrace, MemTrace};
 use riscv2zisk::{
     ZiskOperations, ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 /// Human-readable names of the 32 well-known RISCV registers, to be used in traces
 const REG_NAMES: [&str; 32] = [
@@ -27,15 +27,28 @@ pub struct Emu<'a> {
 
     /// Emulator options
     options: EmuOptions,
+
+    /// Callback to report emulator trace
+    callback: Option<fn(&mut Vec<EmuTrace>)>,
 }
 
 /// ZisK emulator structure implementation
 impl Emu<'_> {
     //// ZisK emulator structure constructor
-    pub fn new(rom: &ZiskRom, input: Vec<u8>, options: EmuOptions) -> Emu {
+    pub fn new(
+        rom: &ZiskRom,
+        input: Vec<u8>,
+        options: EmuOptions,
+        callback: Option<fn(&mut Vec<EmuTrace>)>,
+    ) -> Emu {
         // Initialize an empty instance
-        let mut emu =
-            Emu { ctx: EmuContext::new(input), operations: ZiskOperations::new(), rom, options };
+        let mut emu = Emu {
+            ctx: EmuContext::new(input),
+            operations: ZiskOperations::new(),
+            rom,
+            options,
+            callback,
+        };
 
         // Create a new read section for every RO data entry of the rom
         for i in 0..emu.rom.ro_data.len() {
@@ -50,60 +63,75 @@ impl Emu<'_> {
 
     /// Performs one single step of the emulation
     pub fn step(&mut self) {
-        // Get a mutable reference to the emulation context
-        let ctx = &mut self.ctx;
+        // Reset memory traces vector
+        if self.options.trace_steps.is_some() {
+            self.ctx.mem_trace.clear();
+        }
 
         // Get the ZisK instruction corresponding to the current program counter
-        if !self.rom.insts.contains_key(&ctx.pc) {
-            panic!("Emu::step() cound not find a rom instruction for pc={}={:x}", ctx.pc, ctx.pc);
+        if !self.rom.insts.contains_key(&self.ctx.pc) {
+            panic!(
+                "Emu::step() cound not find a rom instruction for pc={}={:x}",
+                self.ctx.pc, self.ctx.pc
+            );
         }
-        let inst = &self.rom.insts[&ctx.pc];
+        let inst = &self.rom.insts[&self.ctx.pc];
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
         // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // If this is the last instruction, stop executing
         if inst.i.end == 1 {
-            ctx.end = true;
+            self.ctx.end = true;
         }
 
         // Build the value of the a register based on the source specified by the current
         // instruction
         match inst.i.a_src {
-            SRC_C => ctx.a = ctx.c,
+            SRC_C => self.ctx.a = self.ctx.c,
             SRC_MEM => {
                 let mut addr = inst.i.a_offset_imm0;
                 if inst.i.a_use_sp_imm1 != 0 {
-                    addr += ctx.sp;
+                    addr += self.ctx.sp;
                 }
-                ctx.a = ctx.mem.read(addr, 8);
+                self.ctx.a = self.ctx.mem.read(addr, 8);
+                if self.options.trace_steps.is_some() {
+                    let mem_trace =
+                        MemTrace { is_write: false, address: addr, width: 8, value: self.ctx.a };
+                    self.ctx.mem_trace.push(mem_trace);
+                }
             }
-            SRC_IMM => ctx.a = inst.i.a_offset_imm0 | (inst.i.a_use_sp_imm1 << 32),
-            SRC_STEP => ctx.a = ctx.step,
-            SRC_SP => ctx.a = ctx.sp,
-            _ => panic!("Emu::step() Invalid a_src={} pc={}", inst.i.a_src, ctx.pc),
+            SRC_IMM => self.ctx.a = inst.i.a_offset_imm0 | (inst.i.a_use_sp_imm1 << 32),
+            SRC_STEP => self.ctx.a = self.ctx.step,
+            SRC_SP => self.ctx.a = self.ctx.sp,
+            _ => panic!("Emu::step() Invalid a_src={} pc={}", inst.i.a_src, self.ctx.pc),
         }
 
         // Build the value of the b register based on the source specified by the current
         // instruction
         match inst.i.b_src {
-            SRC_C => ctx.b = ctx.c,
+            SRC_C => self.ctx.b = self.ctx.c,
             SRC_MEM => {
                 let mut addr = inst.i.b_offset_imm0;
                 if inst.i.b_use_sp_imm1 != 0 {
-                    addr += ctx.sp;
+                    addr += self.ctx.sp;
                 }
-                ctx.b = ctx.mem.read(addr, 8);
+                self.ctx.b = self.ctx.mem.read(addr, 8);
+                if self.options.trace_steps.is_some() {
+                    let mem_trace =
+                        MemTrace { is_write: false, address: addr, width: 8, value: self.ctx.b };
+                    self.ctx.mem_trace.push(mem_trace);
+                }
             }
-            SRC_IMM => ctx.b = inst.i.b_offset_imm0 | (inst.i.b_use_sp_imm1 << 32),
+            SRC_IMM => self.ctx.b = inst.i.b_offset_imm0 | (inst.i.b_use_sp_imm1 << 32),
             SRC_IND => {
-                let mut addr = (ctx.a as i64 + inst.i.b_offset_imm0 as i64) as u64;
+                let mut addr = (self.ctx.a as i64 + inst.i.b_offset_imm0 as i64) as u64;
                 if inst.i.b_use_sp_imm1 != 0 {
-                    addr += ctx.sp;
+                    addr += self.ctx.sp;
                 }
-                ctx.b = ctx.mem.read(addr, inst.i.ind_width);
+                self.ctx.b = self.ctx.mem.read(addr, inst.i.ind_width);
             }
-            _ => panic!("Emu::step() Invalid b_src={} pc={}", inst.i.b_src, ctx.pc),
+            _ => panic!("Emu::step() Invalid b_src={} pc={}", inst.i.b_src, self.ctx.pc),
         }
 
         // Check the instruction opcode range
@@ -115,7 +143,7 @@ impl Emu<'_> {
         let operation = self.operations.op_from_code.get(&(inst.i.op as u8)).unwrap();
 
         // Call the operation
-        (ctx.c, ctx.flag) = (operation.f)(ctx.a, ctx.b);
+        (self.ctx.c, self.ctx.flag) = (operation.f)(self.ctx.a, self.ctx.b);
 
         // Store the value of the c register based on the storage specified by the current
         // instruction
@@ -123,61 +151,103 @@ impl Emu<'_> {
             STORE_NONE => print!(""),
             STORE_MEM => {
                 let val: i64 = if inst.i.store_ra != 0 {
-                    ctx.pc as i64 + inst.i.jmp_offset2
+                    self.ctx.pc as i64 + inst.i.jmp_offset2
                 } else {
-                    ctx.c as i64
+                    self.ctx.c as i64
                 };
                 let mut addr: i64 = inst.i.store_offset;
                 if inst.i.store_use_sp != 0 {
-                    addr += ctx.sp as i64;
+                    addr += self.ctx.sp as i64;
                 }
-                ctx.mem.write(addr as u64, val as u64, 8);
+                self.ctx.mem.write(addr as u64, val as u64, 8);
+                if self.options.trace_steps.is_some() {
+                    let mem_trace = MemTrace {
+                        is_write: true,
+                        address: addr as u64,
+                        width: 8,
+                        value: val as u64,
+                    };
+                    self.ctx.mem_trace.push(mem_trace);
+                }
                 //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
                 // ctx.pc, addr, val as u64};
             }
             STORE_IND => {
                 let val: i64 = if inst.i.store_ra != 0 {
-                    ctx.pc as i64 + inst.i.jmp_offset2
+                    self.ctx.pc as i64 + inst.i.jmp_offset2
                 } else {
-                    ctx.c as i64
+                    self.ctx.c as i64
                 };
                 let mut addr = inst.i.store_offset;
                 if inst.i.store_use_sp != 0 {
-                    addr += ctx.sp as i64;
+                    addr += self.ctx.sp as i64;
                 }
-                addr += ctx.a as i64;
-                ctx.mem.write(addr as u64, val as u64, inst.i.ind_width);
+                addr += self.ctx.a as i64;
+                self.ctx.mem.write(addr as u64, val as u64, inst.i.ind_width);
                 //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
                 // ctx.pc, addr, val as u64};
             }
-            _ => panic!("Emu::step() Invalid store={} pc={}", inst.i.store, ctx.pc),
+            _ => panic!("Emu::step() Invalid store={} pc={}", inst.i.store, self.ctx.pc),
         }
 
         // Set SP, if specified by the current instruction
         if inst.i.set_sp != 0 {
-            ctx.sp = ctx.c;
+            self.ctx.sp = self.ctx.c;
         } else {
-            ctx.sp += inst.i.inc_sp;
+            self.ctx.sp += inst.i.inc_sp;
         }
 
         // Set PC, based on current PC, current flag and current instruction
         if inst.i.set_pc != 0 {
-            ctx.pc = (ctx.c as i64 + inst.i.jmp_offset1) as u64;
-        } else if ctx.flag {
-            ctx.pc = (ctx.pc as i64 + inst.i.jmp_offset1) as u64;
+            self.ctx.pc = (self.ctx.c as i64 + inst.i.jmp_offset1) as u64;
+        } else if self.ctx.flag {
+            self.ctx.pc = (self.ctx.pc as i64 + inst.i.jmp_offset1) as u64;
         } else {
-            ctx.pc = (ctx.pc as i64 + inst.i.jmp_offset2) as u64;
+            self.ctx.pc = (self.ctx.pc as i64 + inst.i.jmp_offset2) as u64;
         }
 
         // Log the step, if requested
         if self.options.log_step {
             println!(
                 "step={} pc={} op={}={} a={} b={} c={} flag={}",
-                ctx.step, ctx.pc, inst.i.op, inst.i.op_str, ctx.a, ctx.b, ctx.c, ctx.flag
+                self.ctx.step,
+                self.ctx.pc,
+                inst.i.op,
+                inst.i.op_str,
+                self.ctx.a,
+                self.ctx.b,
+                self.ctx.c,
+                self.ctx.flag
             );
         }
+
+        // Store an emulator trace, if requested
+        if self.options.trace_steps.is_some() {
+            let mut emu_trace = EmuTrace {
+                a: self.ctx.a,
+                b: self.ctx.b,
+                c: self.ctx.c,
+                flag: self.ctx.flag,
+                sp: self.ctx.sp,
+                pc: self.ctx.pc,
+                step: self.ctx.step,
+                end: self.ctx.end,
+                mem_trace: Vec::new(),
+            };
+            mem::swap(&mut emu_trace.mem_trace, &mut self.ctx.mem_trace);
+            self.ctx.emu_trace.push(emu_trace);
+            if (self.ctx.step % self.options.trace_steps.unwrap()) ==
+                (self.options.trace_steps.unwrap() - 1)
+            {
+                if self.callback.is_none() {
+                    panic!("Emu::step() found empty callback");
+                }
+                (self.callback.unwrap())(&mut self.ctx.emu_trace);
+            }
+        }
+
         // Increment step counter
-        ctx.step += 1;
+        self.ctx.step += 1;
     }
 
     /// Get the output as a vector of u64

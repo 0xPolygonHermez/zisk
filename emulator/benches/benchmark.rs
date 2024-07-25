@@ -41,6 +41,7 @@ fn bench_group(c: &mut Criterion) {
     }
 }
 */
+
 fn bench_emulate(c: &mut Criterion) {
     let guard = pprof::ProfilerGuardBuilder::default()
         .frequency(1000)
@@ -56,7 +57,7 @@ fn bench_emulate(c: &mut Criterion) {
                 ),
                 ..Default::default()
             };
-            emulate(&options)
+            emulate(&options, None)
         })
     });
 

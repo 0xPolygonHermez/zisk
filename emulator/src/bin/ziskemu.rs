@@ -12,7 +12,7 @@ fn main() {
     }
 
     // Call emulate, with these options
-    emulate(&options);
+    emulate(&options, None);
 
     // Return successfully
     process::exit(0);

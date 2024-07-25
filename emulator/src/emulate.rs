@@ -1,4 +1,4 @@
-use crate::{Emu, EmuOptions};
+use crate::{Emu, EmuOptions, EmuTrace};
 use riscv2zisk::{Riscv2zisk, ZiskRom};
 use std::{
     fs,
@@ -7,7 +7,8 @@ use std::{
     process,
 };
 
-pub fn emulate(options: &EmuOptions) {
+pub fn emulate(options: &EmuOptions, callback: Option<fn(&mut Vec<EmuTrace>)>) {
+    // Log this call
     if options.verbose {
         println!("emulate()");
         println!("{}", options);
@@ -31,14 +32,14 @@ pub fn emulate(options: &EmuOptions) {
         );
         process::exit(1);
     } else if options.rom.is_some() {
-        process_rom_file(options.rom.clone().unwrap(), &input, options);
+        process_rom_file(options.rom.clone().unwrap(), &input, options, callback);
     } else if options.elf.is_some() {
         let elf_file = options.elf.clone().unwrap();
         let md = metadata(elf_file.clone()).unwrap();
         if md.is_file() {
-            process_elf_file(elf_file, &input, options);
+            process_elf_file(elf_file, &input, options, callback);
         } else if md.is_dir() {
-            process_directory(elf_file, &input, options);
+            process_directory(elf_file, &input, options, callback);
         }
     } else {
         eprintln!("Error parsing arguments: ROM file or ELF file must be provided");
@@ -46,7 +47,12 @@ pub fn emulate(options: &EmuOptions) {
     }
 }
 
-fn process_directory(directory: String, input: &[u8], options: &EmuOptions) {
+fn process_directory(
+    directory: String,
+    input: &[u8],
+    options: &EmuOptions,
+    callback: Option<fn(&mut Vec<EmuTrace>)>,
+) {
     if options.verbose {
         println!("process_directory() directory={}", directory);
     }
@@ -54,12 +60,17 @@ fn process_directory(directory: String, input: &[u8], options: &EmuOptions) {
     let files = list_files(&directory);
     for file in files {
         if file.contains("dut") && file.ends_with(".elf") {
-            process_elf_file(file, input, options);
+            process_elf_file(file, input, options, callback);
         }
     }
 }
 
-fn process_elf_file(elf_file: String, input: &[u8], options: &EmuOptions) {
+fn process_elf_file(
+    elf_file: String,
+    input: &[u8],
+    options: &EmuOptions,
+    callback: Option<fn(&mut Vec<EmuTrace>)>,
+) {
     if options.verbose {
         println!("process_elf_file() elf_file={}", elf_file);
     }
@@ -80,26 +91,36 @@ fn process_elf_file(elf_file: String, input: &[u8], options: &EmuOptions) {
         result.unwrap()
     };
 
-    process_rom(&rom, input, options);
+    process_rom(&rom, input, options, callback);
 }
 
-fn process_rom_file(_rom_file: String, input: &[u8], options: &EmuOptions) {
+fn process_rom_file(
+    _rom_file: String,
+    input: &[u8],
+    options: &EmuOptions,
+    callback: Option<fn(&mut Vec<EmuTrace>)>,
+) {
     if options.verbose {
         println!("process_rom_file() rom_file={}", _rom_file);
     }
 
     // TODO: load from file
     let rom: ZiskRom = ZiskRom::new();
-    process_rom(&rom, input, options);
+    process_rom(&rom, input, options, callback);
 }
 
-fn process_rom(rom: &ZiskRom, input: &[u8], options: &EmuOptions) {
+fn process_rom(
+    rom: &ZiskRom,
+    input: &[u8],
+    options: &EmuOptions,
+    callback: Option<fn(&mut Vec<EmuTrace>)>,
+) {
     if options.verbose {
         println!("process_rom() rom size={} input size={}", rom.insts.len(), input.len());
     }
 
     // Create a emulator instance with this rom and input
-    let mut emu = Emu::new(rom, input.to_owned(), options.clone());
+    let mut emu = Emu::new(rom, input.to_owned(), options.clone(), callback);
 
     // Run the emulation
     emu.run();
