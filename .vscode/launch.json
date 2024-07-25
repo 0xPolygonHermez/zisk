@@ -7,23 +7,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'riscv2zisk'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=riscv2zisk"
-                ],
-                "filter": {
-                    "name": "riscv2zisk",
-                    "kind": "bin"
-                }
-            },
-            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json"],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug executable 'ziskemu'",
             "cargo": {
                 "args": [
@@ -43,6 +26,38 @@
                 "output.txt"
             ],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'riscv2zisk'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=riscv2zisk"
+                ],
+                "filter": {
+                    "name": "riscv2zisk",
+                    "kind": "bin"
+                }
+            },
+            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Bench executable 'ziskemu'",
+            "cargo": {
+                "args": [
+                    "bench"
+                ],
+                "filter": {
+                    "name": "ziskemu",
+                    "kind": "bin"
+                }
+            },
+            "cwd": "${workspaceFolder}/emulator"
         }
     ]
 }

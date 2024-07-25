@@ -9,3 +9,5 @@ mod emu_context;
 pub use emu_context::*;
 mod emu_options;
 pub use emu_options::*;
+mod emulate;
+pub use emulate::*;

@@ -226,7 +226,9 @@ impl Emu<'_> {
     pub fn run(&mut self) {
         // While not done
         while !self.ctx.end {
-            //println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc); // 2147483828
+            if self.options.verbose {
+                println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc);
+            }
             // Check trace PC
             if self.ctx.tracerv_on && (self.ctx.pc % 4 == 0) {
                 self.ctx.trace_pc = self.ctx.pc;

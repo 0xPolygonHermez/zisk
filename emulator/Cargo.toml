@@ -7,6 +7,17 @@ edition = "2021"
 clap = { version = "4.5.9", features = ["derive", "env"] }
 riscv2zisk = {path="../riscv/riscv2zisk"}
 
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
+
+[profile.bench]
+opt-level = 0
+
+[[bench]]
+name = "benchmark"
+harness = false
+
 [lib]
 name = "ziskemu"
 path = "src/lib.rs"

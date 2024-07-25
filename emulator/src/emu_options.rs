@@ -33,6 +33,27 @@ pub struct EmuOptions {
     /// Sets the log step mode
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
+    /// Log the output to console
+    #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
+    pub log_output: bool,
+}
+
+/// Default constructor for impl fmt::Display for EmuOptions structure
+impl Default for EmuOptions {
+    fn default() -> Self {
+        Self {
+            rom: None,
+            elf: None,
+            input: None,
+            output: None,
+            max_steps: 0xFFFFFFFFFFFFFFFF,
+            print_step: None,
+            trace: None,
+            verbose: false,
+            log_step: false,
+            log_output: false,
+        }
+    }
 }
 
 impl fmt::Display for EmuOptions {
