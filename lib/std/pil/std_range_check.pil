@@ -1,5 +1,5 @@
 require "std_sum.pil";
-require "std_permutation.pil";
+// require "std_permutation.pil";
 // require "std_chunk_checker.pil";
 
 // With the logup protocol, it is more performant to look up to the same range;
