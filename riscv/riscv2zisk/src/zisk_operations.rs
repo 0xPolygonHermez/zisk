@@ -1,5 +1,5 @@
 use crate::ZiskOperation;
-use std::{collections::HashMap, num::Wrapping};
+use std::{collections::HashMap, num::Wrapping, sync::WaitTimeoutResult};
 
 // Constant values used in operation functions
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -68,7 +68,7 @@ fn op_sll(a: u64, b: u64) -> (u64, bool) {
 
 #[inline(always)]
 fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
-    (((a as i32) << (b & 0x3f)) as u64, false)
+    (((Wrapping(a as u32) << (b & 0x3f) as usize).0 as i32) as u64, false)
 }
 
 #[inline(always)]
@@ -83,12 +83,12 @@ fn op_srl(a: u64, b: u64) -> (u64, bool) {
 
 #[inline(always)]
 fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
-    (((a as i32) >> (b & 0x3f)) as u64, false)
+    ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
 }
 
 #[inline(always)]
 fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
-    ((((a as u32) >> (b & 0x3f)) as i32) as u64, false)
+    (((Wrapping(a as u32) >> (b & 0x3f) as usize).0 as i32) as u64, false)
 }
 
 /// If a equals b, returns c=1, flag=true
