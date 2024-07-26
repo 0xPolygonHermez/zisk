@@ -38,6 +38,9 @@ pub struct EmuOptions {
     pub log_output: bool,
     /// Trace every this number of steps
     pub trace_steps: Option<u64>,
+    /// Log performance metrics
+    #[clap(short = 'm', long, value_name = "LOG_METRICS", default_value = "false")]
+    pub log_metrics: bool,
 }
 
 /// Default constructor for impl fmt::Display for EmuOptions structure
@@ -55,6 +58,7 @@ impl Default for EmuOptions {
             log_step: false,
             log_output: false,
             trace_steps: None,
+            log_metrics: false,
         }
     }
 }
