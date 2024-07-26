@@ -12,7 +12,8 @@ function getSettings() {
             airoutFilename: path.join(basePath, 'multi_range_check.pilout'),
         },
         witnessCalculators: [
-            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck" },
+            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck1" },
+            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck2" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
         prover: {

@@ -64,10 +64,8 @@ private function init_piop_sum(string type, int proves, int opid[], expr cols[])
             gsumid.cols = cols_count;
 
             // add opid on a list to verify at final
-            for (int j = 0; j < length(opid); j++) {
-                gsum.opids[gsum.opids_count] = opid[j];
-                gsum.opids_count = gsum.opids_count + 1;
-            }
+            gsum.opids[gsum.opids_count] = opid[i];
+            gsum.opids_count++;
         } else if (gsumid.cols != cols_count) {
             error(`The number of columns of PIOP #${opid} must be ${piopid.cols} but was ${cols_count}`);
         }
@@ -75,9 +73,9 @@ private function init_piop_sum(string type, int proves, int opid[], expr cols[])
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
         // proves and assumes to verify at the end that all of them match
         if (proves) {
-            gsumid.proves += length(opid);
+            gsumid.proves++;
         } else {
-            gsumid.assumes += length(opid);
+            gsumid.assumes++;
         }
     }
 }
@@ -116,7 +114,6 @@ private function update_piop_sum(string type, int proves, int opid[], expr sumid
     }
 
     // TODO: look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
-    // on final air lookup_range_proves_batch();
 
     // define constraints at the air level
     on final air piop_gsum_air();

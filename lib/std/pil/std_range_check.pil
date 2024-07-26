@@ -1,5 +1,5 @@
 require "std_sum.pil";
-require "std_permutation.pil";
+// require "std_permutation.pil";
 // require "std_chunk_checker.pil";
 
 // With the logup protocol, it is more performant to look up to the same range;
@@ -83,11 +83,16 @@ function range_check_group(const int predefined = 1, const expr sels[], const ex
  * @param max maximum value of the range
  */
 function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1, int max1, int min2, int max2) {
+    if (min1 == min2 && max1 == max2) {
+        error(`The ranges defined in the multi range check are the same: [${min1},${max1}]`);
+    }
+
     range_validator(min1, max1);
     range_validator(min2, max2);
 
-    @range_check{predefined:0, colu: colu, min: min1, max: max1};
-    @range_check{predefined:0, colu: colu, min: min2, max: max2};
+    // Can I do it with predefined ranges?
+    @range_check{predefined: 0, colu: colu, min: min1, max: max1};
+    @range_check{predefined: 0, colu: colu, min: min2, max: max2};
 
     const int opid1 = opid_process(min1, max1);
     const int opid2 = opid_process(min2, max2);
@@ -257,22 +262,20 @@ private function opid_process(const int min, const int max): int {
     }
 
     // If the range has already been introduced, we reuse the same opid
-    int opid = OPIDS[0] - 1;
+    int opid = 0;
     for (int i = 0; i < rcprove.opids_count; i++) {
         if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
-            opid = rcprove.opids[i];
-            break;
+            return rcprove.opids[i];
         }
     }
 
-    if (opid == OPIDS[0] - 1) {
-        opid = get_opid(min, max);
-        rcprove.mins[rcprove.opids_count] = min;
-        rcprove.maxs[rcprove.opids_count] = max;
-        rcprove.opids[rcprove.opids_count] = opid;
-        rcprove.opids_count++;
-        rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
-    }
+    // Otherwise, we get a new opid
+    opid = get_opid(min, max);
+    rcprove.mins[rcprove.opids_count] = min;
+    rcprove.maxs[rcprove.opids_count] = max;
+    rcprove.opids[rcprove.opids_count] = opid;
+    rcprove.opids_count++;
+    rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
 
     return opid;
 }
