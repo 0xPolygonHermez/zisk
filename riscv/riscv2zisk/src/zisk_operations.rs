@@ -430,6 +430,63 @@ pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
+pub fn opcode_string(opcode: u8) -> &'static str {
+    match opcode {
+        0x00 => "flag",
+        0x01 => "copyb",
+        0x02 => "signextend_b",
+        0x03 => "signextend_h",
+        0x04 => "signextend_w",
+        0x10 => "add",
+        0x14 => "add_w",
+        0x20 => "sub",
+        0x24 => "sub_w",
+        0x30 => "sll",
+        0x34 => "sll_w",
+        0x40 => "sra",
+        0x41 => "srl",
+        0x44 => "sra_w",
+        0x45 => "srl_w",
+        0x50 => "eq",
+        0x54 => "eq_w",
+        0x60 => "ltu",
+        0x61 => "lt",
+        0x64 => "ltu_w",
+        0x65 => "lt_w",
+        0x70 => "leu",
+        0x71 => "le",
+        0x74 => "leu_w",
+        0x75 => "le_w",
+        0x80 => "and",
+        0x90 => "or",
+        0xa0 => "xor",
+        0xb0 => "mulu",
+        0xb1 => "mul",
+        0xb5 => "mul_w",
+        0xb8 => "muluh",
+        0xb9 => "mulh",
+        0xbb => "mulsuh",
+        0xc0 => "divu",
+        0xc1 => "div",
+        0xc4 => "divu_w",
+        0xc5 => "div_w",
+        0xc8 => "remu",
+        0xc9 => "rem",
+        0xcc => "remu_w",
+        0xcd => "rem_w",
+        0xd0 => "minu",
+        0xd1 => "min",
+        0xd4 => "minu_w",
+        0xd5 => "min_w",
+        0xe0 => "maxu",
+        0xe1 => "max",
+        0xe4 => "maxu_w",
+        0xe5 => "max_w",
+        _ => panic!("opcode_string() found invalid opcode={}", opcode),
+    }
+}
+
 /// ZisK operations list, mapped by operation code and by operation string, for convenience
 pub struct ZiskOperations {
     pub ops: Vec<ZiskOperation>,

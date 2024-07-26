@@ -1,5 +1,5 @@
 use crate::{EmuTrace, Mem, MemTrace};
-use riscv2zisk::{INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
+use riscv2zisk::{write_u64_le, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
 /// ZisK emulator context data container, storing the state of the emuulation
 pub struct EmuContext {
@@ -50,7 +50,8 @@ impl EmuContext {
         }
 
         // Create a new empty vector
-        let buffer: Vec<u8> = vec![0; 8];
+        let mut buffer: Vec<u8> = vec![0; 8];
+        write_u64_le(&mut buffer, 0, input.len() as u64);
 
         // Add the length and input data read sections
         ctx.mem.add_read_section(INPUT_ADDR, &buffer);

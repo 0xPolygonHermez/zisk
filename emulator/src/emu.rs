@@ -192,7 +192,7 @@ impl Emu<'_> {
         // Log the step, if requested
         if self.options.log_step {
             println!(
-                "step={} pc={} op={}={} a={} b={} c={} flag={}",
+                "step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
                 self.ctx.step,
                 self.ctx.pc,
                 inst.i.op,
@@ -200,7 +200,8 @@ impl Emu<'_> {
                 self.ctx.a,
                 self.ctx.b,
                 self.ctx.c,
-                self.ctx.flag
+                self.ctx.flag,
+                inst.i.to_text()
             );
         }
 

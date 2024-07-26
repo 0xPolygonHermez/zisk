@@ -109,7 +109,7 @@ fn process_rom_file(
     process_rom(&rom, input, options, callback);
 }
 
-fn process_rom(
+pub fn process_rom(
     rom: &ZiskRom,
     input: &[u8],
     options: &EmuOptions,
