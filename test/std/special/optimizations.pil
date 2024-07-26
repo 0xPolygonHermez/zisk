@@ -1,0 +1,10 @@
+
+airtemplate Test(int N = 2**2) {
+    col witness colu;
+    expr sel = 1;
+    sel * (colu - 1) + 1 === 0;
+}
+
+airgroup Test {
+    Test();
+}

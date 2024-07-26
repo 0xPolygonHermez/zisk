@@ -20,8 +20,8 @@ private function init_containers(string type, int opid) {
     container airgroup.std.gprod {
         airgroupval aggregate(prod) gprod_result;
 
-        int direct_gprod_proves_count = 0;
-        expr direct_gprod_proves[100];
+        int direct_gprod_count = 0;
+        expr direct_gprod[100];
     }
 
     container air.std.gprod {
@@ -58,8 +58,9 @@ private function initial_checks(int proves, int opid, expr cols[]) {
         // add opid on a list to verify at final
         proof.std.gprod.opids[proof.std.gprod.opids_count] = opid;
         proof.std.gprod.opids_count++;
-    } else if (proof.std.gprod.`id${opid}`.cols != cols_count) {
-        error(`The number of columns of PIOP #${opid} must be ${gprodid.cols} but was ${cols_count}`);
+    } else if (cols_count != proof.std.gprod.`id${opid}`.cols) {
+        const int expected_cols = proof.std.gprod.`id${opid}`.cols;
+        error(`The number of columns of PIOP #${opid} must be ${expected_cols} but was ${cols_count}`);
     }
 
     // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
@@ -94,12 +95,10 @@ private function update_piop_prod(string type, int proves, int opid, expr sel, e
 
     if (is_direct) {
         use airgroup.std.gprod;
-        if (proves) {
-            direct_gprod_proves[direct_gprod_proves_count] = sel * (cols_compressed - 1) + 1;
-            direct_gprod_proves_count++;
-        } else {
-            error("Direct access is not allowed for assumes");
-        }
+
+        // adding the expression from which the proof constraint will be directly updated
+        direct_gprod[direct_gprod_count] = sel * (cols_compressed - 1) + 1;
+        direct_gprod_count++;
 
         // update values at the airgroup level
         on final airgroup piop_gprod_airgroup_direct();
@@ -132,14 +131,6 @@ private function update_piop_prod(string type, int proves, int opid, expr sel, e
  * It defines the constraints for the grandproduct based on the rapidUp protocol https://eprint.iacr.org/2022/1050.pdf
  */
 private function piop_gprod_air() {
-    function update_product(expr sel, expr colu) {
-        if (sel == 1) {
-            return colu + std_gamma;
-        } else {
-            return sel * (colu + std_gamma - 1) + 1;
-        }
-    }
-
     use air.std.gprod;
 
     col witness stage(2) gprod;
@@ -153,13 +144,13 @@ private function piop_gprod_air() {
     col fixed _L1 = [1,0...]; // TODO: Fix
 
     expr numerator = 1;
-    for (int i = 0; i < gprod_proves_count; i = i + 1) {
-        numerator = numerator * update_product(gprod_proves_sel[i], gprod_proves[i]);
+    for (int i = 0; i < gprod_proves_count; i++) {
+        numerator = numerator * (gprod_proves_sel[i] * (gprod_proves[i] + std_gamma - 1) + 1);
     }
 
     expr denominator = 1;
-    for (int i = 0; i < gprod_assumes_count; i = i + 1) {
-        denominator = denominator * update_product(gprod_assumes_sel[i], gprod_assumes[i]);
+    for (int i = 0; i < gprod_assumes_count; i++) {
+        denominator = denominator * (gprod_assumes_sel[i] * (gprod_assumes[i] + std_gamma - 1) + 1);
     }
 
     @gprod_col{reference: gprod, numerator: numerator, denominator: denominator, result: airgroup.std.gprod.gprod_result};
@@ -184,8 +175,9 @@ private function piop_gprod_airgroup() {
  * It updates the expression for the grandprod at the proof level directly
  */
 private function piop_gprod_airgroup_direct() {
-    for (int i = 0; i < airgroup.std.gprod.direct_gprod_proves_count; i = i + 1) {
-        proof.std.gprod.gprod *= airgroup.std.gprod.direct_gprod_proves[i];
+    use airgroup.std.gprod;
+    for (int i = 0; i < direct_gprod_count; i++) {
+        proof.std.gprod.gprod *= direct_gprod[i];
     }
 }
 
