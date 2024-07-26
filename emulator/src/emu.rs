@@ -378,4 +378,9 @@ impl Emu<'_> {
     pub fn terminated(&self) -> bool {
         self.ctx.end
     }
+
+    /// Returns the number of executed steps
+    pub fn number_of_steps(&self) -> u64 {
+        self.ctx.step
+    }
 }

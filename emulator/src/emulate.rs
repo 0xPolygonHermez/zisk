@@ -5,6 +5,7 @@ use std::{
     fs::metadata,
     path::{Path, PathBuf},
     process,
+    time::Instant,
 };
 
 pub fn emulate(options: &EmuOptions, callback: Option<fn(&mut Vec<EmuTrace>)>) {
@@ -122,11 +123,23 @@ pub fn process_rom(
     // Create a emulator instance with this rom and input
     let mut emu = Emu::new(rom, input.to_owned(), options.clone(), callback);
 
+    let start = Instant::now();
+
     // Run the emulation
     emu.run();
     if !emu.terminated() {
         println!("Emulation did not complete");
         process::exit(1);
+    }
+
+    let duration = start.elapsed();
+
+    // Log performance metrics
+    if options.log_metrics {
+        let secs = duration.as_secs_f64();
+        let steps = emu.number_of_steps() as f64;
+        let tp = steps / secs / 1000000.0;
+        println!("process_rom() steps={} duration={:.4} tp={:.4} Msteps/s", steps, secs, tp);
     }
 
     // OUTPUT:
