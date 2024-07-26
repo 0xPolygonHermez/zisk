@@ -224,6 +224,7 @@ impl Emu<'_> {
         // Store an emulator trace, if requested
         if self.options.trace_steps.is_some() {
             let mut emu_trace = EmuTrace {
+                opcode: inst.i.op as u8,
                 a: self.ctx.a,
                 b: self.ctx.b,
                 c: self.ctx.c,
