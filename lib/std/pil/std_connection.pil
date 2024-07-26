@@ -1,8 +1,6 @@
 require "std_constants.pil";
 require "std_prod.pil";
 
-// TODO: Detach goldilocks from this file
-
 // In order to prove correctness of a connection, we should compute the product:
 //       (f_0+𝛂·X+ɣ)   · (f_1+𝛂·k_1·X+ɣ)·...·(f_N+𝛂·k_N·X+ɣ)
 //    ---------------------------------------------------------------------------------
@@ -73,8 +71,8 @@ function connection_init(int opid, expr cols[]) {
     // Compute the ks if necessary, otherwise reuse the already computed ones
     if (cols_count > kscont.ks_count) {
         for (int i = kscont.ks_count; i < cols_count; i++) {
-            // Check https://eprint.iacr.org/2019/953.pdf for details on why we need such Goldilocks_k
-            kscont.ks[i] = Goldilocks_k ** i;
+            // Check https://eprint.iacr.org/2019/953.pdf for details on why we need such k
+            kscont.ks[i] = k_coset ** i;
         }
 
         // update the already computed ks
@@ -410,7 +408,7 @@ function connection(int opid, expr cols[], expr CONN[]) {
 
         if (len > ks_count) {
             for (int i = ks_count; i < len; i++) {
-                ks[i] = Goldilocks_k ** i;
+                ks[i] = k_coset ** i;
             }
 
             // update the already computed ks
@@ -436,7 +434,7 @@ function connection(int opid, expr cols[], expr CONN[]) {
         col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
 
         for (int i = 0; i < len; i++) {
-            const int k = Goldilocks_k ** i;
+            const int k = k_coset ** i;
 
             // Send to the bus the remaining columns and their associated permuted columns
             prod_assumes(name_connection, opid, cols: [cols[i], k*ID]);

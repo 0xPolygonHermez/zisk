@@ -1,1 +1,30 @@
 require "goldilocks.pil";
+/*
+    name    | code
+------------|-----
+ Goldilocks |  0
+ Mersenne31 |  1
+ BN254      |  2
+*/
+
+const int FIELDS[3] = [0,1,2];
+
+int ACTIVE_FIELD = 0;
+
+const int GEN[256];
+switch (FIELDS[ACTIVE_FIELD]) {
+    // Goldilocks
+    case 0:
+        for (int i = 0; i < length(Goldilocks_Gen); i++) {
+            GEN[i] = Goldilocks_Gen[i];
+        }
+
+        for (int i = length(Goldilocks_Gen); i < length(GEN); i++) {
+            GEN[i] = 0;
+        }
+
+    default:
+        error("Unknown field");
+}
+
+const int k_coset = Goldilocks_k;
