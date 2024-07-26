@@ -1,6 +1,6 @@
 use crate::{EmuContext, EmuOptions, EmuTrace, MemTrace};
 use riscv2zisk::{
-    ZiskOperations, ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
+    opcode_execute, ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 use std::{collections::HashMap, mem};
@@ -18,9 +18,6 @@ pub struct Emu<'a> {
     /// ZisK rom, containing the program to execute, which is constant for this program except for
     /// the input data
     pub rom: &'a ZiskRom,
-
-    /// ZisK operations (c, flag) = f(a, b), one per supported opcode
-    operations: ZiskOperations,
 
     /// Context, where the state of the execution is stored and modified at every execution step
     ctx: EmuContext,
@@ -42,13 +39,7 @@ impl Emu<'_> {
         callback: Option<fn(&mut Vec<EmuTrace>)>,
     ) -> Emu {
         // Initialize an empty instance
-        let mut emu = Emu {
-            ctx: EmuContext::new(input),
-            operations: ZiskOperations::new(),
-            rom,
-            options,
-            callback,
-        };
+        let mut emu = Emu { ctx: EmuContext::new(input), rom, options, callback };
 
         // Create a new read section for every RO data entry of the rom
         for i in 0..emu.rom.ro_data.len() {
@@ -134,16 +125,8 @@ impl Emu<'_> {
             _ => panic!("Emu::step() Invalid b_src={} pc={}", inst.i.b_src, self.ctx.pc),
         }
 
-        // Check the instruction opcode range
-        if inst.i.op > 0xFF {
-            panic!("Emu::step() invalid opcode={}", inst.i.op);
-        }
-
-        // Get the ZisK operation for this opcode
-        let operation = self.operations.op_from_code.get(&(inst.i.op as u8)).unwrap();
-
         // Call the operation
-        (self.ctx.c, self.ctx.flag) = (operation.f)(self.ctx.a, self.ctx.b);
+        (self.ctx.c, self.ctx.flag) = opcode_execute(inst.i.op, self.ctx.a, self.ctx.b);
 
         // Store the value of the c register based on the storage specified by the current
         // instruction
@@ -224,7 +207,7 @@ impl Emu<'_> {
         // Store an emulator trace, if requested
         if self.options.trace_steps.is_some() {
             let mut emu_trace = EmuTrace {
-                opcode: inst.i.op as u8,
+                opcode: inst.i.op,
                 a: self.ctx.a,
                 b: self.ctx.b,
                 c: self.ctx.c,

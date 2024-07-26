@@ -373,6 +373,63 @@ fn op_max_w(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
+pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
+    match opcode {
+        0x00 => op_flag(a, b),
+        0x01 => op_copyb(a, b),
+        0x02 => op_signextend_b(a, b),
+        0x03 => op_signextend_h(a, b),
+        0x04 => op_signextend_w(a, b),
+        0x10 => op_add(a, b),
+        0x14 => op_add_w(a, b),
+        0x20 => op_sub(a, b),
+        0x24 => op_sub_w(a, b),
+        0x30 => op_sll(a, b),
+        0x34 => op_sll_w(a, b),
+        0x40 => op_sra(a, b),
+        0x41 => op_srl(a, b),
+        0x44 => op_sra_w(a, b),
+        0x45 => op_srl_w(a, b),
+        0x50 => op_eq(a, b),
+        0x54 => op_eq_w(a, b),
+        0x60 => op_ltu(a, b),
+        0x61 => op_lt(a, b),
+        0x64 => op_ltu_w(a, b),
+        0x65 => op_lt_w(a, b),
+        0x70 => op_leu(a, b),
+        0x71 => op_le(a, b),
+        0x74 => op_leu_w(a, b),
+        0x75 => op_le_w(a, b),
+        0x80 => op_and(a, b),
+        0x90 => op_or(a, b),
+        0xa0 => op_xor(a, b),
+        0xb0 => op_mulu(a, b),
+        0xb1 => op_mul(a, b),
+        0xb5 => op_mul_w(a, b),
+        0xb8 => op_muluh(a, b),
+        0xb9 => op_mulh(a, b),
+        0xbb => op_mulsuh(a, b),
+        0xc0 => op_divu(a, b),
+        0xc1 => op_div(a, b),
+        0xc4 => op_divu_w(a, b),
+        0xc5 => op_div_w(a, b),
+        0xc8 => op_remu(a, b),
+        0xc9 => op_rem(a, b),
+        0xcc => op_remu_w(a, b),
+        0xcd => op_rem_w(a, b),
+        0xd0 => op_minu(a, b),
+        0xd1 => op_min(a, b),
+        0xd4 => op_minu_w(a, b),
+        0xd5 => op_min_w(a, b),
+        0xe0 => op_maxu(a, b),
+        0xe1 => op_max(a, b),
+        0xe4 => op_maxu_w(a, b),
+        0xe5 => op_max_w(a, b),
+        _ => panic!("opcode_execute() found invalid opcode={}", opcode),
+    }
+}
+
 /// ZisK operations list, mapped by operation code and by operation string, for convenience
 pub struct ZiskOperations {
     pub ops: Vec<ZiskOperation>,
