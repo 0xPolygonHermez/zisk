@@ -1,184 +1,98 @@
 use crate::ZiskOperation;
-use std::collections::HashMap;
+use std::{collections::HashMap, num::Wrapping};
 
 // Constant values used in operation functions
-const M32: u64 = 0xFFFFFFFF;
-const M31: u64 = 0x7FFFFFFF;
-const TWO32: u64 = 0x100000000;
-const S32: u64 = 0x80000000;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
-const M63: u64 = 0x7FFFFFFFFFFFFFFF;
-const TWO64: i128 = 0x10000000000000000;
-const S64: u64 = 0x8000000000000000;
-const M15: u64 = 0x7FFF;
-const M7: u64 = 0x7F;
-
-// Auxiliar unary operations
-
-/// Converts a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of the
-/// same value
-fn op_se8(a: u64) -> u64 {
-    if (a & 0x80) != 0 {
-        0xFFFFFFFFFFFFFF80 | (a & M7)
-    } else {
-        a & M7
-    }
-}
-
-/// Converts a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number of the
-/// same value
-fn op_se16(a: u64) -> u64 {
-    if (a & 0x8000) != 0 {
-        0xFFFFFFFFFFFF8000 | (a & M15)
-    } else {
-        a & M15
-    }
-}
-
-/// Converts a signed 32-bits number in the range [-2147483648, 2147483647] into a signed 64-bit
-/// number of the same value
-fn op_se32(a: u64) -> u64 {
-    if (a & 0x80000000) != 0 {
-        0xFFFFFFFF80000000 | (a & M31)
-    } else {
-        a & M31
-    }
-}
-
-fn op_ao64(a: u64) -> u64 {
-    a
-} /* TODO: const ao64 = (a) => a & M64 */
-
-fn op_aou64(a: i64) -> u64 {
-    if a < 0 {
-        (a as u64 & M63) + S64
-    } else {
-        a as u64 & M64
-    }
-} /* TODO: const aou64 = (a) => a<0 ? ((a & M63) + S64):  (a  & M64); */
-
-fn op_ao32(a: u64) -> u64 {
-    op_se32(a)
-}
-
-fn op_aou32(a: i64) -> u64 {
-    if a < 0 {
-        op_se32((a as u64 & M31) + S32)
-    } else {
-        op_se32(a as u64)
-    }
-} /* TODO: const aou32 = (a) => a<0 ? se32((a & M31) + S32) : se32(a); */
-
-/// Converts an unsigned 32-bit number in the range [0, 4294967295] into an unsigned 64-bit number
-/// of the same value
-fn op_u32(a: u64) -> u64 {
-    a & M32
-}
-
-fn op_s64(a: u64) -> i64 {
-    if (a & S64) != 0 {
-        (a as i128 - TWO64) as i64
-    } else {
-        a as i64
-    }
-}
-
-/// Converts a signed 32-bit number into an unsigned 64-bit number
-fn op_s32(a: u64) -> i64 {
-    if (a & S32) != 0 {
-        op_u32(a) as i64 - TWO32 as i64
-    } else {
-        op_u32(a) as i64
-    }
-}
-
-/// Converts a signed 64-bit number into an unsigned 64-bit number
-fn op_u64(a: i64) -> u64 {
-    /*let aa = a as i64;
-    if aa < 0
-    {
-        (TWO64 + aa as i128) as u64
-    }
-    else
-    {
-        a
-    }*/
-    a as u64
-}
 
 // Main binary operations
 
 /// Sets flag to true (and c to 0)
+#[inline(always)]
 fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
     (0, true)
 }
 
 /// Copies register b into c
+#[inline(always)]
 fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
     (b, false)
 }
 
 /// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
 /// the same value, and stores the result in c
+#[inline(always)]
 fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
-    (op_se8(b), false)
+    ((b as i8) as u64, false)
 }
 
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, and stores the result in c
+#[inline(always)]
 fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
-    (op_se16(b), false)
+    ((b as i16) as u64, false)
 }
 
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, and stores the result in c
+#[inline(always)]
 fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
-    (op_se32(b), false)
+    ((b as i32) as u64, false)
 }
 
 /// Adds a and b, and stores the result in c
+#[inline(always)]
 fn op_add(a: u64, b: u64) -> (u64, bool) {
-    (((a as u128 + b as u128) & M64 as u128) as u64, false)
+    ((Wrapping(a) + Wrapping(b)).0, false)
 }
 
 /// Adds a and b as 32-bit unsigned values, and stores the result in c
+#[inline(always)]
 fn op_add_w(a: u64, b: u64) -> (u64, bool) {
-    (op_ao32(op_u32(a) + op_u32(b)), false)
+    ((Wrapping(a as i32) + Wrapping(b as i32)).0 as u64, false)
 }
 
+#[inline(always)]
 fn op_sub(a: u64, b: u64) -> (u64, bool) {
-    ((a as u128 + (b as u128 ^ M64 as u128) + 1) as u64, false)
+    ((Wrapping(a) - Wrapping(b)).0, false)
 }
 
+#[inline(always)]
 fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
-    (op_ao32(op_u32(a) + (op_u32(b) ^ M32) + 1), false)
+    ((Wrapping(a as i32) - Wrapping(b as i32)).0 as u64, false)
 }
 
+#[inline(always)]
 fn op_sll(a: u64, b: u64) -> (u64, bool) {
-    (op_ao64(a << (b & 0x3f)), false)
+    (a << (b & 0x3f), false)
 }
 
+#[inline(always)]
 fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
-    (op_ao32(op_u32(a) << (b & 0x1f)), false)
+    (((Wrapping(a as u32) << (b & 0x3f) as usize).0 as i32) as u64, false)
 }
 
+#[inline(always)]
 fn op_sra(a: u64, b: u64) -> (u64, bool) {
-    (op_aou64(op_s64(a) >> (op_s64(b) & 0x3f)), false)
+    (((a as i64) >> (b & 0x3f)) as u64, false)
 }
 
+#[inline(always)]
 fn op_srl(a: u64, b: u64) -> (u64, bool) {
-    (op_ao64(a >> (b & 0x3f)), false)
+    (a >> (b & 0x3f), false)
 }
 
+#[inline(always)]
 fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
-    (op_aou32(op_s32(a) >> (b & 0x1f)), false)
+    ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
 }
 
+#[inline(always)]
 fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
-    (op_ao32(op_u32(a) >> (b & 0x1f)), false)
+    (((Wrapping(a as u32) >> (b & 0x3f) as usize).0 as i32) as u64, false)
 }
 
 /// If a equals b, returns c=1, flag=true
+#[inline(always)]
 fn op_eq(a: u64, b: u64) -> (u64, bool) {
     if a == b {
         (1, true)
@@ -187,8 +101,9 @@ fn op_eq(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
 fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(a) == op_u32(b) {
+    if (a as i32) == (b as i32) {
         (1, true)
     } else {
         (0, false)
@@ -196,6 +111,7 @@ fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
 }
 
 /// If a is strictly less than b, returns c=1, flag=true
+#[inline(always)]
 fn op_ltu(a: u64, b: u64) -> (u64, bool) {
     if a < b {
         (1, true)
@@ -204,30 +120,34 @@ fn op_ltu(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
 fn op_lt(a: u64, b: u64) -> (u64, bool) {
-    if op_s64(a) < op_s64(b) {
+    if (a as i64) < (b as i64) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(a) < op_u32(b) {
+    if (a as u32) < (b as u32) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
-    if op_s32(a) < op_s32(b) {
+    if (a as i32) < (b as i32) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_leu(a: u64, b: u64) -> (u64, bool) {
     if a <= b {
         (1, true)
@@ -236,74 +156,79 @@ fn op_leu(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
 fn op_le(a: u64, b: u64) -> (u64, bool) {
-    if op_s64(a) <= op_s64(b) {
+    if (a as i64) <= (b as i64) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(a) <= op_u32(b) {
+    if (a as u32) <= (b as u32) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_le_w(a: u64, b: u64) -> (u64, bool) {
-    if op_s32(a) <= op_s32(b) {
+    if (a as i32) <= (b as i32) {
         (1, true)
     } else {
         (0, false)
     }
 }
 
+#[inline(always)]
 fn op_and(a: u64, b: u64) -> (u64, bool) {
     (a & b, false)
 }
 
+#[inline(always)]
 fn op_or(a: u64, b: u64) -> (u64, bool) {
     (a | b, false)
 }
 
+#[inline(always)]
 fn op_xor(a: u64, b: u64) -> (u64, bool) {
     (a ^ b, false)
 }
 
+#[inline(always)]
 fn op_mulu(a: u64, b: u64) -> (u64, bool) {
-    ((a * b) & M64, false)
+    ((Wrapping(a) * Wrapping(b)).0, false)
 }
 
+#[inline(always)]
 fn op_mul(a: u64, b: u64) -> (u64, bool) {
-    (((op_s64(a) as i128 * op_s64(b) as i128) & M64 as i128) as u64, false)
+    ((Wrapping(a as i64) * Wrapping(b as i64)).0 as u64, false)
 }
 
+#[inline(always)]
 fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
-    let aa = op_u32(a);
-    let bb = op_u32(b);
-    let cc = aa * bb;
-    let ccc = if (cc & 0x80000000) != 0 { cc | 0xFFFFFFFF00000000 } else { cc & 0xFFFFFFFF };
-    (ccc, false)
+    ((Wrapping(a as i32) * Wrapping(b as i32)).0 as u64, false)
 }
 
+#[inline(always)]
 fn op_muluh(a: u64, b: u64) -> (u64, bool) {
     (((a as u128 * b as u128) >> 64) as u64, false)
 }
 
+#[inline(always)]
 fn op_mulh(a: u64, b: u64) -> (u64, bool) {
-    let aa: i128 = op_s64(a) as i128;
-    let bb: i128 = op_s64(b) as i128;
-    let cc: i128 = aa * bb;
-    let ccc: u128 = cc as u128 >> 64;
-    (ccc as u64, false)
+    (((((a as i64) as i128) * ((b as i64) as i128)) >> 64) as u64, false)
 }
 
+#[inline(always)]
 fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
-    (((op_s64(a) as i128 * op_u64(b as i64) as i128) >> 64) as u64, false)
+    (((((a as i64) as i128) * (b as i128)) >> 64) as u64, false)
 }
 
+#[inline(always)]
 fn op_divu(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {
         return (M64, true);
@@ -312,36 +237,33 @@ fn op_divu(a: u64, b: u64) -> (u64, bool) {
     (a / b, false)
 }
 
+#[inline(always)]
 fn op_div(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {
         return (M64, true);
     }
-    let aa = op_s64(a);
-    let bb = op_s64(b);
-    let cc = (aa as i128 / bb as i128) as i64;
-    let ccc = op_aou64(cc);
-    (ccc, false)
+    ((((a as i64) as i128) / ((b as i64) as i128)) as u64, false)
 }
 
+#[inline(always)]
 fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(b) == 0 {
+    if b as u32 == 0 {
         return (M64, true);
     }
 
-    (op_ao32(op_u32(a) / op_u32(b)), false)
+    (((a as u32 / b as u32) as i32) as u64, false)
 }
 
+#[inline(always)]
 fn op_div_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(b) == 0 {
+    if b as i32 == 0 {
         return (M64, true);
     }
-    let aa = op_s32(a);
-    let bb = op_s32(b);
-    let cc = (aa as i128 / bb as i128) as i64;
-    let ccc = op_aou32(cc);
-    (ccc, false)
+
+    ((((a as i32) as i64) / ((b as i32) as i64)) as u64, false)
 }
 
+#[inline(always)]
 fn op_remu(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {
         return (a, true);
@@ -350,41 +272,34 @@ fn op_remu(a: u64, b: u64) -> (u64, bool) {
     (a % b, false)
 }
 
+#[inline(always)]
 fn op_rem(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {
         return (a, true);
     }
 
-    (op_u64((op_s64(a) as i128 % op_s64(b) as i128) as i64), false)
+    ((((a as i64) as i128) % ((b as i64) as i128)) as u64, false)
 }
 
+#[inline(always)]
 fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(b) == 0 {
-        let aa = if (a & 0x80000000) != 0 { a | 0xFFFFFFFF00000000 } else { a & 0xFFFFFFFF };
-        return (aa, true);
-        //return (op_aou32(a as i64), true);
+    if (b as u32) == 0 {
+        return ((a as i32) as u64, true);
     }
 
-    (op_ao32(op_u32(a) % op_u32(b)), false)
+    ((((a as u32) % (b as u32)) as i32) as u64, false)
 }
 
+#[inline(always)]
 fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(b) == 0 {
-        let aa = if (a & 0x80000000) != 0 { a | 0xFFFFFFFF00000000 } else { a & 0xFFFFFFFF };
-        return (aa, true);
-        //return (op_aou32(a as i64), true);
+    if (b as i32) == 0 {
+        return ((a as i32) as u64, true);
     }
 
-    if op_u32(b) == 0 {
-        return (M64, true);
-    }
-    let aa = op_s32(a);
-    let bb = op_s32(b);
-    let cc = (aa as i128 % bb as i128) as i64;
-    let ccc = op_aou32(cc);
-    (ccc, false)
+    (((a as i32) % (b as i32)) as u64, false)
 }
 
+#[inline(always)]
 fn op_minu(a: u64, b: u64) -> (u64, bool) {
     //if op_s64(a) < op_s64(b)
     if a < b {
@@ -394,30 +309,34 @@ fn op_minu(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
 fn op_min(a: u64, b: u64) -> (u64, bool) {
-    if op_s64(a) < op_s64(b) {
+    if (a as i64) < (b as i64) {
         (a, false)
     } else {
         (b, false)
     }
 }
 
+#[inline(always)]
 fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(a) < op_u32(b) {
+    if (a as u32) < (b as u32) {
         (a, false)
     } else {
         (b, false)
     }
 }
 
+#[inline(always)]
 fn op_min_w(a: u64, b: u64) -> (u64, bool) {
-    if op_s32(a) < op_s32(b) {
+    if (a as i32) < (b as i32) {
         (a, false)
     } else {
         (b, false)
     }
 }
 
+#[inline(always)]
 fn op_maxu(a: u64, b: u64) -> (u64, bool) {
     //if op_s64(a) > op_s64(b)
     if a > b {
@@ -427,27 +346,144 @@ fn op_maxu(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
+#[inline(always)]
 fn op_max(a: u64, b: u64) -> (u64, bool) {
-    if op_s64(a) > op_s64(b) {
+    if (a as i64) > (b as i64) {
         (a, false)
     } else {
         (b, false)
     }
 }
 
+#[inline(always)]
 fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
-    if op_u32(a) > op_u32(b) {
+    if (a as u32) > (b as u32) {
         (a, false)
     } else {
         (b, false)
     }
 }
 
+#[inline(always)]
 fn op_max_w(a: u64, b: u64) -> (u64, bool) {
-    if op_s32(a) > op_s32(b) {
+    if (a as i32) > (b as i32) {
         (a, false)
     } else {
         (b, false)
+    }
+}
+
+#[inline(always)]
+pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
+    match opcode {
+        0x00 => op_flag(a, b),
+        0x01 => op_copyb(a, b),
+        0x02 => op_signextend_b(a, b),
+        0x03 => op_signextend_h(a, b),
+        0x04 => op_signextend_w(a, b),
+        0x10 => op_add(a, b),
+        0x14 => op_add_w(a, b),
+        0x20 => op_sub(a, b),
+        0x24 => op_sub_w(a, b),
+        0x30 => op_sll(a, b),
+        0x34 => op_sll_w(a, b),
+        0x40 => op_sra(a, b),
+        0x41 => op_srl(a, b),
+        0x44 => op_sra_w(a, b),
+        0x45 => op_srl_w(a, b),
+        0x50 => op_eq(a, b),
+        0x54 => op_eq_w(a, b),
+        0x60 => op_ltu(a, b),
+        0x61 => op_lt(a, b),
+        0x64 => op_ltu_w(a, b),
+        0x65 => op_lt_w(a, b),
+        0x70 => op_leu(a, b),
+        0x71 => op_le(a, b),
+        0x74 => op_leu_w(a, b),
+        0x75 => op_le_w(a, b),
+        0x80 => op_and(a, b),
+        0x90 => op_or(a, b),
+        0xa0 => op_xor(a, b),
+        0xb0 => op_mulu(a, b),
+        0xb1 => op_mul(a, b),
+        0xb5 => op_mul_w(a, b),
+        0xb8 => op_muluh(a, b),
+        0xb9 => op_mulh(a, b),
+        0xbb => op_mulsuh(a, b),
+        0xc0 => op_divu(a, b),
+        0xc1 => op_div(a, b),
+        0xc4 => op_divu_w(a, b),
+        0xc5 => op_div_w(a, b),
+        0xc8 => op_remu(a, b),
+        0xc9 => op_rem(a, b),
+        0xcc => op_remu_w(a, b),
+        0xcd => op_rem_w(a, b),
+        0xd0 => op_minu(a, b),
+        0xd1 => op_min(a, b),
+        0xd4 => op_minu_w(a, b),
+        0xd5 => op_min_w(a, b),
+        0xe0 => op_maxu(a, b),
+        0xe1 => op_max(a, b),
+        0xe4 => op_maxu_w(a, b),
+        0xe5 => op_max_w(a, b),
+        _ => panic!("opcode_execute() found invalid opcode={}", opcode),
+    }
+}
+
+#[inline(always)]
+pub fn opcode_string(opcode: u8) -> &'static str {
+    match opcode {
+        0x00 => "flag",
+        0x01 => "copyb",
+        0x02 => "signextend_b",
+        0x03 => "signextend_h",
+        0x04 => "signextend_w",
+        0x10 => "add",
+        0x14 => "add_w",
+        0x20 => "sub",
+        0x24 => "sub_w",
+        0x30 => "sll",
+        0x34 => "sll_w",
+        0x40 => "sra",
+        0x41 => "srl",
+        0x44 => "sra_w",
+        0x45 => "srl_w",
+        0x50 => "eq",
+        0x54 => "eq_w",
+        0x60 => "ltu",
+        0x61 => "lt",
+        0x64 => "ltu_w",
+        0x65 => "lt_w",
+        0x70 => "leu",
+        0x71 => "le",
+        0x74 => "leu_w",
+        0x75 => "le_w",
+        0x80 => "and",
+        0x90 => "or",
+        0xa0 => "xor",
+        0xb0 => "mulu",
+        0xb1 => "mul",
+        0xb5 => "mul_w",
+        0xb8 => "muluh",
+        0xb9 => "mulh",
+        0xbb => "mulsuh",
+        0xc0 => "divu",
+        0xc1 => "div",
+        0xc4 => "divu_w",
+        0xc5 => "div_w",
+        0xc8 => "remu",
+        0xc9 => "rem",
+        0xcc => "remu_w",
+        0xcd => "rem_w",
+        0xd0 => "minu",
+        0xd1 => "min",
+        0xd4 => "minu_w",
+        0xd5 => "min_w",
+        0xe0 => "maxu",
+        0xe1 => "max",
+        0xe4 => "maxu_w",
+        0xe5 => "max_w",
+        _ => panic!("opcode_string() found invalid opcode={}", opcode),
     }
 }
 

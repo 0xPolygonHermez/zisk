@@ -36,15 +36,32 @@ jobs:
         with:
           pull_token: ${{ secrets.PULL_TOKEN }}
 
+      - name: Set nightly flag
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "IS_NIGHTLY=true" >> $GITHUB_ENV
+          else
+            echo "IS_NIGHTLY=false" >> $GITHUB_ENV
+          fi
+
       # If it's a nightly release, tag with the release time. If the tag is `develop`, we want to use 
       # `latest` as the tag name. Else, use the tag name as is.
       - name: Compute release name and tag
         id: release_info
         run: |
-          if [[ $IS_NIGHTLY ]]; then
+          echo "IS_NIGHTLY=$IS_NIGHTLY"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+          
+          if [[ $IS_NIGHTLY == "true" ]]; then
+            echo "IS_NIGHTLY"
+            echo "tag_name=nightly-${GITHUB_SHA}"
+            echo "release_name=Nightly ($(date '+%Y-%m-%d'))"
             echo "tag_name=nightly-${GITHUB_SHA}" >> $GITHUB_OUTPUT
             echo "release_name=Nightly ($(date '+%Y-%m-%d'))" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "IS_LATEST"
+            echo "tag_name=latest"
+            echo "release_name=Latest"
             echo "tag_name=latest" >> $GITHUB_OUTPUT
             echo "release_name=Latest" >> $GITHUB_OUTPUT
           else
@@ -57,7 +74,7 @@ jobs:
       # which allows users to roll back. It is also used to build
       # the changelog.
       - name: Create build-specific nightly tag
-        if: ${{ env.IS_NIGHTLY }}
+        if: ${{ env.IS_NIGHTLY == 'true' }}
         uses: actions/github-script@v7
         env:
           TAG_NAME: ${{ steps.release_info.outputs.tag_name }}
@@ -71,7 +88,7 @@ jobs:
         uses: mikepenz/release-changelog-builder-action@v4
         with:
           configuration: "./.github/changelog.json"
-          fromTag: ${{ env.IS_NIGHTLY && 'nightly' || '' }}
+          fromTag: ${{ env.IS_NIGHTLY == 'true' && 'nightly' || '' }}
           toTag: ${{ steps.release_info.outputs.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,15 +186,18 @@ jobs:
 
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk --target "$target" "${flags[@]}"
+          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv2zisk --target "$target" "${flags[@]}"
 
-          bins=(cargo-zisk)
+          bins=(cargo-zisk ziskemu)
           for name in "${bins[@]}"; do
             bin=./target/$target/release/$name$exe
             file "$bin" || true
             ldd "$bin" || true
             $bin --version || true
           done
+      
+      - name: Set VERSION_NAME
+        run: echo "VERSION_NAME=$([ \"$IS_NIGHTLY\" == 'true' ] && echo 'nightly' || echo '${{ needs.prepare.outputs.tag_name }}')" >> $GITHUB_ENV
 
       - name: Archive binaries
         id: artifacts
@@ -185,20 +205,20 @@ jobs:
           PLATFORM_NAME: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
-          VERSION_NAME: ${{ (env.IS_NIGHTLY && 'nightly') || needs.prepare.outputs.tag_name }}
+          VERSION_NAME: ${{ env.VERSION_NAME }}
         shell: bash
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
             # See: https://github.com/actions/virtual-environments/issues/2619
-            gtar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk
+            gtar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           else
             cd ./target/${TARGET}/release
-            7z a -tzip "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" cargo-zisk.exe
+            7z a -tzip "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" cargo-zisk.exe ziskemu.exe riscv2zisk.exe
             mv "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" >> $GITHUB_OUTPUT
           fi
@@ -211,16 +231,15 @@ jobs:
         with:
           name: ${{ needs.prepare.outputs.release_name }}
           tag_name: ${{ needs.prepare.outputs.tag_name }}
-          prerelease: ${{ env.IS_NIGHTLY || needs.prepare.outputs.tag_name == 'latest' }}
+          prerelease: ${{ env.IS_NIGHTLY == 'true' || needs.prepare.outputs.tag_name == 'latest' }}
           body: ${{ needs.prepare.outputs.changelog }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
-            ${{ steps.man.outputs.cargo_zisk_man }}
 
       # If this is a nightly release, it also updates the release
       # tagged `nightly` for compatibility with `ziskup`
       - name: Update nightly release
-        if: ${{ env.IS_NIGHTLY }}
+        if: ${{ env.IS_NIGHTLY == 'true' }}
         uses: softprops/action-gh-release@v1
         with:
           name: "Nightly"
@@ -229,7 +248,6 @@ jobs:
           body: ${{ needs.prepare.outputs.changelog }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
-            ${{ steps.man.outputs.cargo_zisk_man }}
 
   cleanup:
     name: Release cleanup

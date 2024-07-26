@@ -30,6 +30,7 @@ runs:
       uses: Dup4/actions-setup-gcc@v1
       with:
         version: latest
+        cc: false
 
     - name: rust-cache
       uses: actions/cache@v3

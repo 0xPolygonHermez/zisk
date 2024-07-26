@@ -1,5 +1,7 @@
 use crate::MemSection;
-use riscv2zisk::{read_u16_le, read_u32_le, read_u64_le, write_u16_le, write_u32_le, write_u64_le};
+use riscv2zisk::{
+    read_u16_le, read_u32_le, read_u64_le, write_u16_le, write_u32_le, write_u64_le, UART_ADDR,
+};
 
 /// Memory structure, containing several read sections and one single write section
 pub struct Mem {
@@ -23,9 +25,17 @@ impl Mem {
 
     /// Adds a read section to the memory structure
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
-        let mem_section =
-            MemSection { start, end: start + buffer.len() as u64, buffer: buffer.to_owned() };
+        let end = start + buffer.len() as u64;
+        let mem_section = MemSection { start, end, buffer: buffer.to_owned() };
         self.read_sections.push(mem_section);
+        /*println!(
+            "Mem::add_read_section() start={:x}={} len={} end={:x}={}",
+            start,
+            start,
+            buffer.len(),
+            end,
+            end
+        );*/
     }
 
     /// Adds a write section to the memory structure, which cannot be written twice
@@ -94,8 +104,10 @@ impl Mem {
                     _ => panic!("Mem::read() invalid width={}", width),
                 };
 
-                //println!("Mem::read() addr={:x} width={} value={:x}={}", addr, width, value,
-                // value);
+                /*println!(
+                    "Mem::read() addr={:x}={} width={} value={:x}={}",
+                    addr, addr, width, value, value
+                );*/
                 return value;
             }
         }
@@ -104,7 +116,8 @@ impl Mem {
 
     /// Write a u64 value to the memory write section, based on the provided address and width
     pub fn write(&mut self, addr: u64, val: u64, width: u64) {
-        //println!("Mem::write() addr={:x} width={} value={:x}={}", addr, width, val, val);
+        //println!("Mem::write() addr={:x}={} width={} value={:x}={}", addr, addr, width, val,
+        // val);
 
         // Get a reference to the write section
         let section = &mut self.write_section;
@@ -124,6 +137,11 @@ impl Mem {
             4 => write_u32_le(&mut section.buffer, write_position, (val & 0xFFFFFFFF) as u32),
             8 => write_u64_le(&mut section.buffer, write_position, val),
             _ => panic!("Mem::write() invalid width={}", width),
+        }
+
+        // Log to console bytes written to UART address
+        if (addr == UART_ADDR) && (width == 1) {
+            print!("{}", String::from(val as u8 as char));
         }
     }
 }

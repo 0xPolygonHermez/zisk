@@ -42,7 +42,7 @@ impl ZiskInstBuilder {
                 jmp_offset1: INITIAL_VALUE_S64,
                 jmp_offset2: INITIAL_VALUE_S64,
                 is_external_op: INITIAL_VALUE,
-                op: INITIAL_VALUE,
+                op: 0,
                 op_str: "",
                 verbose: String::new(),
             },
@@ -210,7 +210,7 @@ impl ZiskInstBuilder {
         } else {
             panic!("ZiskInstBuilder::op() found invalid op={}", optxt);
         }
-        self.i.op = op.c as u64;
+        self.i.op = op.c;
         self.i.op_str = op.n;
     }
 
@@ -244,9 +244,9 @@ impl ZiskInstBuilder {
         if self.i.is_external_op == INVALID_VALUE {
             panic!("ZiskInstBuilder::check() found is_external_op={}", self.i.is_external_op);
         }
-        if self.i.op == INVALID_VALUE {
-            panic!("ZiskInstBuilder::check() found op={}", self.i.op);
-        }
+        //if self.i.op == INVALID_VALUE {
+        //    panic!("ZiskInstBuilder::check() found op={}", self.i.op);
+        //}
         //if self.i.inc_sp == INVALID_VALUE { panic!("ZiskInstBuilder::check() found inc_sp={}",
         // self.i.inc_sp); }
         if self.i.jmp_offset1 == INVALID_VALUE as i64 {
