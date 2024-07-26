@@ -1,10 +1,10 @@
 use std::{
-    sync::{mpsc::Sender, Arc, Mutex},
+    sync::{mpsc::Sender, Mutex},
     thread,
 };
 
 pub enum WorkerTask<T> {
-    Prove(Arc<Vec<T>>),
+    Prove(Box<Vec<T>>),
     Finish,
 }
 

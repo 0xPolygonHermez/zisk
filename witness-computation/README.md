@@ -52,3 +52,11 @@ cd ../pil2-proofman
 cargo run --bin proofman-cli prove --wc-lib ../zisk/target/debug/libzisk_wc.dylib --proving-key ../zisk/zkvm/zisk-wc/setup
 /build/provingKey --public-inputs ../zisk/zkvm/zisk-wc/inputs/inputs.hex
 ```
+
+
+
+        // fn execute(&self, pctx: &mut ProofCtx<F>, wneeds: &WitnessNeeds) {
+        // Creates the ectx with the workers pool inside
+        // TODO! let mut ectx = self.wcm.createExecutionContext(wneeds);
+        self.main_sm.execute(pctx, ectx);
+        // TODO! ectx.terminate();

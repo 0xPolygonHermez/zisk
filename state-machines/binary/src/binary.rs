@@ -9,6 +9,7 @@ use std::{
 use std::{fmt::Debug, sync::mpsc, thread};
 
 use proofman::WCManager;
+use rayon::Scope;
 use sm_binary_32::Binary32SM;
 use sm_binary_3264::Binary3264SM;
 use sm_binary_64::Binary64SM;
@@ -26,32 +27,21 @@ pub struct BinarySM {
     binary32_sm: Arc<Binary32SM>,
     binary64_sm: Arc<Binary64SM>,
     binary3264_sm: Arc<Binary3264SM>,
-    sessions: Arc<Sessions>,
-    opened_sessions: Vec<usize>,
 }
 
 impl BinarySM {
     pub fn new<F>(
         wcm: &mut WCManager<F>,
-        sessions: Arc<Sessions>,
         binary32_sm: Arc<Binary32SM>,
         binary64_sm: Arc<Binary64SM>,
         binary3264_sm: Arc<Binary3264SM>,
     ) -> Arc<Self> {
-        let opened_sessions = vec![
-            sessions.open_session(binary32_sm.clone()),
-            sessions.open_session(binary64_sm.clone()),
-            sessions.open_session(binary3264_sm.clone()),
-        ];
-
         let binary_sm = Self {
             inputs32: Mutex::new(Vec::new()),
             inputs64: Mutex::new(Vec::new()),
             binary32_sm,
             binary64_sm,
             binary3264_sm,
-            sessions,
-            opened_sessions,
         };
         let binary_sm = Arc::new(binary_sm);
 
@@ -82,60 +72,76 @@ impl Provable<Binary3264Op, OpResult> for BinarySM {
         }
     }
 
-    fn prove(&self, operations: &[Binary3264Op]) {
+    fn prove(&self, operations: &[Binary3264Op], is_last: bool, scope: &Scope) {
         let mut inputs32 = self.inputs32.lock().unwrap();
         let mut inputs64 = self.inputs64.lock().unwrap();
+
+        // TODO! Split the operations into 32 and 64 bit operations in parallel
         for operation in operations {
             match operation {
-                Binary3264Op::And32(a, b) | Binary3264Op::Or32(a, b) => {
+                Binary3264Op::And32(a, b) | Binary3264Op::And32(a, b) => {
                     inputs32.push(operation.clone().into());
                 }
-                Binary3264Op::And64(a, b) | Binary3264Op::Or64(a, b) => {
+                Binary3264Op::And64(a, b) | Binary3264Op::And64(a, b) => {
+                    inputs64.push(operation.clone().into());
+                }
+                Binary3264Op::Or32(a, b) | Binary3264Op::Or32(a, b) => {
+                    inputs32.push(operation.clone().into());
+                }
+                Binary3264Op::Or64(a, b) | Binary3264Op::Or64(a, b) => {
                     inputs64.push(operation.clone().into());
                 }
             }
         }
 
-        if inputs32.len() >= PROVE_CHUNK_SIZE {
-            let old_inputs = std::mem::take(&mut *inputs32);
-            self.binary32_sm.prove(&old_inputs);
+        // The following is a way to release the lock on the inputs32 and inputs64 Mutexes asap
+        // NOTE: The `inputs32` lock is released when it goes out of scope because it is shadowed
+        let inputs32 = if is_last || inputs32.len() >= PROVE_CHUNK_SIZE {
+            let _inputs32 = std::mem::take(&mut *inputs32);
+            if _inputs32.is_empty() {
+                None
+            } else {
+                Some(_inputs32)
+            }
+        } else {
+            None
+        };
+
+        // NOTE: The `inputs64` lock is released when it goes out of scope because it is shadowed
+        let inputs64 = if is_last || inputs64.len() >= PROVE_CHUNK_SIZE {
+            let _inputs64 = std::mem::take(&mut *inputs64);
+            if _inputs64.is_empty() {
+                None
+            } else {
+                Some(_inputs64)
+            }
+        } else {
+            None
+        };
+
+        if inputs32.is_some() {
+            let binary32_s = self.binary32_sm.clone();
+            scope.spawn(move |scope| {
+                binary32_s.prove(&inputs32.unwrap(), is_last, scope);
+            });
         }
 
-        if inputs64.len() >= PROVE_CHUNK_SIZE {
-            let old_inputs = std::mem::take(&mut *inputs64);
-            self.binary64_sm.prove(&old_inputs);
+        if inputs64.is_some() {
+            let binary64_sm = self.binary64_sm.clone();
+            scope.spawn(move |scope| {
+                binary64_sm.prove(&inputs64.unwrap(), is_last, scope);
+            });
         }
     }
 
     fn calculate_prove(
         &self,
         operation: Binary3264Op,
+        is_last: bool,
+        scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation]);
+        self.prove(&[operation], is_last, scope);
         result
-    }
-}
-
-impl Sessionable for BinarySM {
-    fn when_closed(&self) {
-        if let Ok(mut inputs) = self.inputs32.lock() {
-            if !inputs.is_empty() {
-                let old_inputs = std::mem::take(&mut *inputs);
-                self.binary32_sm.prove(&old_inputs);
-            }
-        }
-
-        if let Ok(mut inputs) = self.inputs64.lock() {
-            if !inputs.is_empty() {
-                let old_inputs = std::mem::take(&mut *inputs);
-                self.binary64_sm.prove(&old_inputs);
-            }
-        }
-
-        // Close open sessions for the current thread
-        for session_id in &self.opened_sessions {
-            self.sessions.close_session(*session_id).expect("Failed to close session");
-        }
     }
 }

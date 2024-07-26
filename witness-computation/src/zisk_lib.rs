@@ -8,12 +8,11 @@ use sm_arith::ArithSM;
 use sm_arith_32::Arith32SM;
 use sm_arith_3264::Arith3264SM;
 use sm_arith_64::Arith64SM;
-use sm_common::Sessions;
 use sm_main::MainSM;
 use sm_mem::MemSM;
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
-use wchelpers::WCLibrary;
+use wchelpers::{WCExecutor, WCLibrary};
 
 use crate::{
     Pilout, ARITH3264_AIR_IDS, ARITH32_AIR_IDS, ARITH64_AIR_IDS, MAIN_AIR_IDS, MEM_ALIGN_AIR_IDS,
@@ -22,6 +21,7 @@ use crate::{
 
 pub struct ZiskWC<F> {
     pub wcm: WCManager<F>,
+    // pub buffer_allocator: Box<BufferAllocator>,
     pub main_sm: Arc<MainSM>,
     pub mem_sm: Arc<MemSM>,
     pub mem_aligned_sm: Arc<MemAlignedSM>,
@@ -37,33 +37,31 @@ impl<F: AbstractField> Default for ZiskWC<F> {
 }
 
 impl<F: AbstractField> ZiskWC<F> {
-    pub fn new() -> Self {
+    pub fn new(/*buffer_allocator: Box<BufferAllocator>*/) -> Self {
         let mut wcm = WCManager::new();
-        let sessions = Arc::new(Sessions::new());
 
         let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm = MemUnalignedSM::new(&mut wcm, MEM_UNALIGNED_AIR_IDS);
-        let mem_sm = MemSM::new(
-            &mut wcm,
-            sessions.clone(),
-            mem_aligned_sm.clone(),
-            mem_unaligned_sm.clone(),
-        );
+        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
         let arith_32_sm = Arith32SM::new(&mut wcm, ARITH32_AIR_IDS);
         let arith_64_sm = Arith64SM::new(&mut wcm, ARITH64_AIR_IDS);
         let arith_3264_sm = Arith3264SM::new(&mut wcm, ARITH3264_AIR_IDS);
-        let arith_sm = ArithSM::new(
-            &mut wcm,
-            sessions,
-            arith_32_sm.clone(),
-            arith_64_sm.clone(),
-            arith_3264_sm.clone(),
-        );
+        let arith_sm =
+            ArithSM::new(&mut wcm, arith_32_sm.clone(), arith_64_sm.clone(), arith_3264_sm.clone());
 
         let main_sm = MainSM::new(&mut wcm, mem_sm.clone(), arith_sm.clone(), MAIN_AIR_IDS);
 
-        ZiskWC { wcm, main_sm, mem_sm, mem_aligned_sm, mem_unaligned_sm, arith_sm, arith_32_sm }
+        ZiskWC {
+            wcm,
+            // buffer_allocator,
+            main_sm,
+            mem_sm,
+            mem_aligned_sm,
+            mem_unaligned_sm,
+            arith_sm,
+            arith_32_sm,
+        }
     }
 }
 
@@ -76,11 +74,7 @@ impl<F> WCLibrary<F> for ZiskWC<F> {
         self.wcm.end_proof();
     }
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        // fn execute(&self, pctx: &mut ProofCtx<F>, wneeds: &WitnessNeeds) {
-        // Creates the ectx with the workers pool inside
-        // TODO! let mut ectx = self.wcm.createExecutionContext(wneeds);
         self.main_sm.execute(pctx, ectx);
-        // TODO! ectx.terminate();
     }
 
     fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {
@@ -97,13 +91,7 @@ impl<F> WCLibrary<F> for ZiskWC<F> {
 }
 
 #[no_mangle]
-pub extern "Rust" fn init_library() -> Box<dyn WCLibrary<Goldilocks>> {
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_level(true)
-        .format_target(false)
-        .filter_level(log::LevelFilter::Trace)
-        .init();
-
-    Box::new(ZiskWC::new())
+pub extern "Rust" fn init_library(/*buffer_allocator: Box<BufferAllocator>,*/
+) -> Box<dyn WCLibrary<Goldilocks>> {
+    Box::new(ZiskWC::new(/*buffer_allocator*/))
 }

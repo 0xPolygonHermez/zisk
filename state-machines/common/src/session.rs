@@ -12,9 +12,10 @@ pub trait CalculateProver<O, OR> {
 }
 pub trait Sessionable {
     fn when_closed(&self);
+    fn terminate(&self);
 }
 
-type SessionId = usize;
+pub type SessionId = usize;
 type ComponentId = usize;
 
 struct ComponentSessions {

@@ -10,6 +10,7 @@ use std::{sync::mpsc, thread};
 
 use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
+use rayon::Scope;
 use sm_common::{Arith3264Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;
 
@@ -17,20 +18,11 @@ const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
 pub struct Arith3264SM {
     inputs: Mutex<Vec<Arith3264Op>>,
-    worker_handlers: Vec<WorkerHandler<Arith3264Op>>,
 }
 
 impl Arith3264SM {
     pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let (tx, rx) = mpsc::channel();
-
-        let worker_handle = Self::launch_thread(rx);
-
-        let arith3264_sm = Self {
-            inputs: Mutex::new(Vec::new()),
-            worker_handlers: vec![WorkerHandler::new(tx, worker_handle)],
-        };
-
+        let arith3264_sm = Self { inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);
 
         wcm.register_component(arith3264_sm.clone() as Arc<dyn WCComponent<F>>, Some(air_ids));
@@ -52,24 +44,6 @@ impl Arith3264SM {
 
     pub fn sub64(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a - b, true))
-    }
-
-    fn launch_thread(rx: mpsc::Receiver<WorkerTask<Arith3264Op>>) -> thread::JoinHandle<()> {
-        thread::spawn(move || {
-            while let Ok(task) = rx.recv() {
-                match task {
-                    WorkerTask::Prove(inputs) => {
-                        println!("Arith3264SM: Proving buffer");
-                        // thread::sleep(Duration::from_millis(1000));
-                    }
-                    WorkerTask::Finish => {
-                        println!("Arith3264SM: Task::Finish()");
-                        break;
-                    }
-                };
-            }
-            println!("Arith3264SM: Finishing the worker thread");
-        })
     }
 }
 
@@ -94,12 +68,20 @@ impl Provable<Arith3264Op, OpResult> for Arith3264SM {
         }
     }
 
-    fn prove(&self, operations: &[Arith3264Op]) {
+    fn prove(&self, operations: &[Arith3264Op], is_last: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
-            if inputs.len() >= PROVE_CHUNK_SIZE {
-                let old_inputs = std::mem::take(&mut *inputs);
-                self.worker_handlers[0].send(WorkerTask::Prove(Arc::new(old_inputs)));
+            if is_last || inputs.len() >= PROVE_CHUNK_SIZE {
+                let _inputs = mem::take(&mut *inputs);
+
+                scope.spawn(move |scope| {
+                    println!(
+                        "Arith32: Proving [{:?}..{:?}]",
+                        _inputs[0],
+                        _inputs[_inputs.len() - 1]
+                    );
+                    println!("Arith32: Finishing the worker thread");
+                });
             }
         }
     }
@@ -107,25 +89,11 @@ impl Provable<Arith3264Op, OpResult> for Arith3264SM {
     fn calculate_prove(
         &self,
         operation: Arith3264Op,
+        is_last: bool,
+        scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation]);
+        self.prove(&[operation], is_last, scope);
         result
-    }
-}
-
-impl Sessionable for Arith3264SM {
-    fn when_closed(&self) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            if !inputs.is_empty() {
-                let old_inputs = std::mem::take(&mut *inputs);
-                self.worker_handlers[0].send(WorkerTask::Prove(Arc::new(old_inputs)));
-            }
-        }
-
-        for worker in &self.worker_handlers {
-            worker.send(WorkerTask::Finish);
-            worker.terminate();
-        }
     }
 }
