@@ -42,10 +42,20 @@ jobs:
       - name: Compute release name and tag
         id: release_info
         run: |
-          if [[ $IS_NIGHTLY ]]; then
+          echo "IS_NIGHTLY=$IS_NIGHTLY"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+          
+          if [[ $IS_NIGHTLY == "true" ]]; then
+            echo "IS_NIGHTLY"
+            echo "tag_name=nightly-${GITHUB_SHA}"
+            echo "release_name=Nightly ($(date '+%Y-%m-%d'))"
+            
             echo "tag_name=nightly-${GITHUB_SHA}" >> $GITHUB_OUTPUT
             echo "release_name=Nightly ($(date '+%Y-%m-%d'))" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "IS_LATEST"
+            echo "tag_name=latest"
+            echo "release_name=Latest"
             echo "tag_name=latest" >> $GITHUB_OUTPUT
             echo "release_name=Latest" >> $GITHUB_OUTPUT
           else
