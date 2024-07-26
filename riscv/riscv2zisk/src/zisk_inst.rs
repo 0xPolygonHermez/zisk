@@ -24,7 +24,7 @@ pub struct ZiskInst {
     pub jmp_offset1: i64,
     pub jmp_offset2: i64,
     pub is_external_op: u64,
-    pub op: u64,
+    pub op: u8,
     pub op_str: &'static str,
     pub verbose: String,
 }

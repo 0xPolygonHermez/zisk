@@ -125,9 +125,7 @@ impl ZiskRom {
             if i.is_external_op != INVALID_VALUE {
                 inst_json["is_external_op"] = i.is_external_op.into();
             }
-            if i.op != INVALID_VALUE {
-                inst_json["op"] = i.op.into();
-            }
+            inst_json["op"] = i.op.into();
             inst_json["opStr"] = i.op_str.into();
             if i.jmp_offset1 != INVALID_VALUE_S64 {
                 inst_json["jmp_offset1"] = i.jmp_offset1.into();
