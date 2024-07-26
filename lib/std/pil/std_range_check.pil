@@ -17,6 +17,18 @@ private function next_available_opid(): int {
     return last_assigned_opid;
 }
 
+function get_opid(int min, int max): int {
+    if (min == 0) {
+        if (max == BYTE) {
+            return OPIDS[0];
+        } else if (max == TWOBYTES) {
+            return OPIDS[1];
+        }
+    }
+
+    return next_available_opid();
+}
+
 const int BYTE = 2**8-1;
 const int TWOBYTES = 2**16-1;
 
@@ -62,6 +74,42 @@ function range_check_group(const int predefined = 1, const expr sels[], const ex
         range_check(predefined, sels[i], cols[i], min, max);
     }
 }
+/**
+ * If range_sel = 1, then the range [min1,max1] is checked, otherwise [min2,max2]
+ * @param predefined 1 if use the predefined range, 0 if create the specified range
+ * @param sel selection vector
+ * @param colu column to be range checked
+ * @param min minimum value of the range
+ * @param max maximum value of the range
+ */
+function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1, int max1, int min2, int max2) {
+    if (min1 == min2 && max1 == max2) {
+        error(`The ranges defined in the multi range check are the same: [${min1},${max1}]`);
+    }
+
+    range_validator(min1, max1);
+    range_validator(min2, max2);
+
+    // Can I do it with predefined ranges?
+    @range_check{predefined: 0, colu: colu, min: min1, max: max1};
+    @range_check{predefined: 0, colu: colu, min: min2, max: max2};
+
+    const int opid1 = opid_process(min1, max1);
+    const int opid2 = opid_process(min2, max2);
+
+    sum_assumes_dynamic(name_range_check, [opid1,opid2], range_sel*(opid1-opid2) + opid2, sel, [colu]);
+
+    on final airgroup declareRangeAir();
+
+    // Note: This solution improves the naive solution:
+    //   · range_check(0, sel*range_sel, colu, min1, max1).
+    //   · range_check(0, sel*(1-range_sel), colu, min2, max2).
+    // by just performing 1 assume and 2 proves instead
+    //
+    // Q: Can I do it with 1 assume and 1 prove? E.g.:
+    //  · sum_assumes_dynamic(name_range_check, [opid1,opid2], range_sel*(opid1-opid2) - opid2, sel, [colu]);
+    //  · sum_proves(name_range_check, opid, mul, [min1..max1-1,max1...]U[min2..max2-1,max2...]);
+}
 
 /**
  * TODO: Add description
@@ -71,29 +119,10 @@ function range_check_group(const int predefined = 1, const expr sels[], const ex
  * @param min minimum value of the range
  * @param max maximum value of the range
  */
-function range_check(const int predefined = 1, const expr sel = 1, const expr colu, const int min, const int max) {
+function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int max) {
+    range_validator(min, max);
+
     @range_check{predefined:predefined, colu: colu, min: min, max: max};
-
-    if (min > max) {
-        error(`min = ${min} cannot be greater than max = ${max}`);
-    } else if (min == max) {
-        error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
-    } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
-        const int diff = max - min + 1;
-
-        string diff_str = `(${colu} - ${min})`;
-        for (int i = 1; i < diff; i = i + 1) {
-            diff_str = diff_str + `·(${colu} - ${min + i})`;
-        }
-
-        println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
-    } else if (max - min + 1 > MAX_LEN) {
-        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_LEN}`);
-    } else if (max >= PRIME) {
-        error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
-    } else if (min <= -PRIME) {
-        error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
-    }
 
     if (min < 0) {
         println(`The provided min=${min} is negative. Falling back to specified range...`);
@@ -185,48 +214,70 @@ function range_check(const int predefined = 1, const expr sel = 1, const expr co
 
         on final airgroup declarePreRangeAir();
     } else {
-        container proof.std.rc alias rcprove {
-            int max_airgroup_id = 0;
-            int opids_count = 0;
-            int max_diff = 0;
-
-            // FIX: dynamic arrays not ready
-            int opids[100];
-            int mins[100];
-            int maxs[100];
-        }
-
-        if (rcprove.max_airgroup_id < AIRGROUP_ID) {
-            rcprove.max_airgroup_id = AIRGROUP_ID;
-        }
-
-        on final airgroup declareRangeAir();
-
-        // If the range has already been introduced, we reuse the same opid
-        for (int i = 0; i < rcprove.opids_count; i++) {
-            if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
-                sum_assumes(name_range_check, rcprove.opids[i], sel, [colu]);
-                return;
-            }
-        }
-
-        int opid = 0;
-        if (min == 0 && max == BYTE) {
-            opid = OPIDS[0];
-        } else if (min == 0 && max == TWOBYTES) {
-            opid = OPIDS[1];
-        } else {
-            opid = next_available_opid();
-        }
+        const int opid = opid_process(min, max);
 
         sum_assumes(name_range_check, opid, sel, [colu]);
 
-        rcprove.mins[rcprove.opids_count] = min;
-        rcprove.maxs[rcprove.opids_count] = max;
-        rcprove.opids[rcprove.opids_count] = opid;
-        rcprove.opids_count++;
-        rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
+        on final airgroup declareRangeAir();
     }
+}
+
+private function range_validator(const int min, const int max) {
+    if (min > max) {
+        error(`min = ${min} cannot be greater than max = ${max}`);
+    } else if (min == max) {
+        error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
+    } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
+        const int diff = max - min + 1;
+
+        string diff_str = `(${colu} - ${min})`;
+        for (int i = 1; i < diff; i = i + 1) {
+            diff_str = diff_str + `·(${colu} - ${min + i})`;
+        }
+
+        println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
+    } else if (max - min + 1 > MAX_LEN) {
+        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_LEN}`);
+    } else if (max >= PRIME) {
+        error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
+    } else if (min <= -PRIME) {
+        error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
+    }
+}
+
+private function opid_process(const int min, const int max): int {
+    container proof.std.rc alias rcprove {
+        int max_airgroup_id = 0;
+        int opids_count = 0;
+        int max_diff = 0;
+
+        // FIX: dynamic arrays not ready
+        int opids[100];
+        int mins[100];
+        int maxs[100];
+    }
+
+    if (rcprove.max_airgroup_id < AIRGROUP_ID) {
+        rcprove.max_airgroup_id = AIRGROUP_ID;
+    }
+
+    // If the range has already been introduced, we reuse the same opid
+    int opid = 0;
+    for (int i = 0; i < rcprove.opids_count; i++) {
+        if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
+            return rcprove.opids[i];
+        }
+    }
+
+    // Otherwise, we get a new opid
+    opid = get_opid(min, max);
+    rcprove.mins[rcprove.opids_count] = min;
+    rcprove.maxs[rcprove.opids_count] = max;
+    rcprove.opids[rcprove.opids_count] = opid;
+    rcprove.opids_count++;
+    rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
+
+    return opid;
 }
 
 private function declarePreRangeAir() {
@@ -258,13 +309,7 @@ private function declareRangeAir() {
 
     const int next_pow2 = 2**(log2(max_diff));
 
-    _SpecifiedRanges( // TODO: Remove this function
-                    next_pow2,
-                    opids,
-                    opids_count,
-                    mins,
-                    maxs
-                );
+    _SpecifiedRanges(next_pow2,opids,opids_count,mins,maxs);
 }
 
 function _SpecifiedRanges(int a,int b[],int c,int d[],int e[]) {

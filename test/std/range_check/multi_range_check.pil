@@ -1,0 +1,36 @@
+require "std_range_check.pil";
+
+airtemplate MultiRangeCheck1(const int N = 2**3) {
+
+    col witness a[3];
+    col witness sel[3];
+    col witness range_sel[3];
+
+    // Edge case: Same range (Error)
+    // multi_range_check(sel[0], range_sel[0], a[0], 0, 2**4-1, 0, 2**4-1);
+
+    multi_range_check(sel[0], range_sel[0], a[0], 0, 2**7-1, 0, 2**8-1);
+
+    multi_range_check(sel[1], range_sel[1], a[1], 0, 2**7-1, 0, 2**6-1);
+
+    multi_range_check(sel[2], range_sel[2], a[2], 2**5, 2**8-1, 2**8, 2**9-1);
+};
+
+airtemplate MultiRangeCheck2(const int N = 2**4) {
+
+    col witness a[2];
+    col witness sel[2];
+    col witness range_sel[2];
+
+    multi_range_check(sel[0], range_sel[0], a[0], 2**5, 2**8-1, 2**8, 2**9-1);
+
+    multi_range_check(sel[1], range_sel[1], a[1], 0, 2**7-1, 0, 2**4-1);
+};
+
+airgroup MultiRangeCheck1 {
+    MultiRangeCheck1();
+}
+
+airgroup MultiRangeCheck2 {
+    MultiRangeCheck2();
+}

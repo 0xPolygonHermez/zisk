@@ -9,16 +9,16 @@ function init_challenges() {
 
 /**
  * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
- * @param opid (unique) identifier of the PIOP
+ * @param busid (unique) identifier of the PIOP
  * @param cols columns of the PIOP
- * @return opid + C₁·α + C₂·α² + ... + Cₙ·αⁿ
+ * @return busid + C₁·α + C₂·α² + ... + Cₙ·αⁿ
  */
-function compress_cols(int opid, expr cols[]): expr {
+function compress_cols(expr busid, expr cols[]): expr {
     expr cols_compressed = 0;
     for (int i = length(cols) - 1; i >= 0; i = i - 1) {
         cols_compressed = (cols_compressed + cols[i]) * std_alpha;
     }
-    cols_compressed = cols_compressed + opid;
+    cols_compressed = cols_compressed + busid;
 
     return cols_compressed;
 }

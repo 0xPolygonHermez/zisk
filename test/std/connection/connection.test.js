@@ -7,7 +7,7 @@ const libPath = path.join(basePath, '..', '..', '..', 'lib');
 
 function getSettings() {
     return {
-        name: "Fibonacci-Square-" + Date.now(),
+        name: "Connection-" + Date.now(),
         airout: {
             airoutFilename: path.join(basePath, 'connection.pilout'),
         },

@@ -2,6 +2,8 @@ const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calcul
 
 const log = require("pil2-proofman/logger.js");
 
+const { getRandom } = require("../../utils.js");
+
 module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {
         super("Range Check Test", wcManager, proofCtx);
@@ -159,20 +161,4 @@ module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
             }
         }
     }
-}
-
-// Note: It works as expected for number up to Number.MAX_SAFE_INTEGER=2^53-1
-function getRandom(min, max) {
-    min = BigInt(min);
-    max = BigInt(max);
-
-    if (min > max) {
-        throw new Error("min must be less than or equal to max");
-    }
-
-    const range = max - min + 1n;
-
-    const rand = BigInt(Math.floor(Math.random() * Number(range)));
-
-    return rand + min;
 }
