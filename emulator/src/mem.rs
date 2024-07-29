@@ -1,7 +1,5 @@
 use crate::MemSection;
-use riscv2zisk::{
-    read_u16_le, read_u32_le, read_u64_le, write_u16_le, write_u32_le, write_u64_le, UART_ADDR,
-};
+use riscv2zisk::UART_ADDR;
 
 /// Memory structure, containing several read sections and one single write section
 pub struct Mem {
@@ -65,6 +63,7 @@ impl Mem {
     }
 
     /// Read a u64 value from the memory read sections, based on the provided address and width
+    #[inline(always)]
     pub fn read(&self, addr: u64, width: u64) -> u64 {
         // First try to read in the write section
         if (addr >= self.write_section.start) && (addr <= (self.write_section.end - width)) {
@@ -74,9 +73,15 @@ impl Mem {
             // Read the requested data based on the provided width
             let value: u64 = match width {
                 1 => self.write_section.buffer[read_position] as u64,
-                2 => read_u16_le(&self.write_section.buffer, read_position) as u64,
-                4 => read_u32_le(&self.write_section.buffer, read_position) as u64,
-                8 => read_u64_le(&self.write_section.buffer, read_position),
+                2 => u16::from_le_bytes(
+                    self.write_section.buffer[read_position..read_position + 2].try_into().unwrap(),
+                ) as u64,
+                4 => u32::from_le_bytes(
+                    self.write_section.buffer[read_position..read_position + 4].try_into().unwrap(),
+                ) as u64,
+                8 => u64::from_le_bytes(
+                    self.write_section.buffer[read_position..read_position + 8].try_into().unwrap(),
+                ),
                 _ => panic!("Mem::read() invalid width={}", width),
             };
 
@@ -98,9 +103,15 @@ impl Mem {
                 // Read the requested data based on the provided width
                 let value: u64 = match width {
                     1 => section.buffer[read_position] as u64,
-                    2 => read_u16_le(&section.buffer, read_position) as u64,
-                    4 => read_u32_le(&section.buffer, read_position) as u64,
-                    8 => read_u64_le(&section.buffer, read_position),
+                    2 => u16::from_le_bytes(
+                        section.buffer[read_position..read_position + 2].try_into().unwrap(),
+                    ) as u64,
+                    4 => u32::from_le_bytes(
+                        section.buffer[read_position..read_position + 4].try_into().unwrap(),
+                    ) as u64,
+                    8 => u64::from_le_bytes(
+                        section.buffer[read_position..read_position + 8].try_into().unwrap(),
+                    ),
                     _ => panic!("Mem::read() invalid width={}", width),
                 };
 
@@ -115,6 +126,7 @@ impl Mem {
     }
 
     /// Write a u64 value to the memory write section, based on the provided address and width
+    #[inline(always)]
     pub fn write(&mut self, addr: u64, val: u64, width: u64) {
         //println!("Mem::write() addr={:x}={} width={} value={:x}={}", addr, addr, width, val,
         // val);
@@ -132,10 +144,13 @@ impl Mem {
 
         // Write the value based on the provided width
         match width {
-            1 => section.buffer[write_position] = (val & 0xFF) as u8,
-            2 => write_u16_le(&mut section.buffer, write_position, (val & 0xFFFF) as u16),
-            4 => write_u32_le(&mut section.buffer, write_position, (val & 0xFFFFFFFF) as u32),
-            8 => write_u64_le(&mut section.buffer, write_position, val),
+            1 => section.buffer[write_position] = val as u8,
+            2 => section.buffer[write_position..write_position + 2]
+                .copy_from_slice(&(val as u16).to_le_bytes()),
+            4 => section.buffer[write_position..write_position + 4]
+                .copy_from_slice(&(val as u32).to_le_bytes()),
+            8 => section.buffer[write_position..write_position + 8]
+                .copy_from_slice(&val.to_le_bytes()),
             _ => panic!("Mem::write() invalid width={}", width),
         }
 

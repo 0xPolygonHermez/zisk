@@ -17,13 +17,11 @@ impl Riscv2zisk {
 
     /// Executes the file conversion process by calling elf2romfile()
     pub fn runfile(&self) -> Result<(), Box<dyn Error>> {
-        elf2romfile(self.elf_file.clone(), self.zisk_file.clone())?;
-        Ok(())
+        elf2romfile(self.elf_file.clone(), self.zisk_file.clone())
     }
 
     /// Executes the file conversion process by calling elf2rom()
     pub fn run(&self) -> Result<ZiskRom, Box<dyn Error>> {
-        let rom = elf2rom(self.elf_file.clone())?;
-        Ok(rom)
+        elf2rom(self.elf_file.clone())
     }
 }

@@ -48,17 +48,17 @@ impl<F> WCLibrary<F> for ZiskWC<F> {
         self.wcm.calculate_plan(ectx);
     }
 
-    fn start_execute(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        self.wcm.start_execute(pctx, ectx);
-    }
+    // fn start_execute(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+    //     self.wcm.start_execute(pctx, ectx);
+    // }
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         self.main_sm.execute(pctx, ectx);
     }
 
-    fn end_execute(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        self.wcm.end_execute(pctx, ectx);
-    }
+    // fn end_execute(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+    //     self.wcm.end_execute(pctx, ectx);
+    // }
 
     // fn initialize_air_instances(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
     //     for id in ectx.owned_instances.iter() {

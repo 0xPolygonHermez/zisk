@@ -4,6 +4,7 @@ use crate::{source_to_str, store_to_str};
 /// a and b are loaded from the respective sources specified in the instruction
 /// c is stored according to the destination specified in the instruction
 /// flag can only be 0 or 1
+#[derive(Debug, Clone)]
 pub struct ZiskInst {
     pub paddr: u64,
     pub store_ra: u64,
@@ -27,6 +28,37 @@ pub struct ZiskInst {
     pub op: u8,
     pub op_str: &'static str,
     pub verbose: String,
+}
+
+/// Default constructor
+/// Initializes all fields to 0
+impl Default for ZiskInst {
+    fn default() -> Self {
+        Self {
+            paddr: 0,
+            store_ra: 0,
+            store_use_sp: 0,
+            store: 0,
+            store_offset: 0,
+            set_pc: 0,
+            set_sp: 0,
+            ind_width: 0,
+            inc_sp: 0,
+            end: 0,
+            a_src: 0,
+            a_use_sp_imm1: 0,
+            a_offset_imm0: 0,
+            b_src: 0,
+            b_use_sp_imm1: 0,
+            b_offset_imm0: 0,
+            jmp_offset1: 0,
+            jmp_offset2: 0,
+            is_external_op: 0,
+            op: 0,
+            op_str: "",
+            verbose: String::new(),
+        }
+    }
 }
 
 /// ZisK instruction implementation

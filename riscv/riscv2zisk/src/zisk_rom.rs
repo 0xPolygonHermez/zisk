@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::INVALID_VALUE; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
-                           * become 0xFFFFFFFFFFFFFFFF */
+use crate::{ZiskInst, INVALID_VALUE}; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
+                                       * become 0xFFFFFFFFFFFFFFFF */
 use crate::{ZiskInstBuilder, INVALID_VALUE_S64, SRC_IND, SRC_SP, SRC_STEP}; // TODO: Ask Jordi.
 
 /// RO data structure
@@ -29,6 +29,8 @@ pub struct ZiskRom {
     pub from: u64,
     pub length: u64,
     pub data: Vec<u8>,
+    pub rom_entry_instructions: Vec<ZiskInst>,
+    pub rom_instructions: Vec<ZiskInst>,
 }
 
 /// ZisK ROM implementation
@@ -41,6 +43,8 @@ impl ZiskRom {
             from: 0,
             length: 0,
             data: Vec::new(),
+            rom_entry_instructions: Vec::new(),
+            rom_instructions: Vec::new(),
         }
     }
 
