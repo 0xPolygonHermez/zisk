@@ -26,7 +26,6 @@ mod zisk_inst_builder;
 mod zisk_operation;
 mod zisk_operations;
 mod zisk_rom;
-// mod zisk_sources;
 mod zv2zisk;
 
 pub use elf2rom::*;
@@ -42,5 +41,4 @@ pub use zisk_inst_builder::*;
 pub use zisk_operation::*;
 pub use zisk_operations::*;
 pub use zisk_rom::*;
-// pub use zisk_sources::*;
 pub use zv2zisk::*;
