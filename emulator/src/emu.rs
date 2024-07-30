@@ -48,17 +48,20 @@ impl<'a> Emu<'a> {
             self.ctx.mem_trace.clear();
         }
 
-        let instruction = if self.ctx.pc < ROM_ADDR {
-            &self.rom.rom_entry_instructions[((self.ctx.pc - ROM_ENTRY) / 4) as usize]
+        let instruction = if self.ctx.pc >= ROM_ADDR {
+            &self.rom.rom_instructions[(self.ctx.pc - ROM_ADDR) as usize]
+        } else if self.ctx.pc >= ROM_ENTRY {
+            &self.rom.rom_entry_instructions[(self.ctx.pc - ROM_ENTRY) as usize]
         } else {
-            &self.rom.rom_instructions[((self.ctx.pc - ROM_ADDR) / 4) as usize]
+            self.ctx.end = true;
+            return;
         };
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
         // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // If this is the last instruction, stop executing
-        if instruction.end == 1 {
+        if instruction.end {
             self.ctx.end = true;
         }
 
@@ -98,7 +101,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IMM => self.ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32),
             SRC_IND => {
-                let mut addr = self.ctx.a + instruction.b_offset_imm0;
+                let mut addr = (self.ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.sp;
                 }
@@ -114,13 +117,13 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => print!(""),
             STORE_MEM => {
-                let val: i64 = if instruction.store_ra != 0 {
+                let val: i64 = if instruction.store_ra {
                     self.ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.c as i64
                 };
                 let mut addr: i64 = instruction.store_offset;
-                if instruction.store_use_sp != 0 {
+                if instruction.store_use_sp {
                     addr += self.ctx.sp as i64;
                 }
                 self.ctx.mem.write(addr as u64, val as u64, 8);
@@ -132,13 +135,13 @@ impl<'a> Emu<'a> {
                 // ctx.pc, addr, val as u64};
             }
             STORE_IND => {
-                let val: i64 = if instruction.store_ra != 0 {
+                let val: i64 = if instruction.store_ra {
                     self.ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.c as i64
                 };
                 let mut addr = instruction.store_offset;
-                if instruction.store_use_sp != 0 {
+                if instruction.store_use_sp {
                     addr += self.ctx.sp as i64;
                 }
                 addr += self.ctx.a as i64;
@@ -150,14 +153,14 @@ impl<'a> Emu<'a> {
         }
 
         // Set SP, if specified by the current instruction
-        if instruction.set_sp != 0 {
+        if instruction.set_sp {
             self.ctx.sp = self.ctx.c;
         } else {
             self.ctx.sp += instruction.inc_sp;
         }
 
         // Set PC, based on current PC, current flag and current instruction
-        if instruction.set_pc != 0 {
+        if instruction.set_pc {
             self.ctx.pc = (self.ctx.c as i64 + instruction.jmp_offset1) as u64;
         } else if self.ctx.flag {
             self.ctx.pc = (self.ctx.pc as i64 + instruction.jmp_offset1) as u64;

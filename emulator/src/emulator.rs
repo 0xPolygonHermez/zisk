@@ -19,9 +19,8 @@ pub struct ZiskEmulator;
 impl ZiskEmulator {
     fn process_directory(
         directory: String,
-        _inputs: &[u8],
+        inputs: &[u8],
         options: &EmuOptions,
-        _callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_directory() directory={}", directory);
@@ -30,11 +29,11 @@ impl ZiskEmulator {
         let files = Self::list_files(&directory).unwrap();
         for file in files {
             if file.contains("dut") && file.ends_with(".elf") {
-                // Self::process_elf_file(file, inputs, options, callback.clone());
+                Self::process_elf_file(file, inputs, options, None)?;
             }
         }
 
-        unimplemented!()
+        Ok(Vec::new())
     }
 
     fn process_elf_file(
@@ -92,13 +91,13 @@ impl ZiskEmulator {
             let addr = *instruction.0;
 
             if addr < ROM_ENTRY {
-                return Err(ZiskEmulatorErr::AddressOutOfRange(addr))
+                return Err(ZiskEmulatorErr::AddressOutOfRange(addr));
             } else if addr < ROM_ADDR {
-                max_rom_entry = max_rom_entry.max(addr);
+                max_rom_entry = std::cmp::max(max_rom_entry, addr);
             } else if addr < INPUT_ADDR {
                 max_rom_instructions = max_rom_instructions.max(addr);
             } else {
-                return Err(ZiskEmulatorErr::AddressOutOfRange(addr))
+                return Err(ZiskEmulatorErr::AddressOutOfRange(addr));
             }
         }
 
@@ -112,10 +111,9 @@ impl ZiskEmulator {
             let addr = *instruction.0;
 
             if addr < ROM_ADDR {
-                rom.rom_entry_instructions[((addr - ROM_ENTRY) / 4) as usize] =
-                    instruction.1.i.clone();
+                rom.rom_entry_instructions[(addr - ROM_ENTRY) as usize] = instruction.1.i.clone();
             } else {
-                rom.rom_instructions[((addr - ROM_ADDR) / 4) as usize] = instruction.1.i.clone();
+                rom.rom_instructions[(addr - ROM_ADDR) as usize] = instruction.1.i.clone();
             }
         }
 
@@ -249,7 +247,7 @@ impl Emulator<EmuTrace> for ZiskEmulator {
 
             let metadata = metadata.unwrap();
             if metadata.is_dir() {
-                Self::process_directory(elf_filename, &inputs, options, callback)
+                Self::process_directory(elf_filename, &inputs, options)
             } else {
                 Self::process_elf_file(elf_filename, &inputs, options, callback)
             }
