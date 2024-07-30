@@ -1,5 +1,5 @@
 [package]
-name = "riscv2zisk"
+name = "riscv"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,11 +8,3 @@ edition = "2021"
 [dependencies]
 elf = "0.7.4"
 json = "0.12.4"
-
-[lib]
-name = "riscv2zisk"
-path = "src/lib.rs"
-
-[[bin]]
-name = "riscv2zisk"
-path = "src/bin/riscv2zisk.rs"

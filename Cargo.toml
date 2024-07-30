@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "cli",
-    "common",
-    "riscv/riscv2zisk",
+    "core",
+    "riscv",
     "emulator",
     "state-machines/main",
     "state-machines/mem",

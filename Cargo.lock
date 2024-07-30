@@ -1764,7 +1764,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "riscv2zisk"
+name = "riscv"
 version = "0.1.0"
 dependencies = [
  "elf",
@@ -1937,7 +1937,7 @@ dependencies = [
  "p3-goldilocks",
  "proofman",
  "wchelpers",
- "zisk-common",
+ "zisk-core",
 ]
 
 [[package]]
@@ -1950,7 +1950,7 @@ dependencies = [
  "p3-goldilocks",
  "proofman",
  "wchelpers",
- "zisk-common",
+ "zisk-core",
 ]
 
 [[package]]
@@ -2770,10 +2770,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
 
 [[package]]
-name = "zisk-common"
+name = "zisk-core"
 version = "0.1.0"
 dependencies = [
+ "elf",
  "indexmap",
+ "json",
+ "riscv",
  "serde",
  "serde_json",
 ]
@@ -2800,7 +2803,8 @@ dependencies = [
  "clap",
  "criterion",
  "pprof",
- "riscv2zisk",
+ "riscv",
+ "zisk-core",
 ]
 
 [[package]]

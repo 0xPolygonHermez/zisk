@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-common = { path = "../../common" }
+zisk-core = { path = "../../core" }
 common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }

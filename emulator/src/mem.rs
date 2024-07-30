@@ -1,5 +1,5 @@
 use crate::MemSection;
-use riscv2zisk::UART_ADDR;
+use zisk_core::UART_ADDR;
 
 /// Memory structure, containing several read sections and one single write section
 pub struct Mem {
