@@ -2,7 +2,8 @@ use libloading::{Library, Symbol};
 use log::{debug, info, trace};
 use p3_field::AbstractField;
 use stark::{GlobalInfo, StarkProver};
-use std::path::PathBuf;
+use std::{process, path::PathBuf};
+use common::Prover;
 
 use wchelpers::WCLibrary;
 
@@ -37,33 +38,33 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         // Load the witness computation dynamic library
         let library = unsafe { Library::new(wc_lib_path.clone())? };
         let wc_lib: Symbol<fn() -> Box<dyn WCLibrary<F>>> = unsafe { library.get(b"init_library")? };
-        let mut wc_lib = wc_lib();
+        let mut wc_lib: Box<dyn WCLibrary<F>> = wc_lib();
 
         let pilout = wc_lib.get_pilout();
         // TODO! Check hash
 
         let mut pctx = ProofCtx::create_ctx(pilout, public_inputs);
         let mut ectx = ExecutionCtx::builder().is_discovery_execution().build();
+        let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
 
         Self::init_proof(&mut wc_lib, &mut pctx, &mut ectx);
 
         // Initialize prover and buffers to fit the proof
-        Self::initialize_provers(&proving_key_path, &mut pctx);
-
+        Self::initialize_provers(&proving_key_path, &mut provers, &mut pctx);
         ectx.discovering = false;
-
-        for stage in 1..=pctx.pilout.num_stages() {
-            wc_lib.calculate_witness(stage, &mut pctx, &ectx);
-
-            Self::commit_stage(stage, &mut pctx);
-            if stage <= pctx.pilout.num_stages() {
-                Self::calculate_challenges(stage, &pctx);
-            }
+        for stage in 1..=(pctx.pilout.num_stages() + 1) {
+            wc_lib.calculate_witness(stage, &mut pctx, &ectx, &provers);
+            Self::get_challenges(stage, &mut provers, &mut pctx);
+            Self::commit_stage(stage, &mut provers, &mut pctx);
+            Self::calculate_challenges(stage, &mut provers, &mut pctx);
         }
+        println!("{}: COMMIT STAGE FINISHED", Self::MY_NAME);
 
         wc_lib.end_proof();
 
-        Self::opening_stages(&pctx);
+        Self::opening_stages(&mut provers, &mut pctx);
+        println!("{}: OPENING STAGE FINISHED", Self::MY_NAME);
+        process::exit(0);
 
         let proof = Self::finalize_proof(&pctx);
 
@@ -85,12 +86,10 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         wc_lib.initialize_air_instances(pctx, &*ectx);
     }
 
-    fn initialize_provers(proving_key_path: &PathBuf, pctx: &mut ProofCtx<F>) {
+    fn initialize_provers(proving_key_path: &PathBuf, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
 
         let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
-
-        pctx.provers = Vec::new();
 
         for air_instance in pctx.air_instances.iter_mut() {
             debug!(
@@ -100,7 +99,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
                 air_instance.air_id
             );
 
-            let prover = Box::new(StarkProver::new(
+            let mut prover = Box::new(StarkProver::new(
                 &proving_key_path,
                 &global_info,
                 air_instance.air_group_id,
@@ -111,21 +110,47 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             trace!("{}: ··· Preallocating a buffer of {} bytes", Self::MY_NAME, buffer_size);
             air_instance.buffer = vec![0u8; buffer_size];
 
-            pctx.provers.push(prover);
+            prover.as_mut().build(air_instance);
+            provers.push(prover);
         }
     }
 
-    pub fn commit_stage(stage: u32, _pctx: &ProofCtx<F>) {
+    pub fn commit_stage(stage: u32, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
         info!("{}: Committing stage {}", Self::MY_NAME, stage);
+
+        for (idx, prover) in provers.iter_mut().enumerate() {
+            info!("{}: Committing stage {}, for prover {}", Self::MY_NAME, stage, idx);
+            prover.commit_stage(stage, pctx);
+        }
     }
 
-    fn calculate_challenges(stage: u32, _proof_ctx: &ProofCtx<F>) {
-        // This is a mock implementation
+    fn calculate_challenges(stage: u32, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
         info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
+        if stage == 1 {
+            for prover in provers.iter_mut() {
+                prover.add_challenges_to_transcript(0, pctx);
+            }
+            provers[0].add_publics_to_transcript(pctx);
+        }
+        for prover in provers.iter_mut() {
+            prover.add_challenges_to_transcript(stage as u64, pctx);
+        }
     }
 
-    pub fn opening_stages(_pctx: &ProofCtx<F>) {
-        info!("{}: Opening stages", Self::MY_NAME);
+    fn get_challenges(stage: u32, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
+        info!("{}: Getting challenges for stage {}", Self::MY_NAME, stage);
+        provers[0].get_challenges(stage, pctx); // Any prover can get the challenges which are common among them
+    }
+
+    pub fn opening_stages(provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
+        for opening_id in 1..=3 {
+            Self::get_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx);
+            for (idx, prover) in provers.iter_mut().enumerate() {
+                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
+                prover.opening_stage(opening_id, pctx);
+            }
+            Self::calculate_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx);
+        }
     }
 
     fn finalize_proof(_proof_ctx: &ProofCtx<F>) -> Vec<F> {

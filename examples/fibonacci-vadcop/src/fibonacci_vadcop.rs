@@ -3,8 +3,9 @@ use std::rc::Rc;
 use common::{ExecutionCtx, ProofCtx, WCPilOut};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
-use wchelpers::WCLibrary;
+use wchelpers::{WCComponent, WCLibrary};
 use proofman::WCManager;
+use common::Prover;
 
 use crate::{FibonacciSquare, FibonacciVadcopPilout, Module};
 
@@ -18,9 +19,10 @@ impl<F: AbstractField> FibonacciVadcop<F> {
     pub fn new() -> Self {
         let mut wcm = WCManager::new();
 
-        let module = Module::new(&mut wcm);
+        let module = Module::new_no_register(&mut wcm);
         let fibonacci = FibonacciSquare::new(&mut wcm, &module);
-
+        // Register the module component after the fibonacci component
+        wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>);
         FibonacciVadcop { wcm, fibonacci, module }
     }
 }
@@ -43,8 +45,14 @@ impl<F> WCLibrary<F> for FibonacciVadcop<F> {
             pctx.air_instances.push((&ectx.instances[*id]).into());
         }
     }
-    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        self.wcm.calculate_witness(stage, pctx, ectx);
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    ) {
+        self.wcm.calculate_witness(stage, pctx, ectx, provers);
     }
 
     fn get_pilout(&self) -> WCPilOut {

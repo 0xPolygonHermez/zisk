@@ -1,7 +1,7 @@
 use log::debug;
 use std::{cell::RefCell, rc::Rc};
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
+use common::{AirInstance, ExecutionCtx, ProofCtx, Prover};
 use proofman::WCManager;
 use wchelpers::{WCComponent, WCOpCalculator};
 
@@ -18,6 +18,10 @@ impl Module {
         let module = Rc::new(Module { inputs: RefCell::new(Vec::new()) });
         wcm.register_component(Rc::clone(&module) as Rc<dyn WCComponent<F>>);
 
+        module
+    }
+    pub fn new_no_register<F>(wcm: &mut WCManager<F>) -> Rc<Self> {
+        let module = Rc::new(Module { inputs: RefCell::new(Vec::new()) });
         module
     }
 }
@@ -38,7 +42,14 @@ impl WCOpCalculator for Module {
 }
 
 impl<F> WCComponent<F> for Module {
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    ) {
         if stage != 1 {
             return;
         }
@@ -48,13 +59,13 @@ impl<F> WCComponent<F> for Module {
         let pi: FibonacciVadcopPublicInputs = pctx.public_inputs.as_slice().into();
         let module = pi.module as u64;
 
-        let air_instance_ctx = &mut pctx.find_air_instances(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID)[0];
+        let (air_idx, air_instance_ctx) = &mut pctx.find_air_instances(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID)[0];
 
         let interval = air_instance.inputs_interval.unwrap();
         let inputs = &self.inputs.borrow()[interval.0..interval.1];
-
+        let offset = (provers[*air_idx].get_map_offsets("cm1", false) * 8) as usize;
         let num_rows = 1 << pctx.pilout.get_air(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID).num_rows();
-        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0));
+        let mut trace = Box::new(ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, offset));
 
         for (i, input) in inputs.iter().enumerate() {
             let x = input.0;

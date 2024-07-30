@@ -1,14 +1,16 @@
 use log::info;
 
 use crate::{Prover, WCPilOut};
+use transcript::FFITranscript;
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
     pub pilout: WCPilOut,
-    pub challenges: Vec<Vec<F>>,
+    pub challenges: Option<Vec<F>>,
+
     pub air_instances: Vec<AirInstanceCtx>,
-    pub provers: Vec<Box<dyn Prover<F>>>,
+    pub transcript: Option<FFITranscript>,
 }
 
 impl<F> ProofCtx<F> {
@@ -24,7 +26,7 @@ impl<F> ProofCtx<F> {
         // pilout.print_pilout_info();
 
         // NOTE: consider Vec::with_capacity() instead of Vec::new()
-        let challenges = Vec::<Vec<F>>::new();
+        //let challenges: Vec<Vec<F>> = Vec::<Vec<F>>::new();
 
         // TODO! Review this
         // if !pilout.num_challenges.is_empty() {
@@ -40,13 +42,14 @@ impl<F> ProofCtx<F> {
         // challenges.push(vec![F::default(); 1]);
         // challenges.push(vec![F::default(); 2]);
 
-        Self { public_inputs, pilout, challenges, air_instances: Vec::new(), provers: Vec::new() }
+        Self { public_inputs, pilout, challenges: None, air_instances: Vec::new(), transcript: None }
     }
 
-    pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<&AirInstanceCtx> {
+    pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<(usize, &AirInstanceCtx)> {
         self.air_instances
             .iter()
-            .filter(|air_instance| air_instance.air_group_id == air_group_id && air_instance.air_id == air_id)
+            .enumerate()
+            .filter(|&(_, air_instance)| air_instance.air_group_id == air_group_id && air_instance.air_id == air_id)
             .collect()
     }
 }

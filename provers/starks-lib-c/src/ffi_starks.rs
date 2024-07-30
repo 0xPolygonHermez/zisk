@@ -201,6 +201,30 @@ pub fn starks_new_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn starks_new_default_c(
+    const_pols: &str,
+    map_const_pols_file: bool,
+    constants_tree: &str,
+    stark_info: *mut c_void,
+    chelpers: *mut c_void,
+    p_address: *mut c_void,
+) -> *mut c_void {
+    unsafe {
+        let const_pols = CString::new(const_pols).unwrap();
+        let constants_tree = CString::new(constants_tree).unwrap();
+
+        starks_new_default(
+            const_pols.as_ptr() as *mut std::os::raw::c_char,
+            map_const_pols_file,
+            constants_tree.as_ptr() as *mut std::os::raw::c_char,
+            stark_info,
+            chelpers,
+            p_address,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn get_stark_info_c(p_stark: *mut c_void) -> *mut c_void {
     unsafe { get_stark_info(p_stark) }
 }
@@ -236,7 +260,7 @@ pub fn init_hints_c() {
 #[cfg(not(feature = "no_lib_link"))]
 pub fn steps_params_new_c(
     p_stark: *mut c_void,
-    p_challenges: *mut c_void,
+    p_challenges: *const c_void,
     p_subproof_values: *mut c_void,
     p_evals: *mut c_void,
     p_public_inputs: *mut c_void,
@@ -276,17 +300,43 @@ pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_stage_c(
+pub fn compute_stage_expressions_c(
     p_starks: *mut ::std::os::raw::c_void,
     element_type: u32,
     step: u64,
     p_params: *mut ::std::os::raw::c_void,
     p_proof: *mut ::std::os::raw::c_void,
-    p_transcript: *mut ::std::os::raw::c_void,
     p_chelpers_steps: *mut ::std::os::raw::c_void,
 ) {
     unsafe {
-        compute_stage(p_starks, element_type, step, p_params, p_proof, p_transcript, p_chelpers_steps);
+        compute_stage_expressions(p_starks, element_type, step, p_params, p_proof, p_chelpers_steps);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_expression_c(
+    p_starks: *mut ::std::os::raw::c_void,
+    dest: *mut ::std::os::raw::c_void,
+    id: u64,
+    p_params: *mut ::std::os::raw::c_void,
+    p_chelpers_steps: *mut ::std::os::raw::c_void,
+    domain_extended: bool,
+) {
+    unsafe {
+        calculate_expression(p_starks, dest, id, p_params, p_chelpers_steps, domain_extended);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn commit_stage_c(
+    p_starks: *mut ::std::os::raw::c_void,
+    element_type: u32,
+    step: u64,
+    p_params: *mut ::std::os::raw::c_void,
+    p_proof: *mut ::std::os::raw::c_void,
+) {
+    unsafe {
+        commit_stage(p_starks, element_type, step, p_params, p_proof);
     }
 }
 
@@ -674,6 +724,19 @@ pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn starks_new_c(
     _p_config: *mut c_void,
+    _const_pols: &str,
+    _map_const_pols_file: bool,
+    _constants_tree: &str,
+    _stark_info: *mut c_void,
+    _chelpers: *mut c_void,
+    _p_address: *mut c_void,
+) -> *mut c_void {
+    trace!("{}: ··· {}", "mckzkevm", "starks_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn starks_new_default_c(
     _const_pols: &str,
     _map_const_pols_file: bool,
     _constants_tree: &str,

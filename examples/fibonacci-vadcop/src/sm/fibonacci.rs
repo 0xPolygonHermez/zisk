@@ -1,7 +1,7 @@
 use log::debug;
 use std::rc::Rc;
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
+use common::{AirInstance, ExecutionCtx, ProofCtx, Prover};
 use proofman::WCManager;
 use wchelpers::{WCComponent, WCExecutor, WCOpCalculator};
 
@@ -28,17 +28,19 @@ impl FibonacciSquare {
         air_id: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         let pi: FibonacciVadcopPublicInputs = pctx.public_inputs.as_slice().into();
-        let (mut a, mut b, module) = pi.inner();
-
+        let (module, mut a, mut b, out) = pi.inner();
         let num_rows = 1 << pctx.pilout.get_air(air_group_id, air_id).num_rows();
 
         let mut trace = if ectx.discovering {
             None
         } else {
-            let air_instance_ctx = &mut pctx.find_air_instances(air_group_id, air_id)[0];
-            let mut trace = Box::new(FibonacciSquareTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0));
+            let (air_idx, air_instance_ctx): &mut (usize, &common::AirInstanceCtx) =
+                &mut pctx.find_air_instances(air_group_id, air_id)[0];
+            let offset = (provers[*air_idx].get_map_offsets("cm1", false) * 8) as usize;
+            let mut trace = Box::new(FibonacciSquareTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, offset));
 
             trace.a[0] = Goldilocks::from_canonical_u64(a);
             trace.b[0] = Goldilocks::from_canonical_u64(b);
@@ -55,19 +57,26 @@ impl FibonacciSquare {
                 trace.a[i] = Goldilocks::from_canonical_u64(a);
             }
         }
-
+        pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
         Ok(b)
     }
 }
 
 impl<F> WCComponent<F> for FibonacciSquare {
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    ) {
         if stage != 1 {
             return;
         }
 
         debug!("Fiboncci: Calculating witness");
-        Self::calculate_fibonacci(&self, air_instance.air_group_id, air_instance.air_id, pctx, ectx).unwrap();
+        Self::calculate_fibonacci(&self, air_instance.air_group_id, air_instance.air_id, pctx, ectx, provers).unwrap();
     }
 
     fn calculate_plan(&self, ectx: &mut ExecutionCtx) {
@@ -77,6 +86,7 @@ impl<F> WCComponent<F> for FibonacciSquare {
 
 impl<F> WCExecutor<F> for FibonacciSquare {
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        Self::calculate_fibonacci(&self, FIBONACCI_AIR_GROUP_ID, FIBONACCI_0_AIR_ID, pctx, ectx).unwrap();
+        let _provers: Vec<Box<dyn Prover<F>>> = Vec::new();
+        Self::calculate_fibonacci(&self, FIBONACCI_AIR_GROUP_ID, FIBONACCI_0_AIR_ID, pctx, ectx, &_provers).unwrap();
     }
 }
