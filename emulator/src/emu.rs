@@ -33,7 +33,7 @@ impl<'a> Emu<'a> {
 
         // Sort read sections by start address to improve performance when using binary search
         ctx.mem.read_sections.sort_by(|a, b| a.start.cmp(&b.start));
-        
+
         // Get registers
         //emu.get_regs(); // TODO: ask Jordi
 
