@@ -17,12 +17,12 @@ fn main() {
 
     match result {
         Ok(result) => {
-            println!("Emulation completed successfully");
-            let hex_string: String = result.iter().fold(String::new(), |mut acc, byte| {
+            // println!("Emulation completed successfully");
+            result.iter().fold(String::new(), |mut acc, byte| {
                 write!(&mut acc, "{:02x}", byte).unwrap();
                 acc
             });
-            print!("Result: 0x{}", hex_string);
+            // print!("Result: 0x{}", hex_string);
         }
         Err(e) => {
             eprintln!("Error during emulation: {:?}", e);
