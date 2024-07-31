@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-common = { path = "../../common" }
+zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
 sm-binary-32 = { path = "../binary-32" }
 sm-binary-64 = { path = "../binary-64" }

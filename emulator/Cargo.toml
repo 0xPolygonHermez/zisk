@@ -12,8 +12,8 @@ name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
 [dependencies]
+zisk-core = { path = "../core" }
 clap = { version = "4.5.9", features = ["derive", "env"] }
-zisk-core = {path="../core"}
 riscv = {path="../riscv"}
 
 [dev-dependencies]
