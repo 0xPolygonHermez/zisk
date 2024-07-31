@@ -24,15 +24,15 @@ impl ZiskInstBuilder {
             ind_width_set: false,
             i: ZiskInst {
                 paddr,
-                store_ra: 0,
-                store_use_sp: 0,
+                store_ra: false,
+                store_use_sp: false,
                 store: STORE_NONE,
                 store_offset: 0,
-                set_pc: 0,
-                set_sp: 0,
+                set_pc: false,
+                set_sp: false,
                 ind_width: 8,
                 inc_sp: 0,
-                end: 0,
+                end: false,
                 a_src: INITIAL_VALUE,
                 a_use_sp_imm1: INITIAL_VALUE,
                 a_offset_imm0: INITIAL_VALUE,
@@ -41,7 +41,7 @@ impl ZiskInstBuilder {
                 b_offset_imm0: INITIAL_VALUE,
                 jmp_offset1: INITIAL_VALUE_S64,
                 jmp_offset2: INITIAL_VALUE_S64,
-                is_external_op: INITIAL_VALUE,
+                is_external_op: false,
                 op: 0,
                 op_str: "",
                 verbose: String::new(),
@@ -169,22 +169,14 @@ impl ZiskInstBuilder {
             }
         }
 
-        if store_ra {
-            self.i.store_ra = 1;
-        } else {
-            self.i.store_ra = 0;
-        }
+        self.i.store_ra = store_ra;
         self.i.store = self.c_store(dst);
 
         if self.i.store == STORE_MEM || self.i.store == STORE_IND {
-            if use_sp {
-                self.i.store_use_sp = 1;
-            } else {
-                self.i.store_use_sp = 0;
-            }
+            self.i.store_use_sp = use_sp;
             self.i.store_offset = offset;
         } else {
-            self.i.store_use_sp = 0;
+            self.i.store_use_sp = false;
             self.i.store_offset = 0;
         }
     }
@@ -194,19 +186,19 @@ impl ZiskInstBuilder {
     }
 
     pub fn set_pc(&mut self) {
-        self.i.set_pc = 1;
+        self.i.set_pc = true;
     }
 
     pub fn set_sp(&mut self) {
-        self.i.set_sp = 1;
+        self.i.set_sp = true;
     }
 
     pub fn op(&mut self, optxt: &str) {
         let op = self.zisk_ops.op_from_str.get(optxt).unwrap();
         if op.t == "i" {
-            self.i.is_external_op = 0;
+            self.i.is_external_op = false;
         } else if op.t == "e" {
-            self.i.is_external_op = 1;
+            self.i.is_external_op = true;
         } else {
             panic!("ZiskInstBuilder::op() found invalid op={}", optxt);
         }
@@ -241,9 +233,9 @@ impl ZiskInstBuilder {
         // if self.i.store_offset == INVALID_VALUE { panic!("ZiskInstBuilder::check() found
         // store_offset={}", self.i.store_offset); } if self.i.ind_width == INVALID_VALUE {
         // panic!("ZiskInstBuilder::check() found ind_width={}", self.i.ind_width); }
-        if self.i.is_external_op == INVALID_VALUE {
-            panic!("ZiskInstBuilder::check() found is_external_op={}", self.i.is_external_op);
-        }
+        // if self.i.is_external_op == INVALID_VALUE {
+        //     panic!("ZiskInstBuilder::check() found is_external_op={}", self.i.is_external_op);
+        // }
         //if self.i.op == INVALID_VALUE {
         //    panic!("ZiskInstBuilder::check() found op={}", self.i.op);
         //}
@@ -255,9 +247,9 @@ impl ZiskInstBuilder {
         if self.i.jmp_offset2 == INVALID_VALUE as i64 {
             panic!("ZiskInstBuilder::check() found jmp_offset2={}", self.i.jmp_offset2);
         }
-        if self.i.end == INVALID_VALUE {
-            panic!("ZiskInstBuilder::check() found end={}", self.i.end);
-        }
+        // if self.i.end == INVALID_VALUE {
+        //     panic!("ZiskInstBuilder::check() found end={}", self.i.end);
+        // }
 
         if (self.i.b_src == SRC_IND) && (self.i.store == STORE_IND) {
             panic!("ZiskInstBuilder::check() Load and store cannot bi indirect at the same time");
@@ -277,7 +269,7 @@ impl ZiskInstBuilder {
     }
 
     pub fn end(&mut self) {
-        self.i.end = 1;
+        self.i.end = true;
     }
 
     pub fn inc_sp(&mut self, inc: u64) {

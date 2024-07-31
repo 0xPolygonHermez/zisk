@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::INVALID_VALUE; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
-                           * become 0xFFFFFFFFFFFFFFFF */
+use crate::{ZiskInst, INVALID_VALUE}; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
+                                       * become 0xFFFFFFFFFFFFFFFF */
 use crate::{ZiskInstBuilder, INVALID_VALUE_S64, SRC_IND, SRC_SP, SRC_STEP}; // TODO: Ask Jordi.
 
 /// RO data structure
@@ -29,6 +29,8 @@ pub struct ZiskRom {
     pub from: u64,
     pub length: u64,
     pub data: Vec<u8>,
+    pub rom_entry_instructions: Vec<ZiskInst>,
+    pub rom_instructions: Vec<ZiskInst>,
 }
 
 /// ZisK ROM implementation
@@ -41,6 +43,8 @@ impl ZiskRom {
             from: 0,
             length: 0,
             data: Vec::new(),
+            rom_entry_instructions: Vec::new(),
+            rom_instructions: Vec::new(),
         }
     }
 
@@ -70,31 +74,29 @@ impl ZiskRom {
             let i = &self.insts[&key].i;
             let mut inst_json = json::JsonValue::new_object();
             inst_json["paddr"] = i.paddr.into();
-            if i.store_ra != INVALID_VALUE {
-                inst_json["store_ra"] = i.store_ra.into();
-            }
-            if i.store_use_sp != INVALID_VALUE {
-                inst_json["store_use_sp"] = i.store_use_sp.into();
-            }
+
+            inst_json["store_ra"] = i.store_ra.into();
+
+            inst_json["store_use_sp"] = i.store_use_sp.into();
+
             inst_json["store"] = i.store.into();
             if i.store_offset != INVALID_VALUE_S64 {
                 inst_json["store_offset"] = i.store_offset.into();
             }
-            if i.set_pc != INVALID_VALUE {
-                inst_json["set_pc"] = i.set_pc.into();
-            }
-            if i.set_sp != INVALID_VALUE {
-                inst_json["set_sp"] = i.set_sp.into();
-            }
+
+            inst_json["set_pc"] = i.set_pc.into();
+
+            inst_json["set_sp"] = i.set_sp.into();
+
             if i.ind_width != INVALID_VALUE {
                 inst_json["ind_width"] = i.ind_width.into();
             }
             if i.inc_sp != INVALID_VALUE {
                 inst_json["inc_sp"] = i.inc_sp.into();
             }
-            if i.end != INVALID_VALUE {
-                inst_json["end"] = i.end.into();
-            }
+
+            inst_json["end"] = i.end.into();
+
             if i.a_src != INVALID_VALUE {
                 inst_json["a_src"] = i.a_src.into();
             }
@@ -122,9 +124,9 @@ impl ZiskRom {
             if i.b_offset_imm0 != INVALID_VALUE {
                 inst_json["b_offset_imm0"] = i.b_offset_imm0.into();
             }
-            if i.is_external_op != INVALID_VALUE {
-                inst_json["is_external_op"] = i.is_external_op.into();
-            }
+
+            inst_json["is_external_op"] = i.is_external_op.into();
+
             inst_json["op"] = i.op.into();
             inst_json["opStr"] = i.op_str.into();
             if i.jmp_offset1 != INVALID_VALUE_S64 {

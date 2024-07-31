@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-common = { path = "../../common" }
+zisk-core = { path = "../../core" }
 sm-arith = { path = "../arith" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }

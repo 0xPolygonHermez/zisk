@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
 sm-mem-aligned = { path = "../mem-aligned" }
 sm-mem-unaligned = { path = "../mem-unaligned" }
-zisk-common = { path = "../../common" }
 
 # common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }

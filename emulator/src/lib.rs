@@ -1,17 +1,19 @@
-mod mem;
-pub use mem::*;
-mod mem_section;
-pub use mem_section::*;
-mod mem_trace;
-pub use mem_trace::*;
-
 mod emu;
-pub use emu::*;
 mod emu_context;
-pub use emu_context::*;
 mod emu_options;
-pub use emu_options::*;
 mod emu_trace;
+mod emulator;
+mod emulator_errors;
+mod mem;
+mod mem_section;
+mod mem_trace;
+
+pub use emu::*;
+pub use emu_context::*;
+pub use emu_options::*;
 pub use emu_trace::*;
-mod emulate;
-pub use emulate::*;
+pub use emulator::*;
+pub use emulator_errors::*;
+pub use mem::*;
+pub use mem_section::*;
+pub use mem_trace::*;

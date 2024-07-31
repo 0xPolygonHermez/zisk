@@ -1,8 +1,9 @@
 [workspace]
 members = [
     "cli",
-    "common",
-    "riscv/riscv2zisk",
+    "core",
+    "emulator",
+    "riscv",
     "state-machines/arith",
     "state-machines/arith-32",
     "state-machines/arith-64",
@@ -13,7 +14,6 @@ members = [
     "state-machines/binary-3264",
     "state-machines/common",
     "state-machines/freq-ops",
-    "emulator",
     "state-machines/main",
     "state-machines/mem",
     "state-machines/mem-aligned",

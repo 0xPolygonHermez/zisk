@@ -1,6 +1,8 @@
+use riscv::{riscv_interpreter, RiscvInstruction};
+
 use crate::{
-    convert_vector, read_u16_le, read_u32_le, read_u64_le, riscv_interpreter, RiscvInstruction,
-    ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, SYS_ADDR,
+    convert_vector, read_u16_le, read_u32_le, read_u64_le, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK,
+    INPUT_ADDR, OUTPUT_ADDR, SYS_ADDR,
 };
 
 use std::collections::HashMap;

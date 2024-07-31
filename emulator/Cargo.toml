@@ -3,21 +3,6 @@ name = "ziskemu"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-clap = { version = "4.5.9", features = ["derive", "env"] }
-riscv2zisk = {path="../riscv/riscv2zisk"}
-
-[dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
-pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
-
-[profile.bench]
-opt-level = 0
-
-[[bench]]
-name = "benchmark"
-harness = false
-
 [lib]
 name = "ziskemu"
 path = "src/lib.rs"
@@ -25,3 +10,16 @@ path = "src/lib.rs"
 [[bin]]
 name = "ziskemu"
 path = "src/bin/ziskemu.rs"
+
+[dependencies]
+clap = { version = "4.5.9", features = ["derive", "env"] }
+zisk-core = {path="../core"}
+riscv = {path="../riscv"}
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
+
+[[bench]]
+name = "benchmark"
+harness = false

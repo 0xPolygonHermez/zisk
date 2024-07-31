@@ -6,12 +6,14 @@ on:
     paths:
       - 'emulator/**'
       - 'riscv/**'
+      - 'core/**'
   pull_request:
     branches:
       - '**'
     paths:
       - 'emulator/**'
       - 'riscv/**'
+      - 'core/**'
 
 jobs:
   docker-ziskof-check:
