@@ -292,7 +292,6 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "log",
  "pilout",
@@ -1319,7 +1318,6 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "bytes",
  "log",
@@ -1456,7 +1454,6 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "common",
  "env_logger",
@@ -2159,7 +2156,6 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "common",
  "log",
@@ -2176,7 +2172,6 @@ dependencies = [
 [[package]]
 name = "starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "log",
 ]
@@ -2470,7 +2465,6 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "starks-lib-c",
 ]
@@ -2544,7 +2538,6 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "colored",
  "sysinfo",
@@ -2688,7 +2681,6 @@ dependencies = [
 [[package]]
 name = "wchelpers"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#650fa689be3b93d5d5b462006f533972fabd5201"
 dependencies = [
  "common",
 ]
