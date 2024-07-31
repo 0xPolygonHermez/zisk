@@ -14,7 +14,7 @@ pub struct EmuOptions {
     pub elf: Option<String>,
     /// Sets the input data file path
     #[clap(short, long, value_name = "INPUT_FILE")]
-    pub input: Option<String>,
+    pub inputs: Option<String>,
     /// Sets the output data file path
     #[clap(short, long, value_name = "OUTPUT_FILE")]
     pub output: Option<String>,
@@ -49,7 +49,7 @@ impl Default for EmuOptions {
         Self {
             rom: None,
             elf: None,
-            input: None,
+            inputs: None,
             output: None,
             max_steps: 0xFFFFFFFFFFFFFFFF,
             print_step: None,
@@ -68,7 +68,7 @@ impl fmt::Display for EmuOptions {
         write!(
             f,
             "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}",
-            self.rom, self.elf, self.input, self.max_steps, self.print_step, self.trace, self.output, self.verbose
+            self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose
         )
     }
 }

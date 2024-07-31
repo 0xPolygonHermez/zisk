@@ -1,6 +1,6 @@
 use clap::Parser;
-use std::process;
-use ziskemu::{emulate, EmuOptions};
+use std::{fmt::Write, process};
+use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
@@ -12,8 +12,21 @@ fn main() {
     }
 
     // Call emulate, with these options
-    emulate(&options, None);
+    let emulator = ZiskEmulator;
+    let result = emulator.emulate(&options, None);
 
-    // Return successfully
-    process::exit(0);
+    match result {
+        Ok(result) => {
+            // println!("Emulation completed successfully");
+            result.iter().fold(String::new(), |mut acc, byte| {
+                write!(&mut acc, "{:02x}", byte).unwrap();
+                acc
+            });
+            // print!("Result: 0x{}", hex_string);
+        }
+        Err(e) => {
+            eprintln!("Error during emulation: {:?}", e);
+            process::exit(1);
+        }
+    }
 }

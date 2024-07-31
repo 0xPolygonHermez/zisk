@@ -63,3 +63,9 @@ impl EmuContext {
         ctx
     }
 }
+
+impl Default for EmuContext {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
