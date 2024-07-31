@@ -1,9 +1,10 @@
 use std::mem;
 
 use crate::{EmuContext, EmuOptions, EmuTrace, MemTrace};
-use riscv2zisk::{
-    opcode_execute, RiscVRegisters, ZiskRom, OUTPUT_ADDR, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+use riscv::RiscVRegisters;
+use zisk_core::{
+    opcode_execute, ZiskRom, OUTPUT_ADDR, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_SP, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -60,8 +61,13 @@ impl<'a> Emu<'a> {
             return;
         };
 
+        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+
         // If this is the last instruction, stop executing
-        self.ctx.end = instruction.end;
+        if instruction.end {
+            self.ctx.end = true;
+        }
 
         // Build the 'a' register value  based on the source specified by the current instruction
         match instruction.a_src {

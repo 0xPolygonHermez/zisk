@@ -1,5 +1,6 @@
-use riscv2zisk::Riscv2zisk;
 use std::{env, process};
+
+use zisk_core::Riscv2zisk;
 
 fn main() {
     println!("riscv2zisk converts an ELF RISCV file into a ZISK ASM file");

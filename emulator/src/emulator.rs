@@ -1,10 +1,10 @@
 use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
-use riscv2zisk::{Riscv2zisk, ZiskInst, ZiskRom, INPUT_ADDR, ROM_ADDR, ROM_ENTRY};
 use std::{
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
+use zisk_core::{Riscv2zisk, ZiskInst, ZiskRom, INPUT_ADDR, ROM_ADDR, ROM_ENTRY};
 
 pub trait Emulator<ET> {
     fn emulate(
