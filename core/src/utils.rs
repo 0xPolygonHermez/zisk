@@ -3,85 +3,37 @@ use crate::{SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND, STORE
 /// Read a u64 value from the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn read_u64_le(data: &[u8], index: usize) -> u64 {
-    assert!(data.len() > (index + 7));
-    let mut aux: u64;
-    aux = data[index] as u64;
-    aux += (data[index + 1] as u64).rotate_left(8);
-    aux += (data[index + 2] as u64).rotate_left(16);
-    aux += (data[index + 3] as u64).rotate_left(24);
-    aux += (data[index + 4] as u64).rotate_left(32);
-    aux += (data[index + 5] as u64).rotate_left(40);
-    aux += (data[index + 6] as u64).rotate_left(48);
-    aux += (data[index + 7] as u64).rotate_left(56);
-    aux
+    u64::from_le_bytes(data[index..index + 8].try_into().unwrap())
 }
 
 /// Read a u32 value from the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn read_u32_le(data: &[u8], index: usize) -> u32 {
-    assert!(data.len() > (index + 3));
-    let mut aux: u32;
-    aux = data[index] as u32;
-    aux += (data[index + 1] as u32).rotate_left(8);
-    aux += (data[index + 2] as u32).rotate_left(16);
-    aux += (data[index + 3] as u32).rotate_left(24);
-    aux
+    u32::from_le_bytes(data[index..index + 4].try_into().unwrap())
 }
 
 /// Read a u16 value from the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn read_u16_le(data: &[u8], index: usize) -> u16 {
-    assert!(data.len() > (index + 1));
-    let mut aux: u16;
-    aux = data[index] as u16;
-    aux += (data[index + 1] as u16).rotate_left(8);
-    aux
+    u16::from_le_bytes(data[index..index + 2].try_into().unwrap())
 }
 
 /// Write a u64 value to the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn write_u64_le(data: &mut [u8], index: usize, value: u64) {
-    assert!(data.len() > (index + 7));
-    let mut aux: u64 = value;
-    data[index] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 1] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 2] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 3] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 4] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 5] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 6] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 7] = aux as u8;
+    data[index..index + 8].copy_from_slice(&value.to_le_bytes());
 }
 
 /// Write a u32 value to the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn write_u32_le(data: &mut [u8], index: usize, value: u32) {
-    assert!(data.len() > (index + 3));
-    let mut aux: u32 = value;
-    data[index] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 1] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 2] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 3] = aux as u8;
+    data[index..index + 4].copy_from_slice(&value.to_le_bytes());
 }
 
 /// Write a u16 value to the u8 vector at the specified position in little endian order
 #[inline(always)]
 pub fn write_u16_le(data: &mut [u8], index: usize, value: u16) {
-    assert!(data.len() > (index + 1));
-    let mut aux: u16 = value;
-    data[index] = aux as u8;
-    aux = aux.rotate_right(8);
-    data[index + 1] = aux as u8;
+    data[index..index + 2].copy_from_slice(&value.to_le_bytes());
 }
 
 /// Converts a u8 vector into a u32 vector
