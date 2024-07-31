@@ -31,6 +31,9 @@ impl<'a> Emu<'a> {
             ctx.mem.add_read_section(self.rom.ro_data[i].from, &self.rom.ro_data[i].data);
         }
 
+        // Sort read sections by start address to improve performance when using binary search
+        ctx.mem.read_sections.sort_by(|a, b| a.start.cmp(&b.start));
+        
         // Get registers
         //emu.get_regs(); // TODO: ask Jordi
 
@@ -57,13 +60,8 @@ impl<'a> Emu<'a> {
             return;
         };
 
-        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
-
         // If this is the last instruction, stop executing
-        if instruction.end {
-            self.ctx.end = true;
-        }
+        self.ctx.end = instruction.end;
 
         // Build the 'a' register value  based on the source specified by the current instruction
         match instruction.a_src {
@@ -75,8 +73,7 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.a = self.ctx.mem.read(addr, 8);
                 if tracing_steps {
-                    let mem_trace = MemTrace::new(false, addr, 8, self.ctx.a);
-                    self.ctx.mem_trace.push(mem_trace);
+                    self.ctx.mem_trace.push(MemTrace::new(false, addr, 8, self.ctx.a));
                 }
             }
             SRC_IMM => self.ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32),
@@ -95,8 +92,7 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.b = self.ctx.mem.read(addr, 8);
                 if tracing_steps {
-                    let mem_trace = MemTrace::new(false, addr, 8, self.ctx.b);
-                    self.ctx.mem_trace.push(mem_trace);
+                    self.ctx.mem_trace.push(MemTrace::new(false, addr, 8, self.ctx.b));
                 }
             }
             SRC_IMM => self.ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32),
@@ -112,10 +108,9 @@ impl<'a> Emu<'a> {
         // Call the operation
         (self.ctx.c, self.ctx.flag) = opcode_execute(instruction.op, self.ctx.a, self.ctx.b);
 
-        // Store the value of the c register based on the storage specified by the current
-        // instruction
+        // Store the 'c' register value based on the storage specified by the current instruction
         match instruction.store {
-            STORE_NONE => print!(""),
+            STORE_NONE => {}
             STORE_MEM => {
                 let val: i64 = if instruction.store_ra {
                     self.ctx.pc as i64 + instruction.jmp_offset2
@@ -131,8 +126,6 @@ impl<'a> Emu<'a> {
                     let mem_trace = MemTrace::new(true, addr as u64, 8, val as u64);
                     self.ctx.mem_trace.push(mem_trace);
                 }
-                //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
-                // ctx.pc, addr, val as u64};
             }
             STORE_IND => {
                 let val: i64 = if instruction.store_ra {
@@ -146,8 +139,6 @@ impl<'a> Emu<'a> {
                 }
                 addr += self.ctx.a as i64;
                 self.ctx.mem.write(addr as u64, val as u64, instruction.ind_width);
-                //println!{"Emu::step() step={} pc={} writing to memory addr={} val={}", ctx.step,
-                // ctx.pc, addr, val as u64};
             }
             _ => panic!("Emu::step() Invalid store={} pc={}", instruction.store, self.ctx.pc),
         }
