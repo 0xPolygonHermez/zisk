@@ -1,5 +1,5 @@
 use crate::{
-    ZiskInst, ZiskOperations, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND,
+    op_from_str, ZiskInst, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND,
     STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
@@ -11,13 +11,11 @@ const INITIAL_VALUE_S64: i64 = INVALID_VALUE_S64;
 pub struct ZiskInstBuilder {
     ind_width_set: bool,
     pub i: ZiskInst,
-    zisk_ops: ZiskOperations,
     regs_addr: u64,
 }
 
 impl ZiskInstBuilder {
     pub fn new(paddr: u64) -> ZiskInstBuilder {
-        let zisk_ops = ZiskOperations::new();
         let regs_addr = SYS_ADDR;
 
         ZiskInstBuilder {
@@ -43,10 +41,10 @@ impl ZiskInstBuilder {
                 jmp_offset2: INITIAL_VALUE_S64,
                 is_external_op: false,
                 op: 0,
+                func: |_, _| (0, false),
                 op_str: "",
                 verbose: String::new(),
             },
-            zisk_ops,
             regs_addr,
         }
     }
@@ -194,7 +192,7 @@ impl ZiskInstBuilder {
     }
 
     pub fn op(&mut self, optxt: &str) {
-        let op = self.zisk_ops.op_from_str.get(optxt).unwrap();
+        let op = op_from_str(optxt);
         if op.t == "i" {
             self.i.is_external_op = false;
         } else if op.t == "e" {
@@ -280,8 +278,10 @@ impl ZiskInstBuilder {
         self.i.verbose = s.to_owned();
     }
 
-    pub fn build(&self) {
+    pub fn build(&mut self) {
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
         self.check();
+
+        self.i.func = op_from_str(self.i.op_str).f;
     }
 }
