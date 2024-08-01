@@ -1,5 +1,4 @@
 use crate::MemSection;
-use zisk_core::UART_ADDR;
 
 /// Memory structure, containing several read sections and one single write section
 pub struct Mem {
@@ -153,8 +152,8 @@ impl Mem {
         }
 
         // Log to console bytes written to UART address
-        if (addr == UART_ADDR) && (width == 1) {
-            print!("{}", String::from(val as u8 as char));
-        }
+        // if (addr == UART_ADDR) && (width == 1) {
+        //     print!("{}", String::from(val as u8 as char));
+        // }
     }
 }

@@ -26,6 +26,7 @@ pub struct ZiskInst {
     pub jmp_offset2: i64,
     pub is_external_op: bool,
     pub op: u8,
+    pub func: fn(u64, u64) -> (u64, bool),
     pub op_str: &'static str,
     pub verbose: String,
 }
@@ -55,6 +56,7 @@ impl Default for ZiskInst {
             jmp_offset2: 0,
             is_external_op: false,
             op: 0,
+            func: |_, _| (0, false),
             op_str: "",
             verbose: String::new(),
         }

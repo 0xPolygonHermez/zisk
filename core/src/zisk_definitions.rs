@@ -8,6 +8,7 @@ pub const STORE_NONE: u64 = 0;
 pub const STORE_MEM: u64 = 1;
 pub const STORE_IND: u64 = 2;
 pub const ROM_ADDR: u64 = 0x80000000;
+pub const ROM_ADDR_MAX: u64 = INPUT_ADDR - 1;
 pub const INPUT_ADDR: u64 = 0x90000000;
 pub const MAX_INPUT_SIZE: u64 = 0x10000000; // 256M,
 pub const RAM_ADDR: u64 = 0xa0000000;

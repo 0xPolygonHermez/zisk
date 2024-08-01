@@ -3,8 +3,8 @@ use std::mem;
 use crate::{EmuContext, EmuOptions, EmuTrace, MemTrace};
 use riscv::RiscVRegisters;
 use zisk_core::{
-    opcode_execute, ZiskRom, OUTPUT_ADDR, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_SP, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -52,22 +52,15 @@ impl<'a> Emu<'a> {
             self.ctx.mem_trace.clear();
         }
 
-        let instruction = if self.ctx.pc >= ROM_ADDR {
-            &self.rom.rom_instructions[(self.ctx.pc - ROM_ADDR) as usize]
-        } else if self.ctx.pc >= ROM_ENTRY {
-            &self.rom.rom_entry_instructions[(self.ctx.pc - ROM_ENTRY) as usize]
-        } else {
-            self.ctx.end = true;
-            return;
-        };
+        let pc = self.ctx.pc;
+
+        let instruction = self.rom.get_instruction(pc);
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
         // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // If this is the last instruction, stop executing
-        if instruction.end {
-            self.ctx.end = true;
-        }
+        self.ctx.end = instruction.end;
 
         // Build the 'a' register value  based on the source specified by the current instruction
         match instruction.a_src {
@@ -111,8 +104,9 @@ impl<'a> Emu<'a> {
             }
             _ => panic!("Emu::step() Invalid b_src={} pc={}", instruction.b_src, self.ctx.pc),
         }
+
         // Call the operation
-        (self.ctx.c, self.ctx.flag) = opcode_execute(instruction.op, self.ctx.a, self.ctx.b);
+        (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
 
         // Store the 'c' register value based on the storage specified by the current instruction
         match instruction.store {
@@ -129,8 +123,7 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.mem.write(addr as u64, val as u64, 8);
                 if tracing_steps {
-                    let mem_trace = MemTrace::new(true, addr as u64, 8, val as u64);
-                    self.ctx.mem_trace.push(mem_trace);
+                    self.ctx.mem_trace.push(MemTrace::new(true, addr as u64, 8, val as u64));
                 }
             }
             STORE_IND => {
@@ -273,7 +266,7 @@ impl<'a> Emu<'a> {
                 println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc);
             }
             // Check trace PC
-            if self.ctx.tracerv_on && (self.ctx.pc % 4 == 0) {
+            if self.ctx.tracerv_on && (self.ctx.pc & 0b11 == 0) {
                 self.ctx.trace_pc = self.ctx.pc;
             }
 
@@ -294,7 +287,7 @@ impl<'a> Emu<'a> {
             self.step(options, &callback);
 
             // Only trace after finishing a riscV instruction
-            if self.ctx.tracerv_on && ((self.ctx.pc % 4) == 0) {
+            if self.ctx.tracerv_on && (self.ctx.pc & 0b11) == 0 {
                 // Store logs in a vector of strings
                 let mut changes: Vec<String> = Vec::new();
 

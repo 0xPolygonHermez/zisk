@@ -52,11 +52,8 @@ fn bench_emulate(c: &mut Criterion) {
     c.bench_function("Emulate", |b| {
         b.iter(|| {
             let options = EmuOptions {
-                elf: Some(
-                    "/Users/xpinsach/dev/zisk/emulator/../../tmp/zisk-fibonacci/target/riscv64ima-polygon-ziskos-elf/release/fibonacci"
-                        .to_string(),
-                ),
-                inputs: Some("/Users/xpinsach/dev/zisk/emulator/../../tmp/zisk-fibonacci/output/input.bin".to_string()),
+                elf: Some("./benches/data/my.elf".to_string()),
+                inputs: Some("./benches/data/input.bin".to_string()),
                 log_metrics: true,
                 ..Default::default()
             };
