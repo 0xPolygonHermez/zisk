@@ -1,14 +1,13 @@
 use log::info;
 
-use crate::{Prover, WCPilOut};
+use crate::{Prover, WCPilout};
 use transcript::FFITranscript;
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
-    pub pilout: WCPilOut,
+    pub pilout: WCPilout,
     pub challenges: Option<Vec<F>>,
-
     pub air_instances: Vec<AirInstanceCtx>,
     pub transcript: Option<FFITranscript>,
 }
@@ -16,9 +15,8 @@ pub struct ProofCtx<F> {
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(pilout: WCPilOut, public_inputs: Vec<u8>) -> Self {
+    pub fn create_ctx(pilout: WCPilout, public_inputs: Vec<u8>) -> Self {
         info!("{}: ··· Creating proof context", Self::MY_NAME);
-
         if pilout.air_groups().len() == 0 {
             panic!("No subproofs found in PilOut");
         }

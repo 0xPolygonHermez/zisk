@@ -4,8 +4,8 @@ use sysinfo::System;
 pub fn print_banner(extended: bool) {
     println!("");
     println!(
-        "        {}{}",
-        "PROVER by Polygon Labs v".bright_purple().bold(),
+        "    {}{}",
+        "Proofman by Polygon Labs v".bright_purple().bold(),
         env!("CARGO_PKG_VERSION").bright_purple().bold()
     );
     let system_name = System::name().unwrap_or_else(|| "<unknown>".to_owned());

@@ -1,16 +1,16 @@
-use std::rc::Rc;
+use std::{collections::HashMap, sync::Arc};
 
 use log::info;
 
 use common::{ExecutionCtx, ProofCtx};
-use wchelpers::{WCComponent, WCExecutor};
+use wchelpers::WCComponent;
 
 use crate::{DefaultPlanner, Planner};
 use common::Prover;
 
 pub struct WCManager<F> {
-    components: Vec<Rc<dyn WCComponent<F>>>,
-    executors: Vec<Rc<dyn WCExecutor<F>>>,
+    components: Vec<Arc<dyn WCComponent<F>>>,
+    airs: HashMap<usize, Arc<dyn WCComponent<F>>>,
     planner: Box<dyn Planner<F>>,
 }
 
@@ -18,15 +18,29 @@ impl<F> WCManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
     pub fn new() -> Self {
-        WCManager { components: Vec::new(), executors: Vec::new(), planner: Box::new(DefaultPlanner) }
+        WCManager { components: Vec::new(), airs: HashMap::new(), planner: Box::new(DefaultPlanner) }
     }
 
-    pub fn register_component(&mut self, component: Rc<dyn WCComponent<F>>) {
+    pub fn register_component(&mut self, component: Arc<dyn WCComponent<F>>, air_ids: Option<&[usize]>) {
+        if let Some(air_ids) = air_ids {
+            self.register_airs(air_ids, component.clone());
+        }
+
         self.components.push(component);
     }
 
-    pub fn register_executor(&mut self, executor: Rc<dyn WCExecutor<F>>) {
-        self.executors.push(executor);
+    pub fn register_airs(&mut self, air_ids: &[usize], air: Arc<dyn WCComponent<F>>) {
+        for air_id in air_ids.iter() {
+            self.register_air(*air_id, air.clone());
+        }
+    }
+
+    pub fn register_air(&mut self, air_id: usize, air: Arc<dyn WCComponent<F>>) {
+        if self.airs.contains_key(&air_id) {
+            panic!("{}: Air ID {} already registered", Self::MY_NAME, air_id);
+        }
+
+        self.airs.insert(air_id, air);
     }
 
     pub fn set_planner(&mut self, planner: Box<dyn Planner<F>>) {
@@ -38,14 +52,24 @@ impl<F> WCManager<F> {
         for component in self.components.iter() {
             component.start_proof(pctx, ectx);
         }
-
-        Self::execute(self, pctx, ectx);
     }
 
     pub fn end_proof(&mut self) {
         info!("{}: Ending proof", Self::MY_NAME);
         for component in self.components.iter() {
             component.end_proof();
+        }
+    }
+
+    pub fn start_execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        for component in self.components.iter() {
+            component.start_execute(pctx, ectx);
+        }
+    }
+
+    pub fn end_execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        for component in self.components.iter() {
+            component.end_execute(pctx, ectx);
         }
     }
 
@@ -61,17 +85,9 @@ impl<F> WCManager<F> {
         provers: &Vec<Box<dyn Prover<F>>>,
     ) {
         info!("{}: Calculating witness (stage {})", Self::MY_NAME, stage);
-
         for air_instance_ctx in ectx.instances.iter().rev() {
-            let component = &self.components[air_instance_ctx.wc_component_idx.unwrap()];
+            let component = self.airs.get(&air_instance_ctx.air_group_id).unwrap();
             component.calculate_witness(stage, air_instance_ctx, pctx, ectx, provers);
-        }
-    }
-
-    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        info!("{}: Executing", Self::MY_NAME);
-        for executor in self.executors.iter() {
-            executor.execute(pctx, ectx);
         }
     }
 }

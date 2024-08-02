@@ -195,7 +195,7 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
 
             self.p_params = Some(steps_params_new_c(
                 p_stark,
-                proof_ctx.challenges.as_ref().unwrap().as_ptr() as *const c_void,
+                proof_ctx.challenges.as_ref().unwrap().as_ptr() as *mut c_void,
                 self.subproof_values.as_ptr() as *mut c_void,
                 self.evals.as_ptr() as *mut c_void,
                 proof_ctx.public_inputs.as_ptr() as *mut c_void,
@@ -383,7 +383,6 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
         let p_stark: *mut std::ffi::c_void = self.p_stark.unwrap();
         let stark_info: &StarkInfo = self.stark_info.as_ref().unwrap();
         let transcript: &FFITranscript = proof_ctx.transcript.as_ref().unwrap();
-
         if stark_info.stark_struct.hash_commits {
             let hash: Vec<F> = vec![F::zero(); self.n_field_elements];
             calculate_hash_c(
@@ -394,7 +393,7 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
             );
             transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
         } else {
-            let mut inputs_: Vec<u64> = vec![25, 0, 2, 9]; //TODO: get this values from the proof_ctx, done like this to match with js code
+            let mut inputs_: Vec<u64> = vec![25, 0, 2, 9]; //TODO: harcoded
             let inputs_ptr: *mut c_void = inputs_.as_mut_ptr() as *mut c_void;
 
             transcript.add_elements(inputs_ptr, stark_info.n_publics as usize);

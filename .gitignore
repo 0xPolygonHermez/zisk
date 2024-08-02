@@ -1,1 +1,6 @@
 /target
+/pil_helpers
+/examples/fibonacci-vadcop/build
+/examples/fibonacci-vadcop/build_simple
+/examples/fibonacci-vadcop/build_complete
+run.sh

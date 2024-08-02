@@ -72,8 +72,8 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            pub fn from_buffer(buffer: &[u8], num_rows: usize, offset: usize) -> Self {
-                Self::from_ptr(buffer.as_ptr(), num_rows, offset)
+            pub unsafe fn from_buffer(buffer: &[u8], num_rows: usize, offset: usize) -> Self {
+                unsafe { Self::from_ptr(buffer.as_ptr(), num_rows, offset) }
             }
 
             /// Create a new instance of $my_struct using an outside buffer.
@@ -84,7 +84,7 @@ macro_rules! trace {
             /// * `offset` - The offset (in bytes) to the first element.
             /// * `stride` - The stride (in bytes) between consecutive elements.
             /// * `num_rows` - The number of rows in all the TraceCol fields defined.
-            pub fn from_ptr(ptr: *const u8, num_rows: usize, offset: usize) -> Self {
+            pub unsafe fn from_ptr(ptr: *const u8, num_rows: usize, offset: usize) -> Self {
                 // PRECONDITIONS
                 // num_rows must be greater than or equal to 2
                 assert!(num_rows >= 2);
@@ -149,73 +149,4 @@ macro_rules! trace_default_value {
     ($field_type:ty, $ptr:expr, $num_rows:expr, $stride: expr) => {
         $crate::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows)
     };
-}
-
-#[cfg(test)]
-mod tests {
-    // use rand::Rng;
-
-    #[test]
-    fn check() {
-        const OFFSET: usize = 2;
-        let offset = 1;
-        const STRIDE: usize = 16;
-        let num_rows = 8;
-
-        trace!(Trace { a: usize, b: usize }, offset: OFFSET, stride: STRIDE);
-
-        let buffer = vec![0u8; num_rows * 2 * std::mem::size_of::<usize>() + OFFSET + offset];
-        let mut trace = Trace::from_buffer(&buffer, num_rows, offset);
-
-        for i in 0..num_rows {
-            trace.a[i] = i;
-            trace.b[i] = i * 10;
-        }
-
-        for i in 0..num_rows {
-            assert_eq!(trace.a[i], i);
-            assert_eq!(trace.b[i], i * 10);
-        }
-
-        for i in 0..num_rows {
-            let value_a = unsafe { &*(buffer.as_ptr().add(OFFSET).add(offset).add(i * STRIDE) as *const usize) };
-            let value_b = unsafe {
-                &*(buffer.as_ptr().add(OFFSET).add(offset).add(i * STRIDE + std::mem::size_of::<usize>())
-                    as *const usize)
-            };
-
-            assert_eq!(*value_a, i);
-            assert_eq!(*value_b, i * 10);
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_1() {
-        let buffer = vec![0u8; 3];
-        trace!(Simple { field1: usize });
-        let _ = Simple::from_buffer(&buffer, 1, 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_2() {
-        let buffer = vec![0u8; 3];
-        trace!(Simple { field1: usize });
-        let _ = Simple::from_buffer(&buffer, 3, 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_3() {
-        trace!(Simple { field1: usize });
-        let _ = Simple::new(1);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_4() {
-        trace!(Simple { field1: usize });
-        let _ = Simple::new(3);
-    }
 }

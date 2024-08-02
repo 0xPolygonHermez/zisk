@@ -5,7 +5,11 @@ pub trait WCComponent<F> {
 
     fn end_proof(&self) {}
 
-    fn calculate_plan(&self, _ectx: &mut ExecutionCtx);
+    fn start_execute(&self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx) {}
+
+    fn end_execute(&self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx) {}
+
+    fn suggest_plan(&self, _ectx: &mut ExecutionCtx);
 
     fn calculate_witness(
         &self,
