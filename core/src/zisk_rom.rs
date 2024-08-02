@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{ZiskInst, INVALID_VALUE}; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
-                                       * become 0xFFFFFFFFFFFFFFFF */
+use crate::{ZiskInst, INVALID_VALUE, ROM_ADDR, ROM_ENTRY}; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
+                                                            * become 0xFFFFFFFFFFFFFFFF */
 use crate::{ZiskInstBuilder, INVALID_VALUE_S64, SRC_IND, SRC_SP, SRC_STEP}; // TODO: Ask Jordi.
 
 /// RO data structure
@@ -31,6 +31,9 @@ pub struct ZiskRom {
     pub data: Vec<u8>,
     pub rom_entry_instructions: Vec<ZiskInst>,
     pub rom_instructions: Vec<ZiskInst>,
+    // Rom Non 4 bytes aligned instructions
+    pub offset_rom_na_unstructions: u64,
+    pub rom_na_instructions: Vec<ZiskInst>,
 }
 
 /// ZisK ROM implementation
@@ -45,6 +48,26 @@ impl ZiskRom {
             data: Vec::new(),
             rom_entry_instructions: Vec::new(),
             rom_instructions: Vec::new(),
+            offset_rom_na_unstructions: 0,
+            rom_na_instructions: Vec::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_instruction(&self, pc: u64) -> &ZiskInst {
+        if pc >= ROM_ADDR {
+            if pc & 0b11 == 0 {
+                // pc is aligned to a 4-byte boundary
+                &self.rom_instructions[((pc - ROM_ADDR) >> 2) as usize]
+            } else {
+                // pc is not aligned to a 4-byte boundary
+                &self.rom_na_instructions[(pc - self.offset_rom_na_unstructions) as usize]
+            }
+        } else if pc >= ROM_ENTRY {
+            // pc is in the ROM_ENTRY range
+            &self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
+        } else {
+            panic!("ZiskRom::get_instruction() pc={} is out of range", pc);
         }
     }
 

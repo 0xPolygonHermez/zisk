@@ -186,7 +186,7 @@ jobs:
 
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv2zisk --target "$target" "${flags[@]}"
+          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
 
           bins=(cargo-zisk ziskemu)
           for name in "${bins[@]}"; do

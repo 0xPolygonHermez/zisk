@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-use zisk_core::{Riscv2zisk, ZiskInst, ZiskRom, INPUT_ADDR, ROM_ADDR, ROM_ENTRY};
+use zisk_core::{Riscv2zisk, ZiskInst, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 
 pub trait Emulator<ET> {
     fn emulate(
@@ -87,39 +87,68 @@ impl ZiskEmulator {
         // Preprocess the ROM (experimental)
         let mut max_rom_entry = 0;
         let mut max_rom_instructions = 0;
+
+        let mut min_rom_na_unstructions = u64::MAX;
+        let mut max_rom_na_unstructions = 0;
         for instruction in &rom.insts {
             let addr = *instruction.0;
 
             if addr < ROM_ENTRY {
                 return Err(ZiskEmulatorErr::AddressOutOfRange(addr));
             } else if addr < ROM_ADDR {
-                max_rom_entry = std::cmp::max(max_rom_entry, addr);
-            } else if addr < INPUT_ADDR {
-                max_rom_instructions = max_rom_instructions.max(addr);
+                if addr % 4 != 0 {
+                    // When an address is not 4 bytes aligned, it is considered a
+                    // na_rom_instructions We are supposed to have only one non
+                    // aligned instructions in > ROM_ADDRESS
+                    min_rom_na_unstructions = std::cmp::min(min_rom_na_unstructions, addr);
+                    max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
+                } else {
+                    max_rom_entry = std::cmp::max(max_rom_entry, addr);
+                }
+            } else if addr < ROM_ADDR_MAX {
+                if addr % 4 != 0 {
+                    // When an address is not 4 bytes aligned, it is considered a
+                    // na_rom_instructions We are supposed to have only one non
+                    // aligned instructions in > ROM_ADDRESS
+                    min_rom_na_unstructions = std::cmp::min(min_rom_na_unstructions, addr);
+                    max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
+                } else {
+                    max_rom_instructions = max_rom_instructions.max(addr);
+                }
             } else {
                 return Err(ZiskEmulatorErr::AddressOutOfRange(addr));
             }
         }
 
-        let num_rom_entry = max_rom_entry - ROM_ENTRY + 1;
-        let num_rom_instructions = max_rom_instructions - ROM_ADDR + 1;
+        let num_rom_entry = (max_rom_entry - ROM_ENTRY) / 4 + 1;
+        let num_rom_instructions = (max_rom_instructions - ROM_ADDR) / 4 + 1;
+        let num_rom_na_instructions = if u64::MAX == min_rom_na_unstructions {
+            0
+        } else {
+            max_rom_na_unstructions - min_rom_na_unstructions + 1
+        };
 
         rom.rom_entry_instructions = vec![ZiskInst::default(); num_rom_entry as usize];
         rom.rom_instructions = vec![ZiskInst::default(); num_rom_instructions as usize];
+        rom.rom_na_instructions = vec![ZiskInst::default(); num_rom_na_instructions as usize];
+        rom.offset_rom_na_unstructions = min_rom_na_unstructions;
 
         for instruction in &rom.insts {
             let addr = *instruction.0;
 
-            if addr < ROM_ADDR {
-                rom.rom_entry_instructions[(addr - ROM_ENTRY) as usize] = instruction.1.i.clone();
+            if addr % 4 != 0 {
+                rom.rom_na_instructions[(addr - min_rom_na_unstructions) as usize] =
+                    instruction.1.i.clone();
+            } else if addr < ROM_ADDR {
+                rom.rom_entry_instructions[((addr - ROM_ENTRY) >> 2) as usize] =
+                    instruction.1.i.clone();
             } else {
-                rom.rom_instructions[(addr - ROM_ADDR) as usize] = instruction.1.i.clone();
+                rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
             }
         }
 
         // Create a emulator instance with this rom and inputs
         let mut emu = Emu::new(rom);
-
         let start = Instant::now();
 
         // Run the emulation
