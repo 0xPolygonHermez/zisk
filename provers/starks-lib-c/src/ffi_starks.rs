@@ -822,6 +822,45 @@ pub fn compute_stage_c(
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn compute_stage_expressions_c(
+    _p_starks: *mut ::std::os::raw::c_void,
+    _element_type: u32,
+    _step: u64,
+    _p_params: *mut ::std::os::raw::c_void,
+    _p_proof: *mut ::std::os::raw::c_void,
+    _p_chelpers_steps: *mut ::std::os::raw::c_void,
+) {
+    trace!(
+        "{}: ··· {}",
+        "mckzkevm",
+        "compute_stage_expressions: This is a mock call because there is no linked library"
+    );
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn calculate_expression_c(
+    _p_starks: *mut ::std::os::raw::c_void,
+    _dest: *mut ::std::os::raw::c_void,
+    _id: u64,
+    _p_params: *mut ::std::os::raw::c_void,
+    _p_chelpers_steps: *mut ::std::os::raw::c_void,
+    _domain_extended: bool,
+) {
+    trace!("{}: ··· {}", "mckzkevm", "calculate_expression: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn commit_stage_c(
+    _p_starks: *mut ::std::os::raw::c_void,
+    _element_type: u32,
+    _step: u64,
+    _p_params: *mut ::std::os::raw::c_void,
+    _p_proof: *mut ::std::os::raw::c_void,
+) {
+    trace!("{}: ··· {}", "mckzkevm", "commit_stage: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn compute_evals_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *mut c_void) {
     trace!("{}: ··· {}", "mckzkevm", "compute_evals: This is a mock call because there is no linked library");
 }

@@ -135,7 +135,6 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
 
         let stark_info = self.stark_info.as_ref().unwrap();
 
-        //This is not necessary right now
         self.p_publics_calculated = get_vector_pointer_c(p_stark, "publicsCalculated");
         self.p_const_calculated = get_vector_pointer_c(p_stark, "constsCalculated");
         self.p_subproof_values_calculated = get_vector_pointer_c(p_stark, "subProofValuesCalculated");
@@ -393,10 +392,7 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
             );
             transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
         } else {
-            let mut inputs_: Vec<u64> = vec![25, 0, 2, 9]; //TODO: harcoded
-            let inputs_ptr: *mut c_void = inputs_.as_mut_ptr() as *mut c_void;
-
-            transcript.add_elements(inputs_ptr, stark_info.n_publics as usize);
+            transcript.add_elements(proof_ctx.public_inputs.as_mut_ptr() as *mut c_void, stark_info.n_publics as usize);
         }
     }
 

@@ -59,13 +59,10 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             Self::commit_stage(stage, &mut provers, &mut pctx);
             Self::calculate_challenges(stage, &mut provers, &mut pctx);
         }
-        println!("{}: COMMIT STAGE FINISHED", Self::MY_NAME);
 
         wc_lib.end_proof();
 
         Self::opening_stages(&mut provers, &mut pctx);
-        println!("{}: OPENING STAGE FINISHED", Self::MY_NAME);
-        process::exit(0);
 
         let proof = Self::finalize_proof(&pctx);
 
