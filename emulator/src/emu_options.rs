@@ -1,9 +1,18 @@
 use clap::Parser;
 use std::fmt;
 
+pub const ZISK_VERSION_MESSAGE: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("VERGEN_GIT_SHA"),
+    " ",
+    env!("VERGEN_BUILD_TIMESTAMP"),
+    ")"
+);
+
 /// ZisK emulator options structure
 #[derive(Parser, Debug, Clone)]
-#[command(version, about, long_about = None)]
+#[command(version = ZISK_VERSION_MESSAGE, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct EmuOptions {
     /// Sets the Zisk ROM data file path
