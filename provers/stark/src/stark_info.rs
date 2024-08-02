@@ -80,9 +80,7 @@ impl OpType {
 #[derive(Deserialize)]
 pub struct PolMap {
     #[serde(default)]
-    pub stage: String,
-    #[serde(rename = "stageNum")]
-    pub stage_num: u64,
+    pub stage: u64,
     pub name: String,
     pub dim: u64,
     #[serde(default, rename = "imPol")]
@@ -161,6 +159,11 @@ pub struct StarkInfo {
     pub q_deg: u64,
     #[serde(rename = "qDim")]
     pub q_dim: u64,
+
+    #[serde(rename = "friExpId")]
+    pub fri_exp_id: u64,
+    #[serde(rename = "cExpId")]
+    pub c_exp_id: u64,
 
     #[serde(rename = "mapSectionsN")]
     pub map_sections_n: HashMap<String, u64>,

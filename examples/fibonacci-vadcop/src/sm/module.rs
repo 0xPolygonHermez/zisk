@@ -1,13 +1,13 @@
 use log::debug;
 use std::{cell::RefCell, sync::Arc};
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
+use common::{AirInstance, ExecutionCtx, ProofCtx, Prover};
 use proofman::WCManager;
 use wchelpers::{WCComponent, WCOpCalculator};
 
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
-use crate::{FibonacciVadcopPublicInputs, ModuleTrace0, MODULE_0_AIR_ID, MODULE_AIR_GROUP_ID};
+use crate::{FibonacciVadcopPublicInputs, ModuleTrace, MODULE_SUBPROOF_ID, MODULE_AIR_IDS};
 
 pub struct Module {
     inputs: RefCell<Vec<(u64, u64)>>,
@@ -16,8 +16,12 @@ pub struct Module {
 impl Module {
     pub fn new<F>(wcm: &mut WCManager<F>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: RefCell::new(Vec::new()) });
-        wcm.register_component(Arc::clone(&module) as Arc<dyn WCComponent<F>>, None);
+        wcm.register_component(Arc::clone(&module) as Arc<dyn WCComponent<F>>, Some(MODULE_SUBPROOF_ID));
 
+        module
+    }
+    pub fn new_no_register<F>(wcm: &mut WCManager<F>) -> Arc<Self> {
+        let module = Arc::new(Module { inputs: RefCell::new(Vec::new()) });
         module
     }
 }
@@ -38,7 +42,14 @@ impl WCOpCalculator for Module {
 }
 
 impl<F> WCComponent<F> for Module {
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    ) {
         if stage != 1 {
             return;
         }
@@ -48,13 +59,13 @@ impl<F> WCComponent<F> for Module {
         let pi: FibonacciVadcopPublicInputs = pctx.public_inputs.as_slice().into();
         let module = pi.module as u64;
 
-        let air_instance_ctx = &mut pctx.find_air_instances(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID)[0];
+        let (air_idx, air_instance_ctx) = &mut pctx.find_air_instances(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0])[0];
 
         let interval = air_instance.inputs_interval.unwrap();
         let inputs = &self.inputs.borrow()[interval.0..interval.1];
-
-        let num_rows = 1 << pctx.pilout.get_air(MODULE_AIR_GROUP_ID, MODULE_0_AIR_ID).num_rows();
-        let mut trace = Box::new(unsafe { ModuleTrace0::from_buffer(&air_instance_ctx.buffer, num_rows, 0) });
+        let offset = (provers[*air_idx].get_map_offsets("cm1", false) * 8) as usize;
+        let num_rows = pctx.pilout.get_air(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0]).num_rows();
+        let mut trace = unsafe { Box::new(ModuleTrace::from_buffer(&air_instance_ctx.buffer, num_rows, offset)) };
 
         for (i, input) in inputs.iter().enumerate() {
             let x = input.0;
@@ -75,8 +86,8 @@ impl<F> WCComponent<F> for Module {
 
     fn suggest_plan(&self, ectx: &mut ExecutionCtx) {
         ectx.instances.push(AirInstance::new(
-            MODULE_AIR_GROUP_ID,
-            MODULE_0_AIR_ID,
+            MODULE_SUBPROOF_ID[0],
+            MODULE_AIR_IDS[0],
             Some((0, self.inputs.borrow().len())),
         ));
     }

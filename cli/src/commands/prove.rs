@@ -79,7 +79,7 @@ impl ProveCmd {
 
         match self.field {
             Field::Goldilocks => {
-                let _proof =
+                let _proof: Result<Vec<Goldilocks>, Box<dyn Error>> =
                     ProofMan::<GL>::generate_proof(self.wc_lib.clone(), self.proving_key.clone(), public_inputs_u8);
             }
         }

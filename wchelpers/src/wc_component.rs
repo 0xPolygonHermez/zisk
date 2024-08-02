@@ -1,4 +1,4 @@
-use common::{AirInstance, ExecutionCtx, ProofCtx};
+use common::{AirInstance, ExecutionCtx, ProofCtx, Prover};
 
 pub trait WCComponent<F> {
     fn start_proof(&self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx) {}
@@ -9,7 +9,14 @@ pub trait WCComponent<F> {
 
     fn end_execute(&self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx) {}
 
-    fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
+    fn suggest_plan(&self, _ectx: &mut ExecutionCtx);
 
-    fn calculate_witness(&self, stage: u32, air_instance: &AirInstance, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx);
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    );
 }

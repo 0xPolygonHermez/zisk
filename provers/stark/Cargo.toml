@@ -21,5 +21,6 @@ p3-field = { workspace = true }
 common = { path = "../../common" }
 
 [features]
-default = ["no_lib_link"]
-no_lib_link = []
+default = []
+#default = ["no_lib_link"]
+#no_lib_link = []

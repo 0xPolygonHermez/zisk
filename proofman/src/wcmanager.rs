@@ -6,6 +6,7 @@ use common::{ExecutionCtx, ProofCtx};
 use wchelpers::WCComponent;
 
 use crate::{DefaultPlanner, Planner};
+use common::Prover;
 
 pub struct WCManager<F> {
     components: Vec<Arc<dyn WCComponent<F>>>,
@@ -76,12 +77,17 @@ impl<F> WCManager<F> {
         self.planner.calculate_plan(&self.components, ectx);
     }
 
-    pub fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+    pub fn calculate_witness(
+        &self,
+        stage: u32,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        provers: &Vec<Box<dyn Prover<F>>>,
+    ) {
         info!("{}: Calculating witness (stage {})", Self::MY_NAME, stage);
-
         for air_instance_ctx in ectx.instances.iter().rev() {
-            let component = self.airs.get(&air_instance_ctx.air_id).unwrap();
-            component.calculate_witness(stage, air_instance_ctx, pctx, ectx);
+            let component = self.airs.get(&air_instance_ctx.air_group_id).unwrap();
+            component.calculate_witness(stage, air_instance_ctx, pctx, ectx, provers);
         }
     }
 }
