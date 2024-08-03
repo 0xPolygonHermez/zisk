@@ -333,6 +333,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpu-freq"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ceca04fadb699a10e243450cd3e74149cf79cd5c4f5dca4698f9381cf039c6"
+dependencies = [
+ "num_cpus",
+]
+
+[[package]]
 name = "criterion"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,6 +1129,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4161fcb6d602d4d2081af7c3a45852d875a03dd337a6bfdd6e06407b61342a43"
+dependencies = [
+ "hermit-abi",
+ "libc",
 ]
 
 [[package]]
@@ -2801,6 +2820,7 @@ name = "ziskemu"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "cpu-freq",
  "criterion",
  "pprof",
  "riscv",

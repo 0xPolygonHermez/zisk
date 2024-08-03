@@ -41,6 +41,9 @@ pub struct EmuOptions {
     /// Log performance metrics
     #[clap(short = 'm', long, value_name = "LOG_METRICS", default_value = "false")]
     pub log_metrics: bool,
+    /// Tracer v
+    #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
+    pub tracerv: bool,
 }
 
 /// Default constructor for impl fmt::Display for EmuOptions structure
@@ -59,6 +62,7 @@ impl Default for EmuOptions {
             log_output: false,
             trace_steps: None,
             log_metrics: false,
+            tracerv: false,
         }
     }
 }
@@ -70,5 +74,16 @@ impl fmt::Display for EmuOptions {
             "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}",
             self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose
         )
+    }
+}
+
+impl EmuOptions {
+    pub fn is_fast(&self) -> bool {
+        self.trace_steps.is_none() &&
+            self.print_step.is_none() &&
+            self.trace.is_none() &&
+            !self.log_step &&
+            !self.verbose &&
+            !self.tracerv
     }
 }

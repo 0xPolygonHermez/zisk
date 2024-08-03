@@ -15,6 +15,7 @@ path = "src/bin/ziskemu.rs"
 clap = { version = "4.5.9", features = ["derive", "env"] }
 zisk-core = {path="../core"}
 riscv = {path="../riscv"}
+cpu-freq = "0.0.2"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
