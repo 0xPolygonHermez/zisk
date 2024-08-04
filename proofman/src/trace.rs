@@ -20,15 +20,17 @@ impl Ptr {
 #[macro_export]
 macro_rules! trace {
     (
-        $my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }
+        $my_struct:ident $(<$($generic:tt),+>)? { $($field_name:ident : $field_type:tt $(,)?)* }
     ) => {
-        trace!($my_struct { $($field_name : $field_type),* }, offset: 0, stride: Self::ROW_SIZE);
+        trace!($my_struct $(<$($generic),+>)? { $($field_name : $field_type),* }, offset: 0, stride: Self::ROW_SIZE);
     };
 
-    ($my_struct:ident { $($field_name:ident : $field_type:tt $(,)?)* }, offset: $offset:expr, stride: $stride:expr) => {
-        #[derive(Debug)]
+    (
+        $my_struct:ident $(<$($generic:tt),+>)? { $($field_name:ident : $field_type:tt $(,)?)* }, offset: $offset:expr, stride: $stride:expr
+    ) => {
+
         #[allow(dead_code)]
-        pub struct $my_struct {
+        pub struct $my_struct $(<$($generic),+>)* {
             pub buffer: Option<Vec<u8>>,
             pub ptr: *mut u8,
             num_rows: usize,
@@ -36,7 +38,7 @@ macro_rules! trace {
         }
 
         #[allow(dead_code)]
-        impl $my_struct {
+        impl $(<$($generic),+>)* $my_struct $(<$($generic),+>)* {
             const ROW_SIZE: usize = $crate::trace_row_size!($($field_name : $field_type),*);
 
             /// Creates a new instance of $my_struct with a new buffer of size num_rows * ROW_SIZE.
@@ -121,7 +123,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! trace_field {
     ([$field_type:ty; $num:expr]) => {
-        [$crate::trace::trace_pol::TracePol<$field_type>; $num]
+        [$crate::trace_pol::TracePol<$field_type>; $num]
     };
     ($field_type:ty) => {
         $crate::trace_pol::TracePol<$field_type>
@@ -140,9 +142,9 @@ macro_rules! trace_row_size {
 #[macro_export]
 macro_rules! trace_default_value {
     ([$field_type:ty; $num:expr], $ptr:expr, $num_rows:expr, $stride: expr) => {{
-        let mut array: [$crate::trace::trace_pol::TracePol<$field_type>; $num] = Default::default();
+        let mut array: [$crate::trace_pol::TracePol<$field_type>; $num] = Default::default();
         for elem in array.iter_mut() {
-            *elem = $crate::trace::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows);
+            *elem = $crate::trace_pol::TracePol::from_ptr($ptr.add::<$field_type>(), $stride, $num_rows);
         }
         array
     }};

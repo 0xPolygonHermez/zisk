@@ -40,6 +40,7 @@ struct AirGroupsCtx {
 
 #[derive(Debug, Serialize)]
 struct AirCtx {
+    id: usize,
     name: String,
     num_rows: u32,
     columns: Vec<ColumnCtx>,
@@ -98,7 +99,9 @@ impl PilHelpersCmd {
                 airs: subproof
                     .airs
                     .iter()
-                    .map(|air| AirCtx {
+                    .enumerate()
+                    .map(|(air_id, air)| AirCtx {
+                        id: air_id,
                         name: air.name.as_ref().unwrap().clone(),
                         num_rows: air.num_rows.unwrap(),
                         columns: Vec::new(),

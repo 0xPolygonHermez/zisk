@@ -5,7 +5,7 @@ use proofman::trace;
 
 {{ for air_group in air_groups }}
 {{ for air in air_group.airs }}
-trace!({ air.name } \{ 
+trace!({ air.name }{ air.id }Trace \{ 
 {{ for column in air.columns }} { column.name }: { column.type }, {{ endfor }}
 });
 {{ endfor }}
