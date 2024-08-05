@@ -132,9 +132,9 @@ private function piop_gprod_air() {
 
     col witness stage(2) gprod;
 
-    //                                 (st1·(t1+ɣ-1)+1)·(st2·(t2+ɣ-1)+1)
-    //  gprod === 'gprod * (1 - L1) * -----------------------------------
-    //                                 (sf1·(f1+ɣ-1)+1)·(sf2·(f2+ɣ-1)+1)
+    //                                        (st1·(t1+ɣ-1)+1)·(st2·(t2+ɣ-1)+1)
+    //  gprod === ('gprod * (1 - L1) + L1) * -----------------------------------
+    //                                        (sf1·(f1+ɣ-1)+1)·(sf2·(f2+ɣ-1)+1)
     //
     // Note: The ti and fi are not necessarily related to each other
 
