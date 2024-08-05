@@ -9,3 +9,8 @@ function permutation_assumes(const int opid, const expr sel = 1, const expr cols
 function permutation_proves(const int opid, const expr sel = 1, const expr cols[]) {
     prod_proves(name_permutation, opid, sel, cols);
 }
+
+// UPCD: Update Proof Constraint Directly
+function permutation_upcd(const int opid, const expr sel = 1, const expr cols[]) {
+    update_piop_prod(name_permutation, 1, opid, sel, cols, 1);
+}
