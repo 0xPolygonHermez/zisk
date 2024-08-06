@@ -27,6 +27,7 @@ pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
 clap = { version = "4.5.9", features = ["derive", "env"] }
 zisk-core = { path = "../core" }
 riscv = { path = "../riscv" }
+cpu-freq = "0.0.2"
 
 [[bench]]
 name = "benchmark"

@@ -13,12 +13,14 @@ pub struct EmuContext {
     pub step: u64,
     pub end: bool,
     pub tracerv: Vec<String>,
-    pub tracerv_on: bool,
     pub tracerv_step: u64,
     pub tracerv_current_regs: [u64; 32],
     pub trace_pc: u64,
     pub mem_trace: Vec<MemTrace>,
     pub emu_trace: Vec<EmuTrace>,
+    pub do_callback: bool,
+    pub callback_steps: u64,
+    pub last_callback_step: u64,
 }
 
 /// RisK emulator context implementation
@@ -36,12 +38,14 @@ impl EmuContext {
             step: 0,
             end: false,
             tracerv: Vec::new(),
-            tracerv_on: false,
             tracerv_step: 0,
             tracerv_current_regs: [0; 32],
             trace_pc: 0,
             mem_trace: Vec::new(),
             emu_trace: Vec::new(),
+            do_callback: false,
+            callback_steps: 0,
+            last_callback_step: 0,
         };
 
         // Check the input data size is inside the proper range
