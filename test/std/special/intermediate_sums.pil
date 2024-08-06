@@ -1,85 +1,128 @@
 require "std_lookup.pil";
 
 /*
-TODO: There is no stage 3 in fact, with two stages is sufficient!!!!
 TODO: Does it makes sense for the std to define a specific stage? How this is read with the setup? Should we name the stages for reference?
 
 Table of generated numbers (*):
 
-#BusCalls | Self | Selt | #Cols1 |   #Cols2   | #Cols3 | #Total | Expression
-──────────┼──────┼──────┼────────┼────────────┼────────┼────────┼─────────────────────────────────────────────────────────────────────────────────────────────
-          |      |      |        |            |        |        |                       mul1     mul2        1         1
-    2     |  0   |  0   |   6    | 2 (1 im)/6 |   3/9  |  11/21 | S = 'S * (1 - L1) + ------- + ------- - ------- - -------
-          |      |      |        |            |        |        |                     t1 + ɣ    t2 + ɣ    f1 + ɣ    f2 + ɣ
-──────────┼──────┼──────┼────────┼────────────┼────────┼────────┼─────────────────────────────────────────────────────────────────────────────────────────────
-          |      |      |        |            |        |        |          mul1         mul2               1            1
-    2     |  0   |  0   |   6    | 3 (0 im)/9 |   2/6  |  11/21 | im1 = ---------- + ----------, im2 = ---------- + ----------, S = 'S * (1 - L1) + im1 - im2
-          |      |      |        |            |        |        |         t1 + ɣ       t2 + ɣ           f1 + ɣ       f2 + ɣ
-──────────┼──────┼──────┼────────┼────────────┼────────┼────────┼─────────────────────────────────────────────────────────────────────────────────────────────
+#BusCalls | Pair | Self | Selt | #Cols1 |   #Cols2    | #Cols3 | #Total | #Constraints |
+──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
+    2     |  0   |  0   |  0   |   6    | 4 (3 im)/12 |   2/6  |  12/24 |      4       |
+──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
+    2     |  1   |  0   |  0   |   6    | 3 (0 im)/9  |   2/6  |  11/21 |      3       |
+──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
 
-(*) Numbers assume a blowup factor of 2
+(*) Numbers assume a blowup factor of 1
 */
 
-airtemplate SimpleSum(int N = 2**2) {
-
-    col witness f1,f2,t1,t2;
-    col witness mul1,mul2;
-
-    col witness stage(2) gsum;
-    //                                mul1     mul2        1         1
-    //  gsum === 'gsum * (1 - L1) + ------- + ------- - ------- - -------
-    //                              t1 + ɣ    t2 + ɣ    f1 + ɣ    f2 + ɣ
+airtemplate Intermediates(int N = 2**8, int busCalls = 6) {
+    col witness f[busCalls];
+    col witness t[busCalls];
+    col witness mul[busCalls];
 
     col fixed L1 = [1,0...];
+    col witness stage(2) gsum;
+    /*
+                                        muli         1
+    gsum === 'gsum * (1 - L1) + ∑ᵢ ( -------- - -------- )
+                                       ti + ɣ     fi + ɣ
+    */
 
-    expr numerator1 = mul1 * (t2 + std_gamma) * (f1 + std_gamma) * (f2 + std_gamma) + mul2 * (t1 + std_gamma) * (f1 + std_gamma) * (f2 + std_gamma);
-    expr numerator2 = (t1 + std_gamma) * (t2 + std_gamma) * (f2 + std_gamma) + (t1 + std_gamma) * (t2 + std_gamma) * (f1 + std_gamma);
-    expr numerator = numerator1 - numerator2;
-    expr denominator = (t1 + std_gamma) * (t2 + std_gamma) * (f1 + std_gamma) * (f2 + std_gamma);
+    expr LHS = 1;
+    expr RHS1 = 0;
+    for (int i = 0; i < busCalls; i++) {
+        LHS = LHS * (t[i] + std_gamma);
 
-    (gsum - 'gsum * (1 - L1)) * denominator === numerator;
+        expr tmp = mul[i];
+        for (int j = 0; j < busCalls; j++) {
+            if (j == i) continue;
+            tmp = tmp * (t[j] + std_gamma);
+        }
+        RHS1 = RHS1 + tmp;
+    }
+
+    expr RHS2a = LHS;
+    expr RHS2b = 0;
+    for (int i = 0; i < busCalls; i = i + 1) {
+        LHS = LHS * (f[i] + std_gamma);
+        RHS1 = RHS1 * (f[i] + std_gamma);
+
+        expr tmp = 1;
+        for (int j = 0; j < busCalls; j = j + 1) {
+            if (j == i) continue;
+            tmp = tmp * (f[j] + std_gamma);
+        }
+        RHS2b = RHS2b + tmp;
+    }
+
+    expr RHS2 = RHS2a * RHS2b;
+    expr RHS = RHS1 - RHS2;
+
+    (gsum - 'gsum * (1 - L1)) * LHS === RHS;
 }
 
-airtemplate OptimizedSum(int N = 2**2) {
 
-    col witness f1,f2,t1,t2;
-    col witness mul1,mul2;
+airtemplate IntermediatesIm(int N = 2**8, int busCalls = 6, int nTerms = 2) {
+    assert(busCalls%nTerms == 0);
 
-    col witness stage(2) im1;
-    //          mul1         mul2
-    // im1 = ---------- + ----------
-    //         t1 + ɣ       t2 + ɣ
+    const int nIm = busCalls/nTerms;
 
-    expr numerator = mul1 * (t2 + std_gamma)  + mul2 * (t1 + std_gamma);
-    expr denominator = (t1 + std_gamma) * (t2 + std_gamma);
+    col witness f[busCalls];
+    col witness t[busCalls];
+    col witness mul[busCalls];
 
-    @im1{reference: im1, numerator: numerator, denominator: denominator};
-
-    im1 * denominator === numerator;
-
-    col witness stage(2) im2;
-    //            1            1
-    // im2 = ---------- + ----------
-    //         f1 + ɣ       f2 + ɣ
-
-    numerator = (f2 + std_gamma)  + (f1 + std_gamma);
-    denominator = (f1 + std_gamma) * (f2 + std_gamma);
-
-    @im2{reference: im2, numerator: numerator, denominator: denominator};
-
-    im2 * denominator === numerator;
-
-    col witness stage(2) gsum;
-    //  gsum === 'gsum * (1 - L1) + im1 - im2
+    col witness stage(2) im[2*nIm];
 
     col fixed L1 = [1,0...];
+    col witness stage(2) gsum;
 
-    gsum === 'gsum * (1 - L1) + im1 - im2;
+    expr posIms = 0;
+    expr negIms = 0;
+    for (int i = 0; i < nIm; i++) {
+
+        //              mul[i]          mul[i+1]
+        // im[i] = --------------- + -----------------
+        //            t[2*i] + ɣ        t[2*i+1] + ɣ
+
+        //                   1                  1
+        // im[nIm+i] = --------------- + -----------------
+        //               f[2*i] + ɣ        f[2*i+1] + ɣ
+        expr tProds = 1;
+        expr fProds = 1;
+        expr tSums = 0;
+        expr fSums = 0;
+        for (int j = 0; j < nTerms; j++) {
+            tProds = tProds * (t[nTerms * i + j] + std_gamma);
+            fProds = fProds * (f[nTerms * i + j] + std_gamma);
+
+            tSums = tSums + mul[j]*(t[nTerms * i + j] + std_gamma);
+            fSums = fSums + (f[nTerms * i + j] + std_gamma);
+        }
+        // im[i] * t[2*i] * t[2*i+1] === mul[i]*t[2*i+1] + mul[i+1]*t[2*i];
+        im[i] * tProds === tSums;
+        im[nIm+i] * fProds === fSums;
+
+        posIms += im[i];
+        negIms += im[nIm+i];
+    }
+    gsum === 'gsum * (1 - L1) + posIms - negIms;
 }
 
-airgroup Sum {
+airgroup Intermediates {
     init_challenges();
 
-    // SimpleSum();
-    OptimizedSum();
+    // Intermediates(busCalls: 2);
+    IntermediatesIm(busCalls: 2);
+
+    // Intermediatesim(busCalls: 8);
+    // Intermediatesim(busCalls: 8, ps: 4);
+
+    // Intermediates(busCalls: 16);
+    // Intermediatesim(busCalls: 16);
+    // Intermediatesim(busCalls: 16, ps: 4);
+
+    // Intermediates(busCalls: 24);
+    // Intermediatesim(busCalls: 24, ps: 1);
+    // Intermediatesim(busCalls: 24);
+    // Intermediatesim(busCalls: 24, ps: 4);
 }
