@@ -5,12 +5,20 @@ TODO: Does it makes sense for the std to define a specific stage? How this is re
 
 Table of generated numbers (*):
 
-#BusCalls | Pair | Self | Selt | #Cols1 |   #Cols2    | #Cols3 | #Total | #Constraints |
-──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
-    2     |  0   |  0   |  0   |   6    | 4 (3 im)/12 |   2/6  |  12/24 |      4       |
-──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
-    2     |  1   |  0   |  0   |   6    | 3 (0 im)/9  |   2/6  |  11/21 |      3       |
-──────────┼──────┼──────┼──────┼────────┼─────────────┼────────┼────────┼──────────────┼
+#BusCalls | Pair | #Cols1 |   #Cols2      | #Cols3 | #Total | #Constraints |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    2     |  0   |   6    | 4 (3 im)/12   |   2/6  |  12/24 |      4       |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    2     |  1   |   6    | 3 (0 im)/9    |   2/6  |  11/21 |      3       |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    4     |  0   |   12   | 13 (12 im)/39 |   2/6  |  27/57 |      13      |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    4     |  1   |   12   | 5 (0 im)/15   |   2/6  |  19/33 |      5       |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    6     |  0   |   18   | 31 (30 im)/93 |   2/6  | 51/117 |      31      |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    6     |  1   |   18   | 7 (0 im)/21   |   2/6  |  27/45 |      7       |
+──────────┼──────┼────────┼───────────────┼────────┼────────┼──────────────┼
 
 (*) Numbers assume a blowup factor of 1
 */
@@ -33,12 +41,12 @@ airtemplate Intermediates(int N = 2**8, int busCalls = 6) {
     for (int i = 0; i < busCalls; i++) {
         LHS = LHS * (t[i] + std_gamma);
 
-        expr tmp = mul[i];
+        expr tPartial = mul[i];
         for (int j = 0; j < busCalls; j++) {
             if (j == i) continue;
-            tmp = tmp * (t[j] + std_gamma);
+            tPartial = tPartial * (t[j] + std_gamma);
         }
-        RHS1 = RHS1 + tmp;
+        RHS1 = RHS1 + tPartial;
     }
 
     expr RHS2a = LHS;
@@ -47,12 +55,12 @@ airtemplate Intermediates(int N = 2**8, int busCalls = 6) {
         LHS = LHS * (f[i] + std_gamma);
         RHS1 = RHS1 * (f[i] + std_gamma);
 
-        expr tmp = 1;
+        expr tPartial = 1;
         for (int j = 0; j < busCalls; j = j + 1) {
             if (j == i) continue;
-            tmp = tmp * (f[j] + std_gamma);
+            tPartial = tPartial * (f[j] + std_gamma);
         }
-        RHS2b = RHS2b + tmp;
+        RHS2b = RHS2b + tPartial;
     }
 
     expr RHS2 = RHS2a * RHS2b;
@@ -80,13 +88,13 @@ airtemplate IntermediatesIm(int N = 2**8, int busCalls = 6, int nTerms = 2) {
     expr negIms = 0;
     for (int i = 0; i < nIm; i++) {
 
-        //              mul[i]          mul[i+1]
-        // im[i] = --------------- + -----------------
-        //            t[2*i] + ɣ        t[2*i+1] + ɣ
+        //            mul[3*i]           mul[3*i+1]          mul[3*i+2]
+        // im[i] = --------------- + ----------------- + -----------------
+        //            t[3*i] + ɣ        t[3*i+1] + ɣ        t[3*i+2] + ɣ
 
-        //                   1                  1
-        // im[nIm+i] = --------------- + -----------------
-        //               f[2*i] + ɣ        f[2*i+1] + ɣ
+        //                   1                  1                   1
+        // im[nIm+i] = --------------- + ----------------- + -----------------
+        //               f[3*i] + ɣ        f[3*i+1] + ɣ        f[3*i+2] + ɣ
         expr tProds = 1;
         expr fProds = 1;
         expr tSums = 0;
@@ -95,10 +103,18 @@ airtemplate IntermediatesIm(int N = 2**8, int busCalls = 6, int nTerms = 2) {
             tProds = tProds * (t[nTerms * i + j] + std_gamma);
             fProds = fProds * (f[nTerms * i + j] + std_gamma);
 
-            tSums = tSums + mul[j]*(t[nTerms * i + j] + std_gamma);
-            fSums = fSums + (f[nTerms * i + j] + std_gamma);
+            expr tPartial = mul[nTerms * i + j];
+            expr fPartial = 1;
+            for (int k = 0; k < nTerms; k++) {
+                if (k == j) continue;
+                tPartial = tPartial * (t[nTerms * i + k] + std_gamma);
+                fPartial = fPartial * (f[nTerms * i + k] + std_gamma);
+            }
+            tSums += tPartial;
+            fSums += fPartial;
         }
-        // im[i] * t[2*i] * t[2*i+1] === mul[i]*t[2*i+1] + mul[i+1]*t[2*i];
+        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
+        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
         im[i] * tProds === tSums;
         im[nIm+i] * fProds === fSums;
 
@@ -112,17 +128,14 @@ airgroup Intermediates {
     init_challenges();
 
     // Intermediates(busCalls: 2);
-    IntermediatesIm(busCalls: 2);
+    // IntermediatesIm(busCalls: 2);
 
-    // Intermediatesim(busCalls: 8);
-    // Intermediatesim(busCalls: 8, ps: 4);
+    // Intermediates(busCalls: 4);
+    // IntermediatesIm(busCalls: 4);
 
-    // Intermediates(busCalls: 16);
-    // Intermediatesim(busCalls: 16);
-    // Intermediatesim(busCalls: 16, ps: 4);
+    // Intermediates(busCalls: 6);
+    IntermediatesIm(busCalls: 6);
 
-    // Intermediates(busCalls: 24);
-    // Intermediatesim(busCalls: 24, ps: 1);
-    // Intermediatesim(busCalls: 24);
-    // Intermediatesim(busCalls: 24, ps: 4);
+    // Intermediates(busCalls: 8);
+    // IntermediatesIm(busCalls: 8);
 }
