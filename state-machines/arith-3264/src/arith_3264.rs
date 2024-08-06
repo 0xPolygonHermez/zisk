@@ -8,8 +8,8 @@ use std::{
 
 use std::{sync::mpsc, thread};
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{Arith3264Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
 use wchelpers::WCComponent;

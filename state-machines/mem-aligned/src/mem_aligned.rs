@@ -3,8 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
 use wchelpers::WCComponent;

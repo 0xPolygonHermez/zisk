@@ -3,6 +3,7 @@ members = [
     "cli",
     "core",
     "emulator",
+    "pil",
     "riscv",
     "state-machines/arith",
     "state-machines/arith-32",
@@ -19,7 +20,7 @@ members = [
     "state-machines/mem-aligned",
     "state-machines/mem-unaligned",
     "witness-computation",
-    "ziskos/entrypoint",
+    "ziskos/entrypoint", 
 ]
 
 resolver = "2"
@@ -31,10 +32,12 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { path = "../pil2-proofman/common" }
+proofman-common = { path = "../pil2-proofman/common" }
 proofman = { path = "../pil2-proofman/proofman" }
+proofman-util = { path = "../pil2-proofman/util" }
 wchelpers = { path = "../pil2-proofman/wchelpers" }

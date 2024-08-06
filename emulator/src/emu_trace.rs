@@ -1,5 +1,6 @@
 use crate::MemTrace;
 
+#[derive(Debug, Clone)]
 pub struct EmuTrace {
     pub opcode: u8,
     pub a: u64,

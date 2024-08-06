@@ -8,12 +8,14 @@ zisk-core = { path = "../../core" }
 sm-arith = { path = "../arith" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
+ziskemu = { path = "../../emulator" }
+zisk-pil = { path = "../../pil" }
 
-# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { workspace = true }
+proofman-common = { workspace = true }
 proofman = { workspace = true }
 wchelpers = { workspace = true }
 

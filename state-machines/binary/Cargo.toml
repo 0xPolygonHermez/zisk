@@ -10,11 +10,11 @@ sm-binary-32 = { path = "../binary-32" }
 sm-binary-64 = { path = "../binary-64" }
 sm-binary-3264 = { path = "../binary-3264" }
 
-# common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-common = { workspace = true }
+proofman-common = { workspace = true }
 proofman = { workspace = true }
 wchelpers = { workspace = true }
 

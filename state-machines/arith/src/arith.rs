@@ -9,6 +9,7 @@ use std::{
 use std::{fmt::Debug, sync::mpsc, thread};
 
 use proofman::WCManager;
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_arith_32::Arith32SM;
 use sm_arith_3264::Arith3264SM;
@@ -55,9 +56,9 @@ impl<F> WCComponent<F> for ArithSM {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &common::AirInstance,
-        pctx: &mut common::ProofCtx<F>,
-        ectx: &common::ExecutionCtx,
+        air_instance: &AirInstance,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
     ) {
     }
 }
@@ -76,7 +77,7 @@ impl Provable<Arith3264Op, OpResult> for ArithSM {
         let mut inputs32 = self.inputs32.lock().unwrap();
         let mut inputs64 = self.inputs64.lock().unwrap();
 
-        // TODO! Split the operations into 32 and 64 bit operations in parallel
+        // TODO Split the operations into 32 and 64 bit operations in parallel
         for operation in operations {
             match operation {
                 Arith3264Op::Add32(a, b) | Arith3264Op::Sub32(a, b) => {

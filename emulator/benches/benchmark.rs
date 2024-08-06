@@ -3,7 +3,7 @@ extern crate criterion;
 use criterion::{/* black_box, BenchmarkId, */ Criterion};
 // use pprof::criterion::{Output, PProfProfiler};
 // use std::{fs::File /* , time::Duration */};
-use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
+use ziskemu::{EmuOptions, EmuTrace, Emulator, ZiskEmulator};
 
 // Thanks to the example provided by @jebbow in his article
 // https://www.jibbow.com/posts/criterion-flamegraphs/
@@ -58,7 +58,7 @@ fn bench_emulate(c: &mut Criterion) {
                 ..Default::default()
             };
             let emulator = ZiskEmulator;
-            emulator.emulate(&options, None).unwrap();
+            emulator.emulate(&options, None::<Box<dyn Fn(Vec<EmuTrace>)>>).unwrap();
         })
     });
 

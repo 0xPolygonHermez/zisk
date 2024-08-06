@@ -1,0 +1,8 @@
+[package]
+name = "zisk-pil"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman = { workspace = true }
+proofman-common = { workspace = true }

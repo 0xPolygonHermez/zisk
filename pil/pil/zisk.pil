@@ -1,0 +1,5 @@
+require "../../state-machines/main/pil/main.pil"
+
+airgroup Main {
+    Main(N: 2**21, RC: 1);
+}

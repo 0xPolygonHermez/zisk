@@ -11,8 +11,8 @@ use std::{
     },
 };
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
 use proofman::WCManager;
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use wchelpers::{WCComponent, WCOpCalculator};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
@@ -64,7 +64,7 @@ impl Provable<MemOp, OpResult> for MemSM {
                 if addr % 8 == 0 {
                     self.mem_aligned_sm.calculate(operation)
                 } else {
-                    let width = 8; // TODO!
+                    let width = 8; // TODO
                     self.mem_unaligned_sm.calculate(sm_common::MemUnalignedOp::Read(addr, width))
                 }
             }
@@ -72,7 +72,7 @@ impl Provable<MemOp, OpResult> for MemSM {
                 if addr % 8 == 0 {
                     self.mem_aligned_sm.calculate(operation)
                 } else {
-                    let width = 8; // TODO!
+                    let width = 8; // TODO
                     self.mem_unaligned_sm
                         .calculate(sm_common::MemUnalignedOp::Write(addr, width, val))
                 }
@@ -84,14 +84,14 @@ impl Provable<MemOp, OpResult> for MemSM {
         let mut inputs_aligned = self.inputs_aligned.lock().unwrap();
         let mut inputs_unaligned = self.inputs_unaligned.lock().unwrap();
 
-        // TODO! Split the operations into 32 and 64 bit operations in parallel
+        // TODO Split the operations into 32 and 64 bit operations in parallel
         for operation in operations {
             match operation {
                 MemOp::Read(addr) => {
                     if addr % 8 == 0 {
                         inputs_aligned.push(operation.clone());
                     } else {
-                        let width = 8; // TODO!
+                        let width = 8; // TODO
                         inputs_unaligned.push(sm_common::MemUnalignedOp::Read(*addr, width))
                     }
                 }
@@ -99,7 +99,7 @@ impl Provable<MemOp, OpResult> for MemSM {
                     if addr % 8 == 0 {
                         inputs_aligned.push(operation.clone());
                     } else {
-                        let width = 8; // TODO!
+                        let width = 8; // TODO
                         inputs_unaligned.push(sm_common::MemUnalignedOp::Write(*addr, width, *val))
                     }
                 }

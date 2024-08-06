@@ -57,6 +57,6 @@ cargo run --bin proofman-cli prove --wc-lib ../zisk/target/debug/libzisk_wc.dyli
 
         // fn execute(&self, pctx: &mut ProofCtx<F>, wneeds: &WitnessNeeds) {
         // Creates the ectx with the workers pool inside
-        // TODO! let mut ectx = self.wcm.createExecutionContext(wneeds);
+        // TODO let mut ectx = self.wcm.createExecutionContext(wneeds);
         self.main_sm.execute(pctx, ectx);
-        // TODO! ectx.terminate();
+        // TODO ectx.terminate();

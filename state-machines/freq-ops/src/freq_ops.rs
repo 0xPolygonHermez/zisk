@@ -1,6 +1,6 @@
 use std::{mem, sync::Mutex};
 
-use common::{AirInstance, ExecutionCtx, ProofCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{FreqOp, OpResult, Provable};
 use wchelpers::WCComponent;

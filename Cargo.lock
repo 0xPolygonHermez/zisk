@@ -296,14 +296,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "log",
- "pilout",
-]
-
-[[package]]
 name = "console"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1327,9 +1319,9 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "log",
+ "proofman-util",
  "prost",
  "prost-build",
- "util",
 ]
 
 [[package]]
@@ -1465,15 +1457,34 @@ dependencies = [
 name = "proofman"
 version = "0.1.0"
 dependencies = [
- "common",
  "env_logger",
  "libloading",
  "log",
  "p3-field",
  "p3-goldilocks",
  "pilout",
+ "proofman-common",
+ "proofman-util",
  "stark",
+ "transcript",
  "wchelpers",
+]
+
+[[package]]
+name = "proofman-common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "pilout",
+ "transcript",
+]
+
+[[package]]
+name = "proofman-util"
+version = "0.1.0"
+dependencies = [
+ "colored",
+ "sysinfo",
 ]
 
 [[package]]
@@ -1928,11 +1939,11 @@ dependencies = [
 name = "sm-arith"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-arith-32",
  "sm-arith-3264",
@@ -1946,11 +1957,11 @@ dependencies = [
 name = "sm-arith-32"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -1961,11 +1972,11 @@ dependencies = [
 name = "sm-arith-3264"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -1976,11 +1987,11 @@ dependencies = [
 name = "sm-arith-64"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -1991,11 +2002,11 @@ dependencies = [
 name = "sm-binary"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-binary-32",
  "sm-binary-3264",
@@ -2009,11 +2020,11 @@ dependencies = [
 name = "sm-binary-32"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2024,11 +2035,11 @@ dependencies = [
 name = "sm-binary-3264"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2039,11 +2050,11 @@ dependencies = [
 name = "sm-binary-64"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2061,11 +2072,11 @@ dependencies = [
 name = "sm-freq-ops"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2076,28 +2087,30 @@ dependencies = [
 name = "sm-main"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-arith",
  "sm-common",
  "sm-mem",
  "wchelpers",
  "zisk-core",
+ "zisk-pil",
+ "ziskemu",
 ]
 
 [[package]]
 name = "sm-mem"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "sm-mem-aligned",
@@ -2110,11 +2123,11 @@ dependencies = [
 name = "sm-mem-aligned"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2125,11 +2138,11 @@ dependencies = [
 name = "sm-mem-unaligned"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
  "rayon",
  "sm-common",
  "wchelpers",
@@ -2168,16 +2181,16 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 name = "stark"
 version = "0.1.0"
 dependencies = [
- "common",
  "log",
  "p3-field",
  "p3-goldilocks",
+ "proofman-common",
+ "proofman-util",
  "serde",
  "serde_derive",
  "serde_json",
  "starks-lib-c",
  "transcript",
- "util",
 ]
 
 [[package]]
@@ -2547,14 +2560,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
-name = "util"
-version = "0.1.0"
-dependencies = [
- "colored",
- "sysinfo",
-]
-
-[[package]]
 name = "uuid"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2693,7 +2698,7 @@ dependencies = [
 name = "wchelpers"
 version = "0.1.0"
 dependencies = [
- "common",
+ "proofman-common",
 ]
 
 [[package]]
@@ -2960,15 +2965,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-wc"
+name = "zisk-pil"
 version = "0.1.0"
 dependencies = [
- "common",
+ "proofman",
+ "proofman-common",
+]
+
+[[package]]
+name = "zisk-witness"
+version = "0.1.0"
+dependencies = [
  "env_logger",
  "log",
  "p3-field",
  "p3-goldilocks",
  "proofman",
+ "proofman-common",
+ "proofman-util",
  "sm-arith",
  "sm-arith-32",
  "sm-arith-3264",
@@ -2980,6 +2994,7 @@ dependencies = [
  "sm-mem-aligned",
  "sm-mem-unaligned",
  "wchelpers",
+ "zisk-pil",
 ]
 
 [[package]]

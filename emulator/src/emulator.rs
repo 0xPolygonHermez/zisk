@@ -6,11 +6,11 @@ use std::{
 };
 use zisk_core::{Riscv2zisk, ZiskInst, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 
-pub trait Emulator<ET> {
+pub trait Emulator {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<ET>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr>;
 }
 
@@ -29,7 +29,7 @@ impl ZiskEmulator {
         let files = Self::list_files(&directory).unwrap();
         for file in files {
             if file.contains("dut") && file.ends_with(".elf") {
-                Self::process_elf_file(file, inputs, options, None)?;
+                Self::process_elf_file(file, inputs, options, None::<Box<dyn Fn(Vec<EmuTrace>)>>)?;
             }
         }
 
@@ -40,7 +40,7 @@ impl ZiskEmulator {
         elf_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_elf_file() elf_file={}", elf_filename);
@@ -63,7 +63,7 @@ impl ZiskEmulator {
         rom_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom_file() rom_file={}", rom_filename);
@@ -78,7 +78,7 @@ impl ZiskEmulator {
         rom: &mut ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
@@ -214,11 +214,11 @@ impl ZiskEmulator {
     }
 }
 
-impl Emulator<EmuTrace> for ZiskEmulator {
+impl Emulator for ZiskEmulator {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         // Log this call
         if options.verbose {
