@@ -16,8 +16,14 @@ use std::{
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
-pub const ZISK_VERSION_MESSAGE: &str =
-    concat!("zisk", " (", env!("VERGEN_GIT_SHA"), " ", env!("VERGEN_BUILD_TIMESTAMP"), ")");
+pub const ZISK_VERSION_MESSAGE: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("VERGEN_GIT_SHA"),
+    " ",
+    env!("VERGEN_BUILD_TIMESTAMP"),
+    ")"
+);
 
 trait CommandExecutor {
     fn run(&mut self) -> Result<()>;

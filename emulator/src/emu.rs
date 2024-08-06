@@ -3,8 +3,8 @@ use std::mem;
 use crate::{EmuContext, EmuOptions, EmuTrace, MemTrace};
 use riscv::RiscVRegisters;
 use zisk_core::{
-    ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, SYS_ADDR,
+    ZiskInst, ZiskRom, OUTPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP, STORE_IND,
+    STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -41,28 +41,9 @@ impl<'a> Emu<'a> {
         ctx
     }
 
-    /// Performs one single step of the emulation
+    /// Calculate a based on a source
     #[inline(always)]
-    pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(Vec<EmuTrace>)>) {
-        // Check if we are tracing steps to improve the execution
-        let tracing_steps = options.trace_steps.is_some();
-
-        // Reset memory traces vector
-        if tracing_steps {
-            self.ctx.mem_trace.clear();
-        }
-
-        let pc = self.ctx.pc;
-
-        let instruction = self.rom.get_instruction(pc);
-
-        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
-
-        // If this is the last instruction, stop executing
-        self.ctx.end = instruction.end;
-
-        // Build the 'a' register value  based on the source specified by the current instruction
+    pub fn source_a(&mut self, instruction: &ZiskInst, tracing_steps: bool) {
         match instruction.a_src {
             SRC_C => self.ctx.a = self.ctx.c,
             SRC_MEM => {
@@ -78,10 +59,13 @@ impl<'a> Emu<'a> {
             SRC_IMM => self.ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32),
             SRC_STEP => self.ctx.a = self.ctx.step,
             SRC_SP => self.ctx.a = self.ctx.sp,
-            _ => panic!("Emu::step() Invalid a_src={} pc={}", instruction.a_src, self.ctx.pc),
+            _ => panic!("Emu::source_a() Invalid a_src={} pc={}", instruction.a_src, self.ctx.pc),
         }
+    }
 
-        // Build the 'b' register value  based on the source specified by the current instruction
+    /// Calculate b based on b source
+    #[inline(always)]
+    pub fn source_b(&mut self, instruction: &ZiskInst, tracing_steps: bool) {
         match instruction.b_src {
             SRC_C => self.ctx.b = self.ctx.c,
             SRC_MEM => {
@@ -102,13 +86,13 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.b = self.ctx.mem.read(addr, instruction.ind_width);
             }
-            _ => panic!("Emu::step() Invalid b_src={} pc={}", instruction.b_src, self.ctx.pc),
+            _ => panic!("Emu::source_b() Invalid b_src={} pc={}", instruction.b_src, self.ctx.pc),
         }
+    }
 
-        // Call the operation
-        (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
-
-        // Store the 'c' register value based on the storage specified by the current instruction
+    /// Store c based on c storage
+    #[inline(always)]
+    pub fn store_c(&mut self, instruction: &ZiskInst, tracing_steps: bool) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
@@ -139,8 +123,40 @@ impl<'a> Emu<'a> {
                 addr += self.ctx.a as i64;
                 self.ctx.mem.write(addr as u64, val as u64, instruction.ind_width);
             }
-            _ => panic!("Emu::step() Invalid store={} pc={}", instruction.store, self.ctx.pc),
+            _ => panic!("Emu::store_c() Invalid store={} pc={}", instruction.store, self.ctx.pc),
         }
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(Vec<EmuTrace>)>) {
+        // Check if we are tracing steps to improve the execution
+        let tracing_steps = options.trace_steps.is_some();
+
+        // Reset memory traces vector
+        if self.ctx.do_callback {
+            self.ctx.mem_trace.clear();
+        }
+
+        let instruction = self.rom.get_instruction(self.ctx.pc);
+
+        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+
+        // If this is the last instruction, stop executing
+        self.ctx.end = instruction.end;
+
+        // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a(instruction, tracing_steps);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b(instruction, tracing_steps);
+
+        // Call the operation
+        (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c(instruction, tracing_steps);
 
         // Set SP, if specified by the current instruction
         if instruction.set_sp {
@@ -175,7 +191,7 @@ impl<'a> Emu<'a> {
         }
 
         // Store an emulator trace, if requested
-        if tracing_steps {
+        if self.ctx.do_callback {
             let emu_trace = EmuTrace {
                 opcode: instruction.op,
                 a: self.ctx.a,
@@ -191,17 +207,65 @@ impl<'a> Emu<'a> {
 
             self.ctx.emu_trace.push(emu_trace);
 
+            // Increment step counter
+            self.ctx.step += 1;
+
             if self.ctx.end ||
-                ((self.ctx.step % options.trace_steps.unwrap()) ==
-                    (options.trace_steps.unwrap() - 1))
+                ((self.ctx.step - self.ctx.last_callback_step) == self.ctx.callback_steps)
             {
                 if callback.is_none() {
                     panic!("Emu::step() found empty callback");
                 }
                 let callback = callback.as_ref().expect("Emu::step() found empty callback");
+
                 let emu_trace = mem::take(&mut self.ctx.emu_trace);
                 (callback)(emu_trace);
+                self.ctx.last_callback_step += self.ctx.callback_steps;
             }
+        } else {
+            // Increment step counter
+            self.ctx.step += 1;
+        }
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_fast(&mut self) {
+        // Get the instruction for this pc
+        let instruction = self.rom.get_instruction(self.ctx.pc);
+
+        //println!("Emu::step_fast() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+
+        // If this is the last instruction, stop executing
+        self.ctx.end = instruction.end;
+
+        // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a(instruction, false);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b(instruction, false);
+
+        // Call the operation
+        (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c(instruction, false);
+
+        // Set SP, if specified by the current instruction
+        if instruction.set_sp {
+            self.ctx.sp = self.ctx.c;
+        } else {
+            self.ctx.sp += instruction.inc_sp;
+        }
+
+        // Set PC, based on current PC, current flag and current instruction
+        if instruction.set_pc {
+            self.ctx.pc = (self.ctx.c as i64 + instruction.jmp_offset1) as u64;
+        } else if self.ctx.flag {
+            self.ctx.pc = (self.ctx.pc as i64 + instruction.jmp_offset1) as u64;
+        } else {
+            self.ctx.pc = (self.ctx.pc as i64 + instruction.jmp_offset2) as u64;
         }
 
         // Increment step counter
@@ -260,13 +324,36 @@ impl<'a> Emu<'a> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
+        // Check that callback is provided if trace_steps is specified
+        if options.trace_steps.is_some() {
+            // Check callback consistency
+            if callback.is_none() {
+                panic!("Emu::run() called with trace_steps but no callback");
+            }
+
+            // Record callback into context
+            self.ctx.do_callback = true;
+            self.ctx.callback_steps = options.trace_steps.unwrap();
+
+            // Check steps value
+            if self.ctx.callback_steps == 0 {
+                panic!("Emu::run() called with trace_steps=0");
+            }
+        }
+
+        // Call run_fast if only essential work is needed
+        if options.is_fast() {
+            return self.run_fast(options);
+        }
+        //println!("Emu::run() full-equipe");
+
         // While not done
         while !self.ctx.end {
             if options.verbose {
                 println!("Emu::run() step={} ctx.pc={}", self.ctx.step, self.ctx.pc);
             }
             // Check trace PC
-            if self.ctx.tracerv_on && (self.ctx.pc & 0b11 == 0) {
+            if options.tracerv && (self.ctx.pc & 0b11 == 0) {
                 self.ctx.trace_pc = self.ctx.pc;
             }
 
@@ -287,7 +374,7 @@ impl<'a> Emu<'a> {
             self.step(options, &callback);
 
             // Only trace after finishing a riscV instruction
-            if self.ctx.tracerv_on && (self.ctx.pc & 0b11) == 0 {
+            if options.tracerv && (self.ctx.pc & 0b11) == 0 {
                 // Store logs in a vector of strings
                 let mut changes: Vec<String> = Vec::new();
 
@@ -323,6 +410,15 @@ impl<'a> Emu<'a> {
         }
     }
 
+    /// Run the whole program, fast
+    #[inline(always)]
+    pub fn run_fast(&mut self, options: &EmuOptions) {
+        // While not ended and not reached the maximum number of steps, call step_fast
+        while !self.ctx.end && (self.ctx.step < options.max_steps) {
+            self.step_fast();
+        }
+    }
+
     /// Gets the current values of the 32 registers
     pub fn get_regs_array(&self) -> [u64; 32] {
         let mut regs_array: [u64; 32] = [0; 32];
@@ -330,17 +426,6 @@ impl<'a> Emu<'a> {
             *reg = self.ctx.mem.read(SYS_ADDR + (i as u64) * 8, 8);
         }
         regs_array
-    }
-
-    /// Enables the tracer, initializing the current registers to detect differences from now on
-    pub fn tracerv_on(&mut self) {
-        self.ctx.tracerv_current_regs = self.get_regs_array();
-        self.ctx.tracerv_on = true;
-    }
-
-    /// Disables the tracer
-    pub fn tracerv_off(&mut self) {
-        self.ctx.tracerv_on = false;
     }
 
     /// Gets the log traces

@@ -14,7 +14,15 @@ path = "src/bin/ziskemu.rs"
 [dependencies]
 zisk-core = { path = "../core" }
 clap = { version = "4.5.9", features = ["derive", "env"] }
-riscv = {path="../riscv"}
+riscv = { path="../riscv" }
+cpu-freq = "0.0.2"
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

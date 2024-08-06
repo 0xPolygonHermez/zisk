@@ -165,7 +165,13 @@ impl ZiskEmulator {
             let secs = duration.as_secs_f64();
             let steps = emu.number_of_steps();
             let tp = steps as f64 / secs / 1_000_000.0;
-            println!("process_rom() steps={} duration={:.4} tp={:.4} Msteps/s", steps, secs, tp);
+            let cpus = cpu_freq::get();
+            let cpu_frequency: f64 = cpus[0].max.unwrap() as f64;
+            let clocks_per_step = cpu_frequency / tp;
+            println!(
+                "process_rom() steps={} duration={:.4} tp={:.4} Msteps/s freq={:.4} {:.4} clocks/step",
+                steps, secs, tp, cpu_frequency, clocks_per_step
+            );
         }
 
         // Get the emulation output

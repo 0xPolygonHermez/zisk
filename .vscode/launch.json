@@ -20,10 +20,11 @@
             },
             "args": [
                 "-e",
-                "riscof/riscof_work/rv64i_m",
-                "-l",
-                "-o",
-                "output.txt"
+                "emulator/benches/data/my.elf",
+                "-i",
+                "emulator/benches/data/input.bin",
+                "-c",
+                "-m",
             ],
             "cwd": "${workspaceFolder}"
         },

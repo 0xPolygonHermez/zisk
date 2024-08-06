@@ -1,9 +1,18 @@
 use clap::Parser;
 use std::fmt;
 
+pub const ZISK_VERSION_MESSAGE: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("VERGEN_GIT_SHA"),
+    " ",
+    env!("VERGEN_BUILD_TIMESTAMP"),
+    ")"
+);
+
 /// ZisK emulator options structure
 #[derive(Parser, Debug, Clone)]
-#[command(version, about, long_about = None)]
+#[command(version = ZISK_VERSION_MESSAGE, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct EmuOptions {
     /// Sets the Zisk ROM data file path
@@ -41,6 +50,9 @@ pub struct EmuOptions {
     /// Log performance metrics
     #[clap(short = 'm', long, value_name = "LOG_METRICS", default_value = "false")]
     pub log_metrics: bool,
+    /// Tracer v
+    #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
+    pub tracerv: bool,
 }
 
 /// Default constructor for impl fmt::Display for EmuOptions structure
@@ -59,6 +71,7 @@ impl Default for EmuOptions {
             log_output: false,
             trace_steps: None,
             log_metrics: false,
+            tracerv: false,
         }
     }
 }
@@ -70,5 +83,16 @@ impl fmt::Display for EmuOptions {
             "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}",
             self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose
         )
+    }
+}
+
+impl EmuOptions {
+    pub fn is_fast(&self) -> bool {
+        self.trace_steps.is_none() &&
+            self.print_step.is_none() &&
+            self.trace.is_none() &&
+            !self.log_step &&
+            !self.verbose &&
+            !self.tracerv
     }
 }
