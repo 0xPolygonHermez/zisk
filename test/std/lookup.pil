@@ -1,6 +1,6 @@
 require "std_lookup.pil";
 
-air aggregate Lookup1(const int N = 2**12) {
+airtemplate Lookup1(const int N = 2**12) {
 
     col witness a1,b1,a2,b2,a3,b3,a4,b4;
     col witness c1,d1,c2,d2;
@@ -18,7 +18,7 @@ air aggregate Lookup1(const int N = 2**12) {
     lookup_assumes(4, sel2, [a4, b4]);
 };
 
-air aggregate Lookup2(const int N = 2**14) {
+airtemplate Lookup2(const int N = 2**14) {
 
     col witness c1,d1,c2,d2;
     col witness mul;
@@ -28,8 +28,10 @@ air aggregate Lookup2(const int N = 2**14) {
     lookup_proves(4, mul, [c2, d2]);
 };
 
-Lookup1();
-Lookup1(N: 2**13);
-Lookup1(N: 2**15);
+airgroup Lookup {
+    Lookup1();
+    Lookup1(N: 2**13);
+    Lookup1(N: 2**15);
 
-Lookup2();
+    Lookup2();
+};
