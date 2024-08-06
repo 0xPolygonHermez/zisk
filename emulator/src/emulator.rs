@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+use sysinfo::System;
 use zisk_core::{Riscv2zisk, ZiskInst, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 
 pub trait Emulator {
@@ -165,8 +166,11 @@ impl ZiskEmulator {
             let secs = duration.as_secs_f64();
             let steps = emu.number_of_steps();
             let tp = steps as f64 / secs / 1_000_000.0;
-            let cpus = cpu_freq::get();
-            let cpu_frequency: f64 = cpus[0].max.unwrap() as f64;
+
+            let system = System::new_all();
+            let cpu = &system.cpus()[0];
+            let cpu_frequency = cpu.frequency() as f64;
+
             let clocks_per_step = cpu_frequency / tp;
             println!(
                 "process_rom() steps={} duration={:.4} tp={:.4} Msteps/s freq={:.4} {:.4} clocks/step",
