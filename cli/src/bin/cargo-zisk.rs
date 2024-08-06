@@ -13,6 +13,9 @@ use std::{
 
 use std::{fs::File, io::Write, path::Path};
 
+const DEFAULT_INPUT_VALUE: &str = "build/input.bin";
+const ZISK_TARGET: &str = "riscv64ima-polygon-ziskos-elf";
+
 // Main enum defining cargo subcommands.
 #[derive(Parser)]
 #[command(name = "cargo-zisk", bin_name = "cargo-zisk", version = ZISK_VERSION_MESSAGE)]
@@ -41,12 +44,16 @@ pub struct ZiskRun {
     release: bool,
     #[clap(long)]
     no_default_features: bool,
-    #[clap(long)]
+    #[clap(long, short)]
     sim: bool,
     #[clap(long)]
     stats: bool,
     #[clap(long)]
     gdb: bool,
+    #[clap(long, short, default_value =  DEFAULT_INPUT_VALUE)]
+    input: Option<String>,
+    #[clap(long, short)]
+    metrics: bool,
     #[clap(last = true)]
     args: Vec<String>,
 }
@@ -81,30 +88,53 @@ impl ZiskRun {
             command.arg("--release");
         }
         if self.sim {
-            let mut stats_command = "";
+            let mut extra_command: String = "".to_string();
+            let mut input_command: String = "".to_string();
             if self.stats {
-                stats_command = "-s"
+                extra_command += " -s ";
             }
-            runner_command = format!(
-                "node /home/edu/ziskjs/src/sim/main.js -n 100000000000 -i output/input.bin {} -e",
-                stats_command
-            );
+            if self.metrics {
+                extra_command += " -m ";
+            }
+            if self.input.is_some() {
+                let path = Path::new(self.input.as_ref().unwrap());
+                if !path.exists() {
+                    return Err(anyhow!("Input file does not exist at path: {}", path.display()));
+                }
+                input_command = format!("-i {}", self.input.as_ref().unwrap());
+            }
+            runner_command = format!("ziskemu {} {} -e", input_command, extra_command);
         } else {
             let mut gdb_command = "";
             if self.gdb {
                 gdb_command = "-S";
             }
 
-            let input_filename = "output/input.bin";
-            let output_filename = "output/input_size.bin";
+            let input_path: &Path = Path::new(self.input.as_ref().unwrap());
 
-            let input_path = Path::new(input_filename);
+            if !input_path.exists() {
+                return Err(anyhow!("Input file does not exist at path: {}", input_path.display()));
+            }
+
+            let build_path = match input_path.parent() {
+                Some(parent) => parent.to_str().unwrap_or("./"),
+                None => "./",
+            };
+
+            let stem = input_path.file_stem().unwrap_or_default();
+            let extension = input_path.extension().unwrap_or_default();
+            let output_path = format!(
+                "{}{}_size.{}",
+                build_path,
+                stem.to_str().unwrap_or(""),
+                extension.to_str().unwrap_or("")
+            );
+
             let metadata = std::fs::metadata(input_path)?;
-
             let file_size = metadata.len();
 
             let size_bytes = file_size.to_le_bytes();
-            let mut output_file = File::create(output_filename)?;
+            let mut output_file = File::create(output_path.clone())?;
             output_file.write_all(&size_bytes)?;
 
             runner_command = format!(
@@ -112,8 +142,8 @@ impl ZiskRun {
             qemu-system-riscv64 \
             -cpu rv64 \
             -machine virt \
-            -device loader,file=./output/input_size.bin,addr=0x90000000 \
-            -device loader,file=./output/input.bin,addr=0x90000008 \
+            -device loader,file=./{},addr=0x90000000 \
+            -device loader,file=./{},addr=0x90000008 \
             -m 1G \
             -s \
             {}  \
@@ -121,6 +151,8 @@ impl ZiskRun {
             -serial mon:stdio \
             -bios none \
             -kernel",
+                output_path,
+                input_path.display(),
                 gdb_command
             );
         }
@@ -132,7 +164,7 @@ impl ZiskRun {
             env::var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER").unwrap()
         );
 
-        command.args(["--target", "riscv64ima-polygon-ziskos-elf"]);
+        command.args(["--target", ZISK_TARGET]);
 
         // Add any additional arguments passed to the run command
         command.args(&self.args);

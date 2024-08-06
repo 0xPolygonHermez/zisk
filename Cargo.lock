@@ -2824,6 +2824,7 @@ dependencies = [
  "criterion",
  "pprof",
  "riscv",
+ "vergen",
  "zisk-core",
 ]
 

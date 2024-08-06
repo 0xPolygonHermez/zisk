@@ -11,15 +11,23 @@ path = "src/lib.rs"
 name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
-[dependencies]
-clap = { version = "4.5.9", features = ["derive", "env"] }
-zisk-core = {path="../core"}
-riscv = {path="../riscv"}
-cpu-freq = "0.0.2"
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
+
+
+[dependencies]
+clap = { version = "4.5.9", features = ["derive", "env"] }
+zisk-core = { path = "../core" }
+riscv = { path = "../riscv" }
+cpu-freq = "0.0.2"
 
 [[bench]]
 name = "benchmark"
