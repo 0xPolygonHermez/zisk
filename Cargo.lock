@@ -1466,7 +1466,7 @@ dependencies = [
  "proofman-util",
  "stark",
  "transcript",
- "wchelpers",
+ "witness-helpers",
 ]
 
 [[package]]
@@ -1950,7 +1950,7 @@ dependencies = [
  "sm-arith-3264",
  "sm-arith-64",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -1965,7 +1965,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -1980,7 +1980,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -1995,7 +1995,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2013,7 +2013,7 @@ dependencies = [
  "sm-binary-3264",
  "sm-binary-64",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2028,7 +2028,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2043,7 +2043,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2058,7 +2058,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2080,7 +2080,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2097,7 +2097,7 @@ dependencies = [
  "sm-arith",
  "sm-common",
  "sm-mem",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2116,7 +2116,7 @@ dependencies = [
  "sm-common",
  "sm-mem-aligned",
  "sm-mem-unaligned",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2131,7 +2131,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2146,7 +2146,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-common",
- "wchelpers",
+ "witness-helpers",
  "zisk-core",
 ]
 
@@ -2696,13 +2696,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wchelpers"
-version = "0.1.0"
-dependencies = [
- "proofman-common",
-]
-
-[[package]]
 name = "web-sys"
 version = "0.3.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2964,6 +2957,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "witness-helpers"
+version = "0.1.0"
+dependencies = [
+ "proofman-common",
+]
+
+[[package]]
 name = "yansi"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3037,7 +3037,7 @@ dependencies = [
  "sm-mem",
  "sm-mem-aligned",
  "sm-mem-unaligned",
- "wchelpers",
+ "witness-helpers",
  "zisk-pil",
 ]
 

@@ -35,9 +35,9 @@ opt-level = 3
 # proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 # proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# wchelpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# witness-helpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
 proofman-common = { path = "../pil2-proofman/common" }
 proofman = { path = "../pil2-proofman/proofman" }
 proofman-util = { path = "../pil2-proofman/util" }
-wchelpers = { path = "../pil2-proofman/wchelpers" }
+witness-helpers = { path = "../pil2-proofman/witness-helpers" }

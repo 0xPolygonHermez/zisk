@@ -1,10 +1,10 @@
 use log::debug;
-use std::{path::PathBuf, sync::Arc};
+use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::{Pilout, MAIN_AIR_IDS};
 
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
 use sm_arith::ArithSM;
@@ -15,13 +15,12 @@ use sm_main::MainSM;
 use sm_mem::MemSM;
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
-use wchelpers::WCLibrary;
+use witness_helpers::WitnessLibrary;
 
-pub struct ZiskWC<F> {
-    pub elf_rom: PathBuf,
+pub struct ZiskWitness<F> {
     pub proving_key_path: PathBuf,
     pub public_inputs_path: PathBuf,
-    pub wcm: WCManager<F>,
+    pub wcm: WitnessManager<F>,
     // State machines
     pub main_sm: Arc<MainSM>,
     pub mem_sm: Arc<MemSM>,
@@ -31,13 +30,39 @@ pub struct ZiskWC<F> {
     pub arith_32_sm: Arc<Arith32SM>,
 }
 
-impl<F: AbstractField> ZiskWC<F> {
-    // TODO The path must be a relative path to the current directory where the library is loaded
-    // TODO The alternative is passing the path from outside
-    const DEFAULT_ELF_ROM: &'static str = "../zisk/witness-computation/rom/zisk.elf";
+impl<F: AbstractField> ZiskWitness<F> {
+    pub fn new(
+        rom_path: PathBuf,
+        public_inputs_path: PathBuf,
+        proving_key_path: PathBuf,
+    ) -> Result<Self, Box<dyn Error>> {
+        // Check rom_path path exists
+        if !rom_path.exists() {
+            return Err(format!("ROM file not found at path: {:?}", rom_path).into());
+        }
 
-    pub fn new(elf_rom: PathBuf, proving_key_path: PathBuf, public_inputs_path: PathBuf) -> Self {
-        let mut wcm = WCManager::new();
+        // Check public_inputs_path is a folder
+        if !public_inputs_path.exists() {
+            return Err(
+                format!("Public inputs file not found at path: {:?}", public_inputs_path).into()
+            );
+        }
+
+        // Check proving_key_path exists
+        if !proving_key_path.exists() {
+            return Err(
+                format!("Proving key folder not found at path: {:?}", proving_key_path).into()
+            );
+        }
+
+        // Check proving_key_path is a folder
+        if !proving_key_path.is_dir() {
+            return Err(
+                format!("Proving key parameter must be a folder: {:?}", proving_key_path).into()
+            );
+        }
+
+        let mut wcm = WitnessManager::new();
 
         // TODO REMOVE THIS WHEN READY IN ZISK_PIL
         pub const MEM_ALIGN_AIR_IDS: &[usize] = &[1, 2];
@@ -56,13 +81,8 @@ impl<F: AbstractField> ZiskWC<F> {
         let arith_sm =
             ArithSM::new(&mut wcm, arith_32_sm.clone(), arith_64_sm.clone(), arith_3264_sm.clone());
 
-        // Check elf rom file exists
-        if !std::path::Path::new(&elf_rom).exists() {
-            panic!("File {} does not exist", elf_rom.display());
-        }
-
         let main_sm = MainSM::new(
-            &elf_rom,
+            &rom_path,
             &proving_key_path,
             &mut wcm,
             mem_sm.clone(),
@@ -70,8 +90,7 @@ impl<F: AbstractField> ZiskWC<F> {
             MAIN_AIR_IDS,
         );
 
-        ZiskWC {
-            elf_rom,
+        Ok(ZiskWitness {
             proving_key_path,
             public_inputs_path,
             wcm,
@@ -81,11 +100,11 @@ impl<F: AbstractField> ZiskWC<F> {
             mem_unaligned_sm,
             arith_sm,
             arith_32_sm,
-        }
+        })
     }
 }
 
-impl<F: AbstractField + Send + Sync> WCLibrary<F> for ZiskWC<F> {
+impl<F: AbstractField + Send + Sync> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
         self.wcm.start_proof(pctx, ectx);
     }
@@ -118,9 +137,10 @@ impl<F: AbstractField + Send + Sync> WCLibrary<F> for ZiskWC<F> {
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    proving_key_path: PathBuf,
+    rom_path: Option<PathBuf>,
     public_inputs_path: PathBuf,
-) -> Box<dyn WCLibrary<Goldilocks>> {
+    proving_key_path: PathBuf,
+) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)
         .format_level(true)
@@ -128,9 +148,8 @@ pub extern "Rust" fn init_library(
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    //Capture current path
-    let current_path = std::env::current_dir().unwrap();
-    let elf_rom = current_path.join(ZiskWC::<Goldilocks>::DEFAULT_ELF_ROM);
+    let rom_path = rom_path.ok_or("ROM path is required")?;
 
-    Box::new(ZiskWC::new(elf_rom, proving_key_path, public_inputs_path))
+    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path, proving_key_path)?;
+    Ok(Box::new(zisk_witness))
 }

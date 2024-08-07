@@ -8,7 +8,7 @@ use std::{
 
 use std::{fmt::Debug, sync::mpsc, thread};
 
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_arith_32::Arith32SM;
@@ -18,7 +18,7 @@ use sm_common::{
     Arith3264Op, Arith32Op, Arith64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
     WorkerTask,
 };
-use wchelpers::WCComponent;
+use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -32,7 +32,7 @@ pub struct ArithSM {
 
 impl ArithSM {
     pub fn new<F>(
-        wcm: &mut WCManager<F>,
+        wcm: &mut WitnessManager<F>,
         arith32_sm: Arc<Arith32SM>,
         arith64_sm: Arc<Arith64SM>,
         arith3264_sm: Arc<Arith3264SM>,
@@ -46,13 +46,13 @@ impl ArithSM {
         };
         let arith_sm = Arc::new(arith_sm);
 
-        wcm.register_component(arith_sm.clone() as Arc<dyn WCComponent<F>>, None);
+        wcm.register_component(arith_sm.clone() as Arc<dyn WitnessComponent<F>>, None);
 
         arith_sm
     }
 }
 
-impl<F> WCComponent<F> for ArithSM {
+impl<F> WitnessComponent<F> for ArithSM {
     fn calculate_witness(
         &self,
         stage: u32,

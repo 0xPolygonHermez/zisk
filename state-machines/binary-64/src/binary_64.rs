@@ -8,11 +8,11 @@ use std::{
 
 use std::{sync::mpsc, thread};
 
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{Binary64Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
-use wchelpers::WCComponent;
+use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
@@ -21,11 +21,11 @@ pub struct Binary64SM {
 }
 
 impl Binary64SM {
-    pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
         let binary64_sm = Self { inputs: Mutex::new(Vec::new()) };
         let binary64_sm = Arc::new(binary64_sm);
 
-        wcm.register_component(binary64_sm.clone() as Arc<dyn WCComponent<F>>, Some(air_ids));
+        wcm.register_component(binary64_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
 
         binary64_sm
     }
@@ -39,7 +39,7 @@ impl Binary64SM {
     }
 }
 
-impl<F> WCComponent<F> for Binary64SM {
+impl<F> WitnessComponent<F> for Binary64SM {
     fn calculate_witness(
         &self,
         stage: u32,

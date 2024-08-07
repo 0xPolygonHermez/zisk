@@ -11,9 +11,9 @@ use std::{
     },
 };
 
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
-use wchelpers::{WCComponent, WCOpCalculator};
+use witness_helpers::{WCOpCalculator, WitnessComponent};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -26,7 +26,7 @@ pub struct MemSM {
 
 impl MemSM {
     pub fn new<F>(
-        wcm: &mut WCManager<F>,
+        wcm: &mut WitnessManager<F>,
         mem_aligned_sm: Arc<MemAlignedSM>,
         mem_unaligned_sm: Arc<MemUnalignedSM>,
     ) -> Arc<Self> {
@@ -38,13 +38,13 @@ impl MemSM {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_component(mem_sm.clone() as Arc<dyn WCComponent<F>>, None);
+        wcm.register_component(mem_sm.clone() as Arc<dyn WitnessComponent<F>>, None);
 
         mem_sm
     }
 }
 
-impl<F> WCComponent<F> for MemSM {
+impl<F> WitnessComponent<F> for MemSM {
     fn calculate_witness(
         &self,
         stage: u32,

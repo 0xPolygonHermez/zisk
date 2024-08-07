@@ -8,11 +8,11 @@ use std::{
 
 use std::{sync::mpsc, thread};
 
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{Arith64Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
-use wchelpers::WCComponent;
+use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
@@ -21,11 +21,11 @@ pub struct Arith64SM {
 }
 
 impl Arith64SM {
-    pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
         let arith64_sm = Self { inputs: Mutex::new(Vec::new()) };
         let arith64_sm = Arc::new(arith64_sm);
 
-        wcm.register_component(arith64_sm.clone() as Arc<dyn WCComponent<F>>, Some(air_ids));
+        wcm.register_component(arith64_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
 
         arith64_sm
     }
@@ -39,7 +39,7 @@ impl Arith64SM {
     }
 }
 
-impl<F> WCComponent<F> for Arith64SM {
+impl<F> WitnessComponent<F> for Arith64SM {
     fn calculate_witness(
         &self,
         stage: u32,

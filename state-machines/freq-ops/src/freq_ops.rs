@@ -3,7 +3,7 @@ use std::{mem, sync::Mutex};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{FreqOp, OpResult, Provable};
-use wchelpers::WCComponent;
+use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
@@ -27,7 +27,7 @@ impl FreqOpSM {
     }
 }
 
-impl<F> WCComponent<F> for FreqOpSM {
+impl<F> WitnessComponent<F> for FreqOpSM {
     fn calculate_witness(
         &self,
         _stage: u32,

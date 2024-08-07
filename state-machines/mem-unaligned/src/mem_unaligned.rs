@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use proofman::WCManager;
+use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{MemUnalignedOp, OpResult, Provable};
-use wchelpers::WCComponent;
+use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -17,11 +17,14 @@ pub struct MemUnalignedSM {
 
 #[allow(unused, unused_variables)]
 impl MemUnalignedSM {
-    pub fn new<F>(wcm: &mut WCManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
         let mem_aligned_sm = Self { inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
-        wcm.register_component(mem_aligned_sm.clone() as Arc<dyn WCComponent<F>>, Some(air_ids));
+        wcm.register_component(
+            mem_aligned_sm.clone() as Arc<dyn WitnessComponent<F>>,
+            Some(air_ids),
+        );
 
         mem_aligned_sm
     }
@@ -44,7 +47,7 @@ impl MemUnalignedSM {
     }
 }
 
-impl<F> WCComponent<F> for MemUnalignedSM {
+impl<F> WitnessComponent<F> for MemUnalignedSM {
     fn calculate_witness(
         &self,
         _stage: u32,
