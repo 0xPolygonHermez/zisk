@@ -1,175 +1,222 @@
-%STEPS_PERCHUNK = 2**21
+// require "std.pil"
+// require "mem.pil"
+// require "operation.pil"
 
-// Registers
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, int MAIN_CONTINUATION_ID = 1000) {
 
-col commit a[2];
-col commit b[2];
-col commit c[2];
-col commit flag;
-col commit last_c[2];
+    col fixed INNER_L1 = [1,0...];
+    col fixed INNER_STEP = [0..(N-1)];
 
-col commit sp;   // Stack pointer
-col commit pc;   // Program counter
-col commit chunk;   // Chunk number in the continuation
-col constant step;
+    const expr INNER_LAST = INNER_L1';
 
-// Instruction
+    // TODO: airval
+    airgroupval aggregate(sum) main_first_segment;   // first
+    airgroupval aggregate(sum) main_last_segment;    // final
+    airgroupval aggregate(sum) main_segment;         // serial
 
-// Source A
+    const expr L1 = INNER_L1 * main_first_segment;
+    const expr LAST = INNER_LAST * main_last_segment;
+    const expr STEP = main_segment * N + INNER_STEP;
 
-col commit a_src_imm;           // Selector
-col commit a_src_mem;           // Selector
-col commit a_src_sp;            // Selector
-col commit a_src_step;          // Selector
+    // Registers
 
-col commit a_use_sp_imm1;
-col commit a_offset_imm0;
+    col witness a[RC];
+    col witness b[RC];
+    col witness c[RC];
+    col witness last_c[RC];
+    col witness flag;
 
-// Source B
+    col witness pc;      // Program counter
 
-col commit b_src_imm;
-col commit b_src_mem;
-col commit b_src_ind;
-
-col commit b_use_sp_imm1;
-col commit b_offset_imm0;
-
-col commit ind_width;  // 8 , 4, 2, 1
-
-// Operatio related
+    // continuations
 
 
-col commit is_external_op;    // Only if op is external
-col commit op;      // if is_external_op1== is_external_op2 == 0 if op=0  then a->c, flag->1
-                    //                                           if op=1 then  b->c, flag->0;
-                    // else then this op is passed to the bus.
+    // continuations_setup(MAIN_CONTINUATION_ID, chunk, end);
+
+    // Instruction
+
+    // Source A
+
+    col witness a_src_imm;         // Selector
+    col witness a_src_mem;         // Selector
+    col witness a_offset_imm0;
 
 
-// Dest C
+    if (stack_enabled == 1) {
+        col witness air.sp;
+        col witness air.a_src_sp;
+        col witness air.a_use_sp_imm1;
+        col witness air.a_src_step;
+    } else {
+        col witness air.a_src_step_imm1;
+    }
 
-// What to store
-col commit store_ra;  // Store the return address instead of the C register.
+    // Source B
 
-// Where to store
-col commit store_mem;
-col commit store_ind;
+    col witness b_src_imm;         // Selector
+    col witness b_src_mem;         // Selector
+    col witness b_offset_imm0;
 
-col commit store_use_sp;
-col commit store_offset;
+    if (stack_enabled) {
+        col witness air.b_use_sp_imm1;
+        col witness air.b_src_ind;
+    } else {
+        col witness air.b_src_ind_imm1;
+    }
 
-col commit set_sp;
-col commit set_pc;
+    col witness ind_width;  // 8 , 4, 2, 1
 
+    // Operations related
 
+    col witness is_external_op;    // 1 If it's an op proved by a different coprocessor (1 clock op).
+    col witness op;                // if is_external_op1== is_external_op2 == 0 if op=0  then a->c, flag->1
+                                   //                                           if op=1 then  b->c, flag->0;
+                                   // else then this op is passed to the bus.
 
-// Offset destinations
+    // Destination C
 
-col commit inc_sp;
-col commit jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
-col commit end;
+    // What to store
+    col witness store_ra;  // Store the return address instead of the C register.
 
-///////////////////////
+    // Where to store
+    col witness store_mem;  // 1 of the registers are read/write from memory
+    col witness store_ind;
 
-permutation_assume(
-    MEMORY_ID
-    a_src_mem,            // only if a_src_mem is set
-    [
-        LOAD,
-        8,      // If is indirect jorce a read of an address of 32bits
-        step*3,
-        a_offset_imm0 + a_use_sp_imm1*sp,
-        a,
-    ]
-)
+    col witness store_offset;
 
-permutation_assume(
-    MEMORY_ID
-    b_src_mem + b_src_ind,            // only if b_src_mem is set
-    [
-        LOAD
-        ind_width,
-        step*3+1,
-        b_offset_imm0 + b_use_sp_imm1*sp + b_src_ind*(a[0] + 2**32*a[1]), // addr
-        b,      // value
-    ]
-)
-
-permutation_assume(
-    MEMORY_ID,           // Function in the BUS
-    store_mem + store_ind,
-    [
-        STORE,
-        ind_width,
-        step*3+2,
-        store_offset + store_use_sp*sp + store_ind*a[0],
-        store_ra*(pc + jmp_offset2 -c) + c,
-    ]
-)
-
-permutation_assume(
-    op,           // Function in the BUS
-    is_external_op,            // only if opBin is set
-    [
-        op,
-        a[0] , a[1]
-        b[0] , b[1]
-        c[0] , c[1]
-        flag,
-    ]
-)
-
-pol a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
-pol b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
-
-a_src_step*(a[0] - step) === 0;
-a_src_step*(a[1])      === 0;
-
-a_src_sp*(a[0] - sp) === 0;
-a_src_sp*(a[1])      === 0;
-
-a_src_c*(a[0] - last_c[0]) === 0;
-a_src_c*(a[1] - last_c[1]) == 0;
-
-b_src_c*(b[0] - last_c[0]) === 0;
-b_src_c*(b[1] - last_c[1]) === 0;
-
-a_src_imm*(a[0] - a_offset_imm0) === 0;
-a_src_imm*(a[1] - a_use_sp_imm1) === 0;
-
-b_src_imm*(b[0] - b_offset_imm0) === 0;
-b_src_imm*(b[1] - a_use_sp_imm1) === 0;
-
-// if is not an external op and op=0 c <- 0 and set flag = 1
-(1 - is_external_op) * ( 1 - op) * (c[0]) = 0;
-(1 - is_external_op) * ( 1 - op) * (c[1]) = 0;
-(1 - is_external_op) * ( 1 - op) * (1-flag) = 0;
-
-// if is not an external op and op=1 c <- b and set flag = 0
-(1 - is_external_op) * op * (b[0] - c[0]) = 0;
-(1 - is_external_op) * op * (b[1] - c[1]) = 0;
-(1 - is_external_op) * op * (flag) = 0;
-
-sp' === set_sp*(c - sp) +  sp +inc_sp  + end*L1'*(0 - sp);  // assume that when end=1 then set_sp=0 and inc_sp=0
-sp*L1 === 0;     // Force sp == 0 at the begining
-
-step*(1-L1) === 'step +  1;
-step*L1 === 0;
+    col witness set_pc;
 
 
-pol newPC = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
-pc' === set_pc * ( c[0] + jmp_offset1  - newPC) + newPC  +end*L1'*(0x8000_0000 - (pc + jmp_offset1 ));  // Assume that when end=1 then  set_pc = 0 and flag = 0
-L1*(pc - 0x8000_0000) === 0
-
-end*(1-L1')*(end' - 1) === 0;
-
-flag*(flag -1) === 0;
-
-last_c[0]' = c[0];
-last_c[1]' = c[1];
+    if (stack_enabled) {
+        col witness air.store_use_sp;
+        col witness air.set_sp;
+        col witness air.inc_sp;
+    }
 
 
+    col witness jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
 
 
+    // const expr addr_step = STEP * 3;
+
+    // const expr sel_mem_b;
+    // const expr addr[3];
+
+    // if (stack_enabled) {
+    //     sel_mem_b = b_src_mem + b_src_ind;
+    //     addr[0] = a_offset_imm0 + a_use_sp_imm1 * sp;
+    //     addr[1] = b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;
+    //     addr[2] = store_offset + store_ind * a[0] + store_use_sp * sp;
+    // } else {
+    //     sel_mem_b = b_src_mem + b_src_ind_imm1;
+    //     addr[0] = a_offset_imm0;
+    //     addr[1] = b_offset_imm0 + b_src_ind_imm1 * (a[0] + 2**32 * a[1]);
+    //     addr[2] = store_offset + store_ind * a[0];
+    // }
+
+    // // Mem.load
+    // mem_load(sel: a_src_mem,
+    //          step: addr_step,
+    //          addr: addr[0],
+    //          value: a);
+
+    // // Mem.load
+    // mem_load(sel: sel_mem_b,
+    //          step: addr_step + 1,
+    //          bytes: ind_width,
+    //          addr: addr[1],
+    //          value: b);
+
+    // // Mem.store
+    // mem_store(sel: store_mem + store_ind,
+    //           step: addr_step + 2,
+    //           bytes: ind_width,
+    //           addr: addr[2],
+    //           value: [store_ra*(pc + jmp_offset2) + c[0], 0]);
 
 
+    // // Operation.assume => how organize software
+    // operation_assume(OPERATION_ID + op, sel: is_external_op,
+    //                                     a: a,
+    //                                     b: b,
+    //                                     c: c,
+    //                                     flag: flag);
 
+
+    // const expr a_src_c;
+    // const expr b_src_c;
+
+    // const expr a_imm[2];
+    // const expr b_imm[2];
+
+    // a_imm[0] = a_offset_imm0;
+    // b_imm[0] = b_offset_imm0;
+
+    // if (stack_enabled) {
+    //     a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
+    //     b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
+    //     a_imm[1] = a_use_sp_imm1;
+    //     b_imm[1] = b_use_sp_imm1;
+    // } else {
+    //     a_src_c = 1 - a_src_step_imm1 - a_src_mem - a_src_imm;
+    //     b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind_imm1;
+    //     a_imm[1] = a_src_step_imm1;
+    //     b_imm[1] = b_src_ind_imm1;
+    // }
+
+    // for (int index = 0; index < RC; ++index) {
+    //     if (stack_enabled) {
+    //         // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
+    //         a_src_sp*(a[index] - (index == 0 ? sp: 0 )) === 0;
+
+    //         // a_src_step ===> set a = STEP (only less significant index, rest must be 0)
+    //         a_src_step *( a[index] - (index == 0 ? STEP : 0)) === 0;
+    //     } else {
+    //         a_src_step_imm1 *( a[index] - (index == 0 ? STEP : 0)) === 0;
+    //     }
+
+
+    //     a_src_c*(a[index] - last_c[index]) === 0;
+    //     b_src_c*(b[index] - last_c[index]) === 0;
+
+    //     a_src_imm*(a[index] - a_imm[index]) === 0;
+    //     b_src_imm*(b[index] - b_imm[index]) === 0;
+
+    //     // continuations_transition(last_c[index], c[index]); // last_c[index]' = c[index];
+
+    //     // if is not an external op and op=0 set c = 0
+    //     (1 - is_external_op) * (1 - op) * c[index] === 0;
+
+    //     // if is not an external op and op=1 set c = b
+    //     (1 - is_external_op) * op * (b[index] - c[index]) === 0;
+    // }
+
+
+    // // if is not an external op and op=0 set flag = 1
+    // (1 - is_external_op) * (1 - op) * (1 - flag) === 0;
+
+    // // if is not an external op and op=1 set flag = 0
+    // (1 - is_external_op) * op * (flag) === 0;
+
+    // if (stack_enabled) {
+    //     // continuations_transition(sp, set_sp*(c - sp) + sp + inc_sp);
+    // }
+
+
+    // // sp' === set_sp*(c - sp) + sp + inc_sp + end * L1'*(0 - sp);  // assume that when end=1 then set_sp=0 and inc_sp=0
+    // // sp * L1 === 0;     // Force sp == 0 at the begining
+
+    // // step is a constant
+    // // step * (1-L1) === 'step +  1;
+    // // step * L1 === 0;
+
+    // const expr new_pc = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
+
+    // // continuations_transition(pc, set_pc * (c[0] + jmp_offset1  - new_pc) + new_pc);
+
+
+    // // pc' === set_pc * ( c[0] + jmp_offset1  - new_pc) + new_pc  + end * L1'*(0x8000_0000 - (pc + jmp_offset1 ));  // Assume that when end=1 then  set_pc = 0 and flag = 0
+    // L1 * (pc - 0x8000_0000) === 0; // when end of program jump to this address
+
+    // flag*(flag -1) === 0;
+}

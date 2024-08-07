@@ -142,7 +142,12 @@ fn bench_process_rom(c: &mut Criterion) {
         };
 
         b.iter(|| {
-            let _ = ZiskEmulator::process_rom(&mut rom, &input, &options, None);
+            let _ = ZiskEmulator::process_rom(
+                &mut rom,
+                &input,
+                &options,
+                None::<Box<dyn Fn(Vec<EmuTrace>)>>,
+            );
         });
     });
 

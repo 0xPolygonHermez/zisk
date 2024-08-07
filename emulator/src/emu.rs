@@ -129,7 +129,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step(&mut self, options: &EmuOptions, callback: &Option<Box<dyn Fn(Vec<EmuTrace>)>>) {
+    pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(Vec<EmuTrace>)>) {
         // Check if we are tracing steps to improve the execution
         let tracing_steps = options.trace_steps.is_some();
 
@@ -213,7 +213,11 @@ impl<'a> Emu<'a> {
             if self.ctx.end ||
                 ((self.ctx.step - self.ctx.last_callback_step) == self.ctx.callback_steps)
             {
-                let callback = callback.as_ref().unwrap();
+                if callback.is_none() {
+                    panic!("Emu::step() found empty callback");
+                }
+                let callback = callback.as_ref().expect("Emu::step() found empty callback");
+
                 let emu_trace = mem::take(&mut self.ctx.emu_trace);
                 (callback)(emu_trace);
                 self.ctx.last_callback_step += self.ctx.callback_steps;
@@ -315,7 +319,7 @@ impl<'a> Emu<'a> {
         &mut self,
         inputs: Vec<u8>,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<impl Fn(Vec<EmuTrace>)>,
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);

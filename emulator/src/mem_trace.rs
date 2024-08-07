@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy)]
 pub struct MemTrace {
     pub is_write: bool,
     pub address: u64,
