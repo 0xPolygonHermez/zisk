@@ -160,5 +160,5 @@ subproof Storage(2**23) {
             inValueLow, inValueHigh, inRotlVh, inLevel]);
 
 
-    lookup_assumes(STORAGE_ROM_ID, 1, [storageRomFlags, const0, jmpAddress, pc, inSiblingRkey]);
+    lookup_assumes(STORAGE_ROM_ID, [storageRomFlags, const0, jmpAddress, pc, inSiblingRkey]);
 }

@@ -1,10 +1,10 @@
 require "std_common.pil"
 
-function prod_assumes(const string type, const int opid, const expr sel = 1, const expr cols[]) {
+function prod_assumes(const string type, const int opid, const expr cols[], const expr sel = 1) {
     update_piop_prod(type, 0, opid, sel, cols);
 }
 
-function prod_proves(const string type, const int opid, const expr sel = 1, const expr cols[], int is_direct = 0) {
+function prod_proves(const string type, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
     update_piop_prod(type, 1, opid, sel, cols, is_direct);
 }
 

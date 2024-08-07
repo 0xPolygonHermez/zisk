@@ -16,9 +16,9 @@ airtemplate Rom(int N = 2**8) {
     include "rom_compiled.pil";
 
     // repeat_last_source_line();
-    lookup_proves(ROM_ID, mul, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
-                                IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
-                                FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
+    lookup_proves(ROM_ID, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+                            IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
+                            FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE], mul);
 }
 
 function last_rom_line(int zkpc, int values[]) {
@@ -29,9 +29,6 @@ function last_rom_line(int zkpc, int values[]) {
 function add_rom_line(int zkpc, int values[]) {
     const int nr = air.NR;
 
-    // lookup_proves(ROM_ID, mul, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
-    //                           IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
-    //                           FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
     air.LINE[zkpc] = zkpc;
     air.COND_CONST[zkpc] = values[0];
     air.IN_A[zkpc] = values[1];

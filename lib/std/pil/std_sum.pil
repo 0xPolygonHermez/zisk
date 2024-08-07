@@ -1,14 +1,14 @@
 require "std_common.pil";
 
-function sum_assumes(string type, int opid, expr sel = 1, expr cols[]) {
+function sum_assumes(string type, int opid, expr cols[], expr sel = 1) {
     update_piop_sum(type, 0, [opid], opid, sel, cols);
 }
 
-function sum_proves(string type, int opid, expr mul = 1, expr cols[]) {
+function sum_proves(string type, int opid, expr cols[], expr mul = 1) {
     update_piop_sum(type, 1, [opid], opid, mul, cols);
 }
 
-function sum_assumes_dynamic(string type, int opid[], expr sumid, expr sel = 1, expr cols[]) {
+function sum_assumes_dynamic(string type, int opid[], expr sumid, expr cols[], expr sel = 1) {
     update_piop_sum(type, 0, opid, sumid, sel, cols);
 }
 

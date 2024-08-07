@@ -12,7 +12,7 @@ subproof StorageRom(2**16) {
     include "storage_rom_compiled.pil";
 
     repeat_last_source_line();
-    lookup_proves(STORAGE_ROM_ID, 1, [LINE, ROM_FLAGS, CONST0, JMP_ADDRESS, IN_SIBLING_RKEY]);
+    lookup_proves(STORAGE_ROM_ID, [LINE, ROM_FLAGS, CONST0, JMP_ADDRESS, IN_SIBLING_RKEY]);
 }
 
 private function source(int line, int flags, int const0, int jmpAddress, int inSiblingRkey) {

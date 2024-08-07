@@ -99,7 +99,7 @@ subproof aggregate Binary(2**21, 2**23, 2**25) {
 
     for (int index = 0; index < (bpc - 1); ++index) {
         const expr _cin = (enableLt4 && (index % 8) == 0) ? (1 - reset4) * carry[index] : carry[index];
-        lookup_assumes(BINARY_TABLE_ID ,1 ,[      0, _operation, freeInA[index], freeInB[index], _cin, freeInC[index], carry[index + 1]]);
+        lookup_assumes(BINARY_TABLE_ID, [      0, _operation, freeInA[index], freeInB[index], _cin, freeInC[index], carry[index + 1]]);
     }
     const expr _cin;
     if (enableLt4) {
@@ -119,7 +119,7 @@ subproof aggregate Binary(2**21, 2**23, 2**25) {
     } else {
         _cin = carry[lastbpc];
     }
-    lookup_assumes(BINARY_TABLE_ID ,1 ,[result, _operation, freeInA[lastbpc], freeInB[lastbpc], _cin, freeInC[lastbpc], carry[bpc] + 2 * useCarry]);
+    lookup_assumes(BINARY_TABLE_ID, [result, _operation, freeInA[lastbpc], freeInB[lastbpc], _cin, freeInC[lastbpc], carry[bpc] + 2 * useCarry]);
 
     // rebuild inputChunks to create lookup
 

@@ -41,5 +41,5 @@ airtemplate Mem(int N = 2**10) {
         rdDifferent * value[index]'  ===  0;
     }
 
-    permutation_proves(MEMORY_ID, sel, [addr, step, wr, ...value]);
+    permutation_proves(MEMORY_ID, [addr, step, wr, ...value], sel);
 }

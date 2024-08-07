@@ -64,5 +64,5 @@ subproof MemAlignTable(2**19) {
         irow = irow + 1;
     }
     #pragma message loop2-end
-    lookup_proves(MEM_ALIGN_TABLE_ID, 1, [CLOCK, MODE_SELM1_SELM0, T_BYTE_POS]);
+    lookup_proves(MEM_ALIGN_TABLE_ID, [CLOCK, MODE_SELM1_SELM0, T_BYTE_POS]);
 }

@@ -50,5 +50,5 @@ subproof Sha256FTable(2**23) {
         CARRY_OUT[irow+3] = 0;
     }
 
-    lookup_proves(SHA256F_TABLE_ID, 1, [GATE_TYPE, IN1, IN2, IN3, OUT, CARRY_OUT]);
+    lookup_proves(SHA256F_TABLE_ID, [GATE_TYPE, IN1, IN2, IN3, OUT, CARRY_OUT]);
 }

@@ -47,7 +47,7 @@ subproof PaddingPG(2**23) {
         acc[i]' === accC[i] * (1 - LAST_BLOCK);
     }
 
-    lookup_assume(POSEIDON_G_ID, lastBlock, [...accC, ...prevHash, ...curHash]);
+    lookup_assume(POSEIDON_G_ID, [...accC, ...prevHash, ...curHash], lastBlock);
 
     col witness curHash[4];
     col witness prevHash[4];

@@ -1,4 +1,4 @@
-require "std_prod_permutation.pil"
+require "std_permutation.pil"
 require "std_tools.pil"
 
 const int MAX_TRANSITIONS = 200;
@@ -69,6 +69,6 @@ function continuation_close() {
         prove_cols[icol + 1] = next_values[icol];        
     }
  
-    permutation_assumes(id, L1, assume_cols);
-    permutation_proves(id, L1', prove_cols);
+    permutation_assumes(id, assume_cols, L1);
+    permutation_proves(id, prove_cols, L1');
 }

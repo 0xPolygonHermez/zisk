@@ -111,5 +111,5 @@ subproof ClimbKeyTable(2**21) {
     //  3  │ 3  │ 0 │ 00800..00FFF │ 01001..01FFF │ 1 │ 00001..00FFF │ 1  │ 00FFF │ 3  │   2048 │   2048
     // ┄┄┄┄│┄┄┄┄│┄┄┄│┄┄┄┄┄┄┄┄┄┄┄┄┄┄│┄┄┄┄┄┄┄┄┄┄┄┄┄┄│┄┄┄│┄┄┄┄┄┄┄┄┄┄┄┄┄┄│┄┄┄┄│┄┄┄┄┄┄┄│┄┄┄┄│┄┄┄┄┄┄┄┄│┄┄┄┄┄┄┄┄
 
-    lookup_proves(CLIMB_KEY_TABLE_ID, 1, [CLK, MSB_LEVEL, CHUNK_VALUE, CARRY_LT_IN, CARRY_LT_OUT]);
+    lookup_proves(CLIMB_KEY_TABLE_ID, [CLK, MSB_LEVEL, CHUNK_VALUE, CARRY_LT_IN, CARRY_LT_OUT]);
 }

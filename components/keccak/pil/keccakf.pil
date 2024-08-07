@@ -16,7 +16,7 @@ subproof KeccakF(2**23) {
     const int FACTOR = 2**bits;
     expr _in1,_in2,_out;
     for (int chunk = chunks - 1; chunk >= 0; chunk -= 1) {
-        lookup_assumes(KECCAKF_TABLE_ID, 1, [GATE_TYPE, in1Chunk[chunk], in2Chunk[chunk], outChunk[chunk]]);
+        lookup_assumes(KECCAKF_TABLE_ID, [GATE_TYPE, in1Chunk[chunk], in2Chunk[chunk], outChunk[chunk]]);
         _in1 = _in1 * FACTOR + in1Chunk[chunk];
         _in2 = _in2 * FACTOR + in2Chunk[chunk];
         _out = _out * FACTOR + outChunk[chunk];

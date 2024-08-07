@@ -1,16 +1,27 @@
+require "std_sum.pil";
 require "std_prod.pil";
 
 const string name_permutation = "permutation";
+const int one_bus = 0;
 
-function permutation_assumes(const int opid, const expr sel = 1, const expr cols[]) {
-    prod_assumes(name_permutation, opid, sel, cols);
+function permutation_assumes(const int opid, const expr cols[], const expr sel = 1, const int use_sums = one_bus, const string name = name_permutation) {
+    if (use_sums) {
+        sum_assumes(name, opid, cols, sel);
+    } else {
+        prod_assumes(name, opid, cols, sel);
+    }
 }
 
-function permutation_proves(const int opid, const expr sel = 1, const expr cols[]) {
-    prod_proves(name_permutation, opid, sel, cols);
+function permutation_proves(const int opid, const expr cols[], const expr sel = 1, const int use_sums = one_bus, const string name = name_permutation) {
+    if (use_sums) {
+        sum_proves(name, opid, cols, sel);
+    } else {
+        prod_proves(name, opid, cols, sel);
+    }
 }
 
 // UPCD: Update Proof Constraint Directly
-function permutation_upcd(const int opid, const expr sel = 1, const expr cols[]) {
-    update_piop_prod(name_permutation, 1, opid, sel, cols, 1);
+function permutation_upcd(const int opid, const expr cols[], const expr sel = 1, const string name = name_permutation) {
+    // It doesn't matter if we do an assume or prove
+    prod_proves(name, opid, cols, sel);
 }
