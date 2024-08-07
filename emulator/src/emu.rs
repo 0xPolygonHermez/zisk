@@ -120,7 +120,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step(&mut self, options: &EmuOptions, callback: &Option<Box<dyn Fn(EmuTrace)>>) {
+    pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(EmuTrace)>) {
         let instruction = self.rom.get_instruction(self.ctx.pc);
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
@@ -303,7 +303,7 @@ impl<'a> Emu<'a> {
         &mut self,
         inputs: Vec<u8>,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(EmuTrace)>>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);

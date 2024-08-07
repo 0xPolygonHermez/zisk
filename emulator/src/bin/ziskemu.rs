@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::{fmt::Write, process};
-use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
+use ziskemu::{EmuOptions, EmuTrace, Emulator, ZiskEmulator};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
@@ -13,7 +13,7 @@ fn main() {
 
     // Call emulate, with these options
     let emulator = ZiskEmulator;
-    let result = emulator.emulate(&options, None);
+    let result = emulator.emulate(&options, None::<Box<dyn Fn(EmuTrace)>>);
 
     match result {
         Ok(result) => {
