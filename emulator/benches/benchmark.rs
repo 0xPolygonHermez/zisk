@@ -41,7 +41,7 @@ fn bench_group(c: &mut Criterion) {
     }
 }
 */
-fn dummy_callback(_v: Vec<EmuTrace>) {}
+fn dummy_callback(_v: EmuTrace) {}
 
 fn bench_emulate(c: &mut Criterion) {
     /*let guard = pprof::ProfilerGuardBuilder::default()

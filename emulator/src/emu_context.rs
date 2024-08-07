@@ -1,4 +1,4 @@
-use crate::{EmuTrace, Mem, MemTrace};
+use crate::{EmuTrace, Mem};
 use zisk_core::{write_u64_le, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
 /// ZisK emulator context data container, storing the state of the emuulation
@@ -16,11 +16,10 @@ pub struct EmuContext {
     pub tracerv_step: u64,
     pub tracerv_current_regs: [u64; 32],
     pub trace_pc: u64,
-    pub mem_trace: Vec<MemTrace>,
-    pub emu_trace: Vec<EmuTrace>,
     pub do_callback: bool,
     pub callback_steps: u64,
     pub last_callback_step: u64,
+    pub trace: EmuTrace,
 }
 
 /// RisK emulator context implementation
@@ -41,8 +40,7 @@ impl EmuContext {
             tracerv_step: 0,
             tracerv_current_regs: [0; 32],
             trace_pc: 0,
-            mem_trace: Vec::new(),
-            emu_trace: Vec::new(),
+            trace: EmuTrace::default(),
             do_callback: false,
             callback_steps: 0,
             last_callback_step: 0,

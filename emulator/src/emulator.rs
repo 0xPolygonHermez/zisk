@@ -10,7 +10,7 @@ pub trait Emulator<ET> {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<ET>)>>,
+        callback: Option<Box<dyn Fn(ET)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr>;
 }
 
@@ -40,7 +40,7 @@ impl ZiskEmulator {
         elf_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<Box<dyn Fn(EmuTrace)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_elf_file() elf_file={}", elf_filename);
@@ -63,7 +63,7 @@ impl ZiskEmulator {
         rom_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<Box<dyn Fn(EmuTrace)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom_file() rom_file={}", rom_filename);
@@ -78,7 +78,7 @@ impl ZiskEmulator {
         rom: &mut ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<Box<dyn Fn(EmuTrace)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
@@ -224,7 +224,7 @@ impl Emulator<EmuTrace> for ZiskEmulator {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<Box<dyn Fn(Vec<EmuTrace>)>>,
+        callback: Option<Box<dyn Fn(EmuTrace)>>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         // Log this call
         if options.verbose {
