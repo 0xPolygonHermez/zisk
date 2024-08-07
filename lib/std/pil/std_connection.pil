@@ -18,7 +18,7 @@ const string name_connection = "connection";
 
 // TODO: Add predefined frame_size to init()
 
-function connection_init(int opid, expr cols[], int use_sums = 0) {
+function connection_init(int opid, expr cols[], int bus_type = 0) {
     const int cols_count = length(cols);
 
     if (cols_count < 1) {
@@ -39,7 +39,7 @@ function connection_init(int opid, expr cols[], int use_sums = 0) {
 
     container air.std.connect.`id${opid}` alias connid {
         int closed;
-        int use_sums;
+        int bus_type;
         int cols_num = 0;
 
         expr map_cols[cols_count];
@@ -60,7 +60,7 @@ function connection_init(int opid, expr cols[], int use_sums = 0) {
     if (connid.cols_num == 0) {
         // Properties of each connection in the air
         connid.closed = 0;
-        connid.use_sums = use_sums;
+        connid.bus_type = bus_type;
         connid.cols_num = cols_count;
 
         // Properties of every connection in the air
@@ -88,7 +88,7 @@ function connection_init(int opid, expr cols[], int use_sums = 0) {
         connid.map_cols[i] = cols[i];
 
         // Send to the bus the original columns
-        permutation_assumes(opid, [cols[i], k * conn.ID], use_sums: use_sums, name: name_connection);
+        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: name_connection);
 
         // Initialize polynomial CONN[0](X) as X and CONN[i](X) as k_i·X, for i >= 0
         for (int j = 0; j < N; j++) {
@@ -351,7 +351,7 @@ function connection_connect(int opid) {
 
     // Send to the bus the permuted columns
     for (int i = 0; i < cols_num; i++) {
-        permutation_proves(opid, [map_cols[i], CONN[i]], use_sums: use_sums, name: name_connection);
+        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
     }
 
     // Mark the connection as closed
@@ -396,7 +396,7 @@ private function checkClosed() {
  * connection(opid, [a, b, c], [S1, S2, S3]);
  * connection(opid, [a, b, c], [S1, S2, S3], N/2);
  */
-function connection(int opid, expr cols[], expr CONN[], int use_sums = 0) {
+function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
     const int len = length(cols);
     if (len == 0) {
         error(`Connection #${opid} cannot be empty`);
@@ -423,13 +423,13 @@ function connection(int opid, expr cols[], expr CONN[], int use_sums = 0) {
 
             // Send to the bus the original columns and the permuted columns
             for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*ID], use_sums: use_sums, name: name_connection);
-                permutation_proves(opid, [cols[i], CONN[i]], use_sums: use_sums, name: name_connection);
+                permutation_assumes(opid, [cols[i], ks[i]*ID], bus_type: bus_type, name: name_connection);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
             }
         } else {
             for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], use_sums: use_sums, name: name_connection);
-                permutation_proves(opid, [cols[i], CONN[i]], use_sums: use_sums, name: name_connection);
+                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: name_connection);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
             }
         }
     } else {
@@ -439,8 +439,8 @@ function connection(int opid, expr cols[], expr CONN[], int use_sums = 0) {
             const int k = k_coset ** i;
 
             // Send to the bus the remaining columns and their associated permuted columns
-            permutation_assumes(opid, [cols[i], k*ID], use_sums: use_sums, name: name_connection);
-            permutation_proves(opid, [cols[i], CONN[i]], use_sums: use_sums, name: name_connection);
+            permutation_assumes(opid, [cols[i], k*ID], bus_type: bus_type, name: name_connection);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
         }
     }
 }
