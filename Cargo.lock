@@ -1142,9 +1142,9 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.36.2"
+version = "0.36.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f203fa8daa7bb185f760ae12bd8e097f63d17041dcdcaf675ac54cdf863170e"
+checksum = "27b64972346851a39438c60b341ebc01bba47464ae329e55cf343eb93964efd9"
 dependencies = [
  "memchr",
 ]
@@ -1316,6 +1316,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "bytes",
  "log",
@@ -1455,6 +1456,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "env_logger",
  "libloading",
@@ -1472,6 +1474,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "log",
  "pilout",
@@ -1481,6 +1484,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "colored",
  "sysinfo",
@@ -2181,6 +2185,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "log",
  "p3-field",
@@ -2197,6 +2202,7 @@ dependencies = [
 [[package]]
 name = "starks-lib-c"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "log",
 ]
@@ -2490,6 +2496,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "starks-lib-c",
 ]
@@ -2959,6 +2966,7 @@ dependencies = [
 [[package]]
 name = "witness-helpers"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=witness#f86095b04d59288723742e3ea04b0993293826a6"
 dependencies = [
  "proofman-common",
 ]
