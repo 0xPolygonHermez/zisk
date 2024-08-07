@@ -1,4 +1,4 @@
-use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
+use crate::{Emu, EmuFullTrace, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,6 +16,21 @@ pub trait Emulator {
 }
 
 pub struct ZiskEmulator;
+
+/*
+ziskemu.main()
+\
+ emulate()
+ \
+  process_directory()
+  \
+   process_elf_file()
+   \
+    Riscv2zisk::run()
+    process_rom()
+    \
+     Emu::run()
+*/
 
 impl ZiskEmulator {
     fn process_directory(
@@ -200,6 +215,19 @@ impl ZiskEmulator {
         }
 
         Ok(output)
+    }
+
+    pub fn process_slice(
+        rom: &mut ZiskRom,
+        trace: &EmuTrace,
+    ) -> Result<EmuFullTrace, ZiskEmulatorErr> {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        let full_trace = emu.run_slice(trace);
+
+        Ok(full_trace)
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {
