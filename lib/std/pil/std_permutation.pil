@@ -21,7 +21,11 @@ function permutation_proves(const int opid, const expr cols[], const expr sel = 
 }
 
 // UPCD: Update Proof Constraint Directly
-function permutation_upcd(const int opid, const expr cols[], const expr sel = 1, const string name = name_permutation) {
+function permutation_upcd(const int opid, const expr cols[], const expr sel = 1, const int use_sums = one_bus, const string name = name_permutation) {
     // It doesn't matter if we do an assume or prove
-    prod_proves(name, opid, cols, sel);
+    if (use_sums) {
+        sum_proves(name, opid, cols, sel, is_direct: 1);
+    } else {
+        prod_proves(name, opid, cols, sel, is_direct: 1);
+    }
 }

@@ -1,33 +1,19 @@
 require "std_common.pil";
 
-function sum_assumes(string type, int opid, expr cols[], expr sel = 1) {
+function sum_assumes(const string type, const int opid, const expr cols[], const expr sel = 1) {
     update_piop_sum(type, 0, [opid], opid, sel, cols);
 }
 
-function sum_proves(string type, int opid, expr cols[], expr mul = 1) {
-    update_piop_sum(type, 1, [opid], opid, mul, cols);
+function sum_proves(const string type, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
+    update_piop_sum(type, 1, [opid], opid, mul, cols, is_direct);
 }
 
-function sum_assumes_dynamic(string type, int opid[], expr sumid, expr cols[], expr sel = 1) {
+function sum_assumes_dynamic(const string type, const int opid[], const expr sumid, const expr cols[], const expr sel = 1) {
     update_piop_sum(type, 0, opid, sumid, sel, cols);
 }
 
-/**
- * It performs initial checks and initializes the containers for the grandsum
- * @param type type of the PIOP
- * @param proves 1 if proves, 0 if assumes
- * @param opid (unique) identifier of the PIOP check
- * @param cols columns of the PIOP
- */
-private function init_piop_sum(string type, int proves, int opid[], expr cols[]) {
-    const int cols_count = length(cols);
-
-    if (cols_count < 1) {
-        string side = proves ? "proves" : "assumes";
-        error(`The number of columns in ${side} of ${type} #${opid} must be at least 1`);
-    }
-
-    container proof.std.gsum alias gsum {
+private function init_containers_sum(string type, int opid[]) {
+    container proof.std.gsum {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
         int opids[100];
@@ -37,6 +23,9 @@ private function init_piop_sum(string type, int proves, int opid[], expr cols[])
 
     container airgroup.std.gsum {
         airgroupval aggregate(sum) gsum_result;
+
+        int direct_gsum_count = 0;
+        expr direct_gsum[100];
     }
 
     container air.std.gsum {
@@ -51,31 +40,43 @@ private function init_piop_sum(string type, int proves, int opid[], expr cols[])
 
     // Container used for final checks
     for (int i = 0; i < length(opid); i++) {
-        container proof.std.gsum.`id${opid[i]}` alias gsumid {
+        container proof.std.gsum.`id${opid[i]}` {
             string type = type;
             int cols;
             int proves = 0;
             int assumes = 0;
         }
+    }
+}
 
+private function initial_checks_sum(int proves, int opid[], expr cols[]) {
+    const int cols_count = length(cols);
+
+    if (cols_count < 1) {
+        string side = proves ? "proves" : "assumes";
+        error(`The number of columns in ${side} of ${type} #${opid} must be at least 1`);
+    }
+
+    for (int i = 0; i < length(opid); i++) {
         // Assumes and proves of the same opid must have the same number of columns
-        if (gsumid.cols == 0) {
+        if (proof.std.gsum.`id${opid[i]}`.cols == 0) {
             // first time called
-            gsumid.cols = cols_count;
+            proof.std.gsum.`id${opid[i]}`.cols = cols_count;
 
             // add opid on a list to verify at final
-            gsum.opids[gsum.opids_count] = opid[i];
-            gsum.opids_count++;
-        } else if (gsumid.cols != cols_count) {
-            error(`The number of columns of PIOP #${opid[i]} must be ${gsumid.cols} but was ${cols_count}`);
+            proof.std.gsum.opids[proof.std.gsum.opids_count] = opid[i];
+            proof.std.gsum.opids_count++;
+        } else if (cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
+            const int expected_cols = proof.std.gsum.`id${opid[i]}`.cols;
+            error(`The number of columns of PIOP #${opid[i]} must be ${expected_cols} but was ${cols_count}`);
         }
 
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
         // proves and assumes to verify at the end that all of them match
         if (proves) {
-            gsumid.proves++;
+            proof.std.gsum.`id${opid[i]}`.proves++;
         } else {
-            gsumid.assumes++;
+            proof.std.gsum.`id${opid[i]}`.assumes++;
         }
     }
 }
@@ -91,35 +92,47 @@ private function init_piop_sum(string type, int proves, int opid[], expr cols[])
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_sum(string type, int proves, int opid[], expr sumid, expr sel, expr cols[]) {
-    // instanciate necessary containers and make first checks
-    init_piop_sum(type, proves, opid, cols);
+private function update_piop_sum(string type, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
+    init_containers_sum(type, opid);
+
+    if (!is_direct) initial_checks_sum(proves, opid, cols);
 
     init_challenges();
 
     // selected vector to simple column reduction
     expr cols_compressed = compress_cols(sumid, cols);
 
-    use air.std.gsum;
-    if (proves) {
-        // adding all sums of proves called in this air
-        gsum_proves_mul[gsum_proves_count] = sel;
-        gsum_proves[gsum_proves_count] = cols_compressed;
-        gsum_proves_count = gsum_proves_count + 1;
+    if (is_direct) {
+        use airgroup.std.gsum;
+
+        // adding the expression from which the proof constraint will be directly updated
+        direct_gsum[direct_gsum_count] = sel * (cols_compressed - 1) + 1;
+        direct_gsum_count++;
+
+        // update values at the airgroup level
+        on final airgroup piop_gsum_airgroup_direct();
     } else {
-        // adding all sums of assumes called in this air
-        gsum_assumes_sel[gsum_assumes_count] = sel;
-        gsum_assumes[gsum_assumes_count] = cols_compressed;
-        gsum_assumes_count = gsum_assumes_count + 1;
+        use air.std.gsum;
+        if (proves) {
+            // adding all sums of proves called in this air
+            gsum_proves_mul[gsum_proves_count] = sel;
+            gsum_proves[gsum_proves_count] = cols_compressed;
+            gsum_proves_count++;
+        } else {
+            // adding all sums of assumes called in this air
+            gsum_assumes_sel[gsum_assumes_count] = sel;
+            gsum_assumes[gsum_assumes_count] = cols_compressed;
+            gsum_assumes_count++;
+        }
+
+        // define constraints at the air level
+        on final air piop_gsum_air();
+
+        // update values at the airgroup level
+        on final airgroup piop_gsum_airgroup();
     }
 
     // TODO: look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
-
-    // define constraints at the air level
-    on final air piop_gsum_air();
-
-    // update values at the airgroup level
-    on final airgroup piop_gsum_airgroup();
 
     // update constraints at the proof level
     on final proof piop_gsum_proof();
@@ -266,7 +279,17 @@ private function piop_gsum_air(int nTerms = 2) {
  * It updates the expression for the grandsum at the proof level
  */
 private function piop_gsum_airgroup() {
-    proof.std.gsum.gsum = proof.std.gsum.gsum + airgroup.std.gsum.gsum_result;
+    proof.std.gsum.gsum += airgroup.std.gsum.gsum_result;
+}
+
+/**
+ * It It updates the expression for the grandprod at the proof level directly
+ */
+private function piop_gsum_airgroup_direct() {
+    use airgroup.std.gsum;
+    for (int i = 0; i < direct_gsum_count; i++) {
+        proof.std.gsum.gsum += direct_gsum[i];
+    }
 }
 
 /**
