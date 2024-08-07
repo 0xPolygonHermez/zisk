@@ -1,0 +1,52 @@
+require "std_lookup.pil";
+
+airtemplate Lookup0(const int N = 2**10, const int nLookups) {
+
+    col witness f[2*nLookups];
+    col witness t[2*nLookups];
+    col witness sel[nLookups];
+    col witness mul[nLookups];
+
+    for (int i = 0; i < nLookups; i++) {
+        lookup_assumes(i, sel[i], [f[2*i], f[2*i+1]]);
+        lookup_proves(i, mul[i], [t[2*i], t[2*i+1]]);
+    }
+}
+
+airtemplate Lookup1(const int N = 2**12) {
+
+    col witness a1,b1,a2,b2,a3,b3,a4,b4;
+    col witness c1,d1,c2,d2;
+    col witness sel1,sel2;
+    col witness mul;
+
+    lookup_assumes(1, cols: [a1, b1]);
+    lookup_proves(1, cols: [c1, d1]);
+
+    lookup_assumes(2, cols: [a2, b2]);
+
+    lookup_assumes(3, sel1, [a3, b3]);
+    lookup_proves(3, mul, [c2, d2]);
+
+    lookup_assumes(4, sel2, [a4, b4]);
+};
+
+airtemplate Lookup2(const int N = 2**14) {
+
+    col witness c1,d1,c2,d2;
+    col witness mul;
+
+    lookup_proves(2, cols: [c1, d1]);
+
+    lookup_proves(4, mul, [c2, d2]);
+};
+
+airgroup Lookup {
+    Lookup0(nLookups: 8);
+
+    // Lookup1();
+    // Lookup1(N: 2**13);
+    // Lookup1(N: 2**15);
+
+    // Lookup2();
+};

@@ -7,19 +7,18 @@ const libPath = path.join(basePath, '..', '..', '..', 'lib');
 
 function getSettings() {
     return {
-        name: "Multi-Range-Check-" + Date.now(),
+        name: "Lookup-" + Date.now(),
         airout: {
-            airoutFilename: path.join(basePath, 'multi_range_check.pilout'),
+            airoutFilename: path.join(basePath, 'lookup.pilout'),
         },
         witnessCalculators: [
-            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck1" },
-            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck2" },
+            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "Lookup" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
             settings: {
-                default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
+                default: { blowupFactor: 1, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
             },
         },
         aggregation: {
@@ -34,7 +33,7 @@ function getSettings() {
 
 }
 
-describe("Range Check tests", async function () {
+describe("Lookup tests", async function () {
     this.timeout(10000000);
 
     const options = {
@@ -54,11 +53,11 @@ describe("Range Check tests", async function () {
         setup = await generateSetupTest(config);
     });
 
-    it("Verify the Multi Range Check versatility", async () => {
+    it("Verify the Lookup versatility", async () => {
         await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
-    it.only("Generate a Multi Range Check proof", async () => {
+    it.only("Generate a Lookup proof", async () => {
         await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
     });
 });

@@ -128,52 +128,132 @@ private function update_piop_sum(string type, int proves, int opid[], expr sumid
 /**
  * It defines the constraints for the grandsum based on the logUp protocol https://eprint.iacr.org/2022/1530.pdf
  */
-private function piop_gsum_air() {
+private function piop_gsum_air(int nTerms = 2) {
     use air.std.gsum;
 
-    col witness stage(2) gsum;
+    const int nIm1 = gsum_proves_count/nTerms;
+    const int nIm2 = gsum_assumes_count/nTerms;
 
-    //                                mt1       mt2       sf1      sf2
-    //  gsum === 'gsum * (1 - L1) + ------- + ------- - ------- - -------
-    //                              t1 + ɣ    t2 + ɣ    f1 + ɣ    f2 + ɣ
-    //
-    // Note: The ti and fi are not necessarily related to each other
+    col witness stage(2) im[nIm1 + nIm2];
 
     col fixed __L1 = [1,0...]; // TODO: Fix
+    col witness stage(2) gsum;
 
-    expr LHS = 1;
-    expr RHS1 = 0;
+    /*
+                                            muli       seli
+        gsum === 'gsum * (1 - L1) + ∑ᵢ ( -------- - -------- )
+                                           ti + ɣ     fi + ɣ
 
-    for (int i = 0; i < gsum_proves_count; i = i + 1) {
-        LHS = LHS * (gsum_proves[i] + std_gamma);
+    Note: The ti and fi are not necessarily related to each other
+    */
 
-        expr tmp = gsum_proves_mul[i];
-        for (int j = 0; j < gsum_proves_count; j = j + 1) {
-            if (j != i) tmp = tmp * (gsum_proves[j] + std_gamma);
+    expr posIms = 0;
+    for (int i = 0; i < nIm1; i++) {
+
+        //            mul[3*i]           mul[3*i+1]          mul[3*i+2]
+        // im[i] = --------------- + ----------------- + -----------------
+        //            t[3*i] + ɣ        t[3*i+1] + ɣ        t[3*i+2] + ɣ
+        expr tProds = 1;
+        expr tSums = 0;
+        for (int j = 0; j < nTerms; j++) {
+            tProds *= (gsum_proves[nTerms * i + j] + std_gamma);
+
+            expr tPartial = gsum_proves_mul[nTerms * i + j];
+            for (int k = 0; k < nTerms; k++) {
+                if (k == j) continue;
+                tPartial *= (gsum_proves[nTerms * i + k] + std_gamma);
+            }
+            tSums += tPartial;
         }
-        RHS1 = RHS1 + tmp;
+        @im_col{reference: im[i], numerator: tSums, denominator: tProds};
+
+        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
+        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
+        im[i] * tProds === tSums;
+
+        posIms += im[i];
     }
 
-    expr RHS2a = LHS;
-    expr RHS2b = 0;
+    if (gsum_proves_count % nTerms != 0) {
+        col witness stage(2) im_extra_pos;
 
-    for (int i = 0; i < gsum_assumes_count; i = i + 1) {
-        LHS = LHS * (gsum_assumes[i] + std_gamma);
-        RHS1 = RHS1 * (gsum_assumes[i] + std_gamma);
+        // This col is defined with a number of terms between 1 and nTerms-1
+        const int nRemTerms = gsum_proves_count % nTerms;
 
-        expr tmp = gsum_assumes_sel[i];
-        for (int j = 0; j < gsum_assumes_count; j = j + 1) {
-            if (j != i) tmp = tmp * (gsum_assumes[j] + std_gamma);
+        expr tProds = 1;
+        expr tSums = 0;
+        for (int j = 0; j < nRemTerms; j++) {
+            tProds *= (gsum_proves[nTerms * nIm1 + j] + std_gamma);
+
+            expr tPartial = gsum_proves_mul[nTerms * nIm1 + j];
+            for (int k = 0; k < nRemTerms; k++) {
+                if (k == j) continue;
+                tPartial *= (gsum_proves[nTerms * nIm1 + k] + std_gamma);
+            }
+            tSums += tPartial;
         }
-        RHS2b = RHS2b + tmp;
+        @im_col{reference: im_extra_pos, numerator: tSums, denominator: tProds};
+
+        im_extra_pos * tProds === tSums;
+
+        posIms += im_extra_pos;
     }
 
-    expr RHS2 = RHS2a * RHS2b;
-    expr RHS = RHS1 - RHS2;
+    expr negIms = 0;
+    for (int i = 0; i < nIm2; i++) {
 
-    @gsum_col{reference: gsum, numerator: RHS, denominator: LHS, result: airgroup.std.gsum.gsum_result};
+        //                  sel[3*i]         sel[3*i+1]           sel[3*i+2]
+        // im[nIm1+i] = --------------- + ----------------- + -----------------
+        //                f[3*i] + ɣ        f[3*i+1] + ɣ        f[3*i+2] + ɣ
+        expr fProds = 1;
+        expr fSums = 0;
+        for (int j = 0; j < nTerms; j++) {
+            fProds *= (gsum_assumes[nTerms * i + j] + std_gamma);
 
-    (gsum - 'gsum * (1 - __L1)) * LHS === RHS;
+            expr fPartial = gsum_assumes_sel[nTerms * i + j];
+            for (int k = 0; k < nTerms; k++) {
+                if (k == j) continue;
+                fPartial *= (gsum_assumes[nTerms * i + k] + std_gamma);
+            }
+            fSums += fPartial;
+        }
+        @im_col{reference: im[nIm1+i], numerator: fSums, denominator: fProds};
+
+        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
+        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
+        im[nIm1+i] * fProds === fSums;
+
+        negIms += im[nIm1+i];
+    }
+
+    if (gsum_assumes_count % nTerms != 0) {
+        col witness stage(2) im_extra_neg;
+
+        // This col is defined with a number of terms between 1 and nTerms-1
+        const int nRemTerms = gsum_assumes_count % nTerms;
+
+        expr fProds = 1;
+        expr fSums = 0;
+        for (int j = 0; j < nRemTerms; j++) {
+            fProds *= (gsum_assumes[nTerms * nIm2 + j] + std_gamma);
+
+            expr fPartial = gsum_assumes_sel[nTerms * nIm2 + j];
+            for (int k = 0; k < nRemTerms; k++) {
+                if (k == j) continue;
+                fPartial *= (gsum_assumes[nTerms * nIm2 + k] + std_gamma);
+            }
+            fSums += fPartial;
+        }
+        @im_col{reference: im_extra_neg, numerator: fSums, denominator: fProds};
+
+        im_extra_neg * fProds === fSums;
+
+        negIms += im_extra_neg;
+    }
+
+    @gsum_col{reference: gsum, expression: posIms - negIms, result: airgroup.std.gsum.gsum_result};
+
+    gsum === 'gsum * (1 - __L1) + posIms - negIms;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
 
