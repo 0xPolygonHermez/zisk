@@ -29,13 +29,9 @@ private function init_containers_sum(string type, int opid[]) {
     }
 
     container air.std.gsum {
-        int gsum_assumes_count = 0;
-        expr gsum_assumes_sel[100];
-        expr gsum_assumes[100];
-
-        int gsum_proves_count = 0;
-        expr gsum_proves_mul[100];
-        expr gsum_proves[100];
+        int gsum_nargs = 0;
+        expr gsum_s[100];
+        expr gsum_e[100];
     }
 
     // Container used for final checks
@@ -113,17 +109,9 @@ private function update_piop_sum(string type, int proves, int opid[], expr sumid
         on final airgroup piop_gsum_airgroup_direct();
     } else {
         use air.std.gsum;
-        if (proves) {
-            // adding all sums of proves called in this air
-            gsum_proves_mul[gsum_proves_count] = sel;
-            gsum_proves[gsum_proves_count] = cols_compressed;
-            gsum_proves_count++;
-        } else {
-            // adding all sums of assumes called in this air
-            gsum_assumes_sel[gsum_assumes_count] = sel;
-            gsum_assumes[gsum_assumes_count] = cols_compressed;
-            gsum_assumes_count++;
-        }
+        gsum_s[gsum_nargs] = proves ? sel : 0-sel; // TODO: Fix
+        gsum_e[gsum_nargs] = cols_compressed;
+        gsum_nargs++;
 
         // define constraints at the air level
         on final air piop_gsum_air();
@@ -141,13 +129,12 @@ private function update_piop_sum(string type, int proves, int opid[], expr sumid
 /**
  * It defines the constraints for the grandsum based on the logUp protocol https://eprint.iacr.org/2022/1530.pdf
  */
-private function piop_gsum_air(int nTerms = 2) {
+private function piop_gsum_air(const int nTerms = 2) {
     use air.std.gsum;
 
-    const int nIm1 = gsum_proves_count/nTerms;
-    const int nIm2 = gsum_assumes_count/nTerms;
+    const int nIm = gsum_nargs/nTerms;
 
-    col witness stage(2) im[nIm1 + nIm2];
+    col witness stage(2) im[nIm];
 
     col fixed __L1 = [1,0...]; // TODO: Fix
     col witness stage(2) gsum;
@@ -160,113 +147,67 @@ private function piop_gsum_air(int nTerms = 2) {
     Note: The ti and fi are not necessarily related to each other
     */
 
-    expr posIms = 0;
-    for (int i = 0; i < nIm1; i++) {
+    expr sumIms = 0;
+    for (int i = 0; i < nIm; i++) {
 
-        //            mul[3*i]           mul[3*i+1]          mul[3*i+2]
+        //              s[3*i]            s[3*i+1]            s[3*i+2]
         // im[i] = --------------- + ----------------- + -----------------
-        //            t[3*i] + ɣ        t[3*i+1] + ɣ        t[3*i+2] + ɣ
-        expr tProds = 1;
-        expr tSums = 0;
-        for (int j = 0; j < nTerms; j++) {
-            tProds *= (gsum_proves[nTerms * i + j] + std_gamma);
+        //              e[3*i]            e[3*i+1]            e[3*i+2]
+        // where:
+        // s[x] = mul[x]  if the x-th term is a prove,
+        // s[x] = -sel[x] if the x-th term is an assume,
+        // e[x] = (t[x] + ɣ) if the x-th term is a prove,
+        // e[x] = (f[x] + ɣ) if the x-th term is an assume,
 
-            expr tPartial = gsum_proves_mul[nTerms * i + j];
+        expr prods = 1;
+        expr sums = 0;
+        for (int j = 0; j < nTerms; j++) {
+            prods *= (gsum_e[nTerms * i + j] + std_gamma);
+
+            expr _partial = gsum_s[nTerms * i + j];
             for (int k = 0; k < nTerms; k++) {
                 if (k == j) continue;
-                tPartial *= (gsum_proves[nTerms * i + k] + std_gamma);
+                _partial *= (gsum_e[nTerms * i + k] + std_gamma);
             }
-            tSums += tPartial;
+            sums += _partial;
         }
-        @im_col{reference: im[i], numerator: tSums, denominator: tProds};
+        @im_col{reference: im[i], numerator: sums, denominator: prods};
 
         // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
         //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
-        im[i] * tProds === tSums;
+        im[i] * prods === sums;
 
-        posIms += im[i];
+        sumIms += im[i];
     }
 
-    if (gsum_proves_count % nTerms != 0) {
-        col witness stage(2) im_extra_pos;
+    if (gsum_nargs % nTerms != 0) {
+        col witness stage(2) im_extra;
 
         // This col is defined with a number of terms between 1 and nTerms-1
-        const int nRemTerms = gsum_proves_count % nTerms;
+        const int nRemTerms = gsum_nargs % nTerms;
 
-        expr tProds = 1;
-        expr tSums = 0;
+        expr prods = 1;
+        expr sums = 0;
         for (int j = 0; j < nRemTerms; j++) {
-            tProds *= (gsum_proves[nTerms * nIm1 + j] + std_gamma);
+            prods *= (gsum_e[nTerms * nIm + j] + std_gamma);
 
-            expr tPartial = gsum_proves_mul[nTerms * nIm1 + j];
+            expr _partial = gsum_s[nTerms * nIm + j];
             for (int k = 0; k < nRemTerms; k++) {
                 if (k == j) continue;
-                tPartial *= (gsum_proves[nTerms * nIm1 + k] + std_gamma);
+                _partial *= (gsum_e[nTerms * nIm + k] + std_gamma);
             }
-            tSums += tPartial;
+            sums += _partial;
         }
-        @im_col{reference: im_extra_pos, numerator: tSums, denominator: tProds};
+        @im_col{reference: im_extra, numerator: sums, denominator: prods};
 
-        im_extra_pos * tProds === tSums;
+        im_extra * prods === sums;
 
-        posIms += im_extra_pos;
+        sumIms += im_extra;
     }
 
-    expr negIms = 0;
-    for (int i = 0; i < nIm2; i++) {
+    @gsum_col{reference: gsum, expression: sumIms, result: airgroup.std.gsum.gsum_result};
 
-        //                  sel[3*i]         sel[3*i+1]           sel[3*i+2]
-        // im[nIm1+i] = --------------- + ----------------- + -----------------
-        //                f[3*i] + ɣ        f[3*i+1] + ɣ        f[3*i+2] + ɣ
-        expr fProds = 1;
-        expr fSums = 0;
-        for (int j = 0; j < nTerms; j++) {
-            fProds *= (gsum_assumes[nTerms * i + j] + std_gamma);
-
-            expr fPartial = gsum_assumes_sel[nTerms * i + j];
-            for (int k = 0; k < nTerms; k++) {
-                if (k == j) continue;
-                fPartial *= (gsum_assumes[nTerms * i + k] + std_gamma);
-            }
-            fSums += fPartial;
-        }
-        @im_col{reference: im[nIm1+i], numerator: fSums, denominator: fProds};
-
-        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
-        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
-        im[nIm1+i] * fProds === fSums;
-
-        negIms += im[nIm1+i];
-    }
-
-    if (gsum_assumes_count % nTerms != 0) {
-        col witness stage(2) im_extra_neg;
-
-        // This col is defined with a number of terms between 1 and nTerms-1
-        const int nRemTerms = gsum_assumes_count % nTerms;
-
-        expr fProds = 1;
-        expr fSums = 0;
-        for (int j = 0; j < nRemTerms; j++) {
-            fProds *= (gsum_assumes[nTerms * nIm2 + j] + std_gamma);
-
-            expr fPartial = gsum_assumes_sel[nTerms * nIm2 + j];
-            for (int k = 0; k < nRemTerms; k++) {
-                if (k == j) continue;
-                fPartial *= (gsum_assumes[nTerms * nIm2 + k] + std_gamma);
-            }
-            fSums += fPartial;
-        }
-        @im_col{reference: im_extra_neg, numerator: fSums, denominator: fProds};
-
-        im_extra_neg * fProds === fSums;
-
-        negIms += im_extra_neg;
-    }
-
-    @gsum_col{reference: gsum, expression: posIms - negIms, result: airgroup.std.gsum.gsum_result};
-
-    gsum === 'gsum * (1 - __L1) + posIms - negIms;
+    gsum === 'gsum * (1 - __L1) + sumIms;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
 
@@ -305,8 +246,8 @@ private function piop_gsum_proof() {
  * It checks that all the assumes and proves of the same opid have been defined
  */
 private function check_gsum_was_completed() {
-    for (int index = 0; index < proof.std.gsum.opids_count; index = index + 1) {
-        int opid = proof.std.gsum.opids[index];
+    for (int i = 0; i < proof.std.gsum.opids_count; i++) {
+        int opid = proof.std.gsum.opids[i];
         use proof.std.gsum.`id${opid}`;
         if (assumes == 0) {
             error(`${type} #${opid} defined without assume`);
