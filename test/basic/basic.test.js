@@ -51,15 +51,15 @@ function getSettings() {
             { filename: path.join(componentsPath, 'basic/js/executor_mem.js'), settings: {}, sm: "Mem" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
-        prover: {
-            filename: "./src/lib/provers/stark_fri_prover.js",
-        },
         setup: {
             settings: {
                 default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
                 Mem_10: { starkStruct: path.join(__dirname,'stark_struct_2_10.json') },
                 Rom_8: {starkStruct: path.join(__dirname, 'stark_struct_2_8.json') },
             },
+        },
+        prover: {
+            filename: "./src/lib/provers/stark_fri_prover.js",
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };
