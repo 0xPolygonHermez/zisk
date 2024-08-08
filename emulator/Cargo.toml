@@ -16,6 +16,7 @@ zisk-core = { path = "../core" }
 clap = { version = "4.5.9", features = ["derive", "env"] }
 riscv = { path="../riscv" }
 sysinfo = "0.31.2"
+p3-field = { workspace=true }
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

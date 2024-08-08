@@ -1,6 +1,7 @@
 use std::mem;
 
 use crate::{EmuContext, EmuFullTrace, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStep};
+use p3_field::AbstractField;
 use riscv::RiscVRegisters;
 use zisk_core::{
     ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
@@ -392,7 +393,7 @@ impl<'a> Emu<'a> {
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice(&mut self, trace: &EmuTrace) -> EmuFullTrace {
+    pub fn run_slice<F: AbstractField>(&mut self, trace: &EmuTrace) -> EmuFullTrace<F> {
         // Create a full trace instance
         let mut full_trace = EmuFullTrace::default();
 
@@ -416,7 +417,11 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice(&mut self, trace_step: &EmuTraceStep, full_trace: &mut EmuFullTrace) {
+    pub fn step_slice<F: AbstractField>(
+        &mut self,
+        trace_step: &EmuTraceStep,
+        full_trace: &mut EmuFullTrace<F>,
+    ) {
         let last_c = self.ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.pc);
         self.ctx.a = trace_step.a;
@@ -428,37 +433,37 @@ impl<'a> Emu<'a> {
         self.ctx.end = instruction.end;
         self.ctx.step += 1;
         let full_trace_step = EmuFullTraceStep {
-            a: self.ctx.a,
-            b: self.ctx.b,
-            c: self.ctx.c,
-            last_c,
-            flag: self.ctx.flag,
-            pc: self.ctx.pc,
-            a_src_imm: if instruction.a_src == SRC_IMM { 1 } else { 0 },
-            a_src_mem: if instruction.a_src == SRC_MEM { 1 } else { 0 },
-            a_offset_imm0: instruction.a_offset_imm0,
-            sp: self.ctx.sp,
-            a_src_sp: if instruction.a_src == SRC_SP { 1 } else { 0 },
-            a_use_sp_imm1: instruction.a_use_sp_imm1,
-            a_src_step: if instruction.a_src == SRC_STEP { 1 } else { 0 },
-            b_src_imm: if instruction.b_src == SRC_IMM { 1 } else { 0 },
-            b_src_mem: if instruction.b_src == SRC_MEM { 1 } else { 0 },
-            b_offset_imm0: instruction.b_offset_imm0,
-            b_use_sp_imm1: instruction.b_use_sp_imm1,
-            b_src_ind: if instruction.b_src == SRC_IND { 1 } else { 0 },
-            ind_width: instruction.ind_width,
-            is_external_op: instruction.is_external_op,
-            op: instruction.op,
-            store_ra: instruction.store_ra,
-            store_mem: if instruction.store == STORE_MEM { 1 } else { 0 },
-            store_ind: if instruction.store == STORE_IND { 1 } else { 0 },
-            store_offset: instruction.store_offset,
-            set_pc: instruction.set_pc,
-            store_use_sp: instruction.store_use_sp,
-            set_sp: instruction.set_sp,
-            inc_sp: instruction.inc_sp,
-            jmp_offset1: instruction.jmp_offset1,
-            jmp_offset2: instruction.jmp_offset2,
+            a: F::from_canonical_u64(self.ctx.a),
+            b: F::from_canonical_u64(self.ctx.b),
+            c: F::from_canonical_u64(self.ctx.c),
+            last_c: F::from_canonical_u64(last_c),
+            flag: F::from_bool(self.ctx.flag),
+            pc: F::from_canonical_u64(self.ctx.pc),
+            a_src_imm: F::from_bool(instruction.a_src == SRC_IMM),
+            a_src_mem: F::from_bool(instruction.a_src == SRC_MEM),
+            a_offset_imm0: F::from_canonical_u64(instruction.a_offset_imm0),
+            sp: F::from_canonical_u64(self.ctx.sp),
+            a_src_sp: F::from_bool(instruction.a_src == SRC_SP),
+            a_use_sp_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
+            a_src_step: F::from_bool(instruction.a_src == SRC_STEP),
+            b_src_imm: F::from_bool(instruction.b_src == SRC_IMM),
+            b_src_mem: F::from_bool(instruction.b_src == SRC_MEM),
+            b_offset_imm0: F::from_canonical_u64(instruction.b_offset_imm0),
+            b_use_sp_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
+            b_src_ind: F::from_bool(instruction.b_src == SRC_IND),
+            ind_width: F::from_canonical_u64(instruction.ind_width),
+            is_external_op: F::from_bool(instruction.is_external_op),
+            op: F::from_canonical_u8(instruction.op),
+            store_ra: F::from_bool(instruction.store_ra),
+            store_mem: F::from_bool(instruction.store == STORE_MEM),
+            store_ind: F::from_bool(instruction.store == STORE_IND),
+            store_offset: F::from_canonical_u64(instruction.store_offset as u64),
+            set_pc: F::from_bool(instruction.set_pc),
+            store_use_sp: F::from_bool(instruction.store_use_sp),
+            set_sp: F::from_bool(instruction.set_sp),
+            inc_sp: F::from_canonical_u64(instruction.inc_sp),
+            jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
+            jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
         };
         full_trace.steps.push(full_trace_step);
     }
