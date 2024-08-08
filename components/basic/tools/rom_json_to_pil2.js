@@ -42,14 +42,14 @@ class Rom2Pil {
 
             // MAIN
             // =======
-            // lookup_assumes(ROM_ID, cols: [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+            // lookup_assumes(ROM_ID, [...CONST, condConst, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
             //                         inCTX, inSP, inPC, inSTEP, inRR, inRCX, ind, indRR,
             //                         romFlags, offset, incStack, jmpAddr, elseAddr, zkPC]);
             // ROM
             // =======
-            // lookup_proves(ROM_ID, mul, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
-            //                           IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
-            //                           FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
+            // lookup_proves(ROM_ID, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+            //                        IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
+            //                        FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE], mul);
 
             this.addValue(BigInt(line), 'LINE');
             this.addValue(l.condConst ? BigInt(l.condConst) : 0n, 'condConst');

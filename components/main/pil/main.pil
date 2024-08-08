@@ -254,7 +254,7 @@ subproof Main(2**23) {
         setGAS, setHASHPOS, setPC, setRCX, setRR, setSP, setSR]);
 
 
-    lookup_assumes(ROM_ID, 1, [...CONST, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
+    lookup_assumes(ROM_ID, [...CONST, inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inFREE0,
                             inCTX, inSP, inPC, inGAS, inHASHPOS, inSTEP, inRR, inRCX, ind, indRR,
                             inCntArith, inCntBinary, inCntKeccakF, inCntSha256F, 
                             inCntMemAlign, inCntPaddingPG, inCntPoseidonG,
@@ -313,7 +313,7 @@ subproof Main(2**23) {
 
     // OPTIMIZATION2EVAL: HASHPOSDIGEST = HASHPOS :HASHLEN + $ :HASHDIGEST
     // optimization reuse CONST as hashBytes or use CONST_LITE to general purpose
-    lookup_assumes(PADDING_KK_HASH_ID, hashK, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...assumeInput]);
+    lookup_assumes(PADDING_KK_HASH_ID, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...assumeInput], hashK);
     // PaddingKK: crLatch * PaddingKK.r8valid { addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C }
 
     multiset_assumes(PADDING_KK_LEN_DIGEST_ID, hashKLen + hashKDigest, [hashKLen, addr, ...assumeInput]);
@@ -325,7 +325,7 @@ subproof Main(2**23) {
 
     // SHA256 lookups and permutation check
 
-    lookup_assumes(PADDING_SHA256_HASH_ID, hashS, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op]);
+    lookup_assumes(PADDING_SHA256_HASH_ID, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op], hashS);
     // PaddingKK: crLatch * PaddingKK.r8valid { addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C }
 
     multiset_assumes(PADDING_SHA256_LEN_DIGEST_ID, hashSLen + hashSDigest, [hashSLen, addr, ...op]);
@@ -338,8 +338,8 @@ subproof Main(2**23) {
     // from most to least significant. (hash0 => op7, hash1 => op6, ..
 
     // HASHP Plookpups
-    lookup_assumes(PADDING_PG_HASH_ID, hashS, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op]);
-    // lookup_proves(PADDING_PG_HASH_ID, crLatch * r8valid [addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C]);
+    lookup_assumes(PADDING_PG_HASH_ID, [addr, HASHPOS, useHashBytes * (hashBytes - D[0]) + D[0], ...op], hashS);
+    // lookup_proves(PADDING_PG_HASH_ID, [addr, len - rem - crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C], crLatch * r8valid);
 
     assumeInput[1] * (hashSLen + hashKLen + hashPLen) === 0;
     assumeInput[2] * (hashSLen + hashKLen + hashPLen) === 0;

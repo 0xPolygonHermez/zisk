@@ -51,12 +51,12 @@ air ChunkChecker(const int N, const int min, const int max, const int BASE = 2**
         _max = _max / BASE;
 
         if (i < minChunkNum) {
-            sum_assumes(name_range_check, OPIDS[1], sel, [(chunks - min_chunk) * (1 - valGtMin)]);
+            lookup_assumes(OPIDS[1], [(chunks - min_chunk) * (1 - valGtMin)], sel, name_range_check);
         }
 
-        sum_assumes(name_range_check, OPIDS[1], sel, [(max_chunk - colu_chunk) * (1 - valLtMax)]);
+        lookup_assumes(OPIDS[1], [(max_chunk - colu_chunk) * (1 - valLtMax)], sel, name_range_check);
     }
 
     // constraint asserting that the decomposition is correct
-    permutation_proves(CHUNK_CHECKER_ID, MAX_INDICATOR', [decomp]);
+    permutation_proves(CHUNK_CHECKER_ID, [decomp], MAX_INDICATOR');
 }

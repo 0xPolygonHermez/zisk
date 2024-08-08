@@ -24,7 +24,7 @@ subproof Sha256F(2**23) {
     // GATE_TYPE => script gate sequence
     // kGateType => type of gate, used to define all combinations of valid values.
     // input[], output are the witness, gate used in each row defined by GATE_TYPE.
-    lookup_assumes(SHA256F_TABLE_ID, 1, [GATE_TYPE, ...input, output, input[2]' * CARRY_ENABLED]);
+    lookup_assumes(SHA256F_TABLE_ID, [GATE_TYPE, ...input, output, input[2]' * CARRY_ENABLED]);
 
 	col fixed CONN[4];
 	col fixed GATE_TYPE;

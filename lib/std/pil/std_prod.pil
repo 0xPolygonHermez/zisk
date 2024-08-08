@@ -1,14 +1,14 @@
 require "std_common.pil"
 
-function prod_assumes(const string type, const int opid, const expr sel = 1, const expr cols[]) {
+function prod_assumes(const string type, const int opid, const expr cols[], const expr sel = 1) {
     update_piop_prod(type, 0, opid, sel, cols);
 }
 
-function prod_proves(const string type, const int opid, const expr sel = 1, const expr cols[], int is_direct = 0) {
+function prod_proves(const string type, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
     update_piop_prod(type, 1, opid, sel, cols, is_direct);
 }
 
-private function init_containers(string type, int opid) {
+private function init_containers_prod(string type, int opid) {
     container proof.std.gprod {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
@@ -43,7 +43,7 @@ private function init_containers(string type, int opid) {
     }
 }
 
-private function initial_checks(int proves, int opid, expr cols[]) {
+private function initial_checks_prod(int proves, int opid, expr cols[]) {
     const int cols_count = length(cols);
 
     if (cols_count < 1) {
@@ -84,9 +84,9 @@ private function initial_checks(int proves, int opid, expr cols[]) {
  * @param cols columns of the PIOP
  */
 private function update_piop_prod(string type, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
-    init_containers(type, opid);
+    init_containers_prod(type, opid);
 
-    if (!is_direct) initial_checks(proves, opid, cols);
+    if (!is_direct) initial_checks_prod(proves, opid, cols);
 
     init_challenges();
 

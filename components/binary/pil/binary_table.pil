@@ -54,7 +54,7 @@ subproof aggregate BinaryTable(2**22) {
 
     // P_FLAGS = cOut + 2 * useCarry + 4 * usePreviousAreLt4 + 8 * reset4
     // In even byte clocks, useCarry = usePreviousAreLt4 = 0 and cOut = cMiddle, therefore FLAGS = cMiddle + 8 * reset4
-    lookup_proves(BINARY_TABLE_ID, 1,[LAST, OP, A, B, CIN, C, FLAGS]);
+    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS]);
 
     #pragma fixed
     for (int i = 0; i < N; ++i) {

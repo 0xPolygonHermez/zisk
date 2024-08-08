@@ -22,14 +22,14 @@ subproof Rom(2**12) {
 
     // repeat_last_source_line();
     if (target == "full") {
-        lookup_proves(ROM_ID, 1, [...CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+        lookup_proves(ROM_ID, [...CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
                                 IN_CTX, IN_SP, IN_PC, IN_GAS, IN_HASHPOS, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
                                 IN_CNT_ARITH, IN_CNT_BINARY, IN_CNT_KECCAK_F, IN_CNT_SHA_256_F, 
                                 IN_CNT_MEM_ALIGN, IN_CNT_PADDING_PG, IN_CNT_POSEIDON_G,
                                 FLAGS, OFFSET, INC_STACK, BIN_OP, ARITH_OP, HASH_BYTES, 
                                 JMP_ADDR, ELSE_ADDR, LINE]);
     } else {
-        lookup_proves(ROM_ID, 1, [...CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+        lookup_proves(ROM_ID, [...CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
                                 IN_CTX, IN_SP, IN_PC, IN_GAS, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
                                 FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE]);
     }

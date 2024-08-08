@@ -20,5 +20,5 @@ subproof KeccakFTable(2**23) {
     // IN1: 11 bits 
     // IN2: 11 bits 
     // TOTAL: 23 bits
-    lookup_proves(KECCAKF_TABLE_ID, 1, [GATE_TYPE, IN1, IN2, OUT]);
+    lookup_proves(KECCAKF_TABLE_ID, [GATE_TYPE, IN1, IN2, OUT]);
 }

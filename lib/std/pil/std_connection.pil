@@ -1,5 +1,5 @@
 require "std_constants.pil";
-require "std_prod.pil";
+require "std_permutation.pil";
 
 // In order to prove correctness of a connection, we should compute the product:
 //       (f_0+𝛂·X+ɣ)   · (f_1+𝛂·k_1·X+ɣ)·...·(f_N+𝛂·k_N·X+ɣ)
@@ -18,7 +18,7 @@ const string name_connection = "connection";
 
 // TODO: Add predefined frame_size to init()
 
-function connection_init(int opid, expr cols[]) {
+function connection_init(int opid, expr cols[], int bus_type = 0) {
     const int cols_count = length(cols);
 
     if (cols_count < 1) {
@@ -39,6 +39,7 @@ function connection_init(int opid, expr cols[]) {
 
     container air.std.connect.`id${opid}` alias connid {
         int closed;
+        int bus_type;
         int cols_num = 0;
 
         expr map_cols[cols_count];
@@ -59,6 +60,7 @@ function connection_init(int opid, expr cols[]) {
     if (connid.cols_num == 0) {
         // Properties of each connection in the air
         connid.closed = 0;
+        connid.bus_type = bus_type;
         connid.cols_num = cols_count;
 
         // Properties of every connection in the air
@@ -86,7 +88,7 @@ function connection_init(int opid, expr cols[]) {
         connid.map_cols[i] = cols[i];
 
         // Send to the bus the original columns
-        prod_assumes(name_connection, opid, cols: [cols[i], k * conn.ID]);
+        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: name_connection);
 
         // Initialize polynomial CONN[0](X) as X and CONN[i](X) as k_i·X, for i >= 0
         for (int j = 0; j < N; j++) {
@@ -349,7 +351,7 @@ function connection_connect(int opid) {
 
     // Send to the bus the permuted columns
     for (int i = 0; i < cols_num; i++) {
-        prod_proves(name_connection, opid, cols: [map_cols[i], CONN[i]]);
+        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
     }
 
     // Mark the connection as closed
@@ -394,7 +396,7 @@ private function checkClosed() {
  * connection(opid, [a, b, c], [S1, S2, S3]);
  * connection(opid, [a, b, c], [S1, S2, S3], N/2);
  */
-function connection(int opid, expr cols[], expr CONN[]) {
+function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
     const int len = length(cols);
     if (len == 0) {
         error(`Connection #${opid} cannot be empty`);
@@ -421,13 +423,13 @@ function connection(int opid, expr cols[], expr CONN[]) {
 
             // Send to the bus the original columns and the permuted columns
             for (int i = 0; i < len; i++) {
-                prod_assumes(name_connection, opid, cols: [cols[i], ks[i]*ID]);
-                prod_proves(name_connection, opid, cols: [cols[i], CONN[i]]);
+                permutation_assumes(opid, [cols[i], ks[i]*ID], bus_type: bus_type, name: name_connection);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
             }
         } else {
             for (int i = 0; i < len; i++) {
-                prod_assumes(name_connection, opid, cols: [cols[i], ks[i]*air.std.connect.ID]);
-                prod_proves(name_connection, opid, cols: [cols[i], CONN[i]]);
+                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: name_connection);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
             }
         }
     } else {
@@ -437,8 +439,8 @@ function connection(int opid, expr cols[], expr CONN[]) {
             const int k = k_coset ** i;
 
             // Send to the bus the remaining columns and their associated permuted columns
-            prod_assumes(name_connection, opid, cols: [cols[i], k*ID]);
-            prod_proves(name_connection, opid, cols: [cols[i], CONN[i]]);
+            permutation_assumes(opid, [cols[i], k*ID], bus_type: bus_type, name: name_connection);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
         }
     }
 }

@@ -1,16 +1,52 @@
+require "std_sum.pil";
 require "std_prod.pil";
 
 const string name_permutation = "permutation";
 
-function permutation_assumes(const int opid, const expr sel = 1, const expr cols[]) {
-    prod_assumes(name_permutation, opid, sel, cols);
+// Bus types:
+const int BUS_DEFAULT = 0;
+const int BUS_SUM = 1;
+const int BUS_PROD = 2;
+
+const int default_bus_type = BUS_PROD;
+
+function permutation_assumes(const int opid, const expr cols[], const expr sel = 1, int bus_type = BUS_DEFAULT, const string name = name_permutation) {
+    if (bus_type == BUS_DEFAULT) bus_type = default_bus_type;
+
+    switch (bus_type) {
+        case BUS_SUM:
+            sum_assumes(name, opid, cols, sel);
+        case BUS_PROD:
+            prod_assumes(name, opid, cols, sel);
+        default:
+            error(`Unknown bus type: ${bus_type}`);
+    }
 }
 
-function permutation_proves(const int opid, const expr sel = 1, const expr cols[]) {
-    prod_proves(name_permutation, opid, sel, cols);
+function permutation_proves(const int opid, const expr cols[], const expr sel = 1, int bus_type = BUS_DEFAULT, const string name = name_permutation) {
+    if (bus_type == BUS_DEFAULT) bus_type = default_bus_type;
+
+    switch (bus_type) {
+        case BUS_SUM:
+            sum_proves(name, opid, cols, sel);
+        case BUS_PROD:
+            prod_proves(name, opid, cols, sel);
+        default:
+            error(`Unknown bus type: ${bus_type}`);
+    }
 }
 
 // UPCD: Update Proof Constraint Directly
-function permutation_upcd(const int opid, const expr sel = 1, const expr cols[]) {
-    update_piop_prod(name_permutation, 1, opid, sel, cols, 1);
+function permutation_upcd(const int opid, const expr cols[], const expr sel = 1, int bus_type = BUS_DEFAULT, const string name = name_permutation) {
+    // It doesn't matter if we do an assume or prove
+    if (bus_type == BUS_DEFAULT) bus_type = default_bus_type;
+
+    switch (bus_type) {
+        case BUS_SUM:
+            sum_proves(name, opid, cols, sel, is_direct: 1);
+        case BUS_PROD:
+            prod_proves(name, opid, cols, sel, is_direct: 1);
+        default:
+            error(`Unknown bus type: ${bus_type}`);
+    }
 }

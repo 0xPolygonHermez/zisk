@@ -91,7 +91,7 @@ subproof MemAlign(2**16) {
     // TODO:
     // multi_range_check([...inM,imV], 0, 255);
 
-    lookup_assumes(MEM_ALIGN_TABLE_ID, 1, [CYCLE, mode*4 + selM1 * 2 + selM0, bytePos]);
+    lookup_assumes(MEM_ALIGN_TABLE_ID, [CYCLE, mode*4 + selM1 * 2 + selM0, bytePos]);
     // reduced for develop: { Global.STEP32, mode*4 + selM1 * 2 + selM0, bytePos } in { Global.STEP32, MODE_SELM1_SELM0, T_BYTE_POS};
 
     col witness selV;
@@ -108,8 +108,8 @@ subproof MemAlign(2**16) {
     // or "padding" part of v must be zero. But when verifing that a write operation,
     // be more usefull if this part could be dirty.
 
-    permutation_assumes(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, bytePos, selV * inValueByteShifted]);
-    permutation_proves(MEM_ALIGN_BYTE_BUS_ID, 1, [ID, CYCLE, inValueByte]);
+    permutation_assumes(MEM_ALIGN_BYTE_BUS_ID, [ID, bytePos, selV * inValueByteShifted]);
+    permutation_proves(MEM_ALIGN_BYTE_BUS_ID, [ID, CYCLE, inValueByte]);
 
     // data to "write" on w, if current byte must be override by V contains inV
     // if not contains inM "in reading mode" value don't matter
@@ -145,5 +145,5 @@ subproof MemAlign(2**16) {
         }
     }
 
-    permutation_proves(MEM_ALIGN_ID, result, [wr, ...m0, ...m1, ...v, mode, wr, ...w0, ...w1]);
+    permutation_proves(MEM_ALIGN_ID, [wr, ...m0, ...m1, ...v, mode, wr, ...w0, ...w1], result);
 }
