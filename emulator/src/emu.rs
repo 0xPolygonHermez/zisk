@@ -119,6 +119,43 @@ impl<'a> Emu<'a> {
         }
     }
 
+    /// Store the 'c' register value based on the storage specified by the current instruction
+    #[inline(always)]
+    pub fn store_c_silent(&mut self, instruction: &ZiskInst) {
+        match instruction.store {
+            STORE_NONE => {}
+            STORE_MEM => {
+                let val: i64 = if instruction.store_ra {
+                    self.ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.c as i64
+                };
+                let mut addr: i64 = instruction.store_offset;
+                if instruction.store_use_sp {
+                    addr += self.ctx.sp as i64;
+                }
+                self.ctx.mem.write_silent(addr as u64, val as u64, 8);
+            }
+            STORE_IND => {
+                let val: i64 = if instruction.store_ra {
+                    self.ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.c as i64
+                };
+                let mut addr = instruction.store_offset;
+                if instruction.store_use_sp {
+                    addr += self.ctx.sp as i64;
+                }
+                addr += self.ctx.a as i64;
+                self.ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
+            }
+            _ => panic!(
+                "Emu::store_c_silent() Invalid store={} pc={}",
+                instruction.store, self.ctx.pc
+            ),
+        }
+    }
+
     /// Set SP, if specified by the current instruction
     #[inline(always)]
     pub fn set_sp(&mut self, instruction: &ZiskInst) {
@@ -428,7 +465,7 @@ impl<'a> Emu<'a> {
         self.ctx.a = trace_step.a;
         self.ctx.b = trace_step.b;
         (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
-        self.store_c(instruction);
+        self.store_c_silent(instruction);
         self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.end = instruction.end;
