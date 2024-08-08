@@ -18,16 +18,11 @@ function getSettings() {
         ],
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
+        },
+        setup: {
             settings: {
                 default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
             },
-        },
-        aggregation: {
-            settings: {
-                recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
-                final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
-            },
-            genProof: false,
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };

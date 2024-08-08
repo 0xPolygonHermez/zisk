@@ -10,6 +10,8 @@ function getSettings() {
         },
         prover: {
             filename: "./src/lib/provers/stark_fri_prover.js",
+        },
+        setup: {
             settings: {
                 default: { blowupFactor: 1 },
             },
