@@ -199,6 +199,7 @@ impl<'a> Emu<'a> {
             if self.ctx.end ||
                 ((self.ctx.step - self.ctx.last_callback_step) == self.ctx.callback_steps)
             {
+                // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
 
                 // Set the end-of-trace data
