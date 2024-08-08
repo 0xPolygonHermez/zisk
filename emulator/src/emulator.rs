@@ -1,4 +1,5 @@
-use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
+use crate::{Emu, EmuFullTrace, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
+use p3_field::AbstractField;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -11,11 +12,26 @@ pub trait Emulator {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<impl Fn(Vec<EmuTrace>)>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr>;
 }
 
 pub struct ZiskEmulator;
+
+/*
+ziskemu.main()
+\
+ emulate()
+ \
+  process_directory()
+  \
+   process_elf_file()
+   \
+    Riscv2zisk::run()
+    process_rom()
+    \
+     Emu::run()
+*/
 
 impl ZiskEmulator {
     fn process_directory(
@@ -30,7 +46,7 @@ impl ZiskEmulator {
         let files = Self::list_files(&directory).unwrap();
         for file in files {
             if file.contains("dut") && file.ends_with(".elf") {
-                Self::process_elf_file(file, inputs, options, None::<Box<dyn Fn(Vec<EmuTrace>)>>)?;
+                Self::process_elf_file(file, inputs, options, None::<Box<dyn Fn(EmuTrace)>>)?;
             }
         }
 
@@ -41,7 +57,7 @@ impl ZiskEmulator {
         elf_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<impl Fn(Vec<EmuTrace>)>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_elf_file() elf_file={}", elf_filename);
@@ -64,7 +80,7 @@ impl ZiskEmulator {
         rom_filename: String,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<impl Fn(Vec<EmuTrace>)>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom_file() rom_file={}", rom_filename);
@@ -79,7 +95,7 @@ impl ZiskEmulator {
         rom: &mut ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
-        callback: Option<impl Fn(Vec<EmuTrace>)>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
@@ -202,6 +218,19 @@ impl ZiskEmulator {
         Ok(output)
     }
 
+    pub fn process_slice<F: AbstractField>(
+        rom: &mut ZiskRom,
+        trace: &EmuTrace,
+    ) -> Result<EmuFullTrace<F>, ZiskEmulatorErr> {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        let full_trace = emu.run_slice(trace);
+
+        Ok(full_trace)
+    }
+
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {
         fn _list_files(vec: &mut Vec<PathBuf>, path: &Path) -> std::io::Result<()> {
             if path.is_dir() {
@@ -228,7 +257,7 @@ impl Emulator for ZiskEmulator {
     fn emulate(
         &self,
         options: &EmuOptions,
-        callback: Option<impl Fn(Vec<EmuTrace>)>,
+        callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         // Log this call
         if options.verbose {

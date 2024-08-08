@@ -1,5 +1,6 @@
 mod emu;
 mod emu_context;
+mod emu_full_trace;
 mod emu_options;
 mod emu_trace;
 mod emulator;
@@ -10,6 +11,7 @@ mod mem_trace;
 
 pub use emu::*;
 pub use emu_context::*;
+pub use emu_full_trace::*;
 pub use emu_options::*;
 pub use emu_trace::*;
 pub use emulator::*;

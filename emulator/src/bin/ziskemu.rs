@@ -13,7 +13,7 @@ fn main() {
 
     // Call emulate, with these options
     let emulator = ZiskEmulator;
-    let result = emulator.emulate(&options, None::<Box<dyn Fn(Vec<EmuTrace>)>>);
+    let result = emulator.emulate(&options, None::<Box<dyn Fn(EmuTrace)>>);
 
     match result {
         Ok(result) => {
