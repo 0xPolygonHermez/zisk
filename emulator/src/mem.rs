@@ -127,6 +127,18 @@ impl Mem {
     /// Write a u64 value to the memory write section, based on the provided address and width
     #[inline(always)]
     pub fn write(&mut self, addr: u64, val: u64, width: u64) {
+        // Call write_silent to perform the real work
+        self.write_silent(addr, val, width);
+
+        // Log to console bytes written to UART address
+        if (addr == UART_ADDR) && (width == 1) {
+            print!("{}", String::from(val as u8 as char));
+        }
+    }
+
+    /// Write a u64 value to the memory write section, based on the provided address and width
+    #[inline(always)]
+    pub fn write_silent(&mut self, addr: u64, val: u64, width: u64) {
         //println!("Mem::write() addr={:x}={} width={} value={:x}={}", addr, addr, width, val,
         // val);
 
@@ -135,7 +147,7 @@ impl Mem {
 
         // Check that the address and width fall into this section address range
         if (addr < section.start) || ((addr + width) > section.end) {
-            panic!("Mem::write() invalid addr={}", addr);
+            panic!("Mem::write_silent() invalid addr={}", addr);
         }
 
         // Calculate the write position
@@ -150,12 +162,7 @@ impl Mem {
                 .copy_from_slice(&(val as u32).to_le_bytes()),
             8 => section.buffer[write_position..write_position + 8]
                 .copy_from_slice(&val.to_le_bytes()),
-            _ => panic!("Mem::write() invalid width={}", width),
-        }
-
-        // Log to console bytes written to UART address
-        if (addr == UART_ADDR) && (width == 1) {
-            print!("{}", String::from(val as u8 as char));
+            _ => panic!("Mem::write_silent() invalid width={}", width),
         }
     }
 }
