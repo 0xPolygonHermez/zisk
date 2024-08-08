@@ -17,8 +17,7 @@ function getSettings() {
             { filename: path.join(basePath, 'js/executor_module.js'), settings: {}, sm: "Module" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
-        prover: {
-            filename: "./src/lib/provers/stark_fri_prover.js",
+        setup: {
             settings: {
                 default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
                 FibonacciSquare_3: { starkStruct: path.join(__dirname, 'stark_struct_2_3.json') },
@@ -27,12 +26,8 @@ function getSettings() {
                 Module_10: { starkStruct: path.join(__dirname, 'stark_struct_2_10.json') },
             },
         },
-        aggregation: {
-            settings: {
-                recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
-                final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
-            },
-            genProof: false,
+        prover: {
+            filename: "./src/lib/provers/stark_fri_prover.js",
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };

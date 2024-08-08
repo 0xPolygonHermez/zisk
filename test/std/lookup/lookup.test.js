@@ -15,18 +15,13 @@ function getSettings() {
             { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "Lookup" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
-        prover: {
-            filename: "./src/lib/provers/stark_fri_prover.js",
+        setup: {
             settings: {
                 default: { blowupFactor: 1, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
             },
         },
-        aggregation: {
-            settings: {
-                recursive: { starkStruct: "./src/recursion/configs/recursive.starkstruct.json" },
-                final: { starkStruct: "./src/recursion/configs/final.starkstruct.json" }
-            },
-            genProof: false,
+        prover: {
+            filename: "./src/lib/provers/stark_fri_prover.js",
         },
         verifier: { filename: "./src/lib/provers/stark_fri_verifier.js", settings: {} },
     };
