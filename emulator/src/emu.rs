@@ -54,7 +54,7 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.a = self.ctx.mem.read(addr, 8);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(addr as u64, 8);
+                    self.ctx.stats.on_memory_read(addr, 8);
                 }
             }
             SRC_IMM => self.ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32),
@@ -87,7 +87,7 @@ impl<'a> Emu<'a> {
                 }
                 self.ctx.b = self.ctx.mem.read(addr, instruction.ind_width);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(addr as u64, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(addr, instruction.ind_width);
                 }
             }
             _ => panic!("Emu::source_b() Invalid b_src={} pc={}", instruction.b_src, self.ctx.pc),

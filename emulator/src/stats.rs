@@ -27,7 +27,7 @@ const COST_OP: ConstOp = ConstOp {
 
 const COST_STEP: f64 = 50_f64 / AREA_PER_SEC;
 
-const TYPE_STRING: [[&'static str; 2]; 4] =
+const TYPE_STRING: [[&str; 2]; 4] =
     [["b", "Binary"], ["b32", "Binary32"], ["a", "Arith"], ["a32", "Arith32"]];
 
 #[derive(Default, Debug, Clone)]
@@ -164,9 +164,10 @@ impl Stats {
         output += &format!("    Arith32: {:.2}s N: {}\n", cost_arith32, total_op_type.a32);
         output += &format!("    Usual: {:.2}s N: {}\n", cost_usual, self.usual);
 
-        for i in 0..4 {
+        for item in &TYPE_STRING {
+            //for i in 0..4 {
             output += "\n";
-            output += TYPE_STRING[i][1];
+            output += item[1];
             output += "\n";
             for opcode in 0..256 {
                 if self.ops[opcode] == 0 {
@@ -176,7 +177,7 @@ impl Stats {
                 let value = self.ops[opcode] as f64;
                 let inst =
                     operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
-                if inst.t != TYPE_STRING[i][0] {
+                if inst.t != item[0] {
                     continue;
                 }
                 output += &format!("    {}: {:.2}s N: {}\n", inst.n, value * COST_OP.b, value);
