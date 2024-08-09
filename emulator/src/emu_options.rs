@@ -53,6 +53,8 @@ pub struct EmuOptions {
     /// Tracer v
     #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
     pub tracerv: bool,
+    #[clap(short = 'x', long, value_name = "STATS", default_value = "false")]
+    pub stats: bool,
 }
 
 /// Default constructor for impl fmt::Display for EmuOptions structure
@@ -72,6 +74,7 @@ impl Default for EmuOptions {
             trace_steps: None,
             log_metrics: false,
             tracerv: false,
+            stats: false,
         }
     }
 }

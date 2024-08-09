@@ -53,6 +53,9 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.sp;
                 }
                 self.ctx.a = self.ctx.mem.read(addr, 8);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(addr as u64, 8);
+                }
             }
             SRC_IMM => self.ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32),
             SRC_STEP => self.ctx.a = self.ctx.step,
@@ -72,6 +75,9 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.sp;
                 }
                 self.ctx.b = self.ctx.mem.read(addr, 8);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(addr, 8);
+                }
             }
             SRC_IMM => self.ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32),
             SRC_IND => {
@@ -80,6 +86,9 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.sp;
                 }
                 self.ctx.b = self.ctx.mem.read(addr, instruction.ind_width);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(addr as u64, instruction.ind_width);
+                }
             }
             _ => panic!("Emu::source_b() Invalid b_src={} pc={}", instruction.b_src, self.ctx.pc),
         }
@@ -101,6 +110,9 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.sp as i64;
                 }
                 self.ctx.mem.write(addr as u64, val as u64, 8);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_write(addr as u64, 8);
+                }
             }
             STORE_IND => {
                 let val: i64 = if instruction.store_ra {
@@ -114,6 +126,9 @@ impl<'a> Emu<'a> {
                 }
                 addr += self.ctx.a as i64;
                 self.ctx.mem.write(addr as u64, val as u64, instruction.ind_width);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_write(addr as u64, instruction.ind_width);
+                }
             }
             _ => panic!("Emu::store_c() Invalid store={} pc={}", instruction.store, self.ctx.pc),
         }
@@ -194,6 +209,9 @@ impl<'a> Emu<'a> {
 
         // Call the operation
         (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
+        if self.ctx.do_stats {
+            self.ctx.stats.on_op(instruction, self.ctx.a, self.ctx.b);
+        }
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
@@ -205,7 +223,12 @@ impl<'a> Emu<'a> {
         self.set_pc(instruction);
 
         // If this is the last instruction, stop executing
-        self.ctx.end = instruction.end;
+        if instruction.end {
+            self.ctx.end = true;
+            if options.stats {
+                self.ctx.stats.on_steps(self.ctx.step);
+            }
+        }
 
         // Log the step, if requested
         #[cfg(debug_assertions)]
@@ -344,6 +367,9 @@ impl<'a> Emu<'a> {
         }
         //println!("Emu::run() full-equipe");
 
+        // Store the stats option into the emulator context
+        self.ctx.do_stats = options.stats;
+
         // While not done
         while !self.ctx.end {
             if options.verbose {
@@ -404,6 +430,12 @@ impl<'a> Emu<'a> {
             }
 
             // println!("Emu::run() done ctx.pc={}", self.ctx.pc); // 2147483828
+        }
+
+        // Print stats report
+        if options.stats {
+            let report = self.ctx.stats.report();
+            println!("{}", report);
         }
     }
 
