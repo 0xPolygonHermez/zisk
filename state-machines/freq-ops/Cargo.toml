@@ -7,10 +7,6 @@ edition = "2021"
 zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
 
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# witness-helpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-#Local development
 proofman-common = { workspace = true }
 proofman = { workspace = true }
 witness-helpers = { workspace = true }

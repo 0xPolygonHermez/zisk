@@ -1,4 +1,4 @@
-use crate::{Emu, EmuFullTrace, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
+use crate::{Emu, EmuFullTraceStep, EmuOptions, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
 use p3_field::AbstractField;
 use std::{
     fs,
@@ -158,7 +158,7 @@ impl ZiskEmulator {
     pub fn process_slice<F: AbstractField>(
         rom: &ZiskRom,
         trace: &EmuTrace,
-    ) -> Result<EmuFullTrace<F>, ZiskEmulatorErr> {
+    ) -> Result<Vec<EmuFullTraceStep<F>>, ZiskEmulatorErr> {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 

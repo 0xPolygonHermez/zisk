@@ -9,12 +9,8 @@ sm-arith = { path = "../arith" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }
-zisk-pil = { path = "../../pil" }
+zisk-pil = { path = "../../pil/fork_0" }
 
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# witness-helpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-#Local development
 proofman-common = { workspace = true }
 proofman = { workspace = true }
 witness-helpers = { workspace = true }

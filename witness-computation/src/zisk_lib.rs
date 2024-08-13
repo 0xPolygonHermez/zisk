@@ -22,7 +22,7 @@ pub struct ZiskWitness<F> {
     pub public_inputs_path: PathBuf,
     pub wcm: WitnessManager<F>,
     // State machines
-    pub main_sm: Arc<MainSM>,
+    pub main_sm: Arc<MainSM<F>>,
     pub mem_sm: Arc<MemSM>,
     pub mem_aligned_sm: Arc<MemAlignedSM>,
     pub mem_unaligned_sm: Arc<MemUnalignedSM>,
@@ -30,7 +30,9 @@ pub struct ZiskWitness<F> {
     pub arith_32_sm: Arc<Arith32SM>,
 }
 
-impl<F: AbstractField> ZiskWitness<F> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
+    const MY_NAME: &'static str = "ZiskLib ";
+
     pub fn new(
         rom_path: PathBuf,
         public_inputs_path: PathBuf,
@@ -104,15 +106,21 @@ impl<F: AbstractField> ZiskWitness<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync> WitnessLibrary<F> for ZiskWitness<F> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+        log::info!("{}: Starting proof", Self::MY_NAME);
+
         self.wcm.start_proof(pctx, ectx);
     }
 
     fn end_proof(&mut self) {
+        log::info!("{}: Finalizing proof", Self::MY_NAME);
+
         self.wcm.end_proof();
     }
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+        log::info!("{}: Executing proof", Self::MY_NAME);
+
         timer_start!(EXECUTE);
         // TODO let mut ectx = self.wcm.createExecutionContext(wneeds);
         // TODO Create the pool of threads to execute the state machines here?

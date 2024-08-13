@@ -1,3 +1,3 @@
-use proofman::trace;
+use proofman_common::trace;
 
-trace!(Arith64Trace0 {});
+trace!(Arith640Row, Arith640Trace<F> { fake: F });
