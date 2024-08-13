@@ -7,7 +7,7 @@ mod emulator;
 mod emulator_errors;
 mod mem;
 mod mem_section;
-mod mem_trace;
+mod stats;
 
 pub use emu::*;
 pub use emu_context::*;
@@ -18,4 +18,4 @@ pub use emulator::*;
 pub use emulator_errors::*;
 pub use mem::*;
 pub use mem_section::*;
-pub use mem_trace::*;
+pub use stats::*;
