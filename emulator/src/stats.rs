@@ -1,34 +1,13 @@
 use zisk_core::{ZiskInst, ZiskOperations};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
-
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
 const COST_MEMA_R1: f64 = 20_f64 / AREA_PER_SEC;
-const COST_MEMA_R2: f64 = COST_MEMA_R1 * 2_f64 / AREA_PER_SEC;
-const COST_MEMA_W1: f64 = COST_MEMA_R1 * 2_f64 / AREA_PER_SEC;
-const COST_MEMA_W2: f64 = COST_MEMA_R1 * 4_f64 / AREA_PER_SEC;
-
+const COST_MEMA_R2: f64 = 40_f64 / AREA_PER_SEC;
+const COST_MEMA_W1: f64 = 40_f64 / AREA_PER_SEC;
+const COST_MEMA_W2: f64 = 80_f64 / AREA_PER_SEC;
 const COST_USUAL: f64 = 8_f64 / AREA_PER_SEC;
-
-#[derive(Default, Debug, Clone)]
-struct ConstOp {
-    b: f64,
-    b32: f64,
-    a: f64,
-    a32: f64,
-}
-
-const COST_OP: ConstOp = ConstOp {
-    b: 32_f64 / AREA_PER_SEC,
-    b32: 16_f64 / AREA_PER_SEC,
-    a: 64_f64 / AREA_PER_SEC,
-    a32: 32_f64 / AREA_PER_SEC,
-};
-
 const COST_STEP: f64 = 50_f64 / AREA_PER_SEC;
-
-const TYPE_STRING: [[&str; 2]; 4] =
-    [["b", "Binary"], ["b32", "Binary32"], ["a", "Arith"], ["a32", "Arith32"]];
 
 #[derive(Default, Debug, Clone)]
 struct MemoryOperations {
@@ -97,6 +76,19 @@ impl Stats {
     }
 
     pub fn report(&self) -> String {
+        const AREA_PER_SEC: f64 = 1000000_f64;
+        // Result of his function
+        let mut output = String::new();
+
+        output += "Cost definitions:\n";
+        output += &format!("    AREA_PER_SEC: {} steps\n", AREA_PER_SEC);
+        output += &format!("    COST_MEMA_R1: {:02} sec\n", COST_MEMA_R1);
+        output += &format!("    COST_MEMA_R2: {:02} sec\n", COST_MEMA_R2);
+        output += &format!("    COST_MEMA_W1: {:02} sec\n", COST_MEMA_W1);
+        output += &format!("    COST_MEMA_W2: {:02} sec\n", COST_MEMA_W2);
+        output += &format!("    COST_USUAL: {:02} sec\n", COST_USUAL);
+        output += &format!("    COST_STEP: {:02} sec\n", COST_STEP);
+
         let total_mem_ops = self.mops.mread_na1 +
             self.mops.mread_na2 +
             self.mops.mread_a +
@@ -113,75 +105,71 @@ impl Stats {
             self.mops.mread_na2 as f64 * COST_MEMA_R2 +
             self.mops.mwrite_na1 as f64 * COST_MEMA_W1 +
             self.mops.mwrite_na2 as f64 * COST_MEMA_W2;
-        let mut total_op_type = ConstOp::default();
 
         let operations = ZiskOperations::new();
+        let mut total_opcodes: u64 = 0;
+        let mut opcode_steps: [u64; 256] = [0; 256];
+        let mut total_opcode_steps: u64 = 0;
+        let mut opcode_cost: [f64; 256] = [0_f64; 256];
+        let mut total_opcode_cost: f64 = 0_f64;
         for opcode in 0..256 {
+            // Skip zero counters
             if self.ops[opcode] == 0 {
                 continue;
             }
+
+            // Increase total
+            total_opcodes += self.ops[opcode];
+
+            // Get the Zisk instruction corresponding to this opcode
             let op8 = opcode as u8;
-            let value = self.ops[opcode] as f64;
             let inst =
                 operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
-            match inst.t {
-                "i" => continue,
-                "b" => total_op_type.b += value,
-                "b32" => total_op_type.b32 += value,
-                "a" => total_op_type.a += value,
-                "a32" => total_op_type.a32 += value,
-                _ => panic!(
-                    "Stats::report() found invalid operation type opcode={} type={}",
-                    opcode, inst.t
-                ),
-            }
+
+            // Increase steps
+            opcode_steps[opcode] += inst.s;
+            total_opcode_steps += inst.s;
+
+            // Increse cost
+            let value = self.ops[opcode] as f64;
+            opcode_cost[opcode] += value * inst.s as f64 / AREA_PER_SEC;
+            total_opcode_cost += value * inst.s as f64 / AREA_PER_SEC;
         }
 
-        let cost_bin = total_op_type.b * COST_OP.b;
-        let cost_bin32 = total_op_type.b32 * COST_OP.b32;
-        let cost_arith = total_op_type.a * COST_OP.a;
-        let cost_arith32 = total_op_type.a32 * COST_OP.a32;
         let cost_usual = self.usual as f64 * COST_USUAL;
         let cost_main = self.steps as f64 * COST_STEP;
 
-        let total_cost = cost_main +
-            cost_mem +
-            cost_mem_align +
-            cost_bin +
-            cost_bin32 +
-            cost_arith +
-            cost_arith32 +
-            cost_usual;
+        let total_cost = cost_main + cost_mem + cost_mem_align + total_opcode_cost + cost_usual;
 
-        let mut output = String::new();
-        output += &format!("Total Cost: {:.2}s\n", total_cost);
-        output += &format!("    Main Cost: {:.2}s N: {}\n", cost_main, self.steps);
-        output += &format!("    Mem Cost: {:.2}s N: {}\n", cost_mem, total_mem_ops);
-        output += &format!("    Mem Align: {:.2}s N: {}\n", cost_mem_align, total_mem_align_steps);
-        output += &format!("    Bin: {:.2}s N: {}\n", cost_bin, total_op_type.b);
-        output += &format!("    Bin32: {:.2}s N: {}\n", cost_bin32, total_op_type.b32);
-        output += &format!("    Arith: {:.2}s N: {}\n", cost_arith, total_op_type.a);
-        output += &format!("    Arith32: {:.2}s N: {}\n", cost_arith32, total_op_type.a32);
-        output += &format!("    Usual: {:.2}s N: {}\n", cost_usual, self.usual);
+        output += &format!("\nTotal Cost: {:.2} sec\n", total_cost);
+        output += &format!("    Main Cost: {:.2} sec {} steps\n", cost_main, self.steps);
+        output += &format!("    Mem Cost: {:.2} sec {} steps\n", cost_mem, total_mem_ops);
+        output +=
+            &format!("    Mem Align: {:.2} sec {} steps\n", cost_mem_align, total_mem_align_steps);
+        output += &format!(
+            "    Opcodes: {:.2} sec {} steps ({} ops)\n",
+            total_opcode_cost, total_opcode_steps, total_opcodes
+        );
+        output += &format!("    Usual: {:.2} sec {} steps\n", cost_usual, self.usual);
 
-        for item in &TYPE_STRING {
-            //for i in 0..4 {
-            output += "\n";
-            output += item[1];
-            output += "\n";
-            for opcode in 0..256 {
-                if self.ops[opcode] == 0 {
-                    continue;
-                }
-                let op8 = opcode as u8;
-                let value = self.ops[opcode] as f64;
-                let inst =
-                    operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
-                if inst.t != item[0] {
-                    continue;
-                }
-                output += &format!("    {}: {:.2}s N: {}\n", inst.n, value * COST_OP.b, value);
+        output += "\nOpcodes:\n";
+
+        for opcode in 0..256 {
+            // Skip zero counters
+            if self.ops[opcode] == 0 {
+                continue;
             }
+
+            // Get the Zisk instruction corresponding to this opcode
+            let op8 = opcode as u8;
+            let inst =
+                operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
+
+            // Log opcode cost
+            output += &format!(
+                "    {}: {:.2} sec ({} steps/op) ({} ops)\n",
+                inst.n, opcode_cost[opcode], opcode_steps[opcode], self.ops[opcode]
+            );
         }
 
         output

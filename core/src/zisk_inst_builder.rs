@@ -194,11 +194,7 @@ impl ZiskInstBuilder {
 
     pub fn op(&mut self, optxt: &str) {
         let op = op_from_str(optxt);
-        if op.t == "i" {
-            self.i.is_external_op = false;
-        } else {
-            self.i.is_external_op = true;
-        }
+        self.i.is_external_op = op.t != "i";
         self.i.op = op.c;
         self.i.op_str = op.n;
     }

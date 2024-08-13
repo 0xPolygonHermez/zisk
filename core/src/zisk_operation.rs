@@ -5,6 +5,8 @@ pub struct ZiskOperation {
     pub n: &'static str,
     /// Operation type
     pub t: &'static str,
+    /// Operation steps
+    pub s: u64,
     /// Operation code (1 byte)
     pub c: u8,
     /// Operation function f(a,b)->(c,flag), where a, b, and c are 32-bit represented as 64-bit
