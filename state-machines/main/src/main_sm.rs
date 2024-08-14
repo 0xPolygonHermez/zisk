@@ -76,7 +76,12 @@ impl MainSM {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let mut zisk_rom = if rom_path.extension().unwrap() == "elf" {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(rom_path.display().to_string(), String::new());
+            let rv2zk = Riscv2zisk::new(
+                rom_path.display().to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
 
             // Convert program to rom
             match rv2zk.run() {
