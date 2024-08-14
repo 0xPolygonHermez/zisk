@@ -113,7 +113,7 @@ fn bench_process_rom(c: &mut Criterion) {
     c.bench_function("Process ROM", |b| {
         // Convert the ELF file to ZisK ROM
         let elf_file = "./benches/data/my.elf".to_string();
-        let mut rom: ZiskRom = {
+        let rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
             let rv2zk =
                 Riscv2zisk::new(elf_file.clone(), String::new(), String::new(), String::new());
@@ -144,12 +144,8 @@ fn bench_process_rom(c: &mut Criterion) {
         };
 
         b.iter(|| {
-            let _ = ZiskEmulator::process_rom(
-                &mut rom,
-                &input,
-                &options,
-                None::<Box<dyn Fn(EmuTrace)>>,
-            );
+            let _ =
+                ZiskEmulator::process_rom(&rom, &input, &options, None::<Box<dyn Fn(EmuTrace)>>);
         });
     });
 
@@ -171,7 +167,7 @@ fn bench_process_rom_callback(c: &mut Criterion) {
         //let elf_file =
         // "../riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf".to_string();
         let elf_file = "./benches/data/my.elf".to_string();
-        let mut rom: ZiskRom = {
+        let zisk_rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
             let rv2zk =
                 Riscv2zisk::new(elf_file.clone(), String::new(), String::new(), String::new());
@@ -204,7 +200,7 @@ fn bench_process_rom_callback(c: &mut Criterion) {
 
         b.iter(|| {
             let _ = ZiskEmulator::process_rom(
-                &mut rom,
+                &zisk_rom,
                 &input,
                 &options,
                 Some(Box::new(dummy_callback)),
