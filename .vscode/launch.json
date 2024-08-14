@@ -43,7 +43,11 @@
                     "kind": "bin"
                 }
             },
-            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json", "rom.pil"],
+            "args": [
+                "emulator/benches/data/my.elf",
+                "rom.json",
+                "rom.pil",
+                "rom.bin"],
             "cwd": "${workspaceFolder}"
         },
         {
