@@ -240,7 +240,7 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         // }
 
         // Option 1: Wrap the existing vector to create a Main0Trace and avoid to copy the data
-        let main_trace = Box::new(Main0Trace::<F>::from_vec(inputs));
+        let main_trace = Main0Trace::<F>::map_vec(inputs).unwrap();
 
         // Option 2: Create a new buffer to allocate all stark data and copy the data into it
         // let num_rows = inputs.len().next_power_of_two();
@@ -253,12 +253,12 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         // }
 
         // Add trace to instances vector
-        let mut air_instances = pctx.air_instances.lock().unwrap();
-        air_instances.push(AirInstanceCtx::new(
-            MAIN_SUBPROOF_ID[0],
-            MAIN_AIR_IDS[0],
-            Some(main_trace),
-        ));
+        let mut air_instances = pctx.air_instances.write().unwrap();
+        air_instances.push(AirInstanceCtx {
+            air_group_id: MAIN_SUBPROOF_ID[0],
+            air_id: MAIN_AIR_IDS[0],
+            buffer: Some(main_trace.slice_buffer.to_vec()),
+        });
 
         // TODO Ask Jordi about this
     }
