@@ -9,8 +9,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     // Check program arguments length
-    if args.len() != 3 {
-        eprintln!("Error parsing arguments: number of arguments should be 2.  Usage: riscv2zisk <elf_riscv_file> <zisk_asm_file>");
+    if args.len() < 3 || args.len() > 5 {
+        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> <zisk_asm_file> [<zisk_pil_file>] [<zisk_bin_file>]");
         process::exit(1);
     }
 
@@ -18,12 +18,20 @@ fn main() {
     // data)
     let elf_file = args[1].clone();
     let zisk_file = args[2].clone();
+    let pil_file = if args.len() >= 4 { args[3].clone() } else { String::new() };
+    let bin_file = if args.len() >= 5 { args[4].clone() } else { String::new() };
 
     println!("ELF file: {elf_file}");
     println!("ZISK file: {zisk_file}");
+    if !pil_file.is_empty() {
+        println!("PIL file: {pil_file}");
+    }
+    if !bin_file.is_empty() {
+        println!("BIN file: {bin_file}");
+    }
 
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file, zisk_file);
+    let rv2zk = Riscv2zisk::new(elf_file, zisk_file, pil_file, bin_file);
 
     // Convert program
     if let Err(e) = rv2zk.runfile() {

@@ -25,6 +25,7 @@
                 "emulator/benches/data/input.bin",
                 "-c",
                 "-m",
+                "-x",
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -42,7 +43,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json"],
+            "args": ["riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf", "rom.json", "rom.pil"],
             "cwd": "${workspaceFolder}"
         },
         {

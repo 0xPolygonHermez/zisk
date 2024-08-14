@@ -29,6 +29,7 @@ pub struct ZiskInst {
     pub func: fn(u64, u64) -> (u64, bool),
     pub op_str: &'static str,
     pub verbose: String,
+    pub m32: bool,
 }
 
 /// Default constructor
@@ -59,6 +60,7 @@ impl Default for ZiskInst {
             func: |_, _| (0, false),
             op_str: "",
             verbose: String::new(),
+            m32: false,
         }
     }
 }
@@ -127,6 +129,9 @@ impl ZiskInst {
         }
         {
             s += &(" op=".to_string() + &self.op.to_string() + "=" + self.op_str);
+        }
+        if self.m32 {
+            s += &(" m32=".to_string() + &self.m32.to_string());
         }
         if !self.verbose.is_empty() {
             s += &(" verbose=".to_string() + &self.verbose);

@@ -65,7 +65,7 @@ impl ZiskEmulator {
 
         // Convert the ELF file to ZisK ROM
         // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new());
+        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
 
         // Convert program to rom
         let zisk_rom = riscv2zisk.run();
