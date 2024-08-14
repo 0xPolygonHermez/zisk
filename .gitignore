@@ -6,3 +6,4 @@ package-lock.json
 *.log
 logs*.txt
 test/**/*.pilout
+lib/std/rs/target
