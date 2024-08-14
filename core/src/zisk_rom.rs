@@ -197,7 +197,7 @@ impl ZiskRom {
         // For all program addresses in the vector, create a new PIL line describing the ZisK
         // instruction
         for key in &keys {
-            let i = &self.insts[&key].i;
+            let i = &self.insts[key].i;
             let rom_flags = self.get_rom_flags(i);
             *s += &format!(
                 "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
@@ -242,7 +242,7 @@ impl ZiskRom {
         // instruction
         for key in &keys {
             let mut aux: [u8; 8];
-            let i = &self.insts[&key].i;
+            let i = &self.insts[key].i;
             let rom_flags = self.get_rom_flags(i);
             aux = key.to_le_bytes();
             v.extend(aux);
@@ -320,7 +320,7 @@ impl ZiskRom {
     }
 
     pub fn get_rom_flags(&self, i: &ZiskInst) -> u64 {
-        let rom_flags: u64 = 1 * (if i.a_src == SRC_IMM { 1 } else { 0 }) +
+        let rom_flags: u64 = (if i.a_src == SRC_IMM { 1 } else { 0 }) +
             2 * (if i.a_src == SRC_MEM { 1 } else { 0 }) +
             4 * (if i.b_src == SRC_IMM { 1 } else { 0 }) +
             8 * (if i.b_src == SRC_MEM { 1 } else { 0 }) +

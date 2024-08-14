@@ -193,7 +193,7 @@ impl ZiskInstBuilder {
         self.i.is_external_op = op.t != "i";
         self.i.op = op.c;
         self.i.op_str = op.n;
-        self.i.m32 = optxt.find("_w") != None;
+        self.i.m32 = optxt.contains("_w");
     }
 
     pub fn j(&mut self, j1: i32, j2: i32) {
