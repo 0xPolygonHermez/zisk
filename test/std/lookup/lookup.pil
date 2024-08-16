@@ -13,7 +13,21 @@ airtemplate Lookup0(const int N = 2**10, const int nLookups) {
     }
 }
 
-airtemplate Lookup1(const int N = 2**12) {
+airtemplate Lookup1(const int N = 2**10, const int nLookups) {
+
+    col witness f[nLookups];
+    col witness t;
+    col witness sel[nLookups];
+    col witness mul;
+
+    for (int i = 0; i < nLookups; i++) {
+        lookup_assumes(0, [f[i]], sel[i]);
+    }
+
+    lookup_proves(0, [t], mul);
+}
+
+airtemplate Lookup2(const int N = 2**12) {
 
     col witness a1,b1,a2,b2,a3,b3,a4,b4;
     col witness c1,d1,c2,d2;
@@ -31,7 +45,7 @@ airtemplate Lookup1(const int N = 2**12) {
     lookup_assumes(4, [a4, b4], sel2);
 };
 
-airtemplate Lookup2(const int N = 2**14) {
+airtemplate Lookup3(const int N = 2**14) {
 
     col witness c1,d1,c2,d2;
     col witness mul;
@@ -42,11 +56,13 @@ airtemplate Lookup2(const int N = 2**14) {
 };
 
 airgroup Lookup {
-    Lookup0(nLookups: 8);
+    // Lookup0(nLookups: 8);
 
-    // Lookup1();
-    // Lookup1(N: 2**13);
-    // Lookup1(N: 2**15);
+    Lookup1(nLookups: 15);
 
     // Lookup2();
+    // Lookup2(N: 2**13);
+    // Lookup2(N: 2**15);
+
+    // Lookup3();
 };
