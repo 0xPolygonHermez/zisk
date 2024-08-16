@@ -7,3 +7,5 @@ package-lock.json
 logs*.txt
 test/**/*.pilout
 lib/std/rs/target
+
+target

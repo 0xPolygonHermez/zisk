@@ -13,24 +13,25 @@ pub struct Std {
     inputs_rc: Mutex<Vec<(u64, u64, u64)>>,
 
     // div_lib_sm: Arc<StdDivLib>,
-    std_prod_sm: Arc<StdProd>,
-    std_sum_sm: Arc<StdSum>,
-    // std_range_check_sm: Arc<StdRangeCheck>,
+    prod: Arc<StdProd>,
+    sum: Arc<StdSum>,
+    // range_check: Arc<StdRangeCheck>,
 }
 
 impl Std {
     pub fn new<F>(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         // let div_lib_sm = StdDivLib::new(&mut wcm, None);
-        let std_prod_sm = StdProd::new(&mut wcm, None);
-        let std_sum_sm = StdSum::new(&mut wcm, None);
-        let std_range_check_sm = StdRangeCheck::new(&mut wcm, [1000]); // TODO!!!!! Change id
+        let prod = Arc::new(StdProd);
+        let sum = Arc::new(StdSum);
+
+        let range_check = StdRangeCheck::new(&mut wcm, [1000]); // TODO!!!!! Change id
 
         let std_sm = Self {
             inputs_rc: Mutex::new(Vec::new()),
             // div_lib_sm,
-            std_prod_sm,
-            std_sum_sm,
-            // std_range_check_sm,
+            prod,
+            sum,
+            // range_check,
         };
         let std_sm = Arc::new(std_sm);
 
@@ -48,8 +49,8 @@ impl<F> WitnessComponent<F> for Std {
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
-        // TODO
-        self.std_prod_sm.calculate_witness(stage, air_instance, pctx, ectx);
+        self.prod.decide(pctx.pilout, air_instance, pctx, ectx);
+        self.sum.decide(pctx.pilout, air_instance, pctx, ectx);
     }
 }
 
