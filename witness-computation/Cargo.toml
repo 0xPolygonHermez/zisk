@@ -27,4 +27,3 @@ p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman = { workspace = true }
 proofman-util = { workspace = true }
-witness-helpers = { workspace = true }

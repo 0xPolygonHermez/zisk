@@ -13,7 +13,6 @@ zisk-pil = { path = "../../pil/fork_0" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
-witness-helpers = { workspace = true }
 
 log = { version = "0.4", default-features = false }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }

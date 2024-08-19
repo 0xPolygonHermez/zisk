@@ -4,7 +4,7 @@ use zisk_pil::{Pilout, MAIN_AIR_IDS};
 
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
-use proofman::WitnessManager;
+use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
 use sm_arith::ArithSM;
@@ -15,7 +15,6 @@ use sm_main::MainSM;
 use sm_mem::MemSM;
 use sm_mem_aligned::MemAlignedSM;
 use sm_mem_unaligned::MemUnalignedSM;
-use witness_helpers::WitnessLibrary;
 
 pub struct ZiskWitness<F> {
     pub proving_key_path: PathBuf,
@@ -107,7 +106,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
-    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         log::info!("{}: Starting proof", Self::MY_NAME);
 
         self.wcm.start_proof(pctx, ectx);
@@ -128,10 +127,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
         self.main_sm.execute(&self.public_inputs_path, pctx, ectx);
         // TODO ectx.terminate();
         timer_stop_and_log!(EXECUTE);
-    }
-
-    fn calculate_plan(&mut self, ectx: &mut ExecutionCtx) {
-        self.wcm.calculate_plan(ectx);
     }
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {

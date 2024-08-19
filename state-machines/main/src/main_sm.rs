@@ -10,14 +10,14 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 use proofman::WitnessManager;
-use proofman_common::{AirInstance, AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, Emulator, ZiskEmulator};
 
+use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_mem::MemSM;
-use witness_helpers::WitnessComponent;
 
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
 /// The MainSM state machine is responsible for orchestrating the execution of the program and
@@ -239,10 +239,7 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         //     panic!("Error getting buffer size: {:?}", e);
         // }
 
-        // Option 1: Wrap the existing vector to create a Main0Trace and avoid to copy the data
-        let main_trace = Main0Trace::<F>::map_vec(inputs).unwrap();
-
-        // Option 2: Create a new buffer to allocate all stark data and copy the data into it
+        // Option 1: Create a new buffer to allocate all stark data and copy the data into it
         // let num_rows = inputs.len().next_power_of_two();
         // let mut main_trace = Box::new(Main0Trace::<F>::new(num_rows));
 
@@ -252,15 +249,16 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         //     main_trace.slice.copy_from_slice(&inputs);
         // }
 
-        // Add trace to instances vector
+        // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
+        let main_trace = Main0Trace::<F>::map_row_vec(inputs).unwrap();
+
         let mut air_instances = pctx.air_instances.write().unwrap();
+
         air_instances.push(AirInstanceCtx {
             air_group_id: MAIN_SUBPROOF_ID[0],
             air_id: MAIN_AIR_IDS[0],
-            buffer: Some(main_trace.slice_buffer.to_vec()),
+            buffer: Some(main_trace.buffer.unwrap()),
         });
-
-        // TODO Ask Jordi about this
     }
 }
 
@@ -268,11 +266,9 @@ impl<F> WitnessComponent<F> for MainSM<F> {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &AirInstance,
+        air_instance: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
     }
-
-    fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }

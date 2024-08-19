@@ -8,8 +8,8 @@ use std::{
 
 use std::{fmt::Debug, sync::mpsc, thread};
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_arith_32::Arith32SM;
 use sm_arith_3264::Arith3264SM;
@@ -18,7 +18,6 @@ use sm_common::{
     Arith3264Op, Arith32Op, Arith64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
     WorkerTask,
 };
-use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -56,7 +55,7 @@ impl<F> WitnessComponent<F> for ArithSM {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &AirInstance,
+        air_instance: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
