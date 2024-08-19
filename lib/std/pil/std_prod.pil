@@ -1,14 +1,16 @@
 require "std_common.pil"
 
-function prod_assumes(const string type, const int opid, const expr cols[], const expr sel = 1) {
-    update_piop_prod(type, 0, opid, sel, cols);
+// Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
+
+function prod_assumes(const string name, const int opid, const expr cols[], const expr sel = 1) {
+    update_piop_prod(name, 0, opid, sel, cols);
 }
 
-function prod_proves(const string type, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
-    update_piop_prod(type, 1, opid, sel, cols, is_direct);
+function prod_proves(const string name, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
+    update_piop_prod(name, 1, opid, sel, cols, is_direct);
 }
 
-private function init_containers_prod(string type, int opid) {
+private function init_containers_prod(string name, int opid) {
     container proof.std.gprod {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
@@ -36,7 +38,7 @@ private function init_containers_prod(string type, int opid) {
 
     // Container used for final checks
     container proof.std.gprod.`id${opid}` {
-        string type = type;
+        string name = name;
         int cols;
         int proves = 0;
         int assumes = 0;
@@ -77,14 +79,14 @@ private function initial_checks_prod(int proves, int opid, expr cols[]) {
  *      · 1] defines the running grandproduct constraints for each air
  *      · 2] add each airgroupvalue of each airgroup to the running prod
  *      · 3] checks that the overall prod is zero
- * @param type type of the PIOP
+ * @param name name of the PIOP
  * @param proves boolean indicating if updating a proves or a assumes
  * @param opid (unique) identifier of the PIOP
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_prod(string type, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
-    init_containers_prod(type, opid);
+private function update_piop_prod(string name, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
+    init_containers_prod(name, opid);
 
     if (!is_direct) initial_checks_prod(proves, opid, cols);
 
@@ -192,16 +194,19 @@ private function piop_gprod_proof() {
 
 /**
  * It checks that all the assumes and proves of the same opid have been defined
- * @param type type of the PIOP
+ * @param name name of the PIOP
  */
 private function check_gprod_was_completed() {
     for (int index = 0; index < proof.std.gprod.opids_count; index++) {
         int opid = proof.std.gprod.opids[index];
         use proof.std.gprod.`id${opid}`;
+
+        if (name == "isolated") continue;
+
         if (assumes == 0) {
-            error(`${type} #${opid} defined without assume`);
+            error(`${name} #${opid} defined without assume`);
         } else if (proves == 0) {
-            error(`${type} #${opid} defined without proves`);
+            error(`${name} #${opid} defined without proves`);
         }
     }
 }
