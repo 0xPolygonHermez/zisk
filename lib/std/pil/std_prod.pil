@@ -2,15 +2,15 @@ require "std_common.pil"
 
 // Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
 
-function prod_assumes(const string name, const int opid, const expr cols[], const expr sel = 1) {
+function prod_assumes(const int name, const int opid, const expr cols[], const expr sel = 1) {
     update_piop_prod(name, 0, opid, sel, cols);
 }
 
-function prod_proves(const string name, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
+function prod_proves(const int name, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
     update_piop_prod(name, 1, opid, sel, cols, is_direct);
 }
 
-private function init_containers_prod(string name, int opid) {
+private function init_containers_prod(int name, int opid) {
     container proof.std.gprod {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
@@ -38,7 +38,7 @@ private function init_containers_prod(string name, int opid) {
 
     // Container used for final checks
     container proof.std.gprod.`id${opid}` {
-        string name = name;
+        int name = name;
         int cols;
         int proves = 0;
         int assumes = 0;
@@ -85,7 +85,7 @@ private function initial_checks_prod(int proves, int opid, expr cols[]) {
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_prod(string name, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
+private function update_piop_prod(int name, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
     init_containers_prod(name, opid);
 
     if (!is_direct) initial_checks_prod(proves, opid, cols);
@@ -201,12 +201,14 @@ private function check_gprod_was_completed() {
         int opid = proof.std.gprod.opids[index];
         use proof.std.gprod.`id${opid}`;
 
-        if (name == "isolated") continue;
+        if (name == PIOP_NAME_ISOLATED) continue;
+
+        const string name_str = get_name(name);
 
         if (assumes == 0) {
-            error(`${name} #${opid} defined without assume`);
+            error(`${name_str} #${opid} defined without assume`);
         } else if (proves == 0) {
-            error(`${name} #${opid} defined without proves`);
+            error(`${name_str} #${opid} defined without proves`);
         }
     }
 }

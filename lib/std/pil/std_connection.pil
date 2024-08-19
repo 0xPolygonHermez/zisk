@@ -8,8 +8,6 @@ require "std_permutation.pil";
 // and PER_i(X) describe a permutation of the group_domain
 // as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
 
-const string name_connection = "connection";
-
 // Two user interfaces
 
 // 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
@@ -88,7 +86,7 @@ function connection_init(int opid, expr cols[], int bus_type = 0) {
         connid.map_cols[i] = cols[i];
 
         // Send to the bus the original columns
-        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: name_connection);
+        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
 
         // Initialize polynomial CONN[0](X) as X and CONN[i](X) as k_i·X, for i >= 0
         for (int j = 0; j < N; j++) {
@@ -351,7 +349,7 @@ function connection_connect(int opid) {
 
     // Send to the bus the permuted columns
     for (int i = 0; i < cols_num; i++) {
-        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
+        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
     }
 
     // Mark the connection as closed
@@ -423,13 +421,13 @@ function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
 
             // Send to the bus the original columns and the permuted columns
             for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*ID], bus_type: bus_type, name: name_connection);
-                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
+                permutation_assumes(opid, [cols[i], ks[i]*ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
             }
         } else {
             for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: name_connection);
-                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
+                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
             }
         }
     } else {
@@ -439,8 +437,8 @@ function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
             const int k = k_coset ** i;
 
             // Send to the bus the remaining columns and their associated permuted columns
-            permutation_assumes(opid, [cols[i], k*ID], bus_type: bus_type, name: name_connection);
-            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: name_connection);
+            permutation_assumes(opid, [cols[i], k*ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
         }
     }
 }
