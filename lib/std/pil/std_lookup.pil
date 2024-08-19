@@ -1,15 +1,22 @@
+require "std_constants.pil";
 require "std_sum.pil"
 
-const string name_lookup = "lookup";
+const int DEFAULT_LOOKUP_NAME = PIOP_NAME_LOOKUP;
 
-function lookup_assumes(const int opid, const expr cols[], const expr sel = 1, const string name = name_lookup) {
+function lookup_assumes(const int opid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
+
     sum_assumes(name, opid, cols, sel);
 }
 
-function lookup_proves(const int opid, const expr cols[], const expr mul = 1, const string name = name_lookup) {
+function lookup_proves(const int opid, const expr cols[], const expr mul = 1, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
+
     sum_proves(name, opid, cols, mul);
 }
 
-function lookup_assumes_dynamic(const int opid[], const expr sumid, const expr cols[], const expr sel = 1, const string name = name_lookup) {
+function lookup_assumes_dynamic(const int opid[], const expr sumid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
+
     sum_assumes_dynamic(name, opid, sumid, cols, sel);
 }

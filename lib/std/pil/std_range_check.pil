@@ -6,7 +6,6 @@ require "std_lookup.pil";
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
 
-const string name_range_check = "range_check";
 const int MAX_LEN = (PRIME - 1) / 2;
 
 const int OPIDS[2] = [100, 101];
@@ -39,7 +38,7 @@ airtemplate U8Air(const int N = 2**8) {
 
     col witness mul;
     col fixed U8 = [0..BYTE];
-    lookup_proves(OPIDS[0], [U8], mul, name_range_check);
+    lookup_proves(OPIDS[0], [U8], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 airtemplate U16Air(const int N = 2**16) {
@@ -49,7 +48,7 @@ airtemplate U16Air(const int N = 2**16) {
 
     col witness mul;
     col fixed U16 = [0..TWOBYTES];
-    lookup_proves(OPIDS[1], [U16], mul, name_range_check);
+    lookup_proves(OPIDS[1], [U16], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int mins[], const int maxs[]) {
@@ -65,7 +64,7 @@ airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_coun
         }
 
         col fixed RANGE = [min..max-1,max...];
-        lookup_proves(opid, [RANGE], mul[j], name_range_check);
+        lookup_proves(opid, [RANGE], mul[j], PIOP_NAME_RANGE_CHECK);
     }
 }
 
@@ -97,7 +96,7 @@ function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1
     const int opid1 = opid_process(min1, max1);
     const int opid2 = opid_process(min2, max2);
 
-    lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) + opid2, [colu], sel, name_range_check);
+    lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) + opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
 
     on final airgroup declareRangeAir();
 
@@ -107,8 +106,8 @@ function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1
     // by just performing 1 assume and 2 proves instead
     //
     // Q: Can I do it with 1 assume and 1 prove? E.g.:
-    // lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) - opid2, [colu], sel, name_range_check);
-    // lookup_proves(opid, [min1..max1-1,max1...]U[min2..max2-1,max2...], mul, name_range_check);
+    // lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) - opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
+    // lookup_proves(opid, [min1..max1-1,max1...]U[min2..max2-1,max2...], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 /**
@@ -147,7 +146,7 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
             rcpreprove.u8_used = rcpreprove.u8_used ? 1 : is_u8;
             rcpreprove.u16_used = rcpreprove.u16_used ? 1 : (1 - is_u8);
 
-            lookup_assumes(is_u8 ? OPIDS[0] : OPIDS[1], [colu], sel, name_range_check);
+            lookup_assumes(is_u8 ? OPIDS[0] : OPIDS[1], [colu], sel, PIOP_NAME_RANGE_CHECK);
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
@@ -156,19 +155,19 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
                 rcpreprove.u8_used = 1;
 
                 // first prove that colu - min is in U8
-                lookup_assumes(OPIDS[0], [colu - min], sel, name_range_check);
+                lookup_assumes(OPIDS[0], [colu - min], sel, PIOP_NAME_RANGE_CHECK);
 
                 // then prove that max - colu is in U8
-                lookup_assumes(OPIDS[0], [max - colu], sel, name_range_check);
+                lookup_assumes(OPIDS[0], [max - colu], sel, PIOP_NAME_RANGE_CHECK);
             } else if (max <= TWOBYTES) {
                 // reuse U16
                 rcpreprove.u16_used = 1;
 
                 // first prove that colu - min is in U16
-                lookup_assumes(OPIDS[1], [colu - min], sel, name_range_check);
+                lookup_assumes(OPIDS[1], [colu - min], sel, PIOP_NAME_RANGE_CHECK);
 
                 // second prove that max - colu is in U16
-                lookup_assumes(OPIDS[1], [max - colu], sel, name_range_check);
+                lookup_assumes(OPIDS[1], [max - colu], sel, PIOP_NAME_RANGE_CHECK);
 
             // TODO: This is for the big case, to be decided!
             // } else {
@@ -189,7 +188,7 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
             //     // ChunkChecker(N*nchunks_max, min, max);
 
             //     // Moreover, we should check the decomposition is correct
-            //     permutation_assumes(CHUNK_CHECKER_ID, [colu]);
+            //     permutation_assumes(CHUNK_CHECKER_ID, [colu], name: PIOP_NAME_RANGE_CHECK);
             // }
 
             // TODO: This is for the negative case, to be decided!
@@ -205,10 +204,10 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
             //     // col witness rangeSel;
 
             //     // // first prove that colu - min is in U16
-                   // // lookup_assumes(OPIDS[1], [colu - (PRIME + min)], rangeSel*sel, name_range_check);
+                   // // lookup_assumes(OPIDS[1], [colu - (PRIME + min)], rangeSel*sel, PIOP_NAME_RANGE_CHECK);
 
             //     // // second prove that max - colu is in U16
-                   // // lookup_assumes(OPIDS[1], [max - colu], rangeSel*sel, name_range_check);
+                   // // lookup_assumes(OPIDS[1], [max - colu], rangeSel*sel, PIOP_NAME_RANGE_CHECK);
             }
         }
 
@@ -216,7 +215,7 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
     } else {
         const int opid = opid_process(min, max);
 
-        lookup_assumes(opid, [colu], sel, name_range_check);
+        lookup_assumes(opid, [colu], sel, PIOP_NAME_RANGE_CHECK);
 
         on final airgroup declareRangeAir();
     }
