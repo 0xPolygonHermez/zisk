@@ -1,18 +1,20 @@
 require "std_common.pil";
 
-function sum_assumes(const string type, const int opid, const expr cols[], const expr sel = 1) {
-    update_piop_sum(type, 0, [opid], opid, sel, cols);
+// Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
+
+function sum_assumes(const string name, const int opid, const expr cols[], const expr sel = 1) {
+    update_piop_sum(name, 0, [opid], opid, sel, cols);
 }
 
-function sum_proves(const string type, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
-    update_piop_sum(type, 1, [opid], opid, mul, cols, is_direct);
+function sum_proves(const string name, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
+    update_piop_sum(name, 1, [opid], opid, mul, cols, is_direct);
 }
 
-function sum_assumes_dynamic(const string type, const int opid[], const expr sumid, const expr cols[], const expr sel = 1) {
-    update_piop_sum(type, 0, opid, sumid, sel, cols);
+function sum_assumes_dynamic(const string name, const int opid[], const expr sumid, const expr cols[], const expr sel = 1) {
+    update_piop_sum(name, 0, opid, sumid, sel, cols);
 }
 
-private function init_containers_sum(string type, int opid[]) {
+private function init_containers_sum(string name, int opid[]) {
     container proof.std.gsum {
         // FIX: dynamic arrays not ready
         int opids_count = 0;
@@ -37,7 +39,7 @@ private function init_containers_sum(string type, int opid[]) {
     // Container used for final checks
     for (int i = 0; i < length(opid); i++) {
         container proof.std.gsum.`id${opid[i]}` {
-            string type = type;
+            string name = name;
             int cols;
             int proves = 0;
             int assumes = 0;
@@ -50,7 +52,7 @@ private function initial_checks_sum(int proves, int opid[], expr cols[]) {
 
     if (cols_count < 1) {
         string side = proves ? "proves" : "assumes";
-        error(`The number of columns in ${side} of ${type} #${opid} must be at least 1`);
+        error(`The number of columns in ${side} of ${name} #${opid} must be at least 1`);
     }
 
     for (int i = 0; i < length(opid); i++) {
@@ -82,14 +84,14 @@ private function initial_checks_sum(int proves, int opid[], expr cols[]) {
  *      · 1] defines the running grandsum constraints for each air
  *      · 2] add each airgroupvalue of each airgroup to the running sum
  *      · 3] checks that the overall sum is zero
- * @param type type of the PIOP
+ * @param name name of the PIOP
  * @param proves boolean indicating if updating a proves or a assumes
  * @param opid (unique) identifier of the PIOP
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_sum(string type, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
-    init_containers_sum(type, opid);
+private function update_piop_sum(string name, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
+    init_containers_sum(name, opid);
 
     if (!is_direct) initial_checks_sum(proves, opid, cols);
 
@@ -249,10 +251,13 @@ private function check_gsum_was_completed() {
     for (int i = 0; i < proof.std.gsum.opids_count; i++) {
         int opid = proof.std.gsum.opids[i];
         use proof.std.gsum.`id${opid}`;
+
+        if (name == "isolated") continue;
+
         if (assumes == 0) {
-            error(`${type} #${opid} defined without assume`);
+            error(`${name} #${opid} defined without assume`);
         } else if (proves == 0) {
-            error(`${type} #${opid} defined without proves`);
+            error(`${name} #${opid} defined without proves`);
         }
     }
 }
