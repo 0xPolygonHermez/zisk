@@ -86,7 +86,7 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_connect(OPID[0]);
 
     connection_init(OPID[1], [a[1], b[1], c[1]]);
-    connection_update_one_cell(OPID[1], [c[1],1,c[1],1], N/2);
+    connection_update_one_cell(OPID[1], [c[1],1,c[1],1]);
     connection_update_one_cell(OPID[1], [c[1],2,c[1],3], N/2);
     connection_connect(OPID[1]);
 
@@ -94,7 +94,7 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_update_one_cell(OPID[2], [c[2],1,a[2],2], N/2);
     row[0] = [b[2],3,c[2],0];
     row[1] = [a[2],1,c[2],0];
-    connection_update_one_cell_batch(OPID[2], row, N/2);
+    connection_update_one_cell_batch(OPID[2], row);
     connection_connect(OPID[2]);
 
     connection_init(OPID[3], [a[3], b[3], c[3], d[3]]);
@@ -107,6 +107,7 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_connect(OPID[3]);
 
     connection_init(OPID[4], [a[4], b[4], c[4], d[4]]);
+    connection_update_multiple_cells(OPID[4], [b[4],5,a[4],1,c[4],8]);
     connection_update_multiple_cells(OPID[4], [d[4],2,d[4],3,b[4],0], N/2);
     connection_connect(OPID[4]);
 };
