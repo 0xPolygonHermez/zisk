@@ -18,7 +18,7 @@ const int PIOP_NAME_RANGE_CHECK = 3;
 const int PIOP_NAME_CONNECTION = 4;
 const int PIOP_NAME_ISOLATED = 5;
 
-function get_name(const int name): string {
+function get_piop_name(const int name): string {
     switch (name) {
         case PIOP_NAME_PERMUTATION:
             return "Permutation";

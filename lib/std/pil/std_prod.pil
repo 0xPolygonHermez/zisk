@@ -203,7 +203,7 @@ private function check_gprod_was_completed() {
 
         if (name == PIOP_NAME_ISOLATED) continue;
 
-        const string name_str = get_name(name);
+        const string name_str = get_piop_name(name);
 
         if (assumes == 0) {
             error(`${name_str} #${opid} defined without assume`);

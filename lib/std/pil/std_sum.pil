@@ -34,6 +34,7 @@ private function init_containers_sum(int name, int opid[]) {
         int gsum_nargs = 0;
         expr gsum_s[100];
         expr gsum_e[100];
+        int gsum_t[100]; // Used for optimization
     }
 
     // Container used for final checks
@@ -113,7 +114,11 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         use air.std.gsum;
         gsum_s[gsum_nargs] = proves ? sel : 0-sel; // TODO: Fix
         gsum_e[gsum_nargs] = cols_compressed;
+        gsum_t[gsum_nargs] = proves;
         gsum_nargs++;
+
+        // TODO: Uncomment when expression comparison is implemented
+        // on final air find_repeated_proves();
 
         // define constraints at the air level
         on final air piop_gsum_air();
@@ -122,10 +127,27 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         on final airgroup piop_gsum_airgroup();
     }
 
-    // TODO: look for repeated proves/assumes's in both lookups and range checks and, if found, optimize ???
-
     // update constraints at the proof level
     on final proof piop_gsum_proof();
+}
+
+/**
+ * Look for repeated proves in the same air
+ * Note: At this moment, it can only be optimized at the air level, but it would be more usefull to do it at the proof level
+ */
+private function find_repeated_proves() {
+    use air.std.gsum;
+
+    for (int i = 0; i < gsum_nargs; i++) {
+        if (gsum_t[i] == 0) continue;
+        for (int j = i + 1; j < gsum_nargs; j++) {
+            if (gsum_t[j] == 0) continue;
+            if (gsum_e[i] == gsum_e[j]) {
+                println(`Proves of Lookups ${i} and ${j} are the same, consider merging them`);
+            }
+        }
+    }
+
 }
 
 /**
@@ -254,9 +276,7 @@ private function check_gsum_was_completed() {
 
         if (name == PIOP_NAME_ISOLATED) continue;
 
-        const int name_str = get_name(name);
-        println(get_name(name));
-        println("H",name,name_str);
+        const string name_str = get_piop_name(name);
 
         if (assumes == 0) {
             error(`${name_str} #${opid} defined without assume`);
