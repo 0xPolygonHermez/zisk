@@ -8,6 +8,8 @@ require "std_permutation.pil";
 // and PER_i(X) describe a permutation of the group_domain
 // as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
 
+const int DEFAULT_N = 0;
+
 // Two user interfaces
 
 // 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
@@ -109,7 +111,9 @@ function connection_init(int opid, expr cols[], int bus_type = 0) {
  * connection_init(opid, [a, b]);
  * connection_update_one_cell(opid, [a,1,b,2], N/2);
  */
-function connection_update_one_cell(int opid, expr conn[], int frame_size) {
+function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFAULT_N) {
+    if (frame_size == DEFAULT_N) frame_size = N;
+
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
@@ -157,7 +161,9 @@ function connection_update_one_cell(int opid, expr conn[], int frame_size) {
 /**
  * connection_update_one_cell_batch(opid, [[b,3,c,0],[a,1,c,0]], N/2);
  */
-function connection_update_one_cell_batch(int opid, expr conn[][], int frame_size) {
+function connection_update_one_cell_batch(int opid, expr conn[][], int frame_size = DEFAULT_N) {
+    if (frame_size == DEFAULT_N) frame_size = N;
+
     const int len = length(conn);
     if (len == 0) {
         error(`Connection #${opid} cannot be empty`);
@@ -182,7 +188,9 @@ function connection_update_one_cell_batch(int opid, expr conn[][], int frame_siz
  * connection_update_multiple_cells(opid, [d,2,d,3,b,0]);
  * connection_update_multiple_cells(opid, [c,10,b,3,a,65,c,9,c,8], N/2);
  */
-function connection_update_multiple_cells(int opid, expr conn[], int frame_size) {
+function connection_update_multiple_cells(int opid, expr conn[], int frame_size = DEFAULT_N) {
+    if (frame_size == DEFAULT_N) frame_size = N;
+
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
