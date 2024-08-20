@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zisk-core = { path = "../../core" }
 sm-arith = { path = "../arith" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
@@ -15,6 +14,4 @@ proofman-common = { workspace = true }
 proofman = { workspace = true }
 
 log = { version = "0.4", default-features = false }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 rayon = "1.10.0"

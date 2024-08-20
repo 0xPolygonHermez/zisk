@@ -21,7 +21,7 @@ impl RoData {
 }
 
 /// ZisK ROM data, including a map address to ZisK instruction
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ZiskRom {
     pub next_init_inst_addr: u64,
     pub insts: HashMap<u64, ZiskInstBuilder>,

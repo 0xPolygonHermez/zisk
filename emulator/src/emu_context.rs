@@ -1,4 +1,4 @@
-use crate::{EmuTrace, Mem};
+use crate::{EmuTrace, Mem, Stats};
 use zisk_core::{write_u64_le, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
 /// ZisK emulator context data container, storing the state of the emuulation
@@ -20,6 +20,8 @@ pub struct EmuContext {
     pub callback_steps: u64,
     pub last_callback_step: u64,
     pub trace: EmuTrace,
+    pub do_stats: bool,
+    pub stats: Stats,
 }
 
 /// RisK emulator context implementation
@@ -44,6 +46,8 @@ impl EmuContext {
             do_callback: false,
             callback_steps: 0,
             last_callback_step: 0,
+            do_stats: false,
+            stats: Stats::default(),
         };
 
         // Check the input data size is inside the proper range

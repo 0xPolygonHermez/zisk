@@ -8,6 +8,7 @@ pub const INVALID_VALUE_S64: i64 = 0xFFFFFFFFFFFFFFF_i64;
 const INITIAL_VALUE: u64 = INVALID_VALUE;
 const INITIAL_VALUE_S64: i64 = INVALID_VALUE_S64;
 
+#[derive(Debug)]
 pub struct ZiskInstBuilder {
     ind_width_set: bool,
     pub i: ZiskInst,
@@ -193,13 +194,7 @@ impl ZiskInstBuilder {
 
     pub fn op(&mut self, optxt: &str) {
         let op = op_from_str(optxt);
-        if op.t == "i" {
-            self.i.is_external_op = false;
-        } else if op.t == "e" {
-            self.i.is_external_op = true;
-        } else {
-            panic!("ZiskInstBuilder::op() found invalid op={}", optxt);
-        }
+        self.i.is_external_op = op.t != "i";
         self.i.op = op.c;
         self.i.op_str = op.n;
     }
