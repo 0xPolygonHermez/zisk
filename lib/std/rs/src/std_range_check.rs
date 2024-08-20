@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 use p3_field::AbstractField;
 use pilout::{pilout::Hint, pilout_proxy::PilOutProxy};
 
-use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_common::{trace,AirInstanceCtx, ExecutionCtx, ProofCtx};
 
 const BYTE: u64 = 255;
 const TWOBYTES: u64 = 65535;
@@ -21,6 +21,10 @@ const STD_RANGE_CHECK_VARIANTS: usize = 3;
 const STD_RANGE_CHECK_AIR_NAMES: [&str; STD_RANGE_CHECK_VARIANTS] =
     ["U8Air", "U16Air", "SpecifiedRanges"];
 
+trace!(U8Air0Row, U8Air0Trace<F> {
+    mul: F,
+});
+
 pub struct StdRangeItem<F> {
     rc_type: StdRangeCheckType,
     range: (F, F), // (min, max)
@@ -28,13 +32,15 @@ pub struct StdRangeItem<F> {
 
 pub struct StdRangeCheck<F> {
     ranges: Vec<StdRangeItem<F>>,
-    inputs: [HashMap<(F, F, F), u64>; STD_RANGE_CHECK_VARIANTS], // (min, max) -> multiplicity
+    inputs: [HashMap<(F, F), u64>; STD_RANGE_CHECK_VARIANTS],    // (min, max) -> multiplicity
     inputs_specified: HashMap<F, u64>,                           // value -> multiplicity
 }
 
 impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Output = F>>
     StdRangeCheck<F>
 {
+    const MY_NAME: &'static str = "STD Range Check";
+
     pub fn new() -> Self {
         Self {
             ranges: Vec::new(),
@@ -92,6 +98,7 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
         let range_check = self.ranges.iter().find(|range| range.range == (min, max));
 
         if range_check.is_none() {
+            // format!("Range not found: [min,max] = [{},{}]", min, max)
             return Err("Range check values not found".into());
         }
 
@@ -152,10 +159,10 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
     }
 
     fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        log::info!("StdRngCk ··· Starting witness computation stage {}", stage);
+        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, stage);
 
         if stage == 1 {
-            let mut available_airs = Vec::new();
+            let mut rc_airs = Vec::new();
             for air_group in pctx.pilout.air_groups() {
                 let airs = air_group.airs().iter().filter(|air| {
                     if let Some(name) = &air.name {
@@ -164,18 +171,29 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
                         false
                     }
                 });
-                available_airs.extend(airs);
+                rc_airs.extend(airs);
             }
 
-            for air in available_airs {
-                // Create a AirInstanceCtx for each available air
+            for air in rc_airs {
                 let num_rows = air.num_rows();
 
-                // NOT necessary in this code
-                //     const subproof = this.subproofs.find(subproof => airInstance.wtnsPols[subproof]);
-                //     if (!subproof) {
-                //         throw new Error(`[${this.name}] Subproof not found.`);
-                //     }
+                let mut buffer = Vec::with_capacity(N);
+
+                let offset = get_offset_c();
+
+                let trace = U8Air0Trace::<F>::map_buffer(&mut buffer, N, offset).unwrap();
+
+                let mut air_instances = pctx.air_instances.write().unwrap();
+
+                air_instances.push(AirInstanceCtx {
+                    air_group_id: air.air_group_id(),
+                    air_id: air.air_id(),
+                    buffer: Some(trace.buffer.unwrap()),
+                });
+
+                // TODO: Now, we should wait until ALL components using the range check have been executed
+
+                // self.inputs
 
                 //     const mul = airInstance.wtnsPols[subproof].mul;
                 //     if (Array.isArray(mul[0])) {
