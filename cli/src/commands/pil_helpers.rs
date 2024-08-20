@@ -54,8 +54,8 @@ struct ColumnCtx {
 
 impl PilHelpersCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
-        println!("");
+        println!("{} Pil-helpers", format!("{: >12}", "Command").bright_green().bold());
+        println!();
 
         // Check if the pilout file exists
         if !self.pilout.exists() {
@@ -66,10 +66,8 @@ impl PilHelpersCmd {
         let pil_helpers_path = self.path.join("pil_helpers");
         if !pil_helpers_path.exists() {
             std::fs::create_dir_all(&pil_helpers_path)?;
-        } else {
-            if !pil_helpers_path.is_dir() {
-                return Err(format!("Path '{}' already exists and is not a folder", pil_helpers_path.display()).into());
-            }
+        } else if !pil_helpers_path.is_dir() {
+            return Err(format!("Path '{}' already exists and is not a folder", pil_helpers_path.display()).into());
         }
 
         let files = ["mod.rs", "pilout.rs"];
@@ -116,12 +114,11 @@ impl PilHelpersCmd {
             for (air_idx, air) in subproof.airs.iter().enumerate() {
                 let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();
                 let contains_key = constant_airs.iter().position(|(name, _, _)| name == &air_name);
-                let idx = if contains_key.is_none() {
+
+                let idx = contains_key.unwrap_or_else(|| {
                     constant_airs.push((air_name.clone(), Vec::new(), "".to_owned()));
                     constant_airs.len() - 1
-                } else {
-                    contains_key.unwrap()
-                };
+                });
 
                 constant_airs[idx].1.push(air_idx);
             }
@@ -149,12 +146,9 @@ impl PilHelpersCmd {
                     })
                     .for_each(|symbol| {
                         let air = wcctxs[subproof_id].airs.get_mut(air_id).unwrap();
-                        let name = symbol.name.splitn(2, '.').nth(1).unwrap_or(&symbol.name);
-                        let r#type = if symbol.dim == 0 {
-                            "Goldilocks".to_string()
-                        } else {
-                            format!("[Goldilocks; {}]", symbol.lengths[0])
-                        };
+                        let name = symbol.name.split_once('.').map(|x| x.1).unwrap_or(&symbol.name);
+                        let r#type =
+                            if symbol.dim == 0 { "F".to_string() } else { format!("[F; {}]", symbol.lengths[0]) };
                         air.columns.push(ColumnCtx { name: name.to_owned(), r#type });
                     });
             }

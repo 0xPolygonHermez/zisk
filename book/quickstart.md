@@ -97,7 +97,7 @@ Let's take a look at the `witness computation` folder. with some files inside. O
 Note: By the time being we are working by default with Goldilocks but we will add soon a new feature to select the finite field to be used.
 
 ```rust
-use proofman::trace;
+use proofman_common::trace;
 use goldilocks::Goldilocks;
 
 trace!(Fibonacci {

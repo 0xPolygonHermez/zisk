@@ -1,6 +1,6 @@
 // use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start, timer_stop_and_log};
 use log::debug;
 use serde::{Deserialize, Deserializer};
 
@@ -134,11 +134,10 @@ pub struct StarkInfo {
     #[serde(rename = "nPublics")]
     pub n_publics: u64,
     // Default value for nSubAirValues is 0
-    #[serde(default, rename = "nSubAirValues")]
+    #[serde(default, rename = "nSubproofValues")]
     pub n_subproof_values: u64,
     #[serde(rename = "nConstants")]
     pub n_constants: u64,
-
     #[serde(default, rename = "nStages")]
     pub n_stages: u32,
 
@@ -195,7 +194,7 @@ impl StarkInfo {
         timer_start!(STARK_INFO_LOAD);
 
         debug!("strkinfo: ··· Loading StarkInfo JSON");
-        let stark_info: StarkInfo = serde_json::from_str(&stark_info_json).expect("Failed to parse JSON file");
+        let stark_info: StarkInfo = serde_json::from_str(stark_info_json).expect("Failed to parse JSON file");
 
         timer_stop_and_log!(STARK_INFO_LOAD);
 

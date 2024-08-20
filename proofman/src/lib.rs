@@ -1,11 +1,11 @@
-mod buffer_allocator;
-mod planner;
 mod proofman;
-pub mod trace;
-pub mod trace_pol;
-mod wcmanager;
+mod witness_component;
+mod witness_executor;
+mod witness_library;
+mod witness_manager;
 
-pub use buffer_allocator::*;
-pub use planner::*;
 pub use proofman::*;
-pub use wcmanager::*;
+pub use witness_component::*;
+pub use witness_executor::*;
+pub use witness_library::*;
+pub use witness_manager::*;

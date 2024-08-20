@@ -7,7 +7,7 @@ use commands::pil_helpers::PilHelpersCmd;
 use commands::prove::ProveCmd;
 // use commands::trace::{TraceSubcommands, TraceCmd};
 use commands::pilout::{PiloutSubcommands, PiloutCmd};
-use util::cli::print_banner;
+use proofman_util::cli::print_banner;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

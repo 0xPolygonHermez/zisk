@@ -11,7 +11,7 @@ pub struct VerificationKey<T> {
 
 impl VerificationKey<Goldilocks> {
     pub fn from_json(verkey_json: &str) -> VerificationKey<Goldilocks> {
-        let verkey: VerificationKey<u64> = serde_json::from_str(&verkey_json).expect("Failed to parse JSON");
+        let verkey: VerificationKey<u64> = serde_json::from_str(verkey_json).expect("Failed to parse JSON");
 
         VerificationKey { const_root: verkey.const_root.iter().map(|x| Goldilocks::from_canonical_u64(*x)).collect() }
     }

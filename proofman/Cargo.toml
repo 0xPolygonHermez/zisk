@@ -7,9 +7,10 @@ edition = "2021"
 libloading = "0.8.4"
 pilout = { path = "../pilout" }
 stark = { path = "../provers/stark" }
+transcript = { path = "../transcript" }
 log = { workspace = true }
 env_logger = { workspace = true }
-wchelpers = { path = "../wchelpers" }
-common = { path = "../common" }
+proofman-common = { path = "../common" }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
+proofman-util = { path = "../util" }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 // use serde_json::Value as JsonValue;
-use util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start, timer_stop_and_log};
 use log::debug;
 use serde::Deserialize;
 
@@ -26,8 +26,8 @@ pub struct GlobalInfo {
 #[derive(Deserialize)]
 pub struct GlobalInfoAir {
     pub name: String,
-    #[serde(rename = "hasCompressor")]
-    pub has_compressor: bool,
+    //#[serde(rename = "hasCompressor")]
+    //pub has_compressor: bool,
 }
 
 #[derive(Deserialize)]
@@ -44,8 +44,8 @@ pub struct GlobalInfoStepsFRI {
 
 impl GlobalInfo {
     pub fn from_file(global_info_path: &PathBuf) -> Self {
-        let global_info_json = std::fs::read_to_string(&global_info_path)
-            .expect(format!("Failed to read file {}", global_info_path.display()).as_str());
+        let global_info_json = std::fs::read_to_string(global_info_path)
+            .unwrap_or_else(|_| panic!("Failed to read file {}", global_info_path.display()));
 
         GlobalInfo::from_json(&global_info_json)
     }
@@ -54,7 +54,7 @@ impl GlobalInfo {
         timer_start!(GLOBAL_INFO_LOAD);
 
         debug!("glblinfo: ··· Loading GlobalInfo JSON");
-        let global_info: GlobalInfo = serde_json::from_str(&global_info_json).expect("Failed to parse JSON file");
+        let global_info: GlobalInfo = serde_json::from_str(global_info_json).expect("Failed to parse JSON file");
 
         timer_stop_and_log!(GLOBAL_INFO_LOAD);
 

@@ -1,5 +1,5 @@
 [package]
-name = "common"
+name = "proofman-common"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,4 +7,5 @@ edition = "2021"
 pilout = { path = "../pilout" }
 log = { workspace = true }
 transcript = { path = "../transcript" }
+p3-field = { workspace = true }
 

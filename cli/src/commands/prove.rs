@@ -1,12 +1,6 @@
 // extern crate env_logger;
 use clap::{Parser, ValueEnum};
-use std::{
-    error::Error,
-    fmt::Display,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::PathBuf,
-};
+use std::{fmt::Display, path::PathBuf};
 use colored::Colorize;
 
 use p3_goldilocks::Goldilocks;
@@ -47,11 +41,17 @@ impl Display for Field {
 pub struct ProveCmd {
     /// Witness computation dynamic library path
     #[clap(short, long)]
-    pub wc_lib: PathBuf,
+    pub witness_lib: PathBuf,
+
+    /// ROM file path
+    /// This is the path to the ROM file that the witness computation dynamic library will use
+    /// to generate the witness.
+    #[clap(short, long)]
+    pub rom: Option<PathBuf>,
 
     /// Public inputs path
-    #[clap(short, long)]
-    pub public_inputs: Option<PathBuf>,
+    #[clap(short = 'i', long)]
+    pub public_inputs: PathBuf,
 
     /// Setup folder path
     #[clap(long)]
@@ -67,56 +67,20 @@ pub struct ProveCmd {
 
 impl ProveCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), "Prove");
-        println!("");
+        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
+        println!();
 
         type GL = Goldilocks;
 
-        let mut public_inputs_u8 = Vec::new();
-        if self.public_inputs.is_some() {
-            public_inputs_u8 = Self::read_hex_values_from_file(self.public_inputs.as_ref().unwrap().to_str().unwrap())?;
-        }
-
-        match self.field {
-            Field::Goldilocks => {
-                let _proof: Result<Vec<Goldilocks>, Box<dyn Error>> =
-                    ProofMan::<GL>::generate_proof(self.wc_lib.clone(), self.proving_key.clone(), public_inputs_u8);
-            }
-        }
+        let _proof = match self.field {
+            Field::Goldilocks => ProofMan::<GL>::generate_proof(
+                self.witness_lib.clone(),
+                self.rom.clone(),
+                self.public_inputs.clone(),
+                self.proving_key.clone(),
+            )?,
+        };
 
         Ok(())
-    }
-
-    fn read_hex_values_from_file(filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        let file = File::open(filename)?;
-        let reader = BufReader::new(file);
-
-        let mut hex_values = Vec::new();
-
-        for line_result in reader.lines() {
-            let line = line_result?;
-
-            if line.starts_with("0x") {
-                let hex_digits = &line[2..]; // Skip "0x" prefix
-                let mut chars = hex_digits.chars();
-
-                while let Some(char1) = chars.next() {
-                    if let Some(char2) = chars.next() {
-                        let hex_str = format!("{}{}", char1, char2);
-                        if let Ok(hex_value) = u8::from_str_radix(&hex_str, 16) {
-                            hex_values.push(hex_value);
-                        } else {
-                            eprintln!("Error parsing hexadecimal value: {}", hex_str);
-                        }
-                    } else {
-                        eprintln!("Odd number of hexadecimal digits: {}", hex_digits);
-                    }
-                }
-            } else {
-                eprintln!("Invalid line format: {}", line);
-            }
-        }
-
-        Ok(hex_values)
     }
 }

@@ -6,9 +6,9 @@ use std::io::Read;
 use std::ops::Deref;
 
 use log::{debug, trace};
-use util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start, timer_stop_and_log};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PilOutProxy {
     pub pilout: PilOut,
 }
@@ -135,12 +135,5 @@ impl Deref for PilOutProxy {
 
     fn deref(&self) -> &Self::Target {
         &self.pilout
-    }
-}
-
-// TODO! To be removed
-impl Default for PilOutProxy {
-    fn default() -> Self {
-        PilOutProxy { pilout: PilOut::default() }
     }
 }

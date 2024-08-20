@@ -1,8 +1,8 @@
 [package]
-name = "util"
+name = "proofman-util"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sysinfo = "0.30"
+sysinfo = "0.31.2"
 colored = "2"

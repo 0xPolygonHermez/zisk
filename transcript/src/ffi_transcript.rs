@@ -38,6 +38,6 @@ impl FFITranscript {
 
     /// Frees the memory of the transcript
     pub fn free(&self) {
-        transcript_free_c(self.p_transcript as *mut c_void, self.element_type);
+        transcript_free_c(self.p_transcript, self.element_type);
     }
 }
