@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use std::any::type_name;
 
-use proofman_common::{BufferAllocator, Prover, ProverStatus, ProofCtx, HintFieldInfo};
+use proofman_common::{BufferAllocator, Prover, ProverStatus, ProofCtx};
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
@@ -334,7 +334,8 @@ impl<F: AbstractField> StarkProver<F> {
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
 
-        self.p_fri_pol = Some(compute_fri_pol_c(p_stark, stark_info.n_stages as u64 + 2, p_params, self.p_steps.unwrap()));
+        self.p_fri_pol =
+            Some(compute_fri_pol_c(p_stark, stark_info.n_stages as u64 + 2, p_params, self.p_steps.unwrap()));
     }
 
     fn compute_fri_folding(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript) {

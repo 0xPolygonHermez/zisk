@@ -481,23 +481,17 @@ pub fn chelpers_steps_new_c(p_stark_info: *mut c_void, p_chelpers: *mut c_void, 
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn set_commit_calculated_c(p_chelpers_steps: *mut c_void, id: u64) {
-    unsafe {
-        set_commit_calculated(p_chelpers_steps, id)
-    }
+    unsafe { set_commit_calculated(p_chelpers_steps, id) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn can_stage_be_calculated_c(p_chelpers_steps: *mut c_void, step: u64) {
-    unsafe {
-        can_stage_be_calculated(p_chelpers_steps, step)
-    }
+    unsafe { can_stage_be_calculated(p_chelpers_steps, step) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn can_impols_be_calculated_c(p_chelpers_steps: *mut c_void, step: u64) {
-    unsafe {
-        can_impols_be_calculated(p_chelpers_steps, step)
-    }
+    unsafe { can_impols_be_calculated(p_chelpers_steps, step) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -516,7 +510,7 @@ pub fn set_hint_field_c(p_chelpers_steps: *mut c_void, values: *mut c_void, hint
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_hint_field_c(p_chelpers_steps: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool) ->  *mut c_void  {
+pub fn get_hint_field_c(p_chelpers_steps: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool) -> *mut c_void {
     let field_name = CString::new(hint_field_name).unwrap();
     unsafe { get_hint_field(p_chelpers_steps, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest) }
 }
@@ -534,7 +528,6 @@ pub fn save_proof_c<T>(
 ) {
     trace!("{}: ··· {}", "ffi     ", "save_proof: This is a mock call because there is no linked library");
 }
-
 
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_new_c(_p_starks: *mut c_void) -> *mut c_void {
@@ -665,6 +658,7 @@ pub fn init_hints_c() {
 #[cfg(feature = "no_lib_link")]
 pub fn steps_params_new_c(
     _p_stark: *mut c_void,
+    _p_const_pols: *mut c_void,
     _p_challenges: *mut c_void,
     _p_subproof_values: *mut c_void,
     _p_evals: *mut c_void,
@@ -816,8 +810,6 @@ pub fn set_bool_vector_value_c(_p_vector: *mut c_void, _index: u64, _value: bool
     trace!("{}: ··· {}", "ffi     ", "set_bool_vector_value: This is a mock call because there is no linked library");
 }
 
-
-
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_hash_c(_pStarks: *mut c_void, _pHhash: *mut c_void, _pBuffer: *mut c_void, _nElements: u64) {
     trace!("{}: ··· {}", "ffi     ", "calculate_hash: This is a mock call because there is no linked library");
@@ -943,20 +935,55 @@ pub fn goldilocks_linear_hash_c(_p_input: *mut c_void, _p_output: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn chelpers_steps_new_c(_p_stark_info: *mut c_void, _p_chelpers: *mut c_void, _p_params: *mut c_void) -> *mut c_void {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "chelpers_steps_new_c: This is a mock call because there is no linked library"
-    );
+pub fn chelpers_steps_new_c(
+    _p_stark_info: *mut c_void,
+    _p_chelpers: *mut c_void,
+    _p_params: *mut c_void,
+) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "chelpers_steps_new_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
 pub fn set_commit_calculated_c(_p_chelpers_steps: *mut c_void, _id: u64) {
+    trace!("{}: ··· {}", "ffi     ", "set_commit_calculated_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn can_stage_be_calculated_c(_p_chelpers_steps: *mut c_void, _step: u64) {
     trace!(
         "{}: ··· {}",
         "ffi     ",
-        "set_commit_calculated_c: This is a mock call because there is no linked library"
+        "can_stage_be_calculated_c: This is a mock call because there is no linked library"
     );
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn can_impols_be_calculated_c(_p_chelpers_steps: *mut c_void, _step: u64) {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "can_impols_be_calculated_c: This is a mock call because there is no linked library"
+    );
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn chelpers_steps_free_c(_p_chelpers_steps: *mut c_void) {
+    trace!("{}: ··· {}", "ffi     ", "chelpers_steps_free_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_hint_field_c(_p_chelpers_steps: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) {
+    trace!("{}: ··· {}", "ffi     ", "set_hint_field_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_hint_field_c(
+    _p_chelpers_steps: *mut c_void,
+    _hint_id: u64,
+    _hint_field_name: &str,
+    _dest: bool,
+) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "get_hint_field_c: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
 }

@@ -9,9 +9,10 @@ pub enum HintFieldType {
 }
 
 #[repr(C)]
+#[allow(dead_code)]
 pub struct HintFieldInfo<F: AbstractField> {
     size: u64,
-    type_: HintFieldType, 
+    type_: HintFieldType,
     dest: *mut F,
 }
 
