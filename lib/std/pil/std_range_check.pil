@@ -6,7 +6,7 @@ require "std_lookup.pil";
 // so we'll try to "absorb" all the introduced ranges into some of the default ranges.
 // Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
 
-const int MAX_LEN = (PRIME - 1) / 2;
+const int MAX_RANGE_LEN = (PRIME - 1) / 2;
 
 const int OPIDS[2] = [100, 101];
 int last_assigned_opid = OPIDS[length(OPIDS) - 1];
@@ -235,8 +235,8 @@ private function range_validator(const int min, const int max) {
         }
 
         println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
-    } else if (max - min + 1 > MAX_LEN) {
-        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_LEN}`);
+    } else if (max - min + 1 > MAX_RANGE_LEN) {
+        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_RANGE_LEN}`);
     } else if (max >= PRIME) {
         error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
     } else if (min <= -PRIME) {
