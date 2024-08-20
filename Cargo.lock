@@ -1323,6 +1323,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "bytes",
  "log",
@@ -1462,6 +1463,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "env_logger",
  "libloading",
@@ -1478,8 +1480,10 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "log",
+ "p3-field",
  "pilout",
  "transcript",
 ]
@@ -1487,6 +1491,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "colored",
  "sysinfo",
@@ -2074,12 +2079,14 @@ name = "sm-main"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "rayon",
  "sm-arith",
  "sm-common",
  "sm-mem",
+ "zisk-core",
  "zisk-pil",
  "ziskemu",
 ]
@@ -2153,6 +2160,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "log",
  "p3-field",
@@ -2169,6 +2177,7 @@ dependencies = [
 [[package]]
 name = "starks-lib-c"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "log",
 ]
@@ -2465,6 +2474,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#1080b79fe754a23d950c14f903671a28ada249e1"
 dependencies = [
  "starks-lib-c",
 ]
