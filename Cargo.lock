@@ -283,9 +283,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.156"
+version = "0.2.158"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5f43f184355eefb8d17fc948dbecf6c13be3c141f20d834ae842193a448c72a"
+checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
 
 [[package]]
 name = "libloading"
@@ -308,10 +308,6 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
-
-[[package]]
-name = "lookup-rs"
-version = "0.1.0"
 
 [[package]]
 name = "memchr"
@@ -510,7 +506,6 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rayon",
- "witness-helpers",
 ]
 
 [[package]]
@@ -572,7 +567,6 @@ dependencies = [
  "proofman-util",
  "stark",
  "transcript",
- "witness-helpers",
 ]
 
 [[package]]
@@ -580,6 +574,7 @@ name = "proofman-common"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "pilout",
  "transcript",
 ]
@@ -815,9 +810,9 @@ checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
 
 [[package]]
 name = "syn"
-version = "2.0.74"
+version = "2.0.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fceb41e3d546d0bd83421d3409b1460cc7444cd389341a4c880fe7a042cb3d7"
+checksum = "f6af063034fc1935ede7be0122941bafa9bacb949334d090b77ca98b5817c7d9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1139,13 +1134,6 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
-
-[[package]]
-name = "witness-helpers"
-version = "0.1.0"
-dependencies = [
- "proofman-common",
-]
 
 [[package]]
 name = "zerocopy"

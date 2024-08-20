@@ -4,16 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="witness" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="witness" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="witness" }
-# witness-helpers = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="witness" }
-# pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="witness" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
 proofman-common = { path = "../../../../pil2-proofman/common" }
 proofman = { path = "../../../../pil2-proofman/proofman" }
 proofman-util = { path = "../../../../pil2-proofman/util" }
-witness-helpers = { path = "../../../../pil2-proofman/witness-helpers" }
 pilout = { path = "../../../../pil2-proofman/pilout" }
 
 log = { version = "0.4", default-features = false }

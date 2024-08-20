@@ -1,9 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{AirInstance, AirInstanceCtx, ExecutionCtx, ProofCtx};
 use rayon::Scope;
-use witness_helpers::WitnessComponent;
 
 use crate::{Provable, StdOp, StdOpResult, StdProd, StdRangeCheck, StdRangeCheckOp, StdSum};
 
@@ -45,7 +44,7 @@ impl<F> WitnessComponent<F> for Std {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &AirInstance,
+        air_instance: &AirInstanceCtx<F>,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
