@@ -1,5 +1,6 @@
 use starks_lib_c::get_hint_field_c;
 
+use std::ops::Index;
 use ::std::os::raw::c_void;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +25,37 @@ pub enum HintFieldValue<F> {
     FieldExtended([F; 3]),
     Column(Vec<F>),
     ColumnExtended(Vec<[F; 3]>),
+}
+
+// pub enum HintFieldReference<'a, F> {
+//     Field(&'a F),
+//     FieldArray(&'a [F; 3]),
+// }
+
+// impl<'a, F> Index<usize> for HintFieldValue<F> {
+//     type Output = HintFieldReference<'a, F>;
+
+//     fn index(&self, index: usize) -> &Self::Output {
+//         match self {
+//             HintFieldValue::Field(value) => self,
+//             HintFieldValue::FieldExtended(array) => self,
+//             HintFieldValue::Column(vec) => &self[index],
+//             HintFieldValue::ColumnExtended(vec) => &self[index],
+//         }
+//     }
+// }
+
+impl<F> Index<usize> for HintFieldValue<F> {
+    type Output = HintFieldValue<F>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            HintFieldValue::Field(_value) => self,
+            HintFieldValue::FieldExtended(_array) => self,
+            HintFieldValue::Column(_vec) => &self[index],
+            HintFieldValue::ColumnExtended(_vec) => &self[index],
+        }
+    }
 }
 
 pub struct HintCol;

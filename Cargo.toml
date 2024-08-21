@@ -2,6 +2,7 @@
 members = [
     "cli",
     "common",
+    "hints",
     "provers/stark",
     "provers/starks-lib-c",
     "pilout",
