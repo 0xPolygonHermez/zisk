@@ -7,14 +7,9 @@ use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
-use sm_arith::ArithSM;
-use sm_arith_32::Arith32SM;
-use sm_arith_3264::Arith3264SM;
-use sm_arith_64::Arith64SM;
+use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
 use sm_main::MainSM;
-use sm_mem::MemSM;
-use sm_mem_aligned::MemAlignedSM;
-use sm_mem_unaligned::MemUnalignedSM;
+use sm_mem::{MemAlignedSM, MemSM, MemUnalignedSM};
 
 pub struct ZiskWitness<F> {
     pub proving_key_path: PathBuf,

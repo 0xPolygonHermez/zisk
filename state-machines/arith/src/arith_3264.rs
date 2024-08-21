@@ -1,17 +1,12 @@
 use std::{
     mem,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
-    },
+    sync::{Arc, Mutex},
 };
-
-use std::{sync::mpsc, thread};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
-use sm_common::{Arith3264Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
+use sm_common::{Arith3264Op, OpResult, Provable};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
@@ -49,9 +44,9 @@ impl Arith3264SM {
 impl<F> WitnessComponent<F> for Arith3264SM {
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: usize,
-        pctx: &mut ProofCtx<F>,
+        _stage: u32,
+        _air_instance: usize,
+        _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
     ) {
     }
@@ -73,7 +68,7 @@ impl Provable<Arith3264Op, OpResult> for Arith3264SM {
             if is_last || inputs.len() >= PROVE_CHUNK_SIZE {
                 let _inputs = mem::take(&mut *inputs);
 
-                scope.spawn(move |scope| {
+                scope.spawn(move |_scope| {
                     println!(
                         "Arith32: Proving [{:?}..{:?}]",
                         _inputs[0],

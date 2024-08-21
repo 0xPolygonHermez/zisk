@@ -1961,90 +1961,12 @@ dependencies = [
  "proofman",
  "proofman-common",
  "rayon",
- "sm-arith-32",
- "sm-arith-3264",
- "sm-arith-64",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-arith-32"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-arith-3264"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-arith-64"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
  "sm-common",
  "zisk-core",
 ]
 
 [[package]]
 name = "sm-binary"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-binary-32",
- "sm-binary-3264",
- "sm-binary-64",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-binary-32"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-binary-3264"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-binary-64"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -2093,32 +2015,6 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "sm-mem-aligned",
- "sm-mem-unaligned",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-mem-aligned"
-version = "0.1.0"
-dependencies = [
- "log",
- "proofman",
- "proofman-common",
- "rayon",
- "sm-common",
- "zisk-core",
-]
-
-[[package]]
-name = "sm-mem-unaligned"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -3027,15 +2923,10 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "sm-arith",
- "sm-arith-32",
- "sm-arith-3264",
- "sm-arith-64",
  "sm-common",
  "sm-freq-ops",
  "sm-main",
  "sm-mem",
- "sm-mem-aligned",
- "sm-mem-unaligned",
  "zisk-pil",
 ]
 

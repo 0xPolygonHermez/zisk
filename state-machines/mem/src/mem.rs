@@ -1,15 +1,7 @@
-use log::debug;
+use crate::{MemAlignedSM, MemUnalignedSM};
 use rayon::Scope;
-use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, Sessionable, Sessions};
-use sm_mem_aligned::MemAlignedSM;
-use sm_mem_unaligned::MemUnalignedSM;
-use std::{
-    cell::RefCell,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
-    },
-};
+use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
+use std::sync::{Arc, Mutex};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
@@ -46,9 +38,9 @@ impl MemSM {
 impl<F> WitnessComponent<F> for MemSM {
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: usize,
-        pctx: &mut ProofCtx<F>,
+        _stage: u32,
+        _air_instance: usize,
+        _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
     ) {
     }
