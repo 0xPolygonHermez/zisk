@@ -1,26 +1,14 @@
-use std::{
-    mem,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
-    },
-};
+use std::sync::{Arc, Mutex};
 
-use std::{fmt::Debug, sync::mpsc, thread};
-
+use crate::{Binary3264SM, Binary32SM, Binary64SM};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
-use sm_binary_32::Binary32SM;
-use sm_binary_3264::Binary3264SM;
-use sm_binary_64::Binary64SM;
-use sm_common::{
-    Binary3264Op, Binary32Op, Binary64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
-    WorkerTask,
-};
+use sm_common::{Binary3264Op, Binary32Op, Binary64Op, OpResult, Provable};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
+#[allow(dead_code)]
 pub struct BinarySM {
     inputs32: Mutex<Vec<Binary32Op>>,
     inputs64: Mutex<Vec<Binary64Op>>,
@@ -54,10 +42,10 @@ impl BinarySM {
 impl<F> WitnessComponent<F> for BinarySM {
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: usize,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _stage: u32,
+        _air_instance: usize,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
     ) {
     }
 }
@@ -79,16 +67,16 @@ impl Provable<Binary3264Op, OpResult> for BinarySM {
         // TODO Split the operations into 32 and 64 bit operations in parallel
         for operation in operations {
             match operation {
-                Binary3264Op::And32(a, b) | Binary3264Op::And32(a, b) => {
+                Binary3264Op::And32(_, _) => {
                     inputs32.push(operation.clone().into());
                 }
-                Binary3264Op::And64(a, b) | Binary3264Op::And64(a, b) => {
+                Binary3264Op::And64(_, _) => {
                     inputs64.push(operation.clone().into());
                 }
-                Binary3264Op::Or32(a, b) | Binary3264Op::Or32(a, b) => {
+                Binary3264Op::Or32(_, _) => {
                     inputs32.push(operation.clone().into());
                 }
-                Binary3264Op::Or64(a, b) | Binary3264Op::Or64(a, b) => {
+                Binary3264Op::Or64(_, _) => {
                     inputs64.push(operation.clone().into());
                 }
             }

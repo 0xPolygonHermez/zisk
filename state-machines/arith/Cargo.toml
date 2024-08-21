@@ -6,9 +6,6 @@ edition = "2021"
 [dependencies]
 zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
-sm-arith-32 = { path = "../arith-32" }
-sm-arith-64 = { path = "../arith-64" }
-sm-arith-3264 = { path = "../arith-3264" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }

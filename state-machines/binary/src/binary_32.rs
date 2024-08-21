@@ -1,12 +1,7 @@
 use std::{
     mem,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
-    },
+    sync::{Arc, Mutex},
 };
-
-use std::{sync::mpsc, thread};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};

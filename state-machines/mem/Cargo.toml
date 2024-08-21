@@ -5,8 +5,6 @@ edition = "2021"
 
 [dependencies]
 sm-common = { path = "../common" }
-sm-mem-aligned = { path = "../mem-aligned" }
-sm-mem-unaligned = { path = "../mem-unaligned" }
 zisk-core = { path = "../../core" }
 
 proofman-common = { workspace = true }
