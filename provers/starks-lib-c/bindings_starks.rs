@@ -368,6 +368,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z18verify_constraintsPvm"]
+    pub fn verify_constraints(pCHelpersSteps: *mut ::std::os::raw::c_void, step: u64) -> bool;
+}
+extern "C" {
     #[link_name = "\u{1}_Z21set_commit_calculatedPvm"]
     pub fn set_commit_calculated(pCHelpersSteps: *mut ::std::os::raw::c_void, id: u64);
 }

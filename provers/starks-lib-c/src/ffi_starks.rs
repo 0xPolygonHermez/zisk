@@ -515,6 +515,14 @@ pub fn get_hint_field_c(p_chelpers_steps: *mut c_void, hint_id: u64, hint_field_
     unsafe { get_hint_field(p_chelpers_steps, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest) }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn verify_constraints_c(
+    p_chelpers_steps: *mut c_void,
+    stage_id: u64,
+) -> bool {
+    unsafe { verify_constraints(p_chelpers_steps, stage_id) }
+}
+
 // ------------------------
 // MOCK METHODS FOR TESTING
 // ------------------------
@@ -986,4 +994,13 @@ pub fn get_hint_field_c(
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_field_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn verify_constraints_c(
+    _p_chelpers_steps: *mut c_void,
+    _stage_id: u64,
+) -> bool {
+    trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
+    true
 }

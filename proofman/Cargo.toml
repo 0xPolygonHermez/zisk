@@ -14,3 +14,4 @@ proofman-common = { path = "../common" }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
 proofman-util = { path = "../util" }
+colored = "2"
