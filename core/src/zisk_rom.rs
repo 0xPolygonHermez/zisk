@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 
-use crate::{ZiskInst, ROM_ADDR, ROM_ENTRY, SRC_IMM, SRC_MEM, STORE_IND, STORE_MEM}; /* TODO: Ask Jordi.  b_offset_imm0 is signed, so it could easily
-                                                                                     * become 0xFFFFFFFFFFFFFFFF */
-use crate::{ZiskInstBuilder, SRC_IND, SRC_SP, SRC_STEP}; // TODO: Ask Jordi.
+use crate::{
+    ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND,
+    STORE_MEM,
+};
+
+#[cfg(feature = "sp")]
+use crate::SRC_SP;
 
 /// RO data structure
 #[derive(Debug, Default)]
@@ -100,6 +104,7 @@ impl ZiskRom {
             if i.store_ra {
                 inst_json["store_ra"] = i.store_ra.into();
             }
+            #[cfg(feature = "sp")]
             if i.store_use_sp {
                 inst_json["store_use_sp"] = i.store_use_sp.into();
             }
@@ -110,12 +115,14 @@ impl ZiskRom {
             if i.set_pc {
                 inst_json["set_pc"] = i.set_pc.into();
             }
+            #[cfg(feature = "sp")]
             if i.set_sp {
                 inst_json["set_sp"] = i.set_sp.into();
             }
             if i.ind_width != 0 {
                 inst_json["ind_width"] = i.ind_width.into();
             }
+            #[cfg(feature = "sp")]
             if i.inc_sp != 0 {
                 inst_json["inc_sp"] = i.inc_sp.into();
             }
@@ -128,9 +135,11 @@ impl ZiskRom {
             if i.a_src == SRC_STEP {
                 inst_json["a_src_step"] = json::JsonValue::from(1);
             }
+            #[cfg(feature = "sp")]
             if i.a_src == SRC_SP {
                 inst_json["a_src_sp"] = json::JsonValue::from(1);
             }
+            #[cfg(feature = "sp")]
             if i.a_use_sp_imm1 != 0 {
                 inst_json["a_use_sp_imm1"] = i.a_use_sp_imm1.into();
             }
@@ -143,6 +152,7 @@ impl ZiskRom {
             if i.b_src == SRC_IND {
                 inst_json["b_src_ind"] = json::JsonValue::from(1);
             }
+            #[cfg(feature = "sp")]
             if i.b_use_sp_imm1 != 0 {
                 inst_json["b_use_sp_imm1"] = i.b_use_sp_imm1.into();
             }
@@ -199,22 +209,44 @@ impl ZiskRom {
         for key in &keys {
             let i = &self.insts[key].i;
             let rom_flags = self.get_rom_flags(i);
-            *s += &format!(
-                "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
-                key,
-                rom_flags,
-                i.op,
-                i.a_offset_imm0,
-                i.b_offset_imm0,
-                i.ind_width,
-                i.store_offset,
-                i.jmp_offset1,
-                i.jmp_offset2,
-                i.inc_sp,
-                i.b_use_sp_imm1,
-                i.op_str,
-                i.verbose,
-            );
+
+            #[cfg(feature = "sp")]
+            {
+                *s += &format!(
+                    "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
+                    key,
+                    rom_flags,
+                    i.op,
+                    i.a_offset_imm0,
+                    i.b_offset_imm0,
+                    i.ind_width,
+                    i.store_offset,
+                    i.jmp_offset1,
+                    i.jmp_offset2,
+                    i.inc_sp,
+                    i.b_use_sp_imm1,
+                    i.op_str,
+                    i.verbose,
+                );
+            }
+
+            #[cfg(not(feature = "sp"))]
+            {
+                *s += &format!(
+                    "romLine({},{},{},{},{},{},{},{},{}); // {}: {}\n",
+                    key,
+                    rom_flags,
+                    i.op,
+                    i.a_offset_imm0,
+                    i.b_offset_imm0,
+                    i.ind_width,
+                    i.store_offset,
+                    i.jmp_offset1,
+                    i.jmp_offset2,
+                    i.op_str,
+                    i.verbose,
+                );
+            }
         }
         println!(
             "ZiskRom::save_to_pil() {} bytes, {} instructions, {:02} bytes/inst",
@@ -261,10 +293,13 @@ impl ZiskRom {
             v.extend(aux);
             aux = i.jmp_offset2.to_le_bytes();
             v.extend(aux);
-            aux = i.inc_sp.to_le_bytes();
-            v.extend(aux);
-            aux = i.b_use_sp_imm1.to_le_bytes();
-            v.extend(aux);
+            #[cfg(feature = "sp")]
+            {
+                aux = i.inc_sp.to_le_bytes();
+                v.extend(aux);
+                aux = i.b_use_sp_imm1.to_le_bytes();
+                v.extend(aux);
+            }
         }
         println!(
             "ZiskRom::save_to_bin() {} bytes, {} instructions, {:02} bytes/inst",
@@ -320,22 +355,38 @@ impl ZiskRom {
     }
 
     pub fn get_rom_flags(&self, i: &ZiskInst) -> u64 {
-        let rom_flags: u64 = (if i.a_src == SRC_IMM { 1 } else { 0 }) +
-            2 * (if i.a_src == SRC_MEM { 1 } else { 0 }) +
-            4 * (if i.b_src == SRC_IMM { 1 } else { 0 }) +
-            8 * (if i.b_src == SRC_MEM { 1 } else { 0 }) +
-            16 * (if i.store_ra { 1 } else { 0 }) +
-            32 * (if i.store == STORE_MEM { 1 } else { 0 }) +
-            64 * (if i.store == STORE_IND { 1 } else { 0 }) +
-            128 * (if i.set_pc { 1 } else { 0 }) +
-            256 * (if i.m32 { 1 } else { 0 }) +
-            512 * (if i.end { 1 } else { 0 }) +
-            1024 * (if i.is_external_op { 1 } else { 0 }) +
-            2048 * (if i.a_src == SRC_SP { 1 } else { 0 }) +
-            4096 * (if i.a_use_sp_imm1 == 1 { 1 } else { 0 }) +
-            8192 * (if i.a_src == SRC_STEP { 1 } else { 0 }) +
-            16384 * (if i.b_src == SRC_IND { 1 } else { 0 }) +
-            32768 * (if i.store_use_sp { 1 } else { 0 });
+        #[cfg(feature = "sp")]
+        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
+            ((i.a_src == SRC_MEM) as u64) << 1 |
+            ((i.b_src == SRC_IMM) as u64) << 2 |
+            ((i.b_src == SRC_MEM) as u64) << 3 |
+            (i.store_ra as u64) << 4 |
+            ((i.store == STORE_MEM) as u64) << 5 |
+            ((i.store == STORE_IND) as u64) << 6 |
+            (i.set_pc as u64) << 7 |
+            (i.m32 as u64) << 8 |
+            (i.end as u64) << 9 |
+            (i.is_external_op as u64) << 10 |
+            ((i.a_src == SRC_SP) as u64) << 11 |
+            (i.a_use_sp_imm1) << 12 |
+            ((i.a_src == SRC_STEP) as u64) << 13 |
+            ((i.b_src == SRC_IND) as u64) << 14 |
+            (i.store_use_sp as u64) << 15;
+
+        #[cfg(not(feature = "sp"))]
+        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
+            ((i.a_src == SRC_MEM) as u64) << 1 |
+            ((i.b_src == SRC_IMM) as u64) << 2 |
+            ((i.b_src == SRC_MEM) as u64) << 3 |
+            (i.store_ra as u64) << 4 |
+            ((i.store == STORE_MEM) as u64) << 5 |
+            ((i.store == STORE_IND) as u64) << 6 |
+            (i.set_pc as u64) << 7 |
+            (i.m32 as u64) << 8 |
+            (i.end as u64) << 9 |
+            (i.is_external_op as u64) << 10 |
+            ((i.a_src == SRC_STEP) as u64) << 13 |
+            ((i.b_src == SRC_IND) as u64) << 14;
 
         rom_flags
     }

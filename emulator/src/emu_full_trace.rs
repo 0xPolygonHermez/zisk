@@ -27,7 +27,9 @@ pub struct EmuFullTraceStep<F> {
     pub store_offset: F,
     pub set_pc: F,
     pub store_use_sp: F,
+    #[cfg(feature = "sp")]
     pub set_sp: F,
+    #[cfg(feature = "sp")]
     pub inc_sp: F,
     pub jmp_offset1: F,
     pub jmp_offset2: F,

@@ -3,8 +3,10 @@ use std::mem;
 use crate::{EmuContext, EmuFullTrace, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStep};
 use p3_field::AbstractField;
 use riscv::RiscVRegisters;
+#[cfg(feature = "sp")]
+use zisk_core::SRC_SP;
 use zisk_core::{
-    ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_SP, SRC_STEP,
+    ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
@@ -59,6 +61,7 @@ impl<'a> Emu<'a> {
             }
             SRC_IMM => self.ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32),
             SRC_STEP => self.ctx.a = self.ctx.step,
+            #[cfg(feature = "sp")]
             SRC_SP => self.ctx.a = self.ctx.sp,
             _ => panic!("Emu::source_a() Invalid a_src={} pc={}", instruction.a_src, self.ctx.pc),
         }
@@ -172,6 +175,7 @@ impl<'a> Emu<'a> {
     }
 
     /// Set SP, if specified by the current instruction
+    #[cfg(feature = "sp")]
     #[inline(always)]
     pub fn set_sp(&mut self, instruction: &ZiskInst) {
         if instruction.set_sp {
@@ -218,6 +222,7 @@ impl<'a> Emu<'a> {
         self.store_c(instruction);
 
         // Set SP, if specified by the current instruction
+        #[cfg(feature = "sp")]
         self.set_sp(instruction);
 
         // Set PC, based on current PC, current flag and current instruction
@@ -456,6 +461,7 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
         (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
         self.store_c(instruction);
+        #[cfg(feature = "sp")]
         self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.end = instruction.end;
@@ -499,6 +505,7 @@ impl<'a> Emu<'a> {
         self.ctx.b = trace_step.b;
         (self.ctx.c, self.ctx.flag) = (instruction.func)(self.ctx.a, self.ctx.b);
         self.store_c_silent(instruction);
+        #[cfg(feature = "sp")]
         self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.end = instruction.end;
@@ -514,7 +521,10 @@ impl<'a> Emu<'a> {
             a_src_mem: F::from_bool(instruction.a_src == SRC_MEM),
             a_offset_imm0: F::from_canonical_u64(instruction.a_offset_imm0),
             sp: F::from_canonical_u64(self.ctx.sp),
+            #[cfg(feature = "sp")]
             a_src_sp: F::from_bool(instruction.a_src == SRC_SP),
+            #[cfg(not(feature = "sp"))]
+            a_src_sp: F::from_bool(false),
             a_use_sp_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
             a_src_step: F::from_bool(instruction.a_src == SRC_STEP),
             b_src_imm: F::from_bool(instruction.b_src == SRC_IMM),
@@ -531,7 +541,9 @@ impl<'a> Emu<'a> {
             store_offset: F::from_canonical_u64(instruction.store_offset as u64),
             set_pc: F::from_bool(instruction.set_pc),
             store_use_sp: F::from_bool(instruction.store_use_sp),
+            #[cfg(feature = "sp")]
             set_sp: F::from_bool(instruction.set_sp),
+            #[cfg(feature = "sp")]
             inc_sp: F::from_canonical_u64(instruction.inc_sp),
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
