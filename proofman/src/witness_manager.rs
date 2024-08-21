@@ -62,10 +62,7 @@ impl<F> WitnessManager<F> {
 
         let air_instances = pctx.air_instances.read().unwrap();
 
-        // Initialize an empty HashMap to store components
         let mut components = HashMap::new();
-
-        // Iterate over air_instances with enumeration for indexing
         for (air_instance_id, air_instance_ctx) in air_instances.iter().enumerate() {
             let component = self.airs.get(&air_instance_ctx.air_id).unwrap();
 

@@ -187,15 +187,11 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
         let p_steps = self.p_steps.unwrap();
         let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
-        // EXAMPLE OF CALLS TO GET_HINT_FIELD: REMOVE
+        // // EXAMPLE OF CALLS TO GET_HINT_FIELD: REMOVE
         // if stage_id == 2 {
-        //     let hint_field_info_ptr = get_hint_field_c(p_steps, 0, "max", false)  as *mut HintFieldInfo<F>;
-        //     unsafe {
-        //         println!("SIZE is {}", (*hint_field_info_ptr).get_size());
-        //         println!("TYPE is {:?}", (*hint_field_info_ptr).get_type());
-        //         println!("FIRST ELEMENT is {:?}", *((*hint_field_info_ptr).get_dest().wrapping_add(0)));
-        //     }
+        //     let num = get_hint_field::<F>(p_steps, 0, "max", false);
         // }
+
         if stage_id <= proof_ctx.pilout.num_stages() {
             can_impols_be_calculated_c(p_steps, stage_id as u64);
             calculate_impols_expressions_c(p_stark, stage_id as u64, p_params, p_steps);
