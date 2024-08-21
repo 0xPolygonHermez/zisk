@@ -134,6 +134,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Install nightly toolchain
         id: rustc-toolchain
         uses: actions-rs/toolchain@v1
