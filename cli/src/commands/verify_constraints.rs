@@ -38,7 +38,7 @@ impl Display for Field {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
-pub struct ProveCmd {
+pub struct VerifyConstraintsCmd {
     /// Witness computation dynamic library path
     #[clap(short, long)]
     pub witness_lib: PathBuf,
@@ -58,27 +58,27 @@ pub struct ProveCmd {
     pub proving_key: PathBuf,
 
     /// Output file path
-    #[clap(short, long, default_value = "proof.json")]
+    #[clap(short, long, default_value = "verify_constraints.json")]
     pub output: PathBuf,
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 }
 
-impl ProveCmd {
+impl VerifyConstraintsCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
+        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
         type GL = Goldilocks;
 
-        let _proof = match self.field {
+        let _valid_constraints = match self.field {
             Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
-                false,
+                true,
             )?,
         };
 

@@ -175,6 +175,13 @@ impl<F: AbstractField> Prover<F> for StarkProver<F> {
         self.stark_info.as_ref().unwrap().stark_struct.steps.len() as u32 + 3 //evals + fri_pol + fri_folding (setps) + fri_queries
     }
 
+    fn verify_constraints(&self, stage_id: u32) -> bool {
+        debug!("{}: ··· Verifying constraints for stage {}", Self::MY_NAME, stage_id);
+
+        let p_steps = self.p_steps.unwrap();
+        verify_constraints_c(p_steps, stage_id as u64)
+    }
+
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus {
         let p_stark: *mut std::ffi::c_void = self.p_stark.unwrap();
 
