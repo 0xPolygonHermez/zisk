@@ -176,8 +176,8 @@ mod tests {
 
         trace!(TraceRow, MyTrace<F> { a: F, b: F });
 
-        let buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
-        let trace = MyTrace::from_buffer(&buffer, num_rows, OFFSET);
+        let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
+        let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
         let mut trace = trace.unwrap();
 
         // Set values
@@ -196,17 +196,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_1() {
-        let buffer = vec![0u8; 3];
+        let mut buffer = vec![0u8; 3];
         trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::from_buffer(&buffer, 1, 0);
+        let _ = Simple::map_buffer(&mut buffer, 1, 0);
     }
 
     #[test]
     #[should_panic]
     fn test_errors_are_launched_when_num_rows_is_invalid_2() {
-        let buffer = vec![0u8; 3];
+        let mut buffer = vec![0u8; 3];
         trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::from_buffer(&buffer, 3, 0);
+        let _ = Simple::map_buffer(&mut buffer, 3, 0);
     }
 
     #[test]
