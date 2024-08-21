@@ -1,3 +1,3 @@
-use proofman::trace;
+use proofman_common::trace;
 
-trace!(FreqOpsTrace0 {});
+trace!(FreqOps0Row, FreqOps0Trace<F> { fake: F });

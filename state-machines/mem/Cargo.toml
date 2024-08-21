@@ -5,14 +5,10 @@ edition = "2021"
 
 [dependencies]
 sm-common = { path = "../common" }
-sm-mem-aligned = { path = "../mem-aligned" }
-sm-mem-unaligned = { path = "../mem-unaligned" }
 zisk-core = { path = "../../core" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
-witness-helpers = { workspace = true }
-p3-field = { workspace = true }
 
 log = { version = "0.4", default-features = false }
 rayon = "1.10.0"

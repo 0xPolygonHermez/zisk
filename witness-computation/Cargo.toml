@@ -9,22 +9,16 @@ crate-type = ["dylib"]
 [dependencies]
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
-sm-mem-aligned = { path = "../state-machines/mem-aligned" }
-sm-mem-unaligned = { path = "../state-machines/mem-unaligned" }
 sm-arith = { path = "../state-machines/arith" }
-sm-arith-32 = { path = "../state-machines/arith-32" }
-sm-arith-64 = { path = "../state-machines/arith-64" }
-sm-arith-3264 = { path = "../state-machines/arith-3264" }
 sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-common = { path = "../state-machines/common" }
-zisk-pil = { path = "../pil" }
-
-proofman-common = { workspace = true }
-proofman = { workspace = true }
-proofman-util = { workspace = true }
-witness-helpers = { workspace = true }
-p3-field = { workspace = true }
+zisk-pil = { path = "../pil/fork_0" }
 
 log = { version = "0.4", default-features = false }
 env_logger = "0.11"
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { workspace=true }
+
+proofman-common = { workspace = true }
+proofman = { workspace = true }
+proofman-util = { workspace = true }

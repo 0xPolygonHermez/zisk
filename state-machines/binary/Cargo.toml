@@ -6,14 +6,9 @@ edition = "2021"
 [dependencies]
 zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
-sm-binary-32 = { path = "../binary-32" }
-sm-binary-64 = { path = "../binary-64" }
-sm-binary-3264 = { path = "../binary-3264" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
-witness-helpers = { workspace = true }
-p3-field = { workspace = true }
 
 log = { version = "0.4", default-features = false }
 rayon = "1.10.0"

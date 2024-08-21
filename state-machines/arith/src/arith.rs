@@ -1,27 +1,14 @@
-use std::{
-    mem,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
-    },
-};
+use std::sync::{Arc, Mutex};
 
-use std::{fmt::Debug, sync::mpsc, thread};
-
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
+use crate::{Arith3264SM, Arith32SM, Arith64SM};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
-use sm_arith_32::Arith32SM;
-use sm_arith_3264::Arith3264SM;
-use sm_arith_64::Arith64SM;
-use sm_common::{
-    Arith3264Op, Arith32Op, Arith64Op, OpResult, Provable, Sessionable, Sessions, WorkerHandler,
-    WorkerTask,
-};
-use witness_helpers::WitnessComponent;
+use sm_common::{Arith3264Op, Arith32Op, Arith64Op, OpResult, Provable};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
+#[allow(dead_code)]
 pub struct ArithSM {
     inputs32: Mutex<Vec<Arith32Op>>,
     inputs64: Mutex<Vec<Arith64Op>>,
@@ -55,10 +42,10 @@ impl ArithSM {
 impl<F> WitnessComponent<F> for ArithSM {
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: &AirInstance,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _stage: u32,
+        _air_instance: usize,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
     ) {
     }
 }
@@ -80,10 +67,10 @@ impl Provable<Arith3264Op, OpResult> for ArithSM {
         // TODO Split the operations into 32 and 64 bit operations in parallel
         for operation in operations {
             match operation {
-                Arith3264Op::Add32(a, b) | Arith3264Op::Sub32(a, b) => {
+                Arith3264Op::Add32(_, _) | Arith3264Op::Sub32(_, _) => {
                     inputs32.push(operation.clone().into());
                 }
-                Arith3264Op::Add64(a, b) | Arith3264Op::Sub64(a, b) => {
+                Arith3264Op::Add64(_, _) | Arith3264Op::Sub64(_, _) => {
                     inputs64.push(operation.clone().into());
                 }
             }

@@ -1,33 +1,39 @@
-use std::{mem, sync::Mutex};
+use std::{
+    mem,
+    sync::{Arc, Mutex},
+};
 
-use proofman::WitnessComponent;
+use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
-use sm_common::{FreqOp, OpResult, Provable};
+use sm_common::{Arith64Op, OpResult, Provable};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
-pub struct FreqOpSM {
-    inputs: Mutex<Vec<FreqOp>>,
+pub struct Arith64SM {
+    inputs: Mutex<Vec<Arith64Op>>,
 }
 
-impl Default for FreqOpSM {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl Arith64SM {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+        let arith64_sm = Self { inputs: Mutex::new(Vec::new()) };
+        let arith64_sm = Arc::new(arith64_sm);
 
-impl FreqOpSM {
-    pub fn new() -> Self {
-        Self { inputs: Mutex::new(Vec::new()) }
+        wcm.register_component(arith64_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+
+        arith64_sm
     }
 
-    fn add(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
+    pub fn add(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((a + b, true))
     }
+
+    pub fn sub(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
+        Ok((a - b, true))
+    }
 }
 
-impl<F> WitnessComponent<F> for FreqOpSM {
+impl<F> WitnessComponent<F> for Arith64SM {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -38,14 +44,15 @@ impl<F> WitnessComponent<F> for FreqOpSM {
     }
 }
 
-impl Provable<FreqOp, OpResult> for FreqOpSM {
-    fn calculate(&self, operation: FreqOp) -> Result<OpResult, Box<dyn std::error::Error>> {
+impl Provable<Arith64Op, OpResult> for Arith64SM {
+    fn calculate(&self, operation: Arith64Op) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
-            FreqOp::Add(a, b) => self.add(a, b),
+            Arith64Op::Add(a, b) => self.add(a, b),
+            Arith64Op::Sub(a, b) => self.sub(a, b),
         }
     }
 
-    fn prove(&self, operations: &[FreqOp], is_last: bool, scope: &Scope) {
+    fn prove(&self, operations: &[Arith64Op], is_last: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
             if is_last || inputs.len() >= PROVE_CHUNK_SIZE {
@@ -65,7 +72,7 @@ impl Provable<FreqOp, OpResult> for FreqOpSM {
 
     fn calculate_prove(
         &self,
-        operation: FreqOp,
+        operation: Arith64Op,
         is_last: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
