@@ -11,9 +11,8 @@ use std::{
     },
 };
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
-use witness_helpers::{WCOpCalculator, WitnessComponent};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -48,13 +47,11 @@ impl<F> WitnessComponent<F> for MemSM {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &AirInstance,
+        air_instance: usize,
         pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
     ) {
     }
-
-    fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }
 
 impl Provable<MemOp, OpResult> for MemSM {

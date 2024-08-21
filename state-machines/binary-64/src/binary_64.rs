@@ -8,11 +8,10 @@ use std::{
 
 use std::{sync::mpsc, thread};
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{Binary64Op, OpResult, Provable, Sessionable, WorkerHandler, WorkerTask};
-use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
@@ -43,7 +42,7 @@ impl<F> WitnessComponent<F> for Binary64SM {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: &AirInstance,
+        air_instance: usize,
         pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
     ) {

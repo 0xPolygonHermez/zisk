@@ -9,11 +9,10 @@ sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
-zisk-pil = { path = "../../pil" }
+zisk-pil = { path = "../../pil/fork_0" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
-witness-helpers = { workspace = true }
 p3-field = { workspace = true }
 
 log = { version = "0.4", default-features = false }

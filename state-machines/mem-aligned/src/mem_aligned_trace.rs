@@ -1,3 +1,3 @@
-use proofman::trace;
+use proofman_common::trace;
 
-trace!(MemALignedTrace0 {});
+trace!(MemALigned0Row, MemALigned0Trace<F> { fake: F });

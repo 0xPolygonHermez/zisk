@@ -12,8 +12,6 @@ sm-arith-3264 = { path = "../arith-3264" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
-witness-helpers = { workspace = true }
-p3-field = { workspace = true }
 
 log = { version = "0.4", default-features = false }
 rayon = "1.10.0"

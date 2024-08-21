@@ -3,11 +3,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{MemUnalignedOp, OpResult, Provable};
-use witness_helpers::WitnessComponent;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
@@ -51,13 +50,11 @@ impl<F> WitnessComponent<F> for MemUnalignedSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: &AirInstance,
+        _air_instance: usize,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
     ) {
     }
-
-    fn suggest_plan(&self, _ectx: &mut ExecutionCtx) {}
 }
 
 impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {

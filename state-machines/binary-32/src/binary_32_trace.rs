@@ -1,3 +1,3 @@
-use proofman::trace;
+use proofman_common::trace;
 
-trace!(Binary32Trace0 {});
+trace!(Binary320Row, Binary320Trace<F> { fake: F });

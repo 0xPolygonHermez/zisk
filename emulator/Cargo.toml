@@ -12,8 +12,10 @@ name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
 [dependencies]
-riscv = { path="../riscv" }
 zisk-core = { path = "../core" }
+riscv = { path="../riscv" }
+zisk-pil = { path="../pil/fork_0" }
+
 p3-field = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }
 sysinfo = "0.31.2"
