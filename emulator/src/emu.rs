@@ -1,6 +1,8 @@
 use std::mem;
 
-use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStep};
+use crate::{
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuRequired, EmuSlice, EmuTrace, EmuTraceStep,
+};
 use p3_field::AbstractField;
 use riscv::RiscVRegisters;
 #[cfg(feature = "sp")]
@@ -470,9 +472,16 @@ impl<'a> Emu<'a> {
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice<F: AbstractField>(&mut self, trace: &EmuTrace) -> Vec<EmuFullTraceStep<F>> {
-        // Create a full trace instance
-        let mut full_trace = Vec::with_capacity(trace.steps.len());
+    pub fn run_slice<F: AbstractField>(&mut self, trace: &EmuTrace) -> EmuSlice<F> {
+        // Create an emulator slice instance
+        let mut emu_slice = EmuSlice {
+            full_trace: Vec::with_capacity(trace.steps.len()),
+            required: EmuRequired {
+                arith: Vec::with_capacity(trace.steps.len()),
+                binary: Vec::with_capacity(trace.steps.len()),
+                memory: Vec::with_capacity(trace.steps.len()),
+            },
+        };
 
         // Set initial state
         self.ctx.pc = trace.start.pc;
@@ -482,11 +491,11 @@ impl<'a> Emu<'a> {
 
         // Loop for every trace to get its corresponding full_trace
         for step in &trace.steps {
-            self.step_slice(step, &mut full_trace);
+            self.step_slice(step, &mut emu_slice);
         }
 
-        // Return full trace
-        full_trace
+        // Return emulator slice
+        emu_slice
     }
 
     /// Performs one single step of the emulation
@@ -494,7 +503,7 @@ impl<'a> Emu<'a> {
     pub fn step_slice<F: AbstractField>(
         &mut self,
         trace_step: &EmuTraceStep,
-        full_trace: &mut Vec<EmuFullTraceStep<F>>,
+        emu_slice: &mut EmuSlice<F>,
     ) {
         let last_c = self.ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.pc);
@@ -549,7 +558,7 @@ impl<'a> Emu<'a> {
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
         };
-        full_trace.push(full_trace_step);
+        emu_slice.full_trace.push(full_trace_step);
     }
 
     /// Gets the current values of the 32 registers
