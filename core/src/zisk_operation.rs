@@ -13,3 +13,9 @@ pub struct ZiskOperation {
     /// (Goldilocks) and flag is either 0 or 1
     pub f: fn(a: u64, b: u64) -> (u64, bool),
 }
+
+impl ZiskOperation {
+    pub fn is_arith(&self) -> bool {
+        self.t == "a" || self.t == "a32"
+    }
+}
