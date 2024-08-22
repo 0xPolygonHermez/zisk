@@ -12,8 +12,10 @@ pub struct ZiskInst {
     pub store: u64,
     pub store_offset: i64,
     pub set_pc: bool,
+    #[cfg(feature = "sp")]
     pub set_sp: bool,
     pub ind_width: u64,
+    #[cfg(feature = "sp")]
     pub inc_sp: u64,
     pub end: bool,
     pub a_src: u64,
@@ -29,6 +31,7 @@ pub struct ZiskInst {
     pub func: fn(u64, u64) -> (u64, bool),
     pub op_str: &'static str,
     pub verbose: String,
+    pub m32: bool,
 }
 
 /// Default constructor
@@ -42,8 +45,10 @@ impl Default for ZiskInst {
             store: 0,
             store_offset: 0,
             set_pc: false,
+            #[cfg(feature = "sp")]
             set_sp: false,
             ind_width: 0,
+            #[cfg(feature = "sp")]
             inc_sp: 0,
             end: false,
             a_src: 0,
@@ -59,6 +64,7 @@ impl Default for ZiskInst {
             func: |_, _| (0, false),
             op_str: "",
             verbose: String::new(),
+            m32: false,
         }
     }
 }
@@ -86,12 +92,14 @@ impl ZiskInst {
         if self.set_pc {
             s += &(" set_pc=".to_string() + &self.set_pc.to_string());
         }
+        #[cfg(feature = "sp")]
         if self.set_sp {
             s += &(" set_sp=".to_string() + &self.set_sp.to_string());
         }
         if self.ind_width != 0 {
             s += &(" ind_width=".to_string() + &self.ind_width.to_string());
         }
+        #[cfg(feature = "sp")]
         if self.inc_sp != 0 {
             s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
         }
@@ -127,6 +135,9 @@ impl ZiskInst {
         }
         {
             s += &(" op=".to_string() + &self.op.to_string() + "=" + self.op_str);
+        }
+        if self.m32 {
+            s += &(" m32=".to_string() + &self.m32.to_string());
         }
         if !self.verbose.is_empty() {
             s += &(" verbose=".to_string() + &self.verbose);

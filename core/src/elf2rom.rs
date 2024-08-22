@@ -116,8 +116,19 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 }
 
 /// Executes the file conversion process, and saves result into a file
-pub fn elf2romfile(elf_file: String, rom_file: String) -> Result<(), Box<dyn Error>> {
+pub fn elf2romfile(
+    elf_file: String,
+    rom_file: String,
+    pil_file: String,
+    bin_file: String,
+) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    rom.save_to_file(&rom_file);
+    rom.save_to_json_file(&rom_file);
+    if !pil_file.is_empty() {
+        rom.save_to_pil_file(&pil_file);
+    }
+    if !bin_file.is_empty() {
+        rom.save_to_bin_file(&bin_file);
+    }
     Ok(())
 }

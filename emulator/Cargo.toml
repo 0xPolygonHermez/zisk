@@ -34,3 +34,7 @@ pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
 [[bench]]
 name = "benchmark"
 harness = false
+
+[features]
+default = []
+sp = []

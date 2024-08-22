@@ -77,7 +77,12 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let mut zisk_rom = if rom_path.extension().unwrap() == "elf" {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(rom_path.display().to_string(), String::new());
+            let rv2zk = Riscv2zisk::new(
+                rom_path.display().to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
 
             // Convert program to rom
             match rv2zk.run() {
@@ -194,11 +199,12 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
 
             let mut inputs = self.callback_inputs.lock().unwrap();
 
-            while !expanded_emu_traces.is_empty() {
+            while !expanded_emu_traces.full_trace.is_empty() {
                 let num_to_drain =
-                    expanded_emu_traces.len().min(Self::MAX_ACCUMULATED - inputs.len());
+                    expanded_emu_traces.full_trace.len().min(Self::MAX_ACCUMULATED - inputs.len());
 
-                let mut drained = expanded_emu_traces.drain(..num_to_drain).collect::<Vec<_>>();
+                let mut drained =
+                    expanded_emu_traces.full_trace.drain(..num_to_drain).collect::<Vec<_>>();
                 inputs.append(&mut drained);
 
                 if inputs.len() == Self::MAX_ACCUMULATED {

@@ -18,3 +18,7 @@ indexmap = { version = "2.2.6", features = ["serde"] }
 json = "0.12.4"
 elf = "0.7.4"
 riscv = { path = "../riscv" }
+
+[features]
+default = []
+sp = []

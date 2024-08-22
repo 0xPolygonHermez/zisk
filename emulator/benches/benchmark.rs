@@ -82,7 +82,8 @@ fn bench_riscv2zisk(c: &mut Criterion) {
             let elf_file = "./benches/data/my.elf".to_string();
             let _rom: ZiskRom = {
                 // Create an instance of the RISCV -> ZisK program converter
-                let rv2zk = Riscv2zisk::new(elf_file.clone(), String::new());
+                let rv2zk =
+                    Riscv2zisk::new(elf_file.clone(), String::new(), String::new(), String::new());
 
                 // Convert program to rom
                 let result = rv2zk.run();
@@ -114,7 +115,8 @@ fn bench_process_rom(c: &mut Criterion) {
         let elf_file = "./benches/data/my.elf".to_string();
         let rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(elf_file.clone(), String::new());
+            let rv2zk =
+                Riscv2zisk::new(elf_file.clone(), String::new(), String::new(), String::new());
 
             // Convert program to rom
             let result = rv2zk.run();
@@ -167,7 +169,8 @@ fn bench_process_rom_callback(c: &mut Criterion) {
         let elf_file = "./benches/data/my.elf".to_string();
         let zisk_rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(elf_file.clone(), String::new());
+            let rv2zk =
+                Riscv2zisk::new(elf_file.clone(), String::new(), String::new(), String::new());
 
             // Convert program to rom
             let result = rv2zk.run();
