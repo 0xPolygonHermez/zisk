@@ -44,6 +44,7 @@ impl ZiskInstBuilder {
                 op: 0,
                 func: |_, _| (0, false),
                 op_str: "",
+                op_is_arith: false,
                 verbose: String::new(),
                 m32: false,
             },
@@ -201,6 +202,8 @@ impl ZiskInstBuilder {
         self.i.op = op.c;
         self.i.op_str = op.n;
         self.i.m32 = optxt.contains("_w");
+        self.i.func = op.f;
+        self.i.op_is_arith = op.is_arith();
     }
 
     pub fn j(&mut self, j1: i32, j2: i32) {
@@ -231,6 +234,5 @@ impl ZiskInstBuilder {
 
     pub fn build(&mut self) {
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
-        self.i.func = op_from_str(self.i.op_str).f;
     }
 }

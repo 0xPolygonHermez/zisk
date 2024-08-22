@@ -30,6 +30,7 @@ pub struct ZiskInst {
     pub op: u8,
     pub func: fn(u64, u64) -> (u64, bool),
     pub op_str: &'static str,
+    pub op_is_arith: bool,
     pub verbose: String,
     pub m32: bool,
 }
@@ -63,6 +64,7 @@ impl Default for ZiskInst {
             op: 0,
             func: |_, _| (0, false),
             op_str: "",
+            op_is_arith: false,
             verbose: String::new(),
             m32: false,
         }
