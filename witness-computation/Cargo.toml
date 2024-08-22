@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+sm-binary = { path = "../state-machines/binary" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-arith = { path = "../state-machines/arith" }

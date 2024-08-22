@@ -2,12 +2,14 @@ use log::{debug, info, trace};
 use p3_field::{AbstractField, PackedValue};
 
 use rayon::{Scope, ThreadPoolBuilder};
+use sm_binary::BinarySM;
 use std::{
+    cmp::Ordering,
     fs, mem,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
@@ -17,7 +19,21 @@ use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, Emulator, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
+use sm_common::Provable;
 use sm_mem::MemSM;
+
+#[derive(Default)]
+pub struct MainAirSegment<F> {
+    pub segment_id: u32,
+    pub filled_inputs: usize,
+    pub inputs: Vec<EmuFullTraceStep<F>>,
+}
+
+impl<F: Default + Clone> MainAirSegment<F> {
+    pub fn new(segment_id: u32, inputs_size: usize) -> Self {
+        Self { segment_id, filled_inputs: 0, inputs: vec![Main0Row::<F>::default(); inputs_size] }
+    }
+}
 
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
 /// The MainSM state machine is responsible for orchestrating the execution of the program and
@@ -29,13 +45,14 @@ pub struct MainSM<F> {
     // Main proving key path
     main_pk: PathBuf,
     // Inputs accumulator from the emulator
-    callback_inputs: Arc<Mutex<Vec<EmuFullTraceStep<F>>>>,
+    callback_inputs: Arc<RwLock<Vec<MainAirSegment<F>>>>,
     //State machines
-    arith_sm: Arc<ArithSM>,
     mem_sm: Arc<MemSM>,
+    binary_sm: Arc<BinarySM>,
+    arith_sm: Arc<ArithSM>,
 }
 
-impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
+impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     /// Default number of inputs of the main state machine that are accumulated before being
@@ -62,6 +79,7 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         proving_key_path: &PathBuf,
         wcm: &mut WitnessManager<F>,
         mem_sm: Arc<MemSM>,
+        binary_sm: Arc<BinarySM>,
         arith_sm: Arc<ArithSM>,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -96,14 +114,13 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
             panic!("ROM file must be an ELF file");
         };
 
-        let mut callback_inputs = Vec::with_capacity(Self::MAX_ACCUMULATED);
-
         let main = Arc::new(Self {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
             mem_sm,
+            binary_sm,
             arith_sm,
-            callback_inputs: Arc::new(Mutex::new(callback_inputs)),
+            callback_inputs: Arc::new(RwLock::new(Vec::new())),
             main_pk,
         });
 
@@ -168,15 +185,16 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         });
 
         // Terminate the state machines with the remaining inputs
-        if let Ok(mut inputs) = self.callback_inputs.lock() {
-            if !inputs.is_empty() {
-                let remaining_inputs = std::mem::take(&mut *inputs);
-                pool.scope(|scope| {
-                    scope.spawn(move |scope| {
-                        Self::prove(&self.zisk_rom, remaining_inputs, pctx, ectx);
-                    });
+        let mut callback_inputs = self.callback_inputs.write().unwrap();
+        let mut last_air_segment = callback_inputs.last_mut().unwrap();
+
+        if !last_air_segment.inputs.is_empty() {
+            let air_segment = mem::take(last_air_segment);
+            pool.scope(|scope| {
+                scope.spawn(move |scope| {
+                    Self::create_air_instance(&self.zisk_rom, air_segment, pctx, ectx);
                 });
-            }
+            });
         }
     }
 
@@ -190,30 +208,46 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         pctx: &'a ProofCtx<F>,
         ectx: &'a ExecutionCtx,
     ) {
+        // Determine the appropriate AIR segment and the exact position within it where the
+        // current EmuTrace should be placed
+        let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
+        let air_id = air_step.floor() as usize;
+        let pos_id =
+            (air_step.fract() * Self::MAX_ACCUMULATED as f64 / Self::CALLBACK_SIZE as f64) as usize;
+        if pos_id == 0 {
+            self.callback_inputs
+                .write()
+                .unwrap()
+                .push(MainAirSegment::new(air_id as u32, Self::MAX_ACCUMULATED));
+        }
+
         scope.spawn(move |scope| {
-            let mut expanded_emu_traces =
-                match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
-                    Ok(slice) => slice,
-                    Err(e) => panic!("Error processing slice: {:?}", e),
-                };
+            let mut emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
+                Ok(slice) => slice,
+                Err(e) => panic!("Error processing slice: {:?}", e),
+            };
 
-            let mut inputs = self.callback_inputs.lock().unwrap();
+            let mut inputs = self.callback_inputs.write().unwrap();
+            let mut air_segment = &mut inputs[air_id];
 
-            while !expanded_emu_traces.full_trace.is_empty() {
-                let num_to_drain =
-                    expanded_emu_traces.full_trace.len().min(Self::MAX_ACCUMULATED - inputs.len());
+            // Use splice to replace the range with elements from source_vec
+            let len = emu_slice.full_trace.len();
+            let mut source_iter = emu_slice.full_trace.into_iter();
+            air_segment.inputs.splice(pos_id..pos_id + len, source_iter);
+            air_segment.filled_inputs += len;
 
-                let mut drained =
-                    expanded_emu_traces.full_trace.drain(..num_to_drain).collect::<Vec<_>>();
-                inputs.append(&mut drained);
-
-                if inputs.len() == Self::MAX_ACCUMULATED {
-                    let _inputs =
-                        mem::replace(&mut *inputs, Vec::with_capacity(Self::MAX_ACCUMULATED));
-
-                    scope.spawn(move |scope| {
-                        Self::prove(zisk_rom, _inputs, pctx, ectx);
-                    });
+            match air_segment.filled_inputs.cmp(&Self::MAX_ACCUMULATED) {
+                Ordering::Equal => {
+                    let air_segment = mem::take(air_segment);
+                    Self::create_air_instance(zisk_rom, air_segment, pctx, ectx);
+                    self.prove(zisk_rom, emu_slice.required, scope, pctx, ectx);
+                }
+                Ordering::Greater => {
+                    panic!("Too many inputs in the segment");
+                }
+                Ordering::Less => {
+                    // No action needed for the case where filled_inputs is less than
+                    // MAX_ACCUMULATED.
                 }
             }
         });
@@ -227,13 +261,18 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `pctx` - Proof context to interact with the proof system
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn prove(
+    fn create_air_instance(
         zisk_rom: &ZiskRom,
-        inputs: Vec<Main0Row<F>>,
+        air_segment: MainAirSegment<F>,
         pctx: &ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
-        info!("{}: ··· generating new SM Main segment with {} inputs", Self::MY_NAME, inputs.len());
+        info!(
+            "{}: ··· Creating Main segment #{} [{} inputs]",
+            Self::MY_NAME,
+            air_segment.segment_id,
+            air_segment.filled_inputs
+        );
 
         // Compute buffer size using the BufferAllocator
         // let air_setup_path = Path::new(
@@ -256,7 +295,7 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
         // }
 
         // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
-        let main_trace = Main0Trace::<F>::map_row_vec(inputs).unwrap();
+        let main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
 
         let mut air_instances = pctx.air_instances.write().unwrap();
 
@@ -265,6 +304,31 @@ impl<'a, F: AbstractField + Copy + Send + Sync + 'static> MainSM<F> {
             air_id: MAIN_AIR_IDS[0],
             buffer: Some(main_trace.buffer.unwrap()),
         });
+    }
+
+    /// Proves a batch of inputs
+    /// When the maximum number of accumulated inputs is reached, the MainSM state machine processes
+    /// the inputs in batches. The inputs are processed in parallel using the thread pool
+    /// # Arguments
+    /// * `inputs` - Vector of EmuTrace inputs to prove
+    /// * `pctx` - Proof context to interact with the proof system
+    /// * `ectx` - Execution context to interact with the execution environment
+    #[inline(always)]
+    fn prove(
+        &self,
+        zisk_rom: &ZiskRom,
+        emu_required: ZiskRequired,
+        scope: &Scope<'a>,
+        pctx: &ProofCtx<F>,
+        ectx: &ExecutionCtx,
+    ) {
+        let memory = &emu_required.memory;
+        let binary = &emu_required.binary;
+        let arith = &emu_required.arith;
+
+        self.mem_sm.prove(memory, false, scope);
+        self.binary_sm.prove(binary, false, scope);
+        self.arith_sm.prove(arith, false, scope);
     }
 }
 

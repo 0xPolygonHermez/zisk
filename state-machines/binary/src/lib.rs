@@ -1,16 +1,9 @@
 mod binary;
-#[allow(dead_code, unused)]
-mod binary_32;
-mod binary_3264;
-mod binary_3264_trace;
-mod binary_32_trace;
-mod binary_64;
-mod binary_64_trace;
+mod binary_basic;
+mod binary_extension;
+mod binary_traces;
 
 pub use binary::*;
-pub use binary_32::*;
-pub use binary_3264::*;
-pub use binary_3264_trace::*;
-pub use binary_32_trace::*;
-pub use binary_64::*;
-pub use binary_64_trace::*;
+pub use binary_basic::*;
+pub use binary_extension::*;
+pub use binary_traces::*;

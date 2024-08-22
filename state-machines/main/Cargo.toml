@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 sm-arith = { path = "../arith" }
+sm-binary = { path = "../binary" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }

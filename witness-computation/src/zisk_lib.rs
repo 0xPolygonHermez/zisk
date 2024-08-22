@@ -1,4 +1,5 @@
 use log::debug;
+use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::{Pilout, MAIN_AIR_IDS};
 
@@ -64,12 +65,18 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const MEM_ALIGN_AIR_IDS: &[usize] = &[1, 2];
         pub const MEM_UNALIGNED_AIR_IDS: &[usize] = &[3, 4];
         pub const ARITH32_AIR_IDS: &[usize] = &[5];
-        pub const ARITH64_AIR_IDS: &[usize] = &[6];
-        pub const ARITH3264_AIR_IDS: &[usize] = &[7];
+        pub const BINARY_BASIC_AIR_IDS: &[usize] = &[6];
+        pub const BINARY_EXTENDED_AIR_IDS: &[usize] = &[7];
+        pub const ARITH64_AIR_IDS: &[usize] = &[8];
+        pub const ARITH3264_AIR_IDS: &[usize] = &[9];
 
         let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm = MemUnalignedSM::new(&mut wcm, MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
+
+        let binary_sm = BinaryBasicSM::new(&mut wcm, BINARY_BASIC_AIR_IDS);
+        let binary_extension_sm = BinaryExtensionSM::new(&mut wcm, BINARY_EXTENDED_AIR_IDS);
+        let binary_sm = BinarySM::new(&mut wcm, binary_sm.clone(), binary_extension_sm.clone());
 
         let arith_32_sm = Arith32SM::new(&mut wcm, ARITH32_AIR_IDS);
         let arith_64_sm = Arith64SM::new(&mut wcm, ARITH64_AIR_IDS);
@@ -82,6 +89,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             &proving_key_path,
             &mut wcm,
             mem_sm.clone(),
+            binary_sm.clone(),
             arith_sm.clone(),
             MAIN_AIR_IDS,
         );

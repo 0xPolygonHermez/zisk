@@ -8,26 +8,29 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 7;
 
-pub struct Arith64SM {
+pub struct BinaryExtensionSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 }
 
-impl Arith64SM {
+impl BinaryExtensionSM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let arith64_sm = Self { inputs: Mutex::new(Vec::new()) };
-        let arith64_sm = Arc::new(arith64_sm);
+        let binary_extension_sm = Self { inputs: Mutex::new(Vec::new()) };
+        let binary_extension_sm = Arc::new(binary_extension_sm);
 
-        wcm.register_component(arith64_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+        wcm.register_component(
+            binary_extension_sm.clone() as Arc<dyn WitnessComponent<F>>,
+            Some(air_ids),
+        );
 
-        arith64_sm
+        binary_extension_sm
     }
 
     pub fn operations() -> Vec<u8> {
-        vec![0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb8, 0xb9, 0xba, 0xbb]
+        vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x24, 0x25, 0x26]
     }
 }
 
-impl<F> WitnessComponent<F> for Arith64SM {
+impl<F> WitnessComponent<F> for BinaryExtensionSM {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -38,7 +41,7 @@ impl<F> WitnessComponent<F> for Arith64SM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for Arith64SM {
+impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -55,7 +58,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith64SM {
 
                 scope.spawn(move |_scope| {
                     // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("Arith64: Finishing the worker thread");
+                    println!("Binary Extension: Finishing the worker thread");
                 });
             }
         }
