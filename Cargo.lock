@@ -1323,7 +1323,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "bytes",
  "log",
@@ -1463,8 +1463,9 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
+ "colored",
  "env_logger",
  "libloading",
  "log",
@@ -1480,7 +1481,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "log",
  "p3-field",
@@ -1491,7 +1492,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "colored",
  "sysinfo",
@@ -2006,6 +2007,7 @@ dependencies = [
  "proofman-common",
  "rayon",
  "sm-arith",
+ "sm-binary",
  "sm-common",
  "sm-mem",
  "zisk-core",
@@ -2056,7 +2058,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "log",
  "p3-field",
@@ -2073,7 +2075,7 @@ dependencies = [
 [[package]]
 name = "starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "log",
 ]
@@ -2370,7 +2372,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#2d002a2012ebe456cf3f2526c32179dd4e7764da"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#6afd1cd32727d74689037a8cabbb6aecea7803a0"
 dependencies = [
  "starks-lib-c",
 ]
@@ -2923,6 +2925,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "sm-arith",
+ "sm-binary",
  "sm-common",
  "sm-freq-ops",
  "sm-main",

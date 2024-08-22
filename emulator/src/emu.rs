@@ -1,16 +1,14 @@
 use std::mem;
 
-use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuRequired, EmuRequiredMemory, EmuRequiredOperation,
-    EmuSlice, EmuTrace, EmuTraceStep,
-};
+use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep};
 use p3_field::AbstractField;
 use riscv::RiscVRegisters;
 #[cfg(feature = "sp")]
 use zisk_core::SRC_SP;
 use zisk_core::{
-    ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    ZiskInst, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR,
+    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -78,7 +76,7 @@ impl<'a> Emu<'a> {
 
     /// Copy the 'a' register and log memory access if specified by the current instruction
     #[inline(always)]
-    pub fn source_a_slice(&mut self, instruction: &ZiskInst, a: u64, required: &mut EmuRequired) {
+    pub fn source_a_slice(&mut self, instruction: &ZiskInst, a: u64, required: &mut ZiskRequired) {
         self.ctx.a = a;
         match instruction.a_src {
             SRC_C => (),
@@ -87,7 +85,7 @@ impl<'a> Emu<'a> {
                 if instruction.a_use_sp_imm1 != 0 {
                     addr += self.ctx.sp;
                 }
-                let required_memory = EmuRequiredMemory {
+                let required_memory = ZiskRequiredMemory {
                     step: self.ctx.step,
                     is_write: false,
                     address: addr,
@@ -139,7 +137,7 @@ impl<'a> Emu<'a> {
 
     /// Copy the 'b' register and log memory access if specified by the current instruction
     #[inline(always)]
-    pub fn source_b_slice(&mut self, instruction: &ZiskInst, b: u64, required: &mut EmuRequired) {
+    pub fn source_b_slice(&mut self, instruction: &ZiskInst, b: u64, required: &mut ZiskRequired) {
         self.ctx.b = b;
         match instruction.b_src {
             SRC_C => (),
@@ -148,7 +146,7 @@ impl<'a> Emu<'a> {
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.sp;
                 }
-                let required_memory = EmuRequiredMemory {
+                let required_memory = ZiskRequiredMemory {
                     step: self.ctx.step,
                     is_write: false,
                     address: addr,
@@ -163,7 +161,7 @@ impl<'a> Emu<'a> {
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.sp;
                 }
-                let required_memory = EmuRequiredMemory {
+                let required_memory = ZiskRequiredMemory {
                     step: self.ctx.step,
                     is_write: false,
                     address: addr,
@@ -222,7 +220,7 @@ impl<'a> Emu<'a> {
     /// Store the 'c' register value based on the storage specified by the current instruction and
     /// log memory access if required
     #[inline(always)]
-    pub fn store_c_slice(&mut self, instruction: &ZiskInst, required: &mut EmuRequired) {
+    pub fn store_c_slice(&mut self, instruction: &ZiskInst, required: &mut ZiskRequired) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
@@ -236,7 +234,7 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.sp as i64;
                 }
                 self.ctx.mem.write_silent(addr as u64, val as u64, 8);
-                let required_memory = EmuRequiredMemory {
+                let required_memory = ZiskRequiredMemory {
                     step: self.ctx.step,
                     is_write: true,
                     address: addr as u64,
@@ -257,7 +255,7 @@ impl<'a> Emu<'a> {
                 }
                 addr += self.ctx.a as i64;
                 self.ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
-                let required_memory = EmuRequiredMemory {
+                let required_memory = ZiskRequiredMemory {
                     step: self.ctx.step,
                     is_write: true,
                     address: addr as u64,
@@ -531,7 +529,7 @@ impl<'a> Emu<'a> {
         // Create an emulator slice instance
         let mut emu_slice = EmuSlice {
             full_trace: Vec::with_capacity(trace.steps.len()),
-            required: EmuRequired {
+            required: ZiskRequired {
                 arith: Vec::with_capacity(trace.steps.len()),
                 binary: Vec::with_capacity(trace.steps.len()),
                 memory: Vec::with_capacity(trace.steps.len()),
@@ -619,7 +617,7 @@ impl<'a> Emu<'a> {
 
         // Build and store the operation required data
         let required_operation =
-            EmuRequiredOperation { opcode: instruction.op, a: self.ctx.a, b: self.ctx.b };
+            ZiskRequiredOperation { opcode: instruction.op, a: self.ctx.a, b: self.ctx.b };
         if instruction.op_is_arith {
             emu_slice.required.arith.push(required_operation)
         } else {
