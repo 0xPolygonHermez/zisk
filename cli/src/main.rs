@@ -25,7 +25,7 @@ pub enum Commands {
     // New(NewCmd),
     Prove(ProveCmd),
     PilHelpers(PilHelpersCmd),
-    VerifyConstraints(VerifyConstraintsCmd)
+    VerifyConstraints(VerifyConstraintsCmd),
 }
 
 fn main() {

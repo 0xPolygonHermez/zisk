@@ -103,15 +103,14 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             } else {
                 Self::commit_stage(stage, &mut provers, &mut pctx, debug_mode);
             }
-            
+
             Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
         }
 
         witness_lib.end_proof();
 
         if debug_mode {
-
-            // TODO: Verify global constraints! 
+            // TODO: Verify global constraints!
 
             if !valid_constraints {
                 println!("{}", format!("Not all constraints were verified.").bright_red().bold());
@@ -193,7 +192,9 @@ impl<F: AbstractField + 'static> ProofMan<F> {
     }
 
     pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, debug_mode: bool) {
-        if debug_mode { return; }
+        if debug_mode {
+            return;
+        }
 
         info!("{}: Committing stage {}", Self::MY_NAME, stage);
 
@@ -217,7 +218,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
                 transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
             } else {
                 prover.add_challenges_to_transcript(stage as u64, pctx, transcript);
-            }  
+            }
         }
     }
 

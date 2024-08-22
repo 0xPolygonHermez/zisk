@@ -516,10 +516,7 @@ pub fn get_hint_field_c(p_chelpers_steps: *mut c_void, hint_id: u64, hint_field_
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn verify_constraints_c(
-    p_chelpers_steps: *mut c_void,
-    stage_id: u64,
-) -> bool {
+pub fn verify_constraints_c(p_chelpers_steps: *mut c_void, stage_id: u64) -> bool {
     unsafe { verify_constraints(p_chelpers_steps, stage_id) }
 }
 
@@ -997,10 +994,7 @@ pub fn get_hint_field_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn verify_constraints_c(
-    _p_chelpers_steps: *mut c_void,
-    _stage_id: u64,
-) -> bool {
+pub fn verify_constraints_c(_p_chelpers_steps: *mut c_void, _stage_id: u64) -> bool {
     trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
     true
 }
