@@ -1,4 +1,5 @@
 use crate::{MemAlignedSM, MemUnalignedSM};
+use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
 use std::sync::{Arc, Mutex};
@@ -45,6 +46,7 @@ impl<F> WitnessComponent<F> for MemSM {
         _air_instance: usize,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }

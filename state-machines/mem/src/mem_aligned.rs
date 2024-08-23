@@ -5,6 +5,7 @@ use std::{
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
 
@@ -51,6 +52,7 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
         _air_instance: usize,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }
