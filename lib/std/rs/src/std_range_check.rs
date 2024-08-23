@@ -1,7 +1,8 @@
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
-use p3_field::AbstractField;
-use pilout::{pilout::Hint, pilout_proxy::PilOutProxy};
+use num_bigint::BigInt;
+use p3_field::Field;
+use pilout::{pilout::{BasicAir, Hint}, pilout_proxy::PilOutProxy};
 
 use proofman_common::{trace,AirInstanceCtx, ExecutionCtx, ProofCtx};
 
@@ -25,18 +26,28 @@ trace!(U8Air0Row, U8Air0Trace<F> {
     mul: F,
 });
 
-pub struct StdRangeItem<F> {
+trace!(U16Air0Row, U16Air0Trace<F> {
+    mul: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+    mul: [F; 32], // TODO: This number cannot be hardcorded, it depens on the air that instantiates the range check
+});
+
+type Range = (BigInt, BigInt);
+
+pub struct StdRangeItem {
     rc_type: StdRangeCheckType,
-    range: (F, F), // (min, max)
+    range: Range, // (min, max)
 }
 
 pub struct StdRangeCheck<F> {
-    ranges: Vec<StdRangeItem<F>>,
-    inputs: [HashMap<(F, F), u64>; STD_RANGE_CHECK_VARIANTS],    // (min, max) -> multiplicity
-    inputs_specified: HashMap<F, u64>,                           // value -> multiplicity
+    ranges: Vec<StdRangeItem>,
+    inputs_specified: HashMap<Range, HashMap<F, F>>,     // (min, max) -> value -> multiplicity
+    inputs: [HashMap<F, F>; STD_RANGE_CHECK_VARIANTS-1], // value -> multiplicity
 }
 
-impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Output = F>>
+impl<F: Field + Copy + Clone + PartialOrd + PartialEq>
     StdRangeCheck<F>
 {
     const MY_NAME: &'static str = "STD Range Check";
@@ -44,8 +55,8 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
     pub fn new() -> Self {
         Self {
             ranges: Vec::new(),
-            inputs: core::array::from_fn(|_| HashMap::new()),
             inputs_specified: HashMap::new(),
+            inputs: core::array::from_fn(|_| HashMap::new()),
         }
     }
 
@@ -58,13 +69,27 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
             .collect();
 
         for hint in rc_hints {
-            let predefined = get_hint_field_c(hint, "predefined");
-            let min = get_hint_field_c(hint, "min");
-            let max = get_hint_field_c(hint, "max");
+            let predefined: F = get_hint_field_c(hint, "predefined");
+            let mut min: F = get_hint_field_c(hint, "min");
+            let max: F = get_hint_field_c(hint, "max");
 
-            let range = (min, max);
+            // Hint fields can only be expressed as field elements but in PIL they can be negative
+            // e.g.: on input range [-3,3], we obtain min = F::order() - 3 and max = 3
+            // we should therefore adjust the range to [min,max] = [-3,3]
 
-            let r#type = if predefined && min >= 0 && max <= TWOBYTES {
+            if min > max {
+                min = min as BigInt - F::order();
+            }
+
+            let range: Range = (min, max);
+
+            // If the range is already defined, skip
+            if self.ranges.iter().any(|r| r.range == range) {
+                continue;
+            }
+
+            // Associate to each unique range a range check type
+            let r#type = if predefined && min >= BigInt::ZERO && max <= BigInt::from(TWOBYTES) {
                 match (min, max) {
                     (0, BYTE) => StdRangeCheckType::U8Air,
                     (0, TWOBYTES) => StdRangeCheckType::U16Air,
@@ -95,7 +120,11 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
         min: F,
         max: F,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let range_check = self.ranges.iter().find(|range| range.range == (min, max));
+        if value < min || value > max {
+            return Err("Value is out of range".into());
+        }
+
+        let range_check = self.ranges.iter().find(|r| r.range == (min, max));
 
         if range_check.is_none() {
             // format!("Range not found: [min,max] = [{},{}]", min, max)
@@ -139,30 +168,37 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
         min: Option<F>,
         max: Option<F>,
     ) {
-        match rc_type {
-            StdRangeCheckType::SpecifiedRanges => {
-                let value = value.expect("Rc::proves() value must be provided");
+        if rc_type != StdRangeCheckType::SpecifiedRanges {
+            let value = value.expect("Rc::proves() value must be provided");
 
-                let inputs_specified = self.inputs_specified.entry(value).or_insert(0);
-                *inputs_specified += 1;
+            let inputs = self.inputs[rc_type as usize].entry(value).or_insert(F::zero());
+            *inputs += F::one();
+        } else {
+            let range = (
+                min.expect("Rc::proves() min must be provided"),
+                max.expect("Rc::proves() max must be provided"),
+            );
+            let inputs_specified = self.inputs_specified.entry(range).or_insert(HashMap::new());
+            if value.is_none() {
+                return;
             }
-            _ => {
-                let range = (
-                    min.expect("Rc::proves() min must be provided"),
-                    max.expect("Rc::proves() max must be provided"),
-                    value.expect("Rc::proves() value must be provided"),
-                );
-                let inputs = self.inputs[rc_type as usize].entry(range).or_insert(0);
-                *inputs += 1;
+            let value = value.unwrap();
+            if value > range.1 {
+                // This only happens when min is negative and max is positive
+                value = value - F::order();
             }
-        };
+
+            let inputs_specified = inputs_specified.entry(value).or_insert(F::zero());
+            *inputs_specified += F::one();
+        }
     }
 
     fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, stage);
 
         if stage == 1 {
-            let mut rc_airs = Vec::new();
+            // Find airs that are range checks, which are those in STD_RANGE_CHECK_AIR_NAMES
+            let mut rc_airs: Vec<&BasicAir> = Vec::new();
             for air_group in pctx.pilout.air_groups() {
                 let airs = air_group.airs().iter().filter(|air| {
                     if let Some(name) = &air.name {
@@ -170,10 +206,11 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + core::ops::Sub<Ou
                     } else {
                         false
                     }
-                });
+                }).collect();
                 rc_airs.extend(airs);
             }
 
+            // If there is some range check air, we feed its multiplicity column for their SINGLE instance
             for air in rc_airs {
                 let num_rows = air.num_rows();
 

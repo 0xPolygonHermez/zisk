@@ -4,17 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# proofman-hint = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
 #Local development
-proofman-common = { path = "../../../../pil2-proofman/common" }
 proofman = { path = "../../../../pil2-proofman/proofman" }
+proofman-common = { path = "../../../../pil2-proofman/common" }
 proofman-util = { path = "../../../../pil2-proofman/util" }
+# proofman-hint = { path = "../../../../pil2-proofman/hints" }
 pilout = { path = "../../../../pil2-proofman/pilout" }
 
 log = { version = "0.4", default-features = false }
+num-bigint = "0.4"
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 rayon = "1.10.0"
