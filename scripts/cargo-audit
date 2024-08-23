@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# Check if cargo-audit is installed
+if ! cargo audit --version > /dev/null 2>&1; then
+  echo "cargo-audit is not installed. Installing..."
+  cargo install cargo-audit
+
+  # Check if the installation was successful
+  if cargo audit --version > /dev/null 2>&1; then
+    echo "cargo-audit successfully installed."
+  else
+    echo "Failed to install cargo-audit."
+    exit 1
+  fi
+else
+  echo "cargo-audit is already installed."
+fi
+
+command_to_run="cargo audit --all-features"
+crates="common hints pilout proofman provers/stark provers/starks-lib-c transcript util"
+original_dir=`pwd`
+
+for crate in $crates; do
+  if [ -d "$crate" ]; then
+    echo "$command_to_run ($crate)"
+    cd $crate
+    `$command_to_run`
+    cd $original_dir
+  else
+    echo "Crate not found: $crate"
+  fi
+done
