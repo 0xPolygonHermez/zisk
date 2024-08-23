@@ -6,7 +6,7 @@ original_dir=`pwd`
 
 for crate in $crates; do
   if [ -d "$crate" ]; then
-    echo "cargo fix ($crate)"
+    echo "$command_to_run ($crate)"
     cd $crate
     `$command_to_run`
     cd $original_dir
