@@ -60,7 +60,7 @@ impl<F: Field + Copy + Clone + PartialOrd + PartialEq>
         }
     }
 
-    pub fn setup(&self, air_group_id: u32, air_id: u32, pilout: &PilOutProxy) {
+    pub fn register_ranges(&self, air_group_id: u32, air_id: u32, pilout: &PilOutProxy) {
         let rc_hints: Vec<&Hint> = pilout
             .pilout
             .hints
@@ -193,7 +193,7 @@ impl<F: Field + Copy + Clone + PartialOrd + PartialEq>
         }
     }
 
-    fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+    fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx,) {
         log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, stage);
 
         if stage == 1 {
