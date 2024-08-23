@@ -113,9 +113,9 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             // TODO: Verify global constraints!
 
             if !valid_constraints {
-                println!("{}", format!("Not all constraints were verified.").bright_red().bold());
+                println!("{}", "Not all constraints were verified.".to_string().bright_red().bold());
             } else {
-                println!("{}", format!("All constraints were successfully verified.").bright_green().bold());
+                println!("{}", "All constraints were successfully verified.".to_string().bright_green().bold());
             }
 
             return Ok(vec![]);
@@ -214,7 +214,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
         for prover in provers.iter_mut() {
             if debug_mode {
-                let dummy_elements = vec![F::zero(), F::one(), F::two(), F::neg_one()];
+                let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                 transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
             } else {
                 prover.add_challenges_to_transcript(stage as u64, pctx, transcript);
