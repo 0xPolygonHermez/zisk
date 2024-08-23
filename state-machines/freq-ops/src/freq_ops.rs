@@ -2,6 +2,7 @@ use std::{mem, sync::Mutex};
 
 use proofman::WitnessComponent;
 use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{FreqOp, OpResult, Provable};
 
@@ -34,6 +35,7 @@ impl<F> WitnessComponent<F> for FreqOpSM {
         _air_instance: usize,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }

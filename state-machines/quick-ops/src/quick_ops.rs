@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
@@ -34,6 +35,7 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
         _air_instance: usize,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }

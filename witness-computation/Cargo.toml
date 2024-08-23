@@ -22,5 +22,6 @@ p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754e
 p3-field = { workspace=true }
 
 proofman-common = { workspace = true }
-proofman = { workspace = true }
+proofman-setup = { workspace = true }
 proofman-util = { workspace = true }
+proofman = { workspace = true }

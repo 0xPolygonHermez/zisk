@@ -1,6 +1,7 @@
 use log::{debug, info, trace};
 use p3_field::{AbstractField, PackedValue};
 
+use proofman_setup::SetupCtx;
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -42,8 +43,6 @@ impl<F: Default + Clone> MainAirSegment<F> {
 pub struct MainSM<F> {
     zisk_rom: ZiskRom,
     zisk_rom_path: PathBuf,
-    // Main proving key path
-    main_pk: PathBuf,
     // Inputs accumulator from the emulator
     callback_inputs: Arc<RwLock<Vec<MainAirSegment<F>>>>,
     //State machines
@@ -76,22 +75,12 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         rom_path: &Path,
-        proving_key_path: &PathBuf,
         wcm: &mut WitnessManager<F>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM>,
         arith_sm: Arc<ArithSM>,
         air_ids: &[usize],
     ) -> Arc<Self> {
-        // Check if the Main proving key path exists
-        let mut main_pk = proving_key_path.clone();
-        main_pk.push("build");
-        main_pk.push("FibonacciSquare"); // TODO Change this to the correct path when generated
-
-        if !main_pk.exists() {
-            panic!("Main proving key path does not exist: {:?}", proving_key_path);
-        }
-
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let mut zisk_rom = if rom_path.extension().unwrap() == "elf" {
             // Create an instance of the RISCV -> ZisK program converter
@@ -121,7 +110,6 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             binary_sm,
             arith_sm,
             callback_inputs: Arc::new(RwLock::new(Vec::new())),
-            main_pk,
         });
 
         wcm.register_component(main.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
@@ -142,6 +130,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         public_inputs_path: &Path,
         pctx: &mut ProofCtx<F>,
         ectx: &mut ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
@@ -326,9 +315,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let binary = &emu_required.binary;
         let arith = &emu_required.arith;
 
-        self.mem_sm.prove(memory, false, scope);
-        self.binary_sm.prove(binary, false, scope);
-        self.arith_sm.prove(arith, false, scope);
+        // self.mem_sm.prove(memory, false, scope);
+        // self.binary_sm.prove(binary, false, scope);
+        // self.arith_sm.prove(arith, false, scope);
     }
 }
 
@@ -339,6 +328,7 @@ impl<F> WitnessComponent<F> for MainSM<F> {
         air_instance: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }
