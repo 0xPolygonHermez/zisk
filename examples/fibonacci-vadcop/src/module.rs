@@ -1,4 +1,5 @@
 use log::debug;
+use proofman_setup::SetupCtx;
 use std::{cell::RefCell, sync::Arc};
 
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
@@ -67,5 +68,13 @@ impl Module {
 }
 
 impl<F: AbstractField + Copy> WitnessComponent<F> for Module {
-    fn calculate_witness(&self, _stage: u32, _air_instance_id: usize, _pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {}
+    fn calculate_witness(
+        &self,
+        _stage: u32,
+        _air_instance_id: usize,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
+    ) {
+    }
 }

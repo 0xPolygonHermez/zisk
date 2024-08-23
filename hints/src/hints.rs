@@ -1,9 +1,14 @@
-use starks_lib_c::get_hint_field_c;
+use starks_lib_c::{set_hint_field_c, get_hint_field_c};
 
-use std::ops::Index;
-use ::std::os::raw::c_void;
+use p3_field::Field;
+use proofman_common::ExtensionField;
+
+use std::os::raw::c_void;
+
+use std::ops::{Mul, Add, Sub, Div};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
 pub enum HintFieldType {
     Field = 0,          // F
     FieldExtended = 1,  // [F; 3]
@@ -16,44 +21,161 @@ pub enum HintFieldType {
 pub struct HintFieldInfo<F> {
     size: u64,
     offset: u8, // 1 or 3
-    type_: HintFieldType,
+    field_type: HintFieldType,
     pub values: *mut F,
 }
 
-pub enum HintFieldValue<F> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HintFieldValue<F: Clone + Copy> {
     Field(F),
-    FieldExtended([F; 3]),
+    FieldExtended(ExtensionField<F>),
     Column(Vec<F>),
-    ColumnExtended(Vec<[F; 3]>),
+    ColumnExtended(Vec<ExtensionField<F>>),
 }
 
-// pub enum HintFieldReference<'a, F> {
-//     Field(&'a F),
-//     FieldArray(&'a [F; 3]),
-// }
+#[derive(Clone, Debug, PartialEq, Eq)]
+// Define an enum to represent the possible return types
+pub enum HintFieldOutput<F: Clone + Copy> {
+    Field(F),
+    FieldExtended(ExtensionField<F>),
+}
 
-// impl<'a, F> Index<usize> for HintFieldValue<F> {
-//     type Output = HintFieldReference<'a, F>;
+// impl<F: Copy> Index<usize> for HintFieldValue<F> {
+//     type Output = HintFieldOutput<F>;
 
 //     fn index(&self, index: usize) -> &Self::Output {
 //         match self {
-//             HintFieldValue::Field(value) => self,
-//             HintFieldValue::FieldExtended(array) => self,
-//             HintFieldValue::Column(vec) => &self[index],
-//             HintFieldValue::ColumnExtended(vec) => &self[index],
+//             HintFieldValue::Field(value) => &HintFieldOutput::Field(value.clone()),
+//             HintFieldValue::FieldExtended(value) => &HintFieldOutput::FieldExtended(value.clone()),
+//             HintFieldValue::Column(vec) => &HintFieldOutput::Field(vec[index].clone()),
+//             HintFieldValue::ColumnExtended(vec) => &HintFieldOutput::FieldExtended(vec[index].clone())
 //         }
 //     }
 // }
 
-impl<F> Index<usize> for HintFieldValue<F> {
-    type Output = HintFieldValue<F>;
-
-    fn index(&self, index: usize) -> &Self::Output {
+impl<F: Clone + Copy> HintFieldValue<F> {
+    pub fn get(&self, index: usize) -> HintFieldOutput<F> {
         match self {
-            HintFieldValue::Field(_value) => self,
-            HintFieldValue::FieldExtended(_array) => self,
-            HintFieldValue::Column(_vec) => &self[index],
-            HintFieldValue::ColumnExtended(_vec) => &self[index],
+            HintFieldValue::Field(value) => HintFieldOutput::Field(*value),
+            HintFieldValue::FieldExtended(value) => HintFieldOutput::FieldExtended(*value),
+            HintFieldValue::Column(vec) => HintFieldOutput::Field(vec[index]),
+            HintFieldValue::ColumnExtended(vec) => HintFieldOutput::FieldExtended(vec[index]),
+        }
+    }
+
+    pub fn set(&mut self, index: usize, output: HintFieldOutput<F>) {
+        match (self, output) {
+            (HintFieldValue::Field(val), HintFieldOutput::Field(new_val)) => {
+                *val = new_val;
+            }
+            (HintFieldValue::FieldExtended(val), HintFieldOutput::FieldExtended(new_val)) => {
+                *val = new_val;
+            }
+            (HintFieldValue::Column(vec), HintFieldOutput::Field(new_val)) => {
+                vec[index] = new_val;
+            }
+            (HintFieldValue::ColumnExtended(vec), HintFieldOutput::FieldExtended(new_val)) => {
+                vec[index] = new_val;
+            }
+            _ => panic!("Mismatched types in set method"),
+        }
+    }
+}
+
+impl<F: Field> Add for HintFieldOutput<F> {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            // Field * Field
+            (HintFieldOutput::Field(a), HintFieldOutput::Field(b)) => HintFieldOutput::Field(a + b),
+
+            // Field * FieldExtended
+            (HintFieldOutput::Field(a), HintFieldOutput::FieldExtended(b)) => HintFieldOutput::FieldExtended(b + a),
+
+            // FieldExtended * Field
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::Field(b)) => HintFieldOutput::FieldExtended(a + b),
+
+            // FieldExtended * FieldExtended
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(a + b)
+            }
+        }
+    }
+}
+
+impl<F: Field> Sub for HintFieldOutput<F> {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            // Field * Field
+            (HintFieldOutput::Field(a), HintFieldOutput::Field(b)) => HintFieldOutput::Field(a - b),
+
+            // Field * FieldExtended
+            (HintFieldOutput::Field(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(ExtensionField { value: [a, F::zero(), F::zero()] } - b)
+            }
+
+            // FieldExtended * Field
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::Field(b)) => HintFieldOutput::FieldExtended(a - b),
+
+            // FieldExtended * FieldExtended
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(a - b)
+            }
+        }
+    }
+}
+
+impl<F: Field> Mul for HintFieldOutput<F> {
+    type Output = Self;
+
+    #[inline]
+    fn mul(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            // Field * Field
+            (HintFieldOutput::Field(a), HintFieldOutput::Field(b)) => HintFieldOutput::Field(a * b),
+
+            // Field * FieldExtended
+            (HintFieldOutput::Field(a), HintFieldOutput::FieldExtended(b)) => HintFieldOutput::FieldExtended(b * a),
+
+            // FieldExtended * Field
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::Field(b)) => HintFieldOutput::FieldExtended(a * b),
+
+            // FieldExtended * FieldExtended
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(a * b)
+            }
+        }
+    }
+}
+
+impl<F: Field> Div for HintFieldOutput<F> {
+    type Output = Self;
+
+    #[inline]
+    fn div(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            // Field * Field
+            (HintFieldOutput::Field(a), HintFieldOutput::Field(b)) => HintFieldOutput::Field(a / b),
+
+            // Field * FieldExtended
+            (HintFieldOutput::Field(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(b.inverse() * a)
+            }
+
+            // FieldExtended * Field
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::Field(b)) => {
+                HintFieldOutput::FieldExtended(a * b.inverse())
+            }
+
+            // FieldExtended * FieldExtended
+            (HintFieldOutput::FieldExtended(a), HintFieldOutput::FieldExtended(b)) => {
+                HintFieldOutput::FieldExtended(a / b)
+            }
         }
     }
 }
@@ -61,21 +183,14 @@ impl<F> Index<usize> for HintFieldValue<F> {
 pub struct HintCol;
 
 impl HintCol {
-    pub fn from_hint_field<F: Clone>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
+    pub fn from_hint_field<F: Clone + Copy>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
         unsafe {
-            match hint_field.type_ {
-                HintFieldType::Field => {
-                    // Dereference the first element in the raw pointer
-                    HintFieldValue::Field((*hint_field.values).clone())
-                }
+            match hint_field.field_type {
+                HintFieldType::Field => HintFieldValue::Field(*hint_field.values),
                 HintFieldType::FieldExtended => {
-                    // Create an array [F; 3] from the first three elements in the raw pointer
-                    let array: [F; 3] = [
-                        (*hint_field.values).clone(),
-                        (*hint_field.values.wrapping_add(1)).clone(),
-                        (*hint_field.values.wrapping_add(2)).clone(),
-                    ];
-                    HintFieldValue::FieldExtended(array)
+                    let array: [F; 3] =
+                        [*hint_field.values, *hint_field.values.wrapping_add(1), *hint_field.values.wrapping_add(2)];
+                    HintFieldValue::FieldExtended(ExtensionField { value: array })
                 }
                 HintFieldType::Column => {
                     let vec =
@@ -83,14 +198,12 @@ impl HintCol {
                     HintFieldValue::Column(vec)
                 }
                 HintFieldType::ColumnExtended => {
-                    let mut extended_vec: Vec<[F; 3]> = Vec::with_capacity(hint_field.size as usize / 3);
+                    let mut extended_vec: Vec<ExtensionField<F>> = Vec::with_capacity(hint_field.size as usize / 3);
                     for i in 0..(hint_field.size as usize / 3) {
                         let base_ptr = hint_field.values.wrapping_add(i * 3);
-                        extended_vec.push([
-                            (*base_ptr).clone(),
-                            (*base_ptr.wrapping_add(1)).clone(),
-                            (*base_ptr.wrapping_add(2)).clone(),
-                        ]);
+                        extended_vec.push(ExtensionField {
+                            value: [*base_ptr, *base_ptr.wrapping_add(1), *base_ptr.wrapping_add(2)],
+                        });
                     }
                     HintFieldValue::ColumnExtended(extended_vec)
                 }
@@ -99,7 +212,7 @@ impl HintCol {
     }
 }
 
-pub fn get_hint_field<F: Clone>(
+pub fn get_hint_field<F: Clone + Copy>(
     p_chelpers_steps: *mut c_void,
     hint_id: u64,
     hint_field_name: &str,
@@ -112,6 +225,35 @@ pub fn get_hint_field<F: Clone>(
     HintCol::from_hint_field(hint_field.as_ref())
 }
 
+pub fn set_hint_field<F: Copy + core::fmt::Debug>(
+    p_chelpers_steps: *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+    values: &HintFieldValue<F>,
+) {
+    let values_ptr: *mut c_void = match values {
+        HintFieldValue::Column(vec) => vec.as_ptr() as *mut c_void,
+        HintFieldValue::ColumnExtended(vec) => vec.as_ptr() as *mut c_void,
+        _ => panic!("Only column and column extended are accepted"),
+    };
+
+    set_hint_field_c(p_chelpers_steps, values_ptr, hint_id, hint_field_name);
+}
+
+pub fn set_hint_field_val<F: Clone + Copy>(
+    p_chelpers_steps: *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+    value: HintFieldOutput<F>,
+) {
+    let values_ptr: *mut c_void = match value {
+        HintFieldOutput::Field(val) => &val as *const F as *mut c_void,
+        HintFieldOutput::FieldExtended(val) => &[val.value[0], val.value[1], val.value[2]] as *const F as *mut c_void,
+    };
+
+    set_hint_field_c(p_chelpers_steps, values_ptr, hint_id, hint_field_name);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,12 +261,15 @@ mod tests {
     #[test]
     fn test_element_1() {
         let mut buffer = [0usize; 90];
-        for i in 0..buffer.len() {
-            buffer[i] = i + 144;
+        for (i, item) in buffer.iter_mut().enumerate() {
+            *item = i + 144;
         }
-
-        let hint_field: HintFieldInfo<usize> =
-            HintFieldInfo::<usize> { size: 1, offset: 1, type_: HintFieldType::Field, values: buffer.as_mut_ptr() };
+        let hint_field: HintFieldInfo<usize> = HintFieldInfo::<usize> {
+            size: 1,
+            offset: 1,
+            field_type: HintFieldType::Field,
+            values: buffer.as_mut_ptr(),
+        };
 
         match HintCol::from_hint_field(&hint_field) {
             HintFieldValue::Field(value) => {

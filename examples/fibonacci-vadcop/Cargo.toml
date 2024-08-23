@@ -9,6 +9,7 @@ crate-type = ["dylib"]
 [dependencies]
 proofman-common = { path = "../../common" }
 proofman = { path = "../../proofman" }
+proofman-setup = { path = "../../setup" }
 
 env_logger = { workspace = true }
 log = { workspace = true }

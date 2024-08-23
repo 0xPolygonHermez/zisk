@@ -23,7 +23,6 @@ macro_rules! trace {
         // Define the trace structure (Main0Trace) that manages the row structure
         pub struct $trace_struct_name<'a, $generic> {
             pub buffer: Option<Vec<$generic>>,
-            pub slice_buffer: &'a mut [$generic],
             pub slice_trace: &'a mut [$row_struct_name<$generic>],
             num_rows: usize,
         }
@@ -43,11 +42,7 @@ macro_rules! trace {
                     std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut $row_struct_name<$generic>, num_rows)
                 };
 
-                let slice_buffer = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut $generic, num_rows * $row_struct_name::<$generic>::ROW_SIZE)
-                };
-
-                $trace_struct_name { buffer: Some(buffer), slice_buffer, slice_trace, num_rows }
+                $trace_struct_name { buffer: Some(buffer), slice_trace, num_rows }
             }
 
             // Constructor to map over an external buffer
@@ -65,11 +60,6 @@ macro_rules! trace {
                     return Err("Buffer is too small to fit the trace".into());
                 }
 
-                // let slice_buffer = unsafe {
-                //     let ptr = external_buffer.as_ptr() as *mut $generic;
-                //     std::slice::from_raw_parts_mut(ptr, external_buffer.len())
-                // };
-
                 let slice_trace = unsafe {
                     std::slice::from_raw_parts_mut(
                         external_buffer[start..end].as_ptr() as *mut $row_struct_name<$generic>,
@@ -79,7 +69,6 @@ macro_rules! trace {
 
                 Ok($trace_struct_name {
                     buffer: None,
-                    slice_buffer: external_buffer,
                     slice_trace,
                     num_rows,
                 })
@@ -95,11 +84,6 @@ macro_rules! trace {
                 // num_rows must be a power of 2
                 assert!(num_rows & (num_rows - 1) == 0);
 
-                let slice_buffer = unsafe {
-                    let ptr = external_buffer.as_ptr() as *mut $generic;
-                    std::slice::from_raw_parts_mut(ptr, num_rows * $row_struct_name::<$generic>::ROW_SIZE)
-                };
-
                 let slice_trace = unsafe {
                     let ptr = external_buffer.as_ptr() as *mut $row_struct_name<$generic>;
                     std::slice::from_raw_parts_mut(ptr,
@@ -107,15 +91,14 @@ macro_rules! trace {
                     )
                 };
 
-                let buffer_F = unsafe {
+                let buffer_f = unsafe {
                     Vec::from_raw_parts(external_buffer.as_ptr() as *mut $generic, num_rows * $row_struct_name::<$generic>::ROW_SIZE, num_rows * $row_struct_name::<$generic>::ROW_SIZE)
                 };
 
                 std::mem::forget(external_buffer);
 
                 Ok($trace_struct_name {
-                    buffer: Some(buffer_F),
-                    slice_buffer,
+                    buffer: Some(buffer_f),
                     slice_trace,
                     num_rows,
                 })

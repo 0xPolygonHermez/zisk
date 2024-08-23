@@ -1,7 +1,8 @@
 use libloading::{Library, Symbol};
 use log::{debug, info, trace};
-use p3_field::AbstractField;
-use stark::{GlobalInfo, StarkBufferAllocator, StarkProver};
+use p3_field::Field;
+use stark::{StarkBufferAllocator, StarkProver};
+use proofman_setup::SetupCtx;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -21,7 +22,7 @@ pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + 'static> ProofMan<F> {
+impl<F: Field + 'static> ProofMan<F> {
     const MY_NAME: &'static str = "ProofMan";
 
     pub fn generate_proof(
@@ -63,21 +64,22 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone(), proving_key_path.clone())?;
+        let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone())?;
 
-        let pilout = witness_lib.pilout();
-
-        let mut pctx = ProofCtx::create_ctx(pilout);
+        let mut pctx = ProofCtx::create_ctx(witness_lib.pilout());
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
 
-        let buffer_allocator = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
+        let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
+
         let mut ectx = ExecutionCtx::builder().with_buffer_allocator(buffer_allocator).build();
 
-        Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx);
-        witness_lib.calculate_witness(1, &mut pctx, &ectx);
+        let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
-        Self::initialize_provers(&proving_key_path, &mut provers, &mut pctx);
+        Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx, &sctx);
+        witness_lib.calculate_witness(1, &mut pctx, &ectx, &sctx);
+
+        Self::initialize_provers(&sctx, &proving_key_path, &mut provers, &mut pctx);
 
         if provers.is_empty() {
             return Err("No instances found".into());
@@ -93,7 +95,7 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         let num_commit_stages = pctx.pilout.num_stages();
         for stage in 1..=num_commit_stages {
             if stage != 1 {
-                witness_lib.calculate_witness(stage, &mut pctx, &ectx);
+                witness_lib.calculate_witness(stage, &mut pctx, &ectx, &sctx);
             }
 
             Self::get_challenges(stage, &mut provers, &mut pctx, &transcript);
@@ -103,20 +105,19 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             } else {
                 Self::commit_stage(stage, &mut provers, &mut pctx, debug_mode);
             }
-            
+
             Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
         }
 
         witness_lib.end_proof();
 
         if debug_mode {
-
-            // TODO: Verify global constraints! 
+            // TODO: Verify global constraints!
 
             if !valid_constraints {
-                println!("{}", format!("Not all constraints were verified.").bright_red().bold());
+                log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
             } else {
-                println!("{}", format!("All constraints were successfully verified.").bright_green().bold());
+                log::debug!("{}", "All constraints were successfully verified.".bright_green().bold());
             }
 
             return Ok(vec![]);
@@ -139,10 +140,11 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         witness_lib: &mut Box<dyn WitnessLibrary<F>>,
         pctx: &mut ProofCtx<F>,
         ectx: &mut ExecutionCtx,
+        sctx: &SetupCtx,
     ) {
-        witness_lib.start_proof(pctx, ectx);
+        witness_lib.start_proof(pctx, ectx, sctx);
 
-        witness_lib.execute(pctx, ectx);
+        witness_lib.execute(pctx, ectx, sctx);
 
         trace!("{}: Air instances: ", Self::MY_NAME);
 
@@ -154,10 +156,13 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         }
     }
 
-    fn initialize_provers(proving_key_path: &Path, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
+    fn initialize_provers(
+        sctx: &SetupCtx,
+        proving_key_path: &Path,
+        provers: &mut Vec<Box<dyn Prover<F>>>,
+        pctx: &mut ProofCtx<F>,
+    ) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
-
-        let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
 
         for air_instance in pctx.air_instances.write().unwrap().iter_mut() {
             debug!(
@@ -167,12 +172,8 @@ impl<F: AbstractField + 'static> ProofMan<F> {
                 air_instance.air_id
             );
 
-            let prover = Box::new(StarkProver::new(
-                proving_key_path,
-                &global_info,
-                air_instance.air_group_id,
-                air_instance.air_id,
-            ));
+            let prover =
+                Box::new(StarkProver::new(sctx, proving_key_path, air_instance.air_group_id, air_instance.air_id));
 
             provers.push(prover);
         }
@@ -193,7 +194,9 @@ impl<F: AbstractField + 'static> ProofMan<F> {
     }
 
     pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, debug_mode: bool) {
-        if debug_mode { return; }
+        if debug_mode {
+            return;
+        }
 
         info!("{}: Committing stage {}", Self::MY_NAME, stage);
 
@@ -213,11 +216,11 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
         for prover in provers.iter_mut() {
             if debug_mode {
-                let dummy_elements = vec![F::zero(), F::one(), F::two(), F::neg_one()];
+                let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                 transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
             } else {
                 prover.add_challenges_to_transcript(stage as u64, pctx, transcript);
-            }  
+            }
         }
     }
 
