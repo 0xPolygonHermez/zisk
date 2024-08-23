@@ -2028,6 +2028,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sm-quick-ops"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "proofman",
+ "proofman-common",
+ "rayon",
+ "sm-common",
+ "zisk-core",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2930,6 +2942,7 @@ dependencies = [
  "sm-freq-ops",
  "sm-main",
  "sm-mem",
+ "sm-quick-ops",
  "zisk-pil",
 ]
 

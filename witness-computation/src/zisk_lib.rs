@@ -1,5 +1,6 @@
 use log::debug;
 use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
+use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::{Pilout, MAIN_AIR_IDS};
 
@@ -17,12 +18,18 @@ pub struct ZiskWitness<F> {
     pub public_inputs_path: PathBuf,
     pub wcm: WitnessManager<F>,
     // State machines
+    pub arith_sm: Arc<ArithSM>,
+    pub arith_32_sm: Arc<Arith32SM>,
+    pub arith_64_sm: Arc<Arith64SM>,
+    pub arith_3264_sm: Arc<Arith3264SM>,
+    pub binary_sm: Arc<BinarySM>,
+    pub binary_basic_sm: Arc<BinaryBasicSM>,
+    pub binary_extension_sm: Arc<BinaryExtensionSM>,
     pub main_sm: Arc<MainSM<F>>,
     pub mem_sm: Arc<MemSM>,
     pub mem_aligned_sm: Arc<MemAlignedSM>,
     pub mem_unaligned_sm: Arc<MemUnalignedSM>,
-    pub arith_sm: Arc<ArithSM>,
-    pub arith_32_sm: Arc<Arith32SM>,
+    pub quickops_sm: Arc<QuickOpsSM>,
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
@@ -69,20 +76,24 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const BINARY_EXTENDED_AIR_IDS: &[usize] = &[7];
         pub const ARITH64_AIR_IDS: &[usize] = &[8];
         pub const ARITH3264_AIR_IDS: &[usize] = &[9];
+        pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
 
         let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm = MemUnalignedSM::new(&mut wcm, MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let binary_sm = BinaryBasicSM::new(&mut wcm, BINARY_BASIC_AIR_IDS);
+        let binary_basic_sm = BinaryBasicSM::new(&mut wcm, BINARY_BASIC_AIR_IDS);
         let binary_extension_sm = BinaryExtensionSM::new(&mut wcm, BINARY_EXTENDED_AIR_IDS);
-        let binary_sm = BinarySM::new(&mut wcm, binary_sm.clone(), binary_extension_sm.clone());
+        let binary_sm =
+            BinarySM::new(&mut wcm, binary_basic_sm.clone(), binary_extension_sm.clone());
 
         let arith_32_sm = Arith32SM::new(&mut wcm, ARITH32_AIR_IDS);
         let arith_64_sm = Arith64SM::new(&mut wcm, ARITH64_AIR_IDS);
         let arith_3264_sm = Arith3264SM::new(&mut wcm, ARITH3264_AIR_IDS);
         let arith_sm =
             ArithSM::new(&mut wcm, arith_32_sm.clone(), arith_64_sm.clone(), arith_3264_sm.clone());
+
+        let quickops_sm = QuickOpsSM::new(&mut wcm, QUICKOPS_AIR_IDS);
 
         let main_sm = MainSM::new(
             &rom_path,
@@ -98,12 +109,18 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             proving_key_path,
             public_inputs_path,
             wcm,
+            arith_sm,
+            arith_32_sm,
+            arith_64_sm,
+            arith_3264_sm,
+            binary_sm,
+            binary_basic_sm,
+            binary_extension_sm,
             main_sm,
             mem_sm,
             mem_aligned_sm,
             mem_unaligned_sm,
-            arith_sm,
-            arith_32_sm,
+            quickops_sm,
         })
     }
 }

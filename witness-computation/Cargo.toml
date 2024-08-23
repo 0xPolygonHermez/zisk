@@ -7,12 +7,13 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
+sm-arith = { path = "../state-machines/arith" }
 sm-binary = { path = "../state-machines/binary" }
+sm-common = { path = "../state-machines/common" }
+sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
-sm-arith = { path = "../state-machines/arith" }
-sm-freq-ops = { path = "../state-machines/freq-ops" }
-sm-common = { path = "../state-machines/common" }
+sm-quick-ops = { path = "../state-machines/quick-ops" }
 zisk-pil = { path = "../pil/fork_0" }
 
 log = { version = "0.4", default-features = false }
