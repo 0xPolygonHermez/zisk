@@ -78,7 +78,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
         Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx, &sctx);
-        
+
         witness_lib.calculate_witness(1, &mut pctx, &ectx, &sctx);
 
         Self::initialize_provers(&sctx, &proving_key_path, &mut provers, &mut pctx);
@@ -162,7 +162,7 @@ impl<F: Field + 'static> ProofMan<F> {
         sorted_group_ids.sort();
 
         for &air_group_id in &sorted_group_ids {
-            if let Some(air_map) = group_ids.get(&air_group_id) {
+            if let Some(air_map) = group_ids.get(air_group_id) {
                 let mut sorted_air_ids: Vec<_> = air_map.keys().collect();
                 sorted_air_ids.sort();
 
@@ -171,7 +171,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, *air_group_id, name);
 
                 for &air_id in &sorted_air_ids {
-                    if let Some(&count) = air_map.get(&air_id) {
+                    if let Some(&count) = air_map.get(air_id) {
                         let air = pctx.pilout.get_air(*air_group_id, *air_id);
                         let name = air.name().unwrap_or("Unnamed");
                         trace!("{}:       · {} x Air[{}] {}", Self::MY_NAME, count, air.air_id, name);
