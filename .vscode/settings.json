@@ -4,12 +4,12 @@
         "./cli/Cargo.toml",
         "./common/Cargo.toml",
         "./hints/Cargo.toml",
-        "./provers/stark/Cargo.toml",
-        "./provers/starks-lib-c/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",
+        "./provers/stark/Cargo.toml",
+        "./provers/starks-lib-c/Cargo.toml",
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
-        "./examples/fibonacci-vadcop/Cargo.toml"
+        // "./examples/fibonacci-vadcop/Cargo.toml"
     ]
 }

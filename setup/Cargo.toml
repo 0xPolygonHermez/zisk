@@ -18,7 +18,7 @@ starks-lib-c = { path = "../provers/starks-lib-c" }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
 proofman-common = { path = "../common" }
-hints = { path = "../hints" }
+proofman-hints = { path = "../hints" }
 
 [features]
 default = []

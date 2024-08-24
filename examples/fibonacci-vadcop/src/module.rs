@@ -1,4 +1,5 @@
 use log::debug;
+use pil_std_lib::Std;
 use proofman_setup::SetupCtx;
 use std::{cell::RefCell, sync::Arc};
 
@@ -10,11 +11,13 @@ use crate::{FibonacciVadcopPublicInputs, Module0Trace, MODULE_SUBPROOF_ID, MODUL
 
 pub struct Module {
     inputs: RefCell<Vec<(u64, u64)>>,
+    std_lib: Arc<Std<F>>,
 }
 
 impl Module {
-    pub fn new<F: AbstractField + Copy>(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let module = Arc::new(Module { inputs: RefCell::new(Vec::new()) });
+    pub fn new<F: AbstractField + Copy>(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
+        let module = Arc::new(Module { inputs: RefCell::new(Vec::new()), std_lib });
+
         wcm.register_component(module.clone(), Some(MODULE_SUBPROOF_ID));
 
         module

@@ -5,6 +5,7 @@ use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_setup::SetupCtx;
+use pil_std_lib::Std;
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -15,16 +16,18 @@ pub struct FibonacciVadcop<F> {
     pub wcm: WitnessManager<F>,
     pub fibonacci: Arc<FibonacciSquare>,
     pub module: Arc<Module>,
+    pub std_lib: Arc<Std<F>>,
 }
 
 impl<F: AbstractField + Copy> FibonacciVadcop<F> {
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
-        let module = Module::new(&mut wcm);
+        let std_lib = Std::new(&mut wcm);
+        let module = Module::new(&mut wcm, std);
         let fibonacci = FibonacciSquare::new(&mut wcm, module.clone());
 
-        FibonacciVadcop { wcm, fibonacci, module }
+        FibonacciVadcop { wcm, fibonacci, module, std_lib }
     }
 }
 
