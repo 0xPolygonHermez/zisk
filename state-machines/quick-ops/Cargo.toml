@@ -10,6 +10,5 @@ sm-common = { path = "../common" }
 proofman-common = { workspace = true }
 proofman-setup = { workspace = true }
 proofman = { workspace = true }
-
-log = { version = "0.4", default-features = false }
-rayon = "1.10.0"
+log = { workspace = true }
+rayon = { workspace = true }
