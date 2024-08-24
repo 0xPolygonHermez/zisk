@@ -1,9 +1,8 @@
-use pilout::pilout_proxy::PilOutProxy;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
-pub trait Decider {
-    fn decide<F>(
+pub trait Decider<F> {
+    fn decide(
         &self,
         stage: u32,
         air_instance: &AirInstanceCtx<F>,

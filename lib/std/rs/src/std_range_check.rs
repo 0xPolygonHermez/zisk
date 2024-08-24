@@ -5,6 +5,7 @@ use p3_field::Field;
 use pilout::{pilout::{BasicAir, Hint}, pilout_proxy::PilOutProxy};
 
 use proofman_common::{trace,AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_hints::get_hint_field;
 
 const BYTE: u64 = 255;
 const TWOBYTES: u64 = 65535;
@@ -69,16 +70,16 @@ impl<F: Field + Copy + Clone + PartialOrd + PartialEq>
             .collect();
 
         for hint in rc_hints {
-            let predefined: F = get_hint_field_c(hint, "predefined");
-            let mut min: F = get_hint_field_c(hint, "min");
-            let max: F = get_hint_field_c(hint, "max");
+            let predefined: F = get_hint_field(hint, "predefined");
+            let mut min = get_hint_field(hint, "min");
+            let max = get_hint_field(hint, "max");
 
             // Hint fields can only be expressed as field elements but in PIL they can be negative
             // e.g.: on input range [-3,3], we obtain min = F::order() - 3 and max = 3
             // we should therefore adjust the range to [min,max] = [-3,3]
 
             if min > max {
-                min = min as BigInt - F::order();
+                min = min as BigInt - BigInt::from(F::order());
             }
 
             let range: Range = (min, max);
