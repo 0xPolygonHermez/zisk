@@ -57,7 +57,6 @@ impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
 
                 scope.spawn(move |_scope| {
                     // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("QuickOps: Finishing the worker thread");
                 });
             }
         }

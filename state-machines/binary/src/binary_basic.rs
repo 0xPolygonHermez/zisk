@@ -60,7 +60,6 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
 
                 scope.spawn(move |_scope| {
                     // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("Binary Basic: Finishing the worker thread");
                 });
             }
         }

@@ -60,7 +60,6 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM {
 
                 scope.spawn(move |_scope| {
                     // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("Binary Extension: Finishing the worker thread");
                 });
             }
         }

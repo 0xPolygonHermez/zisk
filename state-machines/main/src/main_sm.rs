@@ -1,14 +1,13 @@
-use log::{debug, info, trace};
-use p3_field::{AbstractField, PackedValue};
+use log::info;
+use p3_field::AbstractField;
 
 use proofman_setup::SetupCtx;
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
-    cmp::Ordering,
     fs, mem,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
@@ -16,7 +15,7 @@ use proofman::WitnessManager;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
-use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, Emulator, ZiskEmulator};
+use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
@@ -44,7 +43,7 @@ pub struct MainSM<F> {
     zisk_rom: ZiskRom,
     zisk_rom_path: PathBuf,
     // Inputs accumulator from the emulator
-    callback_inputs: Arc<RwLock<Vec<MainAirSegment<F>>>>,
+    callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     //State machines
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM>,
@@ -64,13 +63,12 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// machines that directly interact with the MainSM
     /// Returns an Arc to the MainSM state machine
     /// # Arguments
-    /// * `wcm` - WCManager to register the state machine
+    /// * `rom_path` - Path to the ROM file
+    /// * `wcm` - Witness computation manager to register the state machine
     /// * `mem_sm` - Arc to the MemSM state machine
+    /// * `binary_sm` - Arc to the BinarySM state machine
     /// * `arith_sm` - Arc to the ArithSM state machine
     /// * `air_ids` - Array of Main Air IDs extracted from the pilout
-    /// * `max_accumulated` - Maximum number of inputs to accumulate before processing
-    /// # Preconditions
-    /// * The maximum number of accumulated inputs must be greater than 0
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(
@@ -82,7 +80,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         air_ids: &[usize],
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
-        let mut zisk_rom = if rom_path.extension().unwrap() == "elf" {
+        let zisk_rom = if rom_path.extension().unwrap() == "elf" {
             // Create an instance of the RISCV -> ZisK program converter
             let rv2zk = Riscv2zisk::new(
                 rom_path.display().to_string(),
@@ -103,13 +101,17 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             panic!("ROM file must be an ELF file");
         };
 
+        // TODO - Compute MAX_ACCUMULATED having the num_rows of the Main AIR
+        // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
+        // with the highest num_rows. It has to be a power of 2.
+
         let main = Arc::new(Self {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
             mem_sm,
             binary_sm,
             arith_sm,
-            callback_inputs: Arc::new(RwLock::new(Vec::new())),
+            callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
         wcm.register_component(main.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
@@ -145,9 +147,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         };
 
         // Call emulate with these options
-        let zisk_emulator = ZiskEmulator;
-
-        let mut public_inputs = {
+        let public_inputs = {
             // Read inputs data from the provided inputs path
             let path = PathBuf::from(public_inputs_path.display().to_string());
             fs::read(path).expect("Could not read inputs file")
@@ -174,14 +174,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         });
 
         // Terminate the state machines with the remaining inputs
-        let mut callback_inputs = self.callback_inputs.write().unwrap();
-        let mut last_air_segment = callback_inputs.last_mut().unwrap();
+        let mut callback_inputs = self.callback_inputs.lock().unwrap();
+        let last_air_segment = callback_inputs.last_mut().unwrap();
 
         if !last_air_segment.inputs.is_empty() {
             let air_segment = mem::take(last_air_segment);
             pool.scope(|scope| {
-                scope.spawn(move |scope| {
-                    Self::create_air_instance(&self.zisk_rom, air_segment, pctx, ectx);
+                scope.spawn(move |_| {
+                    Self::create_air_instance(air_segment, pctx);
                 });
             });
         }
@@ -197,47 +197,48 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         pctx: &'a ProofCtx<F>,
         ectx: &'a ExecutionCtx,
     ) {
-        // Determine the appropriate AIR segment and the exact position within it where the
-        // current EmuTrace should be placed
+        // Compute the AIR segment and the position where the current EmuTrace should be placed
         let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
         let air_id = air_step.floor() as usize;
         let pos_id =
             (air_step.fract() * Self::MAX_ACCUMULATED as f64 / Self::CALLBACK_SIZE as f64) as usize;
+
+        // As this calls are received sequentially, when pos_id is 0, a new segment is created
         if pos_id == 0 {
             self.callback_inputs
-                .write()
+                .lock()
                 .unwrap()
                 .push(MainAirSegment::new(air_id as u32, Self::MAX_ACCUMULATED));
         }
 
         scope.spawn(move |scope| {
-            let mut emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
+            // To go faster, we receive from the simulator callback a tiny trace that we are going
+            // to process to get the full trace. This is done to avoid the overhead of processing
+            // the full trace in the simulator callback and now can be parallelized.
+            let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
                 Ok(slice) => slice,
                 Err(e) => panic!("Error processing slice: {:?}", e),
             };
 
-            let mut inputs = self.callback_inputs.write().unwrap();
-            let mut air_segment = &mut inputs[air_id];
-
-            // Use splice to replace the range with elements from source_vec
             let len = emu_slice.full_trace.len();
-            let mut source_iter = emu_slice.full_trace.into_iter();
+            let source_iter = emu_slice.full_trace.into_iter();
+
+            let mut inputs = self.callback_inputs.lock().unwrap();
+            let air_segment = &mut inputs[air_id];
             air_segment.inputs.splice(pos_id..pos_id + len, source_iter);
             air_segment.filled_inputs += len;
+            assert!(
+                air_segment.filled_inputs <= Self::MAX_ACCUMULATED,
+                "Too many inputs in a Main AIR segment"
+            );
 
-            match air_segment.filled_inputs.cmp(&Self::MAX_ACCUMULATED) {
-                Ordering::Equal => {
-                    let air_segment = mem::take(air_segment);
-                    Self::create_air_instance(zisk_rom, air_segment, pctx, ectx);
-                    self.prove(zisk_rom, emu_slice.required, scope, pctx, ectx);
-                }
-                Ordering::Greater => {
-                    panic!("Too many inputs in the segment");
-                }
-                Ordering::Less => {
-                    // No action needed for the case where filled_inputs is less than
-                    // MAX_ACCUMULATED.
-                }
+            self.prove(emu_slice.required, ectx, scope);
+
+            if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
+                let air_segment = mem::take(air_segment);
+                scope.spawn(move |_| {
+                    Self::create_air_instance(air_segment, pctx);
+                });
             }
         });
     }
@@ -250,12 +251,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `pctx` - Proof context to interact with the proof system
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn create_air_instance(
-        zisk_rom: &ZiskRom,
-        air_segment: MainAirSegment<F>,
-        pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
-    ) {
+    fn create_air_instance(air_segment: MainAirSegment<F>, pctx: &ProofCtx<F>) {
         info!(
             "{}: ··· Creating Main segment #{} [{} inputs]",
             Self::MY_NAME,
@@ -299,35 +295,33 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// When the maximum number of accumulated inputs is reached, the MainSM state machine processes
     /// the inputs in batches. The inputs are processed in parallel using the thread pool
     /// # Arguments
-    /// * `inputs` - Vector of EmuTrace inputs to prove
-    /// * `pctx` - Proof context to interact with the proof system
+    /// * `emu_required` - Inputs to be proved
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn prove(
-        &self,
-        zisk_rom: &ZiskRom,
-        emu_required: ZiskRequired,
-        scope: &Scope<'a>,
-        pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
-    ) {
-        let memory = &emu_required.memory;
-        let binary = &emu_required.binary;
-        let arith = &emu_required.arith;
+    fn prove(&self, mut emu_required: ZiskRequired, _ectx: &'a ExecutionCtx, scope: &Scope<'a>) {
+        let memory = mem::take(&mut emu_required.memory);
+        let binary = mem::take(&mut emu_required.binary);
+        let arith = mem::take(&mut emu_required.arith);
 
-        // self.mem_sm.prove(memory, false, scope);
-        // self.binary_sm.prove(binary, false, scope);
-        // self.arith_sm.prove(arith, false, scope);
+        let mem_sm = self.mem_sm.clone();
+        let binary_sm = self.binary_sm.clone();
+        let arith_sm = self.arith_sm.clone();
+
+        scope.spawn(move |scope| {
+            mem_sm.prove(&memory, false, scope);
+            binary_sm.prove(&binary, false, scope);
+            arith_sm.prove(&arith, false, scope);
+        });
     }
 }
 
 impl<F> WitnessComponent<F> for MainSM<F> {
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: usize,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _stage: u32,
+        _air_instance: usize,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
     }

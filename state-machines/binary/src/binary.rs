@@ -74,7 +74,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
             if extension_operations.contains(&operation.opcode) {
                 _inputs_extension.push(operation.clone());
             } else {
-                panic!("Value not found in either vec1 or vec2!");
+                panic!("BinarySM: Operator {:x} not found", operation.opcode);
             }
         }
 
