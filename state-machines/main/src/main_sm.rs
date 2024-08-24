@@ -234,6 +234,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
 
             self.prove(emu_slice.required, ectx, scope);
 
+            // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
                 let air_segment = mem::take(air_segment);
                 scope.spawn(move |_| {
@@ -307,6 +308,8 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let binary_sm = self.binary_sm.clone();
         let arith_sm = self.arith_sm.clone();
 
+        // println!("num inputs: memory:{} binary:{} arith:{}", memory.len(), binary.len(),
+        // arith.len());
         scope.spawn(move |scope| {
             mem_sm.prove(&memory, false, scope);
             binary_sm.prove(&binary, false, scope);

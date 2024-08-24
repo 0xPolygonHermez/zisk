@@ -62,7 +62,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         Ok(result)
     }
 
-    fn prove(&self, operations: &[ZiskRequiredOperation], is_last: bool, scope: &Scope) {
+    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         let mut _inputs32 = Vec::new();
         let mut _inputs64 = Vec::new();
 
@@ -81,60 +81,43 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             }
         }
 
-        let mut inputs32 = self.inputs32.lock().unwrap();
-        let mut inputs64 = self.inputs64.lock().unwrap();
+        // TODO When drain is true, drain remaining inputs to the 3264 bits state machine
 
+        let mut inputs32 = self.inputs32.lock().unwrap();
         inputs32.extend(_inputs32);
+
+        while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
+            let drained_inputs32 = inputs32.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+            let arith32_sm_cloned = self.arith32_sm.clone();
+
+            scope.spawn(move |scope| {
+                arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
+            });
+        }
+        drop(inputs32);
+
+        let mut inputs64 = self.inputs64.lock().unwrap();
         inputs64.extend(_inputs64);
 
-        // The following is a way to release the lock on the inputs32 and inputs64 Mutexes asap
-        // NOTE: The `inputs32` lock is released when it goes out of scope because it is shadowed
-        let inputs32 = if is_last || inputs32.len() >= PROVE_CHUNK_SIZE {
-            let _inputs32 = std::mem::take(&mut *inputs32);
-            if _inputs32.is_empty() {
-                None
-            } else {
-                Some(_inputs32)
-            }
-        } else {
-            None
-        };
+        while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
+            let drained_inputs64 = inputs64.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+            let arith64_sm_cloned = self.arith64_sm.clone();
 
-        // NOTE: The `inputs64` lock is released when it goes out of scope because it is shadowed
-        let inputs64 = if is_last || inputs64.len() >= PROVE_CHUNK_SIZE {
-            let _inputs64 = std::mem::take(&mut *inputs64);
-            if _inputs64.is_empty() {
-                None
-            } else {
-                Some(_inputs64)
-            }
-        } else {
-            None
-        };
-
-        if inputs32.is_some() {
-            let arith32_s = self.arith32_sm.clone();
             scope.spawn(move |scope| {
-                arith32_s.prove(&inputs32.unwrap(), is_last, scope);
+                arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
             });
         }
-
-        if inputs64.is_some() {
-            let arith64_sm = self.arith64_sm.clone();
-            scope.spawn(move |scope| {
-                arith64_sm.prove(&inputs64.unwrap(), is_last, scope);
-            });
-        }
+        drop(inputs64);
     }
 
     fn calculate_prove(
         &self,
         operation: ZiskRequiredOperation,
-        is_last: bool,
+        drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation], is_last, scope);
+        self.prove(&[operation], drain, scope);
         result
     }
 }
