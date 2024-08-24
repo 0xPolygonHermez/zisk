@@ -35,6 +35,10 @@ impl WitnessPilout {
         None
     }
 
+    pub fn get_air_group(&self, air_group_id: usize) -> &AirGroup {
+        &self.air_groups[air_group_id]
+    }
+
     pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &BasicAir {
         &self.air_groups[air_group_id].airs[air_id]
     }

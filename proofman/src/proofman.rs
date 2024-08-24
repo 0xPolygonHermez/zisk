@@ -4,6 +4,7 @@ use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
 use proofman_setup::SetupCtx;
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -77,6 +78,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
         Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx, &sctx);
+        
         witness_lib.calculate_witness(1, &mut pctx, &ectx, &sctx);
 
         Self::initialize_provers(&sctx, &proving_key_path, &mut provers, &mut pctx);
@@ -146,13 +148,36 @@ impl<F: Field + 'static> ProofMan<F> {
 
         witness_lib.execute(pctx, ectx, sctx);
 
-        trace!("{}: Air instances: ", Self::MY_NAME);
+        // After the execution print the planned instances
+        trace!("{}: --> Air instances: ", Self::MY_NAME);
+
+        let mut group_ids = HashMap::new();
 
         for air_instance in pctx.air_instances.read().unwrap().iter() {
-            let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+            let group_map = group_ids.entry(air_instance.air_group_id).or_insert_with(HashMap::new);
+            *group_map.entry(air_instance.air_id).or_insert(0) += 1;
+        }
 
-            let name = if air.name().is_some() { air.name().unwrap() } else { "Unnamed" };
-            trace!("{}:     + Air[{}][{}] {}", Self::MY_NAME, air.air_group_id, air.air_id, name);
+        let mut sorted_group_ids: Vec<_> = group_ids.keys().collect();
+        sorted_group_ids.sort();
+
+        for &air_group_id in &sorted_group_ids {
+            if let Some(air_map) = group_ids.get(&air_group_id) {
+                let mut sorted_air_ids: Vec<_> = air_map.keys().collect();
+                sorted_air_ids.sort();
+
+                let air_group = pctx.pilout.get_air_group(*air_group_id);
+                let name = air_group.name().unwrap_or("Unnamed");
+                trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, *air_group_id, name);
+
+                for &air_id in &sorted_air_ids {
+                    if let Some(&count) = air_map.get(&air_id) {
+                        let air = pctx.pilout.get_air(*air_group_id, *air_id);
+                        let name = air.name().unwrap_or("Unnamed");
+                        trace!("{}:       · {} x Air[{}] {}", Self::MY_NAME, count, air.air_id, name);
+                    }
+                }
+            }
         }
     }
 
