@@ -419,19 +419,21 @@ impl StarkBufferAllocator {
 
 impl BufferAllocator for StarkBufferAllocator {
     fn get_buffer_info(&self, air_name: String, air_id: usize) -> Result<(u64, Vec<u64>), Box<dyn Error>> {
+        let global_info_name = GlobalInfo::from_file(&self.proving_key_path.join("pilout.globalInfo.json")).name;
+
         // Get inside the proving key folder the unique file ending with "starkinfo.json", if not error
         let mut stark_info_path = None;
 
         let air_pk_folder = self
             .proving_key_path
-            .join("build")
+            .join(global_info_name)
             .join(air_name.clone())
             .join("airs")
             .join(format!("{}_{}", air_name, air_id))
             .join("air");
 
         if !air_pk_folder.exists() {
-            return Err("The path does not exist".into());
+            return Err(format!("The path does not exist: {:?}", air_pk_folder).into());
         }
 
         if !air_pk_folder.is_dir() {
