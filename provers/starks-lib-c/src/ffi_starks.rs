@@ -59,22 +59,6 @@ pub fn fri_proof_free_c(p_zkevm_steps: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn config_new_c(config_filename: &str) -> *mut std::os::raw::c_void {
-    unsafe {
-        let config_filename = CString::new(config_filename).unwrap();
-
-        config_new(config_filename.as_ptr() as *mut std::os::raw::c_char)
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn config_free_c(pConfig: *mut c_void) {
-    unsafe {
-        config_free(pConfig);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn stark_info_new_c(filename: &str) -> *mut c_void {
     unsafe {
         let filename = CString::new(filename).unwrap();
@@ -288,54 +272,6 @@ pub fn commit_pols_starks_free_c(p_commit_pols_starks: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn circom_get_commited_pols_c(
-    p_commit_pols_starks: *mut c_void,
-    zkevm_verifier: &str,
-    exec_file: &str,
-    zkin: *mut c_void,
-    n: u64,
-    n_cols: u64,
-) {
-    unsafe {
-        let zkevm_verifier = CString::new(zkevm_verifier).unwrap();
-        let exec_file = CString::new(exec_file).unwrap();
-
-        circom_get_commited_pols(
-            p_commit_pols_starks,
-            zkevm_verifier.as_ptr() as *mut std::os::raw::c_char,
-            exec_file.as_ptr() as *mut std::os::raw::c_char,
-            zkin,
-            n,
-            n_cols,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn circom_recursive1_get_commited_pols_c(
-    p_commit_pols_starks: *mut c_void,
-    zkevm_verifier: &str,
-    exec_file: &str,
-    zkin: *mut c_void,
-    n: u64,
-    n_cols: u64,
-) {
-    unsafe {
-        let zkevm_verifier = CString::new(zkevm_verifier).unwrap();
-        let exec_file = CString::new(exec_file).unwrap();
-
-        circom_recursive1_get_commited_pols(
-            p_commit_pols_starks,
-            zkevm_verifier.as_ptr() as *mut std::os::raw::c_char,
-            exec_file.as_ptr() as *mut std::os::raw::c_char,
-            zkin,
-            n,
-            n_cols,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn zkin_new_c<T>(
     p_stark_info: *mut c_void,
     p_fri_proof: *mut c_void,
@@ -534,22 +470,6 @@ pub fn fri_proof_get_tree_root_c(_pFriProof: *mut c_void, _tree_index: u64, _roo
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_free_c(_p_zkevm_steps: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_free: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn config_new_c(config_filename: &str) -> *mut std::os::raw::c_void {
-    trace!(
-        "{}: ··· {} {}",
-        "ffi     ",
-        "config_new: This is a mock call because there is no linked library.",
-        config_filename
-    );
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn config_free_c(_pConfig: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "config_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -760,38 +680,6 @@ pub fn commit_pols_starks_new_c(
 #[cfg(feature = "no_lib_link")]
 pub fn commit_pols_starks_free_c(_p_commit_pols_starks: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "commit_pols_starks_free: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn circom_get_commited_pols_c(
-    _p_commit_pols_starks: *mut c_void,
-    _zkevm_verifier: &str,
-    _exec_file: &str,
-    _zkin: *mut c_void,
-    _n: u64,
-    _n_cols: u64,
-) {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "circom_get_commited_pols: This is a mock call because there is no linked library"
-    );
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn circom_recursive1_get_commited_pols_c(
-    _p_commit_pols_starks: *mut c_void,
-    _zkevm_verifier: &str,
-    _exec_file: &str,
-    _zkin: *mut c_void,
-    _n: u64,
-    _n_cols: u64,
-) {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "circom_recursive1_get_commited_pols: This is a mock call because there is no linked library"
-    );
 }
 
 #[cfg(feature = "no_lib_link")]

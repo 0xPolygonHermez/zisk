@@ -34,14 +34,6 @@ extern "C" {
     pub fn fri_proof_free(pFriProof: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10config_newPc"]
-    pub fn config_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11config_freePv"]
-    pub fn config_free(pConfig: *mut ::std::os::raw::c_void);
-}
-extern "C" {
     #[link_name = "\u{1}_Z13starkinfo_newPc"]
     pub fn starkinfo_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
 }
@@ -247,28 +239,6 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z15const_pols_freePv"]
     pub fn const_pols_free(pConstPols: *mut ::std::os::raw::c_void);
-}
-extern "C" {
-    #[link_name = "\u{1}_Z24circom_get_commited_polsPvPcS0_S_mm"]
-    pub fn circom_get_commited_pols(
-        pCommitPolsStarks: *mut ::std::os::raw::c_void,
-        zkevmVerifier: *mut ::std::os::raw::c_char,
-        execFile: *mut ::std::os::raw::c_char,
-        zkin: *mut ::std::os::raw::c_void,
-        N: u64,
-        nCols: u64,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z35circom_recursive1_get_commited_polsPvPcS0_S_mm"]
-    pub fn circom_recursive1_get_commited_pols(
-        pCommitPolsStarks: *mut ::std::os::raw::c_void,
-        zkevmVerifier: *mut ::std::os::raw::c_char,
-        execFile: *mut ::std::os::raw::c_char,
-        zkin: *mut ::std::os::raw::c_void,
-        N: u64,
-        nCols: u64,
-    );
 }
 extern "C" {
     #[link_name = "\u{1}_Z8zkin_newPvS_mS_mS_"]
