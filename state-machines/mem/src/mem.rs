@@ -59,9 +59,7 @@ impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
         unimplemented!()
     }
 
-    fn prove(&self, _operations: &[ZiskRequiredMemory], _is_last: bool, _scope: &Scope) {
-        unimplemented!()
-    }
+    fn prove(&self, _operations: &[ZiskRequiredMemory], _is_last: bool, _scope: &Scope) {}
 
     fn calculate_prove(
         &self,

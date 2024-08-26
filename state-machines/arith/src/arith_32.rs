@@ -57,7 +57,6 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith32SM {
 
                 scope.spawn(move |_scope| {
                     // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("Arith32: Finishing the worker thread");
                 });
             }
         }

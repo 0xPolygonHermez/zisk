@@ -54,12 +54,7 @@ impl Provable<FreqOp, OpResult> for FreqOpSM {
                 let _inputs = mem::take(&mut *inputs);
 
                 scope.spawn(move |_scope| {
-                    println!(
-                        "Arith32: Proving [{:?}..{:?}]",
-                        _inputs[0],
-                        _inputs[_inputs.len() - 1]
-                    );
-                    println!("Arith32: Finishing the worker thread");
+                    // TODO! Implement prove _inputs (a chunk of operations)
                 });
             }
         }

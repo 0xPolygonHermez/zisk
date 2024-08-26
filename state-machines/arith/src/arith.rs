@@ -77,7 +77,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             if operations64.contains(&operation.opcode) {
                 _inputs64.push(operation.clone());
             } else {
-                panic!("Value not found in either vec1 or vec2!");
+                panic!("ArithSM: Operator {:x} not found", operation.opcode);
             }
         }
 
