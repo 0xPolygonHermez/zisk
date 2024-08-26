@@ -1,12 +1,11 @@
-use std::hash::Hash;
-use std::sync::Arc;
+use std::{hash::Hash,sync::Arc,fmt::Debug};
 
 use p3_field::{AbstractField, Field};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
-use crate::{StdProd, StdSum/*StdRangeCheck*/};
+use crate::{Decider, StdProd, StdSum/*, StdRangeCheck*/};
 
 pub struct Std<F> {
     prod: Arc<StdProd<F>>,
@@ -69,7 +68,7 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + Field + 'static> 
     // }
 }
 
-impl<F> WitnessComponent<F> for Std<F> {
+impl<F: Copy + Debug + Field> WitnessComponent<F> for Std<F> {
     fn calculate_witness(
         &self,
         stage: u32,
@@ -80,7 +79,7 @@ impl<F> WitnessComponent<F> for Std<F> {
     ) {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
         self.prod.decide(stage, air_instance, pctx, ectx, sctx);
-        self.sum.decide(pctx.pilout, air_instance, pctx, ectx, sctx);
+        self.sum.decide(stage, air_instance, pctx, ectx, sctx);
         // self.range_check.decide(pctx.pilout, air_instance, pctx, ectx, sctx);
     }
 }

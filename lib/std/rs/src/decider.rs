@@ -5,7 +5,7 @@ pub trait Decider<F> {
     fn decide(
         &self,
         stage: u32,
-        air_instance: &AirInstanceCtx<F>,
+        air_instance_idx: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
         sctx: &SetupCtx,
