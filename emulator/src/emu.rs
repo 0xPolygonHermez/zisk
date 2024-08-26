@@ -6,9 +6,9 @@ use riscv::RiscVRegisters;
 #[cfg(feature = "sp")]
 use zisk_core::SRC_SP;
 use zisk_core::{
-    ZiskInst, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    SYS_ADDR,
+    ZiskInst, ZiskOperationType, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom,
+    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -616,12 +616,19 @@ impl<'a> Emu<'a> {
         emu_slice.full_trace.push(full_trace_step);
 
         // Build and store the operation required data
-        let required_operation =
-            ZiskRequiredOperation { opcode: instruction.op, a: self.ctx.a, b: self.ctx.b };
-        if instruction.op_is_arith {
-            emu_slice.required.arith.push(required_operation)
-        } else {
-            emu_slice.required.binary.push(required_operation);
+        match instruction.op_type {
+            ZiskOperationType::Internal => (),
+            ZiskOperationType::Arith => {
+                let required_operation =
+                    ZiskRequiredOperation { opcode: instruction.op, a: self.ctx.a, b: self.ctx.b };
+                emu_slice.required.arith.push(required_operation);
+            }
+            ZiskOperationType::Binary => {
+                let required_operation =
+                    ZiskRequiredOperation { opcode: instruction.op, a: self.ctx.a, b: self.ctx.b };
+                emu_slice.required.binary.push(required_operation);
+            }
+            _ => panic!("Emu::step_slice() found invalid op_type"),
         }
     }
 

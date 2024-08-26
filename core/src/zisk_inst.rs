@@ -1,5 +1,13 @@
 use crate::{source_to_str, store_to_str};
 
+#[derive(Clone, Debug)]
+pub enum ZiskOperationType {
+    None,
+    Internal,
+    Arith,
+    Binary,
+}
+
 /// ZisK instruction defined as a binary operation with 2 results: op(a, b) -> (c, flag)
 /// a and b are loaded from the respective sources specified in the instruction
 /// c is stored according to the destination specified in the instruction
@@ -30,7 +38,7 @@ pub struct ZiskInst {
     pub op: u8,
     pub func: fn(u64, u64) -> (u64, bool),
     pub op_str: &'static str,
-    pub op_is_arith: bool,
+    pub op_type: ZiskOperationType,
     pub verbose: String,
     pub m32: bool,
 }
@@ -64,7 +72,7 @@ impl Default for ZiskInst {
             op: 0,
             func: |_, _| (0, false),
             op_str: "",
-            op_is_arith: false,
+            op_type: ZiskOperationType::None,
             verbose: String::new(),
             m32: false,
         }
