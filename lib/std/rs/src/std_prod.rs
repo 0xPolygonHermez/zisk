@@ -12,6 +12,28 @@ pub struct StdProd<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
+impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
+    fn decide(
+        &self,
+        stage: u32,
+        air_instance: &AirInstanceCtx<F>,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
+        if stage != 2 {
+            return;
+        }
+
+        // Look for hints in the pilout and find if there are product-related ones
+        let prod_hints = get_hints_by_name_and_air_id(sctx, ["gprod_col"]);
+
+        if !prod_hints.is_empty() {
+            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &prod_hints);
+        }
+    }
+}
+
 impl<F: Copy + Debug + Field> StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
@@ -64,27 +86,5 @@ impl<F: Copy + Debug + Field> StdProd<F> {
         set_hint_field_val(setup, gprod_hint, "result", gprod.get(N - 1));
 
         Ok(0)
-    }
-}
-
-impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
-    fn decide(
-        &self,
-        stage: u32,
-        air_instance: &AirInstanceCtx<F>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
-    ) {
-        if stage != 2 {
-            return;
-        }
-
-        // Look for hints in the pilout and find if there are product-related ones
-        let prod_hints = get_hints_by_name_and_air_id(sctx, ["gprod_col"]);
-
-        if !prod_hints.is_empty() {
-            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &prod_hints);
-        }
     }
 }

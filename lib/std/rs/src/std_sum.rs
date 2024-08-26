@@ -12,6 +12,28 @@ pub struct StdSum<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
+impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
+    fn decide(
+        &self,
+        stage: u32,
+        air_instance: &AirInstanceCtx<F>,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
+        if stage != 2 {
+            return;
+        }
+
+        // Look for hints in the pilout and find if there are sum-related ones
+        let sum_hints = get_hints_by_name_and_air_id(sctx, ["gsum_col", "im_col"]);
+
+        if !sum_hints.is_empty() {
+            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &sum_hints);
+        }
+    }
+}
+
 impl<F: Copy + Debug + Field> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum";
 
@@ -88,27 +110,5 @@ impl<F: Copy + Debug + Field> StdSum<F> {
         set_hint_field_val(setup, gsum_hint, "result", gsum.get(N - 1));
 
         Ok(0)
-    }
-}
-
-impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
-    fn decide(
-        &self,
-        stage: u32,
-        air_instance: &AirInstanceCtx<F>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
-    ) {
-        if stage != 2 {
-            return;
-        }
-
-        // Look for hints in the pilout and find if there are sum-related ones
-        let sum_hints = get_hints_by_name_and_air_id(sctx, ["gsum_col", "im_col"]);
-
-        if !sum_hints.is_empty() {
-            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &sum_hints);
-        }
     }
 }
