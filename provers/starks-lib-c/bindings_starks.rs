@@ -371,6 +371,17 @@ extern "C" {
     pub fn can_impols_be_calculated(pCHelpersSteps: *mut ::std::os::raw::c_void, step: u64);
 }
 extern "C" {
+    #[link_name = "\u{1}_Z19chelpers_steps_freePv"]
+    pub fn chelpers_steps_free(pCHelpersSteps: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
+    pub fn get_hint_ids_by_name(
+        pChelpersSteps: *mut ::std::os::raw::c_void,
+        hintName: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z14get_hint_fieldPvmPcb"]
     pub fn get_hint_field(
         pChelpersSteps: *mut ::std::os::raw::c_void,
@@ -387,10 +398,6 @@ extern "C" {
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
     );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z19chelpers_steps_freePv"]
-    pub fn chelpers_steps_free(pCHelpersSteps: *mut ::std::os::raw::c_void);
 }
 extern "C" {
     #[link_name = "\u{1}_Z14polinomial_newmmPc"]

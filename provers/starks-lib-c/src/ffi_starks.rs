@@ -19,11 +19,11 @@ pub fn save_proof_c<T>(
     p_fri_proof: *mut ::std::os::raw::c_void,
     public_inputs: &[T],
     public_outputs_file: &str,
-    file_prefix: &str,
+    proof_output_file: &str,
 ) {
     unsafe {
         let public_outputs_file = CString::new(public_outputs_file).unwrap();
-        let file_prefix = CString::new(file_prefix).unwrap();
+        let proof_output_file = CString::new(proof_output_file).unwrap();
 
         save_proof(
             p_stark_info,
@@ -31,7 +31,7 @@ pub fn save_proof_c<T>(
             public_inputs.len() as std::os::raw::c_ulong,
             public_inputs.as_ptr() as *mut std::os::raw::c_void,
             public_outputs_file.as_ptr() as *mut std::os::raw::c_char,
-            file_prefix.as_ptr() as *mut std::os::raw::c_char,
+            proof_output_file.as_ptr() as *mut std::os::raw::c_char,
         );
     }
 }
@@ -475,6 +475,12 @@ pub fn chelpers_steps_free_c(p_chelpers_steps: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn get_hint_ids_by_name_c(p_chelpers_steps: *mut c_void, hint_name: &str) -> *mut c_void {
+    let name = CString::new(hint_name).unwrap();
+    unsafe { get_hint_ids_by_name(p_chelpers_steps, name.as_ptr() as *mut std::os::raw::c_char) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn set_hint_field_c(p_chelpers_steps: *mut c_void, values: *mut c_void, hint_id: u64, hint_field_name: &str) {
     unsafe {
         let field_name = CString::new(hint_field_name).unwrap();
@@ -502,7 +508,7 @@ pub fn save_proof_c<T>(
     _p_fri_proof: *mut ::std::os::raw::c_void,
     _public_inputs: &[T],
     _public_outputs_file: &str,
-    _file_prefix: &str,
+    _proof_outputs_file: &str,
 ) {
     trace!("{}: ··· {}", "ffi     ", "save_proof: This is a mock call because there is no linked library");
 }
@@ -918,6 +924,13 @@ pub fn can_impols_be_calculated_c(_p_chelpers_steps: *mut c_void, _step: u64) {
 pub fn chelpers_steps_free_c(_p_chelpers_steps: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "chelpers_steps_free_c: This is a mock call because there is no linked library");
 }
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_hint_ids_by_name_c(_p_chelpers_steps: *mut c_void, _hint_name: &str) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "get_hint_ids_by_name_c: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
 
 #[cfg(feature = "no_lib_link")]
 pub fn set_hint_field_c(_p_chelpers_steps: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) {

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use std::any::type_name;
 
-// use hints::{get_hint_field, set_hint_field, set_hint_field_val};
+// use proofman_hints::{get_hint_ids_by_name, get_hint_field, set_hint_field, set_hint_field_val};
 use proofman_common::{BufferAllocator, Prover, ProverStatus, ProofCtx};
 use log::{debug, trace};
 use proofman_setup::{GlobalInfo, SetupCtx};
@@ -171,7 +171,43 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         verify_constraints_c(p_steps, stage_id as u64)
     }
 
-    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus {
+    fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
+        let p_steps = self.p_steps;
+
+        // THIS IS AN EXAMPLE OF HOW TO USE HINT FUNCTIONS
+        // if stage_id == 2 {
+        //     let stark_info: &StarkInfo = &self.stark_info;
+        //     let n = 1 << stark_info.stark_struct.n_bits;
+
+        //     let hints = get_hint_ids_by_name(p_steps, "gprod_col");
+            
+        //     for hint_id in hints.iter() {
+        //         println!("HINT INDEX IS {}", *hint_id as usize);
+        //         let num = get_hint_field::<F>(p_steps, *hint_id as usize, "numerator", false);
+        //         let den = get_hint_field::<F>(p_steps, *hint_id as usize, "denominator", false);
+                
+        //         let mut reference = get_hint_field::<F>(p_steps, *hint_id as usize, "reference", true);
+
+        //         reference.set(0, num.get(0) / den.get(0));
+        //         for i in 1..n {
+        //             reference.set(i, reference.get(i - 1) * (num.get(i) / den.get(i)));
+        //         }
+
+        //         set_hint_field_val(p_steps, 0, "result", reference.get(n -1));
+
+        //         set_hint_field(p_steps, 0, "reference", &reference);
+        //     }    
+        // }
+
+        if stage_id <= proof_ctx.pilout.num_stages() {
+            can_impols_be_calculated_c(p_steps, stage_id as u64);
+            calculate_impols_expressions_c(p_steps, stage_id as u64);
+        } else {
+            calculate_quotient_polynomial_c(p_steps);
+        }
+    }
+
+    fn commit_stage(&mut self, stage_id: u32) -> ProverStatus {
         let p_stark: *mut std::ffi::c_void = self.p_stark;
 
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
@@ -181,33 +217,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let p_proof = self.p_proof.unwrap();
         let p_steps = self.p_steps;
         let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
-
-        // EXAMPLE OF CALLS TO GET_HINT_FIELD: REMOVE
-        // if stage_id == 2 {
-        //     let stark_info: &StarkInfo = &self.stark_info;
-        //     let n = 1 << stark_info.stark_struct.n_bits;
-
-        //     let num = get_hint_field::<F>(p_steps, 0, "numerator", false, false);
-        //     let den = get_hint_field::<F>(p_steps, 0, "denominator", false,  false);
-
-        //     let mut reference = get_hint_field::<F>(p_steps, 0, "reference", true, false);
-
-        //     reference.set(0, num.get(0) / den.get(0));
-        //     for i in 1..n {
-        //         reference.set(i, reference.get(i - 1) * (num.get(i) / den.get(i)));
-        //     }
-
-        //     set_hint_field_val(p_steps, 0, "result", reference.get(n -1));
-
-        //     set_hint_field(p_steps, 0, "reference", &reference);
-        // }
-
-        if stage_id <= proof_ctx.pilout.num_stages() {
-            can_impols_be_calculated_c(p_steps, stage_id as u64);
-            calculate_impols_expressions_c(p_steps, stage_id as u64);
-        } else {
-            calculate_quotient_polynomial_c(p_steps);
-        }
 
         can_stage_be_calculated_c(p_steps, stage_id as u64);
 

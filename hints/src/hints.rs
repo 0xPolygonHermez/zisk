@@ -1,4 +1,4 @@
-use starks_lib_c::{set_hint_field_c, get_hint_field_c};
+use starks_lib_c::{get_hint_ids_by_name_c, set_hint_field_c, get_hint_field_c};
 
 use p3_field::Field;
 use proofman_common::ExtensionField;
@@ -23,6 +23,12 @@ pub struct HintFieldInfo<F> {
     offset: u8, // 1 or 3
     field_type: HintFieldType,
     pub values: *mut F,
+}
+
+#[repr(C)]
+pub struct HintIdsResult {
+    n_hints: u64,
+    pub hint_ids: *mut u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -212,13 +218,32 @@ impl HintCol {
     }
 }
 
+pub fn get_hint_ids_by_name(
+    p_chelpers_steps: *mut c_void,
+    name: &str,
+) -> Vec<u64> {
+    let raw_ptr = get_hint_ids_by_name_c(p_chelpers_steps, name);
+
+    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
+
+    let slice = unsafe { 
+        std::slice::from_raw_parts(hint_ids_result.hint_ids, hint_ids_result.n_hints as usize)
+    };
+
+    // Copy the contents of the slice into a Vec<u64>
+    let ids_vec = slice.to_vec();
+
+    ids_vec
+    
+}
+
 pub fn get_hint_field<F: Clone + Copy>(
     p_chelpers_steps: *mut c_void,
-    hint_id: u64,
+    hint_id: usize,
     hint_field_name: &str,
     dest: bool,
 ) -> HintFieldValue<F> {
-    let raw_ptr = get_hint_field_c(p_chelpers_steps, hint_id, hint_field_name, dest);
+    let raw_ptr = get_hint_field_c(p_chelpers_steps, hint_id as u64, hint_field_name, dest);
 
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
