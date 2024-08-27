@@ -1,4 +1,4 @@
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
 pub trait Decider<F> {

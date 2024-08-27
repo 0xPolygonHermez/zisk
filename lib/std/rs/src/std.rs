@@ -2,7 +2,7 @@ use std::{hash::Hash,sync::Arc,fmt::Debug};
 
 use p3_field::{AbstractField, Field};
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
 use crate::{Decider, StdProd, StdSum/*, StdRangeCheck*/};
@@ -55,7 +55,7 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + Field + 'static> 
         pctx: &ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) {
-
+        todo!();
     }
 
     // pub fn setup_range_check(&self, air_instance: &AirInstanceCtx<F>, pctx: &ProofCtx<F>) {

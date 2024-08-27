@@ -34,7 +34,10 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
 
         // If the gsum col is found, then start to work
         if !gsum_hints.is_empty() {
-            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &gsum_hints, &im_hints);
+            if let Err(e) = self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &gsum_hints, &im_hints) {
+                log::error!("Failed to calculate witness: {:?}", e);
+                panic!();
+            }
         }
     }
 }
@@ -53,7 +56,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
         stage: u32,
         air_instance: &AirInstanceCtx<F>,
         pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
         gsum_hints: &Vec<u64>,
         im_hints: &Vec<u64>,

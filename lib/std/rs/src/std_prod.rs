@@ -32,12 +32,15 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
         let prod_hints = get_hint_ids_by_name(setup, "gprod_col");
 
         if !prod_hints.is_empty() {
-            self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &prod_hints);
+            if let Err(e) = self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &prod_hints) {
+                log::error!("Failed to calculate witness: {:?}", e);
+                panic!();
+            }
         }
     }
 }
 
-impl<F: Copy + Debug + Field> StdProd<F> {
+impl<F: Copy + Debug + Field>  StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
     pub fn new() -> Self {
@@ -51,15 +54,11 @@ impl<F: Copy + Debug + Field> StdProd<F> {
         stage: u32,
         air_instance: &AirInstanceCtx<F>,
         pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
         hints: &Vec<u64>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
-        log::info!(
-            "{} ··· Starting witness computation stage {}",
-            Self::MY_NAME,
-            stage
-        );
+        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, stage);
 
         let gprod_hint = hints[0] as usize;
 
