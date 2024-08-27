@@ -4,14 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libloading = "0.8.4"
+proofman-common = { path = "../common" }
+proofman-util = { path = "../util" }
+proofman-setup = { path = "../setup" }
 pilout = { path = "../pilout" }
 stark = { path = "../provers/stark" }
 transcript = { path = "../transcript" }
+
 log = { workspace = true }
 env_logger = { workspace = true }
-proofman-common = { path = "../common" }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
-proofman-util = { path = "../util" }
+
+libloading = "0.8.4"
 colored = "2"

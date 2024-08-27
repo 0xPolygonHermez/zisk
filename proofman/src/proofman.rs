@@ -1,8 +1,10 @@
 use libloading::{Library, Symbol};
 use log::{debug, info, trace};
-use p3_field::AbstractField;
-use stark::{GlobalInfo, StarkBufferAllocator, StarkProver};
+use p3_field::Field;
+use stark::{StarkBufferAllocator, StarkProver};
+use proofman_setup::SetupCtx;
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -21,7 +23,7 @@ pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + 'static> ProofMan<F> {
+impl<F: Field + 'static> ProofMan<F> {
     const MY_NAME: &'static str = "ProofMan";
 
     pub fn generate_proof(
@@ -63,28 +65,30 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone(), proving_key_path.clone())?;
+        let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone())?;
 
-        let pilout = witness_lib.pilout();
-
-        let mut pctx = ProofCtx::create_ctx(pilout);
+        let mut pctx = ProofCtx::create_ctx(witness_lib.pilout());
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
 
-        let buffer_allocator = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
+        let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
+
         let mut ectx = ExecutionCtx::builder().with_buffer_allocator(buffer_allocator).build();
 
-        Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx);
-        witness_lib.calculate_witness(1, &mut pctx, &ectx);
+        let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
-        Self::initialize_provers(&proving_key_path, &mut provers, &mut pctx);
+        Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx, &sctx);
+
+        witness_lib.calculate_witness(1, &mut pctx, &ectx, &sctx);
+
+        Self::initialize_provers(&sctx, &proving_key_path, &mut provers, &mut pctx);
 
         if provers.is_empty() {
             return Err("No instances found".into());
         }
         let mut transcript = provers[0].new_transcript();
 
-        Self::calculate_challenges(0, &mut provers, &mut pctx, &mut transcript, debug_mode);
+        Self::calculate_challenges(0, &mut provers, &mut pctx, &mut transcript, false);
         provers[0].add_publics_to_transcript(&mut pctx, &transcript);
 
         let mut valid_constraints = true;
@@ -93,15 +97,17 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         let num_commit_stages = pctx.pilout.num_stages();
         for stage in 1..=num_commit_stages {
             if stage != 1 {
-                witness_lib.calculate_witness(stage, &mut pctx, &ectx);
+                witness_lib.calculate_witness(stage, &mut pctx, &ectx, &sctx);
             }
 
             Self::get_challenges(stage, &mut provers, &mut pctx, &transcript);
 
+            Self::calculate_stage(stage, &mut provers, &mut pctx);
+
             if debug_mode {
                 valid_constraints = Self::verify_constraints(stage, &mut provers);
             } else {
-                Self::commit_stage(stage, &mut provers, &mut pctx, debug_mode);
+                Self::commit_stage(stage, &mut provers);
             }
 
             Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
@@ -113,9 +119,9 @@ impl<F: AbstractField + 'static> ProofMan<F> {
             // TODO: Verify global constraints!
 
             if !valid_constraints {
-                println!("{}", "Not all constraints were verified.".to_string().bright_red().bold());
+                log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
             } else {
-                println!("{}", "All constraints were successfully verified.".to_string().bright_green().bold());
+                log::debug!("{}", "All constraints were successfully verified.".bright_green().bold());
             }
 
             return Ok(vec![]);
@@ -123,7 +129,8 @@ impl<F: AbstractField + 'static> ProofMan<F> {
 
         // Compute Quotient polynomial
         Self::get_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &transcript);
-        Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, debug_mode);
+        Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
+        Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers);
         Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &mut transcript, false);
 
         // Compute openings
@@ -138,25 +145,52 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         witness_lib: &mut Box<dyn WitnessLibrary<F>>,
         pctx: &mut ProofCtx<F>,
         ectx: &mut ExecutionCtx,
+        sctx: &SetupCtx,
     ) {
-        witness_lib.start_proof(pctx, ectx);
+        witness_lib.start_proof(pctx, ectx, sctx);
 
-        witness_lib.execute(pctx, ectx);
+        witness_lib.execute(pctx, ectx, sctx);
 
-        trace!("{}: Air instances: ", Self::MY_NAME);
+        // After the execution print the planned instances
+        trace!("{}: --> Air instances: ", Self::MY_NAME);
+
+        let mut group_ids = HashMap::new();
 
         for air_instance in pctx.air_instances.read().unwrap().iter() {
-            let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+            let group_map = group_ids.entry(air_instance.air_group_id).or_insert_with(HashMap::new);
+            *group_map.entry(air_instance.air_id).or_insert(0) += 1;
+        }
 
-            let name = if air.name().is_some() { air.name().unwrap() } else { "Unnamed" };
-            trace!("{}:     + Air[{}][{}] {}", Self::MY_NAME, air.air_group_id, air.air_id, name);
+        let mut sorted_group_ids: Vec<_> = group_ids.keys().collect();
+        sorted_group_ids.sort();
+
+        for &air_group_id in &sorted_group_ids {
+            if let Some(air_map) = group_ids.get(air_group_id) {
+                let mut sorted_air_ids: Vec<_> = air_map.keys().collect();
+                sorted_air_ids.sort();
+
+                let air_group = pctx.pilout.get_air_group(*air_group_id);
+                let name = air_group.name().unwrap_or("Unnamed");
+                trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, *air_group_id, name);
+
+                for &air_id in &sorted_air_ids {
+                    if let Some(&count) = air_map.get(air_id) {
+                        let air = pctx.pilout.get_air(*air_group_id, *air_id);
+                        let name = air.name().unwrap_or("Unnamed");
+                        trace!("{}:       · {} x Air[{}] {}", Self::MY_NAME, count, air.air_id, name);
+                    }
+                }
+            }
         }
     }
 
-    fn initialize_provers(proving_key_path: &Path, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: &mut ProofCtx<F>) {
+    fn initialize_provers(
+        sctx: &SetupCtx,
+        proving_key_path: &Path,
+        provers: &mut Vec<Box<dyn Prover<F>>>,
+        pctx: &mut ProofCtx<F>,
+    ) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
-
-        let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
 
         for air_instance in pctx.air_instances.write().unwrap().iter_mut() {
             debug!(
@@ -166,12 +200,8 @@ impl<F: AbstractField + 'static> ProofMan<F> {
                 air_instance.air_id
             );
 
-            let prover = Box::new(StarkProver::new(
-                proving_key_path,
-                &global_info,
-                air_instance.air_group_id,
-                air_instance.air_id,
-            ));
+            let prover =
+                Box::new(StarkProver::new(sctx, proving_key_path, air_instance.air_group_id, air_instance.air_id));
 
             provers.push(prover);
         }
@@ -191,16 +221,20 @@ impl<F: AbstractField + 'static> ProofMan<F> {
         valid_constraints
     }
 
-    pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, debug_mode: bool) {
-        if debug_mode {
-            return;
+    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) {
+        info!("{}: Calculating stage {}", Self::MY_NAME, stage);
+        for (idx, prover) in provers.iter_mut().enumerate() {
+            info!("{}: Calculating stage {}, for prover {}", Self::MY_NAME, stage, idx);
+            prover.calculate_stage(stage, pctx);
         }
+    }
 
+    pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>]) {
         info!("{}: Committing stage {}", Self::MY_NAME, stage);
 
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Committing stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            prover.commit_stage(stage, pctx);
+            prover.commit_stage(stage);
         }
     }
 

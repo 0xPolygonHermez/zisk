@@ -34,14 +34,6 @@ extern "C" {
     pub fn fri_proof_free(pFriProof: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10config_newPc"]
-    pub fn config_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11config_freePv"]
-    pub fn config_free(pConfig: *mut ::std::os::raw::c_void);
-}
-extern "C" {
     #[link_name = "\u{1}_Z13starkinfo_newPc"]
     pub fn starkinfo_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
 }
@@ -76,22 +68,18 @@ extern "C" {
     pub fn starkinfo_free(pStarkInfo: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10starks_newPvS_S_S_S_"]
+    #[link_name = "\u{1}_Z10starks_newPvS_S_"]
     pub fn starks_new(
         pConfig: *mut ::std::os::raw::c_void,
         starkInfo: *mut ::std::os::raw::c_void,
-        cHelpers: *mut ::std::os::raw::c_void,
-        constPols: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
+        pCHelpersSteps: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z18starks_new_defaultPvS_S_S_"]
+    #[link_name = "\u{1}_Z18starks_new_defaultPvS_"]
     pub fn starks_new_default(
         starkInfo: *mut ::std::os::raw::c_void,
-        cHelpers: *mut ::std::os::raw::c_void,
-        constPols: *mut ::std::os::raw::c_void,
-        pAddress: *mut ::std::os::raw::c_void,
+        pCHelpersSteps: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -111,30 +99,11 @@ extern "C" {
     pub fn chelpers_free(pChelpers: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10init_hintsv"]
-    pub fn init_hints();
-}
-extern "C" {
-    #[link_name = "\u{1}_Z16steps_params_newPvS_S_S_S_S_"]
-    pub fn steps_params_new(
-        pPols: *mut ::std::os::raw::c_void,
-        pConstPols: *mut ::std::os::raw::c_void,
-        pChallenges: *mut ::std::os::raw::c_void,
-        pSubproofValues: *mut ::std::os::raw::c_void,
-        pEvals: *mut ::std::os::raw::c_void,
-        pPublicInputs: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z17steps_params_freePv"]
-    pub fn steps_params_free(pStepsParams: *mut ::std::os::raw::c_void);
-}
-extern "C" {
     #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_"]
     pub fn extend_and_merkelize(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
         proof: *mut ::std::os::raw::c_void,
     );
 }
@@ -147,31 +116,21 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_S_"]
-    pub fn calculate_quotient_polynomial(
-        pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
-        pChelpersSteps: *mut ::std::os::raw::c_void,
-    );
+    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPv"]
+    pub fn calculate_quotient_polynomial(pChelpersSteps: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvmS_S_"]
-    pub fn calculate_impols_expressions(
-        pStarks: *mut ::std::os::raw::c_void,
-        step: u64,
-        pParams: *mut ::std::os::raw::c_void,
-        pChelpersSteps: *mut ::std::os::raw::c_void,
-    );
+    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvm"]
+    pub fn calculate_impols_expressions(pChelpersSteps: *mut ::std::os::raw::c_void, step: u64);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25compute_stage_expressionsPvjmS_S_S_"]
+    #[link_name = "\u{1}_Z25compute_stage_expressionsPvjmS_S_"]
     pub fn compute_stage_expressions(
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
-        pProof: *mut ::std::os::raw::c_void,
         pChelpersSteps: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -180,7 +139,7 @@ extern "C" {
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
 }
@@ -188,16 +147,15 @@ extern "C" {
     #[link_name = "\u{1}_Z13compute_evalsPvS_S_"]
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15compute_fri_polPvmS_S_"]
+    #[link_name = "\u{1}_Z15compute_fri_polPvmS_"]
     pub fn compute_fri_pol(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
         cHelpersSteps: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -205,17 +163,17 @@ extern "C" {
     #[link_name = "\u{1}_Z11get_fri_polPvS_"]
     pub fn get_fri_pol(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19compute_fri_foldingPvS_S_mS_"]
+    #[link_name = "\u{1}_Z19compute_fri_foldingPvmS_S_S_"]
     pub fn compute_fri_folding(
         pStarks: *mut ::std::os::raw::c_void,
-        pProof: *mut ::std::os::raw::c_void,
-        pFriPol: *mut ::std::os::raw::c_void,
         step: u64,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
         pChallenge: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -283,28 +241,6 @@ extern "C" {
     pub fn const_pols_free(pConstPols: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z24circom_get_commited_polsPvPcS0_S_mm"]
-    pub fn circom_get_commited_pols(
-        pCommitPolsStarks: *mut ::std::os::raw::c_void,
-        zkevmVerifier: *mut ::std::os::raw::c_char,
-        execFile: *mut ::std::os::raw::c_char,
-        zkin: *mut ::std::os::raw::c_void,
-        N: u64,
-        nCols: u64,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z35circom_recursive1_get_commited_polsPvPcS0_S_mm"]
-    pub fn circom_recursive1_get_commited_pols(
-        pCommitPolsStarks: *mut ::std::os::raw::c_void,
-        zkevmVerifier: *mut ::std::os::raw::c_char,
-        execFile: *mut ::std::os::raw::c_char,
-        zkin: *mut ::std::os::raw::c_void,
-        N: u64,
-        nCols: u64,
-    );
-}
-extern "C" {
     #[link_name = "\u{1}_Z8zkin_newPvS_mS_mS_"]
     pub fn zkin_new(
         pStarkInfo: *mut ::std::os::raw::c_void,
@@ -364,8 +300,29 @@ extern "C" {
     pub fn chelpers_steps_new(
         pStarkInfo: *mut ::std::os::raw::c_void,
         pChelpers: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        pConstPols: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z17set_trace_pointerPvS_"]
+    pub fn set_trace_pointer(
+        pCHelpersSteps: *mut ::std::os::raw::c_void,
+        ptr: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11init_paramsPvS_S_S_S_"]
+    pub fn init_params(
+        pCHelpersSteps: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        pSubproofValues: *mut ::std::os::raw::c_void,
+        pEvals: *mut ::std::os::raw::c_void,
+        pPublicInputs: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z12reset_paramsPv"]
+    pub fn reset_params(pCHelpersSteps: *mut ::std::os::raw::c_void);
 }
 extern "C" {
     #[link_name = "\u{1}_Z18verify_constraintsPvm"]
@@ -384,6 +341,17 @@ extern "C" {
     pub fn can_impols_be_calculated(pCHelpersSteps: *mut ::std::os::raw::c_void, step: u64);
 }
 extern "C" {
+    #[link_name = "\u{1}_Z19chelpers_steps_freePv"]
+    pub fn chelpers_steps_free(pCHelpersSteps: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
+    pub fn get_hint_ids_by_name(
+        pChelpersSteps: *mut ::std::os::raw::c_void,
+        hintName: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z14get_hint_fieldPvmPcb"]
     pub fn get_hint_field(
         pChelpersSteps: *mut ::std::os::raw::c_void,
@@ -400,10 +368,6 @@ extern "C" {
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
     );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z19chelpers_steps_freePv"]
-    pub fn chelpers_steps_free(pCHelpersSteps: *mut ::std::os::raw::c_void);
 }
 extern "C" {
     #[link_name = "\u{1}_Z14polinomial_newmmPc"]

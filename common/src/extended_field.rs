@@ -5,7 +5,7 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ExtensionField<F> {
-    value: [F; 3],
+    pub value: [F; 3],
 }
 
 impl<F: Field> ExtensionField<F> {
@@ -25,6 +25,10 @@ impl<F: Field> ExtensionField<F> {
     #[inline(always)]
     pub fn square(&self) -> Self {
         Self { value: cubic_square(&self.value).to_vec().try_into().unwrap() }
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self { value: cubic_inv(&self.value).to_vec().try_into().unwrap() }
     }
 
     pub fn from_array(arr: &[F]) -> Self {

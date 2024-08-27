@@ -63,7 +63,7 @@ impl GlobalInfo {
 
     pub fn get_air_setup_path(&self, air_group_id: usize, air_id: usize) -> PathBuf {
         let air_setup_folder =
-            format!("build/{}/airs/{}/air", self.subproofs[air_group_id], self.airs[air_group_id][air_id].name);
+            format!("{}/{}/airs/{}/air", self.name, self.subproofs[air_group_id], self.airs[air_group_id][air_id].name);
 
         PathBuf::from(air_setup_folder)
     }

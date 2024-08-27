@@ -244,20 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 
 [[package]]
-name = "fibonacci-vadcop"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "p3-field",
- "p3-goldilocks",
- "proofman",
- "proofman-common",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -291,15 +277,6 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
-
-[[package]]
-name = "hints"
-version = "0.1.0"
-dependencies = [
- "p3-field",
- "proofman-common",
- "starks-lib-c",
-]
 
 [[package]]
 name = "humantime"
@@ -623,6 +600,7 @@ dependencies = [
  "p3-goldilocks",
  "pilout",
  "proofman-common",
+ "proofman-setup",
  "proofman-util",
  "stark",
  "transcript",
@@ -654,6 +632,31 @@ dependencies = [
  "p3-field",
  "pilout",
  "transcript",
+]
+
+[[package]]
+name = "proofman-hints"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "proofman-common",
+ "starks-lib-c",
+]
+
+[[package]]
+name = "proofman-setup"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman-common",
+ "proofman-hints",
+ "proofman-util",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "starks-lib-c",
 ]
 
 [[package]]
@@ -864,6 +867,8 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "proofman-common",
+ "proofman-hints",
+ "proofman-setup",
  "proofman-util",
  "serde",
  "serde_derive",

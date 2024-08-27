@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::{sync::RwLock};
 
 use log::info;
 
@@ -20,25 +20,6 @@ impl<F> ProofCtx<F> {
         if pilout.air_groups().is_empty() {
             panic!("No air groups found in PilOut");
         }
-
-        // pilout.print_pilout_info();
-
-        // NOTE: consider Vec::with_capacity() instead of Vec::new()
-        //let challenges: Vec<Vec<F>> = Vec::<Vec<F>>::new();
-
-        // TODO Review this
-        // if !pilout.num_challenges.is_empty() {
-        //     for i in 0..pilout.num_challenges.len() {
-        //         challenges.push(vec![T::default(); pilout.num_challenges[i] as usize]);
-        //     }
-        // } else {
-        //     challenges.push(vec![]);
-        // }
-
-        // qStage, evalsStage and friStage
-        // challenges.push(vec![F::default(); 1]);
-        // challenges.push(vec![F::default(); 1]);
-        // challenges.push(vec![F::default(); 2]);
 
         Self { public_inputs: Vec::new(), pilout, challenges: None, air_instances: RwLock::new(Vec::new()) }
     }

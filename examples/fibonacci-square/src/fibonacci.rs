@@ -4,6 +4,7 @@ use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
 use proofman::{WitnessManager, WitnessComponent};
 
 use p3_field::AbstractField;
+use proofman_setup::SetupCtx;
 
 use crate::{
     FibonacciSquare0Trace, FibonacciVadcopPublicInputs, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS,
@@ -23,7 +24,7 @@ impl FibonacciSquare {
     }
 
     // Calculate the Fibonacci sequence during the execution phase and store the trace in the buffer
-    pub fn execute<F: AbstractField + Copy>(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
+    pub fn execute<F: AbstractField + Copy>(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, _sctx: &SetupCtx) {
         if let Err(e) =
             Self::calculate_fibonacci(self, FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
         {
@@ -82,7 +83,14 @@ impl FibonacciSquare {
 }
 
 impl<F: AbstractField + Copy> WitnessComponent<F> for FibonacciSquare {
-    fn calculate_witness(&self, _stage: u32, _air_instance_id: usize, _pctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx) {
+    fn calculate_witness(
+        &self,
+        _stage: u32,
+        _air_instance_id: usize,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
+    ) {
         // Nothing to calculate, the witness is already stored in the buffer
         return;
     }
