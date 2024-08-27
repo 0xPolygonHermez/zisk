@@ -180,12 +180,12 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         //     let n = 1 << stark_info.stark_struct.n_bits;
 
         //     let hints = get_hint_ids_by_name(p_steps, "gprod_col");
-            
+
         //     for hint_id in hints.iter() {
         //         println!("HINT INDEX IS {}", *hint_id as usize);
         //         let num = get_hint_field::<F>(p_steps, *hint_id as usize, "numerator", false);
         //         let den = get_hint_field::<F>(p_steps, *hint_id as usize, "denominator", false);
-                
+
         //         let mut reference = get_hint_field::<F>(p_steps, *hint_id as usize, "reference", true);
 
         //         reference.set(0, num.get(0) / den.get(0));
@@ -196,7 +196,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         //         set_hint_field_val(p_steps, 0, "result", reference.get(n -1));
 
         //         set_hint_field(p_steps, 0, "reference", &reference);
-        //     }    
+        //     }
         // }
 
         if stage_id <= proof_ctx.pilout.num_stages() {
