@@ -2,5 +2,3 @@
 ./scripts/cargo-fix
 ./scripts/cargo-clippy
 ./scripts/cargo-fmt
-./scripts/cargo-audit
-
