@@ -819,7 +819,6 @@ pub fn get_hint_ids_by_name_c(_p_chelpers_steps: *mut c_void, _hint_name: &str) 
     std::ptr::null_mut()
 }
 
-
 #[cfg(feature = "no_lib_link")]
 pub fn set_hint_field_c(_p_chelpers_steps: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) {
     trace!("{}: ··· {}", "ffi     ", "set_hint_field_c: This is a mock call because there is no linked library");
