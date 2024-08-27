@@ -1,0 +1,148 @@
+require "constants.pil";
+
+// PIL Binary Operations Table used by Binary
+//                                                                                    Running Total
+// ADD/ADD_W    (OP:0)               2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |                      2^18
+// SUB/SUB_W    (OP:1)               2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |               2^19
+// LTU/LTU_W    (OP:2)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19 + 2^18
+// LT/LT_W      (OP:3)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20
+// LEU/LEU_W    (OP:4)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20        + 2^18
+// LE/LE_W      (OP:5)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19
+// EQ/EQ_W      (OP:6)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19 + 2^18
+// MINU/MINU_W  (OP:7)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21
+// MIN/MIN_W    (OP:8)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21               + 2^18
+// MAXU/MAXU_W  (OP:9)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19
+// MAX/MAX_W    (OP:10)  *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19 + 2^18
+// AND/AND_W    (OP:11)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21          2^19 + 2^18 + 2^17
+// OR/OR_W      (OP:12)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20
+// XOR/XOR_W    (OP:13)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20               + 2^17
+// EXT_32       (OP:14)              2^16 (AxB)             * 2^1 (LAST)  **  = 2^17 | 2^21 + 2^20        + 2^18        => 2^22
+// --------------------------------------------------------------------------------------------------------------------------
+// (*) Use carry
+// (**) They don't need last, but it is used for a simpler lookup
+// Note: EXT_32 is the only unary operation
+
+const int EXT_32_OP = 14;
+const int BINARY_TABLE_ID = 125;
+
+airtemplate BinaryTable(int N = 2**10) {
+    col witness multiplicity;
+    lookup_proves(BINARY_TABLE_ID, mul: multiplicity, cols: [0, 0, 0, 0, 0, 0, 0]);
+}
+
+airtemplate _BinaryTable(int N = 2**22) {
+    if (N < 2**22) {
+        error(`N must be at least 2^22, but N=${N} was provided`);
+    }
+
+    col fixed A = [0..255]...;                        // Input A    (8 bits)
+
+    col fixed B = [0:P2_8..255:P2_8]...;              // Input B    (8 bits)
+
+    col fixed CIN = [[0:P2_16,1:P2_16]:(11*2),
+                      0:(P2_17*4)]...;
+
+    col fixed LAST = [[0:P2_17, 1:P2_17]:11,
+                      [0:P2_16, 1:P2_16]:4]...;       // Last byte  (1 bits)
+
+    col fixed USE_CARRY = [0:(P2_18*2),              // USE_CARRY(ADD,SUB) = 0
+                          [0:P2_17, 1:P2_17]:9,      // USE_CARRY(LTU,LT,LEU,LE,EQ,MINU,MIN,MAXU,MAX) = LAST (i.e., only when LAST == 1)
+                           0:(P2_17*4)]...;          // USE_CARRY(AND,OR,XOR,EXT_32) = 0
+
+    col fixed OP = [0:P2_18..10:P2_18,
+                    11:P2_17..14:P2_17]...;
+
+
+    col fixed C;                                      // Output C   (8 bits)
+    col fixed COUT;                                   // CarryOut   (1 bits)
+    for (int i = 0; i < N; i++) {
+        int [plast, op, a, b, cin, c, cout] = [LAST[i], OP[i], A[i], B[i], CIN[i], 0, 0];
+        switch (op) {
+            case 0: // ADD,ADD_W
+                c = (cin + a + b) & 0xFF;
+                cout = (cin + a + b) >> 8;
+
+            case 1: // SUB,SUB_W
+                cout = (a - cin) >= b ? 0 : 1;
+                c = 256 * cout + a - cin - b;
+
+            case 2,3: // LTU,LTU_W,LT,LT_W
+                if (a < b) {
+                    cout = 1;
+                    c = plast;
+                } else if (a == b) {
+                    cout = cin;
+                    c = plast * cin;
+                }
+
+                // If the chunk is signed, then the result is the sign of a
+                if (3 && plast && (a & 0x80) != (b & 0x80)) {
+                    c = (a & 0x80) ? 1 : 0;
+                    cout = c;
+                }
+
+            case 4,5: // LEU,LEU_W,LE,LE_W
+                if (a <= b) {
+                    cout = 1;
+                    c = plast;
+                }
+                if (5 && plast && (a & 0x80) != (b & 0x80)) {
+                    c = (a & 0x80) ? 1 : 0;
+                    cout = c;
+                }
+
+            case 6: // EQ,EQ_W
+                if (a == b && !cin) c = plast;
+                else cout = 1;
+                cout = plast ? !cout : cout;
+
+            case 7,8: // MINU,MINU_W,MIN,MIN_W
+                if (a <= b) {
+                    cout = 1;
+                    c = plast ? a : b;
+                } else {
+                    c = b;
+                }
+                if (8 && plast && (a & 0x80) != (b & 0x80)) {
+                    c = (a & 0x80) ? a : b;
+                    cout = (a & 0x80) ? 1 : 0;
+                }
+
+            case 9,10: // MAXU,MAXU_W,MAX,MAX_W
+                if (a >= b) {
+                    cout = 1;
+                    c = plast ? a : b;
+                } else {
+                    c = b;
+                }
+                if (10 && plast && (a & 0x80) != (b & 0x80)) {
+                    c = (a & 0x80) ? b : a;
+                    cout = (a & 0x80) ? 0 : 1;
+                }
+
+            case 11: // AND
+                c = a & b;
+
+            case 12: // OR
+                c = a | b;
+
+            case 13: // XOR
+                c = a ^ b;
+
+            case 14: // EXT_32
+                c = (a & 0x80) ? 0xFF : 0x00;
+
+            default:
+                error(`Invalid operation ${op}`);
+        }
+        C[i] = c;
+        COUT[i] = cout;
+    }
+
+    col fixed FLAGS;
+    for (int i = 0; i < N; i++) {
+        FLAGS[i] = COUT[i] + 2 * USE_CARRY[i];
+    }
+    col witness multiplicity;
+    lookup_proves(BINARY_TABLE_ID, mul: multiplicity, cols: [LAST, OP, A, B, CIN, C, FLAGS]);
+}

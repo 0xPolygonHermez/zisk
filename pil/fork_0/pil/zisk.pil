@@ -1,5 +1,10 @@
-require "../../state-machines/main/pil/main.pil"
+require "../../../state-machines/main/pil/main.pil"
+require "../../../state-machines/binary/pil/binary.pil"
 
 airgroup Main {
     Main(N: 2**21, RC: 1);
+}
+
+airgroup Binary {
+    Binary(N: 2**21);
 }
