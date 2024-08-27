@@ -1,21 +1,23 @@
-use log::debug;
-use pil_std_lib::Std;
-use proofman_setup::SetupCtx;
+use log;
 use std::{cell::RefCell, sync::Arc};
 
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman::{WitnessManager, WitnessComponent};
-
+use pil_std_lib::Std;
 use p3_field::AbstractField;
-use crate::{FibonacciVadcopPublicInputs, Module0Trace, MODULE_SUBPROOF_ID, MODULE_AIR_IDS};
 
-pub struct Module {
+use crate::{FibonacciSquarePublics, Module0Trace, MODULE_SUBPROOF_ID, MODULE_AIR_IDS};
+
+pub struct Module<F> {
     inputs: RefCell<Vec<(u64, u64)>>,
     std_lib: Arc<Std<F>>,
 }
 
-impl Module {
-    pub fn new<F: AbstractField + Copy>(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
+impl<F: AbstractField + Clone + Copy + Default + 'static> Module<F> {
+    const MY_NAME: &'static str = "Module";
+
+    pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: RefCell::new(Vec::new()), std_lib });
 
         wcm.register_component(module.clone(), Some(MODULE_SUBPROOF_ID));
@@ -31,10 +33,14 @@ impl Module {
         x_mod
     }
 
-    pub fn close_module<F: AbstractField + Clone + Copy + Default>(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        debug!("Module  : Calculating witness");
+    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        self.calculate_trace(pctx, ectx);
+    }
 
-        let pi: FibonacciVadcopPublicInputs = pctx.public_inputs.as_slice().into();
+    fn calculate_trace(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
+
+        let pi: FibonacciSquarePublics = pctx.public_inputs.as_slice().into();
         let module = pi.module;
 
         let (buffer_size, offsets) =
@@ -55,29 +61,26 @@ impl Module {
             trace[i].x_mod = F::from_canonical_u64(x_mod);
         }
 
-        let mut result = F::zero();
-        for (i, _) in buffer.iter().enumerate() {
-            result += buffer[i] * F::from_canonical_u64(i as u64);
-        }
-        println!("Result Module    buffer: {:?}", result);
+        // Not needed, for debugging!
+        // let mut result = F::zero();
+        // for (i, _) in buffer.iter().enumerate() {
+        //     result += buffer[i] * F::from_canonical_u64(i as u64);
+        // }
+        // log::info!("Result Module buffer: {:?}", result);
 
-        let mut air_instances = pctx.air_instances.write().unwrap();
-        air_instances.push(AirInstanceCtx {
-            air_group_id: MODULE_SUBPROOF_ID[0],
-            air_id: MODULE_AIR_IDS[0],
-            buffer: Some(buffer),
-        });
+        pctx.add_air_instance_ctx(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0], Some(buffer));
     }
 }
 
-impl<F: AbstractField + Copy> WitnessComponent<F> for Module {
+impl<F: AbstractField + Copy> WitnessComponent<F> for Module<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance_id: usize,
         _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
+        ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
+        return;
     }
 }

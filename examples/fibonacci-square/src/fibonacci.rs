@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman::{WitnessManager, WitnessComponent};
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman_setup::SetupCtx;
 
-use crate::{
-    FibonacciSquare0Trace, FibonacciVadcopPublicInputs, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS,
-};
+use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS};
 
-pub struct FibonacciSquare {
-    module: Arc<Module>,
+pub struct FibonacciSquare<F> {
+    module: Arc<Module<F>>,
 }
 
-impl FibonacciSquare {
-    pub fn new<F: AbstractField + Copy>(wcm: &mut WitnessManager<F>, module: Arc<Module>) -> Arc<Self> {
+impl<F: Field + Copy> FibonacciSquare<F> {
+    const MY_NAME: &'static str = "FibonacciSquare";
+
+    pub fn new(wcm: &mut WitnessManager<F>, module: Arc<Module<F>>) -> Arc<Self> {
         let fibonacci = Arc::new(Self { module });
 
         wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_SUBPROOF_ID));
@@ -23,31 +23,33 @@ impl FibonacciSquare {
         fibonacci
     }
 
-    // Calculate the Fibonacci sequence during the execution phase and store the trace in the buffer
-    pub fn execute<F: AbstractField + Copy>(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+        // TODO: We should create the instance here and fill the trace in calculate witness!!!
         if let Err(e) =
-            Self::calculate_fibonacci(self, FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
+            Self::calculate_trace(self, FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
         {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
-        self.module.close_module(pctx, ectx);
+        self.module.execute(pctx, ectx);
     }
 
-    fn calculate_fibonacci<F: AbstractField + Copy>(
+    fn calculate_trace(
         &self,
         air_group_id: usize,
         air_id: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
     ) -> Result<u64, Box<dyn std::error::Error>> {
-        let public_inputs: FibonacciVadcopPublicInputs = pctx.public_inputs.as_slice().into();
+        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
+
+        let public_inputs: FibonacciSquarePublics = pctx.public_inputs.as_slice().into();
 
         let (module, mut a, mut b, _out) = public_inputs.inner();
 
         let (buffer_size, offsets) =
             ectx.buffer_allocator.as_ref().get_buffer_info("FibonacciSquare".into(), FIBONACCI_SQUARE_AIR_IDS[0])?;
 
-        let mut buffer = vec![F::default(); buffer_size as usize];
+        let mut buffer = vec![F::zero(); buffer_size as usize];
 
         let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
         let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
@@ -65,24 +67,20 @@ impl FibonacciSquare {
         }
         pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
 
-        let mut result = F::zero();
-        for (i, _) in buffer.iter().enumerate() {
-            result += buffer[i] * F::from_canonical_u64(i as u64);
-        }
-        println!("Result Fibonacci buffer: {:?}", result);
+        // Not needed, for debugging!
+        // let mut result = F::zero();
+        // for (i, _) in buffer.iter().enumerate() {
+        //     result += buffer[i] * F::from_canonical_u64(i as u64);
+        // }
+        // log::info!("Result Fibonacci buffer: {:?}", result);
 
-        let mut air_instances = pctx.air_instances.write().unwrap();
-        air_instances.push(AirInstanceCtx {
-            air_group_id: FIBONACCI_SQUARE_SUBPROOF_ID[0],
-            air_id: FIBONACCI_SQUARE_AIR_IDS[0],
-            buffer: Some(buffer),
-        });
+        pctx.add_air_instance_ctx(FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], Some(buffer));
 
         Ok(b)
     }
 }
 
-impl<F: AbstractField + Copy> WitnessComponent<F> for FibonacciSquare {
+impl<F: Field + Copy> WitnessComponent<F> for FibonacciSquare<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -91,7 +89,6 @@ impl<F: AbstractField + Copy> WitnessComponent<F> for FibonacciSquare {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // Nothing to calculate, the witness is already stored in the buffer
         return;
     }
 }

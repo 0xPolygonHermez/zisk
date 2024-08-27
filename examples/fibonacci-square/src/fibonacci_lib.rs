@@ -2,39 +2,39 @@ use std::io::Read;
 use std::{fs::File, sync::Arc};
 
 use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
-use p3_field::AbstractField;
-use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_setup::SetupCtx;
 use pil_std_lib::Std;
+use p3_field::Field;
+use p3_goldilocks::Goldilocks;
 
 use std::error::Error;
 use std::path::PathBuf;
-use crate::FibonacciVadcopPublicInputs;
+use crate::FibonacciSquarePublics;
 
 use crate::{FibonacciSquare, Pilout, Module};
 
-pub struct FibonacciVadcop<F> {
+pub struct FibonacciWitness<F> {
     pub wcm: WitnessManager<F>,
     pub public_inputs_path: PathBuf,
-    pub fibonacci: Arc<FibonacciSquare>,
-    pub module: Arc<Module>,
+    pub fibonacci: Arc<FibonacciSquare<F>>,
+    pub module: Arc<Module<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: AbstractField + Copy> FibonacciVadcop<F> {
+impl<F: Field + Copy> FibonacciWitness<F> {
     pub fn new(public_inputs_path: PathBuf) -> Self {
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm);
-        let module = Module::new(&mut wcm, std);
+        let module = Module::new(&mut wcm, std_lib.clone());
         let fibonacci = FibonacciSquare::new(&mut wcm, module.clone());
 
-        FibonacciVadcop { wcm, public_inputs_path, fibonacci, module, std_lib }
+        FibonacciWitness { wcm, public_inputs_path, fibonacci, module, std_lib }
     }
 }
 
-impl<F: AbstractField + Copy> WitnessLibrary<F> for FibonacciVadcop<F> {
+impl<F: Field + Copy> WitnessLibrary<F> for FibonacciWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         let mut file = File::open(&self.public_inputs_path).unwrap();
 
@@ -45,7 +45,7 @@ impl<F: AbstractField + Copy> WitnessLibrary<F> for FibonacciVadcop<F> {
         let mut contents = String::new();
         let _ = file.read_to_string(&mut contents);
 
-        let public_inputs: FibonacciVadcopPublicInputs = serde_json::from_str(&contents).unwrap();
+        let public_inputs: FibonacciSquarePublics = serde_json::from_str(&contents).unwrap();
         pctx.public_inputs = public_inputs.into();
 
         self.wcm.start_proof(pctx, ectx, sctx);
@@ -79,6 +79,6 @@ pub extern "Rust" fn init_library(
         .format_target(false)
         .filter_level(log::LevelFilter::Trace)
         .init();
-    let fibonacci_witness = FibonacciVadcop::new(public_inputs_path);
+    let fibonacci_witness = FibonacciWitness::new(public_inputs_path);
     Ok(Box::new(fibonacci_witness))
 }
