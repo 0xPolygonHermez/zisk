@@ -2,6 +2,8 @@ use libloading::{Library, Symbol};
 use log::{debug, info, trace};
 use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
+use starks_lib_c::verify_global_constraints_c;
+
 use proofman_setup::SetupCtx;
 use std::{
     collections::HashMap,
@@ -116,7 +118,14 @@ impl<F: Field + 'static> ProofMan<F> {
         witness_lib.end_proof();
 
         if debug_mode {
-            // TODO: Verify global constraints!
+            let mut proofs: Vec<*mut c_void> = Vec::new();
+
+            for prover in provers.iter_mut() {
+                let proof = prover.get_proof();
+                proofs.push(proof);
+            }
+
+            valid_constraints = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
 
             if !valid_constraints {
                 log::debug!("{}", "Not all constraints were verified.".bright_red().bold());

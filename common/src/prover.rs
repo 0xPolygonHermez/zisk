@@ -1,3 +1,5 @@
+use std::os::raw::c_void;
+
 use transcript::FFITranscript;
 
 use crate::ProofCtx;
@@ -24,7 +26,7 @@ pub trait Prover<F> {
         transcript: &mut FFITranscript,
     ) -> ProverStatus;
 
-    // fn get_subproof_values<T>(&self) -> Vec<T>;
+    fn get_proof(&self) -> *mut c_void;
 
     fn get_map_offsets(&self, stage: &str, is_extended: bool) -> u64;
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
