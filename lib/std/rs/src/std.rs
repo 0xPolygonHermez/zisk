@@ -1,22 +1,23 @@
-use std::{hash::Hash,sync::Arc,fmt::Debug};
+use std::{fmt::Debug, hash::Hash, sync::Arc};
 
-use p3_field::{AbstractField, Field};
+use num_bigint::BigInt;
+use p3_field::{Field, PrimeField};
+
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
-use crate::{Decider, StdProd, StdSum/*, StdRangeCheck*/};
+use crate::{Decider, StdProd, StdRangeCheck, StdSum};
 
 pub struct Std<F> {
     prod: Arc<StdProd<F>>,
     sum: Arc<StdSum<F>>,
-    // range_check: Arc<StdRangeCheck<F>>,
-    // TODO! REMOVE this line when range_check is uncommented
+    range_check: Arc<StdRangeCheck<F>>,
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + Field + 'static> Std<F> {
-    const MY_NAME: &'static str = "STD";
+impl<F: PrimeField + Copy + Clone + PartialOrd + PartialEq + Eq + Hash + Field + 'static> Std<F> {
+    const _MY_NAME: &'static str = "STD";
 
     // TODO
     // const CALLBACK_SIZE: usize = 2usize.pow(16);
@@ -25,12 +26,12 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + Field + 'static> 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let prod = Arc::new(StdProd::new());
         let sum = Arc::new(StdSum::new());
-        // let range_check = Arc::new(StdRangeCheck::<F>::new());
+        let range_check = Arc::new(StdRangeCheck::<F>::new());
 
         let std = Arc::new(Self {
             prod,
             sum,
-            // range_check,
+            range_check,
             _phantom: std::marker::PhantomData,
         });
 
@@ -39,36 +40,39 @@ impl<F: AbstractField + Copy + Clone + PartialEq + Eq + Hash + Field + 'static> 
         std
     }
 
-    pub fn execute(
-        &self,
-        pctx: &mut ProofCtx<F>,
-        ectx: &mut ExecutionCtx,
-    ) {
+    pub fn execute(&self, _pctx: &mut ProofCtx<F>, _ectx: &mut ExecutionCtx) {
         todo!();
+    }
+
+    pub fn setup_range_check(
+        &self,
+        air_instance_idx: usize,
+        pctx: &mut ProofCtx<F>,
+        sctx: &SetupCtx,
+    ) {
+        let air_instances = pctx.air_instances.read().unwrap();
+        let air_instance = &air_instances[air_instance_idx];
+
+        self.range_check
+            .register_ranges(air_instance.air_group_id, air_instance.air_id, sctx);
+    }
+
+    // TODO: Could we set min and max to be signed integers [-p,p] instead of F?
+    /// Processes the inputs for the range check.
+    pub fn range_check(&self, val: BigInt, min: BigInt, max: BigInt) {
+        self.range_check.assign_values(val, min, max);
     }
 
     /// This function should prove a batch of inputs.
     /// When the maximum number of accumulated inputs is reached, the STD processes
     /// the inputs in batches.
-    fn prove(
-        &self,
-        pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
-    ) {
+    pub fn prove(&self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx) {
         todo!();
+        // self.range_check.prove();
     }
-
-    // pub fn setup_range_check(&self, air_instance: &AirInstanceCtx<F>, pctx: &ProofCtx<F>) {
-    //     self.range_check.setup(air_instance.air_group_id.try_into().expect("TBD"), air_instance.air_id.try_into().expect("TBD"), pctx.pilout);
-    // }
-
-    // TODO: Could we set min and max to be signed integers [-p,p] instead of F?
-    // pub fn range_check(&self, val: F, min: F, max: F) {
-    //     self.range_check.assign_values(val, min, max);
-    // }
 }
 
-impl<F: Copy + Debug + Field> WitnessComponent<F> for Std<F> {
+impl<F: PrimeField> WitnessComponent<F> for Std<F> {
     fn calculate_witness(
         &self,
         stage: u32,
@@ -80,6 +84,6 @@ impl<F: Copy + Debug + Field> WitnessComponent<F> for Std<F> {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
         self.prod.decide(stage, air_instance, pctx, ectx, sctx);
         self.sum.decide(stage, air_instance, pctx, ectx, sctx);
-        // self.range_check.decide(pctx.pilout, air_instance, pctx, ectx, sctx);
+        self.range_check.decide(stage, air_instance, pctx, ectx, sctx);
     }
 }

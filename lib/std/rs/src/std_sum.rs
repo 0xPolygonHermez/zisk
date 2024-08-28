@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use p3_field::Field;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
-use proofman_hints::{get_hint_ids_by_name, get_hint_field, set_hint_field, set_hint_field_val};
+use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
 use proofman_setup::SetupCtx;
 
 use crate::Decider;
@@ -28,13 +28,23 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
         let air_instance = &air_instances[air_instance_idx];
 
         // Look for hints in the pilout and find if there are sum-related ones
-        let setup = sctx.get_setup(air_instance.air_group_id, air_instance.air_id).expect("REASON");
+        let setup = sctx
+            .get_setup(air_instance.air_group_id, air_instance.air_id)
+            .expect("REASON");
         let gsum_hints = get_hint_ids_by_name(setup, "gsum_col");
         let im_hints = get_hint_ids_by_name(setup, "im_col");
 
         // If the gsum col is found, then start to work
         if !gsum_hints.is_empty() {
-            if let Err(e) = self.calculate_witness(stage, air_instance, pctx, ectx, sctx, &gsum_hints, &im_hints) {
+            if let Err(e) = self.calculate_witness(
+                stage,
+                air_instance,
+                pctx,
+                ectx,
+                sctx,
+                &gsum_hints,
+                &im_hints,
+            ) {
                 log::error!("Failed to calculate witness: {:?}", e);
                 panic!();
             }
@@ -95,12 +105,12 @@ impl<F: Copy + Debug + Field> StdSum<F> {
         gsum.set(0, expr.get(0));
         for i in 1..num_rows {
             // TODO: We should perform the following division in batch using div_lib
-            gsum.set(i, gsum.get(i-1) + expr.get(i));
+            gsum.set(i, gsum.get(i - 1) + expr.get(i));
         }
 
         // set the computed gsum column and its associated airgroup_val
         set_hint_field(setup, gsum_hint as u64, "reference", &gsum);
-        set_hint_field_val(setup, gsum_hint as u64, "result", gsum.get(num_rows-1));
+        set_hint_field_val(setup, gsum_hint as u64, "result", gsum.get(num_rows - 1));
 
         Ok(0)
     }
