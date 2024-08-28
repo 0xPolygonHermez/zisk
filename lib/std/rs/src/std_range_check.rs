@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, rc, sync::Mutex};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -12,13 +12,18 @@ use crate::Decider;
 const BYTE: u64 = 255;
 const TWOBYTES: u64 = 65535;
 
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub enum StdRangeCheckType {
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
+pub enum RangeCheckType {
     U8Air,
     U16Air,
+    SpecifiedRanges,
+}
+
+#[derive(Clone)]
+enum StdRangeCheckType {
+    Valid(RangeCheckType),
     U8AirDouble,
     U16AirDouble,
-    SpecifiedRanges,
 }
 
 const STD_RANGE_CHECK_VARIANTS: usize = 3;
@@ -37,12 +42,13 @@ trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
     mul: [F; 32], // TODO: This number cannot be hardcorded, it depens on the air that instantiates the range check
 });
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 struct Range {
     min: BigInt,
     max: BigInt,
 }
 
+#[derive(Clone)]
 struct StdRangeItem {
     rc_type: StdRangeCheckType,
     range: Range, // (min, max)
@@ -53,10 +59,10 @@ enum InputType<F> {
     NoRange(HashMap<BigInt, F>),               // value -> multiplicity
 }
 
+// All air instances will use the same instance of StdRangeCheck (U8Air, U16Air, SpecifiedRanges)
 pub struct StdRangeCheck<F> {
-    ranges: Vec<StdRangeItem>,
-    inputs: HashMap<StdRangeCheckType, InputType<F>>, // name -> InputType
-    setup_done: bool,
+    ranges: Mutex<Vec<StdRangeItem>>,
+    inputs: Mutex<HashMap<StdRangeCheckType, InputType<F>>>, // name -> InputType
 }
 
 impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
@@ -68,7 +74,33 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
         ectx: &ExecutionCtx,
         sctx: &SetupCtx,
     ) {
-        if stage == 1 && self.setup_done {
+        if stage == 1 && !self.ranges.lock().unwrap().is_empty() {
+            // Create instances based on the ranges
+            let ranges = self.ranges.lock().unwrap();
+
+            let mut rc_range: Vec<RangeCheckType> = Vec::new();
+            for range in ranges.iter() {
+                match range.rc_type {
+                    StdRangeCheckType::Valid(rc_type) if !rc_range.iter().any(|i| i.rc_type == rc_type) => {
+                        rc_range.push(rc_type);
+                    }
+                    _ => {}
+                }
+
+                if rc_range.len() == STD_RANGE_CHECK_VARIANTS {
+                    break;
+                }
+            }
+
+            // Create an air instance for each range check type
+            for rc_type in rc_range {
+                // TODO: Which air_group_id and air_id should I use?
+                // Which buffer should I use?
+                // pctx.add_air_instance_ctx(FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], Some(buffer));
+            }
+
+
+
             if let Err(e) = self.calculate_trace(stage, air_instance_idx, pctx, ectx, sctx) {
                 log::error!("Failed to calculate witness: {:?}", e);
                 panic!();
@@ -82,9 +114,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
     pub fn new() -> Self {
         Self {
-            ranges: Vec::new(),
-            inputs: HashMap::with_capacity(STD_RANGE_CHECK_VARIANTS),
-            setup_done: false,
+            ranges: Mutex::new(Vec::new()),
+            inputs: Mutex::new(HashMap::with_capacity(STD_RANGE_CHECK_VARIANTS)),
         }
     }
 
@@ -141,7 +172,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
             let range = Range { min, max };
 
             // If the range is already defined, skip
-            if self.ranges.iter().any(|r| r.range == range) {
+            let ranges = self.ranges.lock().unwrap();
+            if ranges.iter().any(|r| r.range == range) {
                 continue;
             }
 
@@ -149,47 +181,47 @@ impl<F: PrimeField> StdRangeCheck<F> {
             let byte = BigInt::from(BYTE);
             let twobytes = BigInt::from(TWOBYTES);
             // Associate to each unique range a range check type
-            let r#type = if predefined && min >= zero && max <= twobytes {
+            let r#type = if predefined && range.min >= zero && range.max <= twobytes {
                 match range {
-                    Range { min: zero, max: byte } => StdRangeCheckType::U8Air,
-                    Range { min: zero, max: twobytes } if max <= twobytes => StdRangeCheckType::U16Air,
-                    Range { min: _, max } if max <= byte => StdRangeCheckType::U8AirDouble,
-                    Range { min: _, max } if max <= twobytes => StdRangeCheckType::U16AirDouble,
+                    Range { ref min, ref max } if *min == zero && *max == byte => StdRangeCheckType::Valid(RangeCheckType::U8Air),
+                    Range { ref min, ref max } if *min == zero && *max == twobytes => StdRangeCheckType::Valid(RangeCheckType::U16Air),
+                    Range { ref max, .. } if *max <= byte => StdRangeCheckType::U8AirDouble,
+                    Range { ref max, .. } if *max <= twobytes => StdRangeCheckType::U16AirDouble,
                     _ => panic!("Invalid predefined range"),
                 }
             } else {
                 // Invoke "update_inputs" to enforce a specific order for the user-provided ranges
-                // This is useful to avoid the need to reentry the range
+                // This is useful to avoid the need to reentry the range when computing the multiplicity column
                 self.update_inputs(
-                    StdRangeCheckType::SpecifiedRanges,
+                    RangeCheckType::SpecifiedRanges,
                     None,
-                    Some(min),
-                    Some(max),
+                    Some(range.min.clone()),
+                    Some(range.max.clone()),
                 );
-                StdRangeCheckType::SpecifiedRanges
+                StdRangeCheckType::Valid(RangeCheckType::SpecifiedRanges)
             };
 
-            self.ranges.push(StdRangeItem {
+            // Update ranges
+            let mut ranges = self.ranges.lock().unwrap();
+            ranges.push(StdRangeItem {
                 rc_type: r#type,
                 range,
             });
         }
-
-        self.setup_done = true;
     }
 
     pub fn assign_values(
-        &mut self,
+        &self,
         value: BigInt,
         min: BigInt,
         max: BigInt,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) {
         if value < min || value > max {
-            return Err(format!(
+            log::error!(
                 "Value {} is not in the range [min,max] = [{},{}]",
                 value, min, max
-            )
-            .into());
+            );
+            panic!();
         }
 
         // Cast the range to positive if it is negative
@@ -199,77 +231,88 @@ impl<F: PrimeField> StdRangeCheck<F> {
             (min, max)
         };
 
-        let range_check = self.ranges.iter().find(|r| r.range == Range { min, max });
+        // If the range was not part of the setup, error
+        let ranges = self.ranges.lock().unwrap();
+        let range_check = ranges.iter().find(|r| r.range == Range { min: min.clone(), max: max.clone() });
 
         if range_check.is_none() {
-            return Err(format!("Range not found: [min,max] = [{},{}]", min, max).into());
+            log::error!("Range not found: [min,max] = [{},{}]", min, max);
+            panic!();
         }
 
         let range_check = range_check.unwrap();
-        let range: Range = range_check.range;
+        let range = &range_check.range;
         match range_check.rc_type {
-            StdRangeCheckType::U8Air => {
-                self.update_inputs(StdRangeCheckType::U8Air, Some(value), None, None);
+            StdRangeCheckType::Valid(RangeCheckType::U8Air) => {
+                self.update_inputs(RangeCheckType::U8Air, Some(value), None, None);
             }
-            StdRangeCheckType::U16Air => {
-                self.update_inputs(StdRangeCheckType::U16Air, Some(value), None, None);
+            StdRangeCheckType::Valid(RangeCheckType::U16Air) => {
+                self.update_inputs(RangeCheckType::U16Air, Some(value), None, None);
             }
             StdRangeCheckType::U8AirDouble => {
-                self.update_inputs(StdRangeCheckType::U8Air, Some(value - range.min), None, None);
-                self.update_inputs(StdRangeCheckType::U8Air, Some(range.max - value), None, None);
+                self.update_inputs(RangeCheckType::U8Air, Some(&value - range.min.clone()), None, None);
+                self.update_inputs(RangeCheckType::U8Air, Some(range.max.clone() - &value), None, None);
             }
             StdRangeCheckType::U16AirDouble => {
-                self.update_inputs(StdRangeCheckType::U16Air, Some(value - range.min), None, None);
-                self.update_inputs(StdRangeCheckType::U16Air, Some(range.max - value), None, None);
+                self.update_inputs(RangeCheckType::U16Air, Some(&value - range.min.clone()), None, None);
+                self.update_inputs(RangeCheckType::U16Air, Some(range.max.clone() - &value), None, None);
             }
-            StdRangeCheckType::SpecifiedRanges => {
+            StdRangeCheckType::Valid(RangeCheckType::SpecifiedRanges) => {
                 self.update_inputs(
-                    StdRangeCheckType::SpecifiedRanges,
+                    RangeCheckType::SpecifiedRanges,
                     Some(value),
-                    Some(range.min),
-                    Some(range.max),
+                    Some(range.min.clone()),
+                    Some(range.max.clone()),
                 );
             }
         }
-
-        Ok(())
     }
 
     fn update_inputs(
-        &mut self,
-        rc_type: StdRangeCheckType,
+        &self,
+        rc_type: RangeCheckType,
         value: Option<BigInt>,
         min: Option<BigInt>,
         max: Option<BigInt>,
     ) {
-        self.inputs.entry(rc_type).or_insert_with(|| match rc_type {
-            StdRangeCheckType::U8Air | StdRangeCheckType::U16Air => {
+        let mut inputs = self.inputs.lock().unwrap();
+
+        inputs.entry(rc_type).or_insert_with(|| match rc_type {
+            RangeCheckType::U8Air | RangeCheckType::U16Air => {
                 InputType::NoRange(HashMap::new())
             }
-            StdRangeCheckType::SpecifiedRanges => InputType::Range(HashMap::new()),
+            RangeCheckType::SpecifiedRanges => InputType::Range(HashMap::new()),
             _ => {
                 panic!("Unexpected StdRangeCheckType variant");
             }
         });
-        if rc_type != StdRangeCheckType::SpecifiedRanges {
+
+        if rc_type != RangeCheckType::SpecifiedRanges {
             let value = value.expect("Rc::update_inputs() value must be provided");
 
-            let inputs = self.inputs
+            let inputs = inputs.get_mut(&rc_type).unwrap();
 
-            let inputs = self.inputs[rc_type as usize]
-                .entry(value)
-                .or_insert(F::zero());
-            *inputs += F::one();
+            if let InputType::NoRange(i) = inputs {
+                *i.entry(value).or_insert(F::zero()) += F::one();
+            } else {
+                panic!("Unexpected InputType variant");
+            }
         } else {
-            let range = (
-                min.expect("Rc::update_inputs() min must be provided"),
-                max.expect("Rc::update_inputs() max must be provided"),
-            );
+            let min = min.expect("Rc::update_inputs() min must be provided");
+            let max = max.expect("Rc::update_inputs() max must be provided");
+            let range = Range { min, max };
 
-            let inputs_specified = self.inputs_specified.entry(range).or_insert(HashMap::new());
+            let inputs = inputs.get_mut(&rc_type).unwrap();
+            let range_key = if let InputType::Range(i) = inputs {
+                i.entry(range.clone()).or_insert(HashMap::new())
+            } else {
+                panic!("Unexpected InputType variant");
+            };
+
             if value.is_none() {
                 return;
             }
+
             let value = value.unwrap();
             // TODO: Not necessary!
             // if value > range.1 {
@@ -277,8 +320,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
             //     value = value - F::order();
             // }
 
-            let inputs_specified = inputs_specified.entry(value).or_insert(F::zero());
-            *inputs_specified += F::one();
+            // Update the value
+            *range_key.entry(value).or_insert(F::zero()) += F::one();
         }
     }
 
