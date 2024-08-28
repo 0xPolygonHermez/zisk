@@ -8,7 +8,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 3;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 #[allow(dead_code)]
 pub struct BinarySM {
@@ -59,7 +59,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         Ok(result)
     }
 
-    fn prove(&self, operations: &[ZiskRequiredOperation], is_last: bool, scope: &Scope) {
+    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         let mut _inputs_basic = Vec::new();
         let mut _inputs_extension = Vec::new();
 
@@ -79,61 +79,42 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         }
 
         let mut inputs_basic = self.inputs_basic.lock().unwrap();
-        let mut inputs_extension = self.inputs_extension.lock().unwrap();
-
         inputs_basic.extend(_inputs_basic);
+
+        while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
+            let drained_inputs_basic = inputs_basic.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+            let binary_basic_sm_cloned = self.binary_basic_sm.clone();
+
+            scope.spawn(move |scope| {
+                binary_basic_sm_cloned.prove(&drained_inputs_basic, drain, scope);
+            });
+        }
+        drop(inputs_basic);
+
+        let mut inputs_extension = self.inputs_extension.lock().unwrap();
         inputs_extension.extend(_inputs_extension);
 
-        // The following is a way to release the lock on the inputs_basic and inputs_extension
-        // Mutexes asap NOTE: The `inputs_basic` lock is released when it goes out of scope
-        // because it is shadowed
-        let inputs_basic = if is_last || inputs_basic.len() >= PROVE_CHUNK_SIZE {
-            let _inputs_basic = std::mem::take(&mut *inputs_basic);
-            if _inputs_basic.is_empty() {
-                None
-            } else {
-                Some(_inputs_basic)
-            }
-        } else {
-            None
-        };
+        while inputs_extension.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_extension.is_empty())
+        {
+            let drained_inputs_extension =
+                inputs_extension.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+            let binary_extension_sm_cloned = self.binary_extension_sm.clone();
 
-        // NOTE: The `inputs_extension` lock is released when it goes out of scope because it is
-        // shadowed
-        let inputs_extension = if is_last || inputs_extension.len() >= PROVE_CHUNK_SIZE {
-            let _inputs_extension = std::mem::take(&mut *inputs_extension);
-            if _inputs_extension.is_empty() {
-                None
-            } else {
-                Some(_inputs_extension)
-            }
-        } else {
-            None
-        };
-
-        if inputs_basic.is_some() {
-            let binary_basic_sm = self.binary_basic_sm.clone();
             scope.spawn(move |scope| {
-                binary_basic_sm.prove(&inputs_basic.unwrap(), is_last, scope);
+                binary_extension_sm_cloned.prove(&drained_inputs_extension, drain, scope);
             });
         }
-
-        if inputs_extension.is_some() {
-            let binary_extension_sm = self.binary_extension_sm.clone();
-            scope.spawn(move |scope| {
-                binary_extension_sm.prove(&inputs_extension.unwrap(), is_last, scope);
-            });
-        }
+        drop(inputs_extension);
     }
 
     fn calculate_prove(
         &self,
         operation: ZiskRequiredOperation,
-        is_last: bool,
+        drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation], is_last, scope);
+        self.prove(&[operation], drain, scope);
         result
     }
 }
