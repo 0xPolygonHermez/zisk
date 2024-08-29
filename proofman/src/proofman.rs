@@ -107,7 +107,7 @@ impl<F: Field + 'static> ProofMan<F> {
             Self::calculate_stage(stage, &mut provers, &mut pctx);
 
             if debug_mode {
-                valid_constraints = Self::verify_constraints(stage, &mut provers);
+                valid_constraints = valid_constraints && Self::verify_constraints(stage, &mut provers);
             } else {
                 Self::commit_stage(stage, &mut provers);
             }
