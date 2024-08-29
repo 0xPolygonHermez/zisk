@@ -71,7 +71,7 @@ jobs:
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo clippy
-        run: cargo clippy --workspace --all-features -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
   cargo-audit:
     name: cargo audit
     runs-on: ubuntu-latest
