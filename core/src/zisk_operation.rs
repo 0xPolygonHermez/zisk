@@ -1,3 +1,5 @@
+use crate::ZiskOperationType;
+
 /// ZisK instruction, containing the opcode and a pointer to the function that implements it
 #[derive(Debug, PartialEq, Clone)]
 pub struct ZiskOperation {
@@ -15,7 +17,15 @@ pub struct ZiskOperation {
 }
 
 impl ZiskOperation {
-    pub fn is_arith(&self) -> bool {
-        self.t == "a" || self.t == "a32"
+    pub fn op_type(&self) -> ZiskOperationType {
+        match self.t {
+            "i" => ZiskOperationType::Internal,
+            "a" => ZiskOperationType::Arith,
+            "a32" => ZiskOperationType::Arith,
+            "am32" => ZiskOperationType::Arith,
+            "b" => ZiskOperationType::Binary,
+            "be" => ZiskOperationType::Binary,
+            _ => panic!("ZiskOperation::op_type() found invalid t={}", self.t),
+        }
     }
 }
