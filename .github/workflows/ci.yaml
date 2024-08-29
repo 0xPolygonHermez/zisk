@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo test
@@ -20,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo check
@@ -40,6 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo fix --workspace
@@ -60,6 +66,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo clippy
