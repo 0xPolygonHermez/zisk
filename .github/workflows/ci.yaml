@@ -1,9 +1,8 @@
 name: CI Checks
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
 jobs:
   cargo-test:
     name: cargo test
