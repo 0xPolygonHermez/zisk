@@ -441,16 +441,21 @@ pub fn verify_constraints_c(p_chelpers_steps: *mut c_void, stage_id: u64) -> boo
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_bin_file: &str, publics: *mut c_void, proofs: *mut c_void, n_proofs: u64) -> bool {
-    unsafe { 
+pub fn verify_global_constraints_c(
+    global_info_file: &str,
+    global_constraints_bin_file: &str,
+    publics: *mut c_void,
+    proofs: *mut c_void,
+    n_proofs: u64,
+) -> bool {
+    unsafe {
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
         let global_constraints_bin_file_name = CString::new(global_constraints_bin_file).unwrap();
         let global_constraints_bin_file_ptr = global_constraints_bin_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-
-        verify_global_constraints(global_info_file_ptr, global_constraints_bin_file_ptr, publics, proofs, n_proofs) 
+        verify_global_constraints(global_info_file_ptr, global_constraints_bin_file_ptr, publics, proofs, n_proofs)
     }
 }
 
@@ -488,7 +493,11 @@ pub fn fri_proof_get_tree_root_c(_pFriProof: *mut c_void, _tree_index: u64, _roo
 
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_set_subproof_values_c(pFriProof: *mut c_void, p_chelpers_steps: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library");
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library"
+    );
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -866,7 +875,17 @@ pub fn verify_constraints_c(_p_chelpers_steps: *mut c_void, _stage_id: u64) -> b
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints_bin_file: &str, _publics: *mut c_void, _proofs: *mut c_void, _n_proofs: u64) -> bool {
-    trace!("{}: ··· {}", "ffi     ", "verify_global_constraints_c: This is a mock call because there is no linked library");
+pub fn verify_global_constraints_c(
+    _global_info_file: &str,
+    _global_constraints_bin_file: &str,
+    _publics: *mut c_void,
+    _proofs: *mut c_void,
+    _n_proofs: u64,
+) -> bool {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "verify_global_constraints_c: This is a mock call because there is no linked library"
+    );
     true
 }

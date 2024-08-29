@@ -125,7 +125,13 @@ impl<F: Field + 'static> ProofMan<F> {
                 proofs.push(proof);
             }
 
-            valid_constraints = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            valid_constraints = verify_global_constraints_c(
+                &proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
+                &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap(),
+                pctx.public_inputs.as_ptr() as *mut c_void,
+                proofs.as_mut_ptr() as *mut c_void,
+                provers.len() as u64,
+            );
 
             if !valid_constraints {
                 log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
