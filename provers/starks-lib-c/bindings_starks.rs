@@ -30,6 +30,13 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z28fri_proof_set_subproofvaluesPvS_"]
+    pub fn fri_proof_set_subproofvalues(
+        pFriProof: *mut ::std::os::raw::c_void,
+        pChelpersSteps: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z14fri_proof_freePv"]
     pub fn fri_proof_free(pFriProof: *mut ::std::os::raw::c_void);
 }
@@ -394,4 +401,14 @@ extern "C" {
         pInput: *mut ::std::os::raw::c_void,
         pOutput: *mut ::std::os::raw::c_void,
     );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z25verify_global_constraintsPcS_PvS0_m"]
+    pub fn verify_global_constraints(
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        globalConstraintsBinFile: *mut ::std::os::raw::c_char,
+        publics: *mut ::std::os::raw::c_void,
+        pProofs: *mut ::std::os::raw::c_void,
+        nProofs: u64,
+    ) -> bool;
 }

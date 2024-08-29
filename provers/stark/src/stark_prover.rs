@@ -174,9 +174,37 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
         let p_steps = self.p_steps;
 
+        // // THIS IS AN EXAMPLE OF HOW TO USE HINT FUNCTIONS
+        // if stage_id == 2 {
+        //     let stark_info: &StarkInfo = &self.stark_info;
+        //     let n = 1 << stark_info.stark_struct.n_bits;
+
+        //     let hints = get_hint_ids_by_name(p_steps, "gprod_col");
+            
+        //     for hint_id in hints.iter() {
+        //         let num = get_hint_field::<F>(p_steps, *hint_id as usize, "numerator", false);
+        //         let den = get_hint_field::<F>(p_steps, *hint_id as usize, "denominator", false);
+                
+        //         let mut reference = get_hint_field::<F>(p_steps, *hint_id as usize, "reference", true);
+
+        //         reference.set(0, num.get(0) / den.get(0));
+        //         for i in 1..n {
+        //             reference.set(i, reference.get(i - 1) * (num.get(i) / den.get(i)));
+        //         }
+
+        //         set_hint_field_val(p_steps, 0, "result", reference.get(n -1));
+
+        //         set_hint_field(p_steps, 0, "reference", &reference);
+        //     }    
+        // }
+
         if stage_id <= proof_ctx.pilout.num_stages() {
             can_impols_be_calculated_c(p_steps, stage_id as u64);
             calculate_impols_expressions_c(p_steps, stage_id as u64);
+            if stage_id == proof_ctx.pilout.num_stages() {
+                let p_proof = self.p_proof.unwrap();
+                fri_proof_set_subproof_values_c(p_proof, p_steps);
+            }
         } else {
             calculate_quotient_polynomial_c(p_steps);
         }
@@ -295,6 +323,11 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             transcript.get_challenge(&challenges[challenges.len() - 4] as *const F as *mut c_void);
         }
     }
+
+    fn get_proof(&self) -> *mut c_void {
+        self.p_proof.unwrap()
+    }
+
 }
 
 impl<F: Field> StarkProver<F> {

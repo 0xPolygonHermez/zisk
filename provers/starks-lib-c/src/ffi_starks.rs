@@ -52,6 +52,11 @@ pub fn fri_proof_get_tree_root_c(pFriProof: *mut c_void, tree_index: u64, root_i
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn fri_proof_set_subproof_values_c(pFriProof: *mut c_void, p_chelpers_steps: *mut c_void) {
+    unsafe { fri_proof_set_subproofvalues(pFriProof, p_chelpers_steps) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_free_c(p_zkevm_steps: *mut c_void) {
     unsafe {
         fri_proof_free(p_zkevm_steps);
@@ -435,6 +440,20 @@ pub fn verify_constraints_c(p_chelpers_steps: *mut c_void, stage_id: u64) -> boo
     unsafe { verify_constraints(p_chelpers_steps, stage_id) }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_bin_file: &str, publics: *mut c_void, proofs: *mut c_void, n_proofs: u64) -> bool {
+    unsafe { 
+        let global_info_file_name = CString::new(global_info_file).unwrap();
+        let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
+
+        let global_constraints_bin_file_name = CString::new(global_constraints_bin_file).unwrap();
+        let global_constraints_bin_file_ptr = global_constraints_bin_file_name.as_ptr() as *mut std::os::raw::c_char;
+
+
+        verify_global_constraints(global_info_file_ptr, global_constraints_bin_file_ptr, publics, proofs, n_proofs) 
+    }
+}
+
 // ------------------------
 // MOCK METHODS FOR TESTING
 // ------------------------
@@ -465,6 +484,11 @@ pub fn fri_proof_get_root_c(_pFriProof: *mut c_void, _root_index: u64, _root_sub
 pub fn fri_proof_get_tree_root_c(_pFriProof: *mut c_void, _tree_index: u64, _root_index: u64) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_get_tree_root: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn fri_proof_set_subproof_values_c(pFriProof: *mut c_void, p_chelpers_steps: *mut c_void) {
+    trace!("{}: ··· {}", "ffi     ", "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -838,5 +862,11 @@ pub fn get_hint_field_c(
 #[cfg(feature = "no_lib_link")]
 pub fn verify_constraints_c(_p_chelpers_steps: *mut c_void, _stage_id: u64) -> bool {
     trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
+    true
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints_bin_file: &str, _publics: *mut c_void, _proofs: *mut c_void, _n_proofs: u64) -> bool {
+    trace!("{}: ··· {}", "ffi     ", "verify_global_constraints_c: This is a mock call because there is no linked library");
     true
 }
