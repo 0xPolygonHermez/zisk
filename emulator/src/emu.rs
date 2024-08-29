@@ -370,9 +370,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.step);
             }
@@ -493,8 +493,8 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.step += 1;
 
-            if self.ctx.end ||
-                ((self.ctx.step - self.ctx.last_callback_step) == self.ctx.callback_steps)
+            if self.ctx.end
+                || ((self.ctx.step - self.ctx.last_callback_step) == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -612,6 +612,9 @@ impl<'a> Emu<'a> {
             inc_sp: F::from_bool(false),
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
+            main_segment: F::from_canonical_u64(0),
+            main_first_segment: F::from_bool(true),
+            main_last_segment: F::from_bool(false),
         };
         emu_slice.full_trace.push(full_trace_step);
 

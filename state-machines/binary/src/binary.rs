@@ -70,11 +70,10 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         for operation in operations {
             if basic_operations.contains(&operation.opcode) {
                 _inputs_basic.push(operation.clone());
-            }
-            if extension_operations.contains(&operation.opcode) {
+            } else if extension_operations.contains(&operation.opcode) {
                 _inputs_extension.push(operation.clone());
             } else {
-                panic!("BinarySM: Operator {:x} not found", operation.opcode);
+                panic!("BinarySM: Operator {:#04x} not found", operation.opcode);
             }
         }
 

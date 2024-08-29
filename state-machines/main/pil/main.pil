@@ -10,9 +10,16 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, int MAIN_CONT
     const expr INNER_LAST = INNER_L1';
 
     // TODO: airval
-    airgroupval aggregate(sum) main_first_segment;   // first
-    airgroupval aggregate(sum) main_last_segment;    // final
-    airgroupval aggregate(sum) main_segment;         // serial
+    // airgroupval aggregate(sum) main_first_segment;   // first
+    // airgroupval aggregate(sum) main_last_segment;    // final
+    // airgroupval aggregate(sum) main_segment;         // serial
+    col witness main_first_segment;   // first
+    col witness main_last_segment;    // final
+    col witness main_segment;         // serial
+
+    main_first_segment * (1 - main_first_segment) === 0;    
+    main_last_segment * (1 - main_last_segment) === 0;  
+    main_first_segment * main_segment === 0;
 
     const expr L1 = INNER_L1 * main_first_segment;
     const expr LAST = INNER_LAST * main_last_segment;
@@ -25,6 +32,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, int MAIN_CONT
     col witness c[RC];
     col witness last_c[RC];
     col witness flag;
+
+    flag * (1 - flag) === 0;
 
     col witness pc;      // Program counter
 

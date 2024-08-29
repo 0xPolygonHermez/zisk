@@ -2,6 +2,9 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::trace;
 
-trace!(Main0Row, Main0Trace<F> {
- a: [F; 1],  b: [F; 1],  c: [F; 1],  last_c: [F; 1],  flag: F,  pc: F,  a_src_imm: F, a_src_mem: F,  a_offset_imm0: F,  sp: F,  a_src_sp: F,  a_use_sp_imm1: F,  a_src_step: F,  b_src_imm: F,  b_src_mem: F,  b_offset_imm0: F,  b_use_sp_imm1: F,  b_src_ind: F,  ind_width: F,  is_external_op: F,  op: F,  store_ra: F,  store_mem: F,  store_ind: F,  store_offset: F,  set_pc: F,  store_use_sp: F,  set_sp: F,  inc_sp: F,  jmp_offset1: F,  jmp_offset2: F,
+
+
+trace!(Main0Row, Main0Trace<F> { 
+ main_first_segment: F,  main_last_segment: F,  main_segment: F,  a: [F; 1],  b: [F; 1],  c: [F; 1],  last_c: [F; 1],  flag: F,  pc: F,  a_src_imm: F,  a_src_mem: F,  a_offset_imm0: F,  sp: F,  a_src_sp: F,  a_use_sp_imm1: F,  a_src_step: F,  b_src_imm: F,  b_src_mem: F,  b_offset_imm0: F,  b_use_sp_imm1: F,  b_src_ind: F,  ind_width: F,  is_external_op: F,  op: F,  store_ra: F,  store_mem: F,  store_ind: F,  store_offset: F,  set_pc: F,  store_use_sp: F,  set_sp: F,  inc_sp: F,  jmp_offset1: F,  jmp_offset2: F, 
 });
+
