@@ -1,12 +1,26 @@
 extern "C" {
-    #[link_name = "\u{1}_Z10save_proofPvS_mS_PcS0_"]
-    pub fn save_proof(
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        pFriProof: *mut ::std::os::raw::c_void,
+    #[link_name = "\u{1}_Z15save_challengesPvPcS0_"]
+    pub fn save_challenges(
+        pChallenges: *mut ::std::os::raw::c_void,
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        fileDir: *mut ::std::os::raw::c_char,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z12save_publicsmPvPc"]
+    pub fn save_publics(
         numPublicInputs: ::std::os::raw::c_ulong,
         pPublicInputs: *mut ::std::os::raw::c_void,
-        publicsOutputFile: *mut ::std::os::raw::c_char,
-        filePrefix: *mut ::std::os::raw::c_char,
+        fileDir: *mut ::std::os::raw::c_char,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z10save_proofmPvS_Pc"]
+    pub fn save_proof(
+        proof_id: u64,
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        pFriProof: *mut ::std::os::raw::c_void,
+        fileDir: *mut ::std::os::raw::c_char,
     );
 }
 extern "C" {

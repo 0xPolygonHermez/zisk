@@ -2,7 +2,8 @@ use libloading::{Library, Symbol};
 use log::{debug, info, trace};
 use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
-use starks_lib_c::verify_global_constraints_c;
+use starks_lib_c::{save_challenges_c, save_publics_c, verify_global_constraints_c};
+use std::fs;
 
 use proofman_setup::SetupCtx;
 use std::{
@@ -33,6 +34,7 @@ impl<F: Field + 'static> ProofMan<F> {
         rom_path: Option<PathBuf>,
         public_inputs_path: PathBuf,
         proving_key_path: PathBuf,
+        output_dir_path: PathBuf,
         debug_mode: bool,
     ) -> Result<Vec<F>, Box<dyn std::error::Error>> {
         // Check witness_lib path exists
@@ -60,6 +62,11 @@ impl<F: Field + 'static> ProofMan<F> {
         // Check proving_key_path is a folder
         if !proving_key_path.is_dir() {
             return Err(format!("Proving key parameter must be a folder: {:?}", proving_key_path).into());
+        }
+
+        if !debug_mode && !output_dir_path.exists() {
+            fs::create_dir_all(&output_dir_path)
+            .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
         }
 
         // Load the witness computation dynamic library
@@ -151,7 +158,7 @@ impl<F: Field + 'static> ProofMan<F> {
         // Compute openings
         Self::opening_stages(&mut provers, &mut pctx, &mut transcript);
 
-        let proof = Self::finalize_proof(&pctx);
+        let proof = Self::finalize_proof(&proving_key_path, &mut provers, &mut pctx, output_dir_path.to_string_lossy().as_ref());
 
         Ok(proof)
     }
@@ -292,8 +299,16 @@ impl<F: Field + 'static> ProofMan<F> {
         }
     }
 
-    fn finalize_proof(_proof_ctx: &ProofCtx<F>) -> Vec<F> {
-        // This is a mock implementation
+    fn finalize_proof(proving_key_path: &Path, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, output_dir: &str) -> Vec<F> {
+        for (idx, prover) in provers.iter_mut().enumerate() {
+            prover.save_proof(idx as u64, output_dir);
+        }
+
+        save_publics_c((pctx.public_inputs.len() / 8) as u64, pctx.public_inputs.as_mut_ptr() as *mut c_void, output_dir);
+
+        let mut challenges = pctx.challenges.clone().expect("");
+        save_challenges_c(challenges.as_mut_ptr() as *mut c_void, &proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), output_dir);
+
         vec![]
     }
 }

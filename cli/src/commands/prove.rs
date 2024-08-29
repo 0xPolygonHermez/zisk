@@ -57,9 +57,9 @@ pub struct ProveCmd {
     #[clap(long)]
     pub proving_key: PathBuf,
 
-    /// Output file path
-    #[clap(short, long, default_value = "proof.json")]
-    pub output: PathBuf,
+    /// Output dir path
+    #[clap(short, long, default_value = "tmp")]
+    pub output_dir: PathBuf,
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
@@ -78,6 +78,7 @@ impl ProveCmd {
                 self.rom.clone(),
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
+                self.output_dir.clone(),
                 false,
             )?,
         };

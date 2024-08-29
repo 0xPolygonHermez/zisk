@@ -318,14 +318,18 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             }
         } else {
             //Fri folding + . queries: add one challenge for each step
-            proof_ctx.challenges.as_mut().unwrap().extend(std::iter::repeat(F::zero()).take(4));
+            proof_ctx.challenges.as_mut().unwrap().extend(std::iter::repeat(F::zero()).take(3));
             let challenges: &Vec<F> = proof_ctx.challenges.as_ref().unwrap();
-            transcript.get_challenge(&challenges[challenges.len() - 4] as *const F as *mut c_void);
+            transcript.get_challenge(&challenges[challenges.len() - 3] as *const F as *mut c_void);
         }
     }
 
     fn get_proof(&self) -> *mut c_void {
         self.p_proof.unwrap()
+    }
+    
+    fn save_proof(&self, id: u64, output_dir: &str) {
+        save_proof_c(id, self.p_starkinfo, self.p_proof.unwrap(), output_dir);
     }
 }
 
@@ -372,7 +376,7 @@ impl<F: Field> StarkProver<F> {
             );
         }
         let challenges: &Vec<F> = proof_ctx.challenges.as_ref().unwrap();
-        let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 4).cloned().collect();
+        let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 3).cloned().collect();
 
         compute_fri_folding_c(p_stark, step as u64, p_steps, challenge.as_ptr() as *mut c_void, p_proof);
 
@@ -397,7 +401,7 @@ impl<F: Field> StarkProver<F> {
         let mut fri_queries = vec![u64::default(); self.stark_info.stark_struct.n_queries as usize];
 
         let challenges: &Vec<F> = proof_ctx.challenges.as_ref().unwrap();
-        let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 4).cloned().collect();
+        let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 3).cloned().collect();
 
         let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
         let transcript_permutation =

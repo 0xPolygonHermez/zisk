@@ -57,10 +57,7 @@ pub struct VerifyConstraintsCmd {
     #[clap(long)]
     pub proving_key: PathBuf,
 
-    /// Output file path
-    #[clap(short, long, default_value = "verify_constraints.json")]
-    pub output: PathBuf,
-
+   
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 }
@@ -78,6 +75,7 @@ impl VerifyConstraintsCmd {
                 self.rom.clone(),
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
+                PathBuf::new(),
                 true,
             )?,
         };
