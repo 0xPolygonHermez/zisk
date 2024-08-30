@@ -109,7 +109,7 @@ impl ZiskEmulator {
         emu.run(inputs.to_owned(), options, callback);
 
         if !emu.terminated() {
-            return Err(ZiskEmulatorErr::EmulationNoCompleted)
+            return Err(ZiskEmulatorErr::EmulationNoCompleted);
         }
 
         let duration = start.elapsed();
@@ -205,11 +205,11 @@ impl Emulator for ZiskEmulator {
         if options.rom.is_some() && options.elf.is_some() {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                 "ROM file and ELF file are incompatible; use only one of them",
-            )))
+            )));
         } else if options.rom.is_none() && options.elf.is_none() {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                 "ROM file or ELF file must be provided",
-            )))
+            )));
         }
 
         // INPUTs:
@@ -229,14 +229,14 @@ impl Emulator for ZiskEmulator {
             if metadata.is_err() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "ROM file does not exist",
-                )))
+                )));
             }
 
             let metadata = metadata.unwrap();
             if metadata.is_dir() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "ROM file must be a file",
-                )))
+                )));
             }
 
             Self::process_rom_file(rom_filename, &inputs, options, callback)
@@ -247,7 +247,7 @@ impl Emulator for ZiskEmulator {
             if metadata.is_err() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "ELF file does not exist",
-                )))
+                )));
             }
 
             let metadata = metadata.unwrap();

@@ -1,6 +1,6 @@
 use crate::{
-    op_from_str, ZiskInst, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, SYS_ADDR,
+    op_from_str, ZiskInst, ZiskOperationType, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
 #[cfg(feature = "sp")]
@@ -44,7 +44,7 @@ impl ZiskInstBuilder {
                 op: 0,
                 func: |_, _| (0, false),
                 op_str: "",
-                op_is_arith: false,
+                op_type: ZiskOperationType::None,
                 verbose: String::new(),
                 m32: false,
             },
@@ -203,7 +203,7 @@ impl ZiskInstBuilder {
         self.i.op_str = op.n;
         self.i.m32 = optxt.contains("_w");
         self.i.func = op.f;
-        self.i.op_is_arith = op.is_arith();
+        self.i.op_type = op.op_type();
     }
 
     pub fn j(&mut self, j1: i32, j2: i32) {

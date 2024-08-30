@@ -59,12 +59,12 @@ impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
         unimplemented!()
     }
 
-    fn prove(&self, _operations: &[ZiskRequiredMemory], _is_last: bool, _scope: &Scope) {}
+    fn prove(&self, _operations: &[ZiskRequiredMemory], _drain: bool, _scope: &Scope) {}
 
     fn calculate_prove(
         &self,
         _operation: ZiskRequiredMemory,
-        _is_last: bool,
+        _drain: bool,
         _scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         unimplemented!()

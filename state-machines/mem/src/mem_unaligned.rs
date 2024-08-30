@@ -1,7 +1,4 @@
-use std::{
-    mem,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
@@ -67,14 +64,15 @@ impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
         }
     }
 
-    fn prove(&self, operations: &[MemUnalignedOp], is_last: bool, scope: &Scope) {
+    fn prove(&self, operations: &[MemUnalignedOp], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
-            if is_last || inputs.len() >= PROVE_CHUNK_SIZE {
-                let _inputs = mem::take(&mut *inputs);
 
-                scope.spawn(move |_scope| {
-                    // TODO! Implement prove _inputs (a chunk of operations)
+            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
+                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+
+                scope.spawn(move |_| {
+                    // TODO! Implement prove drained_inputs (a chunk of operations)
                 });
             }
         }
@@ -83,11 +81,11 @@ impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
     fn calculate_prove(
         &self,
         operation: MemUnalignedOp,
-        is_last: bool,
+        drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation], is_last, scope);
+        self.prove(&[operation], drain, scope);
         result
     }
 }
