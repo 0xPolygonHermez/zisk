@@ -35,9 +35,9 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
                     add_zisk_code(&mut rom, addr, &data);
                 }
 
-                if (section_header.sh_flags & SHF_WRITE as u64) != 0
-                    && addr >= RAM_ADDR
-                    && addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
+                if (section_header.sh_flags & SHF_WRITE as u64) != 0 &&
+                    addr >= RAM_ADDR &&
+                    addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
                     add_zisk_init_data(&mut rom, addr, &data);
                 } else {
