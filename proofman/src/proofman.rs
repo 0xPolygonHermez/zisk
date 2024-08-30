@@ -79,12 +79,12 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut pctx = ProofCtx::create_ctx(witness_lib.pilout());
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
+        
+        let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
 
         let mut ectx = ExecutionCtx::builder().with_buffer_allocator(buffer_allocator).build();
-
-        let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
         Self::initialize_witness(&mut witness_lib, &mut pctx, &mut ectx, &sctx);
 

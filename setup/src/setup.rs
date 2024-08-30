@@ -2,7 +2,7 @@ use std::{os::raw::c_void, path::Path};
 
 use log::trace;
 
-use starks_lib_c::{stark_info_new_c, chelpers_new_c, const_pols_new_c, chelpers_steps_new_c};
+use starks_lib_c::{const_pols_new_c, expressions_bin_new_c, expressions_ctx_new_c, setup_ctx_new_c, stark_info_new_c};
 
 use crate::GlobalInfo;
 
@@ -11,7 +11,9 @@ use crate::GlobalInfo;
 pub struct Setup {
     pub air_group_id: usize,
     pub air_id: usize,
-    pub p_steps: *mut c_void,
+    pub p_setup: *mut c_void,
+    pub p_stark_info: *mut c_void,
+    pub p_expressions: *mut c_void,
 }
 
 impl Setup {
@@ -35,17 +37,17 @@ impl Setup {
             air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
 
         let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
-        let chelpers_path = base_filename_path.clone() + ".bin";
+        let expressions_bin_path = base_filename_path.clone() + ".bin";
+        let const_pols_path = base_filename_path.clone() + ".const";
 
-        let p_starkinfo = stark_info_new_c(&stark_info_path);
+        let p_stark_info = stark_info_new_c(stark_info_path.as_str());
+        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
+        let p_const_pols = const_pols_new_c(const_pols_path.as_str(), p_stark_info);
+        
+        let p_setup = setup_ctx_new_c(p_stark_info, p_expressions_bin, p_const_pols);
 
-        let p_chelpers = chelpers_new_c(&chelpers_path);
+        let p_expressions = expressions_ctx_new_c(p_setup);
 
-        let const_pols_filename = base_filename_path.clone() + ".const";
-        let p_constpols = const_pols_new_c(p_starkinfo, const_pols_filename.as_str());
-
-        let p_steps = chelpers_steps_new_c(p_starkinfo, p_chelpers, p_constpols);
-
-        Self { air_id, air_group_id, p_steps }
+        Self { air_id, air_group_id, p_setup, p_expressions, p_stark_info }
     }
 }

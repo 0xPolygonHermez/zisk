@@ -29,7 +29,6 @@ pub trait Prover<F> {
     fn get_proof(&self) -> *mut c_void;
     fn save_proof(&self, id: u64, output_dir: &str);
 
-    fn get_map_offsets(&self, stage: &str, is_extended: bool) -> u64;
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
     fn add_publics_to_transcript(&self, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
 

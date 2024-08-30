@@ -218,8 +218,8 @@ impl HintCol {
     }
 }
 
-pub fn get_hint_ids_by_name(p_chelpers_steps: *mut c_void, name: &str) -> Vec<u64> {
-    let raw_ptr = get_hint_ids_by_name_c(p_chelpers_steps, name);
+pub fn get_hint_ids_by_name(p_expressions: *mut c_void, name: &str) -> Vec<u64> {
+    let raw_ptr = get_hint_ids_by_name_c(p_expressions, name);
 
     let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
 
@@ -231,12 +231,13 @@ pub fn get_hint_ids_by_name(p_chelpers_steps: *mut c_void, name: &str) -> Vec<u6
 }
 
 pub fn get_hint_field<F: Clone + Copy>(
-    p_chelpers_steps: *mut c_void,
+    p_expressions: *mut c_void,
+    params: *mut c_void,
     hint_id: usize,
     hint_field_name: &str,
     dest: bool,
 ) -> HintFieldValue<F> {
-    let raw_ptr = get_hint_field_c(p_chelpers_steps, hint_id as u64, hint_field_name, dest);
+    let raw_ptr = get_hint_field_c(p_expressions, params, hint_id as u64, hint_field_name, dest);
 
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
@@ -244,7 +245,8 @@ pub fn get_hint_field<F: Clone + Copy>(
 }
 
 pub fn set_hint_field<F: Copy + core::fmt::Debug>(
-    p_chelpers_steps: *mut c_void,
+    p_expressions: *mut c_void,
+    params: *mut c_void,
     hint_id: u64,
     hint_field_name: &str,
     values: &HintFieldValue<F>,
@@ -255,11 +257,12 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
         _ => panic!("Only column and column extended are accepted"),
     };
 
-    set_hint_field_c(p_chelpers_steps, values_ptr, hint_id, hint_field_name);
+    set_hint_field_c(p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
 
 pub fn set_hint_field_val<F: Clone + Copy>(
-    p_chelpers_steps: *mut c_void,
+    p_expressions: *mut c_void,
+    params: *mut c_void,
     hint_id: u64,
     hint_field_name: &str,
     value: HintFieldOutput<F>,
@@ -269,7 +272,7 @@ pub fn set_hint_field_val<F: Clone + Copy>(
         HintFieldOutput::FieldExtended(val) => &[val.value[0], val.value[1], val.value[2]] as *const F as *mut c_void,
     };
 
-    set_hint_field_c(p_chelpers_steps, values_ptr, hint_id, hint_field_name);
+    set_hint_field_c(p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
 
 #[cfg(test)]

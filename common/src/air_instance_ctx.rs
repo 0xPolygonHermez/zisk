@@ -14,8 +14,8 @@ impl<F> AirInstanceCtx<F> {
     pub fn get_buffer_ptr(&mut self) -> *mut u8 {
         println!("Air_group_id: {}, Air_id: {}", self.air_group_id, self.air_id);
         if self.buffer.is_some() {
-            self.buffer.as_mut().unwrap().as_mut_ptr() as *mut u8
-        } else {
+        self.buffer.as_mut().unwrap().as_mut_ptr() as *mut u8
+    } else {
             panic!("Buffer not initialized");
         }
     }

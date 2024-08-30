@@ -28,12 +28,12 @@ impl SetupCtx {
         SetupCtx { setups }
     }
 
-    pub fn get_setup(&self, air_group_id: usize, air_id: usize) -> Result<*mut c_void, String> {
+    pub fn get_setup(&self, air_group_id: usize, air_id: usize) -> Result<&Setup, String> {
         println!("Searching setup for Air_group_id: {}, Air_id: {}", air_group_id, air_id);
 
         for setup in &self.setups {
             if setup.air_group_id == air_group_id && setup.air_id == air_id {
-                return Ok(setup.p_steps);
+                return Ok(setup);
             }
         }
 
