@@ -7,7 +7,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 7;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct QuickOpsSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
@@ -18,7 +18,7 @@ impl QuickOpsSM {
         let quickops_sm = Self { inputs: Mutex::new(Vec::new()) };
         let quickops_sm = Arc::new(quickops_sm);
 
-        wcm.register_component(quickops_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+        wcm.register_component(quickops_sm.clone(), Some(air_ids));
 
         quickops_sm
     }
@@ -32,12 +32,16 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
     }
+
+    fn register_predecessor(&self) {}
+
+    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
@@ -54,7 +58,8 @@ impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)

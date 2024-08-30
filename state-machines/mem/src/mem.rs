@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 
 #[allow(dead_code)]
-const PROVE_CHUNK_SIZE: usize = 1 << 3;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 #[allow(dead_code)]
 pub struct MemSM {
@@ -28,12 +28,16 @@ impl MemSM {
         let mem_sm = Self {
             inputs_aligned: Mutex::new(Vec::new()),
             inputs_unaligned: Mutex::new(Vec::new()),
-            mem_aligned_sm,
-            mem_unaligned_sm,
+            mem_aligned_sm: mem_aligned_sm.clone(),
+            mem_unaligned_sm: mem_unaligned_sm.clone(),
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_component(mem_sm.clone() as Arc<dyn WitnessComponent<F>>, None);
+        wcm.register_component(mem_sm.clone(), None);
+
+        // For all the secondary state machines, register the main state machine as a predecessor
+        <MemAlignedSM as WitnessComponent<F>>::register_predecessor(&mem_aligned_sm);
+        <MemUnalignedSM as WitnessComponent<F>>::register_predecessor(&mem_unaligned_sm);
 
         mem_sm
     }
@@ -43,12 +47,16 @@ impl<F> WitnessComponent<F> for MemSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
     }
+
+    fn register_predecessor(&self) {}
+
+    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<ZiskRequiredMemory, OpResult> for MemSM {

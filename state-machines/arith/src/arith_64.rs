@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
@@ -7,18 +10,20 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 7;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct Arith64SM {
+    registered_predecessors: AtomicU32,
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 }
 
 impl Arith64SM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let arith64_sm = Self { inputs: Mutex::new(Vec::new()) };
+        let arith64_sm =
+            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith64_sm = Arc::new(arith64_sm);
 
-        wcm.register_component(arith64_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+        wcm.register_component(arith64_sm.clone(), Some(air_ids));
 
         arith64_sm
     }
@@ -32,11 +37,21 @@ impl<F> WitnessComponent<F> for Arith64SM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
+    }
+
+    fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <Arith64SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+        }
     }
 }
 
@@ -54,7 +69,8 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith64SM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)

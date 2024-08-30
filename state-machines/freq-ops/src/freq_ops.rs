@@ -6,7 +6,7 @@ use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{FreqOp, OpResult, Provable};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 7;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct FreqOpSM {
     inputs: Mutex<Vec<FreqOp>>,
@@ -32,12 +32,16 @@ impl<F> WitnessComponent<F> for FreqOpSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
     }
+
+    fn register_predecessor(&self) {}
+
+    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<FreqOp, OpResult> for FreqOpSM {
@@ -52,7 +56,8 @@ impl Provable<FreqOp, OpResult> for FreqOpSM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)

@@ -6,7 +6,7 @@ use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 3;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct MemAlignedSM {
     inputs: Mutex<Vec<MemOp>>,
@@ -18,10 +18,7 @@ impl MemAlignedSM {
         let mem_aligned_sm = Self { inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
-        wcm.register_component(
-            mem_aligned_sm.clone() as Arc<dyn WitnessComponent<F>>,
-            Some(air_ids),
-        );
+        wcm.register_component(mem_aligned_sm.clone(), Some(air_ids));
 
         mem_aligned_sm
     }
@@ -46,12 +43,16 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
     }
+
+    fn register_predecessor(&self) {}
+
+    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<MemOp, OpResult> for MemAlignedSM {
@@ -67,7 +68,8 @@ impl Provable<MemOp, OpResult> for MemAlignedSM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
