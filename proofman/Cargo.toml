@@ -16,6 +16,7 @@ log = { workspace = true }
 env_logger = { workspace = true }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
+rayon = { workspace = true }
 
 libloading = "0.8.4"
 colored = "2"

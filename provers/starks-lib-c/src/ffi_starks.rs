@@ -539,7 +539,7 @@ pub fn fri_proof_get_tree_root_c(_pFriProof: *mut c_void, _tree_index: u64, _roo
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn fri_proof_set_subproof_values_c(pFriProof: *mut c_void, p_chelpers_steps: *mut c_void) {
+pub fn fri_proof_set_subproof_values_c(_p_fri_proof: *mut c_void, _p_chelpers_steps: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library");
 }
 
