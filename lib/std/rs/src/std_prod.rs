@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug,sync::Arc};
 
 use p3_field::Field;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
@@ -47,10 +47,10 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
 impl<F: Copy + Debug + Field> StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             _phantom: std::marker::PhantomData,
-        }
+        })
     }
 
     fn calculate_witness(

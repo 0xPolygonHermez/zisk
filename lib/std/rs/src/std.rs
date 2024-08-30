@@ -1,4 +1,4 @@
-use std::sync::{Arc,Mutex};
+use std::{collections::HashMap, sync::{Arc,Mutex}};
 
 use num_bigint::BigInt;
 use rayon::Scope;
@@ -8,15 +8,15 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 
-use crate::{Decider, StdProd, StdRangeCheck, StdSum};
+use crate::{Decider, StdProd, StdRangeCheck, RCAirData, StdSum};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 3;
 
-struct RangeCheckInput {
-    val: BigInt,
-    min: BigInt,
-    max: BigInt,
-}
+// struct RangeCheckInput {
+//     val: BigInt,
+//     min: BigInt,
+//     max: BigInt,
+// }
 
 pub struct Std<F> {
     prod: Arc<StdProd<F>>,
@@ -30,10 +30,14 @@ impl<F: PrimeField> Std<F> {
     // TODO: Shouldn't this be the same as in the main?
     const MAX_ACCUMULATED: usize = 2usize.pow(10);
 
-    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let prod = Arc::new(StdProd::new());
-        let sum = Arc::new(StdSum::new());
-        let range_check = Arc::new(StdRangeCheck::<F>::new());
+    pub fn new(wcm: &mut WitnessManager<F>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
+        // Instantiate the STD components
+        let prod = StdProd::new();
+        let sum = StdSum::new();
+
+        // In particular, the range check component needs to be instantiated with the ids
+        // of its (possibly) associated AIRs: U8Air ...
+        let range_check = StdRangeCheck::new(rc_air_data);
 
         let std = Arc::new(Self {
             prod,
@@ -41,8 +45,7 @@ impl<F: PrimeField> Std<F> {
             range_check,
         });
 
-        // TODO: Link std to the corresponding air (U8Air, U16Air, ...)
-        // Not necessary after a discussion... REVIEW
+        // Register the STD as a component. Notice that the STD has no air associated with it
         wcm.register_component(std.clone() as Arc<dyn WitnessComponent<F>>, None);
 
         std

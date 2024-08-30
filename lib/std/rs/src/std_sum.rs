@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug,sync::Arc};
 
 use p3_field::Field;
 use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
@@ -55,10 +55,10 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
 impl<F: Copy + Debug + Field> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum";
 
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             _phantom: std::marker::PhantomData,
-        }
+        })
     }
 
     fn calculate_witness(
