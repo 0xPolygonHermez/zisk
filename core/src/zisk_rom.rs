@@ -356,37 +356,37 @@ impl ZiskRom {
 
     pub fn get_rom_flags(&self, i: &ZiskInst) -> u64 {
         #[cfg(feature = "sp")]
-        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
-            ((i.a_src == SRC_MEM) as u64) << 1 |
-            ((i.b_src == SRC_IMM) as u64) << 2 |
-            ((i.b_src == SRC_MEM) as u64) << 3 |
-            (i.store_ra as u64) << 4 |
-            ((i.store == STORE_MEM) as u64) << 5 |
-            ((i.store == STORE_IND) as u64) << 6 |
-            (i.set_pc as u64) << 7 |
-            (i.m32 as u64) << 8 |
-            (i.end as u64) << 9 |
-            (i.is_external_op as u64) << 10 |
-            ((i.a_src == SRC_SP) as u64) << 11 |
-            (i.a_use_sp_imm1) << 12 |
-            ((i.a_src == SRC_STEP) as u64) << 13 |
-            ((i.b_src == SRC_IND) as u64) << 14 |
-            (i.store_use_sp as u64) << 15;
+        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64)
+            | ((i.a_src == SRC_MEM) as u64) << 1
+            | ((i.b_src == SRC_IMM) as u64) << 2
+            | ((i.b_src == SRC_MEM) as u64) << 3
+            | (i.store_ra as u64) << 4
+            | ((i.store == STORE_MEM) as u64) << 5
+            | ((i.store == STORE_IND) as u64) << 6
+            | (i.set_pc as u64) << 7
+            | (i.m32 as u64) << 8
+            | (i.end as u64) << 9
+            | (i.is_external_op as u64) << 10
+            | ((i.a_src == SRC_SP) as u64) << 11
+            | (i.a_use_sp_imm1) << 12
+            | ((i.a_src == SRC_STEP) as u64) << 13
+            | ((i.b_src == SRC_IND) as u64) << 14
+            | (i.store_use_sp as u64) << 15;
 
         #[cfg(not(feature = "sp"))]
-        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
-            ((i.a_src == SRC_MEM) as u64) << 1 |
-            ((i.b_src == SRC_IMM) as u64) << 2 |
-            ((i.b_src == SRC_MEM) as u64) << 3 |
-            (i.store_ra as u64) << 4 |
-            ((i.store == STORE_MEM) as u64) << 5 |
-            ((i.store == STORE_IND) as u64) << 6 |
-            (i.set_pc as u64) << 7 |
-            (i.m32 as u64) << 8 |
-            (i.end as u64) << 9 |
-            (i.is_external_op as u64) << 10 |
-            ((i.a_src == SRC_STEP) as u64) << 13 |
-            ((i.b_src == SRC_IND) as u64) << 14;
+        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64)
+            | ((i.a_src == SRC_MEM) as u64) << 1
+            | ((i.b_src == SRC_IMM) as u64) << 2
+            | ((i.b_src == SRC_MEM) as u64) << 3
+            | (i.store_ra as u64) << 4
+            | ((i.store == STORE_MEM) as u64) << 5
+            | ((i.store == STORE_IND) as u64) << 6
+            | (i.set_pc as u64) << 7
+            | (i.m32 as u64) << 8
+            | (i.end as u64) << 9
+            | (i.is_external_op as u64) << 10
+            | ((i.a_src == SRC_STEP) as u64) << 13
+            | ((i.b_src == SRC_IND) as u64) << 14;
 
         rom_flags
     }

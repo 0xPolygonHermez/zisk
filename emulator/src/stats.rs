@@ -89,22 +89,22 @@ impl Stats {
         output += &format!("    COST_USUAL: {:02} sec\n", COST_USUAL);
         output += &format!("    COST_STEP: {:02} sec\n", COST_STEP);
 
-        let total_mem_ops = self.mops.mread_na1 +
-            self.mops.mread_na2 +
-            self.mops.mread_a +
-            self.mops.mwrite_na1 +
-            self.mops.mwrite_na2 +
-            self.mops.mwrite_a;
-        let total_mem_align_steps = self.mops.mread_na1 +
-            self.mops.mread_na2 * 2 +
-            self.mops.mwrite_na1 * 2 +
-            self.mops.mwrite_na2 * 4;
+        let total_mem_ops = self.mops.mread_na1
+            + self.mops.mread_na2
+            + self.mops.mread_a
+            + self.mops.mwrite_na1
+            + self.mops.mwrite_na2
+            + self.mops.mwrite_a;
+        let total_mem_align_steps = self.mops.mread_na1
+            + self.mops.mread_na2 * 2
+            + self.mops.mwrite_na1 * 2
+            + self.mops.mwrite_na2 * 4;
 
         let cost_mem = total_mem_ops as f64 * COST_MEM;
-        let cost_mem_align = self.mops.mread_na1 as f64 * COST_MEMA_R1 +
-            self.mops.mread_na2 as f64 * COST_MEMA_R2 +
-            self.mops.mwrite_na1 as f64 * COST_MEMA_W1 +
-            self.mops.mwrite_na2 as f64 * COST_MEMA_W2;
+        let cost_mem_align = self.mops.mread_na1 as f64 * COST_MEMA_R1
+            + self.mops.mread_na2 as f64 * COST_MEMA_R2
+            + self.mops.mwrite_na1 as f64 * COST_MEMA_W1
+            + self.mops.mwrite_na2 as f64 * COST_MEMA_W2;
 
         let operations = ZiskOperations::new();
         let mut total_opcodes: u64 = 0;
