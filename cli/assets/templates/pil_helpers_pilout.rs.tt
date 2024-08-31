@@ -18,7 +18,7 @@ pub struct Pilout;
 
 impl Pilout \{
     pub fn pilout() -> WitnessPilout \{
-        let mut pilout = WitnessPilout::new("{ project_name }", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("{ project_name }", { num_stages }, PILOUT_HASH.to_vec());
 
 {{ for air_group in air_groups }}
         let air_group = pilout.add_air_group(Some("{ air_group.name }"));
