@@ -602,7 +602,6 @@ dependencies = [
  "proofman-common",
  "proofman-setup",
  "proofman-util",
- "rayon",
  "stark",
  "starks-lib-c",
  "transcript",
