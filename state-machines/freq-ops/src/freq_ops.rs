@@ -23,9 +23,9 @@ impl FreqOpSM {
         Self { inputs: Mutex::new(Vec::new()) }
     }
 
-    fn add(&self, a: u64, b: u64) -> Result<OpResult, Box<dyn std::error::Error>> {
-        Ok((a + b, true))
-    }
+    pub fn register_predecessor(&self) {}
+
+    pub fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl<F> WitnessComponent<F> for FreqOpSM {
@@ -38,17 +38,11 @@ impl<F> WitnessComponent<F> for FreqOpSM {
         _sctx: &SetupCtx,
     ) {
     }
-
-    fn register_predecessor(&self) {}
-
-    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<FreqOp, OpResult> for FreqOpSM {
-    fn calculate(&self, operation: FreqOp) -> Result<OpResult, Box<dyn std::error::Error>> {
-        match operation {
-            FreqOp::Add(a, b) => self.add(a, b),
-        }
+    fn calculate(&self, _operation: FreqOp) -> Result<OpResult, Box<dyn std::error::Error>> {
+        unimplemented!()
     }
 
     fn prove(&self, operations: &[FreqOp], drain: bool, scope: &Scope) {

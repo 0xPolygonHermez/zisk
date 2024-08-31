@@ -23,6 +23,10 @@ impl QuickOpsSM {
         quickops_sm
     }
 
+    pub fn register_predecessor(&self) {}
+
+    pub fn unregister_predecessor(&self, _scope: &Scope) {}
+
     pub fn operations() -> Vec<u8> {
         vec![0xb6, 0xb7, 0xbe, 0xbf]
     }
@@ -38,10 +42,6 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
         _sctx: &SetupCtx,
     ) {
     }
-
-    fn register_predecessor(&self) {}
-
-    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {

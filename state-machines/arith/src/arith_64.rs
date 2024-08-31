@@ -28,6 +28,16 @@ impl Arith64SM {
         arith64_sm
     }
 
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <Arith64SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+        }
+    }
+
     pub fn operations() -> Vec<u8> {
         vec![0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb8, 0xb9, 0xba, 0xbb]
     }
@@ -42,16 +52,6 @@ impl<F> WitnessComponent<F> for Arith64SM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith64SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
-        }
     }
 }
 

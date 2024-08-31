@@ -44,19 +44,38 @@ impl ArithSM {
             condvar: Arc::new(Condvar::new()),
             inputs32: Mutex::new(Vec::new()),
             inputs64: Mutex::new(Vec::new()),
-            arith32_sm: arith32_sm.clone(),
-            arith64_sm: arith64_sm.clone(),
-            arith3264_sm: arith3264_sm.clone(),
+            arith32_sm,
+            arith64_sm,
+            arith3264_sm,
         };
         let arith_sm = Arc::new(arith_sm);
 
         wcm.register_component(arith_sm.clone(), None);
 
-        <Arith32SM as WitnessComponent<F>>::register_predecessor(&arith32_sm);
-        <Arith64SM as WitnessComponent<F>>::register_predecessor(&arith64_sm);
-        <Arith3264SM as WitnessComponent<F>>::register_predecessor(&arith3264_sm);
+        arith_sm.arith32_sm.register_predecessor();
+        arith_sm.arith64_sm.register_predecessor();
+        arith_sm.arith3264_sm.register_predecessor();
 
         arith_sm
+    }
+
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+
+            let mut guard = self.mutex.lock().unwrap();
+            while self.working_threads.load(Ordering::SeqCst) > 0 {
+                guard = self.condvar.wait(guard).unwrap();
+            }
+
+            self.arith3264_sm.unregister_predecessor(scope);
+            self.arith64_sm.unregister_predecessor(scope);
+            self.arith32_sm.unregister_predecessor(scope);
+        }
     }
 }
 
@@ -69,25 +88,6 @@ impl<F> WitnessComponent<F> for ArithSM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
-
-            let mut guard = self.mutex.lock().unwrap();
-            while self.working_threads.load(Ordering::SeqCst) > 0 {
-                guard = self.condvar.wait(guard).unwrap();
-            }
-
-            <Arith32SM as WitnessComponent<F>>::unregister_predecessor(&self.arith32_sm, scope);
-            <Arith64SM as WitnessComponent<F>>::unregister_predecessor(&self.arith64_sm, scope);
-            <Arith3264SM as WitnessComponent<F>>::unregister_predecessor(&self.arith3264_sm, scope);
-        }
     }
 }
 
@@ -111,8 +111,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         for operation in operations {
             if operations32.contains(&operation.opcode) {
                 _inputs32.push(operation.clone());
-            }
-            if operations64.contains(&operation.opcode) {
+            } else if operations64.contains(&operation.opcode) {
                 _inputs64.push(operation.clone());
             } else {
                 panic!("ArithSM: Operator {:x} not found", operation.opcode);
@@ -125,6 +124,10 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         inputs32.extend(_inputs32);
 
         while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
+            if drain && !inputs32.is_empty() {
+                println!("ArithSM: Draining inputs");
+            }
+
             let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
             let drained_inputs32 = inputs32.drain(..num_drained32).collect::<Vec<_>>();
             let arith32_sm_cloned = self.arith32_sm.clone();
@@ -148,6 +151,10 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         inputs64.extend(_inputs64);
 
         while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
+            if drain && !inputs64.is_empty() {
+                println!("ArithSM: Draining inputs");
+            }
+
             let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
             let drained_inputs64 = inputs64.drain(..num_drained64).collect::<Vec<_>>();
             let arith64_sm_cloned = self.arith64_sm.clone();

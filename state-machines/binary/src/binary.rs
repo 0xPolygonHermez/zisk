@@ -42,17 +42,35 @@ impl BinarySM {
             condvar: Arc::new(Condvar::new()),
             inputs_basic: Mutex::new(Vec::new()),
             inputs_extension: Mutex::new(Vec::new()),
-            binary_basic_sm: binary_basic_sm.clone(),
-            binary_extension_sm: binary_extension_sm.clone(),
+            binary_basic_sm,
+            binary_extension_sm,
         };
         let binary_sm = Arc::new(binary_sm);
 
         wcm.register_component(binary_sm.clone(), None);
 
-        <BinaryBasicSM as WitnessComponent<F>>::register_predecessor(&binary_basic_sm);
-        <BinaryExtensionSM as WitnessComponent<F>>::register_predecessor(&binary_extension_sm);
+        binary_sm.binary_basic_sm.register_predecessor();
+        binary_sm.binary_extension_sm.register_predecessor();
 
         binary_sm
+    }
+
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <BinarySM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+
+            let mut guard = self.mutex.lock().unwrap();
+            while self.working_threads.load(Ordering::SeqCst) > 0 {
+                guard = self.condvar.wait(guard).unwrap();
+            }
+
+            self.binary_basic_sm.unregister_predecessor(scope);
+            self.binary_extension_sm.unregister_predecessor(scope);
+        }
     }
 }
 
@@ -65,30 +83,6 @@ impl<F> WitnessComponent<F> for BinarySM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinarySM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
-
-            let mut guard = self.mutex.lock().unwrap();
-            while self.working_threads.load(Ordering::SeqCst) > 0 {
-                guard = self.condvar.wait(guard).unwrap();
-            }
-
-            <BinaryBasicSM as WitnessComponent<F>>::unregister_predecessor(
-                &self.binary_basic_sm,
-                scope,
-            );
-            <BinaryExtensionSM as WitnessComponent<F>>::unregister_predecessor(
-                &self.binary_extension_sm,
-                scope,
-            );
-        }
     }
 }
 

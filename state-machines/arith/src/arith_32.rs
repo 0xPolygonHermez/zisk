@@ -28,6 +28,16 @@ impl Arith32SM {
         arith32_sm
     }
 
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <Arith32SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+        }
+    }
+
     pub fn operations() -> Vec<u8> {
         vec![0xb6, 0xb7, 0xbe, 0xbf]
     }
@@ -42,16 +52,6 @@ impl<F> WitnessComponent<F> for Arith32SM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith32SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
-        }
     }
 }
 

@@ -23,6 +23,10 @@ impl MemAlignedSM {
         mem_aligned_sm
     }
 
+    pub fn register_predecessor(&self) {}
+
+    pub fn unregister_predecessor(&self, _scope: &Scope) {}
+
     fn read(
         &self,
         _addr: u64, /* , _ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx */
@@ -49,10 +53,6 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
         _sctx: &SetupCtx,
     ) {
     }
-
-    fn register_predecessor(&self) {}
-
-    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<MemOp, OpResult> for MemAlignedSM {

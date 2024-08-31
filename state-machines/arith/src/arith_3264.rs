@@ -27,6 +27,21 @@ impl Arith3264SM {
 
         arith3264_sm
     }
+
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <Arith3264SM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
+        }
+    }
 }
 
 impl<F> WitnessComponent<F> for Arith3264SM {
@@ -38,21 +53,6 @@ impl<F> WitnessComponent<F> for Arith3264SM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith3264SM as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-        }
     }
 }
 
@@ -70,6 +70,10 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
+                if drain && !inputs.is_empty() {
+                    println!("Arith3264SM: Draining inputs");
+                }
+
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 

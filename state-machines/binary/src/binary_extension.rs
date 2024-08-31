@@ -28,6 +28,21 @@ impl BinaryExtensionSM {
         binary_extension_sm
     }
 
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <BinaryExtensionSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
+        }
+    }
+
     pub fn operations() -> Vec<u8> {
         vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x24, 0x25, 0x26]
     }
@@ -42,21 +57,6 @@ impl<F> WitnessComponent<F> for BinaryExtensionSM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryExtensionSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-        }
     }
 }
 

@@ -114,7 +114,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main = Arc::new(Self {
+        let main_sm = Arc::new(Self {
             working_threads: Arc::new(AtomicU32::new(0)),
             mutex: Arc::new(Mutex::new(())),
             condvar: Arc::new(Condvar::new()),
@@ -126,14 +126,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
-        wcm.register_component(main.clone(), Some(air_ids));
+        wcm.register_component(main_sm.clone(), Some(air_ids));
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        <MemSM as WitnessComponent<F>>::register_predecessor(&mem_sm);
-        <BinarySM as WitnessComponent<F>>::register_predecessor(&binary_sm);
-        <ArithSM as WitnessComponent<F>>::register_predecessor(&arith_sm);
+        main_sm.mem_sm.register_predecessor();
+        main_sm.binary_sm.register_predecessor();
+        main_sm.arith_sm.register_predecessor();
 
-        main
+        main_sm
     }
 
     /// Executes the MainSM state machine and processes the inputs in batches when the maximum
@@ -190,9 +190,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             }
 
             // Unregister main state machine as a predecessor for all the secondary state machines
-            <MemSM as WitnessComponent<F>>::unregister_predecessor(&self.mem_sm, scope);
-            <BinarySM as WitnessComponent<F>>::unregister_predecessor(&self.binary_sm, scope);
-            <ArithSM as WitnessComponent<F>>::unregister_predecessor(&self.arith_sm, scope);
+            self.mem_sm.unregister_predecessor(scope);
+            self.binary_sm.unregister_predecessor(scope);
+            self.arith_sm.unregister_predecessor(scope);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {
@@ -261,8 +261,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
                 "Too many inputs in a Main AIR segment"
             );
 
-            let is_last = emu_traces.end.end;
-            self.prove(emu_slice.required, is_last, ectx, scope);
+            self.prove(emu_slice.required, ectx, scope);
 
             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
@@ -329,13 +328,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `emu_required` - Inputs to be proved
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn prove(
-        &self,
-        mut emu_required: ZiskRequired,
-        is_last: bool,
-        _ectx: &'a ExecutionCtx,
-        scope: &Scope<'a>,
-    ) {
+    fn prove(&self, mut emu_required: ZiskRequired, _ectx: &'a ExecutionCtx, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
         let binary = mem::take(&mut emu_required.binary);
         let arith = mem::take(&mut emu_required.arith);
@@ -349,9 +342,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let working_threads = self.working_threads.clone();
 
         scope.spawn(move |scope| {
-            mem_sm.prove(&memory, is_last, scope);
-            binary_sm.prove(&binary, is_last, scope);
-            arith_sm.prove(&arith, is_last, scope);
+            mem_sm.prove(&memory, false, scope);
+            binary_sm.prove(&binary, false, scope);
+            arith_sm.prove(&arith, false, scope);
 
             let _guard = mutex.lock().unwrap();
             working_threads.fetch_sub(1, Ordering::SeqCst);

@@ -28,6 +28,21 @@ impl BinaryBasicSM {
         binary_basic
     }
 
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <BinaryBasicSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
+        }
+    }
+
     pub fn operations() -> Vec<u8> {
         vec![
             0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22,
@@ -45,21 +60,6 @@ impl<F> WitnessComponent<F> for BinaryBasicSM {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-    }
-
-    fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn unregister_predecessor(&self, scope: &Scope) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-        }
     }
 }
 

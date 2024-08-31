@@ -36,11 +36,15 @@ impl MemSM {
         wcm.register_component(mem_sm.clone(), None);
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        <MemAlignedSM as WitnessComponent<F>>::register_predecessor(&mem_aligned_sm);
-        <MemUnalignedSM as WitnessComponent<F>>::register_predecessor(&mem_unaligned_sm);
+        mem_sm.mem_aligned_sm.register_predecessor();
+        mem_sm.mem_unaligned_sm.register_predecessor();
 
         mem_sm
     }
+
+    pub fn register_predecessor(&self) {}
+
+    pub fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl<F> WitnessComponent<F> for MemSM {
@@ -53,10 +57,6 @@ impl<F> WitnessComponent<F> for MemSM {
         _sctx: &SetupCtx,
     ) {
     }
-
-    fn register_predecessor(&self) {}
-
-    fn unregister_predecessor(&self, _scope: &Scope) {}
 }
 
 impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
