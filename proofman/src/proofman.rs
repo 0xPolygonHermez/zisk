@@ -113,7 +113,7 @@ impl<F: Field + 'static> ProofMan<F> {
             Self::calculate_stage(stage, &mut provers, &mut pctx, &sctx);
 
             if debug_mode {
-                valid_constraints = Self::verify_constraints(stage, &mut provers, &mut pctx);
+                valid_constraints = valid_constraints && Self::verify_constraints(stage, &mut provers, &mut pctx);
             } else {
                 Self::commit_stage(stage, &mut provers, &mut pctx);
             }
@@ -131,13 +131,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 proofs.push(proof);
             }
 
-            valid_constraints = verify_global_constraints_c(
-                proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
-                proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap(),
-                pctx.public_inputs.as_ptr() as *mut c_void,
-                proofs.as_mut_ptr() as *mut c_void,
-                provers.len() as u64,
-            );
+            valid_constraints = valid_constraints && verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
 
             if !valid_constraints {
                 log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
@@ -242,7 +236,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut valid_constraints = true;
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Verifying constraints stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            valid_constraints = prover.verify_constraints(stage, pctx);
+            valid_constraints = valid_constraints && prover.verify_constraints(stage, pctx);
         }
         valid_constraints
     }

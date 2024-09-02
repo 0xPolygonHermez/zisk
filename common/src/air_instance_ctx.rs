@@ -28,3 +28,6 @@ impl<F> AirInstanceCtx<F> {
         self.params = Some(params);
     }
 }
+
+unsafe impl<F> Send for AirInstanceCtx<F> {}
+unsafe impl<F> Sync for AirInstanceCtx<F> {}
