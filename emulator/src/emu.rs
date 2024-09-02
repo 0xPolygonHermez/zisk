@@ -572,10 +572,22 @@ impl<'a> Emu<'a> {
 
         // Build and store the full trace
         let full_trace_step = EmuFullTraceStep {
-            a: [F::from_canonical_u64(self.ctx.a)],
-            b: [F::from_canonical_u64(self.ctx.b)],
-            c: [F::from_canonical_u64(self.ctx.c)],
-            last_c: [F::from_canonical_u64(last_c)],
+            a: [
+                F::from_canonical_u64(self.ctx.a & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.a << 32) & 0xFFFFFFFF),
+            ],
+            b: [
+                F::from_canonical_u64(self.ctx.b & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.b << 32) & 0xFFFFFFFF),
+            ],
+            c: [
+                F::from_canonical_u64(self.ctx.c & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.c << 32) & 0xFFFFFFFF),
+            ],
+            last_c: [
+                F::from_canonical_u64(last_c & 0xFFFFFFFF),
+                F::from_canonical_u64((last_c << 32) & 0xFFFFFFFF),
+            ],
             flag: F::from_bool(self.ctx.flag),
             pc: F::from_canonical_u64(self.ctx.pc),
             a_src_imm: F::from_bool(instruction.a_src == SRC_IMM),
@@ -612,6 +624,11 @@ impl<'a> Emu<'a> {
             inc_sp: F::from_bool(false),
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
+            main_segment: F::from_canonical_u64(0),
+            main_first_segment: F::from_bool(true),
+            main_last_segment: F::from_bool(false),
+            end: F::from_bool(self.ctx.end),
+            m32: F::from_bool(instruction.m32),
         };
         emu_slice.full_trace.push(full_trace_step);
 

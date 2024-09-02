@@ -1,29 +1,49 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::ZiskRequiredOperation;
 
-const PROVE_CHUNK_SIZE: usize = 1 << 7;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct QuickOpsSM {
+    // Count of registered predecessors
+    registered_predecessors: AtomicU32,
+
+    // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 }
 
 impl QuickOpsSM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let quickops_sm = Self { inputs: Mutex::new(Vec::new()) };
-        let quickops_sm = Arc::new(quickops_sm);
+        let quickop_sm =
+            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
+        let quickop_sm = Arc::new(quickop_sm);
 
-        wcm.register_component(quickops_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+        wcm.register_component(quickop_sm.clone(), Some(air_ids));
 
-        quickops_sm
+        quickop_sm
     }
 
-    pub fn operations() -> Vec<u8> {
-        vec![0xb6, 0xb7, 0xbe, 0xbf]
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <QuickOpsSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
+        }
     }
 }
 
@@ -31,9 +51,10 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
     ) {
     }
 }
@@ -41,21 +62,21 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
 impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
     fn calculate(
         &self,
-        operation: ZiskRequiredOperation,
+        _operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
+        unimplemented!()
     }
 
-    fn prove(&self, operations: &[ZiskRequiredOperation], is_last: bool, scope: &Scope) {
+    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
-            if is_last || inputs.len() >= PROVE_CHUNK_SIZE {
-                let _inputs = std::mem::take(&mut *inputs);
 
-                scope.spawn(move |_scope| {
-                    // TODO! Implement prove _inputs (a chunk of operations)
-                    println!("QuickOps: Finishing the worker thread");
+            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                scope.spawn(move |_| {
+                    // TODO! Implement prove drained_inputs (a chunk of operations)
                 });
             }
         }
@@ -64,11 +85,11 @@ impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
     fn calculate_prove(
         &self,
         operation: ZiskRequiredOperation,
-        is_last: bool,
+        drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        self.prove(&[operation], is_last, scope);
+        self.prove(&[operation], drain, scope);
         result
     }
 }

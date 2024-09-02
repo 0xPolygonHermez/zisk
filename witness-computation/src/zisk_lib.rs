@@ -1,4 +1,5 @@
 use log::debug;
+use proofman_setup::SetupCtx;
 use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
@@ -14,7 +15,6 @@ use sm_main::MainSM;
 use sm_mem::{MemAlignedSM, MemSM, MemUnalignedSM};
 
 pub struct ZiskWitness<F> {
-    pub proving_key_path: PathBuf,
     pub public_inputs_path: PathBuf,
     pub wcm: WitnessManager<F>,
     // State machines
@@ -35,11 +35,7 @@ pub struct ZiskWitness<F> {
 impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
     const MY_NAME: &'static str = "ZiskLib ";
 
-    pub fn new(
-        rom_path: PathBuf,
-        public_inputs_path: PathBuf,
-        proving_key_path: PathBuf,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new(rom_path: PathBuf, public_inputs_path: PathBuf) -> Result<Self, Box<dyn Error>> {
         // Check rom_path path exists
         if !rom_path.exists() {
             return Err(format!("ROM file not found at path: {:?}", rom_path).into());
@@ -49,20 +45,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         if !public_inputs_path.exists() {
             return Err(
                 format!("Public inputs file not found at path: {:?}", public_inputs_path).into()
-            );
-        }
-
-        // Check proving_key_path exists
-        if !proving_key_path.exists() {
-            return Err(
-                format!("Proving key folder not found at path: {:?}", proving_key_path).into()
-            );
-        }
-
-        // Check proving_key_path is a folder
-        if !proving_key_path.is_dir() {
-            return Err(
-                format!("Proving key parameter must be a folder: {:?}", proving_key_path).into()
             );
         }
 
@@ -97,7 +79,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
 
         let main_sm = MainSM::new(
             &rom_path,
-            &proving_key_path,
             &mut wcm,
             mem_sm.clone(),
             binary_sm.clone(),
@@ -106,7 +87,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         );
 
         Ok(ZiskWitness {
-            proving_key_path,
             public_inputs_path,
             wcm,
             arith_sm,
@@ -126,31 +106,33 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
-    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        log::info!("{}: Starting proof", Self::MY_NAME);
-
-        self.wcm.start_proof(pctx, ectx);
+    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.wcm.start_proof(pctx, ectx, sctx);
     }
 
     fn end_proof(&mut self) {
-        log::info!("{}: Finalizing proof", Self::MY_NAME);
-
         self.wcm.end_proof();
     }
-    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx) {
-        log::info!("{}: Executing proof", Self::MY_NAME);
+    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
+        log::info!("{}: --> Executing proof", Self::MY_NAME);
 
         timer_start!(EXECUTE);
         // TODO let mut ectx = self.wcm.createExecutionContext(wneeds);
         // TODO Create the pool of threads to execute the state machines here?
         // elf, inputs i trace_steps
-        self.main_sm.execute(&self.public_inputs_path, pctx, ectx);
+        self.main_sm.execute(&self.public_inputs_path, pctx, ectx, sctx);
         // TODO ectx.terminate();
         timer_stop_and_log!(EXECUTE);
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        self.wcm.calculate_witness(stage, pctx, ectx);
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
+        self.wcm.calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {
@@ -162,7 +144,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
 pub extern "Rust" fn init_library(
     rom_path: Option<PathBuf>,
     public_inputs_path: PathBuf,
-    proving_key_path: PathBuf,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)
@@ -173,6 +154,6 @@ pub extern "Rust" fn init_library(
 
     let rom_path = rom_path.ok_or("ROM path is required")?;
 
-    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path, proving_key_path)?;
+    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path)?;
     Ok(Box::new(zisk_witness))
 }
