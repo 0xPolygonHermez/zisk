@@ -97,7 +97,7 @@ node ../pil2-compiler/src/pil.js ../pil2-components/test/fibonacci/pil/build.pil
 After compiling the PIL files, generate the setup:
 
 ```bash
-node ../pil2-proofman-js/src/setup/main_genSetup.js \
+node ../pil2-proofman-js/src/main_setup.js \
      -a ./examples/fibonacci-square/pil/build.pilout \
      -b ./examples/fibonacci-square/build
 ```
