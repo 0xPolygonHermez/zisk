@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
@@ -7,20 +10,40 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 7;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct Arith3264SM {
+    // Count of registered predecessors
+    registered_predecessors: AtomicU32,
+
+    // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 }
 
 impl Arith3264SM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let arith3264_sm = Self { inputs: Mutex::new(Vec::new()) };
+        let arith3264_sm =
+            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);
 
-        wcm.register_component(arith3264_sm.clone() as Arc<dyn WitnessComponent<F>>, Some(air_ids));
+        wcm.register_component(arith3264_sm.clone(), Some(air_ids));
 
         arith3264_sm
+    }
+
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <Arith3264SM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
+        }
     }
 }
 
@@ -28,7 +51,7 @@ impl<F> WitnessComponent<F> for Arith3264SM {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance: usize,
+        _air_instance: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
@@ -50,7 +73,12 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let _drained_inputs = inputs.drain(..PROVE_CHUNK_SIZE).collect::<Vec<_>>();
+                if drain && !inputs.is_empty() {
+                    println!("Arith3264SM: Draining inputs");
+                }
+
+                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
