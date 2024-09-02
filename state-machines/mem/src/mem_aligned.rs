@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
@@ -9,13 +12,18 @@ use sm_common::{MemOp, OpResult, Provable};
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct MemAlignedSM {
+    // Count of registered predecessors
+    registered_predecessors: AtomicU32,
+
+    // Inputs
     inputs: Mutex<Vec<MemOp>>,
 }
 
 #[allow(unused, unused_variables)]
 impl MemAlignedSM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
-        let mem_aligned_sm = Self { inputs: Mutex::new(Vec::new()) };
+        let mem_aligned_sm =
+            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
         wcm.register_component(mem_aligned_sm.clone(), Some(air_ids));
@@ -23,9 +31,15 @@ impl MemAlignedSM {
         mem_aligned_sm
     }
 
-    pub fn register_predecessor(&self) {}
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+    }
 
-    pub fn unregister_predecessor(&self, _scope: &Scope) {}
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            <MemAlignedSM as Provable<MemOp, OpResult>>::prove(self, &[], true, scope);
+        }
+    }
 
     fn read(
         &self,

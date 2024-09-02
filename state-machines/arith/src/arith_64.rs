@@ -13,7 +13,10 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct Arith64SM {
+    // Count of registered predecessors
     registered_predecessors: AtomicU32,
+
+    // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 }
 

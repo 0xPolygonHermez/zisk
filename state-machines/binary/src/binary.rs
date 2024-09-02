@@ -17,14 +17,17 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 pub struct BinarySM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
+
     // Mechanism to control the number of working threads
     working_threads: Arc<AtomicU32>,
     mutex: Arc<Mutex<()>>,
     condvar: Arc<Condvar>,
+
     // Inputs
     inputs_basic: Mutex<Vec<ZiskRequiredOperation>>,
     inputs_extension: Mutex<Vec<ZiskRequiredOperation>>,
-    // State machines
+
+    // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM>,
     binary_extension_sm: Arc<BinaryExtensionSM>,
 }

@@ -17,14 +17,17 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 pub struct ArithSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
+
     // Mechanism to control the number of working threads
     working_threads: Arc<AtomicU32>,
     mutex: Arc<Mutex<()>>,
     condvar: Arc<Condvar>,
+
     // Inputs
     inputs32: Mutex<Vec<ZiskRequiredOperation>>,
     inputs64: Mutex<Vec<ZiskRequiredOperation>>,
-    // State machines
+
+    // Secondary State machines
     arith32_sm: Arc<Arith32SM>,
     arith64_sm: Arc<Arith64SM>,
     arith3264_sm: Arc<Arith3264SM>,
