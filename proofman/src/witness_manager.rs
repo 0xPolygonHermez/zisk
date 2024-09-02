@@ -2,8 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use log::info;
 
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use crate::WitnessComponent;
 
 pub struct WitnessManager<F> {

@@ -1,8 +1,9 @@
-use std::{sync::RwLock};
+use std::sync::RwLock;
 
 use log::info;
 
 use crate::{AirInstanceCtx, WitnessPilout};
+
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
@@ -25,7 +26,8 @@ impl<F> ProofCtx<F> {
     }
 
     pub fn add_air_instance_ctx(&self, air_group_id: usize, air_id: usize, buffer: Option<Vec<F>>) {
-        self.air_instances.write().unwrap().push(AirInstanceCtx { air_group_id, air_id, buffer });
+        let prover_idx = self.air_instances.read().unwrap().len();
+        self.air_instances.write().unwrap().push(AirInstanceCtx::new(air_group_id, air_id, prover_idx, buffer));
     }
 
     pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<usize> {

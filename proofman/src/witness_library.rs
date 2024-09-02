@@ -1,7 +1,6 @@
 use std::{error::Error, path::PathBuf};
 
-use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout, SetupCtx};
 
 /// This is the type of the function that is used to load a witness library.
 pub type WitnessLibInitFn<F> = fn(Option<PathBuf>, PathBuf) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn Error>>;

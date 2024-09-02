@@ -1,8 +1,7 @@
-use std::{os::raw::c_void, path::Path};
-
-use proofman_common::WitnessPilout;
+use std::path::Path;
 
 use crate::Setup;
+use crate::WitnessPilout;
 
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]

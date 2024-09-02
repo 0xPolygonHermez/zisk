@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 // use serde_json::Value as JsonValue;
-use proofman_util::{timer_start, timer_stop_and_log};
 use log::debug;
 use serde::Deserialize;
+use proofman_util::{timer_start, timer_stop_and_log};
 
 #[derive(Deserialize)]
 pub struct GlobalInfo {

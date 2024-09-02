@@ -5,7 +5,10 @@ mod lib_pilout;
 mod proof_ctx;
 mod prover;
 mod extended_field;
+mod setup;
+mod setup_ctx;
 pub mod trace;
+pub mod global_info;
 
 pub use air_instance_ctx::*;
 pub use buffer_allocator::*;
@@ -14,3 +17,6 @@ pub use lib_pilout::*;
 pub use proof_ctx::*;
 pub use prover::*;
 pub use extended_field::*;
+pub use global_info::*;
+pub use setup::*;
+pub use setup_ctx::*;

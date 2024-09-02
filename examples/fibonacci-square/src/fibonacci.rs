@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 
 use p3_field::Field;
-use proofman_setup::SetupCtx;
 
 use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS};
 
@@ -65,6 +64,9 @@ impl<F: Field + Copy> FibonacciSquare<F> {
             trace[i].a = F::from_canonical_u64(a);
             trace[i].b = F::from_canonical_u64(b);
         }
+
+        // hint! 
+
         pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
 
         // Not needed, for debugging!

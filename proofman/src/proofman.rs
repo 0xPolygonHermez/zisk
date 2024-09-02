@@ -5,7 +5,6 @@ use stark::{StarkBufferAllocator, StarkProver};
 use starks_lib_c::{save_challenges_c, save_publics_c, verify_global_constraints_c};
 use std::fs;
 
-use proofman_setup::SetupCtx;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -16,7 +15,7 @@ use transcript::FFITranscript;
 
 use crate::{WitnessLibrary, WitnessLibInitFn};
 
-use proofman_common::{Prover, ExecutionCtx, ProofCtx};
+use proofman_common::{Prover, ExecutionCtx, ProofCtx, SetupCtx};
 
 use colored::*;
 
@@ -111,12 +110,12 @@ impl<F: Field + 'static> ProofMan<F> {
 
             Self::get_challenges(stage, &mut provers, &mut pctx, &transcript);
 
-            Self::calculate_stage(stage, &mut provers, &mut pctx);
+            Self::calculate_stage(stage, &mut provers, &mut pctx, &sctx);
 
             if debug_mode {
-                valid_constraints = valid_constraints && Self::verify_constraints(stage, &mut provers);
+                valid_constraints = Self::verify_constraints(stage, &mut provers, &mut pctx);
             } else {
-                Self::commit_stage(stage, &mut provers);
+                Self::commit_stage(stage, &mut provers, &mut pctx);
             }
 
             Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
@@ -151,8 +150,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Compute Quotient polynomial
         Self::get_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &transcript);
-        Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
-        Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers);
+        Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &sctx);
+        Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
         Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &mut transcript, false);
 
         // Compute openings
@@ -219,7 +218,7 @@ impl<F: Field + 'static> ProofMan<F> {
     ) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
 
-        for air_instance in pctx.air_instances.write().unwrap().iter_mut() {
+        for (prover_idx,air_instance) in pctx.air_instances.write().unwrap().iter_mut().enumerate() {
             debug!(
                 "{}: Initializing prover for air instance ({}, {})",
                 Self::MY_NAME,
@@ -228,40 +227,40 @@ impl<F: Field + 'static> ProofMan<F> {
             );
 
             let prover =
-                Box::new(StarkProver::new(sctx, proving_key_path, air_instance.air_group_id, air_instance.air_id));
+                Box::new(StarkProver::new(sctx, proving_key_path, air_instance.air_group_id, air_instance.air_id, prover_idx));
 
             provers.push(prover);
         }
-        for (idx, prover) in provers.iter_mut().enumerate() {
-            prover.build(pctx, idx);
+        for prover in provers.iter_mut() {
+            prover.build(pctx);
         }
     }
 
-    pub fn verify_constraints(stage: u32, provers: &mut [Box<dyn Prover<F>>]) -> bool {
+    pub fn verify_constraints(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> bool {
         info!("{}: Verifying constraints stage {}", Self::MY_NAME, stage);
 
         let mut valid_constraints = true;
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Verifying constraints stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            valid_constraints = prover.verify_constraints(stage);
+            valid_constraints = prover.verify_constraints(stage, pctx);
         }
         valid_constraints
     }
 
-    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) {
+    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, sctx: &SetupCtx) {
         info!("{}: Calculating stage {}", Self::MY_NAME, stage);
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Calculating stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            prover.calculate_stage(stage, pctx);
+            prover.calculate_stage(stage, pctx, sctx);
         }
     }
 
-    pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>]) {
+    pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) {
         info!("{}: Committing stage {}", Self::MY_NAME, stage);
 
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Committing stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            prover.commit_stage(stage);
+            prover.commit_stage(stage, pctx);
         }
     }
 

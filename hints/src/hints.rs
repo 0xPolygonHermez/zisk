@@ -1,7 +1,7 @@
 use starks_lib_c::{get_hint_ids_by_name_c, set_hint_field_c, get_hint_field_c};
 
 use p3_field::Field;
-use proofman_common::ExtensionField;
+use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
 
 use std::os::raw::c_void;
 
@@ -231,48 +231,62 @@ pub fn get_hint_ids_by_name(p_expressions: *mut c_void, name: &str) -> Vec<u64> 
 }
 
 pub fn get_hint_field<F: Clone + Copy>(
-    p_expressions: *mut c_void,
-    params: *mut c_void,
+    setup_ctx: &SetupCtx,
+    air_instance_ctx: &mut AirInstanceCtx<F>,
     hint_id: usize,
     hint_field_name: &str,
     dest: bool,
 ) -> HintFieldValue<F> {
-    let raw_ptr = get_hint_field_c(p_expressions, params, hint_id as u64, hint_field_name, dest);
+    
+    let params = air_instance_ctx.params.unwrap();
 
+    let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
+
+    let raw_ptr = get_hint_field_c(setup.p_expressions, params, hint_id as u64, hint_field_name, dest);
+    
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
     HintCol::from_hint_field(hint_field.as_ref())
 }
 
 pub fn set_hint_field<F: Copy + core::fmt::Debug>(
-    p_expressions: *mut c_void,
-    params: *mut c_void,
+    setup_ctx: &SetupCtx,
+    air_instance_ctx: &mut AirInstanceCtx<F>,
     hint_id: u64,
     hint_field_name: &str,
     values: &HintFieldValue<F>,
 ) {
+
+    let params = air_instance_ctx.params.unwrap();
+
+    let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
+
     let values_ptr: *mut c_void = match values {
         HintFieldValue::Column(vec) => vec.as_ptr() as *mut c_void,
         HintFieldValue::ColumnExtended(vec) => vec.as_ptr() as *mut c_void,
         _ => panic!("Only column and column extended are accepted"),
     };
 
-    set_hint_field_c(p_expressions, params, values_ptr, hint_id, hint_field_name);
+    set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
 
 pub fn set_hint_field_val<F: Clone + Copy>(
-    p_expressions: *mut c_void,
-    params: *mut c_void,
+    setup_ctx: &SetupCtx,
+    air_instance_ctx: &mut AirInstanceCtx<F>,
     hint_id: u64,
     hint_field_name: &str,
     value: HintFieldOutput<F>,
 ) {
+    let params = air_instance_ctx.params.unwrap();
+
+    let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
+
     let values_ptr: *mut c_void = match value {
         HintFieldOutput::Field(val) => &val as *const F as *mut c_void,
         HintFieldOutput::FieldExtended(val) => &[val.value[0], val.value[1], val.value[2]] as *const F as *mut c_void,
     };
 
-    set_hint_field_c(p_expressions, params, values_ptr, hint_id, hint_field_name);
+    set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
 
 #[cfg(test)]

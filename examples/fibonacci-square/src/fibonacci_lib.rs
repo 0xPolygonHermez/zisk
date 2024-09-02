@@ -1,9 +1,8 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
+use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout, SetupCtx};
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_setup::SetupCtx;
 use pil_std_lib::Std;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;

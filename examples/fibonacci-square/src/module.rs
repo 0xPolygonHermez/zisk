@@ -1,8 +1,7 @@
 use log;
 use std::{cell::RefCell, sync::Arc};
 
-use proofman_setup::SetupCtx;
-use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 use pil_std_lib::Std;
 use p3_field::AbstractField;
