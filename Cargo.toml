@@ -7,7 +7,6 @@ members = [
     "proofman",
     "provers/stark",
     "provers/starks-lib-c",
-    "setup",
     "transcript",
     "util",
     # whoever re-enables this, it has to work out of

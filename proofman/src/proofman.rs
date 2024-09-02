@@ -104,11 +104,11 @@ impl<F: Field + 'static> ProofMan<F> {
         // Commit stages
         let num_commit_stages = pctx.pilout.num_stages();
         for stage in 1..=num_commit_stages {
+            Self::get_challenges(stage, &mut provers, &mut pctx, &transcript);
+
             if stage != 1 {
                 witness_lib.calculate_witness(stage, &mut pctx, &ectx, &sctx);
             }
-
-            Self::get_challenges(stage, &mut provers, &mut pctx, &transcript);
 
             Self::calculate_stage(stage, &mut provers, &mut pctx, &sctx);
 

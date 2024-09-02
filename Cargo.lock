@@ -649,22 +649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proofman-setup"
-version = "0.1.0"
-dependencies = [
- "log",
- "p3-field",
- "p3-goldilocks",
- "proofman-common",
- "proofman-hints",
- "proofman-util",
- "serde",
- "serde_derive",
- "serde_json",
- "starks-lib-c",
-]
-
-[[package]]
 name = "proofman-util"
 version = "0.1.0"
 dependencies = [
