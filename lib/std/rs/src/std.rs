@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc,Mutex}};
+use std::{sync::{Arc,Mutex}, sync::atomic::{AtomicU32, Ordering}};
 
 use num_bigint::BigInt;
 use rayon::Scope;
@@ -10,7 +10,7 @@ use proofman_setup::SetupCtx;
 
 use crate::{Decider, StdProd, StdRangeCheck, RCAirData, StdSum};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 3;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 // struct RangeCheckInput {
 //     val: BigInt,
@@ -19,16 +19,13 @@ const PROVE_CHUNK_SIZE: usize = 1 << 3;
 // }
 
 pub struct Std<F> {
-    prod: Arc<StdProd<F>>,
-    sum: Arc<StdSum<F>>,
+    prod: Arc<Mutex<StdProd<F>>>,
+    sum: Arc<Mutex<StdSum<F>>>,
     range_check: Arc<StdRangeCheck<F>>,
 }
 
 impl<F: PrimeField> Std<F> {
     const _MY_NAME: &'static str = "STD";
-
-    // TODO: Shouldn't this be the same as in the main?
-    const MAX_ACCUMULATED: usize = 2usize.pow(10);
 
     pub fn new(wcm: &mut WitnessManager<F>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
         // Instantiate the STD components
@@ -88,17 +85,39 @@ impl<F: PrimeField> Std<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for Std<F> {
+    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        // Run the deciders of the components on the correct stage to see if they need to calculate their witness
+        let mut prod = self.prod.lock().unwrap();
+        prod.decide(pctx, sctx);
+        drop(prod);
+
+        let mut sum = self.sum.lock().unwrap();
+        sum.decide(pctx, sctx);
+        drop(sum);
+
+        // self.range_check.decide(stage, air_instance, pctx, ectx, sctx);
+    }
+
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: usize,
+        _air_instance: Option<usize>,
         pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
     ) {
-        // Run the deciders of the components on the correct stage to see if they need to calculate their witness
-        self.prod.decide(stage, air_instance, pctx, ectx, sctx);
-        self.sum.decide(stage, air_instance, pctx, ectx, sctx);
-        self.range_check.decide(stage, air_instance, pctx, ectx, sctx);
+        let prod = self.prod.lock().unwrap();
+        if let Err(e) = prod.calculate_witness(stage, pctx, sctx) {
+            log::error!("Failed to calculate witness: {:?}", e);
+            panic!();
+        }
+        drop(prod);
+
+        let sum = self.sum.lock().unwrap();
+        if let Err(e) = sum.calculate_trace(stage, pctx, sctx) {
+            log::error!("Failed to calculate witness: {:?}", e);
+            panic!();
+        }
+        drop(sum);
     }
 }
