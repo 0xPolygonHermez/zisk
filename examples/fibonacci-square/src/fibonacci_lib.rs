@@ -5,7 +5,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_setup::SetupCtx;
 use pil_std_lib::Std;
-use p3_field::Field;
+use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 
 use std::error::Error;
@@ -22,11 +22,11 @@ pub struct FibonacciWitness<F> {
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: Field + Copy> FibonacciWitness<F> {
+impl<F: PrimeField> FibonacciWitness<F> {
     pub fn new(public_inputs_path: PathBuf) -> Self {
         let mut wcm = WitnessManager::new();
 
-        let std_lib = Std::new(&mut wcm);
+        let std_lib = Std::new(&mut wcm, None);
         let module = Module::new(&mut wcm, std_lib.clone());
         let fibonacci = FibonacciSquare::new(&mut wcm, module.clone());
 
@@ -34,7 +34,7 @@ impl<F: Field + Copy> FibonacciWitness<F> {
     }
 }
 
-impl<F: Field + Copy> WitnessLibrary<F> for FibonacciWitness<F> {
+impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         let mut file = File::open(&self.public_inputs_path).unwrap();
 
