@@ -1,9 +1,8 @@
 use std::{fmt::Debug,sync::{Arc,Mutex}};
 
 use p3_field::Field;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
-use proofman_setup::SetupCtx;
 
 use crate::Decider;
 
@@ -28,7 +27,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
                 let setup = sctx
                     .get_setup(air_group_id, air_id)
                     .expect("REASON");
-                let prod_hints = get_hint_ids_by_name(setup, "gprod_col");
+                let prod_hints = get_hint_ids_by_name(setup.p_expressions, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs.lock().unwrap().push((air_group_id, air_id, prod_hints));
@@ -59,9 +58,9 @@ impl<F: Copy + Debug + Field> StdProd<F> {
             prod_airs.iter().for_each(|(air_group_id, air_id, prod_hints)| {
                 let air_instances = pctx.find_air_instances(*air_group_id, *air_id);
                 air_instances.iter().for_each(|air_instance_id| {
-                    let air_instaces_vec = pctx.air_instances.read().unwrap();
+                    let air_instances_vec = &mut pctx.air_instances.write().unwrap();
 
-                    let air_instance = &air_instaces_vec[*air_instance_id];
+                    let air_instance = &mut air_instances_vec[*air_instance_id];
 
                     // Get the air associated with the air_instance
                     let air_group_id = air_instance.air_group_id;
@@ -84,12 +83,10 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         prod_hints[0] as usize
                     };
 
-                    let setup = sctx.get_setup(air_group_id, air_id).unwrap();
-
                     // Use the hint to populate the gprod column
-                    let mut gprod = get_hint_field::<F>(setup, gprod_hint, "reference", true);
-                    let num = get_hint_field::<F>(setup, gprod_hint, "numerator", false);
-                    let den = get_hint_field::<F>(setup, gprod_hint, "denominator", false);
+                    let mut gprod = get_hint_field::<F>(sctx, air_instance,  gprod_hint, "reference", true);
+                    let num = get_hint_field::<F>(sctx, air_instance, gprod_hint, "numerator", false);
+                    let den = get_hint_field::<F>(sctx,air_instance, gprod_hint, "denominator", false);
 
                     gprod.set(0, num.get(0) / den.get(0));
                     for i in 1..num_rows {
@@ -97,8 +94,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                     }
             
                     // set the computed gprod column and its associated airgroup_val
-                    set_hint_field(setup, gprod_hint as u64, "reference", &gprod);
-                    set_hint_field_val(setup, gprod_hint as u64, "result", gprod.get(num_rows - 1));
+                    set_hint_field(sctx, air_instance, gprod_hint as u64, "reference", &gprod);
+                    set_hint_field_val(sctx, air_instance, gprod_hint as u64, "result", gprod.get(num_rows - 1));
             
                     log::info!(
                         "{}: Completed witness computation for AIR '{}' at stage {}",

@@ -3,9 +3,8 @@ use std::{os::raw::c_void, collections::HashMap, fmt::{Display,Debug}, sync::{Ar
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 
-use proofman_common::{trace, AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{trace, AirInstanceCtx, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, HintFieldValue};
-use proofman_setup::SetupCtx;
 
 use crate::Decider;
 
@@ -90,10 +89,10 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let setup = sctx
                     .get_setup(air_group_id, air_id)
                     .expect("REASON");
-                let rc_hints = get_hint_ids_by_name(setup, "range_check");
+                let rc_hints = get_hint_ids_by_name(setup.p_expressions, "range_check");
                 if !rc_hints.is_empty() {
                     // Register the ranges for the range check
-                    self.register_ranges(setup, rc_hints);
+                    self.register_ranges(sctx, rc_hints);
                 }
             });
         });
@@ -156,9 +155,9 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
     pub fn register_ranges(&self, setup: *mut c_void, rc_hints: Vec<u64>) {
         for hint in rc_hints {
-            let predefined = get_hint_field::<F>(setup, hint as usize, "predefined", false);
-            let min = get_hint_field::<F>(setup, hint as usize, "min", false);
-            let max = get_hint_field::<F>(setup, hint as usize, "max", false);
+            let predefined = get_hint_field::<F>(sctx, hint as usize, "predefined", false);
+            let min = get_hint_field::<F>(sctx, hint as usize, "min", false);
+            let max = get_hint_field::<F>(sctx, hint as usize, "max", false);
 
             let HintFieldValue::Field(predefined) = predefined else {
                 log::error!("Predefined hint must be a field element");

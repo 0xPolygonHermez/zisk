@@ -1,7 +1,13 @@
 [workspace]
 members = [
-    "lib/std/rs",
-    # "test/lookup-rs",
+    "lib/std/rs", 
+    # "test/std/range_check/rs",
 ]
 
 resolver = "2"
+
+[workspace.dependencies]
+env_logger = "0.11"
+log = { version = "0.4", default-features = false }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }

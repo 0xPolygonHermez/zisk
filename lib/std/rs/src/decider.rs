@@ -1,5 +1,4 @@
-use proofman_common::ProofCtx;
-use proofman_setup::SetupCtx;
+use proofman_common::{ProofCtx, SetupCtx};
 
 pub trait Decider<F> {
     fn decide(

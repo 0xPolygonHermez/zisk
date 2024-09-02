@@ -4,8 +4,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use crate::{Decider, StdProd, StdRangeCheck, RCAirData, StdSum};
 

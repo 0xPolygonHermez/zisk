@@ -1,9 +1,8 @@
 use std::{fmt::Debug,sync::{Arc, Mutex}};
 
 use p3_field::Field;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
-use proofman_setup::SetupCtx;
 
 use crate::Decider;
 
@@ -28,8 +27,8 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let setup = sctx
                     .get_setup(air_group_id, air_id)
                     .expect("REASON");
-                let im_hints = get_hint_ids_by_name(setup, "im_col");
-                let gsum_hints = get_hint_ids_by_name(setup, "gsum_col");
+                let im_hints = get_hint_ids_by_name(setup.p_expressions, "im_col");
+                let gsum_hints = get_hint_ids_by_name(setup.p_expressions, "gsum_col");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.sum_airs.lock().unwrap().push((air_group_id, air_id, im_hints, gsum_hints));
@@ -60,9 +59,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
             sum_airs.iter().for_each(|(air_group_id, air_id, im_hints, gsum_hints)| {
                 let air_instances = pctx.find_air_instances(*air_group_id, *air_id);
                 air_instances.iter().for_each(|air_instance_id| {
-                    let air_instaces_vec = pctx.air_instances.read().unwrap();
+                    let air_instaces_vec = &mut pctx.air_instances.write().unwrap();
 
-                    let air_instance = &air_instaces_vec[*air_instance_id];
+                    let air_instance = &mut air_instaces_vec[*air_instance_id];
 
                     // Get the air associated with the air_instance
                     let air_group_id = air_instance.air_group_id;
@@ -76,22 +75,20 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         stage
                     );
 
-                    let setup = sctx.get_setup(air_group_id, air_id).unwrap();
-
                     let num_rows = air.num_rows();
 
                     // Populate the im columns
                     for hint in im_hints {
                         // HECTOR: Check the correctness of the last flag parameters
-                        let mut im = get_hint_field::<F>(setup, *hint as usize, "reference", true);
-                        let num = get_hint_field::<F>(setup, *hint as usize, "numerator", false);
-                        let den = get_hint_field::<F>(setup, *hint as usize, "denominator", false);
+                        let mut im = get_hint_field::<F>(sctx, air_instance, *hint as usize, "reference", true);
+                        let num = get_hint_field::<F>(sctx, air_instance, *hint as usize, "numerator", false);
+                        let den = get_hint_field::<F>(sctx, air_instance, *hint as usize, "denominator", false);
 
                         for i in 0..num_rows {
                             // TODO: We should perform the following division in batch using div_lib
                             im.set(i, num.get(i) / den.get(i));
                         }
-                        set_hint_field(setup, *hint as u64, "reference", &im);
+                        set_hint_field(sctx, air_instance, *hint as u64, "reference", &im);
                     }
 
                     // We know that at most one product hint exists
@@ -102,8 +99,8 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                     };
 
                     // Use the hint to populate the gsum column
-                    let mut gsum = get_hint_field::<F>(setup, gsum_hint, "reference", true);
-                    let expr = get_hint_field::<F>(setup, gsum_hint, "expression", false);
+                    let mut gsum = get_hint_field::<F>(sctx, air_instance, gsum_hint, "reference", true);
+                    let expr = get_hint_field::<F>(sctx, air_instance, gsum_hint, "expression", false);
             
                     gsum.set(0, expr.get(0));
                     for i in 1..num_rows {
@@ -112,8 +109,8 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                     }
             
                     // set the computed gsum column and its associated airgroup_val
-                    set_hint_field(setup, gsum_hint as u64, "reference", &gsum);
-                    set_hint_field_val(setup, gsum_hint as u64, "result", gsum.get(num_rows - 1));
+                    set_hint_field(sctx, air_instance, gsum_hint as u64, "reference", &gsum);
+                    set_hint_field_val(sctx, air_instance, gsum_hint as u64, "result", gsum.get(num_rows - 1));
             
                     log::info!(
                         "{}: Completed witness computation for AIR '{}' at stage {}",

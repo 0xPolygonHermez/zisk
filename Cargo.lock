@@ -506,7 +506,6 @@ dependencies = [
  "proofman",
  "proofman-common",
  "proofman-hints",
- "proofman-setup",
  "proofman-util",
  "rayon",
 ]
@@ -568,9 +567,7 @@ dependencies = [
  "p3-goldilocks",
  "pilout",
  "proofman-common",
- "proofman-setup",
  "proofman-util",
- "rayon",
  "stark",
  "starks-lib-c",
  "transcript",
@@ -583,6 +580,11 @@ dependencies = [
  "log",
  "p3-field",
  "pilout",
+ "proofman-util",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "starks-lib-c",
  "transcript",
 ]
 
@@ -592,22 +594,6 @@ version = "0.1.0"
 dependencies = [
  "p3-field",
  "proofman-common",
- "starks-lib-c",
-]
-
-[[package]]
-name = "proofman-setup"
-version = "0.1.0"
-dependencies = [
- "log",
- "p3-field",
- "p3-goldilocks",
- "proofman-common",
- "proofman-hints",
- "proofman-util",
- "serde",
- "serde_derive",
- "serde_json",
  "starks-lib-c",
 ]
 
@@ -820,7 +806,6 @@ dependencies = [
  "p3-goldilocks",
  "proofman-common",
  "proofman-hints",
- "proofman-setup",
  "proofman-util",
  "serde",
  "serde_derive",
