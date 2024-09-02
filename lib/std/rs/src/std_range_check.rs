@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::{Display,Debug}, sync::{Arc,Mutex}};
+use std::{os::raw::c_void, collections::HashMap, fmt::{Display,Debug}, sync::{Arc,Mutex}};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -45,7 +45,7 @@ impl Display for RangeCheckAir {
 pub struct RCAirData {
     air_name: RangeCheckAir,
     air_group_id: usize,
-    air_ids: &'static [usize],
+    air_id: usize,
 }
 
 #[derive(Clone)]
@@ -77,47 +77,75 @@ pub struct StdRangeCheck<F> {
 impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
     fn decide(
         &self,
-        stage: u32,
-        air_instance_idx: usize,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        pctx: &ProofCtx<F>,
         sctx: &SetupCtx,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        if stage == 1 && self.air_data.is_some() {
-            // Create an air instance for each range check type
-            let air_data = self.air_data.as_ref().unwrap();
-            for rc_type in air_data.iter() {
-                let (air_name, air_group_id, air_ids) = (rc_type.air_name.clone(), rc_type.air_group_id, rc_type.air_ids);
-                let air_id = if air_ids.len() == 1 {
-                    air_ids[0]
-                } else {
-                    log::error!("Invalid number of air ids for range check air");
-                    panic!();
-                };
-
-                let (buffer_size, offsets) =
-                    ectx.buffer_allocator.as_ref().get_buffer_info(air_name.to_string(), air_id)?;
-    
-                let buffer = vec![F::zero(); buffer_size as usize];
-                pctx.add_air_instance_ctx(air_group_id, air_id, Some(buffer));
-
-                let air_instance_ids = pctx.find_air_instances(air_group_id, air_id);
-
-                if let Err(e) = self.calculate_trace(stage, air_instance_ids[0], pctx, ectx, sctx) {
-                    log::error!("Failed to calculate witness: {:?}", e);
-                    panic!();
+    ) {
+        // Scan the pilout for airs that have rc-related hints
+        let air_groups = pctx.pilout.air_groups();
+        air_groups.iter().for_each(|air_group| {
+            let airs = air_group.airs();
+            airs.iter().for_each(|air| {
+                let air_group_id = air.air_group_id;
+                let air_id = air.air_id;
+                let setup = sctx
+                    .get_setup(air_group_id, air_id)
+                    .expect("REASON");
+                let rc_hints = get_hint_ids_by_name(setup, "range_check");
+                if !rc_hints.is_empty() {
+                    // Register the ranges for the range check
+                    self.register_ranges(setup, rc_hints);
                 }
-            }
-        }
-
-        Ok(())
+            });
+        });
     }
 }
+
+// impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
+//     fn decide(
+//         &self,
+//         pctx: &mut ProofCtx<F>,
+//         ectx: &ExecutionCtx,
+//         sctx: &SetupCtx,
+//     ) {
+//         if stage == 1 && self.air_data.is_some() {
+//             // Create an air instance for each range check type
+//             let air_data = self.air_data.as_ref().unwrap();
+//             for rc_type in air_data.iter() {
+//                 let (air_name, air_group_id, air_ids) = (rc_type.air_name.clone(), rc_type.air_group_id, rc_type.air_ids);
+//                 let air_id = if air_ids.len() == 1 {
+//                     air_ids[0]
+//                 } else {
+//                     log::error!("Invalid number of air ids for range check air");
+//                     panic!();
+//                 };
+
+//                 pctx.add_air_instance_ctx(air_group_id, air_id, None);
+
+//                 if let Err(e) = self.calculate_trace(stage, air_name, air_group_id, air_id, pctx, ectx, sctx) {
+//                     log::error!("Failed to calculate witness: {:?}", e);
+//                     panic!();
+//                 }
+//             }
+//         }
+//     }
+// }
 
 impl<F: PrimeField> StdRangeCheck<F> {
     const MY_NAME: &'static str = "STD Range Check";
 
     pub fn new(air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
+        // Check that the provided air data is valid
+        if let Some(air_data) = air_data.as_ref() {
+            if air_data.len() != STD_RANGE_CHECK_VARIANTS {
+                log::error!(
+                    "Invalid number of range check airs: expected {}, found {}",
+                    STD_RANGE_CHECK_VARIANTS,
+                    air_data.len()
+                );
+                panic!();
+            }
+        }
+
         Arc::new(Self {
             air_data,
             ranges: Mutex::new(Vec::new()),
@@ -126,16 +154,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         })
     }
 
-    pub fn register_ranges(&self, air_group_id: usize, air_id: usize, sctx: &SetupCtx) {
-        // Get the range check hints of the air
-        let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
-        let rc_hints = get_hint_ids_by_name(setup, "range_check");
-
-        if rc_hints.is_empty() {
-            log::error!("No range check hints found, but they are required");
-            panic!();
-        }
-
+    pub fn register_ranges(&self, setup: *mut c_void, rc_hints: Vec<u64>) {
         for hint in rc_hints {
             let predefined = get_hint_field::<F>(setup, hint as usize, "predefined", false);
             let min = get_hint_field::<F>(setup, hint as usize, "min", false);
@@ -308,79 +327,80 @@ impl<F: PrimeField> StdRangeCheck<F> {
         }
     }
 
-    fn calculate_trace(
+    pub fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if stage != 1 {
-            panic!("STD Range Check must be executed on stage 1");
-        }
+        _sctx: &SetupCtx,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        if stage == 1 {
+            if let Some(air_data) = self.air_data.as_ref() {
+                for air in air_data {
+                    let air_name = &air.air_name;
+                    let air_group_id = air.air_group_id;
+                    let air_id = air.air_id;
 
-        log::info!(
-            "{} ··· Starting calculating trace stage {}",
-            Self::MY_NAME,
-            stage
-        );
+                    log::info!(
+                        "{}: Initiating witness computation for AIR '{}' at stage {}",
+                        Self::MY_NAME,
+                        air_name.to_string(),
+                        stage
+                    );
 
-        let air_instances = pctx.air_instances.read().unwrap();
-        let air_instance: &AirInstanceCtx<F> = &air_instances[air_instance];
+                    let air = pctx.pilout.get_air(air_group_id, air_id);
 
-        // Get the air associated with the air instance
-        let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
-        let air_name = air.name.unwrap();
+                    let num_rows = air.num_rows(); // TODO: This should be a BigUint, not a usize...
 
-        let rc_air = STD_RANGE_CHECK_AIR_NAMES.iter().find(|&&name| name == air_name);
+                    let (buffer_size, offsets) =
+                        ectx.buffer_allocator.as_ref().get_buffer_info(air_name.to_string(), air_id)?;
+                    let mut buffer = vec![F::zero(); buffer_size as usize];
+                    match air_name {
+                        RangeCheckAir::U8Air => {
+                            let mut inputs = self.inputs.lock().unwrap();
+                            let mut trace = U8Air0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
+                            for i in 0..num_rows {
+                                trace[i].mul = *inputs[RangeCheckAir::U8Air as usize].entry(i.into()).or_insert(F::zero());
+                            }
+                        }
+                        RangeCheckAir::U16Air => {
+                            let mut inputs = self.inputs.lock().unwrap();
+                            let mut trace = U16Air0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
+                            for i in 0..num_rows {
+                                trace[i].mul = *inputs[RangeCheckAir::U16Air as usize].entry(i.into()).or_insert(F::zero());
+                            }
+                        }
+                        RangeCheckAir::SpecifiedRanges => {
+                            let inputs_specified = self.inputs_specified.lock().unwrap();
+                            let mut trace = SpecifiedRanges0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
-        // If it is not a range check air, we return
-        if rc_air.is_none() {
-            return Ok(());
-        }
+                            for k in 0..trace[0].mul.len() {
+                                let range = inputs_specified.keys().nth(k).expect("Rc::calculate_trace() range not found").clone();
+                                let min = range.0.clone();
+                                let max = range.1.clone();
+                                for i in 0..num_rows {
+                                    // Ranges doesn't necessarily have to be a power of two
+                                    // so we must adjust the multiplicity to that case
+                                    if BigInt::from(i) >= &max - &min + BigInt::from(1) {
+                                        trace[k].mul[i] = F::zero();
+                                    } else {
+                                        trace[k].mul[i] = *inputs_specified.get(&range).unwrap().clone().entry(i.into()).or_insert(F::zero());
+                                    }
+                                }
+                            }
+                        }
+                    }
 
-        let num_rows = air.num_rows(); // TODO: This should be a BigUint, not a usize...
-
-        // TODO: Do it generic!
-        // U8Air
-        let mut trace = U8Air0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
-
-        for i in 0..num_rows {
-            trace[i].mul = *self.inputs[RangeCheckType::U8Air as usize].entry(i.into()).or_insert(F::zero());
-        }
-
-        // U16Air
-        let mut trace = U16Air0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
-
-        for i in 0..num_rows {
-            trace[i].mul = *self.inputs[StdRangeCheckType::U16Air as usize].entry(i.into()).or_insert(F::zero());
-        }
-
-        // SpecifiedRanges
-        let mut trace = SpecifiedRanges0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
-
-        for k in 0..trace[0].mul.len() {
-            let range = self.inputs_specified.keys().nth(k).unwrap();
-            let min = range.0;
-            let max = range.1;
-            for i in 0..num_rows {
-                // Ranges doesn't necessarily have to be a power of two
-                // so we must adjust the multiplicity to that case
-                if BigInt::from(i) >= max - min + BigInt::from(1) {
-                    trace[k].mul[i] = F::zero();
-                } else {
-                    trace[k].mul[i] = *self.inputs_specified.entry(range.clone()).or_insert(HashMap::new()).entry(i.into()).or_insert(F::zero());
-                }
+                    log::info!(
+                        "{}: Completed witness computation for AIR '{}' at stage {}",
+                        Self::MY_NAME,
+                        air_name.to_string(),
+                        stage
+                    );
+                };
             }
         }
 
-        log::info!(
-            "{} ··· Finishing calculating trace stage {}",
-            Self::MY_NAME,
-            stage
-        );
-
-        Ok(())
+        Ok(0)
     }
 }

@@ -1,7 +1,7 @@
 use std::{fmt::Debug,sync::{Arc, Mutex}};
 
 use p3_field::Field;
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::ProofCtx;
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
 use proofman_setup::SetupCtx;
 
@@ -9,16 +9,16 @@ use crate::Decider;
 
 pub struct StdSum<F> {
     _phantom: std::marker::PhantomData<F>,
-    sum_airs: Vec<(usize, usize, Vec<u64>, Vec<u64>)>, // (air.air_group_id, air.air_id, sum_hints)
+    sum_airs: Mutex<Vec<(usize, usize, Vec<u64>, Vec<u64>)>>, // (air_group_id, air_id, gsum_hints, im_hints)
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
     fn decide(
-        &mut self,
+        &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx,
     ) {
-        // Scan the pilout for airs that have prod-related hints
+        // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
@@ -32,7 +32,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let gsum_hints = get_hint_ids_by_name(setup, "gsum_col");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.sum_airs.push((air.air_group_id, air.air_id, im_hints, gsum_hints));
+                    self.sum_airs.lock().unwrap().push((air_group_id, air_id, im_hints, gsum_hints));
                 }
             });
         });
@@ -42,21 +42,22 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
 impl<F: Copy + Debug + Field> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum";
 
-    pub fn new() -> Arc<Mutex<Self>> {
-        Arc::new( Mutex::new(Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new( Self {
             _phantom: std::marker::PhantomData,
-            sum_airs: Vec::new(),
-        }))
+            sum_airs: Mutex::new(Vec::new()),
+        })
     }
 
-    pub fn calculate_trace(
+    pub fn calculate_witness(
         &self,
         stage: u32,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         if stage == 2 {
-            self.sum_airs.iter().for_each(|(air_group_id, air_id, im_hints, gsum_hints)| {
+            let sum_airs = self.sum_airs.lock().unwrap();
+            sum_airs.iter().for_each(|(air_group_id, air_id, im_hints, gsum_hints)| {
                 let air_instances = pctx.find_air_instances(*air_group_id, *air_id);
                 air_instances.iter().for_each(|air_instance_id| {
                     let air_instaces_vec = pctx.air_instances.read().unwrap();

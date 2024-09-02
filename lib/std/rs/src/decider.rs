@@ -1,9 +1,9 @@
-use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_common::ProofCtx;
 use proofman_setup::SetupCtx;
 
 pub trait Decider<F> {
     fn decide(
-        &mut self,
+        &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx,
     );

@@ -1,7 +1,6 @@
-use std::{sync::{Arc,Mutex}, sync::atomic::{AtomicU32, Ordering}};
+use std::sync::Arc;
 
 use num_bigint::BigInt;
-use rayon::Scope;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
@@ -19,8 +18,8 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 // }
 
 pub struct Std<F> {
-    prod: Arc<Mutex<StdProd<F>>>,
-    sum: Arc<Mutex<StdSum<F>>>,
+    prod: Arc<StdProd<F>>,
+    sum: Arc<StdSum<F>>,
     range_check: Arc<StdRangeCheck<F>>,
 }
 
@@ -46,16 +45,6 @@ impl<F: PrimeField> Std<F> {
         wcm.register_component(std.clone() as Arc<dyn WitnessComponent<F>>, None);
 
         std
-    }
-
-    // It should be called once per air who wants to use the range check.
-    pub fn setup_range_check(
-        &self,
-        air_group_id: usize,
-        air_id: usize,
-        sctx: &SetupCtx,
-    ) {
-        self.range_check.register_ranges(air_group_id, air_id, sctx);
     }
 
     /// Processes the inputs for the range check.
@@ -87,15 +76,9 @@ impl<F: PrimeField> Std<F> {
 impl<F: PrimeField> WitnessComponent<F> for Std<F> {
     fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
-        let mut prod = self.prod.lock().unwrap();
-        prod.decide(pctx, sctx);
-        drop(prod);
-
-        let mut sum = self.sum.lock().unwrap();
-        sum.decide(pctx, sctx);
-        drop(sum);
-
-        // self.range_check.decide(stage, air_instance, pctx, ectx, sctx);
+        self.prod.decide(pctx, sctx);
+        self.sum.decide(pctx, sctx);
+        self.range_check.decide(pctx, sctx);
     }
 
     fn calculate_witness(
@@ -103,21 +86,22 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
         stage: u32,
         _air_instance: Option<usize>,
         pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
+        ectx: &ExecutionCtx,
         sctx: &SetupCtx,
     ) {
-        let prod = self.prod.lock().unwrap();
-        if let Err(e) = prod.calculate_witness(stage, pctx, sctx) {
+        if let Err(e) = self.prod.calculate_witness(stage, pctx, sctx) {
             log::error!("Failed to calculate witness: {:?}", e);
             panic!();
         }
-        drop(prod);
 
-        let sum = self.sum.lock().unwrap();
-        if let Err(e) = sum.calculate_trace(stage, pctx, sctx) {
+        if let Err(e) = self.sum.calculate_witness(stage, pctx, sctx) {
             log::error!("Failed to calculate witness: {:?}", e);
             panic!();
         }
-        drop(sum);
+
+        if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx, sctx) {
+            log::error!("Failed to calculate witness: {:?}", e);
+            panic!();
+        }
     }
 }

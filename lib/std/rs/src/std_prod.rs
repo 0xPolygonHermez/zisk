@@ -1,7 +1,7 @@
 use std::{fmt::Debug,sync::{Arc,Mutex}};
 
 use p3_field::Field;
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::ProofCtx;
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
 use proofman_setup::SetupCtx;
 
@@ -9,12 +9,12 @@ use crate::Decider;
 
 pub struct StdProd<F> {
     _phantom: std::marker::PhantomData<F>,
-    prod_airs: Vec<(usize, usize, Vec<u64>)>, // (air.air_group_id, air.air_id, prod_hints)
+    prod_airs: Mutex<Vec<(usize, usize, Vec<u64>)>>, // (air_group_id, air_id, prod_hints)
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
     fn decide(
-        &mut self,
+        &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx,
     ) {
@@ -31,7 +31,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
                 let prod_hints = get_hint_ids_by_name(setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.prod_airs.push((air.air_group_id, air.air_id, prod_hints));
+                    self.prod_airs.lock().unwrap().push((air_group_id, air_id, prod_hints));
                 }
             });
         });
@@ -41,11 +41,11 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
 impl<F: Copy + Debug + Field> StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
-    pub fn new() -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             _phantom: std::marker::PhantomData,
-            prod_airs: Vec::new(),
-        }))
+            prod_airs: Mutex::new(Vec::new()),
+        })
     }
 
     pub fn calculate_witness(
@@ -55,7 +55,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
         sctx: &SetupCtx,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         if stage == 2 {
-            self.prod_airs.iter().for_each(|(air_group_id, air_id, prod_hints)| {
+            let prod_airs = self.prod_airs.lock().unwrap();
+            prod_airs.iter().for_each(|(air_group_id, air_id, prod_hints)| {
                 let air_instances = pctx.find_air_instances(*air_group_id, *air_id);
                 air_instances.iter().for_each(|air_instance_id| {
                     let air_instaces_vec = pctx.air_instances.read().unwrap();
