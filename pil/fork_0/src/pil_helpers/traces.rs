@@ -11,6 +11,12 @@ trace!(Main0Row, Main0Trace<F> {
 
 
 trace!(Binary0Row, Binary0Trace<F> { 
- op: F,  mode32: F,  freeInA: [F; 8],  freeInB: [F; 8],  freeInC: [F; 8],  carry: [F; 9],  useLastCarry: F,  multiplicity: F, 
+ op: F,  mode32: F,  free_in_a: [F; 8],  free_in_b: [F; 8],  free_in_c: [F; 8],  carry: [F; 9],  use_last_carry: F,  multiplicity: F, 
+});
+
+
+
+trace!(BinaryExtension0Row, BinaryExtension0Trace<F> { 
+ op: F,  mode8: F,  mode16: F,  mode32: F,  in1: [F; 8],  in2_low: F,  out: [F; 8],  free_in2: [F; 4],  multiplicity: F, 
 });
 

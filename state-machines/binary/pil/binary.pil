@@ -1,10 +1,10 @@
-require "binary_table.pil"
+require "std_lookup.pil"
 
 // Coprocessor in charge of performing standard RISCV binary operations
 
 /*
     List 64-bit operations:
-      name  │  opcode  │  mOpcode │ carry │ useLastCarry │ NOTES
+      name  │  opcode  │  mOpcode │ carry │ use_last_carry │ NOTES
     ────────┼──────────┼──────────┼───────┼──────────────┼───────────────────────────────────
       ADD   │   0x10   │   0x00   │   X   │              │
       SUB   │   0x20   │   0x01   │   X   │              │
@@ -23,7 +23,7 @@ require "binary_table.pil"
     ────────┼──────────┼──────────┼───────┼──────────────┼───────────────────────────────────
 
     List 32-bit operations:
-     name   │  opcode  │  mOpcode │ carry │ useLastCarry │ NOTES
+     name   │  opcode  │  mOpcode │ carry │ use_last_carry │ NOTES
     ────────┼──────────┼──────────┼───────┼──────────┼───────────────────────────────────
      ADD_W  │   0x14   │   0x00   │   X   │          │
      SUB_W  │   0x24   │   0x01   │   X   │          │
@@ -41,31 +41,31 @@ require "binary_table.pil"
 
 const int BINARY_ID = 20;
 
-airtemplate Binary(const int N = 2**21) {
+airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) {
     // Default values
     const int bits = 64;
     const int bytes = bits / 8;
 
     // Main values
-    const int inputChunks = 2;
-    const int inputChunkBytes = bytes / inputChunks;
+    const int input_chunks = 2;
+    const int input_chunk_bytes = bytes / input_chunks;
 
     // Primary columns
     col witness op;             // operation code (e.g. add)
     col witness mode32;         // 1 if the operation is 32 bits, 0 otherwise
-    col witness freeInA[bytes]; // input1
-    col witness freeInB[bytes]; // input2
-    col witness freeInC[bytes]; // output
+    col witness free_in_a[bytes]; // input1
+    col witness free_in_b[bytes]; // input2
+    col witness free_in_c[bytes]; // output
     col witness carry[bytes+1]; // bytes + 1 chunks carries [cin:0,cout:1],[cin:1,cout:2],...,[cin:bytes-1,cout:bytes]
 
     // Secondary columns
-    col witness useLastCarry;   // flag indicating whether the operation uses the last carry as its result
+    col witness use_last_carry;   // flag indicating whether the operation uses the last carry as its result
 
     const expr cin  = carry[0];
     const expr cout32 = carry[bytes/2];
     const expr cout64 = carry[bytes];
 
-    useLastCarry * (1 - useLastCarry) === 0;
+    use_last_carry * (1 - use_last_carry) === 0;
     cout32 * (1 - cout32) === 0;
     cout64 * (1 - cout64) === 0;
 
@@ -76,63 +76,63 @@ airtemplate Binary(const int N = 2**21) {
      op         0      a0     b0    c0       0  carry0
      op         0      a1     b1    c1  carry0  carry1
      op         0      a2     b2    c2  carry1  carry2
-     op         0      a3     b3    c3  carry2  carry3 + 2*useLastCarry
+     op         0      a3     b3    c3  carry2  carry3 + 2*use_last_carry
      op|EXT_32  0      a4|c3  b4|0  c4  carry3  carry4
      op|EXT_32  0      a5|c3  b5|0  c5  carry4  carry5
      op|EXT_32  0      a6|c3  b6|0  c6  carry5  carry6
-     op|EXT_32  1      a7|c3  b7|0  c7  carry6  carry7 + 2*useLastCarry
+     op|EXT_32  1      a7|c3  b7|0  c7  carry6  carry7 + 2*use_last_carry
     */
 
-    // lookup_assumes(BINARY_TABLE_ID, cols: [0, op, freeInA[0], freeInB[0], 0, freeInC[0], carry[1]]);
+    lookup_assumes(BINARY_TABLE_ID, cols: [0, op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[1]]);
 
     expr _op = (1-mode32) * (op - EXT_32_OP) + EXT_32_OP;
-    // for (int i = 1; i < bytes; i++) {
-    //     expr _freeInA = (1-mode32) * (freeInA[i] - freeInC[bytes/2-1]) + freeInC[bytes/2-1];
-    //     expr _freeInB = (1-mode32) * freeInB[i];
-    // 
-    //     if (i < bytes/2 - 1) {
-    //         lookup_assumes(BINARY_TABLE_ID, cols: [0, op, freeInA[i], freeInB[i], carry[i], freeInC[i], carry[i+1]]);
-    //     } else if (i == bytes/2 - 1) {
-    //         lookup_assumes(BINARY_TABLE_ID, cols: [mode32, op, freeInA[i], freeInB[i], carry[i], freeInC[i], cout32 + 2 * useLastCarry * mode32]);
-    //     } else if (i < bytes - 1) {
-    //         lookup_assumes(BINARY_TABLE_ID, cols: [0, _op, _freeInA, _freeInB, carry[i], freeInC[i], carry[i+1]]);
-    //     } else  {
-    //         lookup_assumes(BINARY_TABLE_ID, cols: [1-mode32, _op, _freeInA, _freeInB, carry[i], freeInC[i], cout64 + 2 * useLastCarry * (1-mode32)]);
-    //     }
-    // }
+    for (int i = 1; i < bytes; i++) {
+        expr _freeInA = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
+        expr _free_in_b = (1-mode32) * free_in_b[i];
+    
+        if (i < bytes/2 - 1) {
+            lookup_assumes(BINARY_TABLE_ID, cols: [0, op, free_in_a[i], free_in_b[i], carry[i], free_in_c[i], carry[i+1]]);
+        } else if (i == bytes/2 - 1) {
+            lookup_assumes(BINARY_TABLE_ID, cols: [mode32, op, free_in_a[i], free_in_b[i], carry[i], free_in_c[i], cout32 + 2 * use_last_carry * mode32]);
+        } else if (i < bytes - 1) {
+            lookup_assumes(BINARY_TABLE_ID, cols: [0, _op, _freeInA, _free_in_b, carry[i], free_in_c[i], carry[i+1]]);
+        } else  {
+            lookup_assumes(BINARY_TABLE_ID, cols: [1-mode32, _op, _freeInA, _free_in_b, carry[i], free_in_c[i], cout64 + 2 * use_last_carry * (1-mode32)]);
+        }
+    }
 
     // Constraints to make sure that this component is called from the main component
-    expr a[inputChunks];
-    expr b[inputChunks];
-    expr c[inputChunks];
-    for (int i = 0; i < inputChunks; i++) {
+    expr a[input_chunks];
+    expr b[input_chunks];
+    expr c[input_chunks];
+    for (int i = 0; i < input_chunks; i++) {
         a[i] = 0;
         b[i] = 0;
         c[i] = 0;
     }
 
-    int ibyte = 0;
-    int ichunk = 0;
+    int i_byte = 0;
+    int i_chunk = 0;
     for (int i = 0; i < bytes; i++) {
-        a[ichunk] += (256 ** ibyte * freeInA[i]);
-        b[ichunk] += (256 ** ibyte * freeInB[i]);
-        c[ichunk] += (256 ** ibyte * freeInC[i]);
-        ibyte++;
-        if (ibyte == inputChunkBytes) {
-            ibyte = 0;
-            ichunk++;
+        a[i_chunk] += (256 ** i_byte * free_in_a[i]);
+        b[i_chunk] += (256 ** i_byte * free_in_b[i]);
+        c[i_chunk] += (256 ** i_byte * free_in_c[i]);
+        i_byte++;
+        if (i_byte == input_chunk_bytes) {
+            i_byte = 0;
+            i_chunk++;
         }
     }
 
     // in logical functions like EQ the result is known at the last chunk,
-    // which means that c[0] = 0 and c[inputChunks-1] = cout, but need to swap them
+    // which means that c[0] = 0 and c[input_chunks-1] = cout, but need to swap them
     // e.g.: A = 0x12_34_56_78, B = 0x12_34_56_78
     // the lookup table ensures that C = 0x01_00_00_00 (since until the last chunk it cannot decide whether the EQ is true or not)
     // but we want C = 0x00_00_00_01
     expr cout = (1-mode32) * (cout64 - cout32) + cout32;
-    c[0] += useLastCarry * cout;
-    c[inputChunks - 1] -= useLastCarry * cout;
+    c[0] += use_last_carry * cout;
+    c[input_chunks - 1] -= use_last_carry * cout;
 
     col witness multiplicity;
-    // lookup_proves(OPERATION_BUS_ID,  mul: multiplicity, cols: [op, ...a, ...b, ...c, cout]);
+    lookup_proves(operation_bus_id,  mul: multiplicity, cols: [op, ...a, ...b, ...c, cout]);
 }

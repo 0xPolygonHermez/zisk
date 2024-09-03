@@ -1,4 +1,6 @@
-require "binary_extension_table.pil"
+require "std_permutation.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
 
 // Coprocessor in charge of performing standard RISCV binary operations
 
@@ -66,7 +68,7 @@ Result:        0xFFFF8abc    0xFFFFFFFF
 
 const int BINARY_EXTENSION_ID = 21;
 
-airtemplate BinaryExtension(const int N = 2**18) {
+airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BINARY_EXTENSION_ID) {
     const int bits = 64;
     const int bytes = bits / 8;
 
@@ -144,7 +146,7 @@ airtemplate BinaryExtension(const int N = 2**18) {
     col witness multiplicity;
 
     lookup_proves(
-        opid: OPERATION_BUS_ID,
+        opid: operation_bus_id,
         mul: multiplicity,
         cols:
         [

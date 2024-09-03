@@ -1,3 +1,4 @@
+require "std_lookup.pil"
 require "constants.pil";
 
 // PIL Binary Operations Table used by Binary
