@@ -148,7 +148,7 @@ impl ZiskRun {
             if self.input.is_some() {
                 let path = Path::new(self.input.as_ref().unwrap());
                 if !path.exists() {
-                    return Err(anyhow!("Input file does not exist at path: {}", path.display()));
+                    return Err(anyhow!("Input file does not exist at path: {}, please try to run a cargo-zisk build or cargo build before", path.display()));
                 }
                 input_command = format!("-i {}", self.input.as_ref().unwrap());
             }
@@ -162,7 +162,7 @@ impl ZiskRun {
             let input_path: &Path = Path::new(self.input.as_ref().unwrap());
 
             if !input_path.exists() {
-                return Err(anyhow!("Input file does not exist at path: {}", input_path.display()));
+                return Err(anyhow!("Input file does not exist at path: {}, please try to run a cargo-zisk build or cargo build before", input_path.display()));
             }
 
             let build_path = match input_path.parent() {
