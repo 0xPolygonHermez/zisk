@@ -3,8 +3,7 @@ use std::path::{Path, PathBuf};
 
 use std::any::type_name;
 
-use proofman_hints::{get_hint_ids_by_name, get_hint_field, set_hint_field, set_hint_field_val};
-use proofman_common::{BufferAllocator, ProofCtx, Prover, ProverStatus, GlobalInfo, SetupCtx};
+use proofman_common::{BufferAllocator, GlobalInfo, ProofCtx, Prover, ProverInfo, ProverStatus, SetupCtx};
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
@@ -15,6 +14,12 @@ use p3_goldilocks::Goldilocks;
 use p3_field::Field;
 
 use std::os::raw::c_void;
+
+#[repr(C)]
+pub struct VecU64Result {
+    pub n_elements: u64,
+    pub ids: *mut u64,
+}
 
 #[allow(dead_code)]
 pub struct StarkProver<T: Field> {
@@ -167,41 +172,27 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         self.stark_info.stark_struct.steps.len() as u32 + 3 //evals + fri_pol + fri_folding (setps) + fri_queries
     }
 
-    fn verify_constraints(&self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> bool {
+    fn verify_constraints(&self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> Vec<u64> {
         debug!("{}: ··· Verifying constraints for stage {}", Self::MY_NAME, stage_id);
 
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
 
-        verify_constraints_c(self.p_expressions, air_instance_ctx.params.unwrap(), stage_id as u64)
+        let raw_ptr = verify_constraints_c(self.p_expressions, air_instance_ctx.params.unwrap(), stage_id as u64);
+
+        let invalid_constraints_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
+
+        if invalid_constraints_result.n_elements == 0 {
+            return Vec::new();
+        }
+
+        let slice = unsafe { std::slice::from_raw_parts(invalid_constraints_result.ids, invalid_constraints_result.n_elements as usize) };
+
+        slice.to_vec()
     }
 
-    fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>, setup_ctx: &SetupCtx) {
+    fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
 
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
-
-        // // THIS IS AN EXAMPLE OF HOW TO USE HINT FUNCTIONS
-        // if stage_id == 2 {
-        //     let stark_info: &StarkInfo = &self.stark_info;
-        //     let n = 1 << stark_info.stark_struct.n_bits;
-
-        //     let hints = get_hint_ids_by_name(self.p_expressions, "gprod_col");
-            
-        //     for hint_id in hints.iter() {
-        //         let num = get_hint_field::<F>(&setup_ctx, air_instance_ctx,  *hint_id as usize, "numerator", false);
-        //         let den = get_hint_field::<F>(&setup_ctx, air_instance_ctx,  *hint_id as usize, "denominator", false);
-                
-        //         let mut reference = get_hint_field::<F>(&setup_ctx, air_instance_ctx, *hint_id as usize, "reference", true);
-
-        //         reference.set(0, num.get(0) / den.get(0));
-        //         for i in 1..n {
-        //             reference.set(i, reference.get(i - 1) * (num.get(i) / den.get(i)));
-        //         }
-
-        //         set_hint_field_val(&setup_ctx, air_instance_ctx, 0, "result", reference.get(n -1));
-
-        //         set_hint_field(&setup_ctx, air_instance_ctx, 0, "reference", &reference);
-        //     }    
-        // }
 
         if stage_id <= proof_ctx.pilout.num_stages() {
             can_impols_be_calculated_c(self.p_expressions, stage_id as u64);
@@ -332,6 +323,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn save_proof(&self, id: u64, output_dir: &str) {
         save_proof_c(id, self.p_stark_info, self.p_proof.unwrap(), output_dir);
     }
+
+    fn get_prover_info(&self) -> ProverInfo {
+        ProverInfo {
+            air_group_id: self.air_group_id,
+            air_id: self.air_id,
+            prover_idx: self.prover_idx,
+        }
+    }
+
 }
 
 impl<F: Field> StarkProver<F> {

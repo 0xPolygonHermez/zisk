@@ -111,7 +111,7 @@ extern "C" {
         pExpressionsCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         step: u64,
-    ) -> bool;
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z11get_fri_polPvS_"]
@@ -329,5 +329,5 @@ extern "C" {
         publics: *mut ::std::os::raw::c_void,
         pProofs: *mut ::std::os::raw::c_void,
         nProofs: u64,
-    ) -> bool;
+    ) -> *mut ::std::os::raw::c_void;
 }

@@ -356,19 +356,13 @@ pub fn get_permutations_c(p_transcript: *mut c_void, res: *mut u64, n: u64, n_bi
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn verify_constraints_c(p_expressions: *mut c_void, p_params: *mut c_void, stage_id: u64) -> bool {
+pub fn verify_constraints_c(p_expressions: *mut c_void, p_params: *mut c_void, stage_id: u64) -> *mut c_void {
     unsafe { verify_constraints(p_expressions, p_params, stage_id) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn verify_global_constraints_c(
-    global_info_file: &str,
-    global_constraints_bin_file: &str,
-    publics: *mut c_void,
-    proofs: *mut c_void,
-    n_proofs: u64,
-) -> bool {
-    unsafe {
+pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_bin_file: &str, publics: *mut c_void, proofs: *mut c_void, n_proofs: u64) -> *mut c_void {
+    unsafe { 
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
@@ -690,23 +684,13 @@ pub fn get_permutations_c(_p_transcript: *mut c_void, _res: *mut u64, _n: u64, _
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn verify_constraints_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _stage_id: u64) -> bool {
+pub fn verify_constraints_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _stage_id: u64) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
     true
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn verify_global_constraints_c(
-    _global_info_file: &str,
-    _global_constraints_bin_file: &str,
-    _publics: *mut c_void,
-    _proofs: *mut c_void,
-    _n_proofs: u64,
-) -> bool {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "verify_global_constraints_c: This is a mock call because there is no linked library"
-    );
+pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints_bin_file: &str, _publics: *mut c_void, _proofs: *mut c_void, _n_proofs: u64) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "verify_global_constraints_c: This is a mock call because there is no linked library");
     true
 }

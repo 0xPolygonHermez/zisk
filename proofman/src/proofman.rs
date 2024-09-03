@@ -1,7 +1,7 @@
 use libloading::{Library, Symbol};
 use log::{debug, info, trace};
 use p3_field::Field;
-use stark::{StarkBufferAllocator, StarkProver};
+use stark::{StarkBufferAllocator, StarkProver, VecU64Result};
 use starks_lib_c::{save_challenges_c, save_publics_c, verify_global_constraints_c};
 use std::fs;
 
@@ -99,7 +99,11 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::calculate_challenges(0, &mut provers, &mut pctx, &mut transcript, false);
         provers[0].add_publics_to_transcript(&mut pctx, &transcript);
 
-        let mut valid_constraints = true;
+        let mut invalid_constraints = Vec::with_capacity(provers.len());
+
+        for _i in 0..provers.len() {
+            invalid_constraints.push(Vec::new());
+        }
 
         // Commit stages
         let num_commit_stages = pctx.pilout.num_stages();
@@ -110,10 +114,14 @@ impl<F: Field + 'static> ProofMan<F> {
                 witness_lib.calculate_witness(stage, &mut pctx, &ectx, &sctx);
             }
 
-            Self::calculate_stage(stage, &mut provers, &mut pctx, &sctx);
+            Self::calculate_stage(stage, &mut provers, &mut pctx);
 
             if debug_mode {
-                valid_constraints = valid_constraints && Self::verify_constraints(stage, &mut provers, &mut pctx);
+                let invalid_constraints_stage = Self::verify_constraints(stage, &mut provers, &mut pctx);
+                for i in 0..provers.len() {
+                    invalid_constraints[i].extend(invalid_constraints_stage[i].clone());
+                }
+                
             } else {
                 Self::commit_stage(stage, &mut provers, &mut pctx);
             }
@@ -131,9 +139,29 @@ impl<F: Field + 'static> ProofMan<F> {
                 proofs.push(proof);
             }
 
-            valid_constraints = valid_constraints && verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            let raw_ptr = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            
+            let invalid_global_constraints_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
+            
+            let slice = unsafe { std::slice::from_raw_parts(invalid_global_constraints_result.ids, invalid_global_constraints_result.n_elements as usize) };
 
-            if !valid_constraints {
+            let invalid_global_constraints = slice.to_vec();
+
+            if invalid_global_constraints.len() > 0 || invalid_constraints.iter().any(|inner_vec| inner_vec.len() > 0) {
+                if invalid_global_constraints.len() > 0 {
+                    log::debug!("{} {:?}", "The following global constraints were not verified:".bright_red().bold(), invalid_global_constraints);
+                } 
+
+                if invalid_constraints.iter().any(|inner_vec| inner_vec.len() > 0) {
+                    for (idx, prover) in provers.iter_mut().enumerate() {
+                        if invalid_constraints[idx].len() > 0 {
+                            let prover_info = prover.get_prover_info();
+                            log::debug!("{}", 
+                                format!("The following constraints were not verified for prover {} that is proving air group id {} and air id {}: {:?}",
+                                prover_info.prover_idx, prover_info.air_group_id, prover_info.air_id, invalid_constraints[idx]).bright_red().bold());
+                        }
+                    }
+                }
                 log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
             } else {
                 log::debug!("{}", "All constraints were successfully verified.".bright_green().bold());
@@ -144,7 +172,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Compute Quotient polynomial
         Self::get_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &transcript);
-        Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &sctx);
+        Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
         Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
         Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &mut transcript, false);
 
@@ -230,22 +258,23 @@ impl<F: Field + 'static> ProofMan<F> {
         }
     }
 
-    pub fn verify_constraints(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> bool {
+    pub fn verify_constraints(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> Vec<Vec<u64>> {
         info!("{}: Verifying constraints stage {}", Self::MY_NAME, stage);
 
-        let mut valid_constraints = true;
+        let mut invalid_constraints = Vec::new();
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Verifying constraints stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            valid_constraints = valid_constraints && prover.verify_constraints(stage, pctx);
+            let invalid_constraints_prover = prover.verify_constraints(stage, pctx);
+            invalid_constraints.push(invalid_constraints_prover);
         }
-        valid_constraints
+        invalid_constraints
     }
 
-    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, sctx: &SetupCtx) {
+    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) {
         info!("{}: Calculating stage {}", Self::MY_NAME, stage);
         for (idx, prover) in provers.iter_mut().enumerate() {
             info!("{}: Calculating stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            prover.calculate_stage(stage, pctx, sctx);
+            prover.calculate_stage(stage, pctx);
         }
     }
 
