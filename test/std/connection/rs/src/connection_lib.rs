@@ -8,26 +8,28 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{RangeCheck, Pilout};
+use crate::{Connection1, ConnectionNew, Pilout};
 
-pub struct RangeCheckWitness<F> {
+pub struct ConnectionWitness<F> {
     pub wcm: WitnessManager<F>,
-    pub range_check: Arc<RangeCheck<F>>,
+    pub connection1: Arc<Connection1<F>>,
+    connection_new: Arc<ConnectionNew<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> RangeCheckWitness<F>  where Standard: Distribution<F> {
+impl<F: PrimeField> ConnectionWitness<F> where Standard: Distribution<F> {
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
-        let range_check = RangeCheck::new(&mut wcm, std_lib.clone());
+        let connection1 = Connection1::new(&mut wcm);
+        let connection_new = ConnectionNew::new(&mut wcm);
 
-        RangeCheckWitness { wcm, range_check, std_lib }
+        ConnectionWitness { wcm, connection1, connection_new, std_lib }
     }
 }
 
-impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>  where Standard: Distribution<F> {
+impl<F: PrimeField> WitnessLibrary<F> for ConnectionWitness<F> where Standard: Distribution<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         self.wcm.start_proof(pctx, ectx, sctx);
     }
@@ -38,7 +40,8 @@ impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>  where Standard: 
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
-        self.range_check.execute(pctx, ectx, sctx);
+        self.connection1.execute(pctx, ectx, sctx);
+        self.connection_new.execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
@@ -61,6 +64,6 @@ pub extern "Rust" fn init_library(
         .format_target(false)
         .filter_level(log::LevelFilter::Trace)
         .init();
-    let range_check_witness = RangeCheckWitness::new();
-    Ok(Box::new(range_check_witness))
+    let connection_witness = ConnectionWitness::new();
+    Ok(Box::new(connection_witness))
 }

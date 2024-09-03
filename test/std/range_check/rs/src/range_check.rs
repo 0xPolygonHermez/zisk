@@ -5,7 +5,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use pil_std_lib::Std;
 
 use p3_field::PrimeField;
-use rand::Rng;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use num_bigint::BigInt;
 
 use crate::{RangeCheck10Trace, RANGE_CHECK_1_SUBPROOF_ID, RANGE_CHECK_1_AIR_IDS};
@@ -14,7 +14,7 @@ pub struct RangeCheck<F> {
     std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField + Copy> RangeCheck<F> {
+impl<F: PrimeField + Copy> RangeCheck<F> where Standard: Distribution<F> {
     const MY_NAME: &'static str = "RangeCheck";
 
     pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
@@ -43,16 +43,16 @@ impl<F: PrimeField + Copy> RangeCheck<F> {
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for RangeCheck<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for RangeCheck<F> where Standard: Distribution<F> {
     fn calculate_witness(
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
@@ -78,26 +78,15 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for RangeCheck<F> {
             let mut trace = RangeCheck10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
-                // TODO: Do it with real random values
-                // a1[i] = getRandom(0, 2**8-1);
-                // a2[i] = getRandom(0, 2**4-1);
-                // a3[i] = getRandom(60, 2**16-1);
-                // a4[i] = getRandom(8228, 17400);
-                // a5[i] = getRandom(0, 2**8-1);
-
-                // sel1[i] = getRandom(0, 1);
-                // sel2[i] = getRandom(0, 1);
-                // sel3[i] = getRandom(0, 1);
-
-                trace[i].a1 = F::from_canonical_u16(0);
-                trace[i].a2 = F::from_canonical_u16(0);
-                trace[i].a3 = F::from_canonical_u16(60);
-                trace[i].a4 = F::from_canonical_u16(8228);
-                trace[i].a5 = F::from_canonical_u16(0);
+                trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8)-1));
+                trace[i].a2 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(4)-1));
+                trace[i].a3 = F::from_canonical_u16(rng.gen_range(60..=2u16.pow(16)-1));
+                trace[i].a4 = F::from_canonical_u16(rng.gen_range(8228..=17400));
+                trace[i].a5 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8)-1));
         
-                trace[i].sel1 = F::from_bool(true);
-                trace[i].sel2 = F::from_bool(true);
-                trace[i].sel3 = F::from_bool(true);
+                trace[i].sel1 = F::from_canonical_u8(rng.gen_range(0..=1));
+                trace[i].sel2 = F::from_canonical_u8(rng.gen_range(0..=1));
+                trace[i].sel3 = F::from_canonical_u8(rng.gen_range(0..=1));
 
                 // TODO: We have to redo it to avoid that many type conversions
                 if trace[i].sel1.is_one() {

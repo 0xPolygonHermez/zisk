@@ -122,15 +122,24 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_update_multiple_cells(OPID[5], [d[4],2,d[4],3,b[4],0], N/2);
     connection_connect(OPID[5]);
 };
-airgroup Connection1 {
+
+// TODO: Remove this airgroup and uncomment the original idea that follows commented below
+airgroup Connection {
     Connection1();
+    // Connection2();
+    // Connection3();
+    ConnectionNew();
 }
+
+// airgroup Connection1 {
+//     Connection1();
+// }
 // airgroup Connection2 {
 //     Connection2();
 // }
 // airgroup Connection3 {
 //     Connection3();
 // }
-airgroup ConnectionNew {
-    ConnectionNew();
-}
+// airgroup ConnectionNew {
+//     ConnectionNew();
+// }

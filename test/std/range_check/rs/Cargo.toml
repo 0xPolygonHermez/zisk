@@ -18,6 +18,6 @@ pil-std-lib = { path = "../../../../lib/std/rs" }
 env_logger = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
-num-bigint = "0.4"
+num-bigint = { workspace = true }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }

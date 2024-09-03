@@ -2,11 +2,9 @@ use std::sync::Arc;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use pil_std_lib::Std;
 
 use p3_field::PrimeField;
-use rand::Rng;
-use num_bigint::BigInt;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 use crate::{Lookup21Trace, LOOKUP_SUBPROOF_ID, LOOKUP_2_AIR_IDS};
 
@@ -14,7 +12,7 @@ pub struct Lookup2<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup2<F> {
+impl<F: PrimeField + Copy> Lookup2<F> where Standard: Distribution<F> {
     const MY_NAME: &'static str = "Lookup";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
@@ -45,16 +43,16 @@ impl<F: PrimeField + Copy> Lookup2<F> {
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> where Standard: Distribution<F> {
     fn calculate_witness(
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
@@ -80,10 +78,10 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> {
             let mut trace = Lookup21Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
-                trace[i].a1 = F::from_canonical_usize(i);
-                trace[i].b1 = F::from_canonical_usize(i);
-                trace[i].c1 = F::from_canonical_usize(i+1);
-                trace[i].d1 = F::from_canonical_usize(i+1);
+                trace[i].a1 = rng.gen();
+                trace[i].b1 = rng.gen();
+                trace[i].c1 = trace[i].a1;
+                trace[i].d1 = trace[i].b1;
             }
         }
 

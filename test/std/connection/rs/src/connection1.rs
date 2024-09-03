@@ -6,23 +6,23 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup10Trace, LOOKUP_SUBPROOF_ID, LOOKUP_1_AIR_IDS};
+use crate::{Connection10Trace, CONNECTION_SUBPROOF_ID, CONNECTION_1_AIR_IDS};
 
-pub struct Lookup1<F> {
+pub struct Connection1<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup1<F> where Standard: Distribution<F> {
-    const MY_NAME: &'static str = "Lookup";
+impl<F: PrimeField + Copy> Connection1<F> where Standard: Distribution<F> {
+    const MY_NAME: &'static str = "Connection";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let lookup1 = Arc::new(Self {
+        let connection1 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup1.clone(), Some(LOOKUP_1_AIR_IDS));
+        wcm.register_component(connection1.clone(), Some(CONNECTION_1_AIR_IDS));
 
-        lookup1
+        connection1
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -30,20 +30,20 @@ impl<F: PrimeField + Copy> Lookup1<F> where Standard: Distribution<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Lookup".into(), LOOKUP_1_AIR_IDS[0])
+            .get_buffer_info("Connection".into(), CONNECTION_1_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         pctx.add_air_instance_ctx(
-            LOOKUP_SUBPROOF_ID[0],
-            LOOKUP_1_AIR_IDS[0],
+            CONNECTION_SUBPROOF_ID[0],
+            CONNECTION_1_AIR_IDS[0],
             Some(buffer),
         );
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup1<F> where Standard: Distribution<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for Connection1<F> where Standard: Distribution<F> {
     fn calculate_witness(
         &self,
         stage: u32,
@@ -69,21 +69,18 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup1<F> where Standard: Di
             let (buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Lookup".into(), LOOKUP_1_AIR_IDS[0])
+                .get_buffer_info("Connection".into(), CONNECTION_1_AIR_IDS[0])
                 .unwrap();
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
-            let num_rows = pctx.pilout.get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_1_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+            let num_rows = pctx.pilout.get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_1_AIR_IDS[0]).num_rows();
+            let mut trace = Connection10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
-                trace[i].f[0] = rng.gen();
-                trace[i].f[1] = trace[i].f[0];
-                trace[i].sel[0] = F::from_bool(true);
-                trace[i].sel[1] = F::from_bool(true);
-                trace[i].t = trace[i].f[0];
-                trace[i].mul = F::from_canonical_usize(2);
+                trace[i].a = rng.gen();
+                trace[i].b = rng.gen();
+                trace[i].c = rng.gen();
             }
         }
 

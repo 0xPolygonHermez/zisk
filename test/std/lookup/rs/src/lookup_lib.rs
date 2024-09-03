@@ -6,6 +6,7 @@ use pil_std_lib::Std;
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
+use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{Lookup1, Lookup2, Pilout};
 
@@ -16,7 +17,7 @@ pub struct LookupWitness<F> {
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> LookupWitness<F> {
+impl<F: PrimeField> LookupWitness<F> where Standard: Distribution<F> {
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
@@ -28,7 +29,7 @@ impl<F: PrimeField> LookupWitness<F> {
     }
 }
 
-impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F> {
+impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F>  where Standard: Distribution<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         self.wcm.start_proof(pctx, ectx, sctx);
     }
