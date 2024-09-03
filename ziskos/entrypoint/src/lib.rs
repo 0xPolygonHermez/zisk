@@ -126,6 +126,16 @@ mod ziskos {
           _ARCH_ID_ZISK = const ARCH_ID_ZISK,
           options(noreturn) // we must handle "returning" from assembly
         );
+
+        pub fn zkvm_getrandom(s: &mut [u8]) -> Result<(), getrandom::Error> {
+            unsafe {
+                sys_rand(s.as_mut_ptr(), s.len());
+            }
+
+            Ok(())
+        }
+
+        getrandom::register_custom_getrandom!(zkvm_getrandom);
     }
 
     #[no_mangle]
@@ -157,6 +167,30 @@ mod ziskos {
             unsafe {
                 core::ptr::write_volatile(addr, *write_ptr.add(i));
             }
+        }
+    }
+    use lazy_static::lazy_static;
+    use std::sync::Mutex;
+    const PRNG_SEED: u64 = 0x123456789abcdef0;
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+
+    lazy_static! {
+        /// A lazy static to generate a global random number generator.
+        static ref RNG: Mutex<StdRng> = Mutex::new(StdRng::seed_from_u64(PRNG_SEED));
+    }
+
+    /// A lazy static to print a warning once for using the `sys_rand` system call.
+    static SYS_RAND_WARNING: std::sync::Once = std::sync::Once::new();
+
+    #[no_mangle]
+    unsafe extern "C" fn sys_rand(recv_buf: *mut u8, words: usize) {
+        SYS_RAND_WARNING.call_once(|| {
+            println!("WARNING: Using insecure random number generator.");
+        });
+        let mut rng = RNG.lock().unwrap();
+        for i in 0..words {
+            let element = recv_buf.add(i);
+            *element = rng.gen();
         }
     }
 

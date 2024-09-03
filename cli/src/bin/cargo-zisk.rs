@@ -22,6 +22,7 @@ const ZISK_TARGET: &str = "riscv64ima-polygon-ziskos-elf";
 pub enum Cargo {
     Sdk(ZiskSdk),
     Run(ZiskRun),
+    Build(ZiskBuild),
 }
 
 // Structure representing the 'sdk' subcommand of cargo.
@@ -45,8 +46,8 @@ pub struct ZiskRun {
     #[clap(long)]
     no_default_features: bool,
     #[clap(long, short)]
-    sim: bool,
-    #[clap(long)]
+    emu: bool,
+    #[clap(long, short)]
     stats: bool,
     #[clap(long)]
     gdb: bool,
@@ -58,6 +59,20 @@ pub struct ZiskRun {
     args: Vec<String>,
 }
 
+// Structure representing the 'build' subcommand of cargo.
+#[derive(clap::Args)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+pub struct ZiskBuild {
+    #[clap(long, short = 'F')]
+    features: Option<String>,
+    #[clap(long)]
+    all_features: bool,
+    #[clap(long)]
+    release: bool,
+    #[clap(long)]
+    no_default_features: bool,
+}
+
 // Enum defining the available subcommands for `ZiskSdk`.
 #[derive(Subcommand)]
 pub enum ZiskSdkCommands {
@@ -66,6 +81,40 @@ pub enum ZiskSdkCommands {
     New(NewCmd),
 }
 
+impl ZiskBuild {
+    fn run(&self) -> Result<()> {
+        // Construct the cargo run command
+        let mut command = Command::new("cargo");
+        command.args(["+zisk", "build"]);
+        // Add the feature selection flags
+        if let Some(features) = &self.features {
+            command.arg("--features").arg(features);
+        }
+        if self.all_features {
+            command.arg("--all-features");
+        }
+        if self.no_default_features {
+            command.arg("--no-default-features");
+        }
+        if self.release {
+            command.arg("--release");
+        }
+
+        command.args(["--target", ZISK_TARGET]);
+
+        // Set up the command to inherit the parent's stdout and stderr
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
+
+        // Execute the command
+        let status = command.status().context("Failed to execute cargo run command")?;
+        if !status.success() {
+            return Err(anyhow!("Cargo run command failed with status {}", status));
+        }
+
+        Ok(())
+    }
+}
 // Implement the run functionality for ZiskRun
 impl ZiskRun {
     fn run(&self) -> Result<()> {
@@ -87,11 +136,11 @@ impl ZiskRun {
         if self.release {
             command.arg("--release");
         }
-        if self.sim {
+        if self.emu {
             let mut extra_command: String = "".to_string();
             let mut input_command: String = "".to_string();
             if self.stats {
-                extra_command += " -s ";
+                extra_command += " -x ";
             }
             if self.metrics {
                 extra_command += " -m ";
@@ -196,6 +245,9 @@ fn main() -> Result<()> {
             }
         }
         Cargo::Run(args) => {
+            args.run().context("Error executing Run command")?;
+        }
+        Cargo::Build(args) => {
             args.run().context("Error executing Run command")?;
         }
     }
