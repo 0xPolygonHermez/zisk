@@ -12,7 +12,6 @@ pub const BINARY_SUBPROOF_ID: &[usize] = &[1];
 
 pub const BINARY_EXTENSION_SUBPROOF_ID: &[usize] = &[2];
 
-
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
@@ -21,29 +20,23 @@ pub const BINARY_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
 
-
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
 
-
         let air_group = pilout.add_air_group(Some("Main"));
-    
+
         air_group.add_air(Some("Main"), 2097152);
-    
 
         let air_group = pilout.add_air_group(Some("Binary"));
-    
+
         air_group.add_air(Some("Binary"), 2097152);
-    
 
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
-    
-        air_group.add_air(Some("BinaryExtension"), 2097152);
-    
 
+        air_group.add_air(Some("BinaryExtension"), 2097152);
 
         pilout
     }

@@ -2,21 +2,14 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::trace;
 
-
-
-trace!(Main0Row, Main0Trace<F> { 
- main_first_segment: F,  main_last_segment: F,  main_segment: F,  a: [F; 2],  b: [F; 2],  c: [F; 2],  last_c: [F; 2],  flag: F,  pc: F,  a_src_imm: F,  a_src_mem: F,  a_offset_imm0: F,  sp: F,  a_src_sp: F,  a_use_sp_imm1: F,  a_src_step: F,  b_src_imm: F,  b_src_mem: F,  b_offset_imm0: F,  b_use_sp_imm1: F,  b_src_ind: F,  ind_width: F,  is_external_op: F,  op: F,  store_ra: F,  store_mem: F,  store_ind: F,  store_offset: F,  set_pc: F,  store_use_sp: F,  set_sp: F,  inc_sp: F,  jmp_offset1: F,  jmp_offset2: F,  end: F,  m32: F, 
+trace!(Main0Row, Main0Trace<F> {
+ main_first_segment: F,  main_last_segment: F,  main_segment: F,  a: [F; 2],  b: [F; 2],  c: [F; 2],  last_c: [F; 2],  flag: F,  pc: F,  a_src_imm: F,  a_src_mem: F,  a_offset_imm0: F,  sp: F,  a_src_sp: F,  a_use_sp_imm1: F,  a_src_step: F,  b_src_imm: F,  b_src_mem: F,  b_offset_imm0: F,  b_use_sp_imm1: F,  b_src_ind: F,  ind_width: F,  is_external_op: F,  op: F,  store_ra: F,  store_mem: F,  store_ind: F,  store_offset: F,  set_pc: F,  store_use_sp: F,  set_sp: F,  inc_sp: F,  jmp_offset1: F,  jmp_offset2: F,  end: F,  m32: F,
 });
 
-
-
-trace!(Binary0Row, Binary0Trace<F> { 
- op: F,  mode32: F,  free_in_a: [F; 8],  free_in_b: [F; 8],  free_in_c: [F; 8],  carry: [F; 9],  use_last_carry: F,  multiplicity: F, 
+trace!(Binary0Row, Binary0Trace<F> {
+ op: F,  mode32: F,  free_in_a: [F; 8],  free_in_b: [F; 8],  free_in_c: [F; 8],  carry: [F; 9],  use_last_carry: F,  multiplicity: F,
 });
 
-
-
-trace!(BinaryExtension0Row, BinaryExtension0Trace<F> { 
- op: F,  mode8: F,  mode16: F,  mode32: F,  in1: [F; 8],  in2_low: F,  out: [F; 8],  free_in2: [F; 4],  multiplicity: F, 
+trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
+ op: F,  mode8: F,  mode16: F,  mode32: F,  in1: [F; 8],  in2_low: F,  out: [F; 8],  free_in2: [F; 4],  multiplicity: F,
 });
-
