@@ -373,6 +373,20 @@ pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_b
     }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn print_pol_by_id_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, pol_id: u64, first_print_value: u64, last_print_value: u64) {
+    unsafe {
+        print_pol_by_id(p_expressions_ctx, p_params, pol_id, first_print_value, last_print_value);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn print_expression_c(p_expressions_ctx: *mut c_void, pol: *mut c_void, deg: u64, dim: u64, first_print_value: u64, last_print_value: u64) {
+    unsafe {
+        print_expression(p_expressions_ctx, pol, deg, dim, first_print_value, last_print_value);
+    }
+}
+
 // ------------------------
 // MOCK METHODS FOR TESTING
 // ------------------------
@@ -693,4 +707,14 @@ pub fn verify_constraints_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_v
 pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints_bin_file: &str, _publics: *mut c_void, _proofs: *mut c_void, _n_proofs: u64) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "verify_global_constraints_c: This is a mock call because there is no linked library");
     true
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn print_pol_by_id_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _pol_id: u64, _first_print_value: u64, _last_print_value: u64) {
+    trace!("{}: ··· {}", "ffi     ", "print_pol_by_id_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn print_expression_c(_p_expressions_ctx: *mut c_void, _pol: *mut c_void, _deg: u64, _dim: u64, _first_print_value: u64, _last_print_value: u64) {
+    trace!("{}: ··· {}", "ffi     ", "print_expression_c: This is a mock call because there is no linked library");
 }

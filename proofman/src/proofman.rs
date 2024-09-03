@@ -126,7 +126,9 @@ impl<F: Field + 'static> ProofMan<F> {
                 Self::commit_stage(stage, &mut provers, &mut pctx);
             }
 
-            Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
+            if !debug_mode || stage < num_commit_stages  {
+                Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
+            }
         }
 
         witness_lib.end_proof();
@@ -322,7 +324,9 @@ impl<F: Field + 'static> ProofMan<F> {
                 info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
                 prover.opening_stage(opening_id, pctx, transcript);
             }
-            Self::calculate_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx, transcript, false);
+            if opening_id < provers[0].num_opening_stages() {
+                Self::calculate_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx, transcript, false);
+            }
         }
     }
 

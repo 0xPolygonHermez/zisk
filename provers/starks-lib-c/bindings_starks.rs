@@ -331,3 +331,24 @@ extern "C" {
         nProofs: u64,
     ) -> *mut ::std::os::raw::c_void;
 }
+extern "C" {
+    #[link_name = "\u{1}_Z15print_pol_by_idPvS_mmm"]
+    pub fn print_pol_by_id(
+        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+        pol_id: u64,
+        first_value: u64,
+        last_value: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16print_expressionPvS_mmmm"]
+    pub fn print_expression(
+        pExpressionCtx: *mut ::std::os::raw::c_void,
+        pol: *mut ::std::os::raw::c_void,
+        deg: u64,
+        dim: u64,
+        first_value: u64,
+        last_value: u64,
+    );
+}
