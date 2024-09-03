@@ -35,6 +35,6 @@
     "eslint-plugin-mocha": "^10.1.0",
     "mocha": "^9.1.3",
     "pil2-proofman": "github:0xPolygonHermez/pil2-proofman-js#feature/setup",
-    "pil2-stark-js": "github:0xPolygonHermez/pil2-stark-js#main"
+    "pil2-stark-js": "github:0xPolygonHermez/pil2-stark-js#develop"
   }
 }

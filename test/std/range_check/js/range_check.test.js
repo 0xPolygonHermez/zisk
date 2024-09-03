@@ -3,7 +3,7 @@ const path = require('path');
 const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("pil2-proofman/test/test_utils.js");
 
 const basePath = path.join(__dirname, '.');
-const libPath = path.join(basePath, '..', '..', '..', 'lib');
+const libPath = path.join(basePath, '..', '..', '..', '..', 'lib');
 
 function getSettings() {
     return {

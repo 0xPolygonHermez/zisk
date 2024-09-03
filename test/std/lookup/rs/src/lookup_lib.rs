@@ -7,11 +7,12 @@ use pil_std_lib::Std;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 
-use crate::{Lookup, Pilout};
+use crate::{Lookup1, Lookup2, Pilout};
 
 pub struct LookupWitness<F> {
     pub wcm: WitnessManager<F>,
-    pub lookup: Arc<Lookup<F>>,
+    pub lookup1: Arc<Lookup1<F>>,
+    pub lookup2: Arc<Lookup2<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
@@ -20,9 +21,10 @@ impl<F: PrimeField> LookupWitness<F> {
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
-        let lookup = Lookup::new(&mut wcm);
+        let lookup1 = Lookup1::new(&mut wcm);
+        let lookup2 = Lookup2::new(&mut wcm);
 
-        LookupWitness { wcm, lookup, std_lib }
+        LookupWitness { wcm, lookup1, lookup2, std_lib }
     }
 }
 
@@ -37,7 +39,8 @@ impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F> {
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
-        self.lookup.execute(pctx, ectx, sctx);
+        self.lookup1.execute(pctx, ectx, sctx);
+        self.lookup2.execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {

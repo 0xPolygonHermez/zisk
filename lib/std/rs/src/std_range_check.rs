@@ -92,7 +92,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let rc_hints = get_hint_ids_by_name(setup.p_expressions, "range_check");
                 if !rc_hints.is_empty() {
                     // Register the ranges for the range check
-                    self.register_ranges(sctx, rc_hints);
+                    // self.register_ranges(sctx, rc_hints);
                 }
             });
         });
@@ -153,11 +153,29 @@ impl<F: PrimeField> StdRangeCheck<F> {
         })
     }
 
-    pub fn register_ranges(&self, setup: *mut c_void, rc_hints: Vec<u64>) {
+    // TODO!!!
+    // pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    //     // For simplicity, add a single instance of each air
+    //     let (buffer_size, _) = ectx
+    //         .buffer_allocator
+    //         .as_ref()
+    //         .get_buffer_info("Lookup".into(), LOOKUP_2_AIR_IDS[0])
+    //         .unwrap();
+
+    //     let buffer = vec![F::zero(); buffer_size as usize];
+
+    //     pctx.add_air_instance_ctx(
+    //         LOOKUP_SUBPROOF_ID[0],
+    //         LOOKUP_2_AIR_IDS[0],
+    //         Some(buffer),
+    //     );
+    // }
+
+    pub fn register_ranges(&self, air_instance: &mut AirInstanceCtx<F>, sctx: &SetupCtx, rc_hints: Vec<u64>) {
         for hint in rc_hints {
-            let predefined = get_hint_field::<F>(sctx, hint as usize, "predefined", false);
-            let min = get_hint_field::<F>(sctx, hint as usize, "min", false);
-            let max = get_hint_field::<F>(sctx, hint as usize, "max", false);
+            let predefined = get_hint_field::<F>(sctx, air_instance, hint as usize, "predefined", false);
+            let min = get_hint_field::<F>(sctx, air_instance, hint as usize, "min", false);
+            let max = get_hint_field::<F>(sctx, air_instance, hint as usize, "max", false);
 
             let HintFieldValue::Field(predefined) = predefined else {
                 log::error!("Predefined hint must be a field element");
