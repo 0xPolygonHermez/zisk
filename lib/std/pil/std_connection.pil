@@ -160,7 +160,7 @@ function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFA
 
     if (col1_index == col2_index && row1_index == row2_index) {
         println(`You are connecting the row ${row1_index} of ${conn[0]} to itself in connection #${opid}, consider removing it. Skipping...`); // Fix: Add a warn instead
-        continue;
+        return;
     }
 
     // Define the connection for each frame
