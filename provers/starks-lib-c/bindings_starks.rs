@@ -332,14 +332,16 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15print_pol_by_idPvS_mmm"]
-    pub fn print_pol_by_id(
+    #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]
+    pub fn print_by_name(
         pExpressionsCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
-        pol_id: u64,
+        name: *mut ::std::os::raw::c_char,
+        lengths: *mut u64,
         first_value: u64,
         last_value: u64,
-    );
+        return_values: bool,
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z16print_expressionPvS_mmmm"]

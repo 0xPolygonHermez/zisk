@@ -8,7 +8,7 @@ proofman-common = { path = "../common" }
 proofman-util = { path = "../util" }
 pilout = { path = "../pilout" }
 stark = { path = "../provers/stark" }
-starks-lib-c = { path = "../provers/starks-lib-c" }
+proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 transcript = { path = "../transcript" }
 
 log = { workspace = true }

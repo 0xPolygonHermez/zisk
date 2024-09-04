@@ -12,4 +12,4 @@ log = { workspace = true }
 transcript = { path = "../transcript" }
 p3-field = { workspace = true }
 proofman-util = { path = "../util" }
-starks-lib-c = { path = "../provers/starks-lib-c" }
+proofman-starks-lib-c = { path = "../provers/starks-lib-c" }

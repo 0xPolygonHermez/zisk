@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-starks-lib-c = { path = "../provers/starks-lib-c" }
+proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 proofman-common = { path = "../common" }
 p3-field = { workspace = true }

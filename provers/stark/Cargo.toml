@@ -10,7 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 proofman-util = { path = "../../util" }
-starks-lib-c = { path = "../starks-lib-c" }
+proofman-starks-lib-c = { path = "../starks-lib-c" }
 transcript = { path = "../../transcript" }
 proofman-common = { path = "../../common" }
 proofman-hints = { path = "../../hints" }

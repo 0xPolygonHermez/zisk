@@ -2,7 +2,7 @@ use std::{os::raw::c_void, path::Path};
 
 use log::trace;
 
-use starks_lib_c::{const_pols_new_c, expressions_bin_new_c, expressions_ctx_new_c, setup_ctx_new_c, stark_info_new_c};
+use proofman_starks_lib_c::{const_pols_new_c, expressions_bin_new_c, expressions_ctx_new_c, setup_ctx_new_c, stark_info_new_c};
 
 use crate::GlobalInfo;
 

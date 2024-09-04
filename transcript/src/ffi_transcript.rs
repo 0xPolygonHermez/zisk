@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use starks_lib_c::{
+use proofman_starks_lib_c::{
     transcript_add_c, transcript_add_polinomial_c, transcript_free_c, transcript_new_c, get_challenge_c,
     get_permutations_c,
 };

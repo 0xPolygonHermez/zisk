@@ -1,4 +1,4 @@
-use starks_lib_c::{get_hint_ids_by_name_c, set_hint_field_c, get_hint_field_c};
+use proofman_starks_lib_c::{get_hint_field_c, get_hint_ids_by_name_c, print_expression_c, print_by_name_c, set_hint_field_c};
 
 use p3_field::Field;
 use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
@@ -6,6 +6,8 @@ use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
 use std::os::raw::c_void;
 
 use std::ops::{Mul, Add, Sub, Div};
+
+use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
@@ -288,6 +290,52 @@ pub fn set_hint_field_val<F: Clone + Copy>(
 
     set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
+
+pub fn print_expression<F: Clone + Copy + Debug>(
+    setup_ctx: &SetupCtx,
+    air_instance_ctx: &mut AirInstanceCtx<F>,
+    expr: &HintFieldValue<F>,
+    num_rows: u64,
+    first_print_value: u64,
+    last_print_value: u64,
+) {    
+    let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
+    
+    match expr {
+        HintFieldValue::Column(vec) => {
+            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, num_rows, 1, first_print_value, last_print_value);
+        } 
+        HintFieldValue::ColumnExtended(vec) => {
+            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, num_rows, 3, first_print_value, last_print_value);
+        }
+        HintFieldValue::Field(val) => {
+            println!("Field value: {:?}", val);
+        }
+        HintFieldValue::FieldExtended(val) => {
+            println!("FieldExtended values: {:?}", val);
+        }
+    }
+        
+}
+
+pub fn print_by_name<F: Clone + Copy>(
+    setup_ctx: &SetupCtx,
+    air_instance_ctx: &mut AirInstanceCtx<F>,
+    name: &str,
+    lengths: &mut Vec<u64>,
+    first_print_value: u64,
+    last_print_value: u64,
+    return_values: bool,
+) -> *mut c_void {
+    let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
+
+    let params = air_instance_ctx.params.unwrap();
+
+    let lengths_ptr = lengths.as_mut_ptr();
+
+    print_by_name_c(setup.p_expressions, params, name, lengths_ptr, first_print_value, last_print_value, return_values)
+}
+
 
 #[cfg(test)]
 mod tests {

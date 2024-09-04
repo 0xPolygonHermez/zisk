@@ -7,7 +7,7 @@ use proofman_common::{BufferAllocator, GlobalInfo, ProofCtx, Prover, ProverInfo,
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
-use starks_lib_c::*;
+use proofman_starks_lib_c::*;
 use crate::stark_info::StarkInfo;
 use crate::stark_prover_settings::StarkProverSettings;
 use p3_goldilocks::Goldilocks;

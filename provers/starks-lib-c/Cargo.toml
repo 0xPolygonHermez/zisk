@@ -1,5 +1,5 @@
 [package]
-name = "starks-lib-c"
+name = "proofman-starks-lib-c"
 version = "0.1.0"
 edition = "2021"
 

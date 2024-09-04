@@ -374,9 +374,11 @@ pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_b
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn print_pol_by_id_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, pol_id: u64, first_print_value: u64, last_print_value: u64) {
+pub fn print_by_name_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, name: &str, lengths: *mut u64, first_print_value: u64, last_print_value: u64, return_values: bool) -> *mut c_void {
+    let name_string = CString::new(name).unwrap();
+    let name_ptr = name_string.as_ptr() as *mut std::os::raw::c_char;
     unsafe {
-        print_pol_by_id(p_expressions_ctx, p_params, pol_id, first_print_value, last_print_value);
+        print_by_name(p_expressions_ctx, p_params, name_ptr, lengths, first_print_value, last_print_value, return_values)
     }
 }
 
@@ -710,8 +712,9 @@ pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn print_pol_by_id_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _pol_id: u64, _first_print_value: u64, _last_print_value: u64) {
-    trace!("{}: ··· {}", "ffi     ", "print_pol_by_id_c: This is a mock call because there is no linked library");
+pub fn print_by_name_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, name: &str, lengths: *mut u64, first_print_value: u64, last_print_value: u64, return_values: bool) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "print_by_name_c: This is a mock call because there is no linked library");
+    std::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
