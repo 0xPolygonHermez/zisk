@@ -292,7 +292,7 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
     set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
 
-pub fn set_hint_field_val<F: Clone + Copy>(
+pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
     setup_ctx: &SetupCtx,
     air_instance_ctx: &mut AirInstanceCtx<F>,
     hint_id: u64,
@@ -303,10 +303,20 @@ pub fn set_hint_field_val<F: Clone + Copy>(
 
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
-    let values_ptr: *mut c_void = match value {
-        HintFieldOutput::Field(val) => &val as *const F as *mut c_void,
-        HintFieldOutput::FieldExtended(val) => &[val.value[0], val.value[1], val.value[2]] as *const F as *mut c_void,
+    let mut value_array: Vec<F> = Vec::new();
+
+    match value {
+        HintFieldOutput::Field(val) => {
+            value_array.push(val);
+        }
+        HintFieldOutput::FieldExtended(val) => {
+            value_array.push(val.value[0]);
+            value_array.push(val.value[1]);
+            value_array.push(val.value[2]);
+        }
     };
+
+    let values_ptr = value_array.as_mut_ptr() as *mut c_void;
 
     set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 }
