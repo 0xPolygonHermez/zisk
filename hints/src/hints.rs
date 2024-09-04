@@ -252,6 +252,25 @@ pub fn get_hint_field<F: Clone + Copy>(
     HintCol::from_hint_field(hint_field.as_ref())
 }
 
+pub fn get_hint_field_constant<F: Clone + Copy>(
+    setup_ctx: &SetupCtx,
+    air_group_id: usize,
+    air_id: usize,
+    hint_id: usize,
+    hint_field_name: &str,
+    dest: bool,
+    print_expression: bool,
+) -> HintFieldValue<F> {
+    
+    let setup = setup_ctx.get_setup(air_group_id, air_id).expect("REASON");
+
+    let raw_ptr = get_hint_field_c(setup.p_expressions, std::ptr::null_mut(), hint_id as u64, hint_field_name, dest, print_expression);
+    
+    let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
+
+    HintCol::from_hint_field(hint_field.as_ref())
+}
+
 pub fn set_hint_field<F: Copy + core::fmt::Debug>(
     setup_ctx: &SetupCtx,
     air_instance_ctx: &mut AirInstanceCtx<F>,
