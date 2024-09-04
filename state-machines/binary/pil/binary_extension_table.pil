@@ -3,14 +3,14 @@ require "constants.pil"
 
 // Operations Table:
 //                                                                   Running Total
-// SLL/SLL_W  *  (OP:0)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 |        2^17
-// SRL/SRL_W  *  (OP:1)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18
-// SRA/SRA_W  *  (OP:2)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18 + 2^17
-// SE_B          (OP:3)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                                    + 2^11
-// SE_H          (OP:4)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                             + 2^12
-// SE_W          (OP:5)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                             + 2^12 + 2^11
-// EXT           (OP:6)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                      + 2^13               => 2^19
-// --------------------------------------------------------------------------------------------------------------------------
+// SLL/SLL_W  *  (OP:0x0d)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 |        2^17
+// SRL/SRL_W  *  (OP:0x0e)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18
+// SRA/SRA_W  *  (OP:0x0f)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18 + 2^17
+// SE_B          (OP:0x24)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                   + 2^11
+// SE_H          (OP:0x25)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12
+// SE_W          (OP:0x26)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12 + 2^11
+// EXT           (OP:0x27)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17     + 2^13               => 2^19
+// ------------------------------------------------------------------------------------------------------------------
 // (*) The W variant has the second operand as a 5-bit value instead of 6-bit, but this is controlled outside
 
 const int EXT_OP = 6;
@@ -37,8 +37,8 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
     col fixed OFFSET = [[0:P2_14..(bytes-1):P2_14]:3,       // Offset     (3 bits)
                         [0:P2_8..(bytes-1):P2_8]:4]...;
 
-    col fixed OP = [0:P2_17..2:P2_17,                       // OP         (3 bits)
-                    3:P2_11..6:P2_11]...;
+    col fixed OP = [13:P2_17..15:P2_17,                       // OP         (3 bits)
+                    36:P2_11..39:P2_11]...;
 
     col fixed C0;                                           // Output C0  (32 bits)
     col fixed C1;                                           // Output C1  (32 bits)
@@ -46,15 +46,15 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
         int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int _out = 0;
         switch (op) {
-            case 0: // SLL,SLL_W
+            case 0x0d: // SLL,SLL_W
                 _out = a << b;
                 _out = _out << 8*offset;
 
-            case 1: // SRL,SRL_W
+            case 0x0e: // SRL,SRL_W
                 _out = a << 8*offset;
                 _out = _out >> b;
 
-            case 2: // SRA,SRA_W
+            case 0x0f: // SRA,SRA_W
                 // Compute two's complement
                 _out = a & 0x80 ? a - 0x100 : a;
 
@@ -65,14 +65,14 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
                 // Convert back to two's complement
                 _out = _out < 0 ? ((_out & (P2_63 - 1)) + P2_63) : _out;
 
-            case 3: // SE_B
+            case 0x24: // SE_B
                 if (offset == 0) {
                     _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
                 } else {
                     _out = a & P2_7 ? 0xFF00 << (8*(offset - 1)) : 0;
                 }
 
-            case 4: // SE_H
+            case 0x25: // SE_H
                 if (offset == 0) {
                     _out = a
                 } else if (offset == 1) {
@@ -82,7 +82,7 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
                     _out = a & P2_7 ? 0xFF0000 << (8*(offset - 2)) : 0;
                 }
 
-            case 5: // SE_W
+            case 0x26: // SE_W
                 if (offset < 3) {
                     _out = a << (8*offset);
                 } else if (offset == 3) {
