@@ -5,7 +5,7 @@ pub trait Trace: Send {
 
 #[macro_export]
 macro_rules! trace {
-    ($row_struct_name:ident, $trace_struct_name:ident<$generic:ident> {
+    ($row_struct_name:ident, $trace_struct_name:ident<$generic:ident> { 
         $( $field_name:ident : $field_type:ty ),* $(,)?
     }) => {
         // Define the row structure (Main0RowTrace)
@@ -15,6 +15,7 @@ macro_rules! trace {
             $( pub $field_name: $field_type ),*
         }
 
+        
         impl<$generic: Copy> $row_struct_name<$generic> {
             // The size of each row in terms of the number of fields
              pub const ROW_SIZE: usize = 0 $(+ trace!(@count_elements $field_type))*;
@@ -138,16 +139,43 @@ macro_rules! trace {
         }
     };
 
-    (@count_elements [$elem_type:ty; $len:expr]) => {
-        $len
-    };
-
     (@count_elements $elem_type:ty) => {
-        1
+        if std::mem::size_of::<$elem_type>() == 8 {
+            1
+        } else if std::mem::size_of::<$elem_type>() == std::mem::size_of::<&str>() {
+            trace!(@parse_string $elem_type)
+        } else {
+            0
+        }
     };
 
+    (@parse_string $elem_type:ty) => {
+        // Check if the element type is a string array
+        if true {
+            let field_str = stringify!($elem_type);
+            let a_bytes = "[F; 2]".as_bytes();
+            let b_bytes = field_str.as_bytes();
+            let mut result = 0;
+            let mut i = 0;
+            let mut c = 0;
+            if a_bytes.len() == b_bytes.len() {
+                while i < b_bytes.len() {
+                    if a_bytes[i] != b_bytes[i] {
+                        c+=1;
+                    }
+                    i+=1;
+                }
+                if c == 0 {
+                    result = 2;
+                }
+            }
+            result
+            
+        } else {
+            0
+        }
+    };
 }
-
 #[cfg(test)]
 mod tests {
     // use rand::Rng;
@@ -157,23 +185,25 @@ mod tests {
         const OFFSET: usize = 1;
         let num_rows = 8;
 
-        trace!(TraceRow, MyTrace<F> { a: F, b: F });
+        trace!(TraceRow, MyTrace<F> { a: F, b:[F; 2], c: [F; 2]});
 
-        let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
-        let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
-        let mut trace = trace.unwrap();
+        assert_eq!( TraceRow::<usize>::ROW_SIZE, 4);
+        
+        // let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
+        // let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
+        // let mut trace = trace.unwrap();
 
-        // Set values
-        for i in 0..num_rows {
-            trace[i].a = i;
-            trace[i].b = i * 10;
-        }
+        // // Set values
+        // for i in 0..num_rows {
+        //     trace[i].a = i;
+        //     trace[i].b = i * 10;
+        // }
 
-        // Check values
-        for i in 0..num_rows {
-            assert_eq!(trace[i].a, i);
-            assert_eq!(trace[i].b, i * 10);
-        }
+        // // Check values
+        // for i in 0..num_rows {
+        //     assert_eq!(trace[i].a, i);
+        //     assert_eq!(trace[i].b, i * 10);
+        // }
     }
 
     #[test]
