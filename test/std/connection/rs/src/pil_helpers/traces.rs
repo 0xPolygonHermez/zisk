@@ -2,13 +2,10 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::trace;
 
-
-
-trace!(Connection10Row, Connection10Trace<F> { 
- a: F,  b: F,  c: F, 
+trace!(Connection10Row, Connection10Trace<F> {
+ a: F,  b: F,  c: F,
 });
 
-trace!(ConnectionNew1Row, ConnectionNew1Trace<F> { 
- a: [F; 5],  b: [F; 5],  c: [F; 5],  d: [F; 5], 
+trace!(ConnectionNew1Row, ConnectionNew1Trace<F> {
+ a: [F; 5],  b: [F; 5],  c: [F; 5],  d: [F; 5],
 });
-

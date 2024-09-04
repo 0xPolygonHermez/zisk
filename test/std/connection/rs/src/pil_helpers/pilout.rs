@@ -8,13 +8,11 @@ pub const PILOUT_HASH: &[u8] = b"Connection-hash";
 
 pub const CONNECTION_SUBPROOF_ID: &[usize] = &[0];
 
-
 //AIR CONSTANTS
 
 pub const CONNECTION_1_AIR_IDS: &[usize] = &[0];
 
 pub const CONNECTION_NEW_AIR_IDS: &[usize] = &[1];
-
 
 pub struct Pilout;
 
@@ -22,14 +20,11 @@ impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("Connection", 2, PILOUT_HASH.to_vec());
 
-
         let air_group = pilout.add_air_group(Some("Connection"));
-    
-        air_group.add_air(Some("Connection1"), 8);
-    
-        air_group.add_air(Some("ConnectionNew"), 16);
-    
 
+        air_group.add_air(Some("Connection1"), 8);
+
+        air_group.add_air(Some("ConnectionNew"), 16);
 
         pilout
     }

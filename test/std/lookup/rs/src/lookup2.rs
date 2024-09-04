@@ -6,13 +6,16 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup21Trace, LOOKUP_SUBPROOF_ID, LOOKUP_2_AIR_IDS};
+use crate::{Lookup21Trace, LOOKUP_2_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
 pub struct Lookup2<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup2<F> where Standard: Distribution<F> {
+impl<F: PrimeField + Copy> Lookup2<F>
+where
+    Standard: Distribution<F>,
+{
     const MY_NAME: &'static str = "Lookup";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
@@ -35,15 +38,14 @@ impl<F: PrimeField + Copy> Lookup2<F> where Standard: Distribution<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(
-            LOOKUP_SUBPROOF_ID[0],
-            LOOKUP_2_AIR_IDS[0],
-            Some(buffer),
-        );
+        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0], Some(buffer));
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> where Standard: Distribution<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F>
+where
+    Standard: Distribution<F>,
+{
     fn calculate_witness(
         &self,
         stage: u32,
@@ -56,7 +58,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> where Standard: Di
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+        let air = pctx
+            .pilout
+            .get_air(air_instance.air_group_id, air_instance.air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -74,8 +78,12 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F> where Standard: Di
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
-            let num_rows = pctx.pilout.get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup21Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+            let num_rows = pctx
+                .pilout
+                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0])
+                .num_rows();
+            let mut trace =
+                Lookup21Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a1 = rng.gen();

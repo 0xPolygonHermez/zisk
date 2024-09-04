@@ -6,7 +6,7 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
-use crate::{Decider, StdProd, StdRangeCheck, RCAirData, StdSum};
+use crate::{Decider, RCAirData, StdProd, StdRangeCheck, StdSum};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 

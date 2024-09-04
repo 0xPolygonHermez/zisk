@@ -2,13 +2,10 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::trace;
 
-
-
-trace!(Lookup10Row, Lookup10Trace<F> { 
- f: [F; 2],  t: F,  sel: [F; 2],  mul: F, 
+trace!(Lookup10Row, Lookup10Trace<F> {
+ f: [F; 2],  t: F,  sel: [F; 2],  mul: F,
 });
 
-trace!(Lookup21Row, Lookup21Trace<F> { 
- a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  mul: F, 
+trace!(Lookup21Row, Lookup21Trace<F> {
+ a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  mul: F,
 });
-

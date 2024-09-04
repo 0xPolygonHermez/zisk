@@ -1,6 +1,6 @@
 require "std_permutation.pil";
 
-airtemplate Permutation1(const int N = 2**12) {
+airtemplate Permutation1(const int N = 2**6) {
 
     col witness a1,b1,a2,b2,a3,b3,a4,b4;
     col witness c1,d1,c2,d2;
@@ -17,7 +17,7 @@ airtemplate Permutation1(const int N = 2**12) {
     permutation_assumes(4, [a4, b4], sel3);
 };
 
-airtemplate Permutation2(const int N = 2**14) {
+airtemplate Permutation2(const int N = 2**9) {
 
     col witness c1,d1,c2,d2;
     col witness sel;
@@ -29,7 +29,8 @@ airtemplate Permutation2(const int N = 2**14) {
 
 airgroup Permutation {
     Permutation1();
-    Permutation1(N: 2**13);
-    Permutation1(N: 2**15);
+    Permutation1(N: 2**7);
+    Permutation1(N: 2**8);
+    Permutation1();
     Permutation2();
 }

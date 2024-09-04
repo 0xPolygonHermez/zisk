@@ -1,8 +1,8 @@
-use std::{error::Error, sync::Arc, path::PathBuf};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
-use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::Std;
+use proofman::{WitnessLibrary, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
@@ -17,7 +17,10 @@ pub struct LookupWitness<F> {
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> LookupWitness<F> where Standard: Distribution<F> {
+impl<F: PrimeField> LookupWitness<F>
+where
+    Standard: Distribution<F>,
+{
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
@@ -25,11 +28,19 @@ impl<F: PrimeField> LookupWitness<F> where Standard: Distribution<F> {
         let lookup1 = Lookup1::new(&mut wcm);
         let lookup2 = Lookup2::new(&mut wcm);
 
-        LookupWitness { wcm, lookup1, lookup2, std_lib }
+        LookupWitness {
+            wcm,
+            lookup1,
+            lookup2,
+            std_lib,
+        }
     }
 }
 
-impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F>  where Standard: Distribution<F> {
+impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F>
+where
+    Standard: Distribution<F>,
+{
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         self.wcm.start_proof(pctx, ectx, sctx);
     }
@@ -44,7 +55,13 @@ impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F>  where Standard: Dist
         self.lookup2.execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
         self.wcm.calculate_witness(stage, pctx, ectx, sctx);
     }
 

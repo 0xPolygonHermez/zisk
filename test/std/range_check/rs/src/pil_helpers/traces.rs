@@ -2,15 +2,10 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::trace;
 
-
-
-trace!(RangeCheck10Row, RangeCheck10Trace<F> { 
- a1: F,  a2: F,  a3: F,  a4: F,  a5: F,  sel1: F,  sel2: F,  sel3: F, 
+trace!(RangeCheck10Row, RangeCheck10Trace<F> {
+ a1: F,  a2: F,  a3: F,  a4: F,  a5: F,  sel1: F,  sel2: F,  sel3: F,
 });
 
-
-
-trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> { 
- mul: [F; 4], 
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 4],
 });
-

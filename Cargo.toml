@@ -3,7 +3,8 @@ members = [
     "lib/std/rs",
     "test/std/range_check/rs",
     "test/std/lookup/rs", 
-    "test/std/connection/rs",
+    "test/std/connection/rs", 
+    "test/std/permutation/rs",
 ]
 
 resolver = "2"

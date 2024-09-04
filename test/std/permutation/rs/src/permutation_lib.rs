@@ -8,16 +8,16 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{Connection1, ConnectionNew, Pilout};
+use crate::{Permutation1, Permutation2, Pilout};
 
-pub struct ConnectionWitness<F> {
+pub struct PermutationWitness<F> {
     pub wcm: WitnessManager<F>,
-    pub connection1: Arc<Connection1<F>>,
-    connection_new: Arc<ConnectionNew<F>>,
+    pub permutation1: Arc<Permutation1<F>>,
+    pub permutation2: Arc<Permutation2<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> ConnectionWitness<F>
+impl<F: PrimeField> PermutationWitness<F>
 where
     Standard: Distribution<F>,
 {
@@ -25,19 +25,19 @@ where
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
-        let connection1 = Connection1::new(&mut wcm);
-        let connection_new = ConnectionNew::new(&mut wcm);
+        let permutation1 = Permutation1::new(&mut wcm);
+        let permutation2 = Permutation2::new(&mut wcm);
 
-        ConnectionWitness {
+        PermutationWitness {
             wcm,
-            connection1,
-            connection_new,
+            permutation1,
+            permutation2,
             std_lib,
         }
     }
 }
 
-impl<F: PrimeField> WitnessLibrary<F> for ConnectionWitness<F>
+impl<F: PrimeField> WitnessLibrary<F> for PermutationWitness<F>
 where
     Standard: Distribution<F>,
 {
@@ -51,8 +51,8 @@ where
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
-        self.connection1.execute(pctx, ectx, sctx);
-        self.connection_new.execute(pctx, ectx, sctx);
+        self.permutation1.execute(pctx, ectx, sctx);
+        self.permutation2.execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(
@@ -81,6 +81,6 @@ pub extern "Rust" fn init_library(
         .format_target(false)
         .filter_level(log::LevelFilter::Trace)
         .init();
-    let connection_witness = ConnectionWitness::new();
-    Ok(Box::new(connection_witness))
+    let permutation_witness = PermutationWitness::new();
+    Ok(Box::new(permutation_witness))
 }

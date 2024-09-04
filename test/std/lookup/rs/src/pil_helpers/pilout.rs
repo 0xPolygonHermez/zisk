@@ -8,13 +8,11 @@ pub const PILOUT_HASH: &[u8] = b"Lookup-hash";
 
 pub const LOOKUP_SUBPROOF_ID: &[usize] = &[0];
 
-
 //AIR CONSTANTS
 
 pub const LOOKUP_1_AIR_IDS: &[usize] = &[0];
 
 pub const LOOKUP_2_AIR_IDS: &[usize] = &[1];
-
 
 pub struct Pilout;
 
@@ -22,14 +20,11 @@ impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("Lookup", 2, PILOUT_HASH.to_vec());
 
-
         let air_group = pilout.add_air_group(Some("Lookup"));
-    
-        air_group.add_air(Some("Lookup1"), 1024);
-    
-        air_group.add_air(Some("Lookup2"), 4096);
-    
 
+        air_group.add_air(Some("Lookup1"), 1024);
+
+        air_group.add_air(Some("Lookup2"), 4096);
 
         pilout
     }

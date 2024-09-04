@@ -4,28 +4,24 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
-use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Connection10Trace, CONNECTION_1_AIR_IDS, CONNECTION_SUBPROOF_ID};
+use crate::{Permutation24Trace, PERMUTATION_2_AIR_IDS, PERMUTATION_SUBPROOF_ID};
 
-pub struct Connection1<F> {
+pub struct Permutation2<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Connection1<F>
-where
-    Standard: Distribution<F>,
-{
-    const MY_NAME: &'static str = "Connection";
+impl<F: PrimeField + Copy> Permutation2<F> {
+    const MY_NAME: &'static str = "Permutation";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let connection1 = Arc::new(Self {
+        let permutation2 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(connection1.clone(), Some(CONNECTION_1_AIR_IDS));
+        wcm.register_component(permutation2.clone(), Some(PERMUTATION_2_AIR_IDS));
 
-        connection1
+        permutation2
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -33,23 +29,20 @@ where
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Connection".into(), CONNECTION_1_AIR_IDS[0])
+            .get_buffer_info("Permutation".into(), PERMUTATION_2_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         pctx.add_air_instance_ctx(
-            CONNECTION_SUBPROOF_ID[0],
-            CONNECTION_1_AIR_IDS[0],
+            PERMUTATION_SUBPROOF_ID[0],
+            PERMUTATION_2_AIR_IDS[0],
             Some(buffer),
         );
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Connection1<F>
-where
-    Standard: Distribution<F>,
-{
+impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
     fn calculate_witness(
         &self,
         stage: u32,
@@ -62,9 +55,10 @@ where
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx
-            .pilout
-            .get_air(air_instance.air_group_id, air_instance.air_id);
+
+        let air_group_id = air_instance.air_group_id;
+        let air_id = air_instance.air_id;
+        let air = pctx.pilout.get_air(air_group_id, air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -77,22 +71,24 @@ where
             let (buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Connection".into(), CONNECTION_1_AIR_IDS[0])
+                .get_buffer_info("Permutation".into(), air_id)
                 .unwrap();
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
-            let num_rows = pctx
-                .pilout
-                .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_1_AIR_IDS[0])
-                .num_rows();
+            let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
             let mut trace =
-                Connection10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                Permutation24Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
+            // Proves
             for i in 0..num_rows {
-                trace[i].a = rng.gen();
-                trace[i].b = rng.gen();
-                trace[i].c = rng.gen();
+                trace[i].c1 = F::from_canonical_u8(200);
+                trace[i].d1 = F::from_canonical_u8(201);
+
+                trace[i].c2 = F::from_canonical_u8(100);
+                trace[i].d2 = F::from_canonical_u8(101);
+
+                trace[i].sel = F::from_bool(true);
             }
         }
 

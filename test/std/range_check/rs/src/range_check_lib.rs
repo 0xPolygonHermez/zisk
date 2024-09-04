@@ -1,14 +1,14 @@
-use std::{error::Error, sync::Arc, path::PathBuf};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
-use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::Std;
+use proofman::{WitnessLibrary, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{RangeCheck, Pilout};
+use crate::{Pilout, RangeCheck};
 
 pub struct RangeCheckWitness<F> {
     pub wcm: WitnessManager<F>,
@@ -16,18 +16,28 @@ pub struct RangeCheckWitness<F> {
     pub std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> RangeCheckWitness<F>  where Standard: Distribution<F> {
+impl<F: PrimeField> RangeCheckWitness<F>
+where
+    Standard: Distribution<F>,
+{
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
         let range_check = RangeCheck::new(&mut wcm, std_lib.clone());
 
-        RangeCheckWitness { wcm, range_check, std_lib }
+        RangeCheckWitness {
+            wcm,
+            range_check,
+            std_lib,
+        }
     }
 }
 
-impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>  where Standard: Distribution<F> {
+impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>
+where
+    Standard: Distribution<F>,
+{
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         self.wcm.start_proof(pctx, ectx, sctx);
     }
@@ -41,7 +51,13 @@ impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>  where Standard: 
         self.range_check.execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: &mut ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
         self.wcm.calculate_witness(stage, pctx, ectx, sctx);
     }
 
