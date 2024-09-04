@@ -351,26 +351,26 @@ pub fn print_by_name<F: Clone + Copy>(
     setup_ctx: &SetupCtx,
     air_instance_ctx: &mut AirInstanceCtx<F>,
     name: &str,
-    lengths: &mut Vec<u64>,
+    lengths: Option<Vec<u64>>,
     first_print_value: u64,
     last_print_value: u64,
-    return_values: bool,
 ) -> Option<HintFieldValue<F>> {
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
     let params = air_instance_ctx.params.unwrap();
 
-    let lengths_ptr = lengths.as_mut_ptr();
+    let lengths_ptr = lengths.as_ref().map(|lengths| lengths.clone().as_mut_ptr()).unwrap_or(std::ptr::null_mut());
 
-    let raw_ptr = print_by_name_c(setup.p_expressions, params, name, lengths_ptr, first_print_value, last_print_value, return_values);
+    // TODO: CHECK WHAT IS WRONG WITH RETURN VALUES
+    let _raw_ptr = print_by_name_c(setup.p_expressions, params, name, lengths_ptr, first_print_value, last_print_value, false);
 
-    if return_values {
-        let field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
+    // if return_values {
+    //     let field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
-        Some(HintCol::from_hint_field(field.as_ref()))
-    } else {
+    //     Some(HintCol::from_hint_field(field.as_ref()))
+    // } else {
         None
-    }
+    // }
 }
 
 
