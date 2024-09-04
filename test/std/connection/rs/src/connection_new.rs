@@ -86,9 +86,12 @@ where
                 .pilout
                 .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_NEW_AIR_IDS[0])
                 .num_rows();
-            let mut trace =
-                ConnectionNew1Trace::map_buffer(buffer.as_mut_slice(),  num_rows, offsets[0] as usize)
-                    .unwrap();
+            let mut trace = ConnectionNew1Trace::map_buffer(
+                buffer.as_mut_slice(),
+                num_rows,
+                offsets[0] as usize,
+            )
+            .unwrap();
 
             let mut frame = [0; 5];
             let mut conn_len = [0; 5];

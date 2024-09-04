@@ -8,12 +8,14 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{Lookup1, Lookup2, Pilout};
+use crate::{Lookup0, Lookup1, Lookup2, Lookup3, Pilout};
 
 pub struct LookupWitness<F> {
     pub wcm: WitnessManager<F>,
+    pub lookup0: Arc<Lookup0<F>>,
     pub lookup1: Arc<Lookup1<F>>,
     pub lookup2: Arc<Lookup2<F>>,
+    pub lookup3: Arc<Lookup3<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
@@ -25,13 +27,17 @@ where
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
+        let lookup0 = Lookup0::new(&mut wcm);
         let lookup1 = Lookup1::new(&mut wcm);
         let lookup2 = Lookup2::new(&mut wcm);
+        let lookup3 = Lookup3::new(&mut wcm);
 
         LookupWitness {
             wcm,
+            lookup0,
             lookup1,
             lookup2,
+            lookup3,
             std_lib,
         }
     }
@@ -51,8 +57,10 @@ where
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
+        self.lookup0.execute(pctx, ectx, sctx);
         self.lookup1.execute(pctx, ectx, sctx);
         self.lookup2.execute(pctx, ectx, sctx);
+        self.lookup3.execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(

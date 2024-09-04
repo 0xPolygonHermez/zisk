@@ -75,8 +75,12 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
             let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
-            let mut trace =
-                Permutation24Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Permutation24Trace::map_buffer(
+                buffer.as_mut_slice(),
+                num_rows,
+                offsets[0] as usize,
+            )
+            .unwrap();
 
             // Proves
             for i in 0..num_rows {

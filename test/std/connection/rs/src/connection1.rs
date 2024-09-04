@@ -87,7 +87,8 @@ where
                 .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Connection10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                Connection10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             for i in 0..num_rows {
                 trace[i].a = rng.gen();

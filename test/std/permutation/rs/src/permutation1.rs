@@ -101,8 +101,12 @@ where
             let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
-            let mut trace =
-                Permutation10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Permutation10Trace::map_buffer(
+                buffer.as_mut_slice(),
+                num_rows,
+                offsets[0] as usize,
+            )
+            .unwrap();
 
             // Assumes
             for i in 0..num_rows {

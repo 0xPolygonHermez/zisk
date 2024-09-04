@@ -1,15 +1,11 @@
-use core::panic;
 use std::sync::Arc;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use pil_std_lib::Std;
 
 use p3_field::PrimeField;
-use rand::Rng;
-use num_bigint::BigInt;
 
-use crate::{Lookup00Trace, LOOKUP_SUBPROOF_ID, LOOKUP_0_AIR_IDS};
+use crate::{Lookup00Trace, LOOKUP_0_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
 pub struct Lookup0<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -38,11 +34,7 @@ impl<F: PrimeField + Copy> Lookup0<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(
-            LOOKUP_SUBPROOF_ID[0],
-            LOOKUP_0_AIR_IDS[0],
-            Some(buffer),
-        );
+        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0], Some(buffer));
     }
 }
 
@@ -59,7 +51,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+        let air = pctx
+            .pilout
+            .get_air(air_instance.air_group_id, air_instance.air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -77,18 +71,23 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
 
             let buffer = air_instance.buffer.as_mut().unwrap();
 
-            let num_rows = pctx.pilout.get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup00Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let num_rows = pctx
+                .pilout
+                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0])
+                .num_rows();
+            let mut trace =
+                Lookup00Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
-            let num_lookups = trace[i].sel.len();
+            let num_lookups = trace[0].sel.len();
 
             for i in 0..num_rows {
                 for j in 0..num_lookups {
-                    trace[i].f[2*j] = F::from_canonical_usize(i);
-                    trace[i].f[2*j+1] = F::from_canonical_usize(i);
+                    trace[i].f[2 * j] = F::from_canonical_usize(i);
+                    trace[i].f[2 * j + 1] = F::from_canonical_usize(i);
                     trace[i].sel[j] = F::from_bool(true);
-                    trace[i].t[2*j] = F::from_canonical_usize(i);
-                    trace[i].t[2*j+1] = F::from_canonical_usize(i);
+                    trace[i].t[2 * j] = F::from_canonical_usize(i);
+                    trace[i].t[2 * j + 1] = F::from_canonical_usize(i);
                     trace[i].mul[j] = F::from_canonical_usize(2);
                 }
             }

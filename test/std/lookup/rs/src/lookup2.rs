@@ -6,7 +6,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup21Trace, LOOKUP_2_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Lookup22Trace, LOOKUP_2_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
 pub struct Lookup2<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -70,7 +70,7 @@ where
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Lookup".into(), LOOKUP_2_AIR_IDS[0])
@@ -83,13 +83,35 @@ where
                 .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                Lookup22Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             for i in 0..num_rows {
+                // Inner lookups
                 trace[i].a1 = rng.gen();
                 trace[i].b1 = rng.gen();
                 trace[i].c1 = trace[i].a1;
                 trace[i].d1 = trace[i].b1;
+
+                trace[i].a3 = F::from_canonical_usize(i);
+                trace[i].b3 = F::from_canonical_usize(i);
+                trace[i].c2 = trace[i].a3;
+                trace[i].d2 = trace[i].b3;
+                let selected = rng.gen_bool(0.5);
+                trace[i].sel1 = F::from_bool(selected);
+                if selected {
+                    trace[i].mul = F::from_canonical_usize(1);
+                } else {
+                    trace[i].mul = F::from_canonical_usize(0);
+                }
+
+                // Outer lookups
+                trace[i].a2 = F::from_canonical_usize(i);
+                trace[i].b2 = F::from_canonical_usize(i);
+
+                trace[i].a4 = F::from_canonical_usize(i);
+                trace[i].b4 = F::from_canonical_usize(i);
+                trace[i].sel2 = F::from_bool(true);
             }
         }
 

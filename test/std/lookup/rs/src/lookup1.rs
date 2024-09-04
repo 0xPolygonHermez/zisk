@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{num, sync::Arc};
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
@@ -6,7 +6,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup10Trace, LOOKUP_1_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Lookup11Trace, LOOKUP_1_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
 pub struct Lookup1<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -83,15 +83,18 @@ where
                 .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                Lookup11Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
+
+            let num_lookups = trace[0].sel.len();
 
             for i in 0..num_rows {
-                trace[i].f[0] = rng.gen();
-                trace[i].f[1] = trace[i].f[0];
-                trace[i].sel[0] = F::from_bool(true);
-                trace[i].sel[1] = F::from_bool(true);
+                for j in 0..num_lookups {
+                    trace[i].f[j] = F::from_canonical_usize(i);
+                    trace[i].sel[j] = F::from_bool(true);
+                }
                 trace[i].t = trace[i].f[0];
-                trace[i].mul = F::from_canonical_usize(2);
+                trace[i].mul = F::from_canonical_usize(num_lookups);
             }
         }
 

@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
+use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use pil_std_lib::Std;
 
+use num_bigint::BigInt;
 use p3_field::PrimeField;
 use rand::Rng;
-use num_bigint::BigInt;
 
-use crate::{Lookup31Trace, LOOKUP_SUBPROOF_ID, LOOKUP_3_AIR_IDS};
+use crate::{Lookup33Trace, LOOKUP_3_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
 pub struct Lookup3<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -37,11 +37,7 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(
-            LOOKUP_SUBPROOF_ID[0],
-            LOOKUP_3_AIR_IDS[0],
-            Some(buffer),
-        );
+        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0], Some(buffer));
     }
 }
 
@@ -58,7 +54,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx.pilout.get_air(air_instance.air_group_id, air_instance.air_id);
+        let air = pctx
+            .pilout
+            .get_air(air_instance.air_group_id, air_instance.air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -76,15 +74,30 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
 
             let buffer = air_instance.buffer.as_mut().unwrap();
 
-            let num_rows = pctx.pilout.get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup31Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let num_rows = pctx
+                .pilout
+                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0])
+                .num_rows();
+            let mut trace =
+                Lookup33Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);
                 trace[i].d1 = F::from_canonical_usize(i);
-                trace[i].c2 = F::from_canonical_usize(i+1);
-                trace[i].d2 = F::from_canonical_usize(i+1);
-                trace[i].mul = F::from_canonical_usize(2);
+                trace[i].mul1 = if i >= 2usize.pow(12) {
+                    F::from_canonical_usize(0)
+                } else {
+                    F::from_canonical_usize(1)
+                };
+
+                trace[i].c2 = F::from_canonical_usize(i);
+                trace[i].d2 = F::from_canonical_usize(i);
+                trace[i].mul2 = if i >= 2usize.pow(12) {
+                    F::from_canonical_usize(0)
+                } else {
+                    F::from_canonical_usize(1)
+                };
             }
         }
 
