@@ -92,7 +92,7 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
                     _out = a & P2_7 ? 0xFF00000000 << (8*(offset - 4)) : 0;
                 }
 
-            case 6: // EXT
+            case 0x27: // EXT
                 _out = (a & 0x80) ? 0xFF : 0x00;
                 _out = _out << 8*offset;
 

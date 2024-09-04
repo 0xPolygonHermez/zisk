@@ -23,7 +23,7 @@ require "std_lookup.pil"
     ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
 
     List 32-bit operations:
-     name   │  opcode  │  mOpcode │ carry │ use_last_carry │ NOTES
+     name   │    op    │   m_op   │ carry │ use_last_carry │ NOTES
     ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
      ADD_W  │   0x12   │   0x02   │   X   │                │
      SUB_W  │   0x13   │   0x03   │   X   │                │
@@ -156,5 +156,5 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     expr op = m_op + 16 * mode32;
 
     col witness multiplicity;
-    lookup_proves(operation_bus_id, [m_op, ...a, ...b, ...c, cout], mul: multiplicity);
+    lookup_proves(operation_bus_id, [m_op, ...a, ...b, ...c, cout], multiplicity);
 }
