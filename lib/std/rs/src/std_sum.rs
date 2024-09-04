@@ -5,7 +5,9 @@ use std::{
 
 use p3_field::Field;
 use proofman_common::{ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
+use proofman_hints::{
+    get_hint_field, get_hint_ids_by_name, print_expression, set_hint_field, set_hint_field_val,
+};
 
 use crate::Decider;
 
@@ -83,19 +85,20 @@ impl<F: Copy + Debug + Field> StdSum<F> {
 
                         // Populate the im columns
                         for hint in im_hints {
-                            // HECTOR: Check the correctness of the last flag parameters
                             let mut im = get_hint_field::<F>(
                                 sctx,
                                 air_instance,
                                 *hint as usize,
                                 "reference",
                                 true,
+                                false,
                             );
                             let num = get_hint_field::<F>(
                                 sctx,
                                 air_instance,
                                 *hint as usize,
                                 "numerator",
+                                false,
                                 false,
                             );
                             let den = get_hint_field::<F>(
@@ -104,13 +107,8 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 *hint as usize,
                                 "denominator",
                                 false,
+                                false,
                             );
-                            println!("num[0] = {:?}", num.get(0));
-                            println!("num[1] = {:?}", num.get(1));
-                            println!("den[0] = {:?}", den.get(0));
-                            println!("den[1] = {:?}", den.get(1));
-                            println!("num[0]/den[0] = {:?}", num.get(0) / den.get(0));
-                            println!("num[1]/den[1] = {:?}", num.get(1) / den.get(1));
 
                             for i in 0..num_rows {
                                 // TODO: We should perform the following division in batch using div_lib
@@ -130,10 +128,22 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         };
 
                         // Use the hint to populate the gsum column
-                        let mut gsum =
-                            get_hint_field::<F>(sctx, air_instance, gsum_hint, "reference", true);
-                        let expr =
-                            get_hint_field::<F>(sctx, air_instance, gsum_hint, "expression", false);
+                        let mut gsum = get_hint_field::<F>(
+                            sctx,
+                            air_instance,
+                            gsum_hint,
+                            "reference",
+                            true,
+                            false,
+                        );
+                        let expr = get_hint_field::<F>(
+                            sctx,
+                            air_instance,
+                            gsum_hint,
+                            "expression",
+                            false,
+                            false,
+                        );
 
                         gsum.set(0, expr.get(0));
                         for i in 1..num_rows {

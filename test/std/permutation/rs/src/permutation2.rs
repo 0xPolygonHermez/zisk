@@ -51,8 +51,6 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        let mut rng = rand::thread_rng();
-
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 

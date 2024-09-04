@@ -89,15 +89,28 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         };
 
                         // Use the hint to populate the gprod column
-                        let mut gprod =
-                            get_hint_field::<F>(sctx, air_instance, gprod_hint, "reference", true);
-                        let num =
-                            get_hint_field::<F>(sctx, air_instance, gprod_hint, "numerator", false);
+                        let mut gprod = get_hint_field::<F>(
+                            sctx,
+                            air_instance,
+                            gprod_hint,
+                            "reference",
+                            true,
+                            false,
+                        );
+                        let num = get_hint_field::<F>(
+                            sctx,
+                            air_instance,
+                            gprod_hint,
+                            "numerator",
+                            false,
+                            false,
+                        );
                         let den = get_hint_field::<F>(
                             sctx,
                             air_instance,
                             gprod_hint,
                             "denominator",
+                            false,
                             false,
                         );
 

@@ -9,7 +9,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 
 use proofman_common::{trace, AirInstanceCtx, ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, HintFieldValue};
+use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldValue};
 
 use crate::Decider;
 
@@ -52,7 +52,7 @@ pub struct RCAirData {
     air_id: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum StdRangeCheckType {
     Valid(RangeCheckAir),
     U8AirDouble,
@@ -65,7 +65,7 @@ const STD_RANGE_CHECK_AIR_NAMES: [&str; STD_RANGE_CHECK_VARIANTS] =
 
 type Range = (BigInt, BigInt); // (min, max)
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct StdRangeItem {
     rc_type: StdRangeCheckType,
     range: Range,
@@ -75,7 +75,7 @@ pub struct StdRangeCheck<F> {
     air_data: Option<Vec<RCAirData>>,
     ranges: Mutex<Vec<StdRangeItem>>,
     inputs: Mutex<[HashMap<BigInt, F>; STD_RANGE_CHECK_VARIANTS - 1]>, // value -> multiplicity
-    inputs_specified: Mutex<HashMap<Range, HashMap<BigInt, F>>>, // range -> value -> multiplicity
+    inputs_specified: Mutex<HashMap<Range, HashMap<BigInt, F>>>,         // range -> value -> multiplicity
 }
 
 impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
@@ -91,7 +91,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let rc_hints = get_hint_ids_by_name(setup.p_expressions, "range_check");
                 if !rc_hints.is_empty() {
                     // Register the ranges for the range check
-                    // self.register_ranges(sctx, rc_hints);
+                    self.register_ranges(sctx, air_group_id, air_id, rc_hints);
                 }
             });
         });
@@ -172,15 +172,39 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
     pub fn register_ranges(
         &self,
-        air_instance: &mut AirInstanceCtx<F>,
         sctx: &SetupCtx,
+        air_group_id: usize,
+        air_id: usize,
         rc_hints: Vec<u64>,
     ) {
         for hint in rc_hints {
-            let predefined =
-                get_hint_field::<F>(sctx, air_instance, hint as usize, "predefined", false);
-            let min = get_hint_field::<F>(sctx, air_instance, hint as usize, "min", false);
-            let max = get_hint_field::<F>(sctx, air_instance, hint as usize, "max", false);
+            let predefined = get_hint_field_constant::<F>(
+                sctx,
+                air_group_id,
+                air_id,
+                hint as usize,
+                "predefined",
+                false,
+                false,
+            );
+            let min = get_hint_field_constant::<F>(
+                sctx,
+                air_group_id,
+                air_id,
+                hint as usize,
+                "min",
+                false,
+                false,
+            );
+            let max = get_hint_field_constant::<F>(
+                sctx,
+                air_group_id,
+                air_id,
+                hint as usize,
+                "max",
+                false,
+                false,
+            );
 
             let HintFieldValue::Field(predefined) = predefined else {
                 log::error!("Predefined hint must be a field element");
@@ -261,6 +285,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
                 rc_type: r#type,
                 range,
             });
+
+            println!("Inputs: {:?}", self.inputs_specified.lock().unwrap());
         }
     }
 
@@ -285,7 +311,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             (min, max)
         };
 
-        // If the range was not part of the setup, error
+        // If the range was not computed in the setup phase, error
         let ranges = self.ranges.lock().unwrap();
         let range_check = ranges
             .iter()
@@ -364,6 +390,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
             let mut inputs_specified = self.inputs_specified.lock().unwrap();
             let range = inputs_specified.entry(range).or_insert(HashMap::new());
+            // let mut range = inputs_specified.iter_mut().find(|r| r.0 == range).or_else(|| {
+            //     inputs_specified.push((range.clone(), HashMap::new()));
+            //     inputs_specified.last_mut()
+            // });
 
             if value.is_none() {
                 return;
@@ -374,6 +404,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
             // Update the value
             *range.entry(value).or_insert(F::zero()) += F::one();
         }
+
+        println!("Inputs: {:?}", self.inputs.lock().unwrap());
+        println!("Inputs specified: {:?}", self.inputs_specified.lock().unwrap());
+        panic!();
     }
 
     pub fn calculate_witness(
