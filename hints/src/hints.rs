@@ -238,13 +238,14 @@ pub fn get_hint_field<F: Clone + Copy>(
     hint_id: usize,
     hint_field_name: &str,
     dest: bool,
+    print_expression: bool,
 ) -> HintFieldValue<F> {
     
     let params = air_instance_ctx.params.unwrap();
 
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
-    let raw_ptr = get_hint_field_c(setup.p_expressions, params, hint_id as u64, hint_field_name, dest);
+    let raw_ptr = get_hint_field_c(setup.p_expressions, params, hint_id as u64, hint_field_name, dest, print_expression);
     
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
@@ -295,7 +296,6 @@ pub fn print_expression<F: Clone + Copy + Debug>(
     setup_ctx: &SetupCtx,
     air_instance_ctx: &mut AirInstanceCtx<F>,
     expr: &HintFieldValue<F>,
-    num_rows: u64,
     first_print_value: u64,
     last_print_value: u64,
 ) {    
@@ -303,10 +303,10 @@ pub fn print_expression<F: Clone + Copy + Debug>(
     
     match expr {
         HintFieldValue::Column(vec) => {
-            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, num_rows, 1, first_print_value, last_print_value);
+            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, 1, first_print_value, last_print_value);
         } 
         HintFieldValue::ColumnExtended(vec) => {
-            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, num_rows, 3, first_print_value, last_print_value);
+            print_expression_c(setup.p_expressions, vec.as_ptr() as *mut c_void, 3, first_print_value, last_print_value);
         }
         HintFieldValue::Field(val) => {
             println!("Field value: {:?}", val);
@@ -326,14 +326,22 @@ pub fn print_by_name<F: Clone + Copy>(
     first_print_value: u64,
     last_print_value: u64,
     return_values: bool,
-) -> *mut c_void {
+) -> Option<HintFieldValue<F>> {
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
     let params = air_instance_ctx.params.unwrap();
 
     let lengths_ptr = lengths.as_mut_ptr();
 
-    print_by_name_c(setup.p_expressions, params, name, lengths_ptr, first_print_value, last_print_value, return_values)
+    let raw_ptr = print_by_name_c(setup.p_expressions, params, name, lengths_ptr, first_print_value, last_print_value, return_values);
+
+    if return_values {
+        let field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
+
+        Some(HintCol::from_hint_field(field.as_ref()))
+    } else {
+        None
+    }
 }
 
 

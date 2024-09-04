@@ -175,9 +175,9 @@ pub fn get_hint_ids_by_name_c(p_expressions_ctx: *mut c_void, hint_name: &str) -
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool) -> *mut c_void {
+pub fn get_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool, print_expression: bool) -> *mut c_void {
     let field_name = CString::new(hint_field_name).unwrap();
-    unsafe { get_hint_field(p_expressions_ctx, p_params, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest) }
+    unsafe { get_hint_field(p_expressions_ctx, p_params, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest, print_expression) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -383,9 +383,9 @@ pub fn print_by_name_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, na
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn print_expression_c(p_expressions_ctx: *mut c_void, pol: *mut c_void, deg: u64, dim: u64, first_print_value: u64, last_print_value: u64) {
+pub fn print_expression_c(p_expressions_ctx: *mut c_void, pol: *mut c_void, dim: u64, first_print_value: u64, last_print_value: u64) {
     unsafe {
-        print_expression(p_expressions_ctx, pol, deg, dim, first_print_value, last_print_value);
+        print_expression(p_expressions_ctx, pol, dim, first_print_value, last_print_value);
     }
 }
 
@@ -519,7 +519,7 @@ pub fn get_hint_ids_by_name_c(_p_expressions_ctx: *mut c_void, _hint_name: &str)
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _hint_id: u64, _hint_field_name: &str, _dest: bool) -> *mut c_void {
+pub fn get_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _hint_id: u64, _hint_field_name: &str, _dest: bool, _print_expression: bool) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_field: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -718,6 +718,6 @@ pub fn print_by_name_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, na
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn print_expression_c(_p_expressions_ctx: *mut c_void, _pol: *mut c_void, _deg: u64, _dim: u64, _first_print_value: u64, _last_print_value: u64) {
+pub fn print_expression_c(_p_expressions_ctx: *mut c_void, _pol: *mut c_void, _dim: u64, _first_print_value: u64, _last_print_value: u64) {
     trace!("{}: ··· {}", "ffi     ", "print_expression_c: This is a mock call because there is no linked library");
 }

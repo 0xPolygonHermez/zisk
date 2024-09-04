@@ -128,13 +128,14 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcb"]
+    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcbb"]
     pub fn get_hint_field(
         pExpressionsCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
         dest: bool,
+        print_expression: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -344,11 +345,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z16print_expressionPvS_mmmm"]
+    #[link_name = "\u{1}_Z16print_expressionPvS_mmm"]
     pub fn print_expression(
         pExpressionCtx: *mut ::std::os::raw::c_void,
         pol: *mut ::std::os::raw::c_void,
-        deg: u64,
         dim: u64,
         first_value: u64,
         last_value: u64,
