@@ -1,0 +1,163 @@
+require "std_permutation.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+
+// Coprocessor in charge of performing standard RISCV binary operations
+
+/*
+List:
+    ┼────────┼────────┼──────────┼──────────┼
+    │  name  │  bits  │  opcode  │  mOpcode │
+    ┼────────┼────────┼──────────┼──────────┼
+    │  SLL   │   64   │   0x30   │   0x00   │
+    │  SRL   │   64   │   0x41   │   0x01   │
+    │  SRA   │   64   │   0x40   │   0x02   │
+    │  SLL_W │   32   │   0x34   │   0x00   │
+    │  SRL_W │   32   │   0x45   │   0x01   │
+    │  SRA_W │   32   │   0x44   │   0x02   │
+    │  SE_B  │   32   │   0x02   │   0x03   │
+    │  SE_H  │   32   │   0x03   │   0x04   │
+    │  SE_W  │   32   │   0x04   │   0x05   │
+    ┼────────┼────────┼──────────┼──────────┼
+
+Examples:
+=======================================
+
+SLL 28
+x    in1[x]    out[x][0]     out[x][1]
+---------------------------------------
+0    0x11      0x10000000    0x00000001
+1    0x22      0x00000000    0x00000220
+2    0x33      0x00000000    0x00033000
+3    0x44      0x00000000    0x04400000
+4    0x55      0x00000000    0x50000000
+5    0x66      0x00000000    0x00000000
+6    0x77      0x00000000    0x00000000
+7    0x88      0x00000000    0x00000000
+---------------------------------------
+Result:        0x10000000    0x54433221
+
+SLL_W 8
+x    in1[x]    out[x][0]     out[x][1]
+---------------------------------------
+0    0x11      0x00001100    0x00000000
+1    0x22      0x00220000    0x00000000
+2    0x33      0x33000000    0x00000000
+3    0x44      0x00000000    0x00000000 (since 0x33 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
+4    0x55      0x00000000    0x00000000 (bytes of in1 are ignored from here)
+5    0x66      0x00000000    0x00000000
+6    0x77      0x00000000    0x00000000
+7    0x88      0x00000000    0x00000000
+---------------------------------------
+Result:        0x33221100    0x00000000
+
+SE_H
+x    in2[x]    out[x][0]     out[x][1]
+---------------------------------------
+0    0xbc      0x000000bc    0x00000000
+1    0x8a      0x00008a00    0x00000000 (since 0x8a & 0x80 = 1, we stop here and set the remaining bytes to 0xFF)
+2    0x33      0x00FF0000    0x00000000 (bytes of in2 are ignored from here)
+3    0x44      0xFF000000    0x00000000
+4    0x55      0x00000000    0x000000FF
+5    0x66      0x00000000    0x0000FF00
+6    0x77      0x00000000    0x00FF0000
+7    0x88      0x00000000    0xFF000000
+---------------------------------------
+Result:        0xFFFF8abc    0xFFFFFFFF
+*/
+
+const int BINARY_EXTENSION_ID = 21;
+
+airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BINARY_EXTENSION_ID) {
+    const int bits = 64;
+    const int bytes = bits / 8;
+
+    col witness op;
+    col witness mode8;
+    col witness mode16;
+    col witness mode32;      // if mode32, in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1]
+    col witness in1[bytes];
+    col witness in2_low;
+    col witness out[bytes][2];
+
+    mode8 * (1 - mode8) === 0;
+    mode16 * (1 - mode16) === 0;
+    mode32 * (1 - mode32) === 0;
+    (mode8 + mode16 + mode32) * (mode8 + mode16 + mode32 - 1) === 0;
+
+    // Associate the mode with its possible operations
+    mode8 * (0x02 - op) === 0;
+    mode16 * (0x03 - op) === 0;
+    mode32 * (0x34 - op) * (0x45 - op) * (0x44 - op) * (0x04 - op) === 0;
+
+    /*
+        opid    j    in1                 in2     out0    out1
+        ─────────────────────────────────────────────────────────────
+        op      0    in1_0               in2     out0_0  out1_0
+        op      1    in1_1|out0_0        in2|0   out0_1  out1_1
+        op      2    in1_2|out0_(0/1)    in2|0   out0_2  out1_2
+        op      3    in1_3|out0_(0/1)    in2|0   out0_3  out1_3
+        op|EXT  4    in1_4|out0_(0/1/3)  in2|0   out0_4  out1_4
+        op|EXT  5    in1_5|out0_(0/1/3)  in2|0   out0_5  out1_5
+        op|EXT  6    in1_6|out0_(0/1/3)  in2|0   out0_6  out1_6
+        op|EXT  7    in1_7|out0_(0/1/3)  in2|0   out0_7  out1_7
+    */
+
+    lookup_assumes(BINARY_EXTENSION_TABLE_ID, cols: [op, 0, in1[0], in2_low, out[0][0], out[0][1]]);
+    for (int j = 1; j < bytes; j++) {
+        expr _op = op;
+        expr _in1 = 0;
+        expr _in2 = 0;
+        if (j == 1)
+        {
+            _in1 = (1-mode8) * (in1[j] - out[0][0]) + out[0][0];
+            _in2 = (1-mode8) * in2_low;
+        }
+        else if (j < bytes/2 - 1)
+        {
+            _in1 = mode8*out[0][0] + mode16*out[1][0] + (1-mode8)*(1-mode16)*in1[j];
+            _in2 = (1-mode8)*(1-mode16)*in2_low;
+        }
+        else
+        {
+            _op = (1-mode32) * (op - EXT_OP) + EXT_OP;
+            _in1 = mode8*out[0][0] + mode16*out[1][0] + mode32*(out[bytes/2-1][0]) + (1-mode8)*(1-mode16)*(1-mode32)*in1[j];
+            _in2 = (1-mode8)*(1-mode16)*(1-mode32)*in2_low;
+        }
+
+        lookup_assumes(BINARY_EXTENSION_TABLE_ID, cols: [_op, j, _in1, _in2, out[j][0], out[j][1]]);
+    }
+
+    // Relation with main
+    col witness free_in2[4]; // 16-bit chunks except the first one that is of 10 bits
+
+    expr in2[2];
+    in2[0] = in2_low + mode32*(free_in2[0]*2**5 - free_in2[0]*2**6) + free_in2[0]*2**6 +  free_in2[1]*2**16;
+    in2[1] = free_in2[2] + free_in2[3]* 2**16;
+
+    // The table only guarantees that in2_low∊[0,2^6-1], but if mode32 is set, then we have to enforce in2_low∊[0,2^5-1]
+    range_check(sel: mode32, colu: in2_low, min: 0, max: 2**5-1);
+
+    multi_range_check(range_sel: mode32, colu: free_in2[0], min1: 0, max1: 2**11-1, min2: 0, max2: 2**10-1);
+    range_check(colu: free_in2[1], min: 0, max: 2**16-1);
+    range_check(colu: free_in2[2], min: 0, max: 2**16-1);
+    range_check(colu: free_in2[3], min: 0, max: 2**16-1);
+
+    col witness multiplicity;
+
+    lookup_proves(
+        opid: operation_bus_id,
+        mul: multiplicity,
+        cols:
+        [
+            op,     // TODO: use correct opcode
+            in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24,
+            in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24,
+            in2[0],
+            in2[1],
+            out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
+            out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
+            0
+        ]
+    )
+}

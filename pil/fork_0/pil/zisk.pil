@@ -1,4 +1,31 @@
-require "../../../state-machines/main/pil/main.pil"
+require "constants.pil"
+require "std_permutation.pil"
+require "main/pil/main.pil"
+require "binary/pil/binary.pil"
+require "binary/pil/binary_table.pil"
+require "binary/pil/binary_extension.pil"
+require "binary/pil/binary_extension_table.pil"
+
+const int OPERATION_BUS_ID = 5000;
 airgroup Main {
-    Main(N: 2**21, RC: 2);
+    Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
 }
+
+airgroup Binary {
+    Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+}
+
+/*
+airgroup BinaryTable {
+    BinaryTable(N: 2**21);
+}
+*/
+
+airgroup BinaryExtension {
+    BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+}
+/*
+airgroup BinaryExtensionTable {
+    BinaryExtensionTable(N: 2**21);
+}
+*/
