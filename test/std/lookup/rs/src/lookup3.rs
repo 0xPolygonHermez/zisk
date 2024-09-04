@@ -74,10 +74,10 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
                 .get_buffer_info("Lookup".into(), LOOKUP_3_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx.pilout.get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup31Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Lookup31Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);

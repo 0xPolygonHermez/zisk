@@ -70,20 +70,20 @@ where
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Lookup".into(), LOOKUP_1_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
                 .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                Lookup10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].f[0] = rng.gen();

@@ -74,20 +74,20 @@ where
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Connection".into(), CONNECTION_NEW_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
                 .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_NEW_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                ConnectionNew1Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)
+                ConnectionNew1Trace::map_buffer(buffer.as_mut_slice(),  num_rows, offsets[0] as usize)
                     .unwrap();
 
             let mut frame = [0; 5];

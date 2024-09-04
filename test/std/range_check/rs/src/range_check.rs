@@ -80,14 +80,14 @@ where
                 .get_buffer_info("RangeCheck1".into(), RANGE_CHECK_1_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
                 .get_air(RANGE_CHECK_1_SUBPROOF_ID[0], RANGE_CHECK_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                RangeCheck10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                RangeCheck10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));

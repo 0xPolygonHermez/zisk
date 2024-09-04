@@ -76,14 +76,14 @@ where
                 .get_buffer_info("Lookup".into(), LOOKUP_2_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
                 .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup21Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                Lookup21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a1 = rng.gen();

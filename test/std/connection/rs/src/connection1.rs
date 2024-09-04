@@ -74,20 +74,20 @@ where
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Connection".into(), CONNECTION_1_AIR_IDS[0])
                 .unwrap();
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
                 .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Connection10Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                Connection10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a = rng.gen();
