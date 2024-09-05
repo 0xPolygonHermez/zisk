@@ -10,7 +10,7 @@ members = [
     "setup",
     "transcript",
     "util",    
-    "examples/fibonacci-square",
+    # "examples/fibonacci-square",
 ]
 
 resolver = "2"
