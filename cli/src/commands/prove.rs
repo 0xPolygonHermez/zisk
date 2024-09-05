@@ -79,7 +79,7 @@ impl ProveCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                false,
+                0,
             )?,
         };
 

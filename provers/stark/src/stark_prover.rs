@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use std::any::type_name;
 
-use proofman_common::{BufferAllocator, GlobalInfo, ProofCtx, Prover, ProverInfo, ProverStatus, SetupCtx};
+use proofman_common::{BufferAllocator, ConstraintInfo, ConstraintsResults, GlobalInfo, ProofCtx, Prover, ProverInfo, ProverStatus, SetupCtx};
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
@@ -172,22 +172,19 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         self.stark_info.stark_struct.steps.len() as u32 + 3 //evals + fri_pol + fri_folding (setps) + fri_queries
     }
 
-    fn verify_constraints(&self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> Vec<u64> {
-        debug!("{}: ··· Verifying constraints for stage {}", Self::MY_NAME, stage_id);
-
+    fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo> {
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
 
-        let raw_ptr = verify_constraints_c(self.p_expressions, air_instance_ctx.params.unwrap(), stage_id as u64);
+        let raw_ptr = verify_constraints_c(self.p_expressions, air_instance_ctx.params.unwrap());
 
-        let invalid_constraints_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
-
-        if invalid_constraints_result.n_elements == 0 {
-            return Vec::new();
-        }
-
-        let slice = unsafe { std::slice::from_raw_parts(invalid_constraints_result.ids, invalid_constraints_result.n_elements as usize) };
-
-        slice.to_vec()
+        let constraints_result = unsafe { Box::from_raw(raw_ptr as *mut ConstraintsResults) };
+        
+        unsafe {
+            std::slice::from_raw_parts(
+                constraints_result.constraints_info,
+                constraints_result.n_constraints as usize,
+            )
+        }.to_vec()
     }
 
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
@@ -270,7 +267,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             };
 
             treesGL_get_root_c(p_stark, tree_index, root.as_ptr() as *mut c_void);
-            println!("Root is {:?}", root);
 
             transcript.add_elements(root.as_ptr() as *mut c_void, self.n_field_elements);
         } else if stage == (Self::num_stages(self) + 2) as u64 {

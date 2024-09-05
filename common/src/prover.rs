@@ -1,4 +1,5 @@
 use std::os::raw::c_void;
+use std::os::raw::c_char;
 
 use transcript::FFITranscript;
 
@@ -15,6 +16,33 @@ pub struct ProverInfo {
     pub air_group_id: usize,
     pub air_id: usize,
     pub prover_idx: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct ConstraintRowInfo {
+   pub row: u64,
+   pub dim: u64,
+   pub value: [u64; 3usize],
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct ConstraintInfo {
+   pub id: u64,
+   pub stage: u64,
+   pub im_pol: bool,
+   pub line: *const c_char,
+   pub n_rows: u64,
+   pub rows: [ConstraintRowInfo; 10usize],
+}
+
+#[derive(Debug, Clone, Copy)]
+
+#[repr(C)]
+pub struct ConstraintsResults {
+    pub n_constraints: u64,
+    pub constraints_info: *mut ConstraintInfo,
 }
 
 pub trait Prover<F> {
@@ -39,5 +67,5 @@ pub trait Prover<F> {
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
     fn add_publics_to_transcript(&self, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
 
-    fn verify_constraints(&self, stage: u32, proof_ctx: &mut ProofCtx<F>) -> Vec<u64>;
+    fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo>;
 }

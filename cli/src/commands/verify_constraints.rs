@@ -59,6 +59,13 @@ pub struct VerifyConstraintsCmd {
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
+
+    /// Extended flag
+    #[clap(short = 'e', long)]
+    pub extended: bool,
+
+    #[clap(short = 'E', long)]
+    pub extended_im_pols: bool,
 }
 
 impl VerifyConstraintsCmd {
@@ -68,6 +75,7 @@ impl VerifyConstraintsCmd {
 
         type GL = Goldilocks;
 
+        let debug_mode = if self.extended_im_pols { 3 } else if self.extended { 2 } else { 1 };
         let _valid_constraints = match self.field {
             Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),
@@ -75,7 +83,7 @@ impl VerifyConstraintsCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                true,
+                debug_mode,
             )?,
         };
 

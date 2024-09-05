@@ -106,11 +106,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z18verify_constraintsPvS_m"]
+    #[link_name = "\u{1}_Z18verify_constraintsPvS_"]
     pub fn verify_constraints(
         pExpressionsCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
-        step: u64,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -330,7 +329,7 @@ extern "C" {
         publics: *mut ::std::os::raw::c_void,
         pProofs: *mut ::std::os::raw::c_void,
         nProofs: u64,
-    ) -> *mut ::std::os::raw::c_void;
+    ) -> bool;
 }
 extern "C" {
     #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]

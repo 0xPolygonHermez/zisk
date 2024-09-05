@@ -1,9 +1,10 @@
 use libloading::{Library, Symbol};
 use log::{debug, info, trace};
 use p3_field::Field;
-use stark::{StarkBufferAllocator, StarkProver, VecU64Result};
+use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c, verify_global_constraints_c};
-use std::fs;
+use std::ffi::CStr;
+use std::{cmp, fs};
 
 use std::{
     collections::HashMap,
@@ -15,7 +16,7 @@ use transcript::FFITranscript;
 
 use crate::{WitnessLibrary, WitnessLibInitFn};
 
-use proofman_common::{Prover, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ConstraintInfo, ExecutionCtx, ProofCtx, Prover, SetupCtx};
 
 use colored::*;
 
@@ -34,7 +35,7 @@ impl<F: Field + 'static> ProofMan<F> {
         public_inputs_path: PathBuf,
         proving_key_path: PathBuf,
         output_dir_path: PathBuf,
-        debug_mode: bool,
+        debug_mode: u64,
     ) -> Result<Vec<F>, Box<dyn std::error::Error>> {
         // Check witness_lib path exists
         if !witness_lib_path.exists() {
@@ -63,7 +64,7 @@ impl<F: Field + 'static> ProofMan<F> {
             return Err(format!("Proving key parameter must be a folder: {:?}", proving_key_path).into());
         }
 
-        if !debug_mode && !output_dir_path.exists() {
+        if debug_mode == 0 && !output_dir_path.exists() {
             fs::create_dir_all(&output_dir_path)
                 .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
         }
@@ -96,14 +97,8 @@ impl<F: Field + 'static> ProofMan<F> {
         }
         let mut transcript = provers[0].new_transcript();
 
-        Self::calculate_challenges(0, &mut provers, &mut pctx, &mut transcript, false);
+        Self::calculate_challenges(0, &mut provers, &mut pctx, &mut transcript, 0);
         provers[0].add_publics_to_transcript(&mut pctx, &transcript);
-
-        let mut invalid_constraints = Vec::with_capacity(provers.len());
-
-        for _i in 0..provers.len() {
-            invalid_constraints.push(Vec::new());
-        }
 
         // Commit stages
         let num_commit_stages = pctx.pilout.num_stages();
@@ -116,24 +111,18 @@ impl<F: Field + 'static> ProofMan<F> {
 
             Self::calculate_stage(stage, &mut provers, &mut pctx);
 
-            if debug_mode {
-                let invalid_constraints_stage = Self::verify_constraints(stage, &mut provers, &mut pctx);
-                for i in 0..provers.len() {
-                    invalid_constraints[i].extend(invalid_constraints_stage[i].clone());
-                }
-                
-            } else {
+            if debug_mode == 0 {
                 Self::commit_stage(stage, &mut provers, &mut pctx);
             }
 
-            if !debug_mode || stage < num_commit_stages  {
+            if debug_mode == 0 || stage < num_commit_stages  {
                 Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
             }
         }
 
         witness_lib.end_proof();
 
-        if debug_mode {
+        if debug_mode != 0 {
             let mut proofs: Vec<*mut c_void> = Vec::new();
 
             for prover in provers.iter_mut() {
@@ -141,32 +130,66 @@ impl<F: Field + 'static> ProofMan<F> {
                 proofs.push(proof);
             }
 
-            let raw_ptr = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            log::info!("{}: <-- Verifying constraints", Self::MY_NAME);
             
-            let invalid_global_constraints_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
-            
-            let slice = unsafe { std::slice::from_raw_parts(invalid_global_constraints_result.ids, invalid_global_constraints_result.n_elements as usize) };
+            let constraints = Self::verify_constraints(&mut provers, &mut pctx);
 
-            let invalid_global_constraints = slice.to_vec();
-
-            if invalid_global_constraints.len() > 0 || invalid_constraints.iter().any(|inner_vec| inner_vec.len() > 0) {
-                if invalid_global_constraints.len() > 0 {
-                    log::debug!("{} {:?}", "The following global constraints were not verified:".bright_red().bold(), invalid_global_constraints);
-                } 
-
-                if invalid_constraints.iter().any(|inner_vec| inner_vec.len() > 0) {
-                    for (idx, prover) in provers.iter_mut().enumerate() {
-                        if invalid_constraints[idx].len() > 0 {
-                            let prover_info = prover.get_prover_info();
-                            log::debug!("{}", 
-                                format!("The following constraints were not verified for prover {} that is proving air group id {} and air id {}: {:?}",
-                                prover_info.prover_idx, prover_info.air_group_id, prover_info.air_id, invalid_constraints[idx]).bright_red().bold());
+            let valid_constraints = true;
+            for (idx, prover) in provers.iter_mut().enumerate() {
+                let prover_info = prover.get_prover_info();
+                let air_instances = pctx.find_air_instances(prover_info.air_group_id, prover_info.air_id);
+                let air_instance_index = air_instances.iter().position(|&x| x == prover_info.prover_idx).unwrap();
+                let air = pctx.pilout.get_air(prover_info.air_group_id, prover_info.air_id);
+                let mut valid_constraints_prover = true;
+                log::debug!("{}: ··· Air {} Instance {}:", Self::MY_NAME, air.name().unwrap(), air_instance_index);
+                for constraint in &constraints[idx] {
+                    if (debug_mode == 1 && constraint.n_rows == 0) || (debug_mode != 3 && constraint.im_pol) { continue; }
+                    let line_str = unsafe { CStr::from_ptr(constraint.line) };
+                    let valid =  if constraint.n_rows > 0 { format!("has {} invalid rows", constraint.n_rows).bright_red() } else { "is valid".bright_green() };
+                    if constraint.im_pol {
+                        log::debug!("{}: ···    Intermediate polynomial (stage {}) {} -> {:?}", Self::MY_NAME, constraint.stage, valid, line_str.to_str().unwrap());
+                    } else {
+                        log::debug!("{}: ···    Constraint {} (stage {}) {} -> {:?}", Self::MY_NAME, constraint.id, constraint.stage, valid, line_str.to_str().unwrap());
+                    }
+                    if constraint.n_rows > 0 { valid_constraints_prover = false; }
+                    let n_rows = cmp::min(constraint.n_rows, 10);
+                    for i in 0..n_rows {
+                        let row = constraint.rows[i as usize];
+                        if row.dim == 1 {
+                            log::debug!("{}: ···        Failed at row {} with value: {}", Self::MY_NAME, row.row, row.value[0]);
+                        } else {
+                            log::debug!("{}: ···        Failed at row {} with value: [{}, {}, {}]", Self::MY_NAME, row.row, row.value[0], row.value[1], row.value[2]);
                         }
                     }
+                    log::debug!("{}: ···   ", Self::MY_NAME);
                 }
-                log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
+
+                if !valid_constraints_prover {
+                    log::debug!("{}: ··· {}", Self::MY_NAME, 
+                    format!("Not all constraints for instance {} of air {} were verified!",
+                    air_instance_index, air.name().unwrap()).bright_yellow().bold());
+                } else {                        
+                    log::debug!("{}: ··· {}", Self::MY_NAME, 
+                        format!("All constraints for instance {} of air {} were verified!",
+                        air_instance_index, air.name().unwrap()).bright_cyan().bold());
+                }
+                log::debug!("{}: ···   ", Self::MY_NAME);
+            }
+
+            log::info!("{}: <-- Checking global constraints", Self::MY_NAME);
+
+            let global_constraints_verified = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            
+            if !global_constraints_verified {
+                log::debug!("{}: ··· {}", Self::MY_NAME, "Not all global constraints were verified.".bright_yellow().bold());          
             } else {
-                log::debug!("{}", "All constraints were successfully verified.".bright_green().bold());
+                log::debug!("{}: ··· {}", Self::MY_NAME, "All global constraints were successfully verified.".bright_cyan().bold());
+            }
+
+            if valid_constraints && global_constraints_verified {
+                log::debug!("{}: ··· {}", Self::MY_NAME, "All constraints were verified!".bright_green().bold());
+            } else {
+                log::debug!("{}: ··· {}", Self::MY_NAME, "Not all constraints were verified.".bright_red().bold());
             }
 
             return Ok(vec![]);
@@ -176,7 +199,7 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &transcript);
         Self::calculate_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
         Self::commit_stage(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx);
-        Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &mut transcript, false);
+        Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, &mut pctx, &mut transcript, 0);
 
         // Compute openings
         Self::opening_stages(&mut provers, &mut pctx, &mut transcript);
@@ -260,13 +283,10 @@ impl<F: Field + 'static> ProofMan<F> {
         }
     }
 
-    pub fn verify_constraints(stage: u32, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> Vec<Vec<u64>> {
-        info!("{}: Verifying constraints stage {}", Self::MY_NAME, stage);
-
+    pub fn verify_constraints(provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> Vec<Vec<ConstraintInfo>> {
         let mut invalid_constraints = Vec::new();
-        for (idx, prover) in provers.iter_mut().enumerate() {
-            info!("{}: Verifying constraints stage {}, for prover {}", Self::MY_NAME, stage, idx);
-            let invalid_constraints_prover = prover.verify_constraints(stage, pctx);
+        for (_idx, prover) in provers.iter_mut().enumerate() {
+            let invalid_constraints_prover = prover.verify_constraints(pctx);
             invalid_constraints.push(invalid_constraints_prover);
         }
         invalid_constraints
@@ -294,11 +314,11 @@ impl<F: Field + 'static> ProofMan<F> {
         provers: &mut [Box<dyn Prover<F>>],
         pctx: &mut ProofCtx<F>,
         transcript: &mut FFITranscript,
-        debug_mode: bool,
+        debug_mode: u64,
     ) {
         info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
         for prover in provers.iter_mut() {
-            if debug_mode {
+            if debug_mode != 0 {
                 let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                 transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
             } else {
@@ -325,7 +345,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 prover.opening_stage(opening_id, pctx, transcript);
             }
             if opening_id < provers[0].num_opening_stages() {
-                Self::calculate_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx, transcript, false);
+                Self::calculate_challenges(pctx.pilout.num_stages() + 1 + opening_id, provers, pctx, transcript, 0);
             }
         }
     }
