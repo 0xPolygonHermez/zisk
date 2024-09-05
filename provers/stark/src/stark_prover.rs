@@ -327,7 +327,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn get_proof(&self) -> *mut c_void {
         self.p_proof.unwrap()
     }
-    
+
     fn save_proof(&self, id: u64, output_dir: &str) {
         save_proof_c(id, self.p_starkinfo, self.p_proof.unwrap(), output_dir);
     }

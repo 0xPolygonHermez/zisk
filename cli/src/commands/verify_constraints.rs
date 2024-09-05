@@ -57,7 +57,6 @@ pub struct VerifyConstraintsCmd {
     #[clap(long)]
     pub proving_key: PathBuf,
 
-   
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 }
