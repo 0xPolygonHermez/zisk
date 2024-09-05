@@ -3,32 +3,32 @@ require "constants.pil";
 
 // PIL Binary Operations Table used by Binary
 //                                                                                    Running Total
-// ADD/ADD_W    (OP:0)               2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |                      2^18
-// SUB/SUB_W    (OP:1)               2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |               2^19
-// LTU/LTU_W    (OP:2)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19 + 2^18
-// LT/LT_W      (OP:3)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20
-// LEU/LEU_W    (OP:4)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20        + 2^18
-// LE/LE_W      (OP:5)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19
-// EQ/EQ_W      (OP:6)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19 + 2^18
-// MINU/MINU_W  (OP:7)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21
-// MIN/MIN_W    (OP:8)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21               + 2^18
-// MAXU/MAXU_W  (OP:9)   *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19
-// MAX/MAX_W    (OP:10)  *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19 + 2^18
-// AND/AND_W    (OP:11)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21          2^19 + 2^18 + 2^17
-// OR/OR_W      (OP:12)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20
-// XOR/XOR_W    (OP:13)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20               + 2^17
-// EXT_32       (OP:14)              2^16 (AxB)             * 2^1 (LAST)  **  = 2^17 | 2^21 + 2^20        + 2^18        => 2^22
+// ADD/ADD_W    (OP:0x02)              2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |                      2^18
+// SUB/SUB_W    (OP:0x03)              2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |               2^19
+// LTU/LTU_W    (OP:0x04)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19 + 2^18
+// LT/LT_W      (OP:0x05)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20
+// LEU/LEU_W    (OP:0x06)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20        + 2^18
+// LE/LE_W      (OP:0x07)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19
+// EQ/EQ_W      (OP:0x08)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19 + 2^18
+// MINU/MINU_W  (OP:0x09)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21
+// MIN/MIN_W    (OP:0x0a)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21               + 2^18
+// MAXU/MAXU_W  (OP:0x0b)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19
+// MAX/MAX_W    (OP:0x0c)  *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19 + 2^18
+// AND/AND_W    (OP:0x20)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21          2^19 + 2^18 + 2^17
+// OR/OR_W      (OP:0x21)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20
+// XOR/XOR_W    (OP:0x22)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20               + 2^17
+// EXT_32       (OP:0x23)              2^16 (AxB)             * 2^1 (LAST)  **  = 2^17 | 2^21 + 2^20        + 2^18        => 2^22
 // --------------------------------------------------------------------------------------------------------------------------
 // (*) Use carry
 // (**) They don't need last, but it is used for a simpler lookup
 // Note: EXT_32 is the only unary operation
 
-const int EXT_32_OP = 14;
+const int EXT_32_OP = 0x23;
 const int BINARY_TABLE_ID = 125;
 
 airtemplate BinaryTable(int N = 2**10) {
     col witness multiplicity;
-    lookup_proves(BINARY_TABLE_ID, mul: multiplicity, cols: [0, 0, 0, 0, 0, 0, 0]);
+    lookup_proves(BINARY_TABLE_ID, [0, 0, 0, 0, 0, 0, 0], multiplicity);
 }
 
 airtemplate _BinaryTable(int N = 2**22) {
@@ -50,8 +50,8 @@ airtemplate _BinaryTable(int N = 2**22) {
                           [0:P2_17, 1:P2_17]:9,      // USE_CARRY(LTU,LT,LEU,LE,EQ,MINU,MIN,MAXU,MAX) = LAST (i.e., only when LAST == 1)
                            0:(P2_17*4)]...;          // USE_CARRY(AND,OR,XOR,EXT_32) = 0
 
-    col fixed OP = [0:P2_18..10:P2_18,
-                    11:P2_17..14:P2_17]...;
+    col fixed OP = [2:P2_18..12:P2_18,
+                    32:P2_17..35:P2_17]...;
 
 
     col fixed C;                                      // Output C   (8 bits)
@@ -59,15 +59,15 @@ airtemplate _BinaryTable(int N = 2**22) {
     for (int i = 0; i < N; i++) {
         int [plast, op, a, b, cin, c, cout] = [LAST[i], OP[i], A[i], B[i], CIN[i], 0, 0];
         switch (op) {
-            case 0: // ADD,ADD_W
+            case 0x02: // ADD,ADD_W
                 c = (cin + a + b) & 0xFF;
                 cout = (cin + a + b) >> 8;
 
-            case 1: // SUB,SUB_W
+            case 0x3: // SUB,SUB_W
                 cout = (a - cin) >= b ? 0 : 1;
                 c = 256 * cout + a - cin - b;
 
-            case 2,3: // LTU,LTU_W,LT,LT_W
+            case 0x04,0x05: // LTU,LTU_W,LT,LT_W
                 if (a < b) {
                     cout = 1;
                     c = plast;
@@ -82,7 +82,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                     cout = c;
                 }
 
-            case 4,5: // LEU,LEU_W,LE,LE_W
+            case 0x06,0x07: // LEU,LEU_W,LE,LE_W
                 if (a <= b) {
                     cout = 1;
                     c = plast;
@@ -92,12 +92,12 @@ airtemplate _BinaryTable(int N = 2**22) {
                     cout = c;
                 }
 
-            case 6: // EQ,EQ_W
+            case 0x08: // EQ,EQ_W
                 if (a == b && !cin) c = plast;
                 else cout = 1;
                 cout = plast ? !cout : cout;
 
-            case 7,8: // MINU,MINU_W,MIN,MIN_W
+            case 0x09,0x0a: // MINU,MINU_W,MIN,MIN_W
                 if (a <= b) {
                     cout = 1;
                     c = plast ? a : b;
@@ -109,7 +109,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                     cout = (a & 0x80) ? 1 : 0;
                 }
 
-            case 9,10: // MAXU,MAXU_W,MAX,MAX_W
+            case 0x0b,0x0c: // MAXU,MAXU_W,MAX,MAX_W
                 if (a >= b) {
                     cout = 1;
                     c = plast ? a : b;
@@ -121,16 +121,16 @@ airtemplate _BinaryTable(int N = 2**22) {
                     cout = (a & 0x80) ? 0 : 1;
                 }
 
-            case 11: // AND
+            case 0x20: // AND
                 c = a & b;
 
-            case 12: // OR
+            case 0x21: // OR
                 c = a | b;
 
-            case 13: // XOR
+            case 0x22: // XOR
                 c = a ^ b;
 
-            case 14: // EXT_32
+            case 0x23: // EXT_32
                 c = (a & 0x80) ? 0xFF : 0x00;
 
             default:
@@ -145,5 +145,5 @@ airtemplate _BinaryTable(int N = 2**22) {
         FLAGS[i] = COUT[i] + 2 * USE_CARRY[i];
     }
     col witness multiplicity;
-    lookup_proves(BINARY_TABLE_ID, mul: multiplicity, cols: [LAST, OP, A, B, CIN, C, FLAGS]);
+    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
 }
