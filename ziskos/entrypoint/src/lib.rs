@@ -1,5 +1,7 @@
 #![allow(unexpected_cfgs)]
 
+pub mod syscalls;
+
 pub mod ziskos_definitions;
 
 #[macro_export]
