@@ -226,9 +226,8 @@ pub fn get_hint_ids_by_name(p_chelpers_steps: *mut c_void, name: &str) -> Vec<u6
     let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.hint_ids, hint_ids_result.n_hints as usize) };
 
     // Copy the contents of the slice into a Vec<u64>
-    let ids_vec = slice.to_vec();
 
-    ids_vec
+    slice.to_vec()
 }
 
 pub fn get_hint_field<F: Clone + Copy>(

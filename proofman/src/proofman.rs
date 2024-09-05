@@ -66,7 +66,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         if !debug_mode && !output_dir_path.exists() {
             fs::create_dir_all(&output_dir_path)
-            .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
+                .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
         }
 
         // Load the witness computation dynamic library
@@ -114,7 +114,7 @@ impl<F: Field + 'static> ProofMan<F> {
             Self::calculate_stage(stage, &mut provers, &mut pctx);
 
             if debug_mode {
-                valid_constraints = Self::verify_constraints(stage, &mut provers);
+                valid_constraints = valid_constraints && Self::verify_constraints(stage, &mut provers);
             } else {
                 Self::commit_stage(stage, &mut provers);
             }
@@ -132,7 +132,13 @@ impl<F: Field + 'static> ProofMan<F> {
                 proofs.push(proof);
             }
 
-            valid_constraints = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
+            valid_constraints = verify_global_constraints_c(
+                proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
+                proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap(),
+                pctx.public_inputs.as_ptr() as *mut c_void,
+                proofs.as_mut_ptr() as *mut c_void,
+                provers.len() as u64,
+            );
 
             if !valid_constraints {
                 log::debug!("{}", "Not all constraints were verified.".bright_red().bold());
@@ -152,7 +158,12 @@ impl<F: Field + 'static> ProofMan<F> {
         // Compute openings
         Self::opening_stages(&mut provers, &mut pctx, &mut transcript);
 
-        let proof = Self::finalize_proof(&proving_key_path, &mut provers, &mut pctx, output_dir_path.to_string_lossy().as_ref());
+        let proof = Self::finalize_proof(
+            &proving_key_path,
+            &mut provers,
+            &mut pctx,
+            output_dir_path.to_string_lossy().as_ref(),
+        );
 
         Ok(proof)
     }
@@ -293,15 +304,28 @@ impl<F: Field + 'static> ProofMan<F> {
         }
     }
 
-    fn finalize_proof(proving_key_path: &Path, provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>, output_dir: &str) -> Vec<F> {
+    fn finalize_proof(
+        proving_key_path: &Path,
+        provers: &mut [Box<dyn Prover<F>>],
+        pctx: &mut ProofCtx<F>,
+        output_dir: &str,
+    ) -> Vec<F> {
         for (idx, prover) in provers.iter_mut().enumerate() {
             prover.save_proof(idx as u64, output_dir);
         }
 
-        save_publics_c((pctx.public_inputs.len() / 8) as u64, pctx.public_inputs.as_mut_ptr() as *mut c_void, output_dir);
+        save_publics_c(
+            (pctx.public_inputs.len() / 8) as u64,
+            pctx.public_inputs.as_mut_ptr() as *mut c_void,
+            output_dir,
+        );
 
         let mut challenges = pctx.challenges.clone().expect("");
-        save_challenges_c(challenges.as_mut_ptr() as *mut c_void, &proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), output_dir);
+        save_challenges_c(
+            challenges.as_mut_ptr() as *mut c_void,
+            proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
+            output_dir,
+        );
 
         vec![]
     }
