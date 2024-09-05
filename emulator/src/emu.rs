@@ -414,6 +414,12 @@ impl<'a> Emu<'a> {
                     changes.join(", ")
                 ));
 
+                println!(
+                    "Emu::run() tracerv_step={} pc={:x} {}",
+                    self.ctx.tracerv_step,
+                    self.ctx.trace_pc,
+                    changes.join(", ")
+                );
                 // Increase tracer step counter
                 self.ctx.tracerv_step += 1;
             }
@@ -468,7 +474,7 @@ impl<'a> Emu<'a> {
         }
 
         // Log the step, if requested
-        #[cfg(debug_assertions)]
+        //#[cfg(debug_assertions)]
         if options.log_step {
             println!(
                 "step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
