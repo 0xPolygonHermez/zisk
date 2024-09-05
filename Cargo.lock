@@ -631,6 +631,7 @@ dependencies = [
  "log",
  "p3-field",
  "pilout",
+ "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
  "serde",
