@@ -76,7 +76,7 @@ impl<F: AbstractField + Copy> WitnessComponent<F> for Module<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
-        _air_instance_id: usize,
+        _air_instance_id: Option<usize>,
         _pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,

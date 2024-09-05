@@ -24,6 +24,7 @@ pub struct PilHelpersCmd {
 #[derive(Serialize)]
 struct ProofCtx {
     project_name: String,
+    num_stages: u32,
     pilout_filename: String,
     air_groups: Vec<AirGroupsCtx>,
     constant_subproofs: Vec<(String, usize)>,
@@ -156,6 +157,7 @@ impl PilHelpersCmd {
 
         let context = ProofCtx {
             project_name: pilout.name.clone().unwrap().to_case(Case::Pascal),
+            num_stages: pilout.num_stages(),
             pilout_filename: self.pilout.file_name().unwrap().to_str().unwrap().to_string(),
             air_groups: wcctxs,
             constant_airs,

@@ -23,38 +23,21 @@ pub fn save_proof_c(
     unsafe {
         let file_dir = CString::new(output_dir).unwrap();
 
-        save_proof(
-            proof_id,
-            p_stark_info,
-            p_fri_proof,
-            file_dir.as_ptr() as *mut std::os::raw::c_char,
-        );
+        save_proof(proof_id, p_stark_info, p_fri_proof, file_dir.as_ptr() as *mut std::os::raw::c_char);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_publics_c(
-    n_publics: u64,
-    public_inputs: *mut std::os::raw::c_void,
-    output_dir: &str,
-) {
+pub fn save_publics_c(n_publics: u64, public_inputs: *mut std::os::raw::c_void, output_dir: &str) {
     unsafe {
         let file_dir = CString::new(output_dir).unwrap();
 
-        save_publics(
-            n_publics,
-            public_inputs,
-            file_dir.as_ptr() as *mut std::os::raw::c_char,
-        );
+        save_publics(n_publics, public_inputs, file_dir.as_ptr() as *mut std::os::raw::c_char);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_challenges_c(
-    p_challenges: *mut std::os::raw::c_void,
-    global_info_file: &str,
-    output_dir: &str,
-) {
+pub fn save_challenges_c(p_challenges: *mut std::os::raw::c_void, global_info_file: &str, output_dir: &str) {
     unsafe {
         let file_dir = CString::new(output_dir).unwrap();
         let file_ptr = file_dir.as_ptr() as *mut std::os::raw::c_char;
@@ -62,12 +45,7 @@ pub fn save_challenges_c(
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-        
-        save_challenges(
-            p_challenges as *mut std::os::raw::c_void,
-            global_info_file_ptr,
-            file_ptr,
-        );
+        save_challenges(p_challenges as *mut std::os::raw::c_void, global_info_file_ptr, file_ptr);
     }
 }
 
@@ -508,20 +486,12 @@ pub fn save_proof_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn save_publics_c(
-    _n_publics: u64,
-    _public_inputs: *mut ::std::os::raw::c_void,
-    _output_dir: &str,
-) {
+pub fn save_publics_c(_n_publics: u64, _public_inputs: *mut ::std::os::raw::c_void, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_publics_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn save_challenges_c(
-    _p_challenges: *mut std::os::raw::c_void,
-    _global_info_file: &str,
-    _output_dir: &str,
-) {
+pub fn save_challenges_c(_p_challenges: *mut std::os::raw::c_void, _global_info_file: &str, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_challenges_c: This is a mock call because there is no linked library");
 }
 
@@ -544,7 +514,7 @@ pub fn fri_proof_get_tree_root_c(_pFriProof: *mut c_void, _tree_index: u64, _roo
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn fri_proof_set_subproof_values_c(_pFriProof: *mut c_void, _p_chelpers_steps: *mut c_void) {
+pub fn fri_proof_set_subproof_values_c(_p_fri_proof: *mut c_void, _p_chelpers_steps: *mut c_void) {
     trace!(
         "{}: ··· {}",
         "ffi     ",
