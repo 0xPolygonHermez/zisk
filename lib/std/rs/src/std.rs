@@ -47,7 +47,7 @@ impl<F: PrimeField> Std<F> {
     }
 
     /// Processes the inputs for the range check.
-    pub fn range_check(&self, val: BigInt, min: BigInt, max: BigInt) {
+    pub fn range_check(&self, val: F, min: F, max: F) {
         // let mut inputs_range_check = self.inputs_range_check.lock().unwrap();
 
         // inputs_range_check.push(RangeCheckInput { val, min, max });
@@ -73,11 +73,11 @@ impl<F: PrimeField> Std<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for Std<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
-        self.prod.decide(pctx, sctx);
-        self.sum.decide(pctx, sctx);
-        self.range_check.decide(pctx, sctx);
+        self.prod.decide(sctx, pctx, ectx);
+        self.sum.decide(sctx, pctx, ectx);
+        self.range_check.decide(sctx, pctx, ectx);
     }
 
     fn calculate_witness(
@@ -98,7 +98,7 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
             panic!();
         }
 
-        if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx, sctx) {
+        if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx) {
             log::error!("Failed to calculate witness: {:?}", e);
             panic!();
         }

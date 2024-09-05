@@ -4,7 +4,7 @@ use std::{
 };
 
 use p3_field::Field;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, print_expression, set_hint_field, set_hint_field_val,
 };
@@ -17,7 +17,12 @@ pub struct StdSum<F> {
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
-    fn decide(&self, pctx: &ProofCtx<F>, sctx: &SetupCtx) {
+    fn decide(
+        &self,
+        sctx: &SetupCtx,
+        pctx: &ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
         air_groups.iter().for_each(|air_group| {
@@ -39,6 +44,8 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 }
             });
         });
+
+        Ok(0)
     }
 }
 

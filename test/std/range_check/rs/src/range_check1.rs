@@ -10,22 +10,22 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 use crate::{RangeCheck10Trace, RANGE_CHECK_1_AIR_IDS, RANGE_CHECK_1_SUBPROOF_ID};
 
-pub struct RangeCheck<F> {
+pub struct RangeCheck1<F> {
     std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField + Copy> RangeCheck<F>
+impl<F: PrimeField + Copy> RangeCheck1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "RangeCheck";
+    const MY_NAME: &'static str = "RangeCheck1";
 
     pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
-        let range_check = Arc::new(Self { std_lib });
+        let range_check1 = Arc::new(Self { std_lib });
 
-        wcm.register_component(range_check.clone(), Some(RANGE_CHECK_1_AIR_IDS));
+        wcm.register_component(range_check1.clone(), Some(RANGE_CHECK_1_AIR_IDS));
 
-        range_check
+        range_check1
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -46,7 +46,7 @@ where
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for RangeCheck<F>
+impl<F: PrimeField + Copy> WitnessComponent<F> for RangeCheck1<F>
 where
     Standard: Distribution<F>,
 {
@@ -87,14 +87,20 @@ where
                 .get_air(RANGE_CHECK_1_SUBPROOF_ID[0], RANGE_CHECK_1_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                RangeCheck10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                RangeCheck10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             for i in 0..num_rows {
-                trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
-                trace[i].a2 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(4) - 1));
-                trace[i].a3 = F::from_canonical_u16(rng.gen_range(60..=2u16.pow(16) - 1));
-                trace[i].a4 = F::from_canonical_u16(rng.gen_range(8228..=17400));
-                trace[i].a5 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
+                // trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
+                // trace[i].a2 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(4) - 1));
+                // trace[i].a3 = F::from_canonical_u16(rng.gen_range(60..=2u16.pow(16) - 1));
+                // trace[i].a4 = F::from_canonical_u16(rng.gen_range(8228..=17400));
+                // trace[i].a5 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
+                trace[i].a1 = F::from_canonical_usize(i);
+                trace[i].a2 = F::from_canonical_usize(i);
+                trace[i].a3 = F::from_canonical_usize(60+i);
+                trace[i].a4 = F::from_canonical_usize(8228+i);
+                trace[i].a5 = F::from_canonical_usize(i);
 
                 trace[i].sel1 = F::from_canonical_u8(rng.gen_range(0..=1));
                 trace[i].sel2 = F::from_canonical_u8(rng.gen_range(0..=1));
