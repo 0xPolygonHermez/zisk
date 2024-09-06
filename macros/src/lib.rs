@@ -244,3 +244,33 @@ fn test_explicit_row_and_trace_struct() {
     let generated = trace_impl(input.into()).unwrap();
     assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
 }
+
+#[test]
+fn test_parsing_01() {
+    let input = quote! {
+        TraceRow, MyTrace<F> { a: F, b: F }
+    };
+    let parsed: ParsedTraceInput = parse2(input).unwrap();
+    assert_eq!(parsed.row_struct_name, "TraceRow");
+    assert_eq!(parsed.struct_name, "MyTrace");
+}
+
+#[test]
+fn test_parsing_02() {
+    let input = quote! {
+        SimpleRow, Simple<F> { a: F }
+    };
+    let parsed: ParsedTraceInput = parse2(input).unwrap();
+    assert_eq!(parsed.row_struct_name, "SimpleRow");
+    assert_eq!(parsed.struct_name, "Simple");
+}
+
+#[test]
+fn test_parsing_03() {
+    let input = quote! {
+        Simple<F> { a: F }
+    };
+    let parsed: ParsedTraceInput = parse2(input).unwrap();
+    assert_eq!(parsed.row_struct_name, "SimpleRow");
+    assert_eq!(parsed.struct_name, "Simple");
+}
