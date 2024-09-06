@@ -70,7 +70,7 @@ impl<T: Field> StarkProver<T> {
         let p_expressions = setup.p_expressions;
         let p_stark_info = setup.p_stark_info;
 
-        let p_stark = starks_new_default_c(p_setup, p_expressions);
+        let p_stark = starks_new_c(p_setup, p_expressions);
 
         let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
         let stark_info_json = std::fs::read_to_string(&stark_info_path)
@@ -144,11 +144,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
         air_instance_ctx.set_params(p_params);
 
+        let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
+        let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
+        air_instance_ctx.init_vec(n_commits,n_subproof_values);
+
         self.p_proof = Some(fri_proof_new_c(self.p_setup));
 
         let number_stage1_commits = *self.stark_info.map_sections_n.get("cm1").unwrap() as usize;
         for i in 0..number_stage1_commits {
-            set_commit_calculated_c(self.p_expressions, i as u64);
+            air_instance_ctx.set_commit_calculated(i);
         }
 
         self.initialized = true;
@@ -191,15 +195,34 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
 
+        let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
+
         if stage_id <= proof_ctx.pilout.num_stages() {
-            can_impols_be_calculated_c(self.p_expressions, stage_id as u64);
+            for i in 0..n_commits {
+                let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol) && !air_instance_ctx.commits_calculated[i] {
+                    panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
+                }
+            }
             calculate_impols_expressions_c(self.p_expressions, air_instance_ctx.params.unwrap(), stage_id as u64);
+            for i in 0..n_commits {
+                let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
+                    air_instance_ctx.set_commit_calculated(i);
+                }
+            }
             if stage_id == proof_ctx.pilout.num_stages() {
                 let p_proof = self.p_proof.unwrap();
                 fri_proof_set_subproof_values_c(p_proof, air_instance_ctx.params.unwrap());
             }
         } else {
             calculate_quotient_polynomial_c(self.p_expressions, air_instance_ctx.params.unwrap());
+            for i in 0..n_commits {
+                let cm_pol: &crate::stark_info::PolMap = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                if cm_pol.stage == (proof_ctx.pilout.num_stages() + 1) as u64 {
+                    air_instance_ctx.set_commit_calculated(i);
+                }
+            }
         }
     }
 
@@ -214,7 +237,24 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let p_proof = self.p_proof.unwrap();
         let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
-        can_stage_be_calculated_c(self.p_expressions, stage_id as u64);
+        let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
+        for i in 0..n_commits {
+            let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+            if cm_pol.stage == stage_id as u64 && !air_instance_ctx.commits_calculated[i] {
+                panic!("Stage {} cannot be committed: Witness column {} is not calculated", stage_id, cm_pol.name);
+            }
+        }
+
+        if stage_id == self.num_stages() {
+            let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
+            for i in 0..n_subproof_values {
+                let subproof_value = self.stark_info.subproofvalues_map.as_ref().expect("REASON").get(i).unwrap();
+                if !air_instance_ctx.subproofvalue_calculated[i] {
+                    panic!("Stage {} cannot be committed: Subproofvalue {} is not calculated", stage_id, subproof_value.name);
+
+                }
+            }
+        }
 
         commit_stage_c(p_stark, element_type, stage_id as u64, air_instance_ctx.params.unwrap(), p_proof);
 

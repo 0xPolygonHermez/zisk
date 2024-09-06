@@ -127,13 +127,14 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcbb"]
+    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcbbb"]
     pub fn get_hint_field(
         pExpressionsCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
         dest: bool,
+        inverse: bool,
         print_expression: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -145,23 +146,11 @@ extern "C" {
         values: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
-    );
+    ) -> u64;
 }
 extern "C" {
     #[link_name = "\u{1}_Z20expressions_ctx_freePv"]
     pub fn expressions_ctx_free(pExpressionsCtx: *mut ::std::os::raw::c_void);
-}
-extern "C" {
-    #[link_name = "\u{1}_Z21set_commit_calculatedPvm"]
-    pub fn set_commit_calculated(pExpressionsCtx: *mut ::std::os::raw::c_void, id: u64);
-}
-extern "C" {
-    #[link_name = "\u{1}_Z23can_stage_be_calculatedPvm"]
-    pub fn can_stage_be_calculated(pExpressionsCtx: *mut ::std::os::raw::c_void, step: u64);
-}
-extern "C" {
-    #[link_name = "\u{1}_Z24can_impols_be_calculatedPvm"]
-    pub fn can_impols_be_calculated(pExpressionsCtx: *mut ::std::os::raw::c_void, step: u64);
 }
 extern "C" {
     #[link_name = "\u{1}_Z11init_paramsPvS_S_S_S_"]
@@ -174,16 +163,8 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10starks_newPvS_S_"]
+    #[link_name = "\u{1}_Z10starks_newPvS_"]
     pub fn starks_new(
-        pConfig: *mut ::std::os::raw::c_void,
-        pSetupCtx: *mut ::std::os::raw::c_void,
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z18starks_new_defaultPvS_"]
-    pub fn starks_new_default(
         pSetupCtx: *mut ::std::os::raw::c_void,
         pExpressionsCtx: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;

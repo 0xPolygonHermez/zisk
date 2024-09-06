@@ -238,6 +238,7 @@ pub fn get_hint_field<F: Clone + Copy>(
     hint_id: usize,
     hint_field_name: &str,
     dest: bool,
+    inverse: bool,
     print_expression: bool,
 ) -> HintFieldValue<F> {
     
@@ -245,7 +246,7 @@ pub fn get_hint_field<F: Clone + Copy>(
 
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
-    let raw_ptr = get_hint_field_c(setup.p_expressions, params, hint_id as u64, hint_field_name, dest, print_expression);
+    let raw_ptr = get_hint_field_c(setup.p_expressions, params, hint_id as u64, hint_field_name, dest, inverse, print_expression);
     
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
@@ -264,7 +265,7 @@ pub fn get_hint_field_constant<F: Clone + Copy>(
     
     let setup = setup_ctx.get_setup(air_group_id, air_id).expect("REASON");
 
-    let raw_ptr = get_hint_field_c(setup.p_expressions, std::ptr::null_mut(), hint_id as u64, hint_field_name, dest, print_expression);
+    let raw_ptr = get_hint_field_c(setup.p_expressions, std::ptr::null_mut(), hint_id as u64, hint_field_name, dest, false, print_expression);
     
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
@@ -289,7 +290,9 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
         _ => panic!("Only column and column extended are accepted"),
     };
 
-    set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
+    let id = set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
+
+    air_instance_ctx.set_commit_calculated(id as usize);
 }
 
 pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
@@ -317,8 +320,10 @@ pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
     };
 
     let values_ptr = value_array.as_mut_ptr() as *mut c_void;
+     
+    let id = set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
 
-    set_hint_field_c(setup.p_expressions, params, values_ptr, hint_id, hint_field_name);
+    air_instance_ctx.set_subproofvalue_calculated(id as usize);
 }
 
 pub fn print_expression<F: Clone + Copy + Debug>(

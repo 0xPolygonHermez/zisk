@@ -8,11 +8,13 @@ pub struct AirInstanceCtx<F> {
     pub prover_idx: usize,
     pub buffer: Option<Vec<F>>,
     pub params: Option<*mut c_void>,
+    pub commits_calculated: Vec<bool>,
+    pub subproofvalue_calculated: Vec<bool>,
 }
 
 impl<F> AirInstanceCtx<F> {
     pub fn new(air_group_id: usize, air_id: usize, prover_idx: usize, buffer: Option<Vec<F>>) -> Self {
-        AirInstanceCtx { air_group_id, air_id, prover_idx, buffer, params: None }
+        AirInstanceCtx { air_group_id, air_id, prover_idx, buffer, params: None, commits_calculated: Vec::new(), subproofvalue_calculated: Vec::new() }
     }
 
     pub fn get_buffer_ptr(&mut self) -> *mut u8 {
@@ -26,6 +28,19 @@ impl<F> AirInstanceCtx<F> {
 
     pub fn set_params(&mut self, params: *mut c_void) {
         self.params = Some(params);
+    }
+
+    pub fn init_vec(&mut self, n_commits: usize, n_subproofvalues: usize) {
+        self.commits_calculated = vec![false; n_commits];
+        self.subproofvalue_calculated = vec![false; n_subproofvalues];
+    }
+
+    pub fn set_commit_calculated(&mut self, id: usize) {
+        self.commits_calculated[id] = true;
+    }
+
+    pub fn set_subproofvalue_calculated(&mut self, id: usize) {
+        self.subproofvalue_calculated[id] = true;
     }
 }
 

@@ -79,15 +79,16 @@ impl OpType {
 
 #[derive(Deserialize)]
 pub struct PolMap {
+    pub name: String,
     #[serde(default)]
     pub stage: u64,
-    pub name: String,
+    #[serde(default)]
     pub dim: u64,
     #[serde(default, rename = "imPol")]
     pub im_pol: bool,
     #[serde(default, rename = "stagePos")]
     pub stage_pos: u64,
-    #[serde(rename = "stageId")]
+    #[serde(default, rename = "stageId")]
     pub stage_id: u64,
 }
 
@@ -145,6 +146,8 @@ pub struct StarkInfo {
     pub cm_pols_map: Option<Vec<PolMap>>,
     #[serde(rename = "challengesMap")]
     pub challenges_map: Option<Vec<PolMap>>,
+    #[serde(rename = "subproofValuesMap")]
+    pub subproofvalues_map: Option<Vec<PolMap>>,
     #[serde(rename = "evMap")]
     pub ev_map: Vec<EvMap>,
 

@@ -175,16 +175,16 @@ pub fn get_hint_ids_by_name_c(p_expressions_ctx: *mut c_void, hint_name: &str) -
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool, print_expression: bool) -> *mut c_void {
+pub fn get_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool, inverse:bool, print_expression: bool) -> *mut c_void {
     let field_name = CString::new(hint_field_name).unwrap();
-    unsafe { get_hint_field(p_expressions_ctx, p_params, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest, print_expression) }
+    unsafe { get_hint_field(p_expressions_ctx, p_params, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest, inverse, print_expression) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn set_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, values: *mut c_void, hint_id: u64, hint_field_name: &str) {
+pub fn set_hint_field_c(p_expressions_ctx: *mut c_void, p_params: *mut c_void, values: *mut c_void, hint_id: u64, hint_field_name: &str) -> u64 {
     unsafe {
         let field_name = CString::new(hint_field_name).unwrap();
-        set_hint_field(p_expressions_ctx, p_params, values, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char);
+        set_hint_field(p_expressions_ctx, p_params, values, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char)
     }
 }
 
@@ -194,33 +194,13 @@ pub fn expressions_ctx_free_c(p_expressions_ctx: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn set_commit_calculated_c(p_expressions_ctx: *mut c_void, id: u64) {
-    unsafe { set_commit_calculated(p_expressions_ctx, id) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn can_stage_be_calculated_c(p_expressions_ctx: *mut c_void, step: u64) {
-    unsafe { can_stage_be_calculated(p_expressions_ctx, step) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn can_impols_be_calculated_c(p_expressions_ctx: *mut c_void, step: u64) {
-    unsafe { can_impols_be_calculated(p_expressions_ctx, step) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn init_params_c( ptr: *mut c_void, public_inputs: *mut c_void, challenges: *mut c_void, evals: *mut c_void, subproof_values: *mut c_void) -> *mut c_void {
    unsafe { init_params(ptr, public_inputs, challenges, evals, subproof_values) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn starks_new_c(p_config: *mut c_void, p_setup_ctx: *mut c_void, p_expressions_ctx: *mut c_void) -> *mut c_void {
-    unsafe { starks_new(p_config, p_setup_ctx, p_expressions_ctx) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn starks_new_default_c(p_setup_ctx: *mut c_void, p_expressions_ctx: *mut c_void) -> *mut c_void {
-    unsafe { starks_new_default(p_setup_ctx, p_expressions_ctx) }
+pub fn starks_new_c(p_setup_ctx: *mut c_void, p_expressions_ctx: *mut c_void) -> *mut c_void {
+    unsafe { starks_new(p_setup_ctx, p_expressions_ctx) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -519,42 +499,20 @@ pub fn get_hint_ids_by_name_c(_p_expressions_ctx: *mut c_void, _hint_name: &str)
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _hint_id: u64, _hint_field_name: &str, _dest: bool, _print_expression: bool) -> *mut c_void {
+pub fn get_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _hint_id: u64, _hint_field_name: &str, _dest: bool, _inverse: bool, _print_expression: bool) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_field: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn set_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) {
+pub fn set_hint_field_c(_p_expressions_ctx: *mut c_void, _p_params: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) -> u64 {
     trace!("{}: ··· {}", "ffi     ", "set_hint_field_c: This is a mock call because there is no linked library");
+    0
 }
 
 #[cfg(feature = "no_lib_link")]
 pub fn expressions_ctx_free_c(_p_expressions_ctx: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "expressions_ctx_free: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn set_commit_calculated_c(_p_expressions_ctx: *mut c_void, _id: u64) {
-    trace!("{}: ··· {}", "ffi     ", "set_commit_calculated_c: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn can_stage_be_calculated_c(_p_expressions_ctx: *mut c_void, _step: u64) {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "can_stage_be_calculated_c: This is a mock call because there is no linked library"
-    );
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn can_impols_be_calculated_c(_p_expressions_ctx: *mut c_void, _step: u64) {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "can_impols_be_calculated_c: This is a mock call because there is no linked library"
-    );
 }
 
 #[cfg(feature = "no_lib_link")]
