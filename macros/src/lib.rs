@@ -20,7 +20,7 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
 
     let row_struct_name = parsed_input.row_struct_name;
     let trace_struct_name = parsed_input.struct_name;
-    let generic_param = parsed_input.generics;
+    let generics = parsed_input.generics.params;
     let fields = parsed_input.fields;
 
     // Calculate ROW_SIZE
@@ -34,30 +34,30 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
 
     let row_struct = quote! {
         #[derive(Debug, Clone, Copy, Default)]
-        pub struct #row_struct_name #generic_param {
+        pub struct #row_struct_name<#generics> {
             #(#field_definitions)*
         }
     };
 
-    // Generate trace struct
+    // Generate trace struct with lifetime
     let trace_struct = quote! {
-        pub struct #trace_struct_name<'a, #generic_param> {
-            pub buffer: Option<Vec<#generic_param>>,
-            pub slice_trace: &'a mut [#row_struct_name<#generic_param>],
+        pub struct #trace_struct_name<'a, #generics> {
+            pub buffer: Option<Vec<#generics>>,
+            pub slice_trace: &'a mut [#row_struct_name<#generics>],
             num_rows: usize,
         }
     };
 
     let impl_block = quote! {
-        impl<#generic_param: Default + Clone + Copy> #trace_struct_name<'_, #generic_param> {
+        impl<#generics: Default + Clone + Copy> #trace_struct_name<'_, #generics> {
             pub const ROW_SIZE: usize = #row_size;
 
             pub fn new(num_rows: usize) -> Self {
                 assert!(num_rows >= 2);
                 assert!(num_rows & (num_rows - 1) == 0);
-                let buffer = vec![#generic_param::default(); num_rows * Self::ROW_SIZE];
+                let buffer = vec![#generics::default(); num_rows * Self::ROW_SIZE];
                 let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut #row_struct_name<#generic_param>, num_rows)
+                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut #row_struct_name<#generics>, num_rows)
                 };
                 Self { buffer: Some(buffer), slice_trace, num_rows }
             }
@@ -67,15 +67,15 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
             }
         }
 
-        impl<'a, #generic_param> std::ops::Index<usize> for #trace_struct_name<'a, #generic_param> {
-            type Output = #row_struct_name<#generic_param>;
+        impl<'a, #generics> std::ops::Index<usize> for #trace_struct_name<'a, #generics> {
+            type Output = #row_struct_name<#generics>;
 
             fn index(&self, index: usize) -> &Self::Output {
                 &self.slice_trace[index]
             }
         }
 
-        impl<'a, #generic_param> std::ops::IndexMut<usize> for #trace_struct_name<'a, #generic_param> {
+        impl<'a, #generics> std::ops::IndexMut<usize> for #trace_struct_name<'a, #generics> {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.slice_trace[index]
             }
