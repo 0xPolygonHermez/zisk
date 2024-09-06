@@ -134,8 +134,6 @@ fn calculate_field_size_literal(field_type: &syn::Type) -> usize {
     }
 }
 
-// Tests
-
 #[test]
 fn test_simple_struct_without_struct_keyword() {
     let input = quote! {
@@ -144,17 +142,17 @@ fn test_simple_struct_without_struct_keyword() {
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Default)]
-        pub struct Simple<F> {
+        pub struct SimpleRow<F> {
             pub a: F,
             pub b: F,
             pub c: F,
         }
-        pub struct SimpleRow<'a, F> {
+        pub struct Simple<'a, F> {
             pub buffer: Option<Vec<F>>,
             pub slice_trace: &'a mut [SimpleRow<F>],
             num_rows: usize,
         }
-        impl<F: Default + Clone + Copy> SimpleRow<'_, F> {
+        impl<F: Default + Clone + Copy> Simple<'_, F> {
             pub const ROW_SIZE: usize = 3usize;
 
             pub fn new(num_rows: usize) -> Self {
@@ -172,7 +170,7 @@ fn test_simple_struct_without_struct_keyword() {
             }
         }
 
-        impl<'a, F> std::ops::Index<usize> for SimpleRow<'a, F> {
+        impl<'a, F> std::ops::Index<usize> for Simple<'a, F> {
             type Output = SimpleRow<F>;
 
             fn index(&self, index: usize) -> &Self::Output {
@@ -180,7 +178,7 @@ fn test_simple_struct_without_struct_keyword() {
             }
         }
 
-        impl<'a, F> std::ops::IndexMut<usize> for SimpleRow<'a, F> {
+        impl<'a, F> std::ops::IndexMut<usize> for Simple<'a, F> {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.slice_trace[index]
             }
@@ -188,7 +186,7 @@ fn test_simple_struct_without_struct_keyword() {
     };
 
     let generated = trace_impl(input.into()).unwrap();
-    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
+    assert_eq!(generated.to_string(), expected.into_token_stream().to_string());
 }
 
 #[test]
@@ -227,7 +225,7 @@ fn test_explicit_row_and_trace_struct() {
         }
 
         impl<'a, F> std::ops::Index<usize> for Simple<'a, F> {
-            type Output = Simple<F>;
+            type Output = SimpleRow<F>;
 
             fn index(&self, index: usize) -> &Self::Output {
                 &self.slice_trace[index]
@@ -242,7 +240,7 @@ fn test_explicit_row_and_trace_struct() {
     };
 
     let generated = trace_impl(input.into()).unwrap();
-    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
+    assert_eq!(generated.to_string(), expected.into_token_stream().to_string());
 }
 
 #[test]
