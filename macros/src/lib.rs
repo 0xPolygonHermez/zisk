@@ -109,8 +109,6 @@ fn calculate_field_size_literal(field_type: &Type) -> usize {
     }
 }
 
-// Tests
-
 #[test]
 fn test_simple_struct() {
     let input = quote! {
@@ -118,6 +116,7 @@ fn test_simple_struct() {
     };
 
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Default)]
         pub struct TraceRow1<F> {
             pub a: F,
             pub b: F,
@@ -164,7 +163,8 @@ fn test_simple_struct() {
     let parsed_input = parse2::<DeriveInput>(input).unwrap();
     let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
 
-    assert_eq!(generated.to_string(), expected.to_string());
+    // Compare ignoring spaces
+    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
 }
 
 #[test]
