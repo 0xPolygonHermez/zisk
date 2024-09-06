@@ -37,29 +37,79 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
         pub struct #row_struct_name<#generics> {
             #(#field_definitions)*
         }
+
+        impl<#generics: Copy> #row_struct_name<#generics> {
+            pub const ROW_SIZE: usize = #row_size;
+        }
     };
 
-    // Generate trace struct with lifetime
+    // Generate trace struct
     let trace_struct = quote! {
         pub struct #trace_struct_name<'a, #generics> {
             pub buffer: Option<Vec<#generics>>,
             pub slice_trace: &'a mut [#row_struct_name<#generics>],
             num_rows: usize,
         }
-    };
 
-    let impl_block = quote! {
-        impl<#generics: Default + Clone + Copy> #trace_struct_name<'_, #generics> {
-            pub const ROW_SIZE: usize = #row_size;
-
+        impl<'a, #generics: Default + Clone + Copy> #trace_struct_name<'a, #generics> {
             pub fn new(num_rows: usize) -> Self {
                 assert!(num_rows >= 2);
                 assert!(num_rows & (num_rows - 1) == 0);
-                let buffer = vec![#generics::default(); num_rows * Self::ROW_SIZE];
+
+                let buffer = vec![#generics::default(); num_rows * #row_struct_name::<#generics>::ROW_SIZE];
                 let slice_trace = unsafe {
                     std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut #row_struct_name<#generics>, num_rows)
                 };
-                Self { buffer: Some(buffer), slice_trace, num_rows }
+
+                #trace_struct_name { buffer: Some(buffer), slice_trace, num_rows }
+            }
+
+            pub fn map_buffer(external_buffer: &'a mut [#generics], num_rows: usize, offset: usize) -> Result<Self, Box<dyn std::error::Error>> {
+                assert!(num_rows >= 2);
+                assert!(num_rows & (num_rows - 1) == 0);
+
+                let start = offset;
+                let end = start + num_rows * #row_struct_name::<#generics>::ROW_SIZE;
+
+                if end > external_buffer.len() {
+                    return Err("Buffer is too small to fit the trace".into());
+                }
+
+                let slice_trace = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        external_buffer[start..end].as_ptr() as *mut #row_struct_name<#generics>,
+                        num_rows,
+                    )
+                };
+
+                Ok(#trace_struct_name {
+                    buffer: None,
+                    slice_trace,
+                    num_rows,
+                })
+            }
+
+            pub fn map_row_vec(external_buffer: Vec<#row_struct_name<#generics>>) -> Result<Self, Box<dyn std::error::Error>> {
+                let num_rows = external_buffer.len().next_power_of_two();
+                assert!(num_rows >= 2);
+                assert!(num_rows & (num_rows - 1) == 0);
+
+                let slice_trace = unsafe {
+                    let ptr = external_buffer.as_ptr() as *mut #row_struct_name<#generics>;
+                    std::slice::from_raw_parts_mut(ptr, num_rows)
+                };
+
+                let buffer_f = unsafe {
+                    Vec::from_raw_parts(external_buffer.as_ptr() as *mut #generics, num_rows * #row_struct_name::<#generics>::ROW_SIZE, num_rows * #row_struct_name::<#generics>::ROW_SIZE)
+                };
+
+                std::mem::forget(external_buffer);
+
+                Ok(#trace_struct_name {
+                    buffer: Some(buffer_f),
+                    slice_trace,
+                    num_rows,
+                })
             }
 
             pub fn num_rows(&self) -> usize {
@@ -80,12 +130,22 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
                 &mut self.slice_trace[index]
             }
         }
+
+        impl<'a, #generics: Send> common::trace::Trace for #trace_struct_name<'a, #generics> {
+            fn num_rows(&self) -> usize {
+                self.num_rows
+            }
+
+            fn get_buffer_ptr(&mut self) -> *mut u8 {
+                let buffer = self.buffer.as_mut().expect("Buffer is not available");
+                buffer.as_mut_ptr() as *mut u8
+            }
+        }
     };
 
     Ok(quote! {
         #row_struct
         #trace_struct
-        #impl_block
     })
 }
 

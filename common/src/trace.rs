@@ -5,6 +5,9 @@ pub trait Trace: Send {
 
 pub use proofman_macros::trace;
 
+#[cfg(test)]
+use crate as common;
+
 #[test]
 fn check() {
     const OFFSET: usize = 1;
