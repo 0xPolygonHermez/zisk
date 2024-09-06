@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 
 use std::any::type_name;
 
-use proofman_common::{BufferAllocator, ConstraintInfo, ConstraintsResults, GlobalInfo, ProofCtx, Prover, ProverInfo, ProverStatus, SetupCtx};
+use proofman_common::{
+    BufferAllocator, ConstraintInfo, ConstraintsResults, GlobalInfo, ProofCtx, Prover, ProverInfo, ProverStatus,
+    SetupCtx,
+};
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
@@ -46,7 +49,13 @@ impl<T: Field> StarkProver<T> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
-    pub fn new(sctx: &SetupCtx, proving_key_path: &Path, air_group_id: usize, air_id: usize, prover_idx: usize) -> Self {
+    pub fn new(
+        sctx: &SetupCtx,
+        proving_key_path: &Path,
+        air_group_id: usize,
+        air_id: usize,
+        prover_idx: usize,
+    ) -> Self {
         let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
 
         let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(air_group_id, air_id));
@@ -132,7 +141,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         self.subproof_values = vec![F::zero(); self.stark_info.n_subproof_values as usize * Self::FIELD_EXTENSION];
 
         let p_params = init_params_c(
-            ptr, 
+            ptr,
             proof_ctx.public_inputs.as_ptr() as *mut c_void,
             proof_ctx.challenges.as_ref().unwrap().as_ptr() as *mut c_void,
             self.evals.as_ptr() as *mut c_void,
@@ -143,7 +152,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
         let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
-        air_instance_ctx.init_vec(n_commits,n_subproof_values);
+        air_instance_ctx.init_vec(n_commits, n_subproof_values);
 
         self.p_proof = Some(fri_proof_new_c(self.p_setup));
 
@@ -179,17 +188,14 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let raw_ptr = verify_constraints_c(self.p_setup, air_instance_ctx.params.unwrap());
 
         let constraints_result = unsafe { Box::from_raw(raw_ptr as *mut ConstraintsResults) };
-        
+
         unsafe {
-            std::slice::from_raw_parts(
-                constraints_result.constraints_info,
-                constraints_result.n_constraints as usize,
-            )
-        }.to_vec()
+            std::slice::from_raw_parts(constraints_result.constraints_info, constraints_result.n_constraints as usize)
+        }
+        .to_vec()
     }
 
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
-
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
@@ -197,7 +203,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         if stage_id <= proof_ctx.pilout.num_stages() {
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
-                if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol) && !air_instance_ctx.commits_calculated[i] {
+                if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol)
+                    && !air_instance_ctx.commits_calculated[i]
+                {
                     panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
                 }
             }
@@ -215,7 +223,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         } else {
             calculate_quotient_polynomial_c(self.p_stark, air_instance_ctx.params.unwrap());
             for i in 0..n_commits {
-                let cm_pol: &crate::stark_info::PolMap = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                let cm_pol: &crate::stark_info::PolMap =
+                    self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == (proof_ctx.pilout.num_stages() + 1) as u64 {
                     air_instance_ctx.set_commit_calculated(i);
                 }
@@ -247,8 +256,10 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             for i in 0..n_subproof_values {
                 let subproof_value = self.stark_info.subproofvalues_map.as_ref().expect("REASON").get(i).unwrap();
                 if !air_instance_ctx.subproofvalue_calculated[i] {
-                    panic!("Stage {} cannot be committed: Subproofvalue {} is not calculated", stage_id, subproof_value.name);
-
+                    panic!(
+                        "Stage {} cannot be committed: Subproofvalue {} is not calculated",
+                        stage_id, subproof_value.name
+                    );
                 }
             }
         }
@@ -358,13 +369,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_prover_info(&self) -> ProverInfo {
-        ProverInfo {
-            air_group_id: self.air_group_id,
-            air_id: self.air_id,
-            prover_idx: self.prover_idx,
-        }
+        ProverInfo { air_group_id: self.air_group_id, air_id: self.air_id, prover_idx: self.prover_idx }
     }
-
 }
 
 impl<F: Field> StarkProver<F> {
@@ -416,7 +422,13 @@ impl<F: Field> StarkProver<F> {
         let challenges: &Vec<F> = proof_ctx.challenges.as_ref().unwrap();
         let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 3).cloned().collect();
 
-        compute_fri_folding_c(p_stark, step as u64, air_instance_ctx.params.unwrap(), challenge.as_ptr() as *mut c_void, p_proof);
+        compute_fri_folding_c(
+            p_stark,
+            step as u64,
+            air_instance_ctx.params.unwrap(),
+            challenge.as_ptr() as *mut c_void,
+            p_proof,
+        );
 
         if step < (n_steps - 1) as u32 {
             let root = fri_proof_get_tree_root_c(p_proof, (step + 1) as u64, 0);

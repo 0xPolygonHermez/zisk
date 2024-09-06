@@ -14,11 +14,7 @@ include!("../bindings_starks.rs");
 use std::ffi::CString;
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_challenges_c(
-    p_challenges: *mut std::os::raw::c_void,
-    global_info_file: &str,
-    output_dir: &str,
-) {
+pub fn save_challenges_c(p_challenges: *mut std::os::raw::c_void, global_info_file: &str, output_dir: &str) {
     unsafe {
         let file_dir = CString::new(output_dir).unwrap();
         let file_ptr = file_dir.as_ptr() as *mut std::os::raw::c_char;
@@ -26,56 +22,30 @@ pub fn save_challenges_c(
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-        save_challenges(
-            p_challenges as *mut std::os::raw::c_void,
-            global_info_file_ptr,
-            file_ptr,
-        );
+        save_challenges(p_challenges as *mut std::os::raw::c_void, global_info_file_ptr, file_ptr);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_publics_c(
-    n_publics: u64,
-    public_inputs: *mut std::os::raw::c_void,
-    output_dir: &str,
-) {
+pub fn save_publics_c(n_publics: u64, public_inputs: *mut std::os::raw::c_void, output_dir: &str) {
+    let file_dir: CString = CString::new(output_dir).unwrap();
     unsafe {
-        let file_dir = CString::new(output_dir).unwrap();
-
-        save_publics(
-            n_publics,
-            public_inputs,
-            file_dir.as_ptr() as *mut std::os::raw::c_char,
-        );
+        save_publics(n_publics, public_inputs, file_dir.as_ptr() as *mut std::os::raw::c_char);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_proof_c(
-    proof_id: u64,
-    p_stark_info: *mut c_void,
-    p_fri_proof: *mut c_void,
-    output_dir: &str,
-) {
+pub fn save_proof_c(proof_id: u64, p_stark_info: *mut c_void, p_fri_proof: *mut c_void, output_dir: &str) {
+    let file_dir = CString::new(output_dir).unwrap();
     unsafe {
-        let file_dir = CString::new(output_dir).unwrap();
-
-        save_proof(
-            proof_id,
-            p_stark_info,
-            p_fri_proof,
-            file_dir.as_ptr() as *mut std::os::raw::c_char,
-        );
+        save_proof(proof_id, p_stark_info, p_fri_proof, file_dir.as_ptr() as *mut std::os::raw::c_char);
     }
 }
-
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
     unsafe { fri_proof_new(p_setup_ctx) }
 }
-
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_get_tree_root_c(p_fri_proof: *mut c_void, tree_index: u64, root_index: u64) -> *mut c_void {
@@ -95,10 +65,12 @@ pub fn fri_proof_free_c(p_fri_proof: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn setup_ctx_new_c(p_stark_info: *mut c_void, p_expressions_bin: *mut c_void, p_const_pols: *mut c_void) -> *mut c_void {
-    unsafe {
-        setup_ctx_new(p_stark_info, p_expressions_bin, p_const_pols)
-    }
+pub fn setup_ctx_new_c(
+    p_stark_info: *mut c_void,
+    p_expressions_bin: *mut c_void,
+    p_const_pols: *mut c_void,
+) -> *mut c_void {
+    unsafe { setup_ctx_new(p_stark_info, p_expressions_bin, p_const_pols) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -167,7 +139,6 @@ pub fn expressions_bin_free_c(p_expressions_bin: *mut c_void) {
     }
 }
 
-
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_hint_ids_by_name_c(p_setup: *mut c_void, hint_name: &str) -> *mut c_void {
     let name = CString::new(hint_name).unwrap();
@@ -175,13 +146,37 @@ pub fn get_hint_ids_by_name_c(p_setup: *mut c_void, hint_name: &str) -> *mut c_v
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_hint_field_c(p_setup_ctx: *mut c_void, p_params: *mut c_void, hint_id: u64, hint_field_name: &str, dest: bool, inverse:bool, print_expression: bool) -> *mut c_void {
+pub fn get_hint_field_c(
+    p_setup_ctx: *mut c_void,
+    p_params: *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+    dest: bool,
+    inverse: bool,
+    print_expression: bool,
+) -> *mut c_void {
     let field_name = CString::new(hint_field_name).unwrap();
-    unsafe { get_hint_field(p_setup_ctx, p_params, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char, dest, inverse, print_expression) }
+    unsafe {
+        get_hint_field(
+            p_setup_ctx,
+            p_params,
+            hint_id,
+            field_name.as_ptr() as *mut std::os::raw::c_char,
+            dest,
+            inverse,
+            print_expression,
+        )
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn set_hint_field_c(p_setup_ctx: *mut c_void, p_params: *mut c_void, values: *mut c_void, hint_id: u64, hint_field_name: &str) -> u64 {
+pub fn set_hint_field_c(
+    p_setup_ctx: *mut c_void,
+    p_params: *mut c_void,
+    values: *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+) -> u64 {
     unsafe {
         let field_name = CString::new(hint_field_name).unwrap();
         set_hint_field(p_setup_ctx, p_params, values, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char)
@@ -189,8 +184,14 @@ pub fn set_hint_field_c(p_setup_ctx: *mut c_void, p_params: *mut c_void, values:
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn init_params_c( ptr: *mut c_void, public_inputs: *mut c_void, challenges: *mut c_void, evals: *mut c_void, subproof_values: *mut c_void) -> *mut c_void {
-   unsafe { init_params(ptr, public_inputs, challenges, evals, subproof_values) }
+pub fn init_params_c(
+    ptr: *mut c_void,
+    public_inputs: *mut c_void,
+    challenges: *mut c_void,
+    evals: *mut c_void,
+    subproof_values: *mut c_void,
+) -> *mut c_void {
+    unsafe { init_params(ptr, public_inputs, challenges, evals, subproof_values) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -343,8 +344,14 @@ pub fn verify_constraints_c(p_setup: *mut c_void, p_params: *mut c_void) -> *mut
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_bin_file: &str, publics: *mut c_void, proofs: *mut c_void, n_proofs: u64) -> bool {
-    unsafe { 
+pub fn verify_global_constraints_c(
+    global_info_file: &str,
+    global_constraints_bin_file: &str,
+    publics: *mut c_void,
+    proofs: *mut c_void,
+    n_proofs: u64,
+) -> bool {
+    unsafe {
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
@@ -356,7 +363,15 @@ pub fn verify_global_constraints_c( global_info_file: &str, global_constraints_b
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn print_by_name_c(p_setup_ctx: *mut c_void, p_params: *mut c_void, name: &str, lengths: *mut u64, first_print_value: u64, last_print_value: u64, return_values: bool) -> *mut c_void {
+pub fn print_by_name_c(
+    p_setup_ctx: *mut c_void,
+    p_params: *mut c_void,
+    name: &str,
+    lengths: *mut u64,
+    first_print_value: u64,
+    last_print_value: u64,
+    return_values: bool,
+) -> *mut c_void {
     let name_string = CString::new(name).unwrap();
     let name_ptr = name_string.as_ptr() as *mut std::os::raw::c_char;
     unsafe {
@@ -365,7 +380,13 @@ pub fn print_by_name_c(p_setup_ctx: *mut c_void, p_params: *mut c_void, name: &s
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn print_expression_c(p_setup_ctx: *mut c_void, pol: *mut c_void, dim: u64, first_print_value: u64, last_print_value: u64) {
+pub fn print_expression_c(
+    p_setup_ctx: *mut c_void,
+    pol: *mut c_void,
+    dim: u64,
+    first_print_value: u64,
+    last_print_value: u64,
+) {
     unsafe {
         print_expression(p_setup_ctx, pol, dim, first_print_value, last_print_value);
     }
@@ -375,31 +396,17 @@ pub fn print_expression_c(p_setup_ctx: *mut c_void, pol: *mut c_void, dim: u64, 
 // MOCK METHODS FOR TESTING
 // ------------------------
 #[cfg(feature = "no_lib_link")]
-pub fn save_challenges_c(
-    _p_challenges: *mut std::os::raw::c_void,
-    _global_info_file: &str,
-    _output_dir: &str,
-) {
+pub fn save_challenges_c(_p_challenges: *mut std::os::raw::c_void, _global_info_file: &str, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_challenges_c: This is a mock call because there is no linked library");
 }
 
-
 #[cfg(feature = "no_lib_link")]
-pub fn save_publics_c(
-    _n_publics: u64,
-    _public_inputs: *mut c_void,
-    _output_dir: &str,
-) {
+pub fn save_publics_c(_n_publics: u64, _public_inputs: *mut c_void, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_publics_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn save_proof_c(
-    _proof_id: u64,
-    _p_stark_info: *mut c_void,
-    _p_fri_proof: *mut c_void,
-    _output_dir: &str,
-) {
+pub fn save_proof_c(_proof_id: u64, _p_stark_info: *mut c_void, _p_fri_proof: *mut c_void, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_proof: This is a mock call because there is no linked library");
 }
 
@@ -409,7 +416,6 @@ pub fn fri_proof_new_c(_p_setup_ctx: *mut c_void) -> *mut c_void {
     std::ptr::null_mut()
 }
 
-
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_get_tree_root_c(_p_fri_proof: *mut c_void, _tree_index: u64, _root_index: u64) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_get_tree_root: This is a mock call because there is no linked library");
@@ -418,7 +424,11 @@ pub fn fri_proof_get_tree_root_c(_p_fri_proof: *mut c_void, _tree_index: u64, _r
 
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_set_subproof_values_c(_p_fri_proof: *mut c_void, _p_params: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library");
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "fri_proof_set_subproof_values_c: This is a mock call because there is no linked library"
+    );
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -427,13 +437,22 @@ pub fn fri_proof_free_c(_p_fri_proof: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn setup_ctx_new_c(_stark_info_file: &str, _expressions_bin_file: &str, _const_pols_file: &str) -> *mut c_void {
+pub fn setup_ctx_new_c(
+    _p_stark_info: *mut c_void,
+    _p_expressions_bin: *mut c_void,
+    _p_const_pols: *mut c_void,
+) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_free: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn setup_ctx_new1_c(_stark_info_file: &str, _expressions_bin_file: &str, _const_pols_file: &str, _const_tree_file: &str) -> *mut c_void {
+pub fn setup_ctx_new1_c(
+    _stark_info_file: &str,
+    _expressions_bin_file: &str,
+    _const_pols_file: &str,
+    _const_tree_file: &str,
+) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_free: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -442,7 +461,6 @@ pub fn setup_ctx_new1_c(_stark_info_file: &str, _expressions_bin_file: &str, _co
 pub fn setup_ctx_free_c(_p_setup_ctx: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "starkinfo_free: This is a mock call because there is no linked library");
 }
-
 
 #[cfg(feature = "no_lib_link")]
 pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
@@ -462,7 +480,6 @@ pub fn get_map_offsets_c(_p_stark_info: *mut c_void, _stage: &str, _flag: bool) 
     0
 }
 
-
 #[cfg(feature = "no_lib_link")]
 pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "starkinfo_free: This is a mock call because there is no linked library");
@@ -470,23 +487,19 @@ pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
 
 #[cfg(feature = "no_lib_link")]
 pub fn const_pols_new_c(_filename: &str, _p_stark_info: *mut c_void) -> *mut c_void {
-    
+    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn const_pols_free_c(_p_const_pols: *mut c_void) {
-    
-}
+pub fn const_pols_free_c(_p_const_pols: *mut c_void) {}
 
 #[cfg(feature = "no_lib_link")]
 pub fn expressions_bin_new_c(_filename: &str) -> *mut c_void {
-    
+    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn expressions_bin_free_c(p_expressions_bin: *mut c_void) {
-    
-}
+pub fn expressions_bin_free_c(_p_expressions_bin: *mut c_void) {}
 
 #[cfg(feature = "no_lib_link")]
 pub fn get_hint_ids_by_name_c(_p_setup_ctx: *mut c_void, _hint_name: &str) -> *mut c_void {
@@ -495,13 +508,27 @@ pub fn get_hint_ids_by_name_c(_p_setup_ctx: *mut c_void, _hint_name: &str) -> *m
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_hint_field_c(_p_setup_ctx: *mut c_void, _p_params: *mut c_void, _hint_id: u64, _hint_field_name: &str, _dest: bool, _inverse: bool, _print_expression: bool) -> *mut c_void {
+pub fn get_hint_field_c(
+    _p_setup_ctx: *mut c_void,
+    _p_params: *mut c_void,
+    _hint_id: u64,
+    _hint_field_name: &str,
+    _dest: bool,
+    _inverse: bool,
+    _print_expression: bool,
+) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_field: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn set_hint_field_c(_p_setup_ctx: *mut c_void, _p_params: *mut c_void, _values: *mut c_void, _hint_id: u64, _hint_field_name: &str) -> u64 {
+pub fn set_hint_field_c(
+    _p_setup_ctx: *mut c_void,
+    _p_params: *mut c_void,
+    _values: *mut c_void,
+    _hint_id: u64,
+    _hint_field_name: &str,
+) -> u64 {
     trace!("{}: ··· {}", "ffi     ", "set_hint_field_c: This is a mock call because there is no linked library");
     0
 }
@@ -514,11 +541,7 @@ pub fn init_params_c(
     _evals: *mut c_void,
     _subproof_values: *mut c_void,
 ) -> *mut c_void {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "init_params_c: This is a mock call because there is no linked library"
-    );
+    trace!("{}: ··· {}", "ffi     ", "init_params_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
@@ -533,7 +556,6 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "starks_free: This is a mock call because there is no linked library");
 }
 
-
 #[cfg(feature = "no_lib_link")]
 pub fn extend_and_merkelize_c(_p_stark: *mut c_void, _step: u64, _p_params: *mut c_void, _proof: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "extend_and_merkelize: This is a mock call because there is no linked library");
@@ -545,10 +567,8 @@ pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void)
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_fri_polynomial_c(_p_starks: *mut c_void, _p_starks: *mut c_void) {
-    unsafe {
-        trace!("mckzkevm: ··· {}", "calculate_fri_polynomial: This is a mock call because there is no linked library");
-    }
+pub fn calculate_fri_polynomial_c(_p_starks: *mut c_void, _p_params: *mut c_void) {
+    trace!("mckzkevm: ··· {}", "calculate_fri_polynomial: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -583,7 +603,11 @@ pub fn compute_evals_c(_p_stark: *mut c_void, _p_params: *mut c_void, _pProof: *
 
 #[cfg(feature = "no_lib_link")]
 pub fn prepare_fri_polynomial_c(_p_stark: *mut c_void, _p_params: *mut c_void) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "prepare_fri_polynomial_c: This is a mock call because there is no linked library");
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "prepare_fri_polynomial_c: This is a mock call because there is no linked library"
+    );
     std::ptr::null_mut()
 }
 
@@ -652,22 +676,46 @@ pub fn get_permutations_c(_p_transcript: *mut c_void, _res: *mut u64, _n: u64, _
 #[cfg(feature = "no_lib_link")]
 pub fn verify_constraints_c(_p_setup: *mut c_void, _p_params: *mut c_void) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn verify_global_constraints_c(
+    _global_info_file: &str,
+    _global_constraints_bin_file: &str,
+    _publics: *mut c_void,
+    _proofs: *mut c_void,
+    _n_proofs: u64,
+) -> bool {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "verify_global_constraints_c: This is a mock call because there is no linked library"
+    );
     true
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn verify_global_constraints_c( _global_info_file: &str, _global_constraints_bin_file: &str, _publics: *mut c_void, _proofs: *mut c_void, _n_proofs: u64) -> bool {
-    trace!("{}: ··· {}", "ffi     ", "verify_global_constraints_c: This is a mock call because there is no linked library");
-    true
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn print_by_name_c(_p_setup_ctx: *mut c_void, p_params: *mut c_void, name: &str, lengths: *mut u64, first_print_value: u64, last_print_value: u64, return_values: bool) -> *mut c_void {
+pub fn print_by_name_c(
+    _p_setup_ctx: *mut c_void,
+    _p_params: *mut c_void,
+    _name: &str,
+    _lengths: *mut u64,
+    _first_print_value: u64,
+    _last_print_value: u64,
+    _return_values: bool,
+) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "print_by_name_c: This is a mock call because there is no linked library");
-    std::null_mut()
+    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn print_expression_c(_p_setup_ctx: *mut c_void, _pol: *mut c_void, _dim: u64, _first_print_value: u64, _last_print_value: u64) {
+pub fn print_expression_c(
+    _p_setup_ctx: *mut c_void,
+    _pol: *mut c_void,
+    _dim: u64,
+    _first_print_value: u64,
+    _last_print_value: u64,
+) {
     trace!("{}: ··· {}", "ffi     ", "print_expression_c: This is a mock call because there is no linked library");
 }

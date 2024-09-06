@@ -21,24 +21,23 @@ pub struct ProverInfo {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ConstraintRowInfo {
-   pub row: u64,
-   pub dim: u64,
-   pub value: [u64; 3usize],
+    pub row: u64,
+    pub dim: u64,
+    pub value: [u64; 3usize],
 }
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ConstraintInfo {
-   pub id: u64,
-   pub stage: u64,
-   pub im_pol: bool,
-   pub line: *const c_char,
-   pub n_rows: u64,
-   pub rows: [ConstraintRowInfo; 10usize],
+    pub id: u64,
+    pub stage: u64,
+    pub im_pol: bool,
+    pub line: *const c_char,
+    pub n_rows: u64,
+    pub rows: [ConstraintRowInfo; 10usize],
 }
 
 #[derive(Debug, Clone, Copy)]
-
 #[repr(C)]
 pub struct ConstraintsResults {
     pub n_constraints: u64,

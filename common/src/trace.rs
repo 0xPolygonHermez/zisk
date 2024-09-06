@@ -5,7 +5,7 @@ pub trait Trace: Send {
 
 #[macro_export]
 macro_rules! trace {
-    ($row_struct_name:ident, $trace_struct_name:ident<$generic:ident> { 
+    ($row_struct_name:ident, $trace_struct_name:ident<$generic:ident> {
         $( $field_name:ident : $field_type:ty ),* $(,)?
     }) => {
         // Define the row structure (Main0RowTrace)
@@ -15,7 +15,7 @@ macro_rules! trace {
             $( pub $field_name: $field_type ),*
         }
 
-        
+
         impl<$generic: Copy> $row_struct_name<$generic> {
             // The size of each row in terms of the number of fields
              pub const ROW_SIZE: usize = 0 $(+ trace!(@count_elements $field_type))*;
@@ -170,7 +170,7 @@ macro_rules! trace {
                 }
             }
             result
-            
+
         } else {
             0
         }
@@ -185,25 +185,25 @@ mod tests {
         const OFFSET: usize = 1;
         let num_rows = 8;
 
-        trace!(TraceRow, MyTrace<F> { a: F, b:[F; 2], c: [F; 2]});
+        trace!(TraceRow, MyTrace<F> { a: F, b:F});
 
-        assert_eq!( TraceRow::<usize>::ROW_SIZE, 4);
-        
-        // let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
-        // let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
-        // let mut trace = trace.unwrap();
+        assert_eq!(TraceRow::<usize>::ROW_SIZE, 2);
 
-        // // Set values
-        // for i in 0..num_rows {
-        //     trace[i].a = i;
-        //     trace[i].b = i * 10;
-        // }
+        let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
+        let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
+        let mut trace = trace.unwrap();
 
-        // // Check values
-        // for i in 0..num_rows {
-        //     assert_eq!(trace[i].a, i);
-        //     assert_eq!(trace[i].b, i * 10);
-        // }
+        // Set values
+        for i in 0..num_rows {
+            trace[i].a = i;
+            trace[i].b = i * 10;
+        }
+
+        // Check values
+        for i in 0..num_rows {
+            assert_eq!(trace[i].a, i);
+            assert_eq!(trace[i].b, i * 10);
+        }
     }
 
     #[test]

@@ -75,7 +75,13 @@ impl VerifyConstraintsCmd {
 
         type GL = Goldilocks;
 
-        let debug_mode = if self.extended_im_pols { 3 } else if self.extended { 2 } else { 1 };
+        let debug_mode = if self.extended_im_pols {
+            3
+        } else if self.extended {
+            2
+        } else {
+            1
+        };
         let _valid_constraints = match self.field {
             Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),

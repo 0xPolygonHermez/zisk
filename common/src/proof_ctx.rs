@@ -4,7 +4,6 @@ use log::info;
 
 use crate::{AirInstanceCtx, WitnessPilout};
 
-
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,

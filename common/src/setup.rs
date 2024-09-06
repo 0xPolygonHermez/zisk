@@ -42,7 +42,7 @@ impl Setup {
         let p_stark_info = stark_info_new_c(stark_info_path.as_str());
         let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
         let p_const_pols = const_pols_new_c(const_pols_path.as_str(), p_stark_info);
-        
+
         let p_setup = setup_ctx_new_c(p_stark_info, p_expressions_bin, p_const_pols);
 
         Self { air_id, air_group_id, p_setup, p_stark_info }

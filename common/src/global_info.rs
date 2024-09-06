@@ -73,9 +73,10 @@ impl GlobalInfo {
     }
 
     pub fn get_air_group_id(&self, air_group_name: &str) -> usize {
-        self.subproofs.iter().position(|name| name == air_group_name).unwrap_or_else(|| {
-            panic!("Air group '{}' not found", air_group_name)
-        })
+        self.subproofs
+            .iter()
+            .position(|name| name == air_group_name)
+            .unwrap_or_else(|| panic!("Air group '{}' not found", air_group_name))
     }
 
     pub fn get_air_name(&self, air_group_id: usize, air_id: usize) -> &str {

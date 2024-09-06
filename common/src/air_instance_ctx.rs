@@ -14,14 +14,22 @@ pub struct AirInstanceCtx<F> {
 
 impl<F> AirInstanceCtx<F> {
     pub fn new(air_group_id: usize, air_id: usize, prover_idx: usize, buffer: Option<Vec<F>>) -> Self {
-        AirInstanceCtx { air_group_id, air_id, prover_idx, buffer, params: None, commits_calculated: Vec::new(), subproofvalue_calculated: Vec::new() }
+        AirInstanceCtx {
+            air_group_id,
+            air_id,
+            prover_idx,
+            buffer,
+            params: None,
+            commits_calculated: Vec::new(),
+            subproofvalue_calculated: Vec::new(),
+        }
     }
 
     pub fn get_buffer_ptr(&mut self) -> *mut u8 {
         println!("Air_group_id: {}, Air_id: {}", self.air_group_id, self.air_id);
         if self.buffer.is_some() {
-        self.buffer.as_mut().unwrap().as_mut_ptr() as *mut u8
-    } else {
+            self.buffer.as_mut().unwrap().as_mut_ptr() as *mut u8
+        } else {
             panic!("Buffer not initialized");
         }
     }

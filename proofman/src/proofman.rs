@@ -79,7 +79,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut pctx = ProofCtx::create_ctx(witness_lib.pilout());
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
-        
+
         let sctx = SetupCtx::new(witness_lib.pilout(), &proving_key_path);
 
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
@@ -115,7 +115,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 Self::commit_stage(stage, &mut provers, &mut pctx);
             }
 
-            if debug_mode == 0 || stage < num_commit_stages  {
+            if debug_mode == 0 || stage < num_commit_stages {
                 Self::calculate_challenges(stage, &mut provers, &mut pctx, &mut transcript, debug_mode);
             }
         }
@@ -131,7 +131,7 @@ impl<F: Field + 'static> ProofMan<F> {
             }
 
             log::info!("{}: <-- Verifying constraints", Self::MY_NAME);
-            
+
             let constraints = Self::verify_constraints(&mut provers, &mut pctx);
 
             let valid_constraints = true;
@@ -143,47 +143,110 @@ impl<F: Field + 'static> ProofMan<F> {
                 let mut valid_constraints_prover = true;
                 log::debug!("{}: ··· Air {} Instance {}:", Self::MY_NAME, air.name().unwrap(), air_instance_index);
                 for constraint in &constraints[idx] {
-                    if (debug_mode == 1 && constraint.n_rows == 0) || (debug_mode != 3 && constraint.im_pol) { continue; }
-                    let line_str = unsafe { CStr::from_ptr(constraint.line) };
-                    let valid =  if constraint.n_rows > 0 { format!("has {} invalid rows", constraint.n_rows).bright_red() } else { "is valid".bright_green() };
-                    if constraint.im_pol {
-                        log::debug!("{}: ···    Intermediate polynomial (stage {}) {} -> {:?}", Self::MY_NAME, constraint.stage, valid, line_str.to_str().unwrap());
-                    } else {
-                        log::debug!("{}: ···    Constraint {} (stage {}) {} -> {:?}", Self::MY_NAME, constraint.id, constraint.stage, valid, line_str.to_str().unwrap());
+                    if (debug_mode == 1 && constraint.n_rows == 0) || (debug_mode != 3 && constraint.im_pol) {
+                        continue;
                     }
-                    if constraint.n_rows > 0 { valid_constraints_prover = false; }
+                    let line_str = unsafe { CStr::from_ptr(constraint.line) };
+                    let valid = if constraint.n_rows > 0 {
+                        format!("has {} invalid rows", constraint.n_rows).bright_red()
+                    } else {
+                        "is valid".bright_green()
+                    };
+                    if constraint.im_pol {
+                        log::debug!(
+                            "{}: ···    Intermediate polynomial (stage {}) {} -> {:?}",
+                            Self::MY_NAME,
+                            constraint.stage,
+                            valid,
+                            line_str.to_str().unwrap()
+                        );
+                    } else {
+                        log::debug!(
+                            "{}: ···    Constraint {} (stage {}) {} -> {:?}",
+                            Self::MY_NAME,
+                            constraint.id,
+                            constraint.stage,
+                            valid,
+                            line_str.to_str().unwrap()
+                        );
+                    }
+                    if constraint.n_rows > 0 {
+                        valid_constraints_prover = false;
+                    }
                     let n_rows = cmp::min(constraint.n_rows, 10);
                     for i in 0..n_rows {
                         let row = constraint.rows[i as usize];
                         if row.dim == 1 {
-                            log::debug!("{}: ···        Failed at row {} with value: {}", Self::MY_NAME, row.row, row.value[0]);
+                            log::debug!(
+                                "{}: ···        Failed at row {} with value: {}",
+                                Self::MY_NAME,
+                                row.row,
+                                row.value[0]
+                            );
                         } else {
-                            log::debug!("{}: ···        Failed at row {} with value: [{}, {}, {}]", Self::MY_NAME, row.row, row.value[0], row.value[1], row.value[2]);
+                            log::debug!(
+                                "{}: ···        Failed at row {} with value: [{}, {}, {}]",
+                                Self::MY_NAME,
+                                row.row,
+                                row.value[0],
+                                row.value[1],
+                                row.value[2]
+                            );
                         }
                     }
                     log::debug!("{}: ···   ", Self::MY_NAME);
                 }
 
                 if !valid_constraints_prover {
-                    log::debug!("{}: ··· {}", Self::MY_NAME, 
-                    format!("Not all constraints for instance {} of air {} were verified!",
-                    air_instance_index, air.name().unwrap()).bright_yellow().bold());
-                } else {                        
-                    log::debug!("{}: ··· {}", Self::MY_NAME, 
-                        format!("All constraints for instance {} of air {} were verified!",
-                        air_instance_index, air.name().unwrap()).bright_cyan().bold());
+                    log::debug!(
+                        "{}: ··· {}",
+                        Self::MY_NAME,
+                        format!(
+                            "Not all constraints for instance {} of air {} were verified!",
+                            air_instance_index,
+                            air.name().unwrap()
+                        )
+                        .bright_yellow()
+                        .bold()
+                    );
+                } else {
+                    log::debug!(
+                        "{}: ··· {}",
+                        Self::MY_NAME,
+                        format!(
+                            "All constraints for instance {} of air {} were verified!",
+                            air_instance_index,
+                            air.name().unwrap()
+                        )
+                        .bright_cyan()
+                        .bold()
+                    );
                 }
                 log::debug!("{}: ···   ", Self::MY_NAME);
             }
 
             log::info!("{}: <-- Checking global constraints", Self::MY_NAME);
 
-            let global_constraints_verified = verify_global_constraints_c(&proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(), &proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap() ,pctx.public_inputs.as_ptr() as *mut c_void, proofs.as_mut_ptr() as *mut c_void, provers.len() as u64);
-            
+            let global_constraints_verified = verify_global_constraints_c(
+                proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
+                proving_key_path.join("pilout.globalConstraints.bin").to_str().unwrap(),
+                pctx.public_inputs.as_ptr() as *mut c_void,
+                proofs.as_mut_ptr() as *mut c_void,
+                provers.len() as u64,
+            );
+
             if !global_constraints_verified {
-                log::debug!("{}: ··· {}", Self::MY_NAME, "Not all global constraints were verified.".bright_yellow().bold());          
+                log::debug!(
+                    "{}: ··· {}",
+                    Self::MY_NAME,
+                    "Not all global constraints were verified.".bright_yellow().bold()
+                );
             } else {
-                log::debug!("{}: ··· {}", Self::MY_NAME, "All global constraints were successfully verified.".bright_cyan().bold());
+                log::debug!(
+                    "{}: ··· {}",
+                    Self::MY_NAME,
+                    "All global constraints were successfully verified.".bright_cyan().bold()
+                );
             }
 
             if valid_constraints && global_constraints_verified {
@@ -265,7 +328,7 @@ impl<F: Field + 'static> ProofMan<F> {
     ) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
 
-        for (prover_idx,air_instance) in pctx.air_instances.write().unwrap().iter_mut().enumerate() {
+        for (prover_idx, air_instance) in pctx.air_instances.write().unwrap().iter_mut().enumerate() {
             debug!(
                 "{}: Initializing prover for air instance ({}, {})",
                 Self::MY_NAME,
@@ -273,8 +336,13 @@ impl<F: Field + 'static> ProofMan<F> {
                 air_instance.air_id
             );
 
-            let prover =
-                Box::new(StarkProver::new(sctx, proving_key_path, air_instance.air_group_id, air_instance.air_id, prover_idx));
+            let prover = Box::new(StarkProver::new(
+                sctx,
+                proving_key_path,
+                air_instance.air_group_id,
+                air_instance.air_id,
+                prover_idx,
+            ));
 
             provers.push(prover);
         }
@@ -285,7 +353,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
     pub fn verify_constraints(provers: &mut [Box<dyn Prover<F>>], pctx: &mut ProofCtx<F>) -> Vec<Vec<ConstraintInfo>> {
         let mut invalid_constraints = Vec::new();
-        for (_idx, prover) in provers.iter_mut().enumerate() {
+        for prover in provers.iter_mut() {
             let invalid_constraints_prover = prover.verify_constraints(pctx);
             invalid_constraints.push(invalid_constraints_prover);
         }

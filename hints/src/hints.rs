@@ -1,4 +1,6 @@
-use proofman_starks_lib_c::{get_hint_field_c, get_hint_ids_by_name_c, print_expression_c, print_by_name_c, set_hint_field_c};
+use proofman_starks_lib_c::{
+    get_hint_field_c, get_hint_ids_by_name_c, print_expression_c, print_by_name_c, set_hint_field_c,
+};
 
 use p3_field::Field;
 use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
@@ -241,13 +243,13 @@ pub fn get_hint_field<F: Clone + Copy>(
     inverse: bool,
     print_expression: bool,
 ) -> HintFieldValue<F> {
-    
     let params = air_instance_ctx.params.unwrap();
 
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
 
-    let raw_ptr = get_hint_field_c(setup.p_setup, params, hint_id as u64, hint_field_name, dest, inverse, print_expression);
-    
+    let raw_ptr =
+        get_hint_field_c(setup.p_setup, params, hint_id as u64, hint_field_name, dest, inverse, print_expression);
+
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
     HintCol::from_hint_field(hint_field.as_ref())
@@ -262,11 +264,18 @@ pub fn get_hint_field_constant<F: Clone + Copy>(
     dest: bool,
     print_expression: bool,
 ) -> HintFieldValue<F> {
-    
     let setup = setup_ctx.get_setup(air_group_id, air_id).expect("REASON");
 
-    let raw_ptr = get_hint_field_c(setup.p_setup, std::ptr::null_mut(), hint_id as u64, hint_field_name, dest, false, print_expression);
-    
+    let raw_ptr = get_hint_field_c(
+        setup.p_setup,
+        std::ptr::null_mut(),
+        hint_id as u64,
+        hint_field_name,
+        dest,
+        false,
+        print_expression,
+    );
+
     let hint_field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
     HintCol::from_hint_field(hint_field.as_ref())
@@ -279,7 +288,6 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
     hint_field_name: &str,
     values: &HintFieldValue<F>,
 ) {
-
     let params = air_instance_ctx.params.unwrap();
 
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
@@ -320,7 +328,7 @@ pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
     };
 
     let values_ptr = value_array.as_mut_ptr() as *mut c_void;
-     
+
     let id = set_hint_field_c(setup.p_setup, params, values_ptr, hint_id, hint_field_name);
 
     air_instance_ctx.set_subproofvalue_calculated(id as usize);
@@ -332,13 +340,13 @@ pub fn print_expression<F: Clone + Copy + Debug>(
     expr: &HintFieldValue<F>,
     first_print_value: u64,
     last_print_value: u64,
-) {    
+) {
     let setup = setup_ctx.get_setup(air_instance_ctx.air_group_id, air_instance_ctx.air_id).expect("REASON");
-    
+
     match expr {
         HintFieldValue::Column(vec) => {
             print_expression_c(setup.p_setup, vec.as_ptr() as *mut c_void, 1, first_print_value, last_print_value);
-        } 
+        }
         HintFieldValue::ColumnExtended(vec) => {
             print_expression_c(setup.p_setup, vec.as_ptr() as *mut c_void, 3, first_print_value, last_print_value);
         }
@@ -349,7 +357,6 @@ pub fn print_expression<F: Clone + Copy + Debug>(
             println!("FieldExtended values: {:?}", val);
         }
     }
-        
 }
 
 pub fn print_by_name<F: Clone + Copy>(
@@ -367,17 +374,17 @@ pub fn print_by_name<F: Clone + Copy>(
     let lengths_ptr = lengths.as_ref().map(|lengths| lengths.clone().as_mut_ptr()).unwrap_or(std::ptr::null_mut());
 
     // TODO: CHECK WHAT IS WRONG WITH RETURN VALUES
-    let _raw_ptr = print_by_name_c(setup.p_setup, params, name, lengths_ptr, first_print_value, last_print_value, false);
+    let _raw_ptr =
+        print_by_name_c(setup.p_setup, params, name, lengths_ptr, first_print_value, last_print_value, false);
 
     // if return_values {
     //     let field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
 
     //     Some(HintCol::from_hint_field(field.as_ref()))
     // } else {
-        None
+    None
     // }
 }
-
 
 #[cfg(test)]
 mod tests {
