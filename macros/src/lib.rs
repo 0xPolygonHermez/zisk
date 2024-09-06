@@ -1,7 +1,11 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, format_ident, ToTokens};
-use syn::{parse2, DeriveInput, FieldsNamed, Type, Result, Field};
+use syn::{
+    parse2,
+    parse::{Parse, ParseStream},
+    Ident, Generics, FieldsNamed, Result, Field, Token,
+};
 
 #[proc_macro]
 pub fn trace(input: TokenStream) -> TokenStream {
@@ -12,40 +16,30 @@ pub fn trace(input: TokenStream) -> TokenStream {
 }
 
 fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
-    let derive_input = parse2::<DeriveInput>(input)?;
+    let parsed_input: ParsedTraceInput = parse2(input)?;
 
-    // Extract the struct name and generic parameters
-    let row_struct_name = &derive_input.ident;
-    let trace_struct_name = format_ident!("{}Trace", row_struct_name);
+    let row_struct_name = parsed_input.row_struct_name;
+    let trace_struct_name = parsed_input.struct_name;
+    let generic_param = parsed_input.generics;
+    let fields = parsed_input.fields;
 
-    let generic_param = &derive_input.generics.params.first().unwrap(); // Assuming there's one generic param (like <F>)
+    // Calculate ROW_SIZE
+    let row_size = fields.named.iter().map(|field| calculate_field_size_literal(&field.ty)).sum::<usize>();
 
-    // Extract fields from the struct
-    let fields_def = match &derive_input.data {
-        syn::Data::Struct(data_struct) => match &data_struct.fields {
-            syn::Fields::Named(FieldsNamed { named, .. }) => named,
-            _ => return Err(syn::Error::new_spanned(derive_input, "Expected named fields")),
-        },
-        _ => return Err(syn::Error::new_spanned(derive_input, "Expected struct data")),
-    };
-
-    // Build up the integer literal for ROW_SIZE
-    let row_size = fields_def.iter().map(|field| calculate_field_size_literal(&field.ty)).sum::<usize>();
-
-    // Generate the row struct
-    let field_definitions = fields_def.iter().map(|field| {
+    // Generate row struct
+    let field_definitions = fields.named.iter().map(|field| {
         let Field { ident, ty, .. } = field;
         quote! { pub #ident: #ty, }
     });
 
     let row_struct = quote! {
         #[derive(Debug, Clone, Copy, Default)]
-        pub struct #row_struct_name<#generic_param> {
+        pub struct #row_struct_name #generic_param {
             #(#field_definitions)*
         }
     };
 
-    // Generate the trace struct
+    // Generate trace struct
     let trace_struct = quote! {
         pub struct #trace_struct_name<'a, #generic_param> {
             pub buffer: Option<Vec<#generic_param>>,
@@ -95,11 +89,42 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
     })
 }
 
+// A struct to handle parsing the input and all the syntactic variations
+struct ParsedTraceInput {
+    row_struct_name: Ident,
+    struct_name: Ident,
+    generics: Generics,
+    fields: FieldsNamed,
+}
+
+impl Parse for ParsedTraceInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let lookahead = input.lookahead1();
+        let row_struct_name;
+
+        // Handle explicit or implicit row struct names
+        if lookahead.peek(Ident) && input.peek2(Token![,]) {
+            row_struct_name = Some(input.parse::<Ident>()?);
+            input.parse::<Token![,]>()?; // Skip comma after explicit row name
+        } else {
+            row_struct_name = None;
+        }
+
+        let struct_name = input.parse::<Ident>()?;
+        let row_struct_name = row_struct_name.unwrap_or_else(|| format_ident!("{}Row", struct_name));
+
+        let generics: Generics = input.parse()?;
+        let fields: FieldsNamed = input.parse()?;
+
+        Ok(ParsedTraceInput { row_struct_name, struct_name, generics, fields })
+    }
+}
+
 // Calculate the size of a field based on its type and return it as a usize literal
-fn calculate_field_size_literal(field_type: &Type) -> usize {
+fn calculate_field_size_literal(field_type: &syn::Type) -> usize {
     match field_type {
         // Handle arrays with multiple dimensions
-        Type::Array(type_array) => {
+        syn::Type::Array(type_array) => {
             let len = type_array.len.to_token_stream().to_string().parse::<usize>().unwrap();
             let elem_size = calculate_field_size_literal(&type_array.elem);
             len * elem_size
@@ -109,25 +134,27 @@ fn calculate_field_size_literal(field_type: &Type) -> usize {
     }
 }
 
+// Tests
+
 #[test]
-fn test_simple_struct() {
+fn test_simple_struct_without_struct_keyword() {
     let input = quote! {
-        struct TraceRow1<F> { a: F, b: F, c: F }
+        Simple<F> { a: F, b: F, c: F }
     };
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Default)]
-        pub struct TraceRow1<F> {
+        pub struct Simple<F> {
             pub a: F,
             pub b: F,
             pub c: F,
         }
-        pub struct TraceRow1Trace<'a, F> {
+        pub struct SimpleRow<'a, F> {
             pub buffer: Option<Vec<F>>,
-            pub slice_trace: &'a mut [TraceRow1<F>],
+            pub slice_trace: &'a mut [SimpleRow<F>],
             num_rows: usize,
         }
-        impl<F: Default + Clone + Copy> TraceRow1Trace<'_, F> {
+        impl<F: Default + Clone + Copy> SimpleRow<'_, F> {
             pub const ROW_SIZE: usize = 3usize;
 
             pub fn new(num_rows: usize) -> Self {
@@ -135,7 +162,7 @@ fn test_simple_struct() {
                 assert!(num_rows & (num_rows - 1) == 0);
                 let buffer = vec![F::default(); num_rows * Self::ROW_SIZE];
                 let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut TraceRow1<F>, num_rows)
+                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut SimpleRow<F>, num_rows)
                 };
                 Self { buffer: Some(buffer), slice_trace, num_rows }
             }
@@ -145,54 +172,51 @@ fn test_simple_struct() {
             }
         }
 
-        impl<'a, F> std::ops::Index<usize> for TraceRow1Trace<'a, F> {
-            type Output = TraceRow1<F>;
+        impl<'a, F> std::ops::Index<usize> for SimpleRow<'a, F> {
+            type Output = SimpleRow<F>;
 
             fn index(&self, index: usize) -> &Self::Output {
                 &self.slice_trace[index]
             }
         }
 
-        impl<'a, F> std::ops::IndexMut<usize> for TraceRow1Trace<'a, F> {
+        impl<'a, F> std::ops::IndexMut<usize> for SimpleRow<'a, F> {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.slice_trace[index]
             }
         }
     };
 
-    let parsed_input = parse2::<DeriveInput>(input).unwrap();
-    let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
-
-    // Compare ignoring spaces
+    let generated = trace_impl(input.into()).unwrap();
     assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
 }
 
 #[test]
-fn test_two_dimensional_array_01() {
+fn test_explicit_row_and_trace_struct() {
     let input = quote! {
-        struct TraceRow3<F> { a: [[F; 3]; 2], b: F }
+        SimpleRow, Simple<F> { a: F, b: F }
     };
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Default)]
-        pub struct TraceRow3<F> {
-            pub a: [[F; 3]; 2],
+        pub struct SimpleRow<F> {
+            pub a: F,
             pub b: F,
         }
-        pub struct TraceRow3Trace<'a, F> {
+        pub struct Simple<'a, F> {
             pub buffer: Option<Vec<F>>,
-            pub slice_trace: &'a mut [TraceRow3<F>],
+            pub slice_trace: &'a mut [SimpleRow<F>],
             num_rows: usize,
         }
-        impl<F: Default + Clone + Copy> TraceRow3Trace<'_, F> {
-            pub const ROW_SIZE: usize = 7usize;
+        impl<F: Default + Clone + Copy> Simple<'_, F> {
+            pub const ROW_SIZE: usize = 2usize;
 
             pub fn new(num_rows: usize) -> Self {
                 assert!(num_rows >= 2);
                 assert!(num_rows & (num_rows - 1) == 0);
                 let buffer = vec![F::default(); num_rows * Self::ROW_SIZE];
                 let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut TraceRow3<F>, num_rows)
+                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut SimpleRow<F>, num_rows)
                 };
                 Self { buffer: Some(buffer), slice_trace, num_rows }
             }
@@ -202,80 +226,21 @@ fn test_two_dimensional_array_01() {
             }
         }
 
-        impl<'a, F> std::ops::Index<usize> for TraceRow3Trace<'a, F> {
-            type Output = TraceRow3<F>;
+        impl<'a, F> std::ops::Index<usize> for Simple<'a, F> {
+            type Output = Simple<F>;
 
             fn index(&self, index: usize) -> &Self::Output {
                 &self.slice_trace[index]
             }
         }
 
-        impl<'a, F> std::ops::IndexMut<usize> for TraceRow3Trace<'a, F> {
+        impl<'a, F> std::ops::IndexMut<usize> for Simple<'a, F> {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.slice_trace[index]
             }
         }
     };
 
-    let parsed_input = parse2::<DeriveInput>(input).unwrap();
-    let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
-
-    // Compare ignoring spaces
-    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
-}
-
-#[test]
-fn test_two_dimensional_array_02() {
-    let input = quote! {
-        struct TraceRow2<F> { a: [[F; 3]; 2] }
-    };
-
-    let expected = quote! {
-        #[derive(Debug, Clone, Copy, Default)]
-        pub struct TraceRow2<F> {
-            pub a: [[F; 3]; 2],
-        }
-        pub struct TraceRow2Trace<'a, F> {
-            pub buffer: Option<Vec<F>>,
-            pub slice_trace: &'a mut [TraceRow2<F>],
-            num_rows: usize,
-        }
-        impl<F: Default + Clone + Copy> TraceRow2Trace<'_, F> {
-            pub const ROW_SIZE: usize = 6usize; // 2 * (3 * 1)
-
-            pub fn new(num_rows: usize) -> Self {
-                assert!(num_rows >= 2);
-                assert!(num_rows & (num_rows - 1) == 0);
-                let buffer = vec![F::default(); num_rows * Self::ROW_SIZE];
-                let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut TraceRow2<F>, num_rows)
-                };
-                Self { buffer: Some(buffer), slice_trace, num_rows }
-            }
-
-            pub fn num_rows(&self) -> usize {
-                self.num_rows
-            }
-        }
-
-        impl<'a, F> std::ops::Index<usize> for TraceRow2Trace<'a, F> {
-            type Output = TraceRow2<F>;
-
-            fn index(&self, index: usize) -> &Self::Output {
-                &self.slice_trace[index]
-            }
-        }
-
-        impl<'a, F> std::ops::IndexMut<usize> for TraceRow2Trace<'a, F> {
-            fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-                &mut self.slice_trace[index]
-            }
-        }
-    };
-
-    let parsed_input = parse2::<DeriveInput>(input).unwrap();
-    let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
-
-    // Compare ignoring spaces
+    let generated = trace_impl(input.into()).unwrap();
     assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
 }

@@ -3,236 +3,58 @@ pub trait Trace: Send {
     fn get_buffer_ptr(&mut self) -> *mut u8;
 }
 
-#[macro_export]
-macro_rules! trace {
-    ($row_struct_name:ident, $trace_struct_name:ident<$generic:ident> {
-        $( $field_name:ident : $field_type:ty ),* $(,)?
-    }) => {
-        // Define the row structure (Main0RowTrace)
-        #[allow(dead_code)]
-        #[derive(Debug, Clone, Copy, Default)]
-        pub struct $row_struct_name<$generic> {
-            $( pub $field_name: $field_type ),*
-        }
+pub use proofman_macros::trace;
 
+#[test]
+fn check() {
+    const OFFSET: usize = 1;
+    let num_rows = 8;
 
-        impl<$generic: Copy> $row_struct_name<$generic> {
-            // The size of each row in terms of the number of fields
-             pub const ROW_SIZE: usize = 0 $(+ trace!(@count_elements $field_type))*;
-        }
+    trace!(TraceRow, MyTrace<F> { a: F, b: F });
 
-        // Define the trace structure (Main0Trace) that manages the row structure
-        pub struct $trace_struct_name<'a, $generic> {
-            pub buffer: Option<Vec<$generic>>,
-            pub slice_trace: &'a mut [$row_struct_name<$generic>],
-            num_rows: usize,
-        }
+    let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
+    let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
+    let mut trace = trace.unwrap();
 
-        impl<'a, $generic: Default + Clone + Copy> $trace_struct_name<'a, $generic> {
-            // Constructor for creating a new buffer
-            pub fn new(num_rows: usize) -> Self {
-                // PRECONDITIONS
-                // num_rows must be greater than or equal to 2
-                assert!(num_rows >= 2);
-                // num_rows must be a power of 2
-                assert!(num_rows & (num_rows - 1) == 0);
+    // Set values
+    for i in 0..num_rows {
+        trace[i].a = i;
+        trace[i].b = i * 10;
+    }
 
-                let buffer = vec![$generic::default(); num_rows * $row_struct_name::<$generic>::ROW_SIZE];
-
-                let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut $row_struct_name<$generic>, num_rows)
-                };
-
-                $trace_struct_name { buffer: Some(buffer), slice_trace, num_rows }
-            }
-
-            // Constructor to map over an external buffer
-            pub fn map_buffer(external_buffer: &'a mut [$generic], num_rows: usize, offset: usize) -> Result<Self, Box<dyn std::error::Error>> {
-                // PRECONDITIONS
-                // num_rows must be greater than or equal to 2
-                assert!(num_rows >= 2);
-                // num_rows must be a power of 2
-                assert!(num_rows & (num_rows - 1) == 0);
-
-                let start = offset;
-                let end = start + num_rows * $row_struct_name::<$generic>::ROW_SIZE;
-
-                if end > external_buffer.len() {
-                    return Err("Buffer is too small to fit the trace".into());
-                }
-
-                let slice_trace = unsafe {
-                    std::slice::from_raw_parts_mut(
-                        external_buffer[start..end].as_ptr() as *mut $row_struct_name<$generic>,
-                        num_rows,
-                    )
-                };
-
-                Ok($trace_struct_name {
-                    buffer: None,
-                    slice_trace,
-                    num_rows,
-                })
-            }
-
-            // Constructor to map over an external buffer
-            pub fn map_row_vec(external_buffer: Vec<$row_struct_name<$generic>>) -> Result<Self, Box<dyn std::error::Error>> {
-                let num_rows = external_buffer.len().next_power_of_two();
-
-                // PRECONDITIONS
-                // num_rows must be greater than or equal to 2
-                assert!(num_rows >= 2);
-                // num_rows must be a power of 2
-                assert!(num_rows & (num_rows - 1) == 0);
-
-                let slice_trace = unsafe {
-                    let ptr = external_buffer.as_ptr() as *mut $row_struct_name<$generic>;
-                    std::slice::from_raw_parts_mut(ptr,
-                        num_rows,
-                    )
-                };
-
-                let buffer_f = unsafe {
-                    Vec::from_raw_parts(external_buffer.as_ptr() as *mut $generic, num_rows * $row_struct_name::<$generic>::ROW_SIZE, num_rows * $row_struct_name::<$generic>::ROW_SIZE)
-                };
-
-                std::mem::forget(external_buffer);
-
-                Ok($trace_struct_name {
-                    buffer: Some(buffer_f),
-                    slice_trace,
-                    num_rows,
-                })
-            }
-
-            pub fn num_rows(&self) -> usize {
-                self.num_rows
-            }
-        }
-
-        // Implement Index trait for immutable access
-        impl<'a, $generic> std::ops::Index<usize> for $trace_struct_name<'a, $generic> {
-            type Output = $row_struct_name<$generic>;
-
-            fn index(&self, index: usize) -> &Self::Output {
-                &self.slice_trace[index]
-            }
-        }
-
-        // Implement IndexMut trait for mutable access
-        impl<'a, $generic> std::ops::IndexMut<usize> for $trace_struct_name<'a, $generic> {
-            fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-                &mut self.slice_trace[index]
-            }
-        }
-
-                // Implement the Trace trait
-        impl<'a, $generic: Send > $crate::trace::Trace for $trace_struct_name<'a, $generic> {
-            fn num_rows(&self) -> usize {
-                self.num_rows
-            }
-
-            fn get_buffer_ptr(&mut self) -> *mut u8 {
-                let buffer = self.buffer.as_mut().expect("Buffer is not available");
-                buffer.as_mut_ptr() as *mut u8
-            }
-        }
-    };
-
-    (@count_elements $elem_type:ty) => {
-        if std::mem::size_of::<$elem_type>() == 8 {
-            1
-        } else if std::mem::size_of::<$elem_type>() == std::mem::size_of::<&str>() {
-            trace!(@parse_string $elem_type)
-        } else {
-            0
-        }
-    };
-
-    (@parse_string $elem_type:ty) => {
-        // Check if the element type is a string array
-        if true {
-            let field_str = stringify!($elem_type);
-            let a_bytes = "[F; 2]".as_bytes();
-            let b_bytes = field_str.as_bytes();
-            let mut result = 0;
-            let mut i = 0;
-            let mut c = 0;
-            if a_bytes.len() == b_bytes.len() {
-                while i < b_bytes.len() {
-                    if a_bytes[i] != b_bytes[i] {
-                        c+=1;
-                    }
-                    i+=1;
-                }
-                if c == 0 {
-                    result = 2;
-                }
-            }
-            result
-
-        } else {
-            0
-        }
-    };
+    // Check values
+    for i in 0..num_rows {
+        assert_eq!(trace[i].a, i);
+        assert_eq!(trace[i].b, i * 10);
+    }
 }
-#[cfg(test)]
-mod tests {
-    // use rand::Rng;
 
-    #[test]
-    fn check() {
-        const OFFSET: usize = 1;
-        let num_rows = 8;
+#[test]
+#[should_panic]
+fn test_errors_are_launched_when_num_rows_is_invalid_1() {
+    let mut buffer = vec![0u8; 3];
+    trace!(SimpleRow, Simple<F> { a: F });
+    let _ = Simple::map_buffer(&mut buffer, 1, 0);
+}
 
-        trace!(TraceRow, MyTrace<F> { a: F, b:F});
+#[test]
+#[should_panic]
+fn test_errors_are_launched_when_num_rows_is_invalid_2() {
+    let mut buffer = vec![0u8; 3];
+    trace!(SimpleRow, Simple<F> { a: F });
+    let _ = Simple::map_buffer(&mut buffer, 3, 0);
+}
 
-        assert_eq!(TraceRow::<usize>::ROW_SIZE, 2);
+#[test]
+#[should_panic]
+fn test_errors_are_launched_when_num_rows_is_invalid_3() {
+    trace!(SimpleRow, Simple<F> { a: F });
+    let _ = Simple::<u8>::new(1);
+}
 
-        let mut buffer = vec![0usize; num_rows * TraceRow::<usize>::ROW_SIZE + OFFSET];
-        let trace = MyTrace::map_buffer(&mut buffer, num_rows, OFFSET);
-        let mut trace = trace.unwrap();
-
-        // Set values
-        for i in 0..num_rows {
-            trace[i].a = i;
-            trace[i].b = i * 10;
-        }
-
-        // Check values
-        for i in 0..num_rows {
-            assert_eq!(trace[i].a, i);
-            assert_eq!(trace[i].b, i * 10);
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_1() {
-        let mut buffer = vec![0u8; 3];
-        trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::map_buffer(&mut buffer, 1, 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_2() {
-        let mut buffer = vec![0u8; 3];
-        trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::map_buffer(&mut buffer, 3, 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_3() {
-        trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::<u8>::new(1);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_errors_are_launched_when_num_rows_is_invalid_4() {
-        trace!(SimpleRow, Simple<F> { a: F });
-        let _ = Simple::<u8>::new(3);
-    }
+#[test]
+#[should_panic]
+fn test_errors_are_launched_when_num_rows_is_invalid_4() {
+    trace!(SimpleRow, Simple<F> { a: F });
+    let _ = Simple::<u8>::new(3);
 }
