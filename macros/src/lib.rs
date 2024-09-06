@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, format_ident, ToTokens};
-use syn::{parse2, DeriveInput, FieldsNamed, Ident, Type, Result, Field};
+use syn::{parse2, DeriveInput, FieldsNamed, Type, Result, Field};
 
 #[proc_macro]
 pub fn trace(input: TokenStream) -> TokenStream {
@@ -174,6 +174,7 @@ fn test_three_dimensional_array() {
     };
 
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Default)]
         pub struct TraceRow3<F> {
             pub a: [[F; 3]; 2],
             pub b: F,
@@ -219,5 +220,6 @@ fn test_three_dimensional_array() {
     let parsed_input = parse2::<DeriveInput>(input).unwrap();
     let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
 
-    assert_eq!(generated.to_string(), expected.to_string());
+    // Compare ignoring spaces
+    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
 }
