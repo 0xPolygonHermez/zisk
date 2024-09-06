@@ -55,12 +55,12 @@ impl<F> WitnessComponent<F> for FreqOpsSM {
 }
 
 impl Provable<ZiskRequiredOperation, OpResult> for FreqOpsSM {
-    fn calculate(
+    /*fn calculate(
         &self,
         _operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         unimplemented!()
-    }
+    }*/
 
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
@@ -77,7 +77,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for FreqOpsSM {
         }
     }
 
-    fn calculate_prove(
+    /*fn calculate_prove(
         &self,
         operation: ZiskRequiredOperation,
         drain: bool,
@@ -86,5 +86,5 @@ impl Provable<ZiskRequiredOperation, OpResult> for FreqOpsSM {
         let result = self.calculate(operation.clone());
         self.prove(&[operation], drain, scope);
         result
-    }
+    }*/
 }

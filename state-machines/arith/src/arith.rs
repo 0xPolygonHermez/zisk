@@ -9,7 +9,7 @@ use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{/* opcode_execute, */ ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -95,13 +95,13 @@ impl<F> WitnessComponent<F> for ArithSM {
 }
 
 impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
-    fn calculate(
+    /*fn calculate(
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
         Ok(result)
-    }
+    }*/
 
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         let mut _inputs32 = Vec::new();
@@ -178,7 +178,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         drop(inputs64);
     }
 
-    fn calculate_prove(
+    /*fn calculate_prove(
         &self,
         operation: ZiskRequiredOperation,
         drain: bool,
@@ -187,5 +187,5 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         let result = self.calculate(operation.clone());
         self.prove(&[operation], drain, scope);
         result
-    }
+    }*/
 }

@@ -6,8 +6,6 @@ mod emu_slice;
 mod emu_trace;
 mod emulator;
 mod emulator_errors;
-mod mem;
-mod mem_section;
 mod stats;
 
 pub use emu::*;
@@ -18,6 +16,4 @@ pub use emu_slice::*;
 pub use emu_trace::*;
 pub use emulator::*;
 pub use emulator_errors::*;
-pub use mem::*;
-pub use mem_section::*;
 pub use stats::*;

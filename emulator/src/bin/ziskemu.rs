@@ -4,7 +4,11 @@ use ziskemu::{EmuOptions, EmuTrace, Emulator, ZiskEmulator};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
-    let options: EmuOptions = EmuOptions::parse();
+    let mut options: EmuOptions = EmuOptions::parse();
+
+    //options.trace_steps = None;
+
+    //println! {"options={}", options};
 
     // Log the emulator options if requested
     if options.verbose {

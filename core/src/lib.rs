@@ -1,4 +1,7 @@
 mod elf2rom;
+mod inst_context;
+mod mem;
+mod mem_section;
 mod riscv2zisk;
 mod utils;
 mod zisk_definitions;
@@ -11,6 +14,9 @@ mod zisk_rom;
 mod zv2zisk;
 
 pub use elf2rom::*;
+pub use inst_context::*;
+pub use mem::*;
+pub use mem_section::*;
 pub use riscv2zisk::*;
 pub use utils::*;
 pub use zisk_definitions::*;

@@ -72,7 +72,7 @@ impl Stats {
     }
 
     fn is_usual(&self, instruction: &ZiskInst, a: u64, b: u64) -> bool {
-        instruction.is_external_op && (a < 256) && (b < 256)
+        (instruction.op != 0xF1) && instruction.is_external_op && (a < 256) && (b < 256)
     }
 
     pub fn report(&self) -> String {

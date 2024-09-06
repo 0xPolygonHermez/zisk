@@ -1,4 +1,6 @@
-use crate::ZiskOperation;
+use tiny_keccak::keccakf;
+
+use crate::{InstContext, ZiskOperation, SYS_ADDR};
 use std::{collections::HashMap, num::Wrapping};
 
 // Constant values used in operation functions
@@ -8,371 +10,478 @@ const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// Sets flag to true (and c to 0)
 #[inline(always)]
-fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
-    (0, true)
+fn op_flag(ctx: &mut InstContext) -> () {
+    ctx.c = 0;
+    ctx.flag = true;
 }
 
 /// Copies register b into c
 #[inline(always)]
-fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
-    (b, false)
+fn op_copyb(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.b;
+    ctx.flag = false;
 }
 
 /// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
 /// the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
-    ((b as i8) as u64, false)
+fn op_signextend_b(ctx: &mut InstContext) -> () {
+    ctx.c = (ctx.b as i8) as u64;
+    ctx.flag = false;
 }
 
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
-    ((b as i16) as u64, false)
+fn op_signextend_h(ctx: &mut InstContext) -> () {
+    ctx.c = (ctx.b as i16) as u64;
+    ctx.flag = false;
 }
 
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
+fn op_signextend_w(ctx: &mut InstContext) -> () {
+    ctx.c = (ctx.b as i32) as u64;
+    ctx.flag = false;
+}
+/*fn op_signextend_w(a: u64, b: u64) -> (u64, bool) {
     ((b as i32) as u64, false)
 }
+fn opc_signextend_w(ctx: &mut InstContext) -> () {
+    (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
+}*/
 
 /// Adds a and b, and stores the result in c
 #[inline(always)]
-fn op_add(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) + Wrapping(b)).0, false)
+fn op_add(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a) + Wrapping(ctx.b)).0;
+    ctx.flag = false;
 }
 
 /// Adds a and b as 32-bit unsigned values, and stores the result in c
 #[inline(always)]
-fn op_add_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) + Wrapping(b as i32)).0 as u64, false)
+fn op_add_w(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a as i32) + Wrapping(ctx.b as i32)).0 as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sub(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) - Wrapping(b)).0, false)
+fn op_sub(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a) - Wrapping(ctx.b)).0;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) - Wrapping(b as i32)).0 as u64, false)
+fn op_sub_w(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a as i32) - Wrapping(ctx.b as i32)).0 as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sll(a: u64, b: u64) -> (u64, bool) {
-    (a << (b & 0x3f), false)
+fn op_sll(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.a << (ctx.b & 0x3f);
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
-    (((Wrapping(a as u32) << (b & 0x3f) as usize).0 as i32) as u64, false)
+fn op_sll_w(ctx: &mut InstContext) -> () {
+    ctx.c = ((Wrapping(ctx.a as u32) << (ctx.b & 0x3f) as usize).0 as i32) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sra(a: u64, b: u64) -> (u64, bool) {
-    (((a as i64) >> (b & 0x3f)) as u64, false)
+fn op_sra(ctx: &mut InstContext) -> () {
+    ctx.c = ((ctx.a as i64) >> (ctx.b & 0x3f)) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_srl(a: u64, b: u64) -> (u64, bool) {
-    (a >> (b & 0x3f), false)
+fn op_srl(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.a >> (ctx.b & 0x3f);
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
+fn op_sra_w(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a as i32) >> (ctx.b & 0x3f) as usize).0 as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
-    (((Wrapping(a as u32) >> (b & 0x3f) as usize).0 as i32) as u64, false)
+fn op_srl_w(ctx: &mut InstContext) -> () {
+    ctx.c = ((Wrapping(ctx.a as u32) >> (ctx.b & 0x3f) as usize).0 as i32) as u64;
+    ctx.flag = false;
 }
 
 /// If a equals b, returns c=1, flag=true
 #[inline(always)]
-fn op_eq(a: u64, b: u64) -> (u64, bool) {
-    if a == b {
-        (1, true)
+fn op_eq(ctx: &mut InstContext) -> () {
+    if ctx.a == ctx.b {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) == (b as i32) {
-        (1, true)
+fn op_eq_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as i32) == (ctx.b as i32) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 /// If a is strictly less than b, returns c=1, flag=true
 #[inline(always)]
-fn op_ltu(a: u64, b: u64) -> (u64, bool) {
-    if a < b {
-        (1, true)
+fn op_ltu(ctx: &mut InstContext) -> () {
+    if ctx.a < ctx.b {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_lt(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) < (b as i64) {
-        (1, true)
+fn op_lt(ctx: &mut InstContext) -> () {
+    if (ctx.a as i64) < (ctx.b as i64) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) < (b as u32) {
-        (1, true)
+fn op_ltu_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as u32) < (ctx.b as u32) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) < (b as i32) {
-        (1, true)
+fn op_lt_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as i32) < (ctx.b as i32) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_leu(a: u64, b: u64) -> (u64, bool) {
-    if a <= b {
-        (1, true)
+fn op_leu(ctx: &mut InstContext) -> () {
+    if ctx.a <= ctx.b {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_le(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) <= (b as i64) {
-        (1, true)
+fn op_le(ctx: &mut InstContext) -> () {
+    if (ctx.a as i64) <= (ctx.b as i64) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) <= (b as u32) {
-        (1, true)
+fn op_leu_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as u32) <= (ctx.b as u32) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_le_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) <= (b as i32) {
-        (1, true)
+fn op_le_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as i32) <= (ctx.b as i32) {
+        ctx.c = 1;
+        ctx.flag = true;
     } else {
-        (0, false)
+        ctx.c = 0;
+        ctx.flag = false;
     }
 }
 
 #[inline(always)]
-fn op_and(a: u64, b: u64) -> (u64, bool) {
-    (a & b, false)
+fn op_and(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.a & ctx.b;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_or(a: u64, b: u64) -> (u64, bool) {
-    (a | b, false)
+fn op_or(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.a | ctx.b;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_xor(a: u64, b: u64) -> (u64, bool) {
-    (a ^ b, false)
+fn op_xor(ctx: &mut InstContext) -> () {
+    ctx.c = ctx.a ^ ctx.b;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_mulu(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) * Wrapping(b)).0, false)
+fn op_mulu(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a) * Wrapping(ctx.b)).0;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_mul(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i64) * Wrapping(b as i64)).0 as u64, false)
+fn op_mul(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a as i64) * Wrapping(ctx.b as i64)).0 as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) * Wrapping(b as i32)).0 as u64, false)
+fn op_mul_w(ctx: &mut InstContext) -> () {
+    ctx.c = (Wrapping(ctx.a as i32) * Wrapping(ctx.b as i32)).0 as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_muluh(a: u64, b: u64) -> (u64, bool) {
-    (((a as u128 * b as u128) >> 64) as u64, false)
+fn op_muluh(ctx: &mut InstContext) -> () {
+    ctx.c = ((ctx.a as u128 * ctx.b as u128) >> 64) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_mulh(a: u64, b: u64) -> (u64, bool) {
-    (((((a as i64) as i128) * ((b as i64) as i128)) >> 64) as u64, false)
+fn op_mulh(ctx: &mut InstContext) -> () {
+    ctx.c = ((((ctx.a as i64) as i128) * ((ctx.b as i64) as i128)) >> 64) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
-    (((((a as i64) as i128) * (b as i128)) >> 64) as u64, false)
+fn op_mulsuh(ctx: &mut InstContext) -> () {
+    ctx.c = ((((ctx.a as i64) as i128) * (ctx.b as i128)) >> 64) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_divu(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (M64, true);
+fn op_divu(ctx: &mut InstContext) -> () {
+    if ctx.b == 0 {
+        ctx.c = M64;
+        ctx.flag = true;
+        return;
     }
 
-    (a / b, false)
+    ctx.c = ctx.a / ctx.b;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_div(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (M64, true);
+fn op_div(ctx: &mut InstContext) -> () {
+    if ctx.b == 0 {
+        ctx.c = M64;
+        ctx.flag = true;
+        return;
     }
-    ((((a as i64) as i128) / ((b as i64) as i128)) as u64, false)
+    ctx.c = (((ctx.a as i64) as i128) / ((ctx.b as i64) as i128)) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
-    if b as u32 == 0 {
-        return (M64, true);
-    }
-
-    (((a as u32 / b as u32) as i32) as u64, false)
-}
-
-#[inline(always)]
-fn op_div_w(a: u64, b: u64) -> (u64, bool) {
-    if b as i32 == 0 {
-        return (M64, true);
+fn op_divu_w(ctx: &mut InstContext) -> () {
+    if ctx.b as u32 == 0 {
+        ctx.c = M64;
+        ctx.flag = true;
+        return;
     }
 
-    ((((a as i32) as i64) / ((b as i32) as i64)) as u64, false)
+    ctx.c = ((ctx.a as u32 / ctx.b as u32) as i32) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_remu(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (a, true);
+fn op_div_w(ctx: &mut InstContext) -> () {
+    if ctx.b as i32 == 0 {
+        ctx.c = M64;
+        ctx.flag = true;
+        return;
     }
 
-    (a % b, false)
+    ctx.c = (((ctx.a as i32) as i64) / ((ctx.b as i32) as i64)) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_rem(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (a, true);
+fn op_remu(ctx: &mut InstContext) -> () {
+    if ctx.b == 0 {
+        ctx.c = ctx.a;
+        ctx.flag = true;
+        return;
     }
 
-    ((((a as i64) as i128) % ((b as i64) as i128)) as u64, false)
+    ctx.c = ctx.a % ctx.b;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
-    if (b as u32) == 0 {
-        return ((a as i32) as u64, true);
+fn op_rem(ctx: &mut InstContext) -> () {
+    if ctx.b == 0 {
+        ctx.c = ctx.a;
+        ctx.flag = true;
+        return;
     }
 
-    ((((a as u32) % (b as u32)) as i32) as u64, false)
+    ctx.c = (((ctx.a as i64) as i128) % ((ctx.b as i64) as i128)) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
-    if (b as i32) == 0 {
-        return ((a as i32) as u64, true);
+fn op_remu_w(ctx: &mut InstContext) -> () {
+    if (ctx.b as u32) == 0 {
+        ctx.c = (ctx.a as i32) as u64;
+        ctx.flag = true;
+        return;
     }
 
-    (((a as i32) % (b as i32)) as u64, false)
+    ctx.c = (((ctx.a as u32) % (ctx.b as u32)) as i32) as u64;
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_minu(a: u64, b: u64) -> (u64, bool) {
-    //if op_s64(a) < op_s64(b)
-    if a < b {
-        (a, false)
+fn op_rem_w(ctx: &mut InstContext) -> () {
+    if (ctx.b as i32) == 0 {
+        ctx.c = (ctx.a as i32) as u64;
+        ctx.flag = true;
+        return;
+    }
+
+    ctx.c = ((ctx.a as i32) % (ctx.b as i32)) as u64;
+    ctx.flag = false;
+}
+
+#[inline(always)]
+fn op_minu(ctx: &mut InstContext) -> () {
+    if ctx.a < ctx.b {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_min(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) < (b as i64) {
-        (a, false)
+fn op_min(ctx: &mut InstContext) -> () {
+    if (ctx.a as i64) < (ctx.b as i64) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) < (b as u32) {
-        (a, false)
+fn op_minu_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as u32) < (ctx.b as u32) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_min_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) < (b as i32) {
-        (a, false)
+fn op_min_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as i32) < (ctx.b as i32) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_maxu(a: u64, b: u64) -> (u64, bool) {
-    //if op_s64(a) > op_s64(b)
-    if a > b {
-        (a, false)
+fn op_maxu(ctx: &mut InstContext) -> () {
+    if ctx.a > ctx.b {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_max(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) > (b as i64) {
-        (a, false)
+fn op_max(ctx: &mut InstContext) -> () {
+    if (ctx.a as i64) > (ctx.b as i64) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) > (b as u32) {
-        (a, false)
+fn op_maxu_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as u32) > (ctx.b as u32) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
 #[inline(always)]
-fn op_max_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) > (b as i32) {
-        (a, false)
+fn op_max_w(ctx: &mut InstContext) -> () {
+    if (ctx.a as i32) > (ctx.b as i32) {
+        ctx.c = ctx.a;
     } else {
-        (b, false)
+        ctx.c = ctx.b;
     }
+    ctx.flag = false;
 }
 
+#[inline(always)]
+fn op_keccak(ctx: &mut InstContext) -> () {
+    // Get address from register a1 = x11
+    let address = ctx.mem.read(SYS_ADDR + (10 as u64) * 8, 8);
+
+    // Allocate room for 25 u64 = 128 bytes = 1600 bits
+    const WORDS: usize = 25;
+    let mut data = [0u64; WORDS];
+
+    // Read them from the address
+    for i in 0..25 {
+        data[i] = ctx.mem.read(address + (8 * i as u64), 8);
+    }
+
+    // Call keccakf
+    keccakf(&mut data);
+
+    // Write them from the address
+    for i in 0..25 {
+        ctx.mem.write(address + (8 * i as u64), data[i], 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/*
 #[inline(always)]
 pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
     match opcode {
@@ -426,9 +535,10 @@ pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
         0x0c => op_max(a, b),
         0x1b => op_maxu_w(a, b),
         0x1c => op_max_w(a, b),
+        0xf1 => op_keccak(a, b),
         _ => panic!("opcode_execute() found invalid opcode={}", opcode),
     }
-}
+}*/
 
 #[inline(always)]
 pub fn opcode_string(opcode: u8) -> &'static str {
@@ -483,6 +593,7 @@ pub fn opcode_string(opcode: u8) -> &'static str {
         0x0c => "max",
         0x1b => "maxu_w",
         0x1c => "max_w",
+        0xf1 => "keccak",
         _ => panic!("opcode_string() found invalid opcode={}", opcode),
     }
 }
@@ -557,6 +668,7 @@ impl ZiskOperations {
             ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: op_max },
             ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: op_maxu_w },
             ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: op_max_w },
+            ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: op_keccak },
         ];
 
         // Create two empty maps
@@ -632,6 +744,7 @@ pub fn op_from_str(op: &str) -> ZiskOperation {
         "max" => ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: op_max },
         "maxu_w" => ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: op_maxu_w },
         "max_w" => ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: op_max_w },
+        "keccak" => ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: op_keccak },
         _ => panic!("op_from_str() found invalid opcode={}", op),
     }
 }
@@ -688,6 +801,7 @@ pub fn str_to_opcode(s: &str) -> u8 {
         "max" => 0x0c,
         "maxu_w" => 0x1b,
         "max_w" => 0x1c,
+        "keccak" => 0xf1,
         _ => panic!("str_to_opcode() found invalid opcode string={}", s),
     };
     op

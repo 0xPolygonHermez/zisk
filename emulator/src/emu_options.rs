@@ -83,8 +83,8 @@ impl fmt::Display for EmuOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}",
-            self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose
+            "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}\ntrace_steps={:?}",
+            self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose, self.trace_steps
         )
     }
 }

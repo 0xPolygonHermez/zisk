@@ -1,4 +1,4 @@
-use zisk_core::UART_ADDR;
+use crate::UART_ADDR;
 
 use crate::MemSection;
 
@@ -43,13 +43,13 @@ impl Mem {
 
         // Check the start address is not zero
         if start == 0 {
-            panic!("add_write_section() got invalid start={}", start);
+            panic!("Mem::add_write_section() got invalid start={}", start);
         }
 
         // Check the write section address has been set before this call
         if self.write_section.start != 0 {
             panic!(
-                "add_write_section() only one write section allowed, write_section.start={}",
+                "Mem::add_write_section() only one write section allowed, write_section.start={}",
                 self.write_section.start
             );
         }
@@ -102,7 +102,7 @@ impl Mem {
         }) {
             &self.read_sections[section]
         } else {
-            panic!("Section not found for addr: {} with width: {}", addr, width);
+            panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
         };
 
         // Calculate the read position

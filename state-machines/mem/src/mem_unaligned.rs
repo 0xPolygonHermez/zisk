@@ -72,12 +72,12 @@ impl<F> WitnessComponent<F> for MemUnalignedSM {
 }
 
 impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
-    fn calculate(&self, operation: MemUnalignedOp) -> Result<OpResult, Box<dyn std::error::Error>> {
+    /*fn calculate(&self, operation: MemUnalignedOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemUnalignedOp::Read(addr, width) => self.read(addr, width),
             MemUnalignedOp::Write(addr, width, val) => self.write(addr, width, val),
         }
-    }
+    }*/
 
     fn prove(&self, operations: &[MemUnalignedOp], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
@@ -94,7 +94,7 @@ impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
         }
     }
 
-    fn calculate_prove(
+    /*fn calculate_prove(
         &self,
         operation: MemUnalignedOp,
         drain: bool,
@@ -103,5 +103,5 @@ impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
         let result = self.calculate(operation.clone());
         self.prove(&[operation], drain, scope);
         result
-    }
+    }*/
 }

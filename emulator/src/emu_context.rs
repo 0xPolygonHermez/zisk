@@ -1,17 +1,12 @@
-use crate::{EmuTrace, Mem, Stats};
-use zisk_core::{write_u64_le, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
+use crate::{EmuTrace, Stats};
+use zisk_core::{
+    write_u64_le, InstContext, Mem, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY,
+};
 
-/// ZisK emulator context data container, storing the state of the emuulation
+/// ZisK emulator context data container, storing the state of the emulation
 pub struct EmuContext {
-    pub mem: Mem,
-    pub a: u64,
-    pub b: u64,
-    pub c: u64,
-    pub flag: bool,
-    pub sp: u64,
-    pub pc: u64,
-    pub step: u64,
-    pub end: bool,
+    pub inst_ctx: InstContext,
+
     pub tracerv: Vec<String>,
     pub tracerv_step: u64,
     pub tracerv_current_regs: [u64; 32],
@@ -29,15 +24,17 @@ impl EmuContext {
     /// RisK emulator context constructor
     pub fn new(input: Vec<u8>) -> EmuContext {
         let mut ctx = EmuContext {
-            mem: Mem::new(),
-            a: 0,
-            b: 0,
-            c: 0,
-            flag: false,
-            sp: 0,
-            pc: ROM_ENTRY,
-            step: 0,
-            end: false,
+            inst_ctx: InstContext {
+                mem: Mem::new(),
+                a: 0,
+                b: 0,
+                c: 0,
+                flag: false,
+                sp: 0,
+                pc: ROM_ENTRY,
+                step: 0,
+                end: false,
+            },
             tracerv: Vec::new(),
             tracerv_step: 0,
             tracerv_current_regs: [0; 32],
@@ -60,11 +57,11 @@ impl EmuContext {
         write_u64_le(&mut buffer, 0, input.len() as u64);
 
         // Add the length and input data read sections
-        ctx.mem.add_read_section(INPUT_ADDR, &buffer);
-        ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &buffer);
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
 
         // Add the write section
-        ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);
+        ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);
 
         ctx
     }

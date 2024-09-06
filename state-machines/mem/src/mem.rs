@@ -93,23 +93,23 @@ impl<F> WitnessComponent<F> for MemSM {
 }
 
 impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
-    fn calculate(
+    /*fn calculate(
         &self,
         _operation: ZiskRequiredMemory,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         unimplemented!()
-    }
+    }*/
 
     fn prove(&self, _operations: &[ZiskRequiredMemory], _drain: bool, _scope: &Scope) {
         // TODO!
     }
 
-    fn calculate_prove(
+    /*fn calculate_prove(
         &self,
         _operation: ZiskRequiredMemory,
         _drain: bool,
         _scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         unimplemented!()
-    }
+    }*/
 }
