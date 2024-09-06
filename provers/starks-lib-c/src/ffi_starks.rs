@@ -26,7 +26,11 @@ pub fn save_challenges_c(
         let global_info_file_name = CString::new(global_info_file).unwrap();
         let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-        save_challenges(p_challenges as *mut std::os::raw::c_void, global_info_file_ptr, file_ptr);
+        save_challenges(
+            p_challenges as *mut std::os::raw::c_void,
+            global_info_file_ptr,
+            file_ptr,
+        );
     }
 }
 

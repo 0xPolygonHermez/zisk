@@ -20,7 +20,10 @@ impl<F> WitnessManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
     pub fn new() -> Self {
-        WitnessManager { components: Vec::new(), airs: HashMap::new() }
+        WitnessManager {
+            components: Vec::new(),
+            airs: HashMap::new(),
+        }
     }
 
     pub fn register_component(&mut self, component: Arc<dyn WitnessComponent<F>>, air_ids: Option<&[usize]>) {
