@@ -2,7 +2,7 @@ use std::{os::raw::c_void, path::Path};
 
 use log::trace;
 
-use proofman_starks_lib_c::{const_pols_new_c, expressions_bin_new_c, expressions_ctx_new_c, setup_ctx_new_c, stark_info_new_c};
+use proofman_starks_lib_c::{const_pols_new_c, expressions_bin_new_c, setup_ctx_new_c, stark_info_new_c};
 
 use crate::GlobalInfo;
 
@@ -13,7 +13,6 @@ pub struct Setup {
     pub air_id: usize,
     pub p_setup: *mut c_void,
     pub p_stark_info: *mut c_void,
-    pub p_expressions: *mut c_void,
 }
 
 impl Setup {
@@ -46,8 +45,6 @@ impl Setup {
         
         let p_setup = setup_ctx_new_c(p_stark_info, p_expressions_bin, p_const_pols);
 
-        let p_expressions = expressions_ctx_new_c(p_setup);
-
-        Self { air_id, air_group_id, p_setup, p_expressions, p_stark_info }
+        Self { air_id, air_group_id, p_setup, p_stark_info }
     }
 }

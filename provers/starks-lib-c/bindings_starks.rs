@@ -55,6 +55,13 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
+    pub fn get_hint_ids_by_name(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        hintName: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z14setup_ctx_freePv"]
     pub fn setup_ctx_free(pSetupCtx: *mut ::std::os::raw::c_void);
 }
@@ -100,36 +107,19 @@ extern "C" {
     pub fn expressions_bin_free(pExpressionsBin: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19expressions_ctx_newPv"]
-    pub fn expressions_ctx_new(
-        pSetupCtx: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z18verify_constraintsPvS_"]
-    pub fn verify_constraints(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11get_fri_polPvS_"]
-    pub fn get_fri_pol(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
-    pub fn get_hint_ids_by_name(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
-        hintName: *mut ::std::os::raw::c_char,
+    #[link_name = "\u{1}_Z11init_paramsPvS_S_S_S_"]
+    pub fn init_params(
+        ptr: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcbbb"]
     pub fn get_hint_field(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pSetupCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
@@ -141,7 +131,7 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
     pub fn set_hint_field(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pSetupCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         values: *mut ::std::os::raw::c_void,
         hintId: u64,
@@ -149,25 +139,26 @@ extern "C" {
     ) -> u64;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z20expressions_ctx_freePv"]
-    pub fn expressions_ctx_free(pExpressionsCtx: *mut ::std::os::raw::c_void);
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11init_paramsPvS_S_S_S_"]
-    pub fn init_params(
-        ptr: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z10starks_newPvS_"]
-    pub fn starks_new(
+    #[link_name = "\u{1}_Z11get_fri_polPvS_"]
+    pub fn get_fri_pol(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z18verify_constraintsPvS_"]
+    pub fn verify_constraints(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11params_freePv"]
+    pub fn params_free(pParams: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z10starks_newPv"]
+    pub fn starks_new(pSetupCtx: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z11starks_freePv"]
@@ -191,16 +182,30 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_Z15prepare_fri_polPvS_"]
+    pub fn prepare_fri_pol(
+        pStarks: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_"]
+    pub fn calculate_fri_polynomial(
+        pStarks: *mut ::std::os::raw::c_void,
+        pParams: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_"]
     pub fn calculate_quotient_polynomial(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pStarks: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
     #[link_name = "\u{1}_Z28calculate_impols_expressionsPvS_m"]
     pub fn calculate_impols_expressions(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pStarks: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         step: u64,
     );
@@ -222,14 +227,6 @@ extern "C" {
         pParams: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z15compute_fri_polPvmS_"]
-    pub fn compute_fri_pol(
-        pStarks: *mut ::std::os::raw::c_void,
-        step: u64,
-        pParams: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z19compute_fri_foldingPvmS_S_S_"]
@@ -315,7 +312,7 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]
     pub fn print_by_name(
-        pExpressionsCtx: *mut ::std::os::raw::c_void,
+        pSetupCtx: *mut ::std::os::raw::c_void,
         pParams: *mut ::std::os::raw::c_void,
         name: *mut ::std::os::raw::c_char,
         lengths: *mut u64,
@@ -327,7 +324,7 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z16print_expressionPvS_mmm"]
     pub fn print_expression(
-        pExpressionCtx: *mut ::std::os::raw::c_void,
+        pSetupCtx: *mut ::std::os::raw::c_void,
         pol: *mut ::std::os::raw::c_void,
         dim: u64,
         first_value: u64,

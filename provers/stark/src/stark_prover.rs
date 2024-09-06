@@ -29,7 +29,6 @@ pub struct StarkProver<T: Field> {
     air_group_id: usize,
     config: StarkProverSettings,
     p_setup: *mut c_void,
-    p_expressions: *mut c_void,
     pub p_stark: *mut c_void,
     p_stark_info: *mut c_void,
     stark_info: StarkInfo,
@@ -67,10 +66,9 @@ impl<T: Field> StarkProver<T> {
         let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
 
         let p_setup = setup.p_setup;
-        let p_expressions = setup.p_expressions;
         let p_stark_info = setup.p_stark_info;
 
-        let p_stark = starks_new_c(p_setup, p_expressions);
+        let p_stark = starks_new_c(p_setup);
 
         let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
         let stark_info_json = std::fs::read_to_string(&stark_info_path)
@@ -104,7 +102,6 @@ impl<T: Field> StarkProver<T> {
             air_group_id,
             config,
             p_setup,
-            p_expressions,
             p_stark_info,
             p_stark,
             p_proof: None,
@@ -179,7 +176,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo> {
         let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
 
-        let raw_ptr = verify_constraints_c(self.p_expressions, air_instance_ctx.params.unwrap());
+        let raw_ptr = verify_constraints_c(self.p_setup, air_instance_ctx.params.unwrap());
 
         let constraints_result = unsafe { Box::from_raw(raw_ptr as *mut ConstraintsResults) };
         
@@ -204,7 +201,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                     panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
                 }
             }
-            calculate_impols_expressions_c(self.p_expressions, air_instance_ctx.params.unwrap(), stage_id as u64);
+            calculate_impols_expressions_c(self.p_stark, air_instance_ctx.params.unwrap(), stage_id as u64);
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
@@ -216,7 +213,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 fri_proof_set_subproof_values_c(p_proof, air_instance_ctx.params.unwrap());
             }
         } else {
-            calculate_quotient_polynomial_c(self.p_expressions, air_instance_ctx.params.unwrap());
+            calculate_quotient_polynomial_c(self.p_stark, air_instance_ctx.params.unwrap());
             for i in 0..n_commits {
                 let cm_pol: &crate::stark_info::PolMap = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == (proof_ctx.pilout.num_stages() + 1) as u64 {
@@ -394,7 +391,9 @@ impl<F: Field> StarkProver<F> {
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
 
-        compute_fri_pol_c(p_stark, self.stark_info.n_stages as u64 + 2, air_instance_ctx.params.unwrap());
+        prepare_fri_polynomial_c(p_stark, air_instance_ctx.params.unwrap());
+
+        calculate_fri_polynomial_c(p_stark, air_instance_ctx.params.unwrap());
     }
 
     fn compute_fri_folding(&mut self, opening_id: u32, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript) {
@@ -425,7 +424,7 @@ impl<F: Field> StarkProver<F> {
         } else {
             let hash: Vec<F> = vec![F::zero(); self.n_field_elements];
             let n_hash = (1 << (steps[n_steps - 1].n_bits)) * Self::FIELD_EXTENSION as u64;
-            let fri_pol = get_fri_pol_c(self.p_expressions, air_instance_ctx.params.unwrap());
+            let fri_pol = get_fri_pol_c(self.p_setup, air_instance_ctx.params.unwrap());
             calculate_hash_c(p_stark, hash.as_ptr() as *mut c_void, fri_pol, n_hash);
             transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
         }
