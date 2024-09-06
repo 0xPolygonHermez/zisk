@@ -168,7 +168,7 @@ fn test_simple_struct() {
 }
 
 #[test]
-fn test_three_dimensional_array() {
+fn test_two_dimensional_array_01() {
     let input = quote! {
         struct TraceRow3<F> { a: [[F; 3]; 2], b: F }
     };
@@ -211,6 +211,62 @@ fn test_three_dimensional_array() {
         }
 
         impl<'a, F> std::ops::IndexMut<usize> for TraceRow3Trace<'a, F> {
+            fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+                &mut self.slice_trace[index]
+            }
+        }
+    };
+
+    let parsed_input = parse2::<DeriveInput>(input).unwrap();
+    let generated = trace_impl(parsed_input.into_token_stream()).unwrap();
+
+    // Compare ignoring spaces
+    assert_eq!(generated.to_string().replace(" ", ""), expected.into_token_stream().to_string().replace(" ", ""));
+}
+
+#[test]
+fn test_two_dimensional_array_02() {
+    let input = quote! {
+        struct TraceRow2<F> { a: [[F; 3]; 2] }
+    };
+
+    let expected = quote! {
+        #[derive(Debug, Clone, Copy, Default)]
+        pub struct TraceRow2<F> {
+            pub a: [[F; 3]; 2],
+        }
+        pub struct TraceRow2Trace<'a, F> {
+            pub buffer: Option<Vec<F>>,
+            pub slice_trace: &'a mut [TraceRow2<F>],
+            num_rows: usize,
+        }
+        impl<F: Default + Clone + Copy> TraceRow2Trace<'_, F> {
+            pub const ROW_SIZE: usize = 6usize; // 2 * (3 * 1)
+
+            pub fn new(num_rows: usize) -> Self {
+                assert!(num_rows >= 2);
+                assert!(num_rows & (num_rows - 1) == 0);
+                let buffer = vec![F::default(); num_rows * Self::ROW_SIZE];
+                let slice_trace = unsafe {
+                    std::slice::from_raw_parts_mut(buffer.as_ptr() as *mut TraceRow2<F>, num_rows)
+                };
+                Self { buffer: Some(buffer), slice_trace, num_rows }
+            }
+
+            pub fn num_rows(&self) -> usize {
+                self.num_rows
+            }
+        }
+
+        impl<'a, F> std::ops::Index<usize> for TraceRow2Trace<'a, F> {
+            type Output = TraceRow2<F>;
+
+            fn index(&self, index: usize) -> &Self::Output {
+                &self.slice_trace[index]
+            }
+        }
+
+        impl<'a, F> std::ops::IndexMut<usize> for TraceRow2Trace<'a, F> {
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 &mut self.slice_trace[index]
             }
