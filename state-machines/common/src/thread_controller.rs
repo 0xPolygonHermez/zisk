@@ -16,6 +16,12 @@ pub struct ThreadController {
     condvar: Condvar,
 }
 
+impl Default for ThreadController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ThreadController {
     pub fn new() -> ThreadController {
         ThreadController {
