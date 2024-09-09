@@ -1,6 +1,6 @@
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Condvar, Mutex,
+    Arc, Mutex,
 };
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx};
 use proofman_setup::SetupCtx;
 use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -18,10 +18,8 @@ pub struct BinarySM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Mechanism to control the number of working threads
-    working_threads: Arc<AtomicU32>,
-    mutex: Arc<Mutex<()>>,
-    condvar: Arc<Condvar>,
+    // Thread controller to manage the execution of the state machines
+    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs_basic: Mutex<Vec<ZiskRequiredOperation>>,
@@ -40,9 +38,7 @@ impl BinarySM {
     ) -> Arc<Self> {
         let binary_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            working_threads: Arc::new(AtomicU32::new(0)),
-            mutex: Arc::new(Mutex::new(())),
-            condvar: Arc::new(Condvar::new()),
+            threads_controller: Arc::new(ThreadController::new()),
             inputs_basic: Mutex::new(Vec::new()),
             inputs_extension: Mutex::new(Vec::new()),
             binary_basic_sm,
@@ -66,10 +62,7 @@ impl BinarySM {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <BinarySM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
 
-            let mut guard = self.mutex.lock().unwrap();
-            while self.working_threads.load(Ordering::SeqCst) > 0 {
-                guard = self.condvar.wait(guard).unwrap();
-            }
+            self.threads_controller.wait_for_threads();
 
             self.binary_basic_sm.unregister_predecessor(scope);
             self.binary_extension_sm.unregister_predecessor(scope);
@@ -124,17 +117,13 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
             let drained_inputs_basic = inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
             let binary_basic_sm_cloned = self.binary_basic_sm.clone();
 
-            self.working_threads.fetch_add(1, Ordering::SeqCst);
-            let mutex = self.mutex.clone();
-            let condvar = self.condvar.clone();
-            let working_threads = self.working_threads.clone();
+            self.threads_controller.add_working_thread();
+            let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
                 binary_basic_sm_cloned.prove(&drained_inputs_basic, drain, scope);
 
-                let _guard = mutex.lock().unwrap();
-                working_threads.fetch_sub(1, Ordering::SeqCst);
-                condvar.notify_all();
+                thread_controller.remove_working_thread();
             });
         }
         drop(inputs_basic);
@@ -149,17 +138,13 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
                 inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
             let binary_extension_sm_cloned = self.binary_extension_sm.clone();
 
-            self.working_threads.fetch_add(1, Ordering::SeqCst);
-            let mutex = self.mutex.clone();
-            let condvar = self.condvar.clone();
-            let working_threads = self.working_threads.clone();
+            self.threads_controller.add_working_thread();
+            let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
                 binary_extension_sm_cloned.prove(&drained_inputs_extension, drain, scope);
 
-                let _guard = mutex.lock().unwrap();
-                working_threads.fetch_sub(1, Ordering::SeqCst);
-                condvar.notify_all();
+                thread_controller.remove_working_thread();
             });
         }
         drop(inputs_extension);
