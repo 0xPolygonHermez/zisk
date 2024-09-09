@@ -1,5 +1,5 @@
 use log::debug;
-use proofman_setup::SetupCtx;
+use proofman_hints::print_by_name;
 use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
@@ -8,7 +8,7 @@ use zisk_pil::{Pilout, MAIN_AIR_IDS};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
 use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
 use sm_main::MainSM;
@@ -135,6 +135,21 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
         self.wcm.calculate_witness(stage, pctx, ectx, sctx);
     }
 
+    fn debug(&mut self, 
+        pctx: &ProofCtx<F>, 
+        _ectx: &ExecutionCtx, 
+        sctx: &SetupCtx
+    ) {
+        let mut air_instances = pctx.air_instances.write().unwrap();
+
+        for (_air_instance_id, air_instance_ctx) in air_instances.iter_mut().enumerate() {
+            print_by_name(sctx, air_instance_ctx, "Main.main_first_segment", None, 0, 1);
+            print_by_name(sctx, air_instance_ctx, "Main.SEGMENT_L1", None, 0, 1);
+            print_by_name(sctx, air_instance_ctx, "Main.pc", None, 0, 1);
+
+        }
+
+    }
     fn pilout(&self) -> WitnessPilout {
         Pilout::pilout()
     }

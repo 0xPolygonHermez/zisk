@@ -8,7 +8,7 @@ zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
 
 proofman-common = { workspace = true }
-proofman-setup = { workspace = true }
+proofman-macros = { workspace = true }
 proofman = { workspace = true }
 
 log = { workspace = true }

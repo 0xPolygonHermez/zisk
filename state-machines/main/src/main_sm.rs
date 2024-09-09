@@ -1,7 +1,6 @@
 use log::info;
 use p3_field::AbstractField;
 
-use proofman_setup::SetupCtx;
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -15,7 +14,7 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
@@ -208,7 +207,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_segment = mem::take(last_air_segment);
             pool.scope(|scope| {
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx);
+                    Self::create_air_instance(air_segment, pctx, ectx);
                 });
             });
         }
@@ -267,7 +266,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
                 let air_segment = mem::take(air_segment);
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx);
+                    Self::create_air_instance(air_segment, pctx, ectx);
                 });
             }
         });
@@ -281,7 +280,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `pctx` - Proof context to interact with the proof system
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn create_air_instance(air_segment: MainAirSegment<F>, pctx: &ProofCtx<F>) {
+    fn create_air_instance(air_segment: MainAirSegment<F>, pctx: &ProofCtx<F>, ectx: &ExecutionCtx) {
         info!(
             "{}: ··· Creating Main segment #{} [{} inputs]",
             Self::MY_NAME,
@@ -290,35 +289,35 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         );
 
         // Compute buffer size using the BufferAllocator
-        // let air_setup_path = Path::new(
-        //     "../pil2-components/test/fibonacci/build_x/provingKey/build/FibonacciSquare/airs/
-        // FibonacciSquare_0/air/", );
-
-        // let buffer_size = ectx.buffer_allocator.as_ref().get_buffer_info(air_setup_path);
-        // if let Err(e) = buffer_size {
-        //     panic!("Error getting buffer size: {:?}", e);
-        // }
+        let (buffer_size, offsets) = match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
+            Ok((size, offsets)) => (size, offsets),
+            Err(err) => {
+                // Handle the error case, for example:
+                panic!("Error getting buffer info: {}", err);
+            }
+        };
 
         // Option 1: Create a new buffer to allocate all stark data and copy the data into it
         // let num_rows = inputs.len().next_power_of_two();
         // let mut main_trace = Box::new(Main0Trace::<F>::new(num_rows));
 
-        // if inputs.len() < num_rows {
-        //     main_trace.slice[..inputs.len()].copy_from_slice(&inputs);
+        // if air_segment.inputs.len() < num_rows {
+        //     main_trace.slice[..air_segment.inputs.len()].copy_from_slice(&air_segment.inputs);
         // } else {
-        //     main_trace.slice.copy_from_slice(&inputs);
+        //     main_trace.slice.copy_from_slice(&air_segment.inputs);
         // }
 
         // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
         let main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
 
-        let mut air_instances = pctx.air_instances.write().unwrap();
+        let main_trace_buffer = main_trace.buffer.unwrap();
 
-        air_instances.push(AirInstanceCtx {
-            air_group_id: MAIN_SUBPROOF_ID[0],
-            air_id: MAIN_AIR_IDS[0],
-            buffer: Some(main_trace.buffer.unwrap()),
-        });
+        let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+        
+        buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len() as usize].copy_from_slice(&main_trace_buffer);
+
+        pctx.add_air_instance_ctx(MAIN_SUBPROOF_ID[0], MAIN_AIR_IDS[0], Some(buffer));
+
     }
 
     /// Proves a batch of inputs
