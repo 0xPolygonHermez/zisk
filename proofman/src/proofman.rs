@@ -135,7 +135,7 @@ impl<F: Field + 'static> ProofMan<F> {
             log::info!("{}: <-- Verifying constraints", Self::MY_NAME);
 
             witness_lib.debug(&pctx, &ectx, &sctx);
-            
+
             let constraints = Self::verify_constraints(&mut provers, &mut pctx);
 
             let mut valid_constraints = true;
@@ -227,7 +227,9 @@ impl<F: Field + 'static> ProofMan<F> {
                     );
                 }
                 log::debug!("{}: ···   ", Self::MY_NAME);
-                if !valid_constraints_prover { valid_constraints = false; }
+                if !valid_constraints_prover {
+                    valid_constraints = false;
+                }
             }
 
             log::info!("{}: <-- Checking global constraints", Self::MY_NAME);

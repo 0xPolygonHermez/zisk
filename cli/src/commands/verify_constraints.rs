@@ -61,7 +61,7 @@ pub struct VerifyConstraintsCmd {
     pub field: Field,
 
     /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")] 
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
@@ -73,12 +73,12 @@ impl VerifyConstraintsCmd {
         type GL = Goldilocks;
 
         let debug_mode = match self.verbose {
-             0 => 1, // Default to Error
-             1 => 2, // -v
-             2 => 3, // -vv _ => log::LevelFilter::Trace, 
-             _ => 1
+            0 => 1, // Default to Error
+            1 => 2, // -v
+            2 => 3, // -vv _ => log::LevelFilter::Trace,
+            _ => 1,
         };
-        
+
         let _valid_constraints = match self.field {
             Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),

@@ -62,7 +62,11 @@ impl PilOutProxy {
     }
 
     pub fn num_stages(&self) -> u32 {
-        self.pilout.num_challenges.len() as u32
+        if self.pilout.num_challenges.is_empty() {
+            1
+        } else {
+            self.pilout.num_challenges.len() as u32
+        }
     }
 
     pub fn num_rows(&self, subproof_id: usize, air_id: usize) -> usize {
