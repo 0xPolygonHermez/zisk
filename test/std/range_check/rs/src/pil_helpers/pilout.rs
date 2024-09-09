@@ -10,13 +10,11 @@ pub const RANGE_CHECK_4_SUBPROOF_ID: &[usize] = &[0];
 
 pub const U_8_AIR_SUBPROOF_ID: &[usize] = &[1];
 
-
 //AIR CONSTANTS
 
 pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
 
 pub const U_8_AIR_AIR_IDS: &[usize] = &[1];
-
 
 pub struct Pilout;
 
@@ -24,17 +22,13 @@ impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("RangeCheck", 2, PILOUT_HASH.to_vec());
 
-
         let air_group = pilout.add_air_group(Some("RangeCheck4"));
-    
+
         air_group.add_air(Some("RangeCheck4"), 64);
-    
 
         let air_group = pilout.add_air_group(Some("U8Air"));
-    
-        air_group.add_air(Some("U8Air"), 256);
-    
 
+        air_group.add_air(Some("U8Air"), 256);
 
         pilout
     }

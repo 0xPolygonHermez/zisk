@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Display},
+    fmt::Debug,
     sync::{Arc, Mutex},
 };
 
@@ -12,43 +12,18 @@ use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldVal
 
 use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
 
-// pub enum RangeCheckTrace<F: 'static> {
-//     U8Air0(U8Air0Trace<'static, F>),
-//     U16Air0(U16Air0Trace<'static, F>),
-//     SpecifiedRanges0(SpecifiedRanges0Trace<'static, F>),
-// }
-
 const MODE_DEBUG: bool = false;
 
 const BYTE: u8 = 255;
 const TWOBYTES: u16 = 65535;
 
 const STD_RANGE_CHECK_VARIANTS: usize = 3;
-const STD_RANGE_CHECK_AIR_NAMES: [&str; STD_RANGE_CHECK_VARIANTS] =
-    ["U8Air", "U16Air", "SpecifiedRanges"];
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum RangeCheckAir {
     U8Air,
     U16Air,
     SpecifiedRanges,
-}
-
-impl Display for RangeCheckAir {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RangeCheckAir::U8Air => write!(f, "{}", STD_RANGE_CHECK_AIR_NAMES[0]),
-            RangeCheckAir::U16Air => write!(f, "{}", STD_RANGE_CHECK_AIR_NAMES[1]),
-            RangeCheckAir::SpecifiedRanges => write!(f, "{}", STD_RANGE_CHECK_AIR_NAMES[2]),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct RCAirData {
-    pub air_name: RangeCheckAir,
-    pub air_group_id: usize,
-    pub air_id: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -71,6 +46,12 @@ pub struct StdRangeCheck<F: PrimeField> {
     specified_ranges: Option<Arc<SpecifiedRanges<F>>>,
 }
 
+pub struct RCAirData {
+    pub air_name: RangeCheckAir,
+    pub air_group_id: usize,
+    pub air_id: usize,
+}
+
 impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
     fn decide(&self, sctx: &SetupCtx, pctx: &ProofCtx<F>) {
         // Scan the pilout for airs that have rc-related hints
@@ -82,9 +63,9 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let air_id = air.air_id;
                 let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
                 let rc_hints = get_hint_ids_by_name(setup.p_expressions, "range_check");
-                if !rc_hints.is_empty() {
+                for hint in rc_hints {
                     // Register the ranges for the range check
-                    self.register_ranges(sctx, air_group_id, air_id, rc_hints);
+                    self.register_ranges(sctx, air_group_id, air_id, hint);
                 }
             });
         });
@@ -141,139 +122,137 @@ impl<F: PrimeField> StdRangeCheck<F> {
         sctx: &SetupCtx,
         air_group_id: usize,
         air_id: usize,
-        rc_hints: Vec<u64>,
+        hint: u64,
     ) {
-        for hint in rc_hints {
-            let predefined = get_hint_field_constant::<F>(
-                sctx,
-                air_group_id,
-                air_id,
-                hint as usize,
-                "predefined",
-                false,
-                false,
-            );
-            let min = get_hint_field_constant::<F>(
-                sctx,
-                air_group_id,
-                air_id,
-                hint as usize,
-                "min",
-                false,
-                false,
-            );
-            let min_neg = get_hint_field_constant::<F>(
-                sctx,
-                air_group_id,
-                air_id,
-                hint as usize,
-                "min_neg",
-                false,
-                false,
-            );
-            let max = get_hint_field_constant::<F>(
-                sctx,
-                air_group_id,
-                air_id,
-                hint as usize,
-                "max",
-                false,
-                false,
-            );
-            let max_neg = get_hint_field_constant::<F>(
-                sctx,
-                air_group_id,
-                air_id,
-                hint as usize,
-                "max_neg",
-                false,
-                false,
-            );
+        let predefined = get_hint_field_constant::<F>(
+            sctx,
+            air_group_id,
+            air_id,
+            hint as usize,
+            "predefined",
+            false,
+            false,
+        );
+        let min = get_hint_field_constant::<F>(
+            sctx,
+            air_group_id,
+            air_id,
+            hint as usize,
+            "min",
+            false,
+            false,
+        );
+        let min_neg = get_hint_field_constant::<F>(
+            sctx,
+            air_group_id,
+            air_id,
+            hint as usize,
+            "min_neg",
+            false,
+            false,
+        );
+        let max = get_hint_field_constant::<F>(
+            sctx,
+            air_group_id,
+            air_id,
+            hint as usize,
+            "max",
+            false,
+            false,
+        );
+        let max_neg = get_hint_field_constant::<F>(
+            sctx,
+            air_group_id,
+            air_id,
+            hint as usize,
+            "max_neg",
+            false,
+            false,
+        );
 
-            let HintFieldValue::Field(predefined) = predefined else {
-                log::error!("Predefined hint must be a field element");
-                panic!();
-            };
-            let HintFieldValue::Field(min) = min else {
-                log::error!("Min hint must be a field element");
-                panic!();
-            };
-            let HintFieldValue::Field(min_neg) = min_neg else {
-                log::error!("Min_neg hint must be a field element");
-                panic!();
-            };
-            let HintFieldValue::Field(max) = max else {
-                log::error!("Max hint must be a field element");
-                panic!();
-            };
-            let HintFieldValue::Field(max_neg) = max_neg else {
-                log::error!("Max_neg hint must be a field element");
-                panic!();
-            };
+        let HintFieldValue::Field(predefined) = predefined else {
+            log::error!("Predefined hint must be a field element");
+            panic!();
+        };
+        let HintFieldValue::Field(min) = min else {
+            log::error!("Min hint must be a field element");
+            panic!();
+        };
+        let HintFieldValue::Field(min_neg) = min_neg else {
+            log::error!("Min_neg hint must be a field element");
+            panic!();
+        };
+        let HintFieldValue::Field(max) = max else {
+            log::error!("Max hint must be a field element");
+            panic!();
+        };
+        let HintFieldValue::Field(max_neg) = max_neg else {
+            log::error!("Max_neg hint must be a field element");
+            panic!();
+        };
 
-            let predefined = {
-                if !predefined.is_zero() && !predefined.is_one() {
-                    log::error!("Predefined hint must be either 0 or 1");
-                    panic!();
-                }
-                predefined.is_one()
-            };
-            let min_neg = {
-                if !min_neg.is_zero() && !min_neg.is_one() {
-                    log::error!("Predefined hint must be either 0 or 1");
-                    panic!();
-                }
-                min_neg.is_one()
-            };
-            let max_neg = {
-                if !max_neg.is_zero() && !max_neg.is_one() {
-                    log::error!("Predefined hint must be either 0 or 1");
-                    panic!();
-                }
-                max_neg.is_one()
-            };
-
-            let range = Range(min, max, min_neg, max_neg);
-
-            // If the range is already defined, skip
-            let ranges = self.ranges.lock().unwrap();
-            if ranges
-                .iter()
-                .any(|r| r.range.0 == range.0 && r.range.1 == range.1)
-            {
-                continue;
+        let predefined = {
+            if !predefined.is_zero() && !predefined.is_one() {
+                log::error!("Predefined hint must be either 0 or 1");
+                panic!();
             }
-            // Notice that we only compare the min and max values, not the sign
-            drop(ranges);
+            predefined.is_one()
+        };
+        let min_neg = {
+            if !min_neg.is_zero() && !min_neg.is_one() {
+                log::error!("Predefined hint must be either 0 or 1");
+                panic!();
+            }
+            min_neg.is_one()
+        };
+        let max_neg = {
+            if !max_neg.is_zero() && !max_neg.is_one() {
+                log::error!("Predefined hint must be either 0 or 1");
+                panic!();
+            }
+            max_neg.is_one()
+        };
 
-            // Otherwise, register the range
-            let zero = F::zero();
-            let byte = F::from_canonical_u8(BYTE);
-            let twobytes = F::from_canonical_u16(TWOBYTES);
-            // Associate to each unique range a range check type
-            let r#type = if predefined && range.0 >= zero && range.1 <= twobytes {
-                match range {
-                    Range(min, max, ..) if min == zero && max == byte => {
-                        StdRangeCheckType::Valid(RangeCheckAir::U8Air)
-                    }
-                    Range(min, max, ..) if min == zero && max == twobytes => {
-                        StdRangeCheckType::Valid(RangeCheckAir::U16Air)
-                    }
-                    Range(max, ..) if max <= byte => StdRangeCheckType::U8AirDouble,
-                    Range(max, ..) if max <= twobytes => StdRangeCheckType::U16AirDouble,
-                    _ => panic!("Invalid predefined range"),
-                }
-            } else {
-                StdRangeCheckType::Valid(RangeCheckAir::SpecifiedRanges)
-            };
+        let range = Range(min, max, min_neg, max_neg);
 
-            // Update ranges
-            let mut ranges = self.ranges.lock().unwrap();
-            ranges.push(StdRangeItem {
-                rc_type: r#type,
-                range,
-            });
+        // If the range is already defined, skip
+        let ranges = self.ranges.lock().unwrap();
+        if ranges
+            .iter()
+            .any(|r| r.range == range)
+        {
+            return;
         }
+        // Notice that we only compare the min and max values, not the sign
+        drop(ranges);
+
+        // Otherwise, register the range
+        let zero = F::zero();
+        let byte = F::from_canonical_u8(BYTE);
+        let twobytes = F::from_canonical_u16(TWOBYTES);
+        // Associate to each unique range a range check type
+        let r#type = if predefined && range.0 >= zero && range.1 <= twobytes {
+            match range {
+                Range(min, max, ..) if min == zero && max == byte => {
+                    StdRangeCheckType::Valid(RangeCheckAir::U8Air)
+                }
+                Range(min, max, ..) if min == zero && max == twobytes => {
+                    StdRangeCheckType::Valid(RangeCheckAir::U16Air)
+                }
+                Range(max, ..) if max <= byte => StdRangeCheckType::U8AirDouble,
+                Range(max, ..) if max <= twobytes => StdRangeCheckType::U16AirDouble,
+                _ => panic!("Invalid predefined range"),
+            }
+        } else {
+            StdRangeCheckType::Valid(RangeCheckAir::SpecifiedRanges)
+        };
+
+        // Update ranges
+        let mut ranges = self.ranges.lock().unwrap();
+        ranges.push(StdRangeItem {
+            rc_type: r#type,
+            range,
+        });
     }
 
     pub fn assign_values(&self, value: F, min: BigInt, max: BigInt) {

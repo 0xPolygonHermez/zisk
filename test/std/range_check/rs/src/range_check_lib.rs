@@ -9,7 +9,7 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout, /*RangeCheck1,*/ RangeCheck4, 
+    Pilout, /*RangeCheck1,*/ RangeCheck4,
     /*U_16_AIR_AIR_IDS, U_16_AIR_SUBPROOF_ID,*/
     U_8_AIR_AIR_IDS, U_8_AIR_SUBPROOF_ID,
 };
