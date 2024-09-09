@@ -255,7 +255,10 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
 
             let mut inputs = self.callback_inputs.lock().unwrap();
             let air_segment = &mut inputs[air_id];
-            air_segment.inputs.splice(pos_id*Self::CALLBACK_SIZE..(pos_id + 1)*Self::CALLBACK_SIZE, source_iter);
+            air_segment.inputs.splice(
+                pos_id * Self::CALLBACK_SIZE..(pos_id + 1) * Self::CALLBACK_SIZE,
+                source_iter,
+            );
             air_segment.filled_inputs += len;
             assert!(
                 air_segment.filled_inputs <= Self::MAX_ACCUMULATED,
@@ -282,7 +285,11 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `pctx` - Proof context to interact with the proof system
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn create_air_instance(air_segment: MainAirSegment<F>, pctx: &ProofCtx<F>, ectx: &ExecutionCtx) {
+    fn create_air_instance(
+        air_segment: MainAirSegment<F>,
+        pctx: &ProofCtx<F>,
+        ectx: &ExecutionCtx,
+    ) {
         info!(
             "{}: ··· Creating Main segment #{} [{} inputs]",
             Self::MY_NAME,
@@ -291,13 +298,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         );
 
         // Compute buffer size using the BufferAllocator
-        let (buffer_size, offsets) = match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
-            Ok((size, offsets)) => (size, offsets),
-            Err(err) => {
-                // Handle the error case, for example:
-                panic!("Error getting buffer info: {}", err);
-            }
-        };
+        let (buffer_size, offsets) =
+            match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
+                Ok((size, offsets)) => (size, offsets),
+                Err(err) => {
+                    // Handle the error case, for example:
+                    panic!("Error getting buffer info: {}", err);
+                }
+            };
 
         // Option 1: Create a new buffer to allocate all stark data and copy the data into it
         // let num_rows = inputs.len().next_power_of_two();
@@ -308,14 +316,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         // } else {
         //     main_trace.slice.copy_from_slice(&air_segment.inputs);
         // }
-        
+
         // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
         let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
-        
+
         for i in air_segment.filled_inputs..main_trace.num_rows() {
             main_trace[i].flag = F::from_canonical_usize(1);
         }
-        
+
         // TODO: Do it in parallel
         let main_first_segment = F::from_bool(air_segment.segment_id == 0);
         let main_segment = F::from_canonical_usize(air_segment.segment_id as usize);
@@ -327,11 +335,11 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let main_trace_buffer = main_trace.buffer.unwrap();
 
         let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
-        
-        buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len() as usize].copy_from_slice(&main_trace_buffer);
+
+        buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len()]
+            .copy_from_slice(&main_trace_buffer);
 
         pctx.add_air_instance_ctx(MAIN_SUBPROOF_ID[0], MAIN_AIR_IDS[0], Some(buffer));
-
     }
 
     /// Proves a batch of inputs

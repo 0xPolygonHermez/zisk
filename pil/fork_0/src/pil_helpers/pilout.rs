@@ -8,11 +8,9 @@ pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 pub const MAIN_SUBPROOF_ID: &[usize] = &[0];
 
-
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
-
 
 pub struct Pilout;
 
@@ -20,12 +18,9 @@ impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("Zisk", 1, PILOUT_HASH.to_vec());
 
-
         let air_group = pilout.add_air_group(Some("Main"));
-    
-        air_group.add_air(Some("Main"), 2097152);
-    
 
+        air_group.add_air(Some("Main"), 2097152);
 
         pilout
     }
