@@ -124,6 +124,7 @@ dependencies = [
  "pil-std-lib",
  "proofman",
  "proofman-common",
+ "proofman-macros",
  "rand",
 ]
 
@@ -336,6 +337,7 @@ dependencies = [
  "pil-std-lib",
  "proofman",
  "proofman-common",
+ "proofman-macros",
  "rand",
 ]
 
@@ -526,6 +528,7 @@ dependencies = [
  "pil-std-lib",
  "proofman",
  "proofman-common",
+ "proofman-macros",
  "rand",
 ]
 
@@ -551,6 +554,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "proofman-hints",
+ "proofman-macros",
  "proofman-util",
  "rayon",
 ]
@@ -625,6 +629,7 @@ dependencies = [
  "log",
  "p3-field",
  "pilout",
+ "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
  "serde",
@@ -640,6 +645,15 @@ dependencies = [
  "p3-field",
  "proofman-common",
  "proofman-starks-lib-c",
+]
+
+[[package]]
+name = "proofman-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -761,6 +775,7 @@ dependencies = [
  "pil-std-lib",
  "proofman",
  "proofman-common",
+ "proofman-macros",
  "rand",
 ]
 

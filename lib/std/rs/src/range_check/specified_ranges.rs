@@ -6,7 +6,10 @@ use std::{
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{trace, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+
+pub use proofman_macros::trace;
+use proofman_common as common;
 
 use crate::Range;
 

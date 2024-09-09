@@ -13,6 +13,7 @@ edition = "2021"
 proofman = { path = "../../../../pil2-proofman/proofman" }
 proofman-common = { path = "../../../../pil2-proofman/common" }
 proofman-hints = { path = "../../../../pil2-proofman/hints" }
+proofman-macros = { path = "../../../../pil2-proofman/macros" }
 proofman-util = { path = "../../../../pil2-proofman/util" }
 pilout = { path = "../../../../pil2-proofman/pilout" }
 
