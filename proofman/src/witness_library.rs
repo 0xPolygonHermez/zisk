@@ -15,5 +15,7 @@ pub trait WitnessLibrary<F> {
 
     fn calculate_witness(&mut self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx);
 
+    fn debug(&mut self, _pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, _sctx: &SetupCtx) {}
+
     fn pilout(&self) -> WitnessPilout;
 }
