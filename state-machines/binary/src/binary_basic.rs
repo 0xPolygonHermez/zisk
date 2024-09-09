@@ -72,135 +72,138 @@ impl BinaryBasicSM {
             let a = i.a;
             let b = i.b;
             let c: u64;
+            let flag: bool;
 
             match i.opcode {
                 0x02 /*ADD*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x02);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x03 /*SUB*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x03);
-                    c = a - b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x04 /*LTU*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x04);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x05 /*LT*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x05);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x06 /*LEU*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x06);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x07 /*LE*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x07);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x08 /*EQ*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x08);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x09 /*MINU*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x09);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x0a /*MIN*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x0a);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x0b /*MAXU*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x0b);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x0c /*MAX*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x0c);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x20 /*AND*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x20);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x21 /*OR*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x21);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x22 /*XOR*/ => {
                     t.mode32 = F::from_canonical_u64(0);
                     t.op = F::from_canonical_u64(0x22);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x12 /*ADD_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x02);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x13 /*SUB_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x03);
-                    c = a - b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x14 /*LTU_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x04);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x15 /*LT_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x05);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x16 /*LEU_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x06);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x17 /*LE_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x07);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x18 /*EQ_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x08);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x19 /*MINU_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x09);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x1a /*MIN_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x0a);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x1b /*MAXU_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x0b);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 0x1c /*MAX_W*/ => {
                     t.mode32 = F::from_canonical_u64(1);
                     t.op = F::from_canonical_u64(0x0c);
-                    c = a + b;
+                    (c, flag) = opcode_execute(i.opcode, a, b);
                 }
                 _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", i.opcode),
             }
+
+            let _flag = flag;
 
             // Split a in bytes and store them in free_in_a
             let a_bytes: [u8; 8] = a.to_le_bytes();
