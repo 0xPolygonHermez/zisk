@@ -3,15 +3,15 @@ use std::sync::Arc;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 
-use p3_field::Field;
+use p3_field::PrimeField;
 
 use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS};
 
-pub struct FibonacciSquare<F> {
+pub struct FibonacciSquare<F: PrimeField> {
     module: Arc<Module<F>>,
 }
 
-impl<F: Field + Copy> FibonacciSquare<F> {
+impl<F: PrimeField + Copy> FibonacciSquare<F> {
     const MY_NAME: &'static str = "FibonacciSquare";
 
     pub fn new(wcm: &mut WitnessManager<F>, module: Arc<Module<F>>) -> Arc<Self> {
@@ -82,7 +82,7 @@ impl<F: Field + Copy> FibonacciSquare<F> {
     }
 }
 
-impl<F: Field + Copy> WitnessComponent<F> for FibonacciSquare<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for FibonacciSquare<F> {
     fn calculate_witness(
         &self,
         _stage: u32,

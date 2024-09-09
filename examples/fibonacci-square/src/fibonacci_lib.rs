@@ -13,7 +13,7 @@ use crate::FibonacciSquarePublics;
 
 use crate::{FibonacciSquare, Pilout, Module};
 
-pub struct FibonacciWitness<F> {
+pub struct FibonacciWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub public_inputs_path: Option<PathBuf>,
     pub fibonacci: Arc<FibonacciSquare<F>>,

@@ -4,16 +4,16 @@ use std::{cell::RefCell, sync::Arc};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 use pil_std_lib::Std;
-use p3_field::AbstractField;
+use p3_field::{AbstractField, PrimeField};
 
 use crate::{FibonacciSquarePublics, Module0Trace, MODULE_SUBPROOF_ID, MODULE_AIR_IDS};
 
-pub struct Module<F> {
+pub struct Module<F: PrimeField> {
     inputs: RefCell<Vec<(u64, u64)>>,
     std_lib: Arc<Std<F>>,
 }
 
-impl<F: AbstractField + Clone + Copy + Default + 'static> Module<F> {
+impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F> {
     const MY_NAME: &'static str = "Module";
 
     pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
@@ -71,7 +71,7 @@ impl<F: AbstractField + Clone + Copy + Default + 'static> Module<F> {
     }
 }
 
-impl<F: AbstractField + Copy> WitnessComponent<F> for Module<F> {
+impl<F: PrimeField + AbstractField + Copy> WitnessComponent<F> for Module<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
