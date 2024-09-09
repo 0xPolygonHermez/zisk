@@ -339,7 +339,7 @@ fn test_trace_macro_generates_default_row_struct() {
 
 
     };
-    let generated = trace_impl(input.into()).unwrap();
+    let generated = trace_impl(input).unwrap();
     assert_eq!(generated.to_string(), expected.into_token_stream().to_string());
 }
 
@@ -467,7 +467,7 @@ fn test_trace_macro_with_explicit_row_struct_name() {
         }
     };
 
-    let generated = trace_impl(input.into()).unwrap();
+    let generated = trace_impl(input).unwrap();
     assert_eq!(generated.to_string(), expected.into_token_stream().to_string());
 }
 
