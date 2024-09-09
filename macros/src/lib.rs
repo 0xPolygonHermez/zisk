@@ -39,6 +39,7 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
     });
 
     let row_struct = quote! {
+        #[repr(C)]
         #[derive(Debug, Clone, Copy, Default)]
         pub struct #row_struct_name<#generics> {
             #(#field_definitions)*
@@ -229,6 +230,7 @@ fn test_trace_macro_generates_default_row_struct() {
     };
 
     let expected = quote! {
+        #[repr(C)]
         #[derive(Debug, Clone, Copy, Default)]
         pub struct SimpleRow<F> {
             pub a: F,
@@ -348,6 +350,7 @@ fn test_trace_macro_with_explicit_row_struct_name() {
     };
 
     let expected = quote! {
+        #[repr(C)]
         #[derive(Debug, Clone, Copy, Default)]
         pub struct SimpleRow<F> {
             pub a: F,
