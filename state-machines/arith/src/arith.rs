@@ -1,13 +1,13 @@
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Condvar, Mutex,
+    Arc, Mutex,
 };
 
 use crate::{Arith3264SM, Arith32SM, Arith64SM};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -17,10 +17,8 @@ pub struct ArithSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Mechanism to control the number of working threads
-    working_threads: Arc<AtomicU32>,
-    mutex: Arc<Mutex<()>>,
-    condvar: Arc<Condvar>,
+    // Thread controller to manage the execution of the state machines
+    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs32: Mutex<Vec<ZiskRequiredOperation>>,
@@ -41,9 +39,7 @@ impl ArithSM {
     ) -> Arc<Self> {
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            working_threads: Arc::new(AtomicU32::new(0)),
-            mutex: Arc::new(Mutex::new(())),
-            condvar: Arc::new(Condvar::new()),
+            threads_controller: Arc::new(ThreadController::new()),
             inputs32: Mutex::new(Vec::new()),
             inputs64: Mutex::new(Vec::new()),
             arith32_sm,
@@ -69,10 +65,7 @@ impl ArithSM {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
 
-            let mut guard = self.mutex.lock().unwrap();
-            while self.working_threads.load(Ordering::SeqCst) > 0 {
-                guard = self.condvar.wait(guard).unwrap();
-            }
+            self.threads_controller.wait_for_threads();
 
             self.arith3264_sm.unregister_predecessor(scope);
             self.arith64_sm.unregister_predecessor(scope);
@@ -127,24 +120,20 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
 
         while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
             if drain && !inputs32.is_empty() {
-                println!("ArithSM: Draining inputs");
+                println!("ArithSM: Draining inputs32");
             }
 
             let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
             let drained_inputs32 = inputs32.drain(..num_drained32).collect::<Vec<_>>();
             let arith32_sm_cloned = self.arith32_sm.clone();
 
-            self.working_threads.fetch_add(1, Ordering::SeqCst);
-            let mutex = self.mutex.clone();
-            let condvar = self.condvar.clone();
-            let working_threads = self.working_threads.clone();
+            self.threads_controller.add_working_thread();
+            let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
                 arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
 
-                let _guard = mutex.lock().unwrap();
-                working_threads.fetch_sub(1, Ordering::SeqCst);
-                condvar.notify_all();
+                thread_controller.remove_working_thread();
             });
         }
         drop(inputs32);
@@ -154,24 +143,20 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
 
         while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
             if drain && !inputs64.is_empty() {
-                println!("ArithSM: Draining inputs");
+                println!("ArithSM: Draining inputs64");
             }
 
             let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
             let drained_inputs64 = inputs64.drain(..num_drained64).collect::<Vec<_>>();
             let arith64_sm_cloned = self.arith64_sm.clone();
 
-            self.working_threads.fetch_add(1, Ordering::SeqCst);
-            let mutex = self.mutex.clone();
-            let condvar = self.condvar.clone();
-            let working_threads = self.working_threads.clone();
+            self.threads_controller.add_working_thread();
+            let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
                 arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
 
-                let _guard = mutex.lock().unwrap();
-                working_threads.fetch_sub(1, Ordering::SeqCst);
-                condvar.notify_all();
+                thread_controller.remove_working_thread();
             });
         }
         drop(inputs64);

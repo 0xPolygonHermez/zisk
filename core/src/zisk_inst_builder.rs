@@ -42,7 +42,7 @@ impl ZiskInstBuilder {
                 jmp_offset2: 0,
                 is_external_op: false,
                 op: 0,
-                func: |_, _| (0, false),
+                func: |_| (),
                 op_str: "",
                 op_type: ZiskOperationType::None,
                 verbose: String::new(),

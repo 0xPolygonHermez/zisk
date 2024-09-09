@@ -8,6 +8,7 @@ use crate::{
 use std::collections::HashMap;
 
 const CAUSE_EXIT: u64 = 93;
+const CAUSE_KECCAK: u64 = 0x00_01_01_01;
 const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -618,9 +619,9 @@ impl Riscv2ZiskContext<'_> {
         zib.src_a("imm", 0, false);
         zib.src_b("mem", MTVEC, false);
         zib.op("copyb");
-        zib.store_ra("reg", 1, false);
+        //zib.store_ra("reg", 1, false);
         zib.set_pc();
-        zib.j(0, 0);
+        zib.j(0, 4);
         zib.verbose("ecall");
         zib.build();
         self.insts.insert(self.s, zib);
@@ -1432,11 +1433,12 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0018 trap_handle
+    // If register a7==CAUSE_EXIT, end the program
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq");
-    zib.j(8, 4);
+    zib.j(4, 8);
     zib.verbose(&format!("beq r17, {} # Check if is exit", CAUSE_EXIT));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
@@ -1445,23 +1447,46 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // :001c
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("reg", 1, false);
-    zib.op("copyb");
-    zib.set_pc();
-    zib.j(0, 4);
-    zib.verbose("ret");
-    zib.build();
-    rom.insts.insert(rom.next_init_inst_addr, zib);
-    rom.next_init_inst_addr += 4;
-
-    // :0020
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
     zib.op("copyb");
     zib.end();
     zib.j(0, 0);
     zib.verbose("end");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // :0020 trap_handle
+    // If register a7==CAUSE_KECCAK, call the keccak opcode and return
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("reg", 17, false);
+    zib.src_b("imm", CAUSE_KECCAK, false);
+    zib.op("eq");
+    zib.j(4, 8);
+    zib.verbose(&format!("beq r17, {} # Check if is keccak", CAUSE_KECCAK));
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // :0024
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("reg", 11, false);
+    zib.src_b("imm", 0, false);
+    zib.op("keccak");
+    zib.j(4, 4);
+    zib.verbose("keccak");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // :0028
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("reg", 1, false);
+    zib.op("copyb");
+    zib.set_pc();
+    zib.j(0, 4);
+    zib.verbose("ret");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
