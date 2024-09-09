@@ -81,7 +81,7 @@ where
 #[no_mangle]
 pub extern "Rust" fn init_library(
     _rom_path: Option<PathBuf>,
-    _public_inputs_path: PathBuf,
+    _public_inputs_path: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)
