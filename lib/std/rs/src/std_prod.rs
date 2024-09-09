@@ -24,7 +24,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
                 let air_group_id = air.air_group_id;
                 let air_id = air.air_id;
                 let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
-                let prod_hints = get_hint_ids_by_name(setup.p_expressions, "gprod_col");
+                let prod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs
@@ -96,6 +96,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             "reference",
                             true,
                             false,
+                            false,
                         );
                         let num = get_hint_field::<F>(
                             sctx,
@@ -104,12 +105,14 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             "numerator",
                             false,
                             false,
+                            false,
                         );
                         let den = get_hint_field::<F>(
                             sctx,
                             air_instance,
                             gprod_hint,
                             "denominator",
+                            false,
                             false,
                             false,
                         );

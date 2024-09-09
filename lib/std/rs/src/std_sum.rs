@@ -24,8 +24,8 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let air_group_id = air.air_group_id;
                 let air_id = air.air_id;
                 let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
-                let im_hints = get_hint_ids_by_name(setup.p_expressions, "im_col");
-                let gsum_hints = get_hint_ids_by_name(setup.p_expressions, "gsum_col");
+                let im_hints = get_hint_ids_by_name(setup.p_setup, "im_col");
+                let gsum_hints = get_hint_ids_by_name(setup.p_setup, "gsum_col");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.sum_airs.lock().unwrap().push((
@@ -90,6 +90,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "reference",
                                 true,
                                 false,
+                                false
                             );
                             let num = get_hint_field::<F>(
                                 sctx,
@@ -98,6 +99,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "numerator",
                                 false,
                                 false,
+                                false
                             );
                             let den = get_hint_field::<F>(
                                 sctx,
@@ -106,6 +108,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "denominator",
                                 false,
                                 false,
+                                false
                             );
 
                             for i in 0..num_rows {
@@ -133,6 +136,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             "reference",
                             true,
                             false,
+                            false
                         );
                         let expr = get_hint_field::<F>(
                             sctx,
@@ -141,6 +145,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             "expression",
                             false,
                             false,
+                            false
                         );
 
                         gsum.set(0, expr.get(0));

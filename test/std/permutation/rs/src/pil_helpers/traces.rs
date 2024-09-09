@@ -3,22 +3,25 @@
 pub use proofman_macros::trace;
 use proofman_common as common;
 
-trace!(Permutation10Row, Permutation10Trace<F> {
- a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F,
+
+
+trace!(Permutation10Row, Permutation10Trace<F> { 
+ a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F, 
 });
 
-trace!(Permutation1_11Row, Permutation1_11Trace<F> {
- a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F,
+trace!(Permutation1_11Row, Permutation1_11Trace<F> { 
+ a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F, 
 });
 
-trace!(Permutation1_22Row, Permutation1_22Trace<F> {
- a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F,
+trace!(Permutation1_22Row, Permutation1_22Trace<F> { 
+ a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F, 
 });
 
-trace!(Permutation1_33Row, Permutation1_33Trace<F> {
- a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F,
+trace!(Permutation1_33Row, Permutation1_33Trace<F> { 
+ a1: F,  b1: F,  a2: F,  b2: F,  a3: F,  b3: F,  a4: F,  b4: F,  c1: F,  d1: F,  c2: F,  d2: F,  sel1: F,  sel2: F,  sel3: F, 
 });
 
-trace!(Permutation24Row, Permutation24Trace<F> {
- c1: F,  d1: F,  c2: F,  d2: F,  sel: F,
+trace!(Permutation24Row, Permutation24Trace<F> { 
+ c1: F,  d1: F,  c2: F,  d2: F,  sel: F, 
 });
+

@@ -8,6 +8,7 @@ pub const PILOUT_HASH: &[u8] = b"Permutation-hash";
 
 pub const PERMUTATION_SUBPROOF_ID: &[usize] = &[0];
 
+
 //AIR CONSTANTS
 
 pub const PERMUTATION_1_AIR_IDS: &[usize] = &[0];
@@ -20,23 +21,27 @@ pub const PERMUTATION_1_3_AIR_IDS: &[usize] = &[3];
 
 pub const PERMUTATION_2_AIR_IDS: &[usize] = &[4];
 
+
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
         let mut pilout = WitnessPilout::new("Permutation", 2, PILOUT_HASH.to_vec());
 
+
         let air_group = pilout.add_air_group(Some("Permutation"));
-
+    
         air_group.add_air(Some("Permutation1"), 64);
-
+    
         air_group.add_air(Some("Permutation1_1"), 128);
-
+    
         air_group.add_air(Some("Permutation1_2"), 256);
-
+    
         air_group.add_air(Some("Permutation1_3"), 64);
-
+    
         air_group.add_air(Some("Permutation2"), 512);
+    
+
 
         pilout
     }

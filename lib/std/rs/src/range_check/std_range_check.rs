@@ -62,10 +62,10 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let air_group_id = air.air_group_id;
                 let air_id = air.air_id;
                 let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
-                let rc_hints = get_hint_ids_by_name(setup.p_expressions, "range_check");
+                let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_check");
                 for hint in rc_hints {
                     // Register the ranges for the range check
-                    self.register_ranges(sctx, air_group_id, air_id, hint);
+                    self.register_range(sctx, air_group_id, air_id, hint);
                 }
             });
         });
@@ -117,7 +117,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         })
     }
 
-    pub fn register_ranges(
+    pub fn register_range(
         &self,
         sctx: &SetupCtx,
         air_group_id: usize,
