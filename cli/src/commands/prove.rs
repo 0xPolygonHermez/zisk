@@ -58,7 +58,7 @@ pub struct ProveCmd {
     pub proving_key: PathBuf,
 
     /// Output dir path
-    #[clap(short, long, default_value = "tmp")]
+    #[clap(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
 
     #[clap(long, default_value_t = Field::Goldilocks)]

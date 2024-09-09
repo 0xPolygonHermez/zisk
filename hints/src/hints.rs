@@ -371,7 +371,8 @@ pub fn print_by_name<F: Clone + Copy>(
 
     let params = air_instance_ctx.params.unwrap();
 
-    let lengths_ptr = lengths.as_ref().map(|lengths| lengths.clone().as_mut_ptr()).unwrap_or(std::ptr::null_mut());
+    let mut lengths_vec = lengths.unwrap_or(Vec::new());
+    let lengths_ptr = lengths_vec.as_mut_ptr();
 
     // TODO: CHECK WHAT IS WRONG WITH RETURN VALUES
     let _raw_ptr =
