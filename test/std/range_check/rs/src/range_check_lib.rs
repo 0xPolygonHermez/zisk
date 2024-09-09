@@ -9,11 +9,12 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout, /*RangeCheck1,*/ RangeCheck4, U_16_AIR_AIR_IDS, U_16_AIR_SUBPROOF_ID,
+    Pilout, /*RangeCheck1,*/ RangeCheck4, 
+    /*U_16_AIR_AIR_IDS, U_16_AIR_SUBPROOF_ID,*/
     U_8_AIR_AIR_IDS, U_8_AIR_SUBPROOF_ID,
 };
 
-pub struct RangeCheckWitness<F: 'static> {
+pub struct RangeCheckWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     // pub range_check1: Arc<RangeCheck1<F>>,
     pub range_check4: Arc<RangeCheck4<F>>,
@@ -38,11 +39,11 @@ where
             air_group_id: U_8_AIR_SUBPROOF_ID[0],
             air_id: U_8_AIR_AIR_IDS[0],
         });
-        rc_air_data.push(RCAirData {
-            air_name: RangeCheckAir::U16Air,
-            air_group_id: U_16_AIR_SUBPROOF_ID[0],
-            air_id: U_16_AIR_AIR_IDS[0],
-        });
+        // rc_air_data.push(RCAirData {
+        //     air_name: RangeCheckAir::U16Air,
+        //     air_group_id: U_16_AIR_SUBPROOF_ID[0],
+        //     air_id: U_16_AIR_AIR_IDS[0],
+        // });
 
         let std_lib = Std::new(&mut wcm, Some(rc_air_data));
         // let range_check1 = RangeCheck::new(&mut wcm, std_lib.clone());

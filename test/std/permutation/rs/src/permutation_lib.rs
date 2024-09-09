@@ -10,7 +10,7 @@ use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{Permutation1, Permutation2, Pilout};
 
-pub struct PermutationWitness<F> {
+pub struct PermutationWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub permutation1: Arc<Permutation1<F>>,
     pub permutation2: Arc<Permutation2<F>>,

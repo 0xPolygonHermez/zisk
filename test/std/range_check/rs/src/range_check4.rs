@@ -10,7 +10,7 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 use crate::{RangeCheck40Trace, RANGE_CHECK_4_AIR_IDS, RANGE_CHECK_4_SUBPROOF_ID};
 
-pub struct RangeCheck4<F> {
+pub struct RangeCheck4<F: PrimeField> {
     std_lib: Arc<Std<F>>,
 }
 
@@ -90,6 +90,11 @@ where
                 RangeCheck40Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
                     .unwrap();
 
+            let range1 = (BigInt::from(0), BigInt::from(2u16.pow(16) - 1));
+            let range2 = (BigInt::from(0), BigInt::from(2u8.pow(8) - 1));
+            let range3 = (BigInt::from(50), BigInt::from(2u8.pow(7) - 1));
+            let range4 = (BigInt::from(127), BigInt::from(2u16.pow(8)));
+
             for i in 0..num_rows {
                 // trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
                 // trace[i].a2 = F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
@@ -113,30 +118,17 @@ where
                 let selected2 = true; //rng.gen_bool(0.5)
                 trace[i].sel2 = F::from_bool(selected2);
 
-                // TODO: We have to redo it to avoid that many type conversions
                 if selected1 {
-                    self.std_lib.range_check(
-                        trace[i].a1,
-                        F::from_canonical_u8(0),
-                        F::from_canonical_u16(2u16.pow(16) - 1),
-                    );
+                    self.std_lib
+                        .range_check(trace[i].a1, range1.0.clone(), range1.1.clone());
                 }
                 if selected2 {
-                    self.std_lib.range_check(
-                        trace[i].a1,
-                        F::from_canonical_u8(0),
-                        F::from_canonical_u8(2u8.pow(8) - 1),
-                    );
-                    self.std_lib.range_check(
-                        trace[i].a2,
-                        F::from_canonical_u8(50),
-                        F::from_canonical_u8(2u8.pow(7) - 1),
-                    );
-                    self.std_lib.range_check(
-                        trace[i].a3,
-                        F::from_canonical_u8(127),
-                        F::from_canonical_u16(2u16.pow(8)),
-                    );
+                    self.std_lib
+                        .range_check(trace[i].a1, range2.0.clone(), range2.1.clone());
+                    self.std_lib
+                        .range_check(trace[i].a2, range3.0.clone(), range3.1.clone());
+                    self.std_lib
+                        .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
                 }
             }
         }

@@ -8,7 +8,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use crate::{Decider, RCAirData, StdProd, StdRangeCheck, StdSum};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+const _PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 // struct RangeCheckInput {
 //     val: BigInt,
@@ -16,7 +16,7 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 //     max: BigInt,
 // }
 
-pub struct Std<F> {
+pub struct Std<F: PrimeField> {
     prod: Arc<StdProd<F>>,
     sum: Arc<StdSum<F>>,
     range_check: Arc<StdRangeCheck<F>>,
@@ -32,7 +32,7 @@ impl<F: PrimeField> Std<F> {
 
         // In particular, the range check component needs to be instantiated with the ids
         // of its (possibly) associated AIRs: U8Air ...
-        let range_check = StdRangeCheck::new(rc_air_data);
+        let range_check = StdRangeCheck::new(wcm, rc_air_data);
 
         let std = Arc::new(Self {
             prod,
@@ -41,13 +41,13 @@ impl<F: PrimeField> Std<F> {
         });
 
         // Register the STD as a component. Notice that the STD has no air associated with it
-        wcm.register_component(std.clone() as Arc<dyn WitnessComponent<F>>, None);
+        wcm.register_component(std.clone(), None);
 
         std
     }
 
     /// Processes the inputs for the range check.
-    pub fn range_check(&self, val: F, min: F, max: F) {
+    pub fn range_check(&self, val: F, min: BigInt, max: BigInt) {
         // let mut inputs_range_check = self.inputs_range_check.lock().unwrap();
 
         // inputs_range_check.push(RangeCheckInput { val, min, max });
@@ -73,11 +73,11 @@ impl<F: PrimeField> Std<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for Std<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
-        self.prod.decide(sctx, pctx, ectx);
-        self.sum.decide(sctx, pctx, ectx);
-        self.range_check.decide(sctx, pctx, ectx);
+        self.prod.decide(sctx, pctx);
+        self.sum.decide(sctx, pctx);
+        self.range_check.decide(sctx, pctx);
     }
 
     fn calculate_witness(
@@ -85,22 +85,22 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
         stage: u32,
         _air_instance: Option<usize>,
         pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
     ) {
         if let Err(e) = self.prod.calculate_witness(stage, pctx, sctx) {
-            log::error!("Failed to calculate witness: {:?}", e);
+            log::error!("Prod: Failed to calculate witness: {:?}", e);
             panic!();
         }
 
         if let Err(e) = self.sum.calculate_witness(stage, pctx, sctx) {
-            log::error!("Failed to calculate witness: {:?}", e);
+            log::error!("Sum: Failed to calculate witness: {:?}", e);
             panic!();
         }
 
-        if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx) {
-            log::error!("Failed to calculate witness: {:?}", e);
-            panic!();
-        }
+        // if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx) {
+        //     log::error!("Range Check: Failed to calculate witness: {:?}", e);
+        //     panic!();
+        // }
     }
 }

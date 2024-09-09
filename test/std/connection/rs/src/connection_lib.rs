@@ -10,7 +10,7 @@ use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{Connection1, ConnectionNew, Pilout};
 
-pub struct ConnectionWitness<F> {
+pub struct ConnectionWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub connection1: Arc<Connection1<F>>,
     connection_new: Arc<ConnectionNew<F>>,

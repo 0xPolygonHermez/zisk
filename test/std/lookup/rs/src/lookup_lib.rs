@@ -10,7 +10,7 @@ use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{Lookup0, Lookup1, Lookup2, Lookup3, Pilout};
 
-pub struct LookupWitness<F> {
+pub struct LookupWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub lookup0: Arc<Lookup0<F>>,
     pub lookup1: Arc<Lookup1<F>>,
