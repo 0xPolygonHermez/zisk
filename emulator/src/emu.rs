@@ -626,7 +626,7 @@ impl<'a> Emu<'a> {
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
             main_segment: F::from_canonical_u64(0),
-            main_first_segment: F::from_bool(true),
+            main_first_segment: F::from_bool(false),
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.end),
             m32: F::from_bool(instruction.m32),
