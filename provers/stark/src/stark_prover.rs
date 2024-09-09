@@ -183,7 +183,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn num_opening_stages(&self) -> u32 {
-        self.global_steps_fri.len() as u32 + 3  //evals + fri_pol + fri_folding (steps) + fri_queries
+        self.global_steps_fri.len() as u32 + 3 //evals + fri_pol + fri_folding (steps) + fri_queries
     }
 
     fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo> {
@@ -292,17 +292,17 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             self.compute_fri_pol(opening_id, proof_ctx);
         } else if opening_id < last_stage_id {
             let global_step_fri = self.global_steps_fri[(opening_id - 3) as usize];
-            let step_index = self.stark_info.stark_struct.steps.iter().position(|s| s.n_bits as usize == global_step_fri);
+            let step_index =
+                self.stark_info.stark_struct.steps.iter().position(|s| s.n_bits as usize == global_step_fri);
             if let Some(step_index) = step_index {
                 self.compute_fri_folding(step_index as u32, proof_ctx, transcript);
             } else {
-                debug!(
-                    "{}: ··· Skipping FRI Folding",
-                    Self::MY_NAME,
+                debug!("{}: ··· Skipping FRI Folding", Self::MY_NAME,);
+                transcript.add_elements(
+                    [F::zero(), F::zero(), F::zero(), F::zero()].as_ptr() as *mut c_void,
+                    self.n_field_elements,
                 );
-                transcript.add_elements([F::zero(), F::zero(), F::zero(), F::zero()].as_ptr() as *mut c_void, self.n_field_elements);
             }
-            
         } else if opening_id == last_stage_id {
             self.compute_fri_queries(opening_id, proof_ctx);
         } else {
@@ -423,13 +423,9 @@ impl<F: Field> StarkProver<F> {
         let p_proof = self.p_proof.unwrap();
 
         let steps = &self.stark_info.stark_struct.steps;
-        let n_steps =(steps.len() - 1) as u32;
+        let n_steps = (steps.len() - 1) as u32;
         if step_index == n_steps {
-            debug!(
-                "{}: ··· Computing FRI folding for last step {}",
-                Self::MY_NAME,
-                steps[step_index as usize].n_bits,
-            );
+            debug!("{}: ··· Computing FRI folding for last step {}", Self::MY_NAME, steps[step_index as usize].n_bits,);
         } else {
             debug!(
                 "{}: ··· Computing FRI folding from {} to {}",
@@ -438,7 +434,7 @@ impl<F: Field> StarkProver<F> {
                 steps[(step_index + 1) as usize].n_bits
             );
         }
-        
+
         let challenges: &Vec<F> = proof_ctx.challenges.as_ref().unwrap();
         let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 3).cloned().collect();
 
@@ -450,7 +446,7 @@ impl<F: Field> StarkProver<F> {
             p_proof,
         );
 
-        if step_index < n_steps as u32 {
+        if step_index < n_steps {
             let root = fri_proof_get_tree_root_c(p_proof, (step_index + 1) as u64, 0);
             transcript.add_elements(root, self.n_field_elements);
         } else {
