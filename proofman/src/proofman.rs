@@ -136,7 +136,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
             let constraints = Self::verify_constraints(&mut provers, &mut pctx);
 
-            let valid_constraints = true;
+            let mut valid_constraints = true;
             for (idx, prover) in provers.iter_mut().enumerate() {
                 let prover_info = prover.get_prover_info();
                 let air_instances = pctx.find_air_instances(prover_info.air_group_id, prover_info.air_id);
@@ -225,6 +225,7 @@ impl<F: Field + 'static> ProofMan<F> {
                     );
                 }
                 log::debug!("{}: ···   ", Self::MY_NAME);
+                if !valid_constraints_prover { valid_constraints = false; }
             }
 
             log::info!("{}: <-- Checking global constraints", Self::MY_NAME);

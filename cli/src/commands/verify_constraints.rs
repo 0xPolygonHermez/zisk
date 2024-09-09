@@ -60,12 +60,9 @@ pub struct VerifyConstraintsCmd {
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
-    /// Extended flag
-    #[clap(short = 'e', long)]
-    pub extended: bool,
-
-    #[clap(short = 'E', long)]
-    pub extended_im_pols: bool,
+    /// Verbosity (-v, -vv)
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")] 
+    pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
 impl VerifyConstraintsCmd {
@@ -75,13 +72,13 @@ impl VerifyConstraintsCmd {
 
         type GL = Goldilocks;
 
-        let debug_mode = if self.extended_im_pols {
-            3
-        } else if self.extended {
-            2
-        } else {
-            1
+        let debug_mode = match self.verbose {
+             0 => 1, // Default to Error
+             1 => 2, // -v
+             2 => 3, // -vv _ => log::LevelFilter::Trace, 
+             _ => 1
         };
+        
         let _valid_constraints = match self.field {
             Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),
