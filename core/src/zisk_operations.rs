@@ -10,478 +10,601 @@ const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// Sets flag to true (and c to 0)
 #[inline(always)]
-fn op_flag(ctx: &mut InstContext) -> () {
-    ctx.c = 0;
-    ctx.flag = true;
+fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
+    (0, true)
+}
+#[inline(always)]
+fn opc_flag(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
 }
 
 /// Copies register b into c
 #[inline(always)]
-fn op_copyb(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.b;
-    ctx.flag = false;
+fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
+    (b, false)
+}
+#[inline(always)]
+fn opc_copyb(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_copyb(ctx.a, ctx.b);
 }
 
 /// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
 /// the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_b(ctx: &mut InstContext) -> () {
-    ctx.c = (ctx.b as i8) as u64;
-    ctx.flag = false;
+fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
+    ((b as i8) as u64, false)
+}
+#[inline(always)]
+fn opc_signextend_b(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_h(ctx: &mut InstContext) -> () {
-    ctx.c = (ctx.b as i16) as u64;
-    ctx.flag = false;
+fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
+    ((b as i16) as u64, false)
+}
+#[inline(always)]
+fn opc_signextend_h(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, and stores the result in c
 #[inline(always)]
-fn op_signextend_w(ctx: &mut InstContext) -> () {
-    ctx.c = (ctx.b as i32) as u64;
-    ctx.flag = false;
-}
-/*fn op_signextend_w(a: u64, b: u64) -> (u64, bool) {
+fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
     ((b as i32) as u64, false)
 }
-fn opc_signextend_w(ctx: &mut InstContext) -> () {
+#[inline(always)]
+fn opc_signextend_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
-}*/
+}
 
 /// Adds a and b, and stores the result in c
 #[inline(always)]
-fn op_add(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a) + Wrapping(ctx.b)).0;
-    ctx.flag = false;
+fn op_add(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) + Wrapping(b)).0, false)
+}
+#[inline(always)]
+fn opc_add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_add(ctx.a, ctx.b);
 }
 
 /// Adds a and b as 32-bit unsigned values, and stores the result in c
 #[inline(always)]
-fn op_add_w(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a as i32) + Wrapping(ctx.b as i32)).0 as u64;
-    ctx.flag = false;
+fn op_add_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) + Wrapping(b as i32)).0 as u64, false)
+}
+#[inline(always)]
+fn opc_add_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_add_w(ctx.a, ctx.b);
+}
+
+/// Subs a and b, and stores the result in c
+#[inline(always)]
+fn op_sub(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) - Wrapping(b)).0, false)
+}
+#[inline(always)]
+fn opc_sub(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sub(ctx.a, ctx.b);
+}
+
+/// Subs a and b as 32-bit unsigned values, and stores the result in c
+#[inline(always)]
+fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) - Wrapping(b as i32)).0 as u64, false)
+}
+#[inline(always)]
+fn opc_sub_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sub_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_sub(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a) - Wrapping(ctx.b)).0;
-    ctx.flag = false;
+fn op_sll(a: u64, b: u64) -> (u64, bool) {
+    (a << (b & 0x3f), false)
+}
+#[inline(always)]
+fn opc_sll(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sll(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_sub_w(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a as i32) - Wrapping(ctx.b as i32)).0 as u64;
-    ctx.flag = false;
+fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
+    (((Wrapping(a as u32) << (b & 0x3f) as usize).0 as i32) as u64, false)
+}
+#[inline(always)]
+fn opc_sll_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sll_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_sll(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.a << (ctx.b & 0x3f);
-    ctx.flag = false;
+fn op_sra(a: u64, b: u64) -> (u64, bool) {
+    (((a as i64) >> (b & 0x3f)) as u64, false)
+}
+#[inline(always)]
+fn opc_sra(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sra(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_sll_w(ctx: &mut InstContext) -> () {
-    ctx.c = ((Wrapping(ctx.a as u32) << (ctx.b & 0x3f) as usize).0 as i32) as u64;
-    ctx.flag = false;
+fn op_srl(a: u64, b: u64) -> (u64, bool) {
+    (a >> (b & 0x3f), false)
+}
+#[inline(always)]
+fn opc_srl(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_srl(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_sra(ctx: &mut InstContext) -> () {
-    ctx.c = ((ctx.a as i64) >> (ctx.b & 0x3f)) as u64;
-    ctx.flag = false;
+fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
+}
+#[inline(always)]
+fn opc_sra_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sra_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_srl(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.a >> (ctx.b & 0x3f);
-    ctx.flag = false;
+fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
+    (((Wrapping(a as u32) >> (b & 0x3f) as usize).0 as i32) as u64, false)
 }
-
 #[inline(always)]
-fn op_sra_w(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a as i32) >> (ctx.b & 0x3f) as usize).0 as u64;
-    ctx.flag = false;
-}
-
-#[inline(always)]
-fn op_srl_w(ctx: &mut InstContext) -> () {
-    ctx.c = ((Wrapping(ctx.a as u32) >> (ctx.b & 0x3f) as usize).0 as i32) as u64;
-    ctx.flag = false;
+fn opc_srl_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_srl_w(ctx.a, ctx.b);
 }
 
 /// If a equals b, returns c=1, flag=true
 #[inline(always)]
-fn op_eq(ctx: &mut InstContext) -> () {
-    if ctx.a == ctx.b {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_eq(a: u64, b: u64) -> (u64, bool) {
+    if a == b {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_eq(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_eq(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_eq_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as i32) == (ctx.b as i32) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) == (b as i32) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_eq_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_eq_w(ctx.a, ctx.b);
 }
 
 /// If a is strictly less than b, returns c=1, flag=true
 #[inline(always)]
-fn op_ltu(ctx: &mut InstContext) -> () {
-    if ctx.a < ctx.b {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_ltu(a: u64, b: u64) -> (u64, bool) {
+    if a < b {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_ltu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ltu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_lt(ctx: &mut InstContext) -> () {
-    if (ctx.a as i64) < (ctx.b as i64) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_lt(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) < (b as i64) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_lt(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_lt(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_ltu_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as u32) < (ctx.b as u32) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) < (b as u32) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_ltu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ltu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_lt_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as i32) < (ctx.b as i32) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) < (b as i32) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_lt_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_lt_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_leu(ctx: &mut InstContext) -> () {
-    if ctx.a <= ctx.b {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_leu(a: u64, b: u64) -> (u64, bool) {
+    if a <= b {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_leu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_leu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_le(ctx: &mut InstContext) -> () {
-    if (ctx.a as i64) <= (ctx.b as i64) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_le(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) <= (b as i64) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_le(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_le(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_leu_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as u32) <= (ctx.b as u32) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) <= (b as u32) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
+}
+#[inline(always)]
+fn opc_leu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_leu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_le_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as i32) <= (ctx.b as i32) {
-        ctx.c = 1;
-        ctx.flag = true;
+fn op_le_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) <= (b as i32) {
+        (1, true)
     } else {
-        ctx.c = 0;
-        ctx.flag = false;
+        (0, false)
     }
 }
-
 #[inline(always)]
-fn op_and(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.a & ctx.b;
-    ctx.flag = false;
+fn opc_le_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_le_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_or(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.a | ctx.b;
-    ctx.flag = false;
+fn op_and(a: u64, b: u64) -> (u64, bool) {
+    (a & b, false)
+}
+#[inline(always)]
+fn opc_and(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_and(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_xor(ctx: &mut InstContext) -> () {
-    ctx.c = ctx.a ^ ctx.b;
-    ctx.flag = false;
+fn op_or(a: u64, b: u64) -> (u64, bool) {
+    (a | b, false)
+}
+#[inline(always)]
+fn opc_or(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_or(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_mulu(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a) * Wrapping(ctx.b)).0;
-    ctx.flag = false;
+fn op_xor(a: u64, b: u64) -> (u64, bool) {
+    (a ^ b, false)
+}
+#[inline(always)]
+fn opc_xor(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xor(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_mul(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a as i64) * Wrapping(ctx.b as i64)).0 as u64;
-    ctx.flag = false;
+fn op_mulu(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) * Wrapping(b)).0, false)
+}
+#[inline(always)]
+fn opc_mulu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_mulu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_mul_w(ctx: &mut InstContext) -> () {
-    ctx.c = (Wrapping(ctx.a as i32) * Wrapping(ctx.b as i32)).0 as u64;
-    ctx.flag = false;
+fn op_mul(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i64) * Wrapping(b as i64)).0 as u64, false)
+}
+#[inline(always)]
+fn opc_mul(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_mul(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_muluh(ctx: &mut InstContext) -> () {
-    ctx.c = ((ctx.a as u128 * ctx.b as u128) >> 64) as u64;
-    ctx.flag = false;
+fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) * Wrapping(b as i32)).0 as u64, false)
+}
+#[inline(always)]
+fn opc_mul_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_mul_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_mulh(ctx: &mut InstContext) -> () {
-    ctx.c = ((((ctx.a as i64) as i128) * ((ctx.b as i64) as i128)) >> 64) as u64;
-    ctx.flag = false;
+fn op_muluh(a: u64, b: u64) -> (u64, bool) {
+    (((a as u128 * b as u128) >> 64) as u64, false)
+}
+#[inline(always)]
+fn opc_muluh(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_muluh(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_mulsuh(ctx: &mut InstContext) -> () {
-    ctx.c = ((((ctx.a as i64) as i128) * (ctx.b as i128)) >> 64) as u64;
-    ctx.flag = false;
+fn op_mulh(a: u64, b: u64) -> (u64, bool) {
+    (((((a as i64) as i128) * ((b as i64) as i128)) >> 64) as u64, false)
+}
+#[inline(always)]
+fn opc_mulh(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_mulh(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_divu(ctx: &mut InstContext) -> () {
-    if ctx.b == 0 {
-        ctx.c = M64;
-        ctx.flag = true;
-        return;
+fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
+    (((((a as i64) as i128) * (b as i128)) >> 64) as u64, false)
+}
+#[inline(always)]
+fn opc_mulsuh(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_mulsuh(ctx.a, ctx.b);
+}
+
+#[inline(always)]
+fn op_divu(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        return (M64, true);
     }
 
-    ctx.c = ctx.a / ctx.b;
-    ctx.flag = false;
+    (a / b, false)
+}
+#[inline(always)]
+fn opc_divu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_div(ctx: &mut InstContext) -> () {
-    if ctx.b == 0 {
-        ctx.c = M64;
-        ctx.flag = true;
-        return;
+fn op_div(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        return (M64, true);
     }
-    ctx.c = (((ctx.a as i64) as i128) / ((ctx.b as i64) as i128)) as u64;
-    ctx.flag = false;
+    ((((a as i64) as i128) / ((b as i64) as i128)) as u64, false)
+}
+#[inline(always)]
+fn opc_div(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_div(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_divu_w(ctx: &mut InstContext) -> () {
-    if ctx.b as u32 == 0 {
-        ctx.c = M64;
-        ctx.flag = true;
-        return;
-    }
-
-    ctx.c = ((ctx.a as u32 / ctx.b as u32) as i32) as u64;
-    ctx.flag = false;
-}
-
-#[inline(always)]
-fn op_div_w(ctx: &mut InstContext) -> () {
-    if ctx.b as i32 == 0 {
-        ctx.c = M64;
-        ctx.flag = true;
-        return;
+fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
+    if b as u32 == 0 {
+        return (M64, true);
     }
 
-    ctx.c = (((ctx.a as i32) as i64) / ((ctx.b as i32) as i64)) as u64;
-    ctx.flag = false;
+    (((a as u32 / b as u32) as i32) as u64, false)
+}
+#[inline(always)]
+fn opc_divu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_divu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_remu(ctx: &mut InstContext) -> () {
-    if ctx.b == 0 {
-        ctx.c = ctx.a;
-        ctx.flag = true;
-        return;
+fn op_div_w(a: u64, b: u64) -> (u64, bool) {
+    if b as i32 == 0 {
+        return (M64, true);
     }
 
-    ctx.c = ctx.a % ctx.b;
-    ctx.flag = false;
+    ((((a as i32) as i64) / ((b as i32) as i64)) as u64, false)
+}
+#[inline(always)]
+fn opc_div_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_div_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_rem(ctx: &mut InstContext) -> () {
-    if ctx.b == 0 {
-        ctx.c = ctx.a;
-        ctx.flag = true;
-        return;
+fn op_remu(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        return (a, true);
     }
 
-    ctx.c = (((ctx.a as i64) as i128) % ((ctx.b as i64) as i128)) as u64;
-    ctx.flag = false;
+    (a % b, false)
+}
+#[inline(always)]
+fn opc_remu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_remu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_remu_w(ctx: &mut InstContext) -> () {
-    if (ctx.b as u32) == 0 {
-        ctx.c = (ctx.a as i32) as u64;
-        ctx.flag = true;
-        return;
+fn op_rem(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        return (a, true);
     }
 
-    ctx.c = (((ctx.a as u32) % (ctx.b as u32)) as i32) as u64;
-    ctx.flag = false;
+    ((((a as i64) as i128) % ((b as i64) as i128)) as u64, false)
+}
+#[inline(always)]
+fn opc_rem(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rem(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_rem_w(ctx: &mut InstContext) -> () {
-    if (ctx.b as i32) == 0 {
-        ctx.c = (ctx.a as i32) as u64;
-        ctx.flag = true;
-        return;
+fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
+    if (b as u32) == 0 {
+        return ((a as i32) as u64, true);
     }
 
-    ctx.c = ((ctx.a as i32) % (ctx.b as i32)) as u64;
-    ctx.flag = false;
+    ((((a as u32) % (b as u32)) as i32) as u64, false)
+}
+#[inline(always)]
+fn opc_remu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_remu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_minu(ctx: &mut InstContext) -> () {
-    if ctx.a < ctx.b {
-        ctx.c = ctx.a;
+fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
+    if (b as i32) == 0 {
+        return ((a as i32) as u64, true);
+    }
+
+    (((a as i32) % (b as i32)) as u64, false)
+}
+#[inline(always)]
+fn opc_rem_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rem_w(ctx.a, ctx.b);
+}
+
+#[inline(always)]
+fn op_minu(a: u64, b: u64) -> (u64, bool) {
+    //if op_s64(a) < op_s64(b)
+    if a < b {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_minu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_minu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_min(ctx: &mut InstContext) -> () {
-    if (ctx.a as i64) < (ctx.b as i64) {
-        ctx.c = ctx.a;
+fn op_min(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) < (b as i64) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_min(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_min(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_minu_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as u32) < (ctx.b as u32) {
-        ctx.c = ctx.a;
+fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) < (b as u32) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_minu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_minu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_min_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as i32) < (ctx.b as i32) {
-        ctx.c = ctx.a;
+fn op_min_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) < (b as i32) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_min_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_min_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_maxu(ctx: &mut InstContext) -> () {
-    if ctx.a > ctx.b {
-        ctx.c = ctx.a;
+fn op_maxu(a: u64, b: u64) -> (u64, bool) {
+    //if op_s64(a) > op_s64(b)
+    if a > b {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_maxu(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_maxu(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_max(ctx: &mut InstContext) -> () {
-    if (ctx.a as i64) > (ctx.b as i64) {
-        ctx.c = ctx.a;
+fn op_max(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) > (b as i64) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_max(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_max(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_maxu_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as u32) > (ctx.b as u32) {
-        ctx.c = ctx.a;
+fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) > (b as u32) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_maxu_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_maxu_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_max_w(ctx: &mut InstContext) -> () {
-    if (ctx.a as i32) > (ctx.b as i32) {
-        ctx.c = ctx.a;
+fn op_max_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) > (b as i32) {
+        (a, false)
     } else {
-        ctx.c = ctx.b;
+        (b, false)
     }
-    ctx.flag = false;
+}
+#[inline(always)]
+fn opc_max_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
 
 #[inline(always)]
-fn op_keccak(ctx: &mut InstContext) -> () {
+fn opc_keccak(ctx: &mut InstContext) {
     // Get address from register a1 = x11
-    let address = ctx.mem.read(SYS_ADDR + (10 as u64) * 8, 8);
+    let address = ctx.mem.read(SYS_ADDR + 10_u64 * 8, 8);
 
     // Allocate room for 25 u64 = 128 bytes = 1600 bits
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
     // Read them from the address
-    for i in 0..25 {
-        data[i] = ctx.mem.read(address + (8 * i as u64), 8);
+    for (i, d) in data.iter_mut().enumerate() {
+        *d = ctx.mem.read(address + (8 * i as u64), 8);
     }
 
     // Call keccakf
     keccakf(&mut data);
 
     // Write them from the address
-    for i in 0..25 {
-        ctx.mem.write(address + (8 * i as u64), data[i], 8);
+    for (i, d) in data.iter().enumerate() {
+        ctx.mem.write(address + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;
     ctx.flag = false;
 }
 
-/*
+/// Executes opcodes, only if it does not require instruction context (e.g. it does not have to
+/// access memory)
 #[inline(always)]
 pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
     match opcode {
@@ -535,10 +658,9 @@ pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
         0x0c => op_max(a, b),
         0x1b => op_maxu_w(a, b),
         0x1c => op_max_w(a, b),
-        0xf1 => op_keccak(a, b),
         _ => panic!("opcode_execute() found invalid opcode={}", opcode),
     }
-}*/
+}
 
 #[inline(always)]
 pub fn opcode_string(opcode: u8) -> &'static str {
@@ -618,57 +740,57 @@ impl ZiskOperations {
     pub fn new() -> ZiskOperations {
         // Create a vector of ZisK operations and fill it with the corresponding operation data
         let ops: Vec<ZiskOperation> = vec![
-            ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: op_flag },
-            ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: op_copyb },
-            ZiskOperation { n: "signextend_b", s: 109, t: "be", c: 0x24, f: op_signextend_b },
-            ZiskOperation { n: "signextend_h", s: 109, t: "be", c: 0x25, f: op_signextend_h },
-            ZiskOperation { n: "signextend_w", s: 109, t: "be", c: 0x26, f: op_signextend_w },
-            ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: op_add },
-            ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: op_add_w },
-            ZiskOperation { n: "sub", t: "b", s: 77, c: 0x03, f: op_sub },
-            ZiskOperation { n: "sub_w", t: "b", s: 77, c: 0x13, f: op_sub_w },
-            ZiskOperation { n: "sll", t: "be", s: 109, c: 0x0d, f: op_sll },
-            ZiskOperation { n: "sll_w", t: "be", s: 109, c: 0x1d, f: op_sll_w },
-            ZiskOperation { n: "sra", t: "be", s: 109, c: 0x0f, f: op_sra },
-            ZiskOperation { n: "srl", t: "be", s: 109, c: 0x0e, f: op_srl },
-            ZiskOperation { n: "sra_w", t: "be", s: 109, c: 0x1f, f: op_sra_w },
-            ZiskOperation { n: "srl_w", t: "be", s: 109, c: 0x1e, f: op_srl_w },
-            ZiskOperation { n: "eq", t: "b", s: 77, c: 0x08, f: op_eq },
-            ZiskOperation { n: "eq_w", t: "b", s: 77, c: 0x18, f: op_eq_w },
-            ZiskOperation { n: "ltu", t: "b", s: 77, c: 0x04, f: op_ltu },
-            ZiskOperation { n: "lt", t: "b", s: 77, c: 0x05, f: op_lt },
-            ZiskOperation { n: "ltu_w", t: "b", s: 77, c: 0x14, f: op_ltu_w },
-            ZiskOperation { n: "lt_w", t: "b", s: 77, c: 0x15, f: op_lt_w },
-            ZiskOperation { n: "leu", t: "b", s: 77, c: 0x06, f: op_leu },
-            ZiskOperation { n: "le", t: "b", s: 77, c: 0x07, f: op_le },
-            ZiskOperation { n: "leu_w", t: "b", s: 77, c: 0x16, f: op_leu_w },
-            ZiskOperation { n: "le_w", t: "b", s: 77, c: 0x17, f: op_le_w },
-            ZiskOperation { n: "and", t: "b", s: 77, c: 0x20, f: op_and },
-            ZiskOperation { n: "or", t: "b", s: 77, c: 0x21, f: op_or },
-            ZiskOperation { n: "xor", t: "b", s: 77, c: 0x22, f: op_xor },
-            ZiskOperation { n: "mulu", t: "a", s: 97, c: 0xb0, f: op_mulu },
-            ZiskOperation { n: "mul", t: "a", s: 97, c: 0xb1, f: op_mul },
-            ZiskOperation { n: "mul_w", t: "am32", s: 44, c: 0xb5, f: op_mul_w },
-            ZiskOperation { n: "muluh", t: "a", s: 97, c: 0xb8, f: op_muluh },
-            ZiskOperation { n: "mulh", t: "a", s: 97, c: 0xb9, f: op_mulh },
-            ZiskOperation { n: "mulsuh", t: "a", s: 97, c: 0xbb, f: op_mulsuh },
-            ZiskOperation { n: "divu", t: "a", s: 174, c: 0xc0, f: op_divu },
-            ZiskOperation { n: "div", t: "a", s: 174, c: 0xc1, f: op_div },
-            ZiskOperation { n: "divu_w", t: "a32", s: 136, c: 0xc4, f: op_divu_w },
-            ZiskOperation { n: "div_w", t: "a32", s: 136, c: 0xc5, f: op_div_w },
-            ZiskOperation { n: "remu", t: "a", s: 174, c: 0xc8, f: op_remu },
-            ZiskOperation { n: "rem", t: "a", s: 174, c: 0xc9, f: op_rem },
-            ZiskOperation { n: "remu_w", t: "a32", s: 136, c: 0xcc, f: op_remu_w },
-            ZiskOperation { n: "rem_w", t: "a32", s: 136, c: 0xcd, f: op_rem_w },
-            ZiskOperation { n: "minu", t: "b", s: 77, c: 0x09, f: op_minu },
-            ZiskOperation { n: "min", t: "b", s: 77, c: 0x0a, f: op_min },
-            ZiskOperation { n: "minu_w", t: "b", s: 77, c: 0x19, f: op_minu_w },
-            ZiskOperation { n: "min_w", t: "b", s: 77, c: 0x1a, f: op_min_w },
-            ZiskOperation { n: "maxu", t: "b", s: 77, c: 0x0b, f: op_maxu },
-            ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: op_max },
-            ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: op_maxu_w },
-            ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: op_max_w },
-            ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: op_keccak },
+            ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: opc_flag },
+            ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: opc_copyb },
+            ZiskOperation { n: "signextend_b", s: 109, t: "be", c: 0x24, f: opc_signextend_b },
+            ZiskOperation { n: "signextend_h", s: 109, t: "be", c: 0x25, f: opc_signextend_h },
+            ZiskOperation { n: "signextend_w", s: 109, t: "be", c: 0x26, f: opc_signextend_w },
+            ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: opc_add },
+            ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: opc_add_w },
+            ZiskOperation { n: "sub", t: "b", s: 77, c: 0x03, f: opc_sub },
+            ZiskOperation { n: "sub_w", t: "b", s: 77, c: 0x13, f: opc_sub_w },
+            ZiskOperation { n: "sll", t: "be", s: 109, c: 0x0d, f: opc_sll },
+            ZiskOperation { n: "sll_w", t: "be", s: 109, c: 0x1d, f: opc_sll_w },
+            ZiskOperation { n: "sra", t: "be", s: 109, c: 0x0f, f: opc_sra },
+            ZiskOperation { n: "srl", t: "be", s: 109, c: 0x0e, f: opc_srl },
+            ZiskOperation { n: "sra_w", t: "be", s: 109, c: 0x1f, f: opc_sra_w },
+            ZiskOperation { n: "srl_w", t: "be", s: 109, c: 0x1e, f: opc_srl_w },
+            ZiskOperation { n: "eq", t: "b", s: 77, c: 0x08, f: opc_eq },
+            ZiskOperation { n: "eq_w", t: "b", s: 77, c: 0x18, f: opc_eq_w },
+            ZiskOperation { n: "ltu", t: "b", s: 77, c: 0x04, f: opc_ltu },
+            ZiskOperation { n: "lt", t: "b", s: 77, c: 0x05, f: opc_lt },
+            ZiskOperation { n: "ltu_w", t: "b", s: 77, c: 0x14, f: opc_ltu_w },
+            ZiskOperation { n: "lt_w", t: "b", s: 77, c: 0x15, f: opc_lt_w },
+            ZiskOperation { n: "leu", t: "b", s: 77, c: 0x06, f: opc_leu },
+            ZiskOperation { n: "le", t: "b", s: 77, c: 0x07, f: opc_le },
+            ZiskOperation { n: "leu_w", t: "b", s: 77, c: 0x16, f: opc_leu_w },
+            ZiskOperation { n: "le_w", t: "b", s: 77, c: 0x17, f: opc_le_w },
+            ZiskOperation { n: "and", t: "b", s: 77, c: 0x20, f: opc_and },
+            ZiskOperation { n: "or", t: "b", s: 77, c: 0x21, f: opc_or },
+            ZiskOperation { n: "xor", t: "b", s: 77, c: 0x22, f: opc_xor },
+            ZiskOperation { n: "mulu", t: "a", s: 97, c: 0xb0, f: opc_mulu },
+            ZiskOperation { n: "mul", t: "a", s: 97, c: 0xb1, f: opc_mul },
+            ZiskOperation { n: "mul_w", t: "am32", s: 44, c: 0xb5, f: opc_mul_w },
+            ZiskOperation { n: "muluh", t: "a", s: 97, c: 0xb8, f: opc_muluh },
+            ZiskOperation { n: "mulh", t: "a", s: 97, c: 0xb9, f: opc_mulh },
+            ZiskOperation { n: "mulsuh", t: "a", s: 97, c: 0xbb, f: opc_mulsuh },
+            ZiskOperation { n: "divu", t: "a", s: 174, c: 0xc0, f: opc_divu },
+            ZiskOperation { n: "div", t: "a", s: 174, c: 0xc1, f: opc_div },
+            ZiskOperation { n: "divu_w", t: "a32", s: 136, c: 0xc4, f: opc_divu_w },
+            ZiskOperation { n: "div_w", t: "a32", s: 136, c: 0xc5, f: opc_div_w },
+            ZiskOperation { n: "remu", t: "a", s: 174, c: 0xc8, f: opc_remu },
+            ZiskOperation { n: "rem", t: "a", s: 174, c: 0xc9, f: opc_rem },
+            ZiskOperation { n: "remu_w", t: "a32", s: 136, c: 0xcc, f: opc_remu_w },
+            ZiskOperation { n: "rem_w", t: "a32", s: 136, c: 0xcd, f: opc_rem_w },
+            ZiskOperation { n: "minu", t: "b", s: 77, c: 0x09, f: opc_minu },
+            ZiskOperation { n: "min", t: "b", s: 77, c: 0x0a, f: opc_min },
+            ZiskOperation { n: "minu_w", t: "b", s: 77, c: 0x19, f: opc_minu_w },
+            ZiskOperation { n: "min_w", t: "b", s: 77, c: 0x1a, f: opc_min_w },
+            ZiskOperation { n: "maxu", t: "b", s: 77, c: 0x0b, f: opc_maxu },
+            ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: opc_max },
+            ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: opc_maxu_w },
+            ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: opc_max_w },
+            ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: opc_keccak },
         ];
 
         // Create two empty maps
@@ -688,63 +810,63 @@ impl ZiskOperations {
 
 pub fn op_from_str(op: &str) -> ZiskOperation {
     match op {
-        "flag" => ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: op_flag },
-        "copyb" => ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: op_copyb },
+        "flag" => ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: opc_flag },
+        "copyb" => ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: opc_copyb },
         "signextend_b" => {
-            ZiskOperation { n: "signextend_b", t: "be", s: 109, c: 0x24, f: op_signextend_b }
+            ZiskOperation { n: "signextend_b", t: "be", s: 109, c: 0x24, f: opc_signextend_b }
         }
         "signextend_h" => {
-            ZiskOperation { n: "signextend_h", t: "be", s: 109, c: 0x25, f: op_signextend_h }
+            ZiskOperation { n: "signextend_h", t: "be", s: 109, c: 0x25, f: opc_signextend_h }
         }
         "signextend_w" => {
-            ZiskOperation { n: "signextend_w", t: "be", s: 109, c: 0x26, f: op_signextend_w }
+            ZiskOperation { n: "signextend_w", t: "be", s: 109, c: 0x26, f: opc_signextend_w }
         }
-        "add" => ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: op_add },
-        "add_w" => ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: op_add_w },
-        "sub" => ZiskOperation { n: "sub", t: "b", s: 77, c: 0x03, f: op_sub },
-        "sub_w" => ZiskOperation { n: "sub_w", t: "b", s: 77, c: 0x13, f: op_sub_w },
-        "sll" => ZiskOperation { n: "sll", t: "be", s: 109, c: 0x0d, f: op_sll },
-        "sll_w" => ZiskOperation { n: "sll_w", t: "be", s: 109, c: 0x1d, f: op_sll_w },
-        "sra" => ZiskOperation { n: "sra", t: "be", s: 109, c: 0x0f, f: op_sra },
-        "srl" => ZiskOperation { n: "srl", t: "be", s: 109, c: 0x0e, f: op_srl },
-        "sra_w" => ZiskOperation { n: "sra_w", t: "be", s: 109, c: 0x1f, f: op_sra_w },
-        "srl_w" => ZiskOperation { n: "srl_w", t: "be", s: 109, c: 0x1e, f: op_srl_w },
-        "eq" => ZiskOperation { n: "eq", t: "b", s: 77, c: 0x08, f: op_eq },
-        "eq_w" => ZiskOperation { n: "eq_w", t: "b", s: 77, c: 0x18, f: op_eq_w },
-        "ltu" => ZiskOperation { n: "ltu", t: "b", s: 77, c: 0x04, f: op_ltu },
-        "lt" => ZiskOperation { n: "lt", t: "b", s: 77, c: 0x05, f: op_lt },
-        "ltu_w" => ZiskOperation { n: "ltu_w", t: "b", s: 77, c: 0x14, f: op_ltu_w },
-        "lt_w" => ZiskOperation { n: "lt_w", t: "b", s: 77, c: 0x15, f: op_lt_w },
-        "leu" => ZiskOperation { n: "leu", t: "b", s: 77, c: 0x06, f: op_leu },
-        "le" => ZiskOperation { n: "le", t: "b", s: 77, c: 0x07, f: op_le },
-        "leu_w" => ZiskOperation { n: "leu_w", t: "b", s: 77, c: 0x16, f: op_leu_w },
-        "le_w" => ZiskOperation { n: "le_w", t: "b", s: 77, c: 0x17, f: op_le_w },
-        "and" => ZiskOperation { n: "and", t: "b", s: 77, c: 0x20, f: op_and },
-        "or" => ZiskOperation { n: "or", t: "b", s: 77, c: 0x21, f: op_or },
-        "xor" => ZiskOperation { n: "xor", t: "b", s: 77, c: 0x22, f: op_xor },
-        "mulu" => ZiskOperation { n: "mulu", t: "a", s: 97, c: 0xb0, f: op_mulu },
-        "mul" => ZiskOperation { n: "mul", t: "a", s: 97, c: 0xb1, f: op_mul },
-        "mul_w" => ZiskOperation { n: "mul_w", t: "a", s: 44, c: 0xb5, f: op_mul_w },
-        "muluh" => ZiskOperation { n: "muluh", t: "a", s: 97, c: 0xb8, f: op_muluh },
-        "mulh" => ZiskOperation { n: "mulh", t: "a", s: 97, c: 0xb9, f: op_mulh },
-        "mulsuh" => ZiskOperation { n: "mulsuh", t: "a", s: 97, c: 0xbb, f: op_mulsuh },
-        "divu" => ZiskOperation { n: "divu", t: "a", s: 174, c: 0xc0, f: op_divu },
-        "div" => ZiskOperation { n: "div", t: "a", s: 174, c: 0xc1, f: op_div },
-        "divu_w" => ZiskOperation { n: "divu_w", t: "a32", s: 136, c: 0xc4, f: op_divu_w },
-        "div_w" => ZiskOperation { n: "div_w", t: "a32", s: 136, c: 0xc5, f: op_div_w },
-        "remu" => ZiskOperation { n: "remu", t: "a", s: 174, c: 0xc8, f: op_remu },
-        "rem" => ZiskOperation { n: "rem", t: "a", s: 174, c: 0xc9, f: op_rem },
-        "remu_w" => ZiskOperation { n: "remu_w", t: "a32", s: 136, c: 0xcc, f: op_remu_w },
-        "rem_w" => ZiskOperation { n: "rem_w", t: "a32", s: 136, c: 0xcd, f: op_rem_w },
-        "minu" => ZiskOperation { n: "minu", t: "b", s: 77, c: 0x09, f: op_minu },
-        "min" => ZiskOperation { n: "min", t: "b", s: 77, c: 0x0a, f: op_min },
-        "minu_w" => ZiskOperation { n: "minu_w", t: "b", s: 77, c: 0x19, f: op_minu_w },
-        "min_w" => ZiskOperation { n: "min_w", t: "b", s: 77, c: 0x1a, f: op_min_w },
-        "maxu" => ZiskOperation { n: "maxu", t: "b", s: 77, c: 0x0b, f: op_maxu },
-        "max" => ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: op_max },
-        "maxu_w" => ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: op_maxu_w },
-        "max_w" => ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: op_max_w },
-        "keccak" => ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: op_keccak },
+        "add" => ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: opc_add },
+        "add_w" => ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: opc_add_w },
+        "sub" => ZiskOperation { n: "sub", t: "b", s: 77, c: 0x03, f: opc_sub },
+        "sub_w" => ZiskOperation { n: "sub_w", t: "b", s: 77, c: 0x13, f: opc_sub_w },
+        "sll" => ZiskOperation { n: "sll", t: "be", s: 109, c: 0x0d, f: opc_sll },
+        "sll_w" => ZiskOperation { n: "sll_w", t: "be", s: 109, c: 0x1d, f: opc_sll_w },
+        "sra" => ZiskOperation { n: "sra", t: "be", s: 109, c: 0x0f, f: opc_sra },
+        "srl" => ZiskOperation { n: "srl", t: "be", s: 109, c: 0x0e, f: opc_srl },
+        "sra_w" => ZiskOperation { n: "sra_w", t: "be", s: 109, c: 0x1f, f: opc_sra_w },
+        "srl_w" => ZiskOperation { n: "srl_w", t: "be", s: 109, c: 0x1e, f: opc_srl_w },
+        "eq" => ZiskOperation { n: "eq", t: "b", s: 77, c: 0x08, f: opc_eq },
+        "eq_w" => ZiskOperation { n: "eq_w", t: "b", s: 77, c: 0x18, f: opc_eq_w },
+        "ltu" => ZiskOperation { n: "ltu", t: "b", s: 77, c: 0x04, f: opc_ltu },
+        "lt" => ZiskOperation { n: "lt", t: "b", s: 77, c: 0x05, f: opc_lt },
+        "ltu_w" => ZiskOperation { n: "ltu_w", t: "b", s: 77, c: 0x14, f: opc_ltu_w },
+        "lt_w" => ZiskOperation { n: "lt_w", t: "b", s: 77, c: 0x15, f: opc_lt_w },
+        "leu" => ZiskOperation { n: "leu", t: "b", s: 77, c: 0x06, f: opc_leu },
+        "le" => ZiskOperation { n: "le", t: "b", s: 77, c: 0x07, f: opc_le },
+        "leu_w" => ZiskOperation { n: "leu_w", t: "b", s: 77, c: 0x16, f: opc_leu_w },
+        "le_w" => ZiskOperation { n: "le_w", t: "b", s: 77, c: 0x17, f: opc_le_w },
+        "and" => ZiskOperation { n: "and", t: "b", s: 77, c: 0x20, f: opc_and },
+        "or" => ZiskOperation { n: "or", t: "b", s: 77, c: 0x21, f: opc_or },
+        "xor" => ZiskOperation { n: "xor", t: "b", s: 77, c: 0x22, f: opc_xor },
+        "mulu" => ZiskOperation { n: "mulu", t: "a", s: 97, c: 0xb0, f: opc_mulu },
+        "mul" => ZiskOperation { n: "mul", t: "a", s: 97, c: 0xb1, f: opc_mul },
+        "mul_w" => ZiskOperation { n: "mul_w", t: "a", s: 44, c: 0xb5, f: opc_mul_w },
+        "muluh" => ZiskOperation { n: "muluh", t: "a", s: 97, c: 0xb8, f: opc_muluh },
+        "mulh" => ZiskOperation { n: "mulh", t: "a", s: 97, c: 0xb9, f: opc_mulh },
+        "mulsuh" => ZiskOperation { n: "mulsuh", t: "a", s: 97, c: 0xbb, f: opc_mulsuh },
+        "divu" => ZiskOperation { n: "divu", t: "a", s: 174, c: 0xc0, f: opc_divu },
+        "div" => ZiskOperation { n: "div", t: "a", s: 174, c: 0xc1, f: opc_div },
+        "divu_w" => ZiskOperation { n: "divu_w", t: "a32", s: 136, c: 0xc4, f: opc_divu_w },
+        "div_w" => ZiskOperation { n: "div_w", t: "a32", s: 136, c: 0xc5, f: opc_div_w },
+        "remu" => ZiskOperation { n: "remu", t: "a", s: 174, c: 0xc8, f: opc_remu },
+        "rem" => ZiskOperation { n: "rem", t: "a", s: 174, c: 0xc9, f: opc_rem },
+        "remu_w" => ZiskOperation { n: "remu_w", t: "a32", s: 136, c: 0xcc, f: opc_remu_w },
+        "rem_w" => ZiskOperation { n: "rem_w", t: "a32", s: 136, c: 0xcd, f: opc_rem_w },
+        "minu" => ZiskOperation { n: "minu", t: "b", s: 77, c: 0x09, f: opc_minu },
+        "min" => ZiskOperation { n: "min", t: "b", s: 77, c: 0x0a, f: opc_min },
+        "minu_w" => ZiskOperation { n: "minu_w", t: "b", s: 77, c: 0x19, f: opc_minu_w },
+        "min_w" => ZiskOperation { n: "min_w", t: "b", s: 77, c: 0x1a, f: opc_min_w },
+        "maxu" => ZiskOperation { n: "maxu", t: "b", s: 77, c: 0x0b, f: opc_maxu },
+        "max" => ZiskOperation { n: "max", t: "b", s: 77, c: 0x0c, f: opc_max },
+        "maxu_w" => ZiskOperation { n: "maxu_w", t: "b", s: 77, c: 0x1b, f: opc_maxu_w },
+        "max_w" => ZiskOperation { n: "max_w", t: "b", s: 77, c: 0x1c, f: opc_max_w },
+        "keccak" => ZiskOperation { n: "keccak", t: "k", s: 77, c: 0xf1, f: opc_keccak },
         _ => panic!("op_from_str() found invalid opcode={}", op),
     }
 }

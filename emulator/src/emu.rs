@@ -71,7 +71,7 @@ impl<'a> Emu<'a> {
             }
             SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
             #[cfg(feature = "sp")]
-            SRC_SP => self.ctx.a = self.ctx.sp,
+            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -291,9 +291,9 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn set_sp(&mut self, instruction: &ZiskInst) {
         if instruction.set_sp {
-            self.ctx.sp = self.ctx.c;
+            self.ctx.inst_ctx.sp = self.ctx.inst_ctx.c;
         } else {
-            self.ctx.sp += instruction.inc_sp;
+            self.ctx.inst_ctx.sp += instruction.inc_sp;
         }
     }
 
@@ -503,7 +503,7 @@ impl<'a> Emu<'a> {
                 instruction.to_text()
             );
             self.print_regs();
-            println!("");
+            println!();
         }
 
         // Store an emulator trace, if requested
@@ -744,12 +744,12 @@ impl<'a> Emu<'a> {
         regs_array
     }
 
-    pub fn print_regs(&self) -> () {
+    pub fn print_regs(&self) {
         let regs_array: [u64; 32] = self.get_regs_array();
         print!("Emu::print_regs(): ");
-        for i in 0..32 {
-            print!("x{}={}={:x} ", i, regs_array[i], regs_array[i]);
+        for (i, r) in regs_array.iter().enumerate() {
+            print!("x{}={}={:x} ", i, r, r);
         }
-        println!("");
+        println!();
     }
 }
