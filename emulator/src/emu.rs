@@ -597,19 +597,19 @@ impl<'a> Emu<'a> {
         let full_trace_step = EmuFullTraceStep {
             a: [
                 F::from_canonical_u64(self.ctx.inst_ctx.a & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.inst_ctx.a << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.inst_ctx.a >> 32) & 0xFFFFFFFF),
             ],
             b: [
                 F::from_canonical_u64(self.ctx.inst_ctx.b & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.inst_ctx.b << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.inst_ctx.b >> 32) & 0xFFFFFFFF),
             ],
             c: [
                 F::from_canonical_u64(self.ctx.inst_ctx.c & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.inst_ctx.c << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.inst_ctx.c >> 32) & 0xFFFFFFFF),
             ],
             last_c: [
                 F::from_canonical_u64(last_c & 0xFFFFFFFF),
-                F::from_canonical_u64((last_c << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((last_c >> 32) & 0xFFFFFFFF),
             ],
             flag: F::from_bool(self.ctx.inst_ctx.flag),
             pc: F::from_canonical_u64(self.ctx.inst_ctx.pc),
