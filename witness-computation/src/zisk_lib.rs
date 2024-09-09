@@ -136,18 +136,18 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
     }
 
     fn debug(&mut self, 
-        pctx: &ProofCtx<F>, 
+        _pctx: &ProofCtx<F>, 
         _ectx: &ExecutionCtx, 
-        sctx: &SetupCtx
+        _sctx: &SetupCtx
     ) {
-        let mut air_instances = pctx.air_instances.write().unwrap();
+        // let mut air_instances = pctx.air_instances.write().unwrap();
 
-        for (_air_instance_id, air_instance_ctx) in air_instances.iter_mut().enumerate() {
-            print_by_name(sctx, air_instance_ctx, "Main.main_first_segment", None, 0, 1);
-            print_by_name(sctx, air_instance_ctx, "Main.SEGMENT_L1", None, 0, 1);
-            print_by_name(sctx, air_instance_ctx, "Main.pc", None, 0, 1);
-
-        }
+        // for (_air_instance_id, air_instance_ctx) in air_instances.iter_mut().enumerate() {
+        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a_src_imm", None, 51, 52);
+        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a", Some(vec![0]), 51, 52);
+        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a", Some(vec![1]), 51, 52);
+        //     _ = print_by_name(sctx, air_instance_ctx, "a_use_sp_imm1", None, 51, 52);
+        // }
 
     }
     fn pilout(&self) -> WitnessPilout {

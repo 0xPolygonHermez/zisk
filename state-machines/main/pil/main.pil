@@ -3,7 +3,7 @@
 // require "mem.pil"
 // require "operation.pil"
 
-const int BOOT_ADDR = 0x8000_0000;
+const int BOOT_ADDR = 0x1000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
 

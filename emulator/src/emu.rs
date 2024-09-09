@@ -559,6 +559,7 @@ impl<'a> Emu<'a> {
         emu_slice: &mut EmuSlice<F>,
     ) {
         let last_c = self.ctx.c;
+        let pc = self.ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.pc);
         self.source_a_slice(instruction, trace_step.a, &mut emu_slice.required);
         self.source_b_slice(instruction, trace_step.b, &mut emu_slice.required);
@@ -574,22 +575,22 @@ impl<'a> Emu<'a> {
         let full_trace_step = EmuFullTraceStep {
             a: [
                 F::from_canonical_u64(self.ctx.a & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.a << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.a >> 32) & 0xFFFFFFFF),
             ],
             b: [
                 F::from_canonical_u64(self.ctx.b & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.b << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.b >> 32) & 0xFFFFFFFF),
             ],
             c: [
                 F::from_canonical_u64(self.ctx.c & 0xFFFFFFFF),
-                F::from_canonical_u64((self.ctx.c << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((self.ctx.c >> 32) & 0xFFFFFFFF),
             ],
             last_c: [
                 F::from_canonical_u64(last_c & 0xFFFFFFFF),
-                F::from_canonical_u64((last_c << 32) & 0xFFFFFFFF),
+                F::from_canonical_u64((last_c >> 32) & 0xFFFFFFFF),
             ],
             flag: F::from_bool(self.ctx.flag),
-            pc: F::from_canonical_u64(self.ctx.pc),
+            pc: F::from_canonical_u64(pc),
             a_src_imm: F::from_bool(instruction.a_src == SRC_IMM),
             a_src_mem: F::from_bool(instruction.a_src == SRC_MEM),
             a_offset_imm0: F::from_canonical_u64(instruction.a_offset_imm0),

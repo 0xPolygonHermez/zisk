@@ -306,9 +306,17 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         // } else {
         //     main_trace.slice.copy_from_slice(&air_segment.inputs);
         // }
-
+        
         // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
-        let main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
+        let num_rows = pctx.pilout.get_air(MAIN_SUBPROOF_ID[0], MAIN_AIR_IDS[0]).num_rows();
+        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
+
+        if air_segment.filled_inputs != num_rows {
+            for i in air_segment.filled_inputs..num_rows {
+                main_trace[i].flag = F::from_canonical_usize(1);
+            };
+        }
+        
 
         let main_trace_buffer = main_trace.buffer.unwrap();
 
