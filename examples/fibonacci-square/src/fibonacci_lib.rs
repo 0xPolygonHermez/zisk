@@ -15,14 +15,14 @@ use crate::{FibonacciSquare, Pilout, Module};
 
 pub struct FibonacciWitness<F> {
     pub wcm: WitnessManager<F>,
-    pub public_inputs_path: PathBuf,
+    pub public_inputs_path: Option<PathBuf>,
     pub fibonacci: Arc<FibonacciSquare<F>>,
     pub module: Arc<Module<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
 impl<F: PrimeField> FibonacciWitness<F> {
-    pub fn new(public_inputs_path: PathBuf) -> Self {
+    pub fn new(public_inputs_path: Option<PathBuf>) -> Self {
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
@@ -35,16 +35,25 @@ impl<F: PrimeField> FibonacciWitness<F> {
 
 impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
-        let mut file = File::open(&self.public_inputs_path).unwrap();
+        
+        let public_inputs: FibonacciSquarePublics = if let Some(path) = &self.public_inputs_path {
+            let mut file = File::open(path).unwrap();
 
-        if !file.metadata().unwrap().is_file() {
-            panic!("Public inputs file not found");
-        }
+            if !file.metadata().unwrap().is_file() {
+                panic!("Public inputs file not found");
+            }
 
-        let mut contents = String::new();
-        let _ = file.read_to_string(&mut contents);
+            let mut contents = String::new();
 
-        let public_inputs: FibonacciSquarePublics = serde_json::from_str(&contents).unwrap();
+            let _ = file.read_to_string(&mut contents).map_err(|err| {
+                format!("Failed to read public inputs file: {}", err)
+            });
+
+            serde_json::from_str(&contents).unwrap()
+        } else {
+            FibonacciSquarePublics::default()
+        };
+        
         pctx.public_inputs = public_inputs.into();
 
         self.wcm.start_proof(pctx, ectx, sctx);
@@ -70,7 +79,7 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 #[no_mangle]
 pub extern "Rust" fn init_library(
     _rom_path: Option<PathBuf>,
-    public_inputs_path: PathBuf,
+    public_inputs_path: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)

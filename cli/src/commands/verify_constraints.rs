@@ -51,7 +51,7 @@ pub struct VerifyConstraintsCmd {
 
     /// Public inputs path
     #[clap(short = 'i', long)]
-    pub public_inputs: PathBuf,
+    pub public_inputs: Option<PathBuf>,
 
     /// Setup folder path
     #[clap(long)]

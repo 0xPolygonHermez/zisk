@@ -32,7 +32,7 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn generate_proof(
         witness_lib_path: PathBuf,
         rom_path: Option<PathBuf>,
-        public_inputs_path: PathBuf,
+        public_inputs_path: Option<PathBuf>,
         proving_key_path: PathBuf,
         output_dir_path: PathBuf,
         debug_mode: u64,
@@ -50,8 +50,10 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         // Check public_inputs_path is a folder
-        if !public_inputs_path.exists() {
-            return Err(format!("Public inputs file not found at path: {:?}", public_inputs_path).into());
+        if let Some(publics_path) = public_inputs_path.as_ref() {
+            if !publics_path.exists() {
+                return Err(format!("Public inputs file not found at path: {:?}", publics_path).into());
+            }
         }
 
         // Check proving_key_path exists
