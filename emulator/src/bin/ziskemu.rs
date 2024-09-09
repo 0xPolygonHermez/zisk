@@ -6,6 +6,8 @@ fn main() {
     // Create a emulator options instance based on arguments or default values
     let options: EmuOptions = EmuOptions::parse();
 
+    //println! {"options={}", options};
+
     // Log the emulator options if requested
     if options.verbose {
         println!("ziskemu converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, emulates it with the provided input, and copies the output to console or a file");
