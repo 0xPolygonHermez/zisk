@@ -14,7 +14,7 @@ pub const U_8_AIR_SUBPROOF_ID: &[usize] = &[1];
 
 pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[1];
+pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
 
 pub struct Pilout;
 

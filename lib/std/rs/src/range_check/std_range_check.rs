@@ -7,7 +7,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 
 use proofman::WitnessManager;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldValue};
 
 use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
@@ -246,7 +246,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         });
     }
 
-    pub fn assign_values(&self, value: F, min: BigInt, max: BigInt) {
+    pub fn assign_values(&self, value: F, min: BigInt, max: BigInt, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
         // If the range was not computed in the setup phase, error
         let ranges = self.ranges.lock().unwrap();
         let range_item = ranges
@@ -274,14 +274,14 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
         match range_item.rc_type {
             StdRangeCheckType::Valid(RangeCheckAir::U8Air) => {
-                self.u8air.as_ref().unwrap().update_inputs(value);
+                self.u8air.as_ref().unwrap().update_inputs(value, false, pctx, ectx);
             }
             StdRangeCheckType::Valid(RangeCheckAir::U16Air) => {
                 self.u16air.as_ref().unwrap().update_inputs(value);
             }
             StdRangeCheckType::U8AirDouble => {
-                self.u8air.as_ref().unwrap().update_inputs(value - range.0);
-                self.u8air.as_ref().unwrap().update_inputs(range.1 - value);
+                self.u8air.as_ref().unwrap().update_inputs(value - range.0, false, pctx, ectx);
+                self.u8air.as_ref().unwrap().update_inputs(range.1 - value, false, pctx, ectx);
             }
             StdRangeCheckType::U16AirDouble => {
                 self.u16air.as_ref().unwrap().update_inputs(value - range.0);

@@ -32,7 +32,7 @@ impl<F: PrimeField> U16Air<F> {
             inputs: Mutex::new(HashMap::new()),
         });
 
-        wcm.register_component(u16air.clone(), Some(&[air_id]));
+        wcm.register_component(u16air.clone(), Some(air_group_id), Some(&[air_id]));
 
         u16air
     }
@@ -53,7 +53,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, Some(buffer));
+        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, None, Some(buffer));
     }
 
     fn calculate_witness(

@@ -1,22 +1,16 @@
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
+use rayon::Scope;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use crate::{Decider, RCAirData, StdProd, StdRangeCheck, StdSum};
 
-const _PROVE_CHUNK_SIZE: usize = 1 << 12;
-
-// struct RangeCheckInput {
-//     val: BigInt,
-//     min: BigInt,
-//     max: BigInt,
-// }
-
 pub struct Std<F: PrimeField> {
+    registered_predecessors: AtomicU32, // Count of registered predecessors
     prod: Arc<StdProd<F>>,
     sum: Arc<StdSum<F>>,
     range_check: Arc<StdRangeCheck<F>>,
@@ -35,6 +29,7 @@ impl<F: PrimeField> Std<F> {
         let range_check = StdRangeCheck::new(wcm, rc_air_data);
 
         let std = Arc::new(Self {
+            registered_predecessors: AtomicU32::new(0),
             prod,
             sum,
             range_check,
@@ -46,30 +41,21 @@ impl<F: PrimeField> Std<F> {
         std
     }
 
-    /// Processes the inputs for the range check.
-    pub fn range_check(&self, val: F, min: BigInt, max: BigInt) {
-        // let mut inputs_range_check = self.inputs_range_check.lock().unwrap();
-
-        // inputs_range_check.push(RangeCheckInput { val, min, max });
-
-        // // If the maximum number of accumulated inputs is reached, the std_range_check processes them
-        // if inputs_range_check.len() >= Self::MAX_ACCUMULATED {
-        //     self.prove(self.inputs_range_check);
-        //     inputs_range_check.clear();
-        // }
-
-        // TODO: Process the remaining inputs
-
-        self.range_check.assign_values(val, min, max);
+    pub fn register_predecessor(&self) {
+        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    // /// This function should prove a batch of inputs.
-    // /// When the maximum number of accumulated inputs is reached, the STD processes
-    // /// the inputs in batches.
-    // pub fn prove(&self, inputs) {
-    //     todo!();
-    //     // self.range_check.prove();
-    // }
+    pub fn unregister_predecessor(&self, scope: &Scope) {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.range_check.assign_values(value, min, max, pctx, ectx)
+            <StdRangeCheck as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
+        }
+    }
+
+    /// Processes the inputs for the range check.
+    pub fn range_check(&self, val: F, min: BigInt, max: BigInt, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+        self.range_check.assign_values(val, min, max, pctx, ectx);
+    }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for Std<F> {

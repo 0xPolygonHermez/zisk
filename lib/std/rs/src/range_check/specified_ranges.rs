@@ -34,7 +34,11 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             inputs: Mutex::new(HashMap::new()),
         });
 
-        wcm.register_component(specified_ranges.clone(), Some(&[air_id]));
+        wcm.register_component(
+            specified_ranges.clone(),
+            Some(air_group_id),
+            Some(&[air_id]),
+        );
 
         specified_ranges
     }
@@ -58,7 +62,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, Some(buffer));
+        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, None, Some(buffer));
     }
 
     fn calculate_witness(
