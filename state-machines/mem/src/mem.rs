@@ -1,12 +1,12 @@
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Condvar, Mutex,
+    Arc, Mutex,
 };
 
 use crate::{MemAlignedSM, MemUnalignedSM};
 use proofman_setup::SetupCtx;
 use rayon::Scope;
-use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
+use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
@@ -20,10 +20,8 @@ pub struct MemSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Mechanism to control the number of working threads
-    working_threads: Arc<AtomicU32>,
-    mutex: Arc<Mutex<()>>,
-    condvar: Arc<Condvar>,
+    // Thread controller to manage the execution of the state machines
+    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs_aligned: Mutex<Vec<MemOp>>,
@@ -42,9 +40,7 @@ impl MemSM {
     ) -> Arc<Self> {
         let mem_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            working_threads: Arc::new(AtomicU32::new(0)),
-            mutex: Arc::new(Mutex::new(())),
-            condvar: Arc::new(Condvar::new()),
+            threads_controller: Arc::new(ThreadController::new()),
             inputs_aligned: Mutex::new(Vec::new()),
             inputs_unaligned: Mutex::new(Vec::new()),
             mem_aligned_sm: mem_aligned_sm.clone(),
@@ -69,10 +65,7 @@ impl MemSM {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <MemSM as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
 
-            let mut guard = self.mutex.lock().unwrap();
-            while self.working_threads.load(Ordering::SeqCst) > 0 {
-                guard = self.condvar.wait(guard).unwrap();
-            }
+            self.threads_controller.remove_working_thread();
 
             self.mem_aligned_sm.unregister_predecessor(scope);
             self.mem_unaligned_sm.unregister_predecessor(scope);

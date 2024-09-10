@@ -348,6 +348,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                     //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
+                    //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
                 });
             }
         }
