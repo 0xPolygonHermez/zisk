@@ -16,14 +16,18 @@ impl<F: PrimeField + Copy> Lookup1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Lookup";
+    const MY_NAME: &'static str = "Lookup1";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let lookup1 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup1.clone(), Some(LOOKUP_1_AIR_IDS));
+        wcm.register_component(
+            lookup1.clone(),
+            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_1_AIR_IDS),
+        );
 
         lookup1
     }
@@ -38,7 +42,12 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_1_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(
+            LOOKUP_SUBPROOF_ID[0],
+            LOOKUP_1_AIR_IDS[0],
+            None,
+            Some(buffer),
+        );
     }
 }
 
@@ -89,12 +98,18 @@ where
             let num_lookups = trace[0].sel.len();
 
             for i in 0..num_rows {
+                let val = rng.gen();
+                let mut n_sel = 0;
                 for j in 0..num_lookups {
-                    trace[i].f[j] = F::from_canonical_usize(i);
-                    trace[i].sel[j] = F::from_bool(true);
+                    trace[i].f[j] = val;
+                    let selected = rng.gen_bool(0.5);
+                    trace[i].sel[j] = F::from_bool(selected);
+                    if selected {
+                        n_sel += 1;
+                    }
                 }
-                trace[i].t = trace[i].f[0];
-                trace[i].mul = F::from_canonical_usize(num_lookups);
+                trace[i].t = val;
+                trace[i].mul = F::from_canonical_usize(n_sel);
             }
         }
 

@@ -16,14 +16,18 @@ impl<F: PrimeField + Copy> Lookup2<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Lookup";
+    const MY_NAME: &'static str = "Lookup2";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let lookup2 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup2.clone(), Some(LOOKUP_2_AIR_IDS));
+        wcm.register_component(
+            lookup2.clone(),
+            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_2_AIR_IDS),
+        );
 
         lookup2
     }
@@ -38,7 +42,12 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(
+            LOOKUP_SUBPROOF_ID[0],
+            LOOKUP_2_AIR_IDS[0],
+            None,
+            Some(buffer),
+        );
     }
 }
 
@@ -96,16 +105,14 @@ where
                 trace[i].c1 = trace[i].a1;
                 trace[i].d1 = trace[i].b1;
 
-                trace[i].a3 = F::from_canonical_usize(i);
-                trace[i].b3 = F::from_canonical_usize(i);
+                trace[i].a3 = rng.gen();
+                trace[i].b3 = rng.gen();
                 trace[i].c2 = trace[i].a3;
                 trace[i].d2 = trace[i].b3;
                 let selected = rng.gen_bool(0.5);
                 trace[i].sel1 = F::from_bool(selected);
                 if selected {
-                    trace[i].mul = F::from_canonical_usize(1);
-                } else {
-                    trace[i].mul = F::from_canonical_usize(0);
+                    trace[i].mul = trace[i].sel1;
                 }
 
                 // Outer lookups

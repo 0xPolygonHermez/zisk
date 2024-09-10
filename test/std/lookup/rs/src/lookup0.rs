@@ -4,6 +4,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 use crate::{Lookup00Trace, LOOKUP_0_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
@@ -11,15 +12,22 @@ pub struct Lookup0<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup0<F> {
-    const MY_NAME: &'static str = "Lookup";
+impl<F: PrimeField + Copy> Lookup0<F>
+where
+    Standard: Distribution<F>,
+{
+    const MY_NAME: &'static str = "Lookup0";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let lookup0 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup0.clone(), Some(LOOKUP_0_AIR_IDS));
+        wcm.register_component(
+            lookup0.clone(),
+            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_0_AIR_IDS),
+        );
 
         lookup0
     }
@@ -34,11 +42,19 @@ impl<F: PrimeField + Copy> Lookup0<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(
+            LOOKUP_SUBPROOF_ID[0],
+            LOOKUP_0_AIR_IDS[0],
+            None,
+            Some(buffer),
+        );
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F>
+where
+    Standard: Distribution<F>,
+{
     fn calculate_witness(
         &self,
         stage: u32,
@@ -47,7 +63,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
@@ -83,12 +99,18 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
 
             for j in 0..num_lookups {
                 for i in 0..num_rows {
-                    trace[i].f[2 * j] = F::from_canonical_usize(i);
-                    trace[i].f[2 * j + 1] = F::from_canonical_usize(i);
-                    trace[i].sel[j] = F::from_bool(true);
-                    trace[i].t[2 * j] = F::from_canonical_usize(i);
-                    trace[i].t[2 * j + 1] = F::from_canonical_usize(i);
-                    trace[i].mul[j] = F::from_canonical_usize(1);
+                    // Assumes
+                    trace[i].f[2 * j] = rng.gen();
+                    trace[i].f[2 * j + 1] = rng.gen();
+                    let selected = rng.gen_bool(0.5);
+                    trace[i].sel[j] = F::from_bool(selected);
+
+                    // Proves
+                    trace[i].t[2 * j] = trace[i].f[2 * j];
+                    trace[i].t[2 * j + 1] = trace[i].f[2 * j + 1];
+                    if selected {
+                        trace[i].mul[j] = F::one();
+                    }
                 }
             }
         }

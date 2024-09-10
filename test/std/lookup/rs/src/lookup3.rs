@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
-use num_bigint::BigInt;
 use p3_field::PrimeField;
-use rand::Rng;
 
 use crate::{Lookup33Trace, LOOKUP_3_AIR_IDS, LOOKUP_SUBPROOF_ID};
 
@@ -15,14 +12,18 @@ pub struct Lookup3<F> {
 }
 
 impl<F: PrimeField + Copy> Lookup3<F> {
-    const MY_NAME: &'static str = "Lookup";
+    const MY_NAME: &'static str = "Lookup3";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let lookup3 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup3.clone(), Some(LOOKUP_3_AIR_IDS));
+        wcm.register_component(
+            lookup3.clone(),
+            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_3_AIR_IDS),
+        );
 
         lookup3
     }
@@ -37,7 +38,12 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(
+            LOOKUP_SUBPROOF_ID[0],
+            LOOKUP_3_AIR_IDS[0],
+            None,
+            Some(buffer),
+        );
     }
 }
 
@@ -48,10 +54,8 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         air_instance_id: Option<usize>,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
-
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx
@@ -66,7 +70,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Lookup".into(), LOOKUP_3_AIR_IDS[0])
@@ -85,19 +89,15 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);
                 trace[i].d1 = F::from_canonical_usize(i);
-                trace[i].mul1 = if i >= 2usize.pow(12) {
-                    F::from_canonical_usize(0)
-                } else {
-                    F::from_canonical_usize(1)
-                };
+                if i < 2usize.pow(12) {
+                    trace[i].mul1 = F::from_canonical_usize(1);
+                }
 
                 trace[i].c2 = F::from_canonical_usize(i);
                 trace[i].d2 = F::from_canonical_usize(i);
-                trace[i].mul2 = if i >= 2usize.pow(12) {
-                    F::from_canonical_usize(0)
-                } else {
-                    F::from_canonical_usize(1)
-                };
+                if i < 2usize.pow(12) {
+                    trace[i].mul2 = F::from_canonical_usize(1);
+                }
             }
         }
 
