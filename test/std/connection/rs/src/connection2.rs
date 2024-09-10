@@ -23,7 +23,11 @@ where
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(connection2.clone(), Some(CONNECTION_2_AIR_IDS));
+        wcm.register_component(
+            connection2.clone(),
+            Some(CONNECTION_SUBPROOF_ID[0]),
+            Some(CONNECTION_2_AIR_IDS),
+        );
 
         connection2
     }
@@ -41,6 +45,7 @@ where
         pctx.add_air_instance_ctx(
             CONNECTION_SUBPROOF_ID[0],
             CONNECTION_2_AIR_IDS[0],
+            None,
             Some(buffer),
         );
     }
