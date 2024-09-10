@@ -24,9 +24,16 @@ impl<F> ProofCtx<F> {
         Self { public_inputs: Vec::new(), pilout, challenges: None, air_instances: RwLock::new(Vec::new()) }
     }
 
-    pub fn add_air_instance_ctx(&self, air_group_id: usize, air_id: usize, buffer: Option<Vec<F>>) {
-        let prover_idx = self.air_instances.read().unwrap().len();
-        self.air_instances.write().unwrap().push(AirInstanceCtx::new(air_group_id, air_id, prover_idx, buffer));
+    pub fn add_air_instance_ctx(
+        &self,
+        air_group_id: usize,
+        air_id: usize,
+        air_segment_id: Option<usize>,
+        buffer: Option<Vec<F>>,
+    ) {
+        let mut air_instances = self.air_instances.write().unwrap();
+        let prover_idx = air_instances.len();
+        air_instances.push(AirInstanceCtx::new(air_group_id, air_id, air_segment_id, prover_idx, buffer));
     }
 
     pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<usize> {

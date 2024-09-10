@@ -5,6 +5,7 @@ use std::os::raw::c_void;
 pub struct AirInstanceCtx<F> {
     pub air_group_id: usize,
     pub air_id: usize,
+    pub air_segment_id: Option<usize>,
     pub prover_idx: usize,
     pub buffer: Option<Vec<F>>,
     pub params: Option<*mut c_void>,
@@ -13,10 +14,11 @@ pub struct AirInstanceCtx<F> {
 }
 
 impl<F> AirInstanceCtx<F> {
-    pub fn new(air_group_id: usize, air_id: usize, prover_idx: usize, buffer: Option<Vec<F>>) -> Self {
+    pub fn new(air_group_id: usize, air_id: usize, air_segment_id: Option<usize>, prover_idx: usize, buffer: Option<Vec<F>>) -> Self {
         AirInstanceCtx {
             air_group_id,
             air_id,
+            air_segment_id,
             prover_idx,
             buffer,
             params: None,
