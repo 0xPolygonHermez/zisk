@@ -14,7 +14,13 @@ pub struct AirInstanceCtx<F> {
 }
 
 impl<F> AirInstanceCtx<F> {
-    pub fn new(air_group_id: usize, air_id: usize, air_segment_id: Option<usize>, prover_idx: usize, buffer: Option<Vec<F>>) -> Self {
+    pub fn new(
+        air_group_id: usize,
+        air_id: usize,
+        air_segment_id: Option<usize>,
+        prover_idx: usize,
+        buffer: Option<Vec<F>>,
+    ) -> Self {
         AirInstanceCtx {
             air_group_id,
             air_id,
