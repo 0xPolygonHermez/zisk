@@ -16,9 +16,7 @@ pub const PERMUTATION_1_1_AIR_IDS: &[usize] = &[1];
 
 pub const PERMUTATION_1_2_AIR_IDS: &[usize] = &[2];
 
-pub const PERMUTATION_1_3_AIR_IDS: &[usize] = &[3];
-
-pub const PERMUTATION_2_AIR_IDS: &[usize] = &[4];
+pub const PERMUTATION_2_AIR_IDS: &[usize] = &[3];
 
 pub struct Pilout;
 
@@ -33,8 +31,6 @@ impl Pilout {
         air_group.add_air(Some("Permutation1_1"), 128);
 
         air_group.add_air(Some("Permutation1_2"), 256);
-
-        air_group.add_air(Some("Permutation1_3"), 64);
 
         air_group.add_air(Some("Permutation2"), 512);
 

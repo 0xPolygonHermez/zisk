@@ -41,7 +41,7 @@ impl<F: PrimeField> Std<F> {
         });
 
         // Register the STD as a component. Notice that the STD has no air associated with it
-        wcm.register_component(std.clone(), None);
+        wcm.register_component(std.clone(), None, None);
 
         std
     }

@@ -31,6 +31,6 @@ airgroup Permutation {
     Permutation1();
     Permutation1(N: 2**7);
     Permutation1(N: 2**8);
-    Permutation1();
+
     Permutation2();
 }

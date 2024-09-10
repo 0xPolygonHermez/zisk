@@ -8,11 +8,13 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{Permutation1, Permutation2, Pilout};
+use crate::{Permutation1, Permutation1_1, Permutation1_2, Permutation2, Pilout};
 
 pub struct PermutationWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub permutation1: Arc<Permutation1<F>>,
+    pub permutation1_1: Arc<Permutation1_1<F>>,
+    pub permutation1_2: Arc<Permutation1_2<F>>,
     pub permutation2: Arc<Permutation2<F>>,
     pub std_lib: Arc<Std<F>>,
 }
@@ -26,11 +28,15 @@ where
 
         let std_lib = Std::new(&mut wcm, None);
         let permutation1 = Permutation1::new(&mut wcm);
+        let permutation1_1 = Permutation1_1::new(&mut wcm);
+        let permutation1_2 = Permutation1_2::new(&mut wcm);
         let permutation2 = Permutation2::new(&mut wcm);
 
         PermutationWitness {
             wcm,
             permutation1,
+            permutation1_1,
+            permutation1_2,
             permutation2,
             std_lib,
         }
@@ -52,6 +58,8 @@ where
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
         self.permutation1.execute(pctx, ectx, sctx);
+        self.permutation1_1.execute(pctx, ectx, sctx);
+        self.permutation1_2.execute(pctx, ectx, sctx);
         self.permutation2.execute(pctx, ectx, sctx);
     }
 
