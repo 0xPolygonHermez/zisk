@@ -4,24 +4,28 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup00Trace, LOOKUP_0_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Connection21Trace, CONNECTION_2_AIR_IDS, CONNECTION_SUBPROOF_ID};
 
-pub struct Lookup0<F> {
+pub struct Connection2<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup0<F> {
-    const MY_NAME: &'static str = "Lookup";
+impl<F: PrimeField + Copy> Connection2<F>
+where
+    Standard: Distribution<F>,
+{
+    const MY_NAME: &'static str = "Connection";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let lookup0 = Arc::new(Self {
+        let connection2 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
-        wcm.register_component(lookup0.clone(), Some(LOOKUP_0_AIR_IDS));
+        wcm.register_component(connection2.clone(), Some(CONNECTION_2_AIR_IDS));
 
-        lookup0
+        connection2
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -29,16 +33,23 @@ impl<F: PrimeField + Copy> Lookup0<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Lookup".into(), LOOKUP_0_AIR_IDS[0])
+            .get_buffer_info("Connection".into(), CONNECTION_2_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(
+            CONNECTION_SUBPROOF_ID[0],
+            CONNECTION_2_AIR_IDS[0],
+            Some(buffer),
+        );
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
+impl<F: PrimeField + Copy> WitnessComponent<F> for Connection2<F>
+where
+    Standard: Distribution<F>,
+{
     fn calculate_witness(
         &self,
         stage: u32,
@@ -47,7 +58,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
@@ -66,31 +77,26 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup0<F> {
             let (_buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Lookup".into(), LOOKUP_0_AIR_IDS[0])
+                .get_buffer_info("Connection".into(), CONNECTION_2_AIR_IDS[0])
                 .unwrap();
 
             let buffer = air_instance.buffer.as_mut().unwrap();
 
             let num_rows = pctx
                 .pilout
-                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0])
+                .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_2_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup00Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                Connection21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
                     .unwrap();
 
-            let num_lookups = trace[0].sel.len();
-
-            for j in 0..num_lookups {
-                for i in 0..num_rows {
-                    trace[i].f[2 * j] = F::from_canonical_usize(i);
-                    trace[i].f[2 * j + 1] = F::from_canonical_usize(i);
-                    trace[i].sel[j] = F::from_bool(true);
-                    trace[i].t[2 * j] = F::from_canonical_usize(i);
-                    trace[i].t[2 * j + 1] = F::from_canonical_usize(i);
-                    trace[i].mul[j] = F::from_canonical_usize(1);
-                }
+            for i in 0..num_rows {
+                trace[i].a = rng.gen();
+                trace[i].b = rng.gen();
+                trace[i].c = rng.gen();
             }
+
+            trace[0].a = trace[1].a;
         }
 
         log::info!(

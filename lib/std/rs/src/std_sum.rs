@@ -90,7 +90,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "reference",
                                 true,
                                 false,
-                                false
+                                false,
                             );
                             let num = get_hint_field::<F>(
                                 sctx,
@@ -99,7 +99,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "numerator",
                                 false,
                                 false,
-                                false
+                                false,
                             );
                             let den = get_hint_field::<F>(
                                 sctx,
@@ -108,7 +108,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 "denominator",
                                 false,
                                 false,
-                                false
+                                false,
                             );
 
                             for i in 0..num_rows {
@@ -136,7 +136,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             "reference",
                             true,
                             false,
-                            false
+                            false,
                         );
                         let expr = get_hint_field::<F>(
                             sctx,
@@ -145,7 +145,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             "expression",
                             false,
                             false,
-                            false
+                            false,
                         );
 
                         gsum.set(0, expr.get(0));
@@ -154,6 +154,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             gsum.set(i, gsum.get(i - 1) + expr.get(i));
                         }
 
+                        println!("gsum: {:?}", gsum.get(num_rows - 1));
                         // set the computed gsum column and its associated airgroup_val
                         set_hint_field(sctx, air_instance, gsum_hint as u64, "reference", &gsum);
                         set_hint_field_val(

@@ -12,7 +12,7 @@ pub const CONNECTION_SUBPROOF_ID: &[usize] = &[0];
 
 pub const CONNECTION_1_AIR_IDS: &[usize] = &[0];
 
-pub const CONNECTION_NEW_AIR_IDS: &[usize] = &[1];
+pub const CONNECTION_2_AIR_IDS: &[usize] = &[1];
 
 pub struct Pilout;
 
@@ -24,7 +24,7 @@ impl Pilout {
 
         air_group.add_air(Some("Connection1"), 8);
 
-        air_group.add_air(Some("ConnectionNew"), 16);
+        air_group.add_air(Some("Connection2"), 16);
 
         pilout
     }

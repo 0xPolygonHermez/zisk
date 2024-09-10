@@ -1,4 +1,4 @@
-use std::{num, sync::Arc};
+use std::sync::Arc;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};

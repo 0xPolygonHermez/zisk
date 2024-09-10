@@ -122,6 +122,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             gprod.set(i, gprod.get(i - 1) * (num.get(i) / den.get(i)));
                         }
 
+                        println!("gprod: {:?}", gprod.get(num_rows - 1));
+
                         // set the computed gprod column and its associated airgroup_val
                         set_hint_field(sctx, air_instance, gprod_hint as u64, "reference", &gprod);
                         set_hint_field_val(

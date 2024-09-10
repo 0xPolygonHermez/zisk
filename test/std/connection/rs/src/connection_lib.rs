@@ -8,12 +8,13 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{Connection1, ConnectionNew, Pilout};
+use crate::{Connection1, Connection2, /*ConnectionNew,*/ Pilout};
 
 pub struct ConnectionWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
     pub connection1: Arc<Connection1<F>>,
-    connection_new: Arc<ConnectionNew<F>>,
+    pub connection2: Arc<Connection2<F>>,
+    // pub connection_new: Arc<ConnectionNew<F>>,
     pub std_lib: Arc<Std<F>>,
 }
 
@@ -26,12 +27,14 @@ where
 
         let std_lib = Std::new(&mut wcm, None);
         let connection1 = Connection1::new(&mut wcm);
-        let connection_new = ConnectionNew::new(&mut wcm);
+        let connection2 = Connection2::new(&mut wcm);
+        // let connection_new = ConnectionNew::new(&mut wcm);
 
         ConnectionWitness {
             wcm,
             connection1,
-            connection_new,
+            connection2,
+            // connection_new,
             std_lib,
         }
     }
@@ -52,7 +55,8 @@ where
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
         self.connection1.execute(pctx, ectx, sctx);
-        self.connection_new.execute(pctx, ectx, sctx);
+        self.connection2.execute(pctx, ectx, sctx);
+        // self.connection_new.execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(

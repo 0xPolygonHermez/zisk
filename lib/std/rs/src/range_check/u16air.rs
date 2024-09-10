@@ -8,8 +8,8 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
-pub use proofman_macros::trace;
 use proofman_common as common;
+pub use proofman_macros::trace;
 
 // PIL Helpers
 trace!(U16Air0Row, U16Air0Trace<F> {

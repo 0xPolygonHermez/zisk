@@ -435,6 +435,15 @@ function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
         error(`The number of columns and permutations of connect #${opid} must be the same`);
     }
 
+    if (!defined(air.std.connect)) {
+        container air.std.connect {
+            col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
+        }
+        println("HEY");
+        println(`BITS = ${BITS} ${GEN[BITS]}`);
+        println(`ID = ${air.std.connect.ID[0]} ${air.std.connect.ID[1]}`);
+    }
+
     // Reuse the possibly defined ks
     if (defined(proof.std.connect)) {
         use proof.std.connect;
@@ -448,29 +457,16 @@ function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
             ks_count = len;
         }
 
-        expr IDr;
-        if (!defined(air.std.connect)) {
-            col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
-
-            // Send to the bus the original columns and the permuted columns
-            for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
-                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
-            }
-        } else {
-            for (int i = 0; i < len; i++) {
-                permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
-                permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
-            }
+        // Send to the bus the original columns and the permuted columns
+        for (int i = 0; i < len; i++) {
+            permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
         }
     } else {
-        col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
-
         for (int i = 0; i < len; i++) {
             const int k = k_coset ** i;
 
-            // Send to the bus the remaining columns and their associated permuted columns
-            permutation_assumes(opid, [cols[i], k*ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+            permutation_assumes(opid, [cols[i], k*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
             permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
         }
     }

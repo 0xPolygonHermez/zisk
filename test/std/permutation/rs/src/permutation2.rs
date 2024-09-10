@@ -66,7 +66,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Permutation".into(), air_id)

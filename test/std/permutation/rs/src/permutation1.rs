@@ -91,7 +91,7 @@ where
         );
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
+            let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Permutation".into(), air_id)
@@ -133,7 +133,7 @@ where
 
             // Proves
             for i in 0..num_rows {
-                let index = num_rows-i-1;
+                let index = num_rows - i - 1;
                 // let mut index = rng.gen_range(0..num_rows);
                 trace[i].c1 = trace[index].a1;
                 trace[i].d1 = trace[index].b1;

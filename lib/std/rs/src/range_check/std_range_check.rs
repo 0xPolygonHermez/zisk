@@ -117,13 +117,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         })
     }
 
-    pub fn register_range(
-        &self,
-        sctx: &SetupCtx,
-        air_group_id: usize,
-        air_id: usize,
-        hint: u64,
-    ) {
+    pub fn register_range(&self, sctx: &SetupCtx, air_group_id: usize, air_id: usize, hint: u64) {
         let predefined = get_hint_field_constant::<F>(
             sctx,
             air_group_id,
@@ -217,10 +211,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
         // If the range is already defined, skip
         let ranges = self.ranges.lock().unwrap();
-        if ranges
-            .iter()
-            .any(|r| r.range == range)
-        {
+        if ranges.iter().any(|r| r.range == range) {
             return;
         }
         // Notice that we only compare the min and max values, not the sign

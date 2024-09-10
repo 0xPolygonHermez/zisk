@@ -86,6 +86,9 @@ where
                 Lookup22Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
                     .unwrap();
 
+            // TODO: Add the ability to send inputs to lookup3
+            //       and consequently add random selectors
+
             for i in 0..num_rows {
                 // Inner lookups
                 trace[i].a1 = rng.gen();
