@@ -20,12 +20,12 @@ pub struct Arith32SM {
 }
 
 impl Arith32SM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let arith32_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith32_sm = Arc::new(arith32_sm);
 
-        wcm.register_component(arith32_sm.clone(), Some(air_ids));
+        wcm.register_component(arith32_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         arith32_sm
     }

@@ -45,7 +45,7 @@ impl BinarySM {
         };
         let binary_sm = Arc::new(binary_sm);
 
-        wcm.register_component(binary_sm.clone(), None);
+        wcm.register_component(binary_sm.clone(), None, None);
 
         binary_sm.binary_basic_sm.register_predecessor();
         binary_sm.binary_extension_sm.register_predecessor();

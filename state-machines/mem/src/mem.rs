@@ -47,7 +47,7 @@ impl MemSM {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_component(mem_sm.clone(), None);
+        wcm.register_component(mem_sm.clone(), None, None);
 
         // For all the secondary state machines, register the main state machine as a predecessor
         mem_sm.mem_aligned_sm.register_predecessor();

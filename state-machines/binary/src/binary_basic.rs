@@ -27,12 +27,12 @@ pub enum BinaryBasicSMErr {
 }
 
 impl BinaryBasicSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let binary_basic = Arc::new(binary_basic);
 
-        wcm.register_component(binary_basic.clone(), Some(air_ids));
+        wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_basic
     }

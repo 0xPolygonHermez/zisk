@@ -20,12 +20,12 @@ pub struct BinaryExtensionSM {
 }
 
 impl BinaryExtensionSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_extension_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let binary_extension_sm = Arc::new(binary_extension_sm);
 
-        wcm.register_component(binary_extension_sm.clone(), Some(air_ids));
+        wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_extension_sm
     }

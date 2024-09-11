@@ -84,6 +84,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM>,
         arith_sm: Arc<ArithSM>,
+        airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
@@ -122,7 +123,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
-        wcm.register_component(main_sm.clone(), Some(air_ids));
+        wcm.register_component(main_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
@@ -212,7 +213,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_instance = air_instances
                 .iter_mut()
                 .filter(|air_instance| {
-                    air_instance.air_group_id == MAIN_SUBPROOF_ID[0] &&
+                    air_instance.airgroup_id == MAIN_SUBPROOF_ID[0] &&
                         air_instance.air_id == MAIN_AIR_IDS[0] &&
                         air_instance.air_segment_id.is_some()
                 })

@@ -20,12 +20,12 @@ pub struct FreqOpsSM {
 }
 
 impl FreqOpsSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let freqop_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let freqop_sm = Arc::new(freqop_sm);
 
-        wcm.register_component(freqop_sm.clone(), Some(air_ids));
+        wcm.register_component(freqop_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         freqop_sm
     }
