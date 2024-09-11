@@ -17,8 +17,8 @@ sm-quick-ops = { path = "../state-machines/quick-ops" }
 zisk-pil = { path = "../pil/fork_0" }
 
 proofman-common = { workspace = true }
-proofman-setup = { workspace = true }
 proofman-util = { workspace = true }
+proofman-hints = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace=true }
 

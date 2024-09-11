@@ -1,7 +1,6 @@
 use log::info;
 use p3_field::AbstractField;
 
-use proofman_setup::SetupCtx;
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -12,7 +11,7 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
-use proofman_common::{AirInstanceCtx, ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
@@ -24,14 +23,18 @@ use sm_mem::MemSM;
 
 #[derive(Default)]
 pub struct MainAirSegment<F> {
-    pub segment_id: u32,
+    pub air_segment_id: u32,
     pub filled_inputs: usize,
     pub inputs: Vec<EmuFullTraceStep<F>>,
 }
 
 impl<F: Default + Clone> MainAirSegment<F> {
     pub fn new(segment_id: u32, inputs_size: usize) -> Self {
-        Self { segment_id, filled_inputs: 0, inputs: vec![Main0Row::<F>::default(); inputs_size] }
+        Self {
+            air_segment_id: segment_id,
+            filled_inputs: 0,
+            inputs: vec![Main0Row::<F>::default(); inputs_size],
+        }
     }
 }
 
@@ -48,7 +51,7 @@ pub struct MainSM<F> {
     zisk_rom_path: PathBuf,
     // Inputs accumulator from the emulator
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
-    //State machines
+    // State machines
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM>,
     arith_sm: Arc<ArithSM>,
@@ -81,6 +84,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM>,
         arith_sm: Arc<ArithSM>,
+        airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
@@ -119,7 +123,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
-        wcm.register_component(main_sm.clone(), Some(air_ids));
+        wcm.register_component(main_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
@@ -198,9 +202,50 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_segment = mem::take(last_air_segment);
             pool.scope(|scope| {
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx);
+                    Self::create_air_instance(air_segment, pctx, ectx, true);
                 });
             });
+        } else {
+            // Look for the last segment and set the last_segment flag to true
+            let mut air_instances = pctx.air_instances.write().unwrap();
+
+            // Get the last segment
+            let air_instance = air_instances
+                .iter_mut()
+                .filter(|air_instance| {
+                    air_instance.airgroup_id == MAIN_SUBPROOF_ID[0] &&
+                        air_instance.air_id == MAIN_AIR_IDS[0] &&
+                        air_instance.air_segment_id.is_some()
+                })
+                .max_by_key(|air_instance| air_instance.air_segment_id.unwrap())
+                .unwrap();
+
+            // Get the buffer size and offsets to be able to access the trace
+            let (_, offsets) = match ectx
+                .buffer_allocator
+                .as_ref()
+                .get_buffer_info("Main".into(), MAIN_AIR_IDS[0])
+            {
+                Ok((size, offsets)) => (size, offsets),
+                Err(err) => {
+                    // Handle the error case, for example:
+                    panic!("Error getting buffer info: {}", err);
+                }
+            };
+
+            // Map the F buffer to a Main0Trace
+            let mut main_trace = Main0Trace::<F>::map_buffer(
+                air_instance.buffer.as_mut().unwrap(),
+                Self::MAX_ACCUMULATED,
+                offsets[0] as usize,
+            )
+            .unwrap();
+
+            // Set the last segment flag to true
+            let main_last_segment = F::from_bool(true);
+            for i in 0..main_trace.num_rows() {
+                main_trace[i].main_last_segment = main_last_segment;
+            }
         }
     }
 
@@ -216,7 +261,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
         let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
-        let air_id = air_step.floor() as usize;
+        let segment_id = air_step.floor() as usize;
         let pos_id =
             (air_step.fract() * Self::MAX_ACCUMULATED as f64 / Self::CALLBACK_SIZE as f64) as usize;
 
@@ -225,7 +270,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             self.callback_inputs
                 .lock()
                 .unwrap()
-                .push(MainAirSegment::new(air_id as u32, Self::MAX_ACCUMULATED));
+                .push(MainAirSegment::new(segment_id as u32, Self::MAX_ACCUMULATED));
         }
 
         self.threads_controller.add_working_thread();
@@ -243,8 +288,11 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let source_iter = emu_slice.full_trace.into_iter();
 
             let mut inputs = self.callback_inputs.lock().unwrap();
-            let air_segment = &mut inputs[air_id];
-            air_segment.inputs.splice(pos_id..pos_id + len, source_iter);
+            let air_segment = &mut inputs[segment_id];
+            air_segment.inputs.splice(
+                pos_id * Self::CALLBACK_SIZE..(pos_id + 1) * Self::CALLBACK_SIZE,
+                source_iter,
+            );
             air_segment.filled_inputs += len;
             assert!(
                 air_segment.filled_inputs <= Self::MAX_ACCUMULATED,
@@ -257,7 +305,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
                 let air_segment = mem::take(air_segment);
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx);
+                    Self::create_air_instance(air_segment, pctx, ectx, false);
                 });
             }
         });
@@ -271,44 +319,58 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `pctx` - Proof context to interact with the proof system
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn create_air_instance(air_segment: MainAirSegment<F>, pctx: &ProofCtx<F>) {
+    fn create_air_instance(
+        air_segment: MainAirSegment<F>,
+        pctx: &ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        last_segment: bool,
+    ) {
         info!(
             "{}: ··· Creating Main segment #{} [{} inputs]",
             Self::MY_NAME,
-            air_segment.segment_id,
+            air_segment.air_segment_id,
             air_segment.filled_inputs
         );
 
         // Compute buffer size using the BufferAllocator
-        // let air_setup_path = Path::new(
-        //     "../pil2-components/test/fibonacci/build_x/provingKey/build/FibonacciSquare/airs/
-        // FibonacciSquare_0/air/", );
+        let (buffer_size, offsets) =
+            match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
+                Ok((size, offsets)) => (size, offsets),
+                Err(err) => {
+                    // Handle the error case, for example:
+                    panic!("Error getting buffer info: {}", err);
+                }
+            };
 
-        // let buffer_size = ectx.buffer_allocator.as_ref().get_buffer_info(air_setup_path);
-        // if let Err(e) = buffer_size {
-        //     panic!("Error getting buffer size: {:?}", e);
-        // }
+        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
 
-        // Option 1: Create a new buffer to allocate all stark data and copy the data into it
-        // let num_rows = inputs.len().next_power_of_two();
-        // let mut main_trace = Box::new(Main0Trace::<F>::new(num_rows));
+        for i in air_segment.filled_inputs..main_trace.num_rows() {
+            main_trace[i].flag = F::from_canonical_usize(1);
+        }
 
-        // if inputs.len() < num_rows {
-        //     main_trace.slice[..inputs.len()].copy_from_slice(&inputs);
-        // } else {
-        //     main_trace.slice.copy_from_slice(&inputs);
-        // }
+        // TODO: Do it in parallel
+        let main_first_segment = F::from_bool(air_segment.air_segment_id == 0);
+        let main_last_segment = F::from_bool(last_segment);
+        let main_segment = F::from_canonical_usize(air_segment.air_segment_id as usize);
+        for i in 0..main_trace.num_rows() {
+            main_trace[i].main_first_segment = main_first_segment;
+            main_trace[i].main_last_segment = main_last_segment;
+            main_trace[i].main_segment = main_segment;
+        }
 
-        // Option 2: Wrap the existing vector to create a Main0Trace and avoid to copy the data
-        let main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
+        let main_trace_buffer = main_trace.buffer.unwrap();
 
-        let mut air_instances = pctx.air_instances.write().unwrap();
+        let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
-        air_instances.push(AirInstanceCtx {
-            air_group_id: MAIN_SUBPROOF_ID[0],
-            air_id: MAIN_AIR_IDS[0],
-            buffer: Some(main_trace.buffer.unwrap()),
-        });
+        buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len()]
+            .copy_from_slice(&main_trace_buffer);
+
+        pctx.add_air_instance_ctx(
+            MAIN_SUBPROOF_ID[0],
+            MAIN_AIR_IDS[0],
+            Some(air_segment.air_segment_id as usize),
+            Some(buffer),
+        );
     }
 
     /// Proves a batch of inputs

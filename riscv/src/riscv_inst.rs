@@ -1,3 +1,5 @@
+/// RISC-V instruction definition
+///
 /// Contains RISCV instruction data, split by functionality
 /// RISC-V comprises of a base user-level 32-bit integer instruction set. Called RV32I, it includes
 /// 47 instructions, which can be grouped into six types:     R-type: register-register

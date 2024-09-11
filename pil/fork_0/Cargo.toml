@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
 proofman = { workspace = true }

@@ -4,13 +4,12 @@ use std::sync::{
 };
 
 use crate::{MemAlignedSM, MemUnalignedSM};
-use proofman_setup::SetupCtx;
 use rayon::Scope;
 use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 #[allow(dead_code)]
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -48,7 +47,7 @@ impl MemSM {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_component(mem_sm.clone(), None);
+        wcm.register_component(mem_sm.clone(), None, None);
 
         // For all the secondary state machines, register the main state machine as a predecessor
         mem_sm.mem_aligned_sm.register_predecessor();

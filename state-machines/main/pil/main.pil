@@ -1,9 +1,9 @@
-require "std_permutation.pil"
-require "std_lookup.pil"
+// require "std_permutation.pil"
+// require "std_lookup.pil"
 // require "mem.pil"
 // require "operation.pil"
 
-const int BOOT_ADDR = 0x8000_0000;
+const int BOOT_ADDR = 0x1000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
 
@@ -146,7 +146,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
 
 
     // Operation.assume => how organize software
-    lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
+    // lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -208,12 +208,12 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
     // continuations_transition(last_c[0], c[0]); // last_c[0]' = c[0];        
     // continuations_transition(last_c[1], c[1]); // last_c[1]' = c[1];        
 
-    const expr new_pc = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
-    const expr next_pc = set_pc * (c[0] + jmp_offset1  - new_pc) + new_pc  + end * L1' * (0x8000_0000 - (pc + jmp_offset1));
+    // const expr new_pc = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
+    // const expr next_pc = set_pc * (c[0] + jmp_offset1  - new_pc) + new_pc  + end * L1' * (0x8000_0000 - (pc + jmp_offset1));
 
-    (1 - SEGMENT_LAST) * (pc' - next_pc) === 0;
-    (1 - SEGMENT_LAST) * (last_c[0]' - c[0]) === 0;
-    (1 - SEGMENT_LAST) * (last_c[1]' - c[1]) === 0;
+    // (1 - SEGMENT_LAST) * (pc' - next_pc) === 0;
+    // (1 - SEGMENT_LAST) * (last_c[0]' - c[0]) === 0;
+    // (1 - SEGMENT_LAST) * (last_c[1]' - c[1]) === 0;
 
     if (stack_enabled) {
         // sp' === set_sp*(c - sp) + sp + inc_sp + end * L1'*(0 - sp);  // assume that when end=1 then set_sp=0 and inc_sp=0
