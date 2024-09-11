@@ -10,7 +10,7 @@ pub enum ZiskOperationType {
 }
 
 /// ZisK instruction definition
-/// 
+///
 /// ZisK instruction defined as a binary operation with 2 results: op(a, b) -> (c, flag)
 /// a and b are loaded from the respective sources specified in the instruction
 /// c is stored according to the destination specified in the instruction
