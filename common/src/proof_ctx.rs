@@ -26,22 +26,22 @@ impl<F> ProofCtx<F> {
 
     pub fn add_air_instance_ctx(
         &self,
-        air_group_id: usize,
+        airgroup_id: usize,
         air_id: usize,
         air_segment_id: Option<usize>,
         buffer: Option<Vec<F>>,
     ) {
         let mut air_instances = self.air_instances.write().unwrap();
         let prover_idx = air_instances.len();
-        air_instances.push(AirInstanceCtx::new(air_group_id, air_id, air_segment_id, prover_idx, buffer));
+        air_instances.push(AirInstanceCtx::new(airgroup_id, air_id, air_segment_id, prover_idx, buffer));
     }
 
-    pub fn find_air_instances(&self, air_group_id: usize, air_id: usize) -> Vec<usize> {
+    pub fn find_air_instances(&self, airgroup_id: usize, air_id: usize) -> Vec<usize> {
         let air_instances = self.air_instances.read().unwrap();
 
         let mut indices = Vec::new();
         for (index, air_instance) in air_instances.iter().enumerate() {
-            if air_instance.air_group_id == air_group_id && air_instance.air_id == air_id {
+            if air_instance.airgroup_id == airgroup_id && air_instance.air_id == air_id {
                 indices.push(index);
             }
         }

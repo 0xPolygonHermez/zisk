@@ -34,7 +34,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
     fn calculate_trace(
         &self,
-        air_group_id: usize,
+        airgroup_id: usize,
         air_id: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
@@ -50,7 +50,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
+        let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
         let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
         trace[0].a = F::from_canonical_u64(a);
@@ -65,7 +65,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
             trace[i].b = F::from_canonical_u64(b);
         }
 
-        // hint! 
+        // hint!
 
         pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
 

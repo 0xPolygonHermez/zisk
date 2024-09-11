@@ -13,7 +13,7 @@ pub enum ProverStatus {
 }
 
 pub struct ProverInfo {
-    pub air_group_id: usize,
+    pub airgroup_id: usize,
     pub air_id: usize,
     pub prover_idx: usize,
 }

@@ -9,7 +9,7 @@ use crate::GlobalInfo;
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
 pub struct Setup {
-    pub air_group_id: usize,
+    pub airgroup_id: usize,
     pub air_id: usize,
     pub p_setup: *mut c_void,
     pub p_stark_info: *mut c_void,
@@ -18,10 +18,10 @@ pub struct Setup {
 impl Setup {
     const MY_NAME: &'static str = "Setup";
 
-    pub fn new(proving_key_path: &Path, air_group_id: usize, air_id: usize) -> Self {
+    pub fn new(proving_key_path: &Path, airgroup_id: usize, air_id: usize) -> Self {
         let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
 
-        let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(air_group_id, air_id));
+        let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(airgroup_id, air_id));
         trace!("{}   : ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
 
         // Check path exists and is a folder
@@ -33,7 +33,7 @@ impl Setup {
         }
 
         let base_filename_path =
-            air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
+            air_setup_folder.join(global_info.get_air_name(airgroup_id, air_id)).display().to_string();
 
         let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
         let expressions_bin_path = base_filename_path.clone() + ".bin";
@@ -45,6 +45,6 @@ impl Setup {
 
         let p_setup = setup_ctx_new_c(p_stark_info, p_expressions_bin, p_const_pols);
 
-        Self { air_id, air_group_id, p_setup, p_stark_info }
+        Self { air_id, airgroup_id, p_setup, p_stark_info }
     }
 }

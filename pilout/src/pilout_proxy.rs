@@ -43,22 +43,22 @@ impl PilOutProxy {
         result
     }
 
-    pub fn get_air_group_idx(&self, name: &str) -> Option<usize> {
+    pub fn get_airgroup_idx(&self, name: &str) -> Option<usize> {
         self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
-    pub fn get_air_idx(&self, air_group_id: usize, name: &str) -> Option<usize> {
-        self.pilout.subproofs[air_group_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
+    pub fn get_air_idx(&self, airgroup_id: usize, name: &str) -> Option<usize> {
+        self.pilout.subproofs[airgroup_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
-    pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &crate::pilout::BasicAir {
-        &self.pilout.subproofs[air_group_id].airs[air_id]
+    pub fn get_air(&self, airgroup_id: usize, air_id: usize) -> &crate::pilout::BasicAir {
+        &self.pilout.subproofs[airgroup_id].airs[air_id]
     }
 
     pub fn find_air(&self, air_group_name: &str, air_name: &str) -> Option<&crate::pilout::BasicAir> {
-        let air_group_id = self.get_air_group_idx(air_group_name)?;
-        let air_id = self.get_air_idx(air_group_id, air_name)?;
-        Some(&self.pilout.subproofs[air_group_id].airs[air_id])
+        let airgroup_id = self.get_airgroup_idx(air_group_name)?;
+        let air_id = self.get_air_idx(airgroup_id, air_name)?;
+        Some(&self.pilout.subproofs[airgroup_id].airs[air_id])
     }
 
     pub fn num_stages(&self) -> u32 {

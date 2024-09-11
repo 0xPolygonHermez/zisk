@@ -29,7 +29,7 @@ pub struct StarkProver<T: Field> {
     initialized: bool,
     prover_idx: usize,
     air_id: usize,
-    air_group_id: usize,
+    airgroup_id: usize,
     config: StarkProverSettings,
     p_setup: *mut c_void,
     pub p_stark: *mut c_void,
@@ -50,16 +50,10 @@ impl<T: Field> StarkProver<T> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
-    pub fn new(
-        sctx: &SetupCtx,
-        proving_key_path: &Path,
-        air_group_id: usize,
-        air_id: usize,
-        prover_idx: usize,
-    ) -> Self {
+    pub fn new(sctx: &SetupCtx, proving_key_path: &Path, airgroup_id: usize, air_id: usize, prover_idx: usize) -> Self {
         let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
 
-        let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(air_group_id, air_id));
+        let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(airgroup_id, air_id));
         trace!("{}   : ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
 
         // Check path exists and is a folder
@@ -71,9 +65,9 @@ impl<T: Field> StarkProver<T> {
         }
 
         let base_filename_path =
-            air_setup_folder.join(global_info.get_air_name(air_group_id, air_id)).display().to_string();
+            air_setup_folder.join(global_info.get_air_name(airgroup_id, air_id)).display().to_string();
 
-        let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
+        let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
 
         let p_setup = setup.p_setup;
         let p_stark_info = setup.p_stark_info;
@@ -111,7 +105,7 @@ impl<T: Field> StarkProver<T> {
             initialized: true,
             prover_idx,
             air_id,
-            air_group_id,
+            airgroup_id,
             config,
             p_setup,
             p_stark_info,
@@ -384,7 +378,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_prover_info(&self) -> ProverInfo {
-        ProverInfo { air_group_id: self.air_group_id, air_id: self.air_id, prover_idx: self.prover_idx }
+        ProverInfo { airgroup_id: self.airgroup_id, air_id: self.air_id, prover_idx: self.prover_idx }
     }
 }
 

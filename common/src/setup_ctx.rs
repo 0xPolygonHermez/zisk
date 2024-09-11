@@ -15,25 +15,25 @@ impl SetupCtx {
             .air_groups()
             .iter()
             .enumerate()
-            .flat_map(|(air_group_id, air_group)| {
+            .flat_map(|(airgroup_id, air_group)| {
                 air_group
                     .airs()
                     .iter()
                     .enumerate()
-                    .map(move |(air_id, _)| Setup::new(proving_key_path, air_group_id, air_id))
+                    .map(move |(air_id, _)| Setup::new(proving_key_path, airgroup_id, air_id))
             })
             .collect::<Vec<Setup>>();
 
         SetupCtx { setups }
     }
 
-    pub fn get_setup(&self, air_group_id: usize, air_id: usize) -> Result<&Setup, String> {
+    pub fn get_setup(&self, airgroup_id: usize, air_id: usize) -> Result<&Setup, String> {
         for setup in &self.setups {
-            if setup.air_group_id == air_group_id && setup.air_id == air_id {
+            if setup.airgroup_id == airgroup_id && setup.air_id == air_id {
                 return Ok(setup);
             }
         }
 
-        Err(format!("Setup not found for Air_group_id: {}, Air_id: {}", air_group_id, air_id))
+        Err(format!("Setup not found for airgroup_id: {}, Air_id: {}", airgroup_id, air_id))
     }
 }

@@ -141,9 +141,9 @@ impl<F: Field + 'static> ProofMan<F> {
             let mut valid_constraints = true;
             for (idx, prover) in provers.iter_mut().enumerate() {
                 let prover_info = prover.get_prover_info();
-                let air_instances = pctx.find_air_instances(prover_info.air_group_id, prover_info.air_id);
+                let air_instances = pctx.find_air_instances(prover_info.airgroup_id, prover_info.air_id);
                 let air_instance_index = air_instances.iter().position(|&x| x == prover_info.prover_idx).unwrap();
-                let air = pctx.pilout.get_air(prover_info.air_group_id, prover_info.air_id);
+                let air = pctx.pilout.get_air(prover_info.airgroup_id, prover_info.air_id);
                 let mut valid_constraints_prover = true;
                 log::debug!("{}: ··· Air {} Instance {}:", Self::MY_NAME, air.name().unwrap(), air_instance_index);
                 for constraint in &constraints[idx] {
@@ -300,25 +300,25 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut group_ids = HashMap::new();
 
         for air_instance in pctx.air_instances.read().unwrap().iter() {
-            let group_map = group_ids.entry(air_instance.air_group_id).or_insert_with(HashMap::new);
+            let group_map = group_ids.entry(air_instance.airgroup_id).or_insert_with(HashMap::new);
             *group_map.entry(air_instance.air_id).or_insert(0) += 1;
         }
 
         let mut sorted_group_ids: Vec<_> = group_ids.keys().collect();
         sorted_group_ids.sort();
 
-        for &air_group_id in &sorted_group_ids {
-            if let Some(air_map) = group_ids.get(air_group_id) {
+        for &airgroup_id in &sorted_group_ids {
+            if let Some(air_map) = group_ids.get(airgroup_id) {
                 let mut sorted_air_ids: Vec<_> = air_map.keys().collect();
                 sorted_air_ids.sort();
 
-                let air_group = pctx.pilout.get_air_group(*air_group_id);
+                let air_group = pctx.pilout.get_air_group(*airgroup_id);
                 let name = air_group.name().unwrap_or("Unnamed");
-                trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, *air_group_id, name);
+                trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, *airgroup_id, name);
 
                 for &air_id in &sorted_air_ids {
                     if let Some(&count) = air_map.get(air_id) {
-                        let air = pctx.pilout.get_air(*air_group_id, *air_id);
+                        let air = pctx.pilout.get_air(*airgroup_id, *air_id);
                         let name = air.name().unwrap_or("Unnamed");
                         trace!("{}:       · {} x Air[{}] {}", Self::MY_NAME, count, air.air_id, name);
                     }
@@ -339,14 +339,14 @@ impl<F: Field + 'static> ProofMan<F> {
             debug!(
                 "{}: Initializing prover for air instance ({}, {})",
                 Self::MY_NAME,
-                air_instance.air_group_id,
+                air_instance.airgroup_id,
                 air_instance.air_id
             );
 
             let prover = Box::new(StarkProver::new(
                 sctx,
                 proving_key_path,
-                air_instance.air_group_id,
+                air_instance.airgroup_id,
                 air_instance.air_id,
                 prover_idx,
             ));

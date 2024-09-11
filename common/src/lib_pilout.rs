@@ -12,10 +12,10 @@ impl WitnessPilout {
     }
 
     pub fn add_air_group(&mut self, air_group_name: Option<&str>) -> &mut AirGroup {
-        let air_group_id = self.air_groups.len();
-        let air_group = AirGroup::new(air_group_id, air_group_name);
+        let airgroup_id = self.air_groups.len();
+        let air_group = AirGroup::new(airgroup_id, air_group_name);
         self.air_groups.push(air_group);
-        &mut self.air_groups[air_group_id]
+        &mut self.air_groups[airgroup_id]
     }
 
     pub fn find_air(&self, airgroup_name: &str, air_name: &str) -> Option<&BasicAir> {
@@ -35,12 +35,12 @@ impl WitnessPilout {
         None
     }
 
-    pub fn get_air_group(&self, air_group_id: usize) -> &AirGroup {
-        &self.air_groups[air_group_id]
+    pub fn get_air_group(&self, airgroup_id: usize) -> &AirGroup {
+        &self.air_groups[airgroup_id]
     }
 
-    pub fn get_air(&self, air_group_id: usize, air_id: usize) -> &BasicAir {
-        &self.air_groups[air_group_id].airs[air_id]
+    pub fn get_air(&self, airgroup_id: usize, air_id: usize) -> &BasicAir {
+        &self.air_groups[airgroup_id].airs[air_id]
     }
 
     pub fn name(&self) -> &str {
@@ -62,25 +62,25 @@ impl WitnessPilout {
 
 #[derive(Debug)]
 pub struct AirGroup {
-    air_group_id: usize,
+    airgroup_id: usize,
     name: Option<String>,
     airs: Vec<BasicAir>,
 }
 
 impl AirGroup {
-    pub fn new(air_group_id: usize, name: Option<&str>) -> Self {
-        AirGroup { air_group_id, name: name.map(|s| s.to_string()), airs: Vec::new() }
+    pub fn new(airgroup_id: usize, name: Option<&str>) -> Self {
+        AirGroup { airgroup_id, name: name.map(|s| s.to_string()), airs: Vec::new() }
     }
 
     pub fn add_air(&mut self, air_name: Option<&str>, num_rows: usize) -> &BasicAir {
         let air_id = self.airs.len();
-        let air = BasicAir::new(self.air_group_id, air_id, air_name, num_rows);
+        let air = BasicAir::new(self.airgroup_id, air_id, air_name, num_rows);
         self.airs.push(air);
         &self.airs[air_id]
     }
 
-    pub fn air_group_id(&self) -> usize {
-        self.air_group_id
+    pub fn airgroup_id(&self) -> usize {
+        self.airgroup_id
     }
 
     pub fn name(&self) -> Option<&str> {
@@ -94,7 +94,7 @@ impl AirGroup {
 
 #[derive(Debug)]
 pub struct BasicAir {
-    pub air_group_id: usize,
+    pub airgroup_id: usize,
     pub air_id: usize,
     pub name: Option<String>,
     /// log2(n), where n is the number of rows
@@ -102,12 +102,12 @@ pub struct BasicAir {
 }
 
 impl BasicAir {
-    pub fn new(air_group_id: usize, air_id: usize, name: Option<&str>, num_rows: usize) -> Self {
-        BasicAir { air_group_id, air_id, name: name.map(|s| s.to_string()), num_rows }
+    pub fn new(airgroup_id: usize, air_id: usize, name: Option<&str>, num_rows: usize) -> Self {
+        BasicAir { airgroup_id, air_id, name: name.map(|s| s.to_string()), num_rows }
     }
 
-    pub fn air_group_id(&self) -> usize {
-        self.air_group_id
+    pub fn airgroup_id(&self) -> usize {
+        self.airgroup_id
     }
 
     pub fn air_id(&self) -> usize {
