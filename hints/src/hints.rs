@@ -179,7 +179,6 @@ pub struct HintCol;
 
 impl HintCol {
     pub fn from_hint_field<F: Clone + Copy>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
-        // Removed unnecessary unsafe by utilizing slices for memory-safe access
         let values_slice = unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) };
 
         match hint_field.field_type {
