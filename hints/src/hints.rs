@@ -6,9 +6,7 @@ use p3_field::Field;
 use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
 
 use std::os::raw::c_void;
-
 use std::ops::{Mul, Add, Sub, Div};
-
 use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,19 +47,6 @@ pub enum HintFieldOutput<F: Clone + Copy> {
     Field(F),
     FieldExtended(ExtensionField<F>),
 }
-
-// impl<F: Copy> Index<usize> for HintFieldValue<F> {
-//     type Output = HintFieldOutput<F>;
-
-//     fn index(&self, index: usize) -> &Self::Output {
-//         match self {
-//             HintFieldValue::Field(value) => &HintFieldOutput::Field(value.clone()),
-//             HintFieldValue::FieldExtended(value) => &HintFieldOutput::FieldExtended(value.clone()),
-//             HintFieldValue::Column(vec) => &HintFieldOutput::Field(vec[index].clone()),
-//             HintFieldValue::ColumnExtended(vec) => &HintFieldOutput::FieldExtended(vec[index].clone())
-//         }
-//     }
-// }
 
 impl<F: Clone + Copy> HintFieldValue<F> {
     pub fn get(&self, index: usize) -> HintFieldOutput<F> {
@@ -194,29 +179,22 @@ pub struct HintCol;
 
 impl HintCol {
     pub fn from_hint_field<F: Clone + Copy>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
-        unsafe {
-            match hint_field.field_type {
-                HintFieldType::Field => HintFieldValue::Field(*hint_field.values),
-                HintFieldType::FieldExtended => {
-                    let array: [F; 3] =
-                        [*hint_field.values, *hint_field.values.wrapping_add(1), *hint_field.values.wrapping_add(2)];
-                    HintFieldValue::FieldExtended(ExtensionField { value: array })
+        // Removed unnecessary unsafe by utilizing slices for memory-safe access
+        let values_slice = unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) };
+
+        match hint_field.field_type {
+            HintFieldType::Field => HintFieldValue::Field(values_slice[0]),
+            HintFieldType::FieldExtended => {
+                let array = [values_slice[0], values_slice[1], values_slice[2]];
+                HintFieldValue::FieldExtended(ExtensionField { value: array })
+            }
+            HintFieldType::Column => HintFieldValue::Column(values_slice.to_vec()),
+            HintFieldType::ColumnExtended => {
+                let mut extended_vec: Vec<ExtensionField<F>> = Vec::with_capacity(hint_field.size as usize / 3);
+                for chunk in values_slice.chunks(3) {
+                    extended_vec.push(ExtensionField { value: [chunk[0], chunk[1], chunk[2]] });
                 }
-                HintFieldType::Column => {
-                    let vec =
-                        Vec::from_raw_parts(hint_field.values, hint_field.size as usize, hint_field.size as usize);
-                    HintFieldValue::Column(vec)
-                }
-                HintFieldType::ColumnExtended => {
-                    let mut extended_vec: Vec<ExtensionField<F>> = Vec::with_capacity(hint_field.size as usize / 3);
-                    for i in 0..(hint_field.size as usize / 3) {
-                        let base_ptr = hint_field.values.wrapping_add(i * 3);
-                        extended_vec.push(ExtensionField {
-                            value: [*base_ptr, *base_ptr.wrapping_add(1), *base_ptr.wrapping_add(2)],
-                        });
-                    }
-                    HintFieldValue::ColumnExtended(extended_vec)
-                }
+                HintFieldValue::ColumnExtended(extended_vec)
             }
         }
     }
