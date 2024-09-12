@@ -60,16 +60,6 @@ impl BinaryBasicSM {
         ]
     }
 
-    fn is_last_carry_opcode(opcode: u8) -> bool {
-        !((opcode == 0x02/* ADD */) ||
-            (opcode == 0x03/* SUB */) ||
-            (opcode == 0x20/* AND */) ||
-            (opcode == 0x21/* OR */) ||
-            (opcode == 0x22/* XOR */) ||
-            (opcode == 0x12/* ADD_W */) ||
-            (opcode == 0x13/* SUB_W */))
-    }
-
     pub fn process_slice<F: AbstractField>(
         input: &Vec<ZiskRequiredOperation>,
     ) -> Result<Vec<Binary0Row<F>>, BinaryBasicSMErr> {
@@ -110,10 +100,7 @@ impl BinaryBasicSM {
                 t.free_in_c[i] = F::from_canonical_u8(*value);
             }
 
-            // Set use last carry, which depends on the opcode
-            t.use_last_carry = F::from_bool(Self::is_last_carry_opcode(i.opcode));
-
-            // Get use last carry and carry, based on operation
+            // Set use last carry and carry[], based on operation
             let mut cout: u64;
             let mut cin: u64 = 0;
             let plast: [u64; 8] =
@@ -304,8 +291,8 @@ impl BinaryBasicSM {
                 _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", i.opcode),
             }
 
-            // TODO: Ask Xavi
-            t.multiplicity = F::from_canonical_u64(0);
+            // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
+            t.multiplicity = F::one();
 
             // Store the trace in the vector
             trace.push(t);
