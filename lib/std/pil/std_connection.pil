@@ -437,13 +437,8 @@ function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
 
     if (!defined(air.std.connect)) {
         container air.std.connect {
-            int g = GEN[BITS];
-            col fixed ID = [1,g..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
+            col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
         }
-        println("HEY");
-        println(`${AIR_ID}`);
-        println(`BITS = ${BITS} ${GEN[BITS]}`);
-        println(`ID = ${air.std.connect.ID[0]} ${air.std.connect.ID[1]}`);
     }
 
     // Reuse the possibly defined ks

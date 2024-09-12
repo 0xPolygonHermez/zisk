@@ -16,7 +16,7 @@ impl<F: PrimeField + Copy> Connection1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Connection";
+    const MY_NAME: &'static str = "Connection1";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let connection1 = Arc::new(Self {
