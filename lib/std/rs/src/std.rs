@@ -87,10 +87,5 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
             log::error!("Sum: Failed to calculate witness: {:?}", e);
             panic!();
         }
-
-        // if let Err(e) = self.range_check.calculate_witness(stage, pctx, sctx) {
-        //     log::error!("Range Check: Failed to calculate witness: {:?}", e);
-        //     panic!();
-        // }
     }
 }

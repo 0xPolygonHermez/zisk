@@ -40,6 +40,7 @@ struct StdRangeItem<F: PrimeField> {
     range: Range<F>,
 }
 
+// TODO: Remove Arc
 pub struct StdRangeCheck<F: PrimeField> {
     ranges: Mutex<Vec<StdRangeItem<F>>>,
     u8air: Option<Arc<U8Air<F>>>,
@@ -231,8 +232,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
                 Range(min, max, ..) if min == zero && max == twobytes => {
                     StdRangeCheckType::Valid(RangeCheckAir::U16Air)
                 }
-                Range(max, ..) if max <= byte => StdRangeCheckType::U8AirDouble,
-                Range(max, ..) if max <= twobytes => StdRangeCheckType::U16AirDouble,
+                Range(_, max, ..) if max <= byte => StdRangeCheckType::U8AirDouble,
+                Range(_, max, ..) if max <= twobytes => StdRangeCheckType::U16AirDouble,
                 _ => panic!("Invalid predefined range"),
             }
         } else {
@@ -299,11 +300,11 @@ impl<F: PrimeField> StdRangeCheck<F> {
         if let Some(u8air) = self.u8air.as_ref() {
             u8air.drain_inputs(pctx, scope);
         }
-        // if let Some(u16air) = self.u16air.as_ref() {
-        //     u16air.drain_inputs(pctx, scope);
-        // }
-        // if let Some(specified_ranges) = self.specified_ranges.as_ref() {
-        //     specified_ranges.drain_inputs(pctx, scope);
-        // }
+        if let Some(u16air) = self.u16air.as_ref() {
+            u16air.drain_inputs(pctx, scope);
+        }
+        if let Some(specified_ranges) = self.specified_ranges.as_ref() {
+            specified_ranges.drain_inputs(pctx, scope);
+        }
     }
 }

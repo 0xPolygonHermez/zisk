@@ -6,7 +6,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
-use rand::{distributions::Standard, prelude::Distribution};
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 use crate::{RangeCheck40Trace, RANGE_CHECK_4_AIR_IDS, RANGE_CHECK_4_SUBPROOF_ID};
 
@@ -66,7 +66,7 @@ where
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
         {
             let air_instances_vec = &mut pctx.air_instances.write().unwrap();
@@ -95,49 +95,50 @@ where
                     .pilout
                     .get_air(RANGE_CHECK_4_SUBPROOF_ID[0], RANGE_CHECK_4_AIR_IDS[0])
                     .num_rows();
-                let mut trace =
-                    RangeCheck40Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                        .unwrap();
+                let mut trace = RangeCheck40Trace::map_buffer(
+                    buffer.as_mut_slice(),
+                    num_rows,
+                    offsets[0] as usize,
+                )
+                .unwrap();
 
-                let _range1 = (BigInt::from(0), BigInt::from(2u16.pow(16) - 1));
+                let range1 = (BigInt::from(0), BigInt::from(2u16.pow(16) - 1));
                 let range2 = (BigInt::from(0), BigInt::from(2u8.pow(8) - 1));
-                let _range3 = (BigInt::from(50), BigInt::from(2u8.pow(7) - 1));
-                let _range4 = (BigInt::from(127), BigInt::from(2u16.pow(8)));
+                let range3 = (BigInt::from(50), BigInt::from(2u8.pow(7) - 1));
+                let range4 = (BigInt::from(127), BigInt::from(2u16.pow(8)));
+                let range5 = (BigInt::from(1), BigInt::from(2u32.pow(16) + 1));
 
                 for i in 0..num_rows {
-                    // trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
-                    // trace[i].a2 = F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
-                    // trace[i].a3 = F::from_canonical_u16(rng.gen_range(127..=2u8.pow(8)));
-                    // trace[i].a4 = F::from_canonical_u16(rng.gen_range(1..=2u16.pow(16) + 1));
                     // trace[i].a5 = F::from_canonical_u16(rng.gen_range(127..=2u16.pow(16)));
                     // trace[i].a6 = F::from_canonical_u16(rng.gen_range(-1..=2u8.pow(3)));
                     // trace[i].a7 = F::from_canonical_u16(rng.gen_range(-2u8.pow(7) + 1..=-50));
                     // trace[i].a8 = F::from_canonical_u16(rng.gen_range(-2u8.pow(8) + 1..=-127));
-                    trace[i].a1 = F::from_canonical_u16(1); //F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
-                    trace[i].a2 = F::from_canonical_usize(51); //;F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
-                    trace[i].a3 = F::from_canonical_usize(128); //F::from_canonical_u16(rng.gen_range(127..=2u16.pow(8)));
-                                                                // trace[i].a4 = F::zero();
-                                                                // trace[i].a5 = F::zero();
-                                                                // trace[i].a6 = F::zero();
-                                                                // trace[i].a7 = F::zero();
-                                                                // trace[i].a8 = F::zero();
 
-                    let selected1 = true; //rng.gen_bool(0.5);
+                    let selected1 = rng.gen_bool(0.5);
                     trace[i].sel1 = F::from_bool(selected1);
-                    let selected2 = true; //rng.gen_bool(0.5)
+                    // selected1 and selected2 have to be disjoint for the range check to pass
+                    let selected2 = if selected1 { false } else { rng.gen_bool(0.5) };
                     trace[i].sel2 = F::from_bool(selected2);
 
-                    // if selected1 {
-                    //     self.std_lib
-                    //         .range_check(trace[i].a1, range1.0.clone(), range1.1.clone());
-                    // }
+                    if selected1 {
+                        trace[i].a1 = F::from_canonical_u16(1);
+                        self.std_lib
+                            .range_check(trace[i].a1, range1.0.clone(), range1.1.clone());
+                    }
                     if selected2 {
+                        trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
+                        trace[i].a2 = F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
+                        trace[i].a3 = F::from_canonical_u16(rng.gen_range(127..=2u16.pow(8)));
+                        trace[i].a4 = F::from_canonical_usize(1); //F::from_canonical_u16(rng.gen_range(1..=2u16.pow(16) + 1));
+
                         self.std_lib
                             .range_check(trace[i].a1, range2.0.clone(), range2.1.clone());
-                        // self.std_lib
-                        //     .range_check(trace[i].a2, range3.0.clone(), range3.1.clone());
-                        // self.std_lib
-                        //     .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
+                        self.std_lib
+                            .range_check(trace[i].a2, range3.0.clone(), range3.1.clone());
+                        self.std_lib
+                            .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
+                        self.std_lib
+                            .range_check(trace[i].a4, range5.0.clone(), range5.1.clone());
                     }
                 }
             }

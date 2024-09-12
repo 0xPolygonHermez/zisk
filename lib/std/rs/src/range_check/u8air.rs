@@ -16,6 +16,8 @@ trace!(U8Air0Row, U8Air0Trace<F> {
     mul: F,
 });
 
+const PROVE_CHUNK_SIZE: usize = 1 << 10;
+
 pub struct U8Air<F> {
     airgroup_id: usize,
     air_id: usize,
@@ -23,8 +25,6 @@ pub struct U8Air<F> {
     u8air_table: Mutex<Vec<F>>,
     offset: Mutex<usize>,
 }
-
-const PROVE_CHUNK_SIZE: usize = 1 << 10;
 
 impl<F: PrimeField> U8Air<F> {
     const MY_NAME: &'static str = "U8Air";

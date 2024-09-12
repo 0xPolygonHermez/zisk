@@ -10,11 +10,19 @@ pub const RANGE_CHECK_4_SUBPROOF_ID: &[usize] = &[0];
 
 pub const U_8_AIR_SUBPROOF_ID: &[usize] = &[1];
 
+pub const U_16_AIR_SUBPROOF_ID: &[usize] = &[2];
+
+pub const SPECIFIED_RANGES_SUBPROOF_ID: &[usize] = &[3];
+
 //AIR CONSTANTS
 
 pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
 
 pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[0];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
 
 pub struct Pilout;
 
@@ -29,6 +37,14 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("U8Air"));
 
         air_group.add_air(Some("U8Air"), 256);
+
+        let air_group = pilout.add_air_group(Some("U16Air"));
+
+        air_group.add_air(Some("U16Air"), 65536);
+
+        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
+
+        air_group.add_air(Some("SpecifiedRanges"), 131072);
 
         pilout
     }

@@ -9,9 +9,9 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout, /*RangeCheck1,*/ RangeCheck4,
-    /*U_16_AIR_AIR_IDS, U_16_AIR_SUBPROOF_ID,*/
-    U_8_AIR_AIR_IDS, U_8_AIR_SUBPROOF_ID,
+    Pilout, /*RangeCheck1,*/ RangeCheck4, SPECIFIED_RANGES_AIR_IDS,
+    SPECIFIED_RANGES_SUBPROOF_ID, U_16_AIR_AIR_IDS, U_16_AIR_SUBPROOF_ID, U_8_AIR_AIR_IDS,
+    U_8_AIR_SUBPROOF_ID,
 };
 
 pub struct RangeCheckWitness<F: PrimeField> {
@@ -40,17 +40,25 @@ where
         // TODO: Ad macro data into RCAIRData: SpecifiedRanges0Trace.
         // In fact, I only need to pass the length of mul of Specified...
         // Anyways, this solution would be very very specific
-        let rc_air_data = vec![RCAirData {
+        let mut rc_air_data = Vec::new();
+
+        rc_air_data.push(RCAirData {
             air_name: RangeCheckAir::U8Air,
             airgroup_id: U_8_AIR_SUBPROOF_ID[0],
             air_id: U_8_AIR_AIR_IDS[0],
-        }];
+        });
 
-        // rc_air_data.push(RCAirData {
-        //     air_name: RangeCheckAir::U16Air,
-        //     airgroup_id: U_16_AIR_SUBPROOF_ID[0],
-        //     air_id: U_16_AIR_AIR_IDS[0],
-        // });
+        rc_air_data.push(RCAirData {
+            air_name: RangeCheckAir::U16Air,
+            airgroup_id: U_16_AIR_SUBPROOF_ID[0],
+            air_id: U_16_AIR_AIR_IDS[0],
+        });
+
+        rc_air_data.push(RCAirData {
+            air_name: RangeCheckAir::SpecifiedRanges,
+            airgroup_id: SPECIFIED_RANGES_SUBPROOF_ID[0],
+            air_id: SPECIFIED_RANGES_AIR_IDS[0],
+        });
 
         let std_lib = Std::new(&mut wcm, Some(rc_air_data));
         // let range_check1 = RangeCheck::new(&mut wcm, std_lib.clone());
