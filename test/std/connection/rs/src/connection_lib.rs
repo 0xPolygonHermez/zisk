@@ -18,6 +18,15 @@ pub struct ConnectionWitness<F: PrimeField> {
     pub std_lib: Arc<Std<F>>,
 }
 
+impl<F: PrimeField> Default for ConnectionWitness<F>
+where
+    Standard: Distribution<F>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> ConnectionWitness<F>
 where
     Standard: Distribution<F>,

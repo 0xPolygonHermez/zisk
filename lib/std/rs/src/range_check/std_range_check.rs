@@ -7,8 +7,9 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 
 use proofman::WitnessManager;
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldValue};
+use rayon::Scope;
 
 use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
 
@@ -48,7 +49,7 @@ pub struct StdRangeCheck<F: PrimeField> {
 
 pub struct RCAirData {
     pub air_name: RangeCheckAir,
-    pub air_group_id: usize,
+    pub airgroup_id: usize,
     pub air_id: usize,
 }
 
@@ -59,13 +60,13 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
-                let air_group_id = air.air_group_id;
+                let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_check");
                 for hint in rc_hints {
                     // Register the ranges for the range check
-                    self.register_range(sctx, air_group_id, air_id, hint);
+                    self.register_range(sctx, airgroup_id, air_id, hint);
                 }
             });
         });
@@ -92,18 +93,18 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
             for air in air_data {
                 let air_name = &air.air_name;
-                let air_group_id = air.air_group_id;
+                let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
 
                 match air_name {
                     RangeCheckAir::U8Air => {
-                        u8air = Some(U8Air::new(wcm, air_group_id, air_id));
+                        u8air = Some(U8Air::new(wcm, airgroup_id, air_id));
                     }
                     RangeCheckAir::U16Air => {
-                        u16air = Some(U16Air::new(wcm, air_group_id, air_id));
+                        u16air = Some(U16Air::new(wcm, airgroup_id, air_id));
                     }
                     RangeCheckAir::SpecifiedRanges => {
-                        specified_ranges = Some(SpecifiedRanges::new(wcm, air_group_id, air_id));
+                        specified_ranges = Some(SpecifiedRanges::new(wcm, airgroup_id, air_id));
                     }
                 }
             }
@@ -117,10 +118,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
         })
     }
 
-    pub fn register_range(&self, sctx: &SetupCtx, air_group_id: usize, air_id: usize, hint: u64) {
+    pub fn register_range(&self, sctx: &SetupCtx, airgroup_id: usize, air_id: usize, hint: u64) {
         let predefined = get_hint_field_constant::<F>(
             sctx,
-            air_group_id,
+            airgroup_id,
             air_id,
             hint as usize,
             "predefined",
@@ -129,7 +130,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         );
         let min = get_hint_field_constant::<F>(
             sctx,
-            air_group_id,
+            airgroup_id,
             air_id,
             hint as usize,
             "min",
@@ -138,7 +139,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         );
         let min_neg = get_hint_field_constant::<F>(
             sctx,
-            air_group_id,
+            airgroup_id,
             air_id,
             hint as usize,
             "min_neg",
@@ -147,7 +148,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         );
         let max = get_hint_field_constant::<F>(
             sctx,
-            air_group_id,
+            airgroup_id,
             air_id,
             hint as usize,
             "max",
@@ -156,7 +157,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         );
         let max_neg = get_hint_field_constant::<F>(
             sctx,
-            air_group_id,
+            airgroup_id,
             air_id,
             hint as usize,
             "max_neg",
@@ -246,7 +247,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         });
     }
 
-    pub fn assign_values(&self, value: F, min: BigInt, max: BigInt, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
+    pub fn assign_values(&self, value: F, min: BigInt, max: BigInt) {
         // If the range was not computed in the setup phase, error
         let ranges = self.ranges.lock().unwrap();
         let range_item = ranges
@@ -261,27 +262,25 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range_item = range_item.unwrap();
         let range = range_item.range;
 
-        if MODE_DEBUG {
-            if value < range.0 || value > range.1 {
-                log::error!(
-                    "Value {} is not in the range [min,max] = {:?}",
-                    value,
-                    range,
-                );
-                panic!();
-            }
+        if MODE_DEBUG && value < range.0 || value > range.1 {
+            log::error!(
+                "Value {} is not in the range [min,max] = {:?}",
+                value,
+                range,
+            );
+            panic!();
         }
 
         match range_item.rc_type {
             StdRangeCheckType::Valid(RangeCheckAir::U8Air) => {
-                self.u8air.as_ref().unwrap().update_inputs(value, false, pctx, ectx);
+                self.u8air.as_ref().unwrap().update_inputs(value);
             }
             StdRangeCheckType::Valid(RangeCheckAir::U16Air) => {
                 self.u16air.as_ref().unwrap().update_inputs(value);
             }
             StdRangeCheckType::U8AirDouble => {
-                self.u8air.as_ref().unwrap().update_inputs(value - range.0, false, pctx, ectx);
-                self.u8air.as_ref().unwrap().update_inputs(range.1 - value, false, pctx, ectx);
+                self.u8air.as_ref().unwrap().update_inputs(value - range.0);
+                self.u8air.as_ref().unwrap().update_inputs(range.1 - value);
             }
             StdRangeCheckType::U16AirDouble => {
                 self.u16air.as_ref().unwrap().update_inputs(value - range.0);
@@ -294,5 +293,17 @@ impl<F: PrimeField> StdRangeCheck<F> {
                     .update_inputs(value, range);
             }
         }
+    }
+
+    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, scope: &Scope) {
+        if let Some(u8air) = self.u8air.as_ref() {
+            u8air.drain_inputs(pctx, scope);
+        }
+        // if let Some(u16air) = self.u16air.as_ref() {
+        //     u16air.drain_inputs(pctx, scope);
+        // }
+        // if let Some(specified_ranges) = self.specified_ranges.as_ref() {
+        //     specified_ranges.drain_inputs(pctx, scope);
+        // }
     }
 }

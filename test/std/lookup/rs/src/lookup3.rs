@@ -60,7 +60,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx
             .pilout
-            .get_air(air_instance.air_group_id, air_instance.air_id);
+            .get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",

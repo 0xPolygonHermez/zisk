@@ -11,7 +11,7 @@ use crate::Decider;
 
 pub struct StdProd<F> {
     _phantom: std::marker::PhantomData<F>,
-    prod_airs: Mutex<Vec<(usize, usize, Vec<u64>)>>, // (air_group_id, air_id, prod_hints)
+    prod_airs: Mutex<Vec<(usize, usize, Vec<u64>)>>, // (airgroup_id, air_id, prod_hints)
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
@@ -21,16 +21,16 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
-                let air_group_id = air.air_group_id;
+                let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(air_group_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let prod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs
                         .lock()
                         .unwrap()
-                        .push((air_group_id, air_id, prod_hints));
+                        .push((airgroup_id, air_id, prod_hints));
                 }
             });
         });
@@ -57,17 +57,17 @@ impl<F: Copy + Debug + Field> StdProd<F> {
             let prod_airs = self.prod_airs.lock().unwrap();
             prod_airs
                 .iter()
-                .for_each(|(air_group_id, air_id, prod_hints)| {
-                    let air_instances = pctx.find_air_instances(*air_group_id, *air_id);
+                .for_each(|(airgroup_id, air_id, prod_hints)| {
+                    let air_instances = pctx.find_air_instances(*airgroup_id, *air_id);
                     air_instances.iter().for_each(|air_instance_id| {
                         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
 
                         let air_instance = &mut air_instances_vec[*air_instance_id];
 
                         // Get the air associated with the air_instance
-                        let air_group_id = air_instance.air_group_id;
+                        let airgroup_id = air_instance.airgroup_id;
                         let air_id = air_instance.air_id;
-                        let air = pctx.pilout.get_air(air_group_id, air_id);
+                        let air = pctx.pilout.get_air(airgroup_id, air_id);
 
                         log::info!(
                             "{}: Initiating witness computation for AIR '{}' at stage {}",

@@ -68,9 +68,9 @@ where
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 
-        let air_group_id = air_instance.air_group_id;
+        let airgroup_id = air_instance.airgroup_id;
         let air_id = air_instance.air_id;
-        let air = pctx.pilout.get_air(air_group_id, air_id);
+        let air = pctx.pilout.get_air(airgroup_id, air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -87,7 +87,7 @@ where
                 .unwrap();
 
             let buffer = air_instance.buffer.as_mut().unwrap();
-            let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
+            let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
             let mut trace = Permutation1_11Trace::map_buffer(

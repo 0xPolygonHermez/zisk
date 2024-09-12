@@ -21,6 +21,15 @@ pub struct RangeCheckWitness<F: PrimeField> {
     pub std_lib: Arc<Std<F>>,
 }
 
+impl<F: PrimeField> Default for RangeCheckWitness<F>
+where
+    Standard: Distribution<F>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> RangeCheckWitness<F>
 where
     Standard: Distribution<F>,
@@ -28,20 +37,18 @@ where
     pub fn new() -> Self {
         let mut wcm = WitnessManager::new();
 
-        let mut rc_air_data = Vec::new();
-
         // TODO: Ad macro data into RCAIRData: SpecifiedRanges0Trace.
         // In fact, I only need to pass the length of mul of Specified...
         // Anyways, this solution would be very very specific
-
-        rc_air_data.push(RCAirData {
+        let rc_air_data = vec![RCAirData {
             air_name: RangeCheckAir::U8Air,
-            air_group_id: U_8_AIR_SUBPROOF_ID[0],
+            airgroup_id: U_8_AIR_SUBPROOF_ID[0],
             air_id: U_8_AIR_AIR_IDS[0],
-        });
+        }];
+
         // rc_air_data.push(RCAirData {
         //     air_name: RangeCheckAir::U16Air,
-        //     air_group_id: U_16_AIR_SUBPROOF_ID[0],
+        //     airgroup_id: U_16_AIR_SUBPROOF_ID[0],
         //     air_id: U_16_AIR_AIR_IDS[0],
         // });
 

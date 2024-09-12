@@ -17,7 +17,7 @@ trace!(U16Air0Row, U16Air0Trace<F> {
 });
 
 pub struct U16Air<F> {
-    air_group_id: usize,
+    airgroup_id: usize,
     air_id: usize,
     inputs: Mutex<HashMap<F, F>>, // value -> multiplicity
 }
@@ -25,14 +25,14 @@ pub struct U16Air<F> {
 impl<F: PrimeField> U16Air<F> {
     const MY_NAME: &'static str = "U16Air";
 
-    pub fn new(wcm: &mut WitnessManager<F>, air_group_id: usize, air_id: usize) -> Arc<Self> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let u16air = Arc::new(Self {
-            air_group_id,
+            airgroup_id,
             air_id,
             inputs: Mutex::new(HashMap::new()),
         });
 
-        wcm.register_component(u16air.clone(), Some(air_group_id), Some(&[air_id]));
+        wcm.register_component(u16air.clone(), Some(airgroup_id), Some(&[air_id]));
 
         u16air
     }
@@ -53,7 +53,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, None, Some(buffer));
+        pctx.add_air_instance_ctx(self.airgroup_id, self.air_id, None, Some(buffer));
     }
 
     fn calculate_witness(
@@ -77,9 +77,9 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
             let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 
             // Get the air associated with the air_instance
-            let air_group_id = air_instance.air_group_id;
+            let airgroup_id = air_instance.airgroup_id;
             let air_id = air_instance.air_id;
-            let air = pctx.pilout.get_air(air_group_id, air_id);
+            let air = pctx.pilout.get_air(airgroup_id, air_id);
 
             log::info!(
                 "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -95,12 +95,12 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
                 .as_ref()
                 .get_buffer_info("U16Air".to_string(), air_instance.air_id)
                 .unwrap();
-            let mut buffer = air_instance.buffer.as_mut().unwrap();
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             // Update the multiplicity column
             let inputs = self.inputs.lock().unwrap();
             let mut trace =
-                U16Air0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+                U16Air0Trace::map_buffer(buffer, num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].mul = inputs

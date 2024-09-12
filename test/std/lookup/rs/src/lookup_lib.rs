@@ -19,6 +19,15 @@ pub struct LookupWitness<F: PrimeField> {
     pub std_lib: Arc<Std<F>>,
 }
 
+impl<F: PrimeField> Default for LookupWitness<F>
+where
+    Standard: Distribution<F>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> LookupWitness<F>
 where
     Standard: Distribution<F>,

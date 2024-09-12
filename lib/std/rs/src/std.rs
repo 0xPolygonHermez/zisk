@@ -1,4 +1,7 @@
-use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
+};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -10,7 +13,9 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use crate::{Decider, RCAirData, StdProd, StdRangeCheck, StdSum};
 
 pub struct Std<F: PrimeField> {
-    registered_predecessors: AtomicU32, // Count of registered predecessors
+    // Count of registered predecessors
+    registered_predecessors: AtomicU32,
+    // STD components
     prod: Arc<StdProd<F>>,
     sum: Arc<StdSum<F>>,
     range_check: Arc<StdRangeCheck<F>>,
@@ -45,16 +50,15 @@ impl<F: PrimeField> Std<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, pctx: &mut ProofCtx<F>, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.range_check.assign_values(value, min, max, pctx, ectx)
-            <StdRangeCheck as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
+            self.range_check.drain_inputs(pctx, scope);
         }
     }
 
     /// Processes the inputs for the range check.
-    pub fn range_check(&self, val: F, min: BigInt, max: BigInt, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx) {
-        self.range_check.assign_values(val, min, max, pctx, ectx);
+    pub fn range_check(&self, val: F, min: BigInt, max: BigInt) {
+        self.range_check.assign_values(val, min, max);
     }
 }
 
@@ -84,7 +88,7 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
             panic!();
         }
 
-        // if let Err(e) = self.range_check.calculate_witness(stage, pctx, ectx) {
+        // if let Err(e) = self.range_check.calculate_witness(stage, pctx, sctx) {
         //     log::error!("Range Check: Failed to calculate witness: {:?}", e);
         //     panic!();
         // }

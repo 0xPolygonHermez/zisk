@@ -59,9 +59,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         let air_instances_vec = &mut pctx.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 
-        let air_group_id = air_instance.air_group_id;
+        let airgroup_id = air_instance.airgroup_id;
         let air_id = air_instance.air_id;
-        let air = pctx.pilout.get_air(air_group_id, air_id);
+        let air = pctx.pilout.get_air(airgroup_id, air_id);
 
         log::info!(
             "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -79,7 +79,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
 
             let buffer = air_instance.buffer.as_mut().unwrap();
 
-            let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
+            let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
             let mut trace = Permutation23Trace::map_buffer(
                 buffer.as_mut_slice(),
                 num_rows,

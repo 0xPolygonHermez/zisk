@@ -19,6 +19,15 @@ pub struct PermutationWitness<F: PrimeField> {
     pub std_lib: Arc<Std<F>>,
 }
 
+impl<F: PrimeField> Default for PermutationWitness<F>
+where
+    Standard: Distribution<F>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> PermutationWitness<F>
 where
     Standard: Distribution<F>,

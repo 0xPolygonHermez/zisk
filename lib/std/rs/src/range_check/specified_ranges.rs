@@ -19,7 +19,7 @@ trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
 });
 
 pub struct SpecifiedRanges<F: PrimeField> {
-    air_group_id: usize,
+    airgroup_id: usize,
     air_id: usize,
     inputs: Mutex<HashMap<Range<F>, HashMap<F, F>>>, // range -> value -> multiplicity
 }
@@ -27,25 +27,21 @@ pub struct SpecifiedRanges<F: PrimeField> {
 impl<F: PrimeField> SpecifiedRanges<F> {
     const MY_NAME: &'static str = "SpecifiedRanges";
 
-    pub fn new(wcm: &mut WitnessManager<F>, air_group_id: usize, air_id: usize) -> Arc<Self> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let specified_ranges = Arc::new(Self {
-            air_group_id,
+            airgroup_id,
             air_id,
             inputs: Mutex::new(HashMap::new()),
         });
 
-        wcm.register_component(
-            specified_ranges.clone(),
-            Some(air_group_id),
-            Some(&[air_id]),
-        );
+        wcm.register_component(specified_ranges.clone(), Some(airgroup_id), Some(&[air_id]));
 
         specified_ranges
     }
 
     pub fn update_inputs(&self, value: F, range: Range<F>) {
         let mut inputs_specified = self.inputs.lock().unwrap();
-        let range = inputs_specified.entry(range).or_insert(HashMap::new());
+        let range = inputs_specified.entry(range).or_default();
 
         // Update the value
         *range.entry(value).or_insert(F::zero()) += F::one();
@@ -62,7 +58,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(self.air_group_id, self.air_id, None, Some(buffer));
+        pctx.add_air_instance_ctx(self.airgroup_id, self.air_id, None, Some(buffer));
     }
 
     fn calculate_witness(
@@ -86,9 +82,9 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
             let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 
             // Get the air associated with the air_instance
-            let air_group_id = air_instance.air_group_id;
+            let airgroup_id = air_instance.airgroup_id;
             let air_id = air_instance.air_id;
-            let air = pctx.pilout.get_air(air_group_id, air_id);
+            let air = pctx.pilout.get_air(airgroup_id, air_id);
 
             log::info!(
                 "{}: Initiating witness computation for AIR '{}' at stage {}",
@@ -104,20 +100,18 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                 .as_ref()
                 .get_buffer_info("SpecifiedRanges".to_string(), air_instance.air_id)
                 .unwrap();
-            let mut buffer = air_instance.buffer.as_mut().unwrap();
+            let buffer = air_instance.buffer.as_mut().unwrap();
 
             // Update the multiplicity column
             let inputs = self.inputs.lock().unwrap();
             let mut trace =
-                SpecifiedRanges0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)
-                    .unwrap();
+                SpecifiedRanges0Trace::map_buffer(buffer, num_rows, offsets[0] as usize).unwrap();
 
             for k in 0..trace[0].mul.len() {
                 let range = inputs
                     .keys()
                     .nth(k)
-                    .expect("Rc::calculate_trace() range not found")
-                    .clone();
+                    .expect("Rc::calculate_trace() range not found");
                 let min = range.0;
                 let max = range.1;
                 for i in 0..num_rows {
@@ -127,7 +121,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                         trace[k].mul[i] = F::zero();
                     } else {
                         trace[k].mul[i] = *inputs
-                            .get(&range)
+                            .get(range)
                             .unwrap()
                             .clone()
                             .entry(F::from_canonical_usize(i))
