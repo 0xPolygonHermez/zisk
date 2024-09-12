@@ -29,6 +29,9 @@ where
             Some(RANGE_CHECK_4_AIR_IDS),
         );
 
+        // Register dependency relations
+        range_check4.std_lib.register_predecessor();
+
         range_check4
     }
 
@@ -136,6 +139,9 @@ where
                     //     .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
                 }
             }
+            drop(air_instances_vec);
+
+            self.std_lib.unregister_predecessor(pctx, None);
         }
 
         log::info!(

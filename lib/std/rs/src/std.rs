@@ -50,7 +50,7 @@ impl<F: PrimeField> Std<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, pctx: &mut ProofCtx<F>, scope: &Scope) {
+    pub fn unregister_predecessor(&self, pctx: &mut ProofCtx<F>, scope: Option<&Scope>) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.range_check.drain_inputs(pctx, scope);
         }

@@ -43,7 +43,7 @@ impl<F: PrimeField> U8Air<F> {
         u8air
     }
 
-    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, _scope: &Scope) {
+    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, _scope: Option<&Scope>) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect::<Vec<_>>();
 
