@@ -17,7 +17,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
     pub fn new(wcm: &mut WitnessManager<F>, module: Arc<Module<F>>) -> Arc<Self> {
         let fibonacci = Arc::new(Self { module });
 
-        wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_SUBPROOF_ID));
+        wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_SUBPROOF_ID[0]), Some(FIBONACCI_SQUARE_AIR_IDS));
 
         fibonacci
     }
@@ -76,7 +76,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         // }
         // log::info!("Result Fibonacci buffer: {:?}", result);
 
-        pctx.add_air_instance_ctx(FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], Some(0), Some(buffer));
 
         Ok(b)
     }

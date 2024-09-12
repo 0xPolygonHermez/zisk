@@ -19,7 +19,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
     pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: RefCell::new(Vec::new()), std_lib });
 
-        wcm.register_component(module.clone(), Some(MODULE_SUBPROOF_ID));
+        wcm.register_component(module.clone(), Some(MODULE_SUBPROOF_ID[0]), Some(MODULE_AIR_IDS));
 
         module
     }
@@ -67,7 +67,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         // }
         // log::info!("Result Module buffer: {:?}", result);
 
-        pctx.add_air_instance_ctx(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0], Some(buffer));
+        pctx.add_air_instance_ctx(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0], Some(0), Some(buffer));
     }
 }
 
