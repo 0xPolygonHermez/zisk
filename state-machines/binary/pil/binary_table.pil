@@ -26,12 +26,19 @@ require "constants.pil";
 const int EXT_32_OP = 0x23;
 const int BINARY_TABLE_ID = 125;
 
-airtemplate BinaryTable(int N = 2**10) {
+airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
+    
     col witness multiplicity;
-    lookup_proves(BINARY_TABLE_ID, [0, 0, 0, 0, 0, 0, 0], multiplicity);
-}
 
-airtemplate _BinaryTable(int N = 2**22) {
+    if (disable_fixed) {
+        col fixed _K = [0...];
+        // FORCE ONE TRACE
+        multiplicity * _K === 0;
+        
+        println("*** DISABLE_FIXED ***"); 
+        return;
+    }
+
     if (N < 2**22) {
         error(`N must be at least 2^22, but N=${N} was provided`);
     }
@@ -77,7 +84,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                 }
 
                 // If the chunk is signed, then the result is the sign of a
-                if (3 && plast && (a & 0x80) != (b & 0x80)) {
+                if (op == 0x05 && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? 1 : 0;
                     cout = c;
                 }
@@ -87,7 +94,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                     cout = 1;
                     c = plast;
                 }
-                if (5 && plast && (a & 0x80) != (b & 0x80)) {
+                if (op == 0x07 && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? 1 : 0;
                     cout = c;
                 }
@@ -104,7 +111,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                 } else {
                     c = b;
                 }
-                if (8 && plast && (a & 0x80) != (b & 0x80)) {
+                if (op == 0x0a && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? a : b;
                     cout = (a & 0x80) ? 1 : 0;
                 }
@@ -116,7 +123,7 @@ airtemplate _BinaryTable(int N = 2**22) {
                 } else {
                     c = b;
                 }
-                if (10 && plast && (a & 0x80) != (b & 0x80)) {
+                if (op == 0x0c && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? b : a;
                     cout = (a & 0x80) ? 0 : 1;
                 }
@@ -144,6 +151,6 @@ airtemplate _BinaryTable(int N = 2**22) {
     for (int i = 0; i < N; i++) {
         FLAGS[i] = COUT[i] + 2 * USE_CARRY[i];
     }
-    col witness multiplicity;
+
     lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
 }
