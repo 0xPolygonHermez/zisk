@@ -262,7 +262,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range_item = range_item.unwrap();
         let range = range_item.range;
 
-        if MODE_DEBUG && value < range.0 || value > range.1 {
+        if MODE_DEBUG && (value < range.0 || value > range.1) {
             log::error!(
                 "Value {} is not in the range [min,max] = {:?}",
                 value,

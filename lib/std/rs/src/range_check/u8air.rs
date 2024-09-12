@@ -81,8 +81,9 @@ impl<F: PrimeField> U8Air<F> {
                 .as_canonical_biguint()
                 .to_usize()
                 .expect("Cannot convert to usize");
-            // We can add a sanity check cheking than 0 <= value < num_rows
-            trace[value].mul += F::one();
+            // Note: to avoid non-expected panics, we perform a reduction to the value
+            //       In debug mode, this is, in fact, checked before
+            trace[value % num_rows].mul += F::one();
         }
 
         log::info!("{}: Updated inputs for AIR '{}'", Self::MY_NAME, "U8Air");
