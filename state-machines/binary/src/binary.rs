@@ -5,8 +5,7 @@ use std::sync::{
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
@@ -46,7 +45,7 @@ impl BinarySM {
         };
         let binary_sm = Arc::new(binary_sm);
 
-        wcm.register_component(binary_sm.clone(), None);
+        wcm.register_component(binary_sm.clone(), None, None);
 
         binary_sm.binary_basic_sm.register_predecessor();
         binary_sm.binary_extension_sm.register_predecessor();

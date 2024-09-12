@@ -4,8 +4,7 @@ use std::sync::{
 };
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{MemUnalignedOp, OpResult, Provable};
 
@@ -21,12 +20,12 @@ pub struct MemUnalignedSM {
 
 #[allow(unused, unused_variables)]
 impl MemUnalignedSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let mem_aligned_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
-        wcm.register_component(mem_aligned_sm.clone(), Some(air_ids));
+        wcm.register_component(mem_aligned_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         mem_aligned_sm
     }

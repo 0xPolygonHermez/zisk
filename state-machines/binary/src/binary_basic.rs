@@ -5,8 +5,7 @@ use std::sync::{
 
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
@@ -28,12 +27,12 @@ pub enum BinaryBasicSMErr {
 }
 
 impl BinaryBasicSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let binary_basic = Arc::new(binary_basic);
 
-        wcm.register_component(binary_basic.clone(), Some(air_ids));
+        wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_basic
     }
@@ -80,7 +79,7 @@ impl BinaryBasicSM {
             let mode32 = (i.opcode & 0x10) != 0;
             t.mode32 = F::from_bool(mode32);
             let op = i.opcode & 0xEF;
-            t.op = F::from_canonical_u8(op);
+            t.m_op = F::from_canonical_u8(op);
 
             // Split a in bytes and store them in free_in_a
             let a_bytes: [u8; 8] = i.a.to_le_bytes();

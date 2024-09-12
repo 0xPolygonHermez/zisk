@@ -4,8 +4,7 @@ use std::sync::{
 };
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
@@ -21,12 +20,12 @@ pub struct Arith3264SM {
 }
 
 impl Arith3264SM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let arith3264_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);
 
-        wcm.register_component(arith3264_sm.clone(), Some(air_ids));
+        wcm.register_component(arith3264_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         arith3264_sm
     }

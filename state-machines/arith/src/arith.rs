@@ -5,8 +5,7 @@ use std::sync::{
 
 use crate::{Arith3264SM, Arith32SM, Arith64SM};
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx};
-use proofman_setup::SetupCtx;
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
@@ -49,7 +48,7 @@ impl ArithSM {
         };
         let arith_sm = Arc::new(arith_sm);
 
-        wcm.register_component(arith_sm.clone(), None);
+        wcm.register_component(arith_sm.clone(), None, None);
 
         arith_sm.arith32_sm.register_predecessor();
         arith_sm.arith64_sm.register_predecessor();
