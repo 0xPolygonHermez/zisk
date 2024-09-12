@@ -16,12 +16,20 @@ require "constants.pil"
 const int EXT_OP = 6;
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
-airtemplate BinaryExtensionTable(const int N = 2**10) {
-    col witness multiplicity;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, cols: [0, 0, 0, 0, 0, 0], mul: multiplicity);
-}
 
-airtemplate _BinaryExtensionTable(const int N = 2**19) {
+airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 0) {
+    
+    col witness multiplicity;
+
+    if (disable_fixed) {
+        col fixed _K = [0...];
+        // FORCE ONE TRACE
+        multiplicity * _K === 0;
+        
+        println("*** DISABLE_FIXED ***"); 
+        return;
+    }
+
     if (N < 2**19) {
         error("N must be at least 2^19");
     }
@@ -43,6 +51,7 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
     col fixed C0;                                           // Output C0  (32 bits)
     col fixed C1;                                           // Output C1  (32 bits)
     for (int i = 0; i < N; i++) {
+        println(i);
         int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int _out = 0;
         switch (op) {
@@ -104,6 +113,5 @@ airtemplate _BinaryExtensionTable(const int N = 2**19) {
         C1[i] = _out >> 32;
     }
 
-    col witness mul;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, mul, [OP, OFFSET, A, B, C0, C1]);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
 }

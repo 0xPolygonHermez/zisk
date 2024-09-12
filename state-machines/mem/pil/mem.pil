@@ -18,14 +18,14 @@ airtemplate Mem(int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2 
     airgroupval aggregate(sum) mem_segment;    // aggregate(serial)
     airgroupval aggregate(sum) mem_last_segment;        // aggregate(last)
 
-    col witness addr;
+    col witness addr;  // n-byte address, real address = addr * MEM_BYTES
     col witness step;
-    col witness sel, rd, wr;
+    col witness sel, wr;
     col witness value[RC];
     col witness addr_changes;
 
+    const expr rd = (1 - wr);
     sel * (1 - sel) === 0;
-    rd * (1 - rd) === 0;
     wr * (1 - wr) === 0;
 
     // if wr is 1, sel must be 1 (not allowed writes)
@@ -37,11 +37,8 @@ airtemplate Mem(int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2 
     // The list is sorted by [addr, step]
     addr_changes * (1 - addr_changes) === 0;
 
-
-    // TODO: address memory must be at least 8
-    // range_check((1 - INNER_L1), addr_changes * (addr - 'addr - step + 'step) + step - 'step, 1 + 7 * addr_changes, MEMORY_MAX_DIFF);
-
-    // range_check((1 - INNER_L1), addr_changes * (addr - 'addr - step + 'step) + step - 'step, 1, MEMORY_MAX_DIFF);
+    // check increment of memory
+    range_check(sel: (1 - INNER_L1), colu: addr_changes * (addr - 'addr - step + 'step) + step - 'step, min: 1, max: MEMORY_MAX_DIFF);
 
     // At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
 
@@ -54,28 +51,24 @@ airtemplate Mem(int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2 
     // wr could be 1 only if sel is 1
     (1 - sel) * wr === 0;
 
-    // only rd or wr could be 1
-    rd * wr === 0;
-
     for (int index = 0; index < length(value); index = index + 1) {
         rd * (1 - addr_changes) * (value[index] - 'value[index])  ===  0;
         rd * addr_changes * value[index]  ===  0;
     }
 
     // continuations
-    permutation_proves(MEMORY_CONT_ID, INNER_LAST, [(mem_segment + 1)* (1 - mem_last_segment), 0, 1, 0, (1 - mem_last_segment) * addr, (1 - mem_last_segment) * step, ...value]);
-    permutation_assumes(MEMORY_CONT_ID, INNER_L1, [mem_segment, 0, 1, 0, addr, step, ...value]);
+    // permutation_proves(MEMORY_CONT_ID, INNER_LAST, [(mem_segment + 1)* (1 - mem_last_segment), 0, 1, 0, (1 - mem_last_segment) * addr, (1 - mem_last_segment) * step, ...value]);
+    // permutation_assumes(MEMORY_CONT_ID, INNER_L1, [mem_segment, 0, 1, 0, addr, step, ...value]);
 
     // bus
-    permutation_proves(MEMORY_ID, sel, [rd + 2 * wr, addr * MEM_BYTES, step, MEM_BYTES, ...value]);
-
+    permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel); 
 }
 
 // TODO: detect non default value but not called, mandatory parameter.
 function mem_load(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr bytes = 8, expr value[]) {
-    permutation_assumes(id, sel, [MEMORY_LOAD_OP, addr, step, bytes, ...value]);
+    permutation_assumes(id, [MEMORY_LOAD_OP, addr, step, bytes, ...value], sel:sel);
 }
 
 function mem_store(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr bytes = 8, expr value[]) {
-    permutation_assumes(id, sel, [MEMORY_STORE_OP, addr, step, bytes, ...value]);
+    permutation_assumes(id, [MEMORY_STORE_OP, addr, step, bytes, ...value], sel:sel);
 }
