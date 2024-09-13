@@ -4,9 +4,9 @@ use proofman_common::WitnessPilout;
 
 pub const PILOUT_HASH: &[u8] = b"{ project_name }-hash";
 
-//SUBPROOFS CONSTANTS
+//AIRGROUP CONSTANTS
 {{ for constant in constant_airgroups }}
-pub const { constant.0 }_AIRGROUP_ID: &[usize] = &[{ constant.1 }];
+pub const { constant.0 }_AIRGROUP_ID: usize = { constant.1 };
 {{ endfor }}
 //AIR CONSTANTS
 {{ for constant in constant_airs }}
