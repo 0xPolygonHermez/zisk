@@ -51,7 +51,8 @@ jobs:
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
-          command: +nightly fmt
+          toolchain: nightly
+          command: fmt
           args: --all -- --check
         env:
           CARGO_INCREMENTAL: 1
