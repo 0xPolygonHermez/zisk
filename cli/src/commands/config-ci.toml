@@ -17,4 +17,3 @@ download-ci-llvm = false
 [rust]
 lld = true
 llvm-tools = true
-channel = "nightly"
