@@ -13,7 +13,7 @@ use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 use proofman::WitnessManager;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 
-use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
+use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
@@ -213,7 +213,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_instance = air_instances
                 .iter_mut()
                 .filter(|air_instance| {
-                    air_instance.airgroup_id == MAIN_SUBPROOF_ID[0] &&
+                    air_instance.airgroup_id == MAIN_AIRGROUP_ID &&
                         air_instance.air_id == MAIN_AIR_IDS[0] &&
                         air_instance.air_segment_id.is_some()
                 })
@@ -366,7 +366,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             .copy_from_slice(&main_trace_buffer);
 
         pctx.add_air_instance_ctx(
-            MAIN_SUBPROOF_ID[0],
+            MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
             Some(air_segment.air_segment_id as usize),
             Some(buffer),
