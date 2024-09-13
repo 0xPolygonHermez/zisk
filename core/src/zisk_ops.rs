@@ -23,6 +23,7 @@ pub struct InvalidNameError;
 #[derive(Copy, Clone, Debug)]
 pub struct InvalidCodeError;
 
+/// Internal macro used to define all ops in the [`ZiskOp`] enum
 macro_rules! define_ops {
     ( $( ($name:ident, $str_name:expr, $type:ident, $steps:expr, $code:expr, $call_fn:ident, $call_ab_fn:ident) ),* $(,)? ) => {
 		/// Represents an operation that can be executed in Zisk.
