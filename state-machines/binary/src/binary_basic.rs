@@ -8,9 +8,9 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
+use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
-
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct BinaryBasicSM {
@@ -68,178 +68,230 @@ impl BinaryBasicSM {
         for i in input {
             // Create an empty trace
             let mut t: Binary0Row<F> = Default::default();
-            let a = i.a;
-            let b = i.b;
+
+            // Execute the opcode
             let c: u64;
             let flag: bool;
-
-            match i.opcode {
-            0x02 /*ADD*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x02);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x03 /*SUB*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x03);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x04 /*LTU*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x04);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x05 /*LT*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x05);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x06 /*LEU*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x06);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x07 /*LE*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x07);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x08 /*EQ*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x08);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x09 /*MINU*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x09);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x0a /*MIN*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x0a);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x0b /*MAXU*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x0b);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x0c /*MAX*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x0c);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x20 /*AND*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x20);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x21 /*OR*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x21);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x22 /*XOR*/ => {
-                t.mode32 = F::from_canonical_u64(0);
-                t.m_op = F::from_canonical_u64(0x22);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x12 /*ADD_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x02);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x13 /*SUB_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x03);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x14 /*LTU_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x04);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x15 /*LT_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x05);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x16 /*LEU_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x06);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x17 /*LE_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x07);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x18 /*EQ_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x08);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x19 /*MINU_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x09);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x1a /*MIN_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x0a);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x1b /*MAXU_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x0b);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            0x1c /*MAX_W*/ => {
-                t.mode32 = F::from_canonical_u64(1);
-                t.m_op = F::from_canonical_u64(0x0c);
-                (c, flag) = opcode_execute(i.opcode, a, b);
-            }
-            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", i.opcode),
-        }
-
+            (c, flag) = opcode_execute(i.opcode, i.a, i.b);
             let _flag = flag;
 
+            // Decompose the opcode into mode32 & op
+            let mode32 = (i.opcode & 0x10) != 0;
+            t.mode32 = F::from_bool(mode32);
+            let op = i.opcode & 0xEF;
+            t.m_op = F::from_canonical_u8(op);
+
             // Split a in bytes and store them in free_in_a
-            let a_bytes: [u8; 8] = a.to_le_bytes();
-            t.free_in_a[0] = F::from_canonical_u64(a_bytes[0].into());
-            t.free_in_a[1] = F::from_canonical_u64(a_bytes[1].into());
-            t.free_in_a[2] = F::from_canonical_u64(a_bytes[2].into());
-            t.free_in_a[3] = F::from_canonical_u64(a_bytes[3].into());
-            t.free_in_a[4] = F::from_canonical_u64(a_bytes[4].into());
-            t.free_in_a[5] = F::from_canonical_u64(a_bytes[5].into());
-            t.free_in_a[6] = F::from_canonical_u64(a_bytes[6].into());
-            t.free_in_a[7] = F::from_canonical_u64(a_bytes[7].into());
+            let a_bytes: [u8; 8] = i.a.to_le_bytes();
+            for (i, value) in a_bytes.iter().enumerate() {
+                t.free_in_a[i] = F::from_canonical_u8(*value);
+            }
 
             // Split b in bytes and store them in free_in_b
-            let b_bytes: [u8; 8] = b.to_le_bytes();
-            t.free_in_b[0] = F::from_canonical_u64(b_bytes[0].into());
-            t.free_in_b[1] = F::from_canonical_u64(b_bytes[1].into());
-            t.free_in_b[2] = F::from_canonical_u64(b_bytes[2].into());
-            t.free_in_b[3] = F::from_canonical_u64(b_bytes[3].into());
-            t.free_in_b[4] = F::from_canonical_u64(b_bytes[4].into());
-            t.free_in_b[5] = F::from_canonical_u64(b_bytes[5].into());
-            t.free_in_b[6] = F::from_canonical_u64(b_bytes[6].into());
-            t.free_in_b[7] = F::from_canonical_u64(b_bytes[7].into());
+            let b_bytes: [u8; 8] = i.b.to_le_bytes();
+            for (i, value) in b_bytes.iter().enumerate() {
+                t.free_in_b[i] = F::from_canonical_u8(*value);
+            }
 
             // Split c in bytes and store them in free_in_c
             let c_bytes: [u8; 8] = c.to_le_bytes();
-            t.free_in_c[0] = F::from_canonical_u64(c_bytes[0].into());
-            t.free_in_c[1] = F::from_canonical_u64(c_bytes[1].into());
-            t.free_in_c[2] = F::from_canonical_u64(c_bytes[2].into());
-            t.free_in_c[3] = F::from_canonical_u64(c_bytes[3].into());
-            t.free_in_c[4] = F::from_canonical_u64(c_bytes[4].into());
-            t.free_in_c[5] = F::from_canonical_u64(c_bytes[5].into());
-            t.free_in_c[6] = F::from_canonical_u64(c_bytes[6].into());
-            t.free_in_c[7] = F::from_canonical_u64(c_bytes[7].into());
+            for (i, value) in c_bytes.iter().enumerate() {
+                t.free_in_c[i] = F::from_canonical_u8(*value);
+            }
 
-            t.carry[0] = F::from_canonical_u64(0); // 9
-            t.use_last_carry = F::from_canonical_u64(0);
-            t.multiplicity = F::from_canonical_u64(0);
+            // Set use last carry and carry[], based on operation
+            let mut cout: u64;
+            let mut cin: u64 = 0;
+            let plast: [u64; 8] =
+                if mode32 { [0, 0, 0, 1, 0, 0, 0, 0] } else { [0, 0, 0, 0, 0, 0, 0, 1] };
+            match op {
+                0x02 /* ADD, ADD_W */ => {
+                    // Set use last carry to zero
+                    t.use_last_carry = F::from_canonical_u64(0);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        let r = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
+                        debug_assert!((r & 0xff) == c_bytes[i] as u64);
+                        cout = r >> 8;
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x03 /* SUB, SUB_W */ => {
+                    // Set use last carry to zero
+                    t.use_last_carry = F::from_canonical_u64(0);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        cout = if (a_bytes[i] as u64 - cin) >= b_bytes[i] as u64 { 0 } else { 1 };
+                        debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x04 | 0x05 /*LTU,LTU_W,LT,LT_W*/ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::from_canonical_u64(1);
+
+                    // Apply the logic to every byte
+                    //cout = 0;
+                    for i in 0..8 {
+                        //let mut c: u64;
+                        match a_bytes[i].cmp(&b_bytes[i]) {
+                            CmpOrdering::Greater => {
+                                cout = 0;
+                                //c = 0;
+                            },
+                            CmpOrdering::Less => {
+                                cout = 1;
+                                //c = plast[i];
+                            },
+                            CmpOrdering::Equal => {
+                                cout = cin;
+                                //c = plast[i] * cin;
+                            },
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (op == 0x05) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            //c = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        //debug_assert!(c == c_bytes[i] as u64);
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x06 | 0x07 /* LEU, LEU_W, LE, LE_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::from_canonical_u64(1);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        //let mut c: u64 = 0;
+                        cout = 0;
+                        if a_bytes[i] <= b_bytes[i] {
+                            cout = 1;
+                            //c = plast[i];
+                        }
+
+                        if (op == 0x07) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            //c = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                            cout = c;
+                        }
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x08 /* EQ, EQ_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::from_canonical_u64(1);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
+                            cout = 0;
+                            debug_assert!(plast[i] == c_bytes[i] as u64);
+                        } else {
+                            cout = 1;
+                            debug_assert!(0 == c_bytes[i] as u64);
+                        }
+                        if plast[i] == 1 {
+                            cout = 1 - cout;
+                        }
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x09 | 0x0a /* MINU, MINU_W, MIN, MIN_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::from_canonical_u64(1);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        //let mut c: u64 = 0;
+                        cout = 0;
+                        if a_bytes[i] <= b_bytes[i] {
+                            cout = 1;
+                            //c = if plast[i] == 1 { a_bytes[i] as u64 } else { b_bytes[i] as u64 };
+                        }
+                        else {
+                            //c = b_bytes[i] as u64;
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            //c = if a_bytes[i] & 0x80 != 0 { a_bytes[i] as u64 } else { b_bytes[i] as u64 };
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        //debug_assert!(c == c_bytes[i] as u64);
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x0b | 0x0c /* MAXU, MAXU_W, MAX, MAX_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::from_canonical_u64(1);
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        //let mut c: u64 = 0;
+                        cout = 0;
+                        if a_bytes[i] >= b_bytes[i] {
+                            cout = 1;
+                            //c = if plast[i] == 1 { a_bytes[i] as u64 } else { b_bytes[i] as u64 };
+                        }
+                        else {
+                            //c = b_bytes[i] as u64;
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            //c = if a_bytes[i] & 0x80 != 0 { b_bytes[i] as u64 } else { a_bytes[i] as u64 };
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        //debug_assert!(c == c_bytes[i] as u64);
+                        t.carry[i] = F::from_canonical_u64(cin);
+                        cin = cout;
+                    }
+                    t.carry[8] = F::from_canonical_u64(cin);
+                }
+                0x20 /*AND*/ => {
+                    t.use_last_carry = F::from_canonical_u64(0);
+
+                    // No carry
+                    for i in 0..9 {
+                        t.carry[i] = F::from_canonical_u64(0);
+                    }
+                }
+                0x21 /*OR*/ => {
+                    t.use_last_carry = F::from_canonical_u64(0);
+
+                    // No carry
+                    for i in 0..9 {
+                        t.carry[i] = F::from_canonical_u64(0);
+                    }
+                }
+                0x22 /*XOR*/ => {
+                    t.use_last_carry = F::from_canonical_u64(0);
+
+                    // No carry
+                    for i in 0..9 {
+                        t.carry[i] = F::from_canonical_u64(0);
+                    }
+                }
+                _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", i.opcode),
+            }
+
+            // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
+            t.multiplicity = F::one();
 
             // Store the trace in the vector
             trace.push(t);
@@ -281,6 +333,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
 
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
+                    //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
                     //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
                 });
             }

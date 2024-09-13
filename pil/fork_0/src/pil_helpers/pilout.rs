@@ -4,17 +4,17 @@ use proofman_common::WitnessPilout;
 
 pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
-//SUBPROOFS CONSTANTS
+//AIRGROUP CONSTANTS
 
-pub const MAIN_SUBPROOF_ID: &[usize] = &[0];
+pub const MAIN_AIRGROUP_ID: usize = 0;
 
-pub const BINARY_SUBPROOF_ID: &[usize] = &[1];
+pub const BINARY_AIRGROUP_ID: usize = 1;
 
-pub const BINARY_TABLE_SUBPROOF_ID: &[usize] = &[2];
+pub const BINARY_TABLE_AIRGROUP_ID: usize = 2;
 
-pub const BINARY_EXTENSION_SUBPROOF_ID: &[usize] = &[3];
+pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 3;
 
-pub const BINARY_EXTENSION_TABLE_SUBPROOF_ID: &[usize] = &[4];
+pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 4;
 
 //AIR CONSTANTS
 
@@ -35,23 +35,18 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("Zisk", 1, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
-
         air_group.add_air(Some("Main"), 2097152);
 
         let air_group = pilout.add_air_group(Some("Binary"));
-
         air_group.add_air(Some("Binary"), 2097152);
 
         let air_group = pilout.add_air_group(Some("BinaryTable"));
-
         air_group.add_air(Some("BinaryTable"), 4194304);
 
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
-
         air_group.add_air(Some("BinaryExtension"), 2097152);
 
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
-
         air_group.add_air(Some("BinaryExtensionTable"), 524288);
 
         pilout
