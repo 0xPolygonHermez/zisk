@@ -75,6 +75,7 @@ macro_rules! define_ops {
             }
 
 			/// Executes the operation on the given [`InstContext`]
+			#[inline(always)]
             pub fn call(&self, ctx: &mut InstContext) {
                 match self {
                     $(
@@ -84,7 +85,8 @@ macro_rules! define_ops {
             }
 
 			/// Executes the operation on the given inputs `a` and `b`
-            pub const fn call_ab(&self, a: u64, b: u64) -> (u64, bool) {
+			#[inline(always)]
+            pub fn call_ab(&self, a: u64, b: u64) -> (u64, bool) {
                 match self {
                     $(
                         Self::$name => $call_ab_fn(a, b),
@@ -118,6 +120,55 @@ macro_rules! define_ops {
 }
 
 define_ops! {
-    (Flag, "flag", Internal, 0, 0, opc_flag, op_flag),
-    (CopyB, "copyb", Internal, 0, 1, opc_copyb, op_copyb),
+    (Flag, "flag", Internal, 0, 0x00, opc_flag, op_flag),
+    (CopyB, "copyb", Internal, 0, 0x01, opc_copyb, op_copyb),
+    (SignExtendB, "signextend_b", BinaryE, 109, 0x24, opc_signextend_b, op_signextend_b),
+    (SignExtendH, "signextend_h", BinaryE, 109, 0x25, opc_signextend_h, op_signextend_h),
+    (SignExtendW, "signextend_w", BinaryE, 109, 0x26, opc_signextend_w, op_signextend_w),
+    (Add, "add", Binary, 77, 0x02, opc_add, op_add),
+    (AddW, "add_w", Binary, 77, 0x12, opc_add_w, op_add_w),
+    (Sub, "sub", Binary, 77, 0x03, opc_sub, op_sub),
+    (SubW, "sub_w", Binary, 77, 0x13, opc_sub_w, op_sub_w),
+    (Sll, "sll", BinaryE, 109, 0x0d, opc_sll, op_sll),
+    (SllW, "sll_w", BinaryE, 109, 0x1d, opc_sll_w, op_sll_w),
+    (Sra, "sra", BinaryE, 109, 0x0f, opc_sra, op_sra),
+    (Srl, "srl", BinaryE, 109, 0x0e, opc_srl, op_srl),
+    (SraW, "sra_w", BinaryE, 109, 0x1f, opc_sra_w, op_sra_w),
+    (SrlW, "srl_w", BinaryE, 109, 0x1e, opc_srl_w, op_srl_w),
+    (Eq, "eq", Binary, 77, 0x08, opc_eq, op_eq),
+    (EqW, "eq_w", Binary, 77, 0x18, opc_eq_w, op_eq_w),
+    (Ltu, "ltu", Binary, 77, 0x04, opc_ltu, op_ltu),
+    (Lt, "lt", Binary, 77, 0x05, opc_lt, op_lt),
+    (LtuW, "ltu_w", Binary, 77, 0x14, opc_ltu_w, op_ltu_w),
+    (LtW, "lt_w", Binary, 77, 0x15, opc_lt_w, op_lt_w),
+    (Leu, "leu", Binary, 77, 0x06, opc_leu, op_leu),
+    (Le, "le", Binary, 77, 0x07, opc_le, op_le),
+    (LeuW, "leu_w", Binary, 77, 0x16, opc_leu_w, op_leu_w),
+    (LeW, "le_w", Binary, 77, 0x17, opc_le_w, op_le_w),
+    (And, "and", Binary, 77, 0x20, opc_and, op_and),
+    (Or, "or", Binary, 77, 0x21, opc_or, op_or),
+    (Xor, "xor", Binary, 77, 0x22, opc_xor, op_xor),
+    (Mulu, "mulu", ArithAm32, 97, 0xb0, opc_mulu, op_mulu),
+    (Mul, "mul", ArithAm32, 97, 0xb1, opc_mul, op_mul),
+    (MulW, "mul_w", ArithAm32, 44, 0xb5, opc_mul_w, op_mul_w),
+    (Muluh, "muluh", ArithAm32, 97, 0xb8, opc_muluh, op_muluh),
+    (Mulh, "mulh", ArithAm32, 97, 0xb9, opc_mulh, op_mulh),
+    (Mulsuh, "mulsuh", ArithAm32, 97, 0xbb, opc_mulsuh, op_mulsuh),
+    (Divu, "divu", ArithAm32, 174, 0xc0, opc_divu, op_divu),
+    (Div, "div", ArithAm32, 174, 0xc1, opc_div, op_div),
+    (DivuW, "divu_w", ArithA32, 136, 0xc4, opc_divu_w, op_divu_w),
+    (DivW, "div_w", ArithA32, 136, 0xc5, opc_div_w, op_div_w),
+    (Remu, "remu", ArithAm32, 174, 0xc8, opc_remu, op_remu),
+    (Rem, "rem", ArithAm32, 174, 0xc9, opc_rem, op_rem),
+    (RemuW, "remu_w", ArithA32, 136, 0xcc, opc_remu_w, op_remu_w),
+    (RemW, "rem_w", ArithA32, 136, 0xcd, opc_rem_w, op_rem_w),
+    (Minu, "minu", Binary, 77, 0x09, opc_minu, op_minu),
+    (Min, "min", Binary, 77, 0x0a, opc_min, op_min),
+    (MinuW, "minu_w", Binary, 77, 0x19, opc_minu_w, op_minu_w),
+    (MinW, "min_w", Binary, 77, 0x1a, opc_min_w, op_min_w),
+    (Maxu, "maxu", Binary, 77, 0x0b, opc_maxu, op_maxu),
+    (Max, "max", Binary, 77, 0x0c, opc_max, op_max),
+    (MaxuW, "maxu_w", Binary, 77, 0x1b, opc_maxu_w, op_maxu_w),
+    (MaxW, "max_w", Binary, 77, 0x1c, opc_max_w, op_max_w),
+    (Keccak, "keccak", Keccak, 77, 0xf1, opc_keccak, op_keccak),
 }

@@ -602,6 +602,10 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     ctx.c = 0;
     ctx.flag = false;
 }
+#[inline(always)]
+pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_keccak() is not implemented");
+}
 
 /// Executes opcodes, only if it does not require instruction context (e.g. it does not have to
 /// access memory)
