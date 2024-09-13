@@ -1,76 +1,91 @@
-require "std_lookup.pil"
 require "constants.pil";
 
 // PIL Binary Operations Table used by Binary
-//                                                                                    Running Total
-// ADD/ADD_W    (OP:0x02)              2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |                      2^18
-// SUB/SUB_W    (OP:0x03)              2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)  **  = 2^18 |               2^19
-// LTU/LTU_W    (OP:0x04)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19 + 2^18
-// LT/LT_W      (OP:0x05)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20
-// LEU/LEU_W    (OP:0x06)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20        + 2^18
-// LE/LE_W      (OP:0x07)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19
-// EQ/EQ_W      (OP:0x08)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19 + 2^18
-// MINU/MINU_W  (OP:0x09)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21
-// MIN/MIN_W    (OP:0x0a)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21               + 2^18
-// MAXU/MAXU_W  (OP:0x0b)   *          2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19
-// MAX/MAX_W    (OP:0x0c)  *           2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 | 2^21          2^19 + 2^18
-// AND/AND_W    (OP:0x20)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21          2^19 + 2^18 + 2^17
-// OR/OR_W      (OP:0x21)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20
-// XOR/XOR_W    (OP:0x22)              2^16 (AxB)             * 2^1 (LAST)      = 2^17 | 2^21 + 2^20               + 2^17
-// EXT_32       (OP:0x23)              2^16 (AxB)             * 2^1 (LAST)  **  = 2^17 | 2^21 + 2^20        + 2^18        => 2^22
+//                                                                                                     Running Total
+// MINU/MINU_W  (OP:0x09)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21               + 2^18
+// MIN/MIN_W    (OP:0x0a)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21        + 2^19 + 2^18
+// MAXU/MAXU_W  (OP:0x0b)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21 + 2^20        + 2^18
+// MAX/MAX_W    (OP:0x0c)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21 + 2^20 + 2^19 + 2^18
+// LTU/LTU_W    (OP:0x04)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                      2^19 + 2^18
+// LT/LT_W      (OP:0x05)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |               2^20
+// EQ/EQ_W      (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |               2^20 + 2^19 + 2^18
+// ADD/ADD_W    (OP:0x02)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                             2^18
+// SUB/SUB_W    (OP:0x03)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                      2^19
+// LEU/LEU_W    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |               2^20        + 2^18
+// LE/LE_W      (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |               2^20 + 2^19
+// AND/AND_W    (OP:0x20)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |        2^21 + 2^20 + 2^19 + 2^18 + 2^17
+// OR/OR_W      (OP:0x21)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22                             + 2^17
+// XOR/XOR_W    (OP:0x22)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22                      + 2^18
+// EXT_32       (OP:0x23)       2^16 (AxB)                                                  = 2^16 | 2^22                      + 2^18 + 2^17 => 2^23
 // --------------------------------------------------------------------------------------------------------------------------
 // (*) Use carry
-// (**) They don't need last, but it is used for a simpler lookup
+// (**) Do not use last indicator, but it is used for simplicity of the lookup
 // Note: EXT_32 is the only unary operation
 
 const int EXT_32_OP = 0x23;
 const int BINARY_TABLE_ID = 125;
 
-airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
-    
+airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
+
     col witness multiplicity;
 
     if (disable_fixed) {
         col fixed _K = [0...];
         // FORCE ONE TRACE
         multiplicity * _K === 0;
-        
-        println("*** DISABLE_FIXED ***"); 
+
+        println("*** DISABLE_FIXED ***");
         return;
     }
 
-    if (N < 2**22) {
-        error(`N must be at least 2^22, but N=${N} was provided`);
+    if (N < 2**23) {
+        error(`N must be at least 2^23, but N=${N} was provided`);
     }
 
-    col fixed A = [0..255]...;                        // Input A    (8 bits)
+    col fixed A = [0..255]...;                         // Input A (8 bits)
 
-    col fixed B = [0:P2_8..255:P2_8]...;              // Input B    (8 bits)
+    col fixed B = [0:P2_8..255:P2_8]...;               // Input B (8 bits)
 
-    col fixed CIN = [[0:P2_16,1:P2_16]:(11*2),
-                      0:(P2_17*4)]...;
+    col fixed LAST = [[0:P2_16,1:P2_16]:(4*4),         // Indicator of the last byte (1 bit)
+                      [0:P2_16,1:P2_16]:(5*2),
+                      [0:P2_16,1:P2_16]:5,
+                       0:P2_16]...;
 
-    col fixed LAST = [[0:P2_17, 1:P2_17]:11,
-                      [0:P2_16, 1:P2_16]:4]...;       // Last byte  (1 bits)
+    col fixed CIN = [[0:P2_17,1:P2_17]:(4*2),          // Input carry (1 bit)
+                     [0:P2_17,1:P2_17]:5,
+                      0:(P2_17*5),
+                      0:P2_16]...;
 
-    col fixed USE_CARRY = [0:(P2_18*2),              // USE_CARRY(ADD,SUB) = 0
-                          [0:P2_17, 1:P2_17]:9,      // USE_CARRY(LTU,LT,LEU,LE,EQ,MINU,MIN,MAXU,MAX) = LAST (i.e., only when LAST == 1)
-                           0:(P2_17*4)]...;          // USE_CARRY(AND,OR,XOR,EXT_32) = 0
+    col fixed RESULT_IS_A = [[0:P2_18,1:P2_18]:4,      // If one, then the result of the operation
+                              0:(P2_18*5),             // is the value of A; otherwise, it is B (1 bit)
+                              0:(P2_17*5),
+                              0:P2_16]...;
 
-    col fixed OP = [2:P2_18..12:P2_18,
-                    32:P2_17..35:P2_17]...;
+    col fixed USE_CARRY = [0:(P2_19*4),                // USE_CARRY(MINU,MIN,MAXU,MAX) = False
+                          [0:P2_17, 1:P2_17]:3,        // USE_CARRY(LTU,LT,EQ) = True
+                           0:(P2_18*2),                // USE_CARRY(ADD,SUB) = False
+                          [0:P2_16, 1:P2_16]:2,        // USE_CARRY(LEU,LE) = True
+                           0:(P2_17*4)]...;            // USE_CARRY(AND,OR,XOR,EXT_32) = False
 
+    col fixed OP = [0x09:P2_19, 0x0a:P2_19, 0x0b:P2_19, 0x0c:P2_19, // MINU,MIN,MAXU,MAX
+                    0x04:P2_18, 0x05:P2_18, 0x08:P2_18,             // LTU,LT,EQ
+                    0x02:P2_18, 0x03:P2_18,                         // ADD,SUB
+                    0x06:P2_17, 0x07:P2_17,                         // LEU,LE
+                    0x20:P2_17, 0x21:P2_17, 0x22:P2_17,             // AND,OR,XOR
+                    0x23:P2_16]...;                                 // EXT_32
 
-    col fixed C;                                      // Output C   (8 bits)
-    col fixed COUT;                                   // CarryOut   (1 bits)
+    col fixed C;    // Output C (8 bits)
+    col fixed COUT; // Output carry (1 bit)
     for (int i = 0; i < N; i++) {
-        int [plast, op, a, b, cin, c, cout] = [LAST[i], OP[i], A[i], B[i], CIN[i], 0, 0];
+        const int [plast, op, a, b, cin, result_is_a] = [LAST[i], OP[i], A[i], B[i], CIN[i], RESULT_IS_A[i]];
+        int c = 0;
+        int cout = 0;
         switch (op) {
             case 0x02: // ADD,ADD_W
                 c = (cin + a + b) & 0xFF;
                 cout = (cin + a + b) >> 8;
 
-            case 0x3: // SUB,SUB_W
+            case 0x03: // SUB,SUB_W
                 cout = (a - cin) >= b ? 0 : 1;
                 c = 256 * cout + a - cin - b;
 
@@ -94,6 +109,7 @@ airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
                     cout = 1;
                     c = plast;
                 }
+
                 if (op == 0x07 && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? 1 : 0;
                     cout = c;
@@ -105,24 +121,38 @@ airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
                 cout = plast ? !cout : cout;
 
             case 0x09,0x0a: // MINU,MINU_W,MIN,MIN_W
-                if (a <= b) {
+                // cout = 1 indicates that a is lower than b
+                if (a < b) {
                     cout = 1;
-                    c = plast ? a : b;
+                } else if (a == b) {
+                    cout = cin;
+                }
+
+                if (result_is_a) {
+                    c = a;
                 } else {
                     c = b;
                 }
+
                 if (op == 0x0a && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? a : b;
                     cout = (a & 0x80) ? 1 : 0;
                 }
 
             case 0x0b,0x0c: // MAXU,MAXU_W,MAX,MAX_W
-                if (a >= b) {
+                // cout = 1 indicates that a is greater than b
+                if (a < b) {
                     cout = 1;
-                    c = plast ? a : b;
+                } else if (a == b) {
+                    cout = cin;
+                }
+
+                if (result_is_a) {
+                    c = a;
                 } else {
                     c = b;
                 }
+
                 if (op == 0x0c && plast && (a & 0x80) != (b & 0x80)) {
                     c = (a & 0x80) ? b : a;
                     cout = (a & 0x80) ? 0 : 1;
@@ -141,7 +171,7 @@ airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
                 c = (a & 0x80) ? 0xFF : 0x00;
 
             default:
-                error(`Invalid operation ${op}`);
+                error(`Invalid operation opcode: ${op}`);
         }
         C[i] = c;
         COUT[i] = cout;
@@ -151,6 +181,5 @@ airtemplate BinaryTable(int N = 2**22, const int disable_fixed = 0) {
     for (int i = 0; i < N; i++) {
         FLAGS[i] = COUT[i] + 2 * USE_CARRY[i];
     }
-
-    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, RESULT_IS_A, C, FLAGS], multiplicity);
 }
