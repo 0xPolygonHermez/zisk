@@ -2,7 +2,10 @@
 
 #![allow(unused)]
 
-use std::fmt::Debug;
+use std::{
+    fmt::{Debug, Display},
+    str::FromStr,
+};
 
 use crate::{zisk_operations::*, InstContext};
 
@@ -10,6 +13,7 @@ use crate::{zisk_operations::*, InstContext};
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum OpType {
     Internal,
+    Arith,
     ArithA32,
     ArithAm32,
     Binary,
@@ -17,11 +21,63 @@ pub enum OpType {
     Keccak,
 }
 
+impl Display for OpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Internal => write!(f, "i"),
+            Self::Arith => write!(f, "a"),
+            Self::ArithA32 => write!(f, "a32"),
+            Self::ArithAm32 => write!(f, "am32"),
+            Self::Binary => write!(f, "b"),
+            Self::BinaryE => write!(f, "BinaryE"),
+            Self::Keccak => write!(f, "Keccak"),
+        }
+    }
+}
+
+impl FromStr for OpType {
+    type Err = InvalidOpTypeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "i" => Ok(Self::Internal),
+            "a" => Ok(Self::Arith),
+            "a32" => Ok(Self::ArithA32),
+            "am32" => Ok(Self::ArithAm32),
+            "b" => Ok(Self::Binary),
+            "be" => Ok(Self::BinaryE),
+            "k" => Ok(Self::Keccak),
+            _ => Err(InvalidOpTypeError),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct InvalidOpTypeError;
+
+impl Display for InvalidOpTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid operation type")
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct InvalidNameError;
 
+impl Display for InvalidNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid op name")
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct InvalidCodeError;
+
+impl Display for InvalidCodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid op code")
+    }
+}
 
 /// Internal macro used to define all ops in the [`ZiskOp`] enum
 macro_rules! define_ops {
