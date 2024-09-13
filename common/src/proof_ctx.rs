@@ -8,7 +8,7 @@ use crate::{AirInstancesRepository, WitnessPilout};
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
     pub pilout: WitnessPilout,
-    pub challenges: Option<Vec<F>>,
+    pub challenges: Vec<F>,
     pub air_instance_repo: Arc<AirInstancesRepository<F>>, // RwLock<Vec<AirInstance<F>>>,
 }
 
@@ -21,7 +21,7 @@ impl<F> ProofCtx<F> {
             panic!("No air groups found in PilOut");
         }
 
-        Self { public_inputs: Vec::new(), pilout, challenges: None, air_instance_repo }
+        Self { public_inputs: Vec::new(), pilout, challenges: Vec::new(), air_instance_repo }
     }
 }
 

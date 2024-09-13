@@ -39,7 +39,7 @@ extern "C" {
     #[link_name = "\u{1}_Z28fri_proof_set_subproofvaluesPvS_"]
     pub fn fri_proof_set_subproofvalues(
         pFriProof: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -107,20 +107,14 @@ extern "C" {
     pub fn expressions_bin_free(pExpressionsBin: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z11init_paramsPvS_S_S_S_"]
-    pub fn init_params(
-        ptr: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcbbb"]
+    #[link_name = "\u{1}_Z14get_hint_fieldPvS_S_S_S_S_mPcbbb"]
     pub fn get_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
         dest: bool,
@@ -129,32 +123,15 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
+    #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_S_mPc"]
     pub fn set_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
         values: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
     ) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11get_fri_polPvS_"]
-    pub fn get_fri_pol(
-        pSetupCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z18verify_constraintsPvS_"]
-    pub fn verify_constraints(
-        pSetupCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11params_freePv"]
-    pub fn params_free(pParams: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z10starks_newPv"]
@@ -169,7 +146,7 @@ extern "C" {
     pub fn extend_and_merkelize(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
         proof: *mut ::std::os::raw::c_void,
     );
 }
@@ -182,32 +159,52 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15prepare_fri_polPvS_"]
+    #[link_name = "\u{1}_Z15prepare_fri_polPvS_S_"]
     pub fn prepare_fri_pol(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_"]
+    #[link_name = "\u{1}_Z11get_fri_polPvS_"]
+    pub fn get_fri_pol(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_"]
     pub fn calculate_fri_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_"]
+    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_S_S_S_S_"]
     pub fn calculate_quotient_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvS_m"]
+    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvmS_S_S_S_S_"]
     pub fn calculate_impols_expressions(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
         step: u64,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -216,26 +213,28 @@ extern "C" {
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13compute_evalsPvS_S_"]
+    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_"]
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19compute_fri_foldingPvmS_S_S_"]
+    #[link_name = "\u{1}_Z19compute_fri_foldingPvS_mS_S_"]
     pub fn compute_fri_folding(
         pStarks: *mut ::std::os::raw::c_void,
-        step: u64,
-        pParams: *mut ::std::os::raw::c_void,
-        pChallenge: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
+        step: u64,
+        buffer: *mut ::std::os::raw::c_void,
+        pChallenge: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -300,6 +299,17 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_Z18verify_constraintsPvS_S_S_S_S_"]
+    pub fn verify_constraints(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z25verify_global_constraintsPcS_PvS0_m"]
     pub fn verify_global_constraints(
         globalInfoFile: *mut ::std::os::raw::c_char,
@@ -310,10 +320,13 @@ extern "C" {
     ) -> bool;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]
+    #[link_name = "\u{1}_Z13print_by_namePvS_S_S_S_PcPmmmb"]
     pub fn print_by_name(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        pParams: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
         name: *mut ::std::os::raw::c_char,
         lengths: *mut u64,
         first_value: u64,
@@ -329,5 +342,14 @@ extern "C" {
         dim: u64,
         first_value: u64,
         last_value: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19gen_recursive_proofPvS_S_S_"]
+    pub fn gen_recursive_proof(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        pAddress: *mut ::std::os::raw::c_void,
+        pFriProof: *mut ::std::os::raw::c_void,
+        pPublicInputs: *mut ::std::os::raw::c_void,
     );
 }

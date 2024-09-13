@@ -442,13 +442,12 @@ impl<F: Field + 'static> ProofMan<F> {
 
         save_publics_c(
             (pctx.public_inputs.len() / 8) as u64,
-            pctx.public_inputs.as_mut_ptr() as *mut c_void,
+            pctx.public_inputs.as_ptr() as *mut c_void,
             output_dir,
         );
 
-        let mut challenges = pctx.challenges.clone().expect("");
         save_challenges_c(
-            challenges.as_mut_ptr() as *mut c_void,
+            pctx.challenges.as_ptr() as *mut c_void,
             proving_key_path.join("pilout.globalInfo.json").to_str().unwrap(),
             output_dir,
         );
