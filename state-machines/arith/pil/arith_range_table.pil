@@ -1,0 +1,12 @@
+require "std_lookup.pil"
+require "operations.pil"
+
+const int ARITH_RANGE_TABLE_ID = 330;
+
+airtemplate ArithRangeTable(int N = 2**17) {
+    
+    col fixed RANGES = [0:2**16,1:2**15,2:2**15];
+    col fixed VALUES = [0..2**16-1]..;
+
+    lookup_proves(ARITH_TABLE_ID, [RANGES, VALUES], multiplicity);
+}

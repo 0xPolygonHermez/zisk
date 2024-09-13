@@ -5,14 +5,17 @@ require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
+require "arith/pil/arith.pil"
 
 const int OPERATION_BUS_ID = 5000;
+const int DEFAULT_N = 2**21;
+
 airgroup Main {
-    Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(N: DEFAULT_N, RC: 2, operation_bus_id: OPERATION_BUS_ID);
 }
 
 airgroup Binary {
-    Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Binary(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
 }
 
 
@@ -22,9 +25,14 @@ airgroup BinaryTable {
 
 
 airgroup BinaryExtension {
-    BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    BinaryExtension(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
 }
 
 airgroup BinaryExtensionTable {
     BinaryExtensionTable(disable_fixed: 1);
 }
+
+airgroup Arith {
+    Arith(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
+}
+

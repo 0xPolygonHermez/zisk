@@ -1,0 +1,90 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "arith_table.pil"
+
+airtemplate ArithMul32(int N = 2**10, const int operation_bus_id) {
+
+    const int CHUNK_SIZE = 2**16;
+    const int CHUNKS_INPUT = 2;
+    const int CHUNKS_OP = CHUNKS_INPUT * 2;
+
+    col witness carry[CHUNKS_OP - 1];
+    col witness a[CHUNKS_INPUT];
+    col witness b[CHUNKS_INPUT];
+    col witness c[CHUNKS_INPUT];
+    col witness d[CHUNKS_INPUT];
+
+    col witness na;     // a is negative
+    col witness nb;     // b is negative
+    col witness np;     // prod is negative
+    col witness nd32;   // d is 32-bit negative, 31th bit is 1.
+
+    col witness fab;    // fab, to decrease degree of intermediate products a * b 
+                        // fab = 1  if sign of a,b are the same
+                        // fab = -1 if sign of a,b are different
+    // factor ab € {-1, 1}
+    fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
+
+    const expr eq[CHUNKS_OP]; 
+
+    eq[0] = fab * a[0] * b[0] 
+            - c[0]
+            + 2 * np * c[0];
+
+    eq[1] = fab * a[1] * b[0] 
+            + fab * a[0] * b[1]
+            - c[1] 
+            + 2 * np * c[1];
+
+    eq[2] = fab * a[1] * b[1];
+        
+    // TODO: review !!!!!                    
+    eq[3] = 2**16 * na * nb;
+
+    eq[0] - carry[0] * CHUNK_SIZE === 0;
+    for (int index = 1; index < (CHUNKS_OP - 1); ++index) {
+        eq[index] + carry[index-1] - carry[index] * CHUNK_SIZE === 0;
+    }   
+    eq[CHUNKS_OP-1] + carry[CHUNKS_OP-2] === 0;
+
+    // binary contraint
+    na * (1 - na) === 0;
+    nb * (1 - nb) === 0;
+    np * (1 - np) === 0;
+    nd32 * (1 - nd32) === 0;
+
+    np === na + nb - 2 * na * nb;
+
+    const expr bus_a_low = a[0] + 2**16 * a[1];
+    const expr bus_a_high = 0;
+
+    const expr bus_b_low = b[0] + CHUNK_SIZE * b[1];
+    const expr bus_b_high = 0;
+
+    const expr res1_low = c[0] + CHUNK_SIZE * + CHUNK_SIZE * c[1];
+    const expr res1_high = nd32 * 0xFFFFFFFF;
+
+    col witness multiplicity;
+
+    lookup_proves(operation_bus_id, [OP_MUL_W,
+                                     bus_a_low, bus_a_high, 
+                                     bus_b_low, bus_b_high, 
+                                     res1_low, res1_high,
+                                     0], mul: multiplicity);
+
+
+    for (int index = 0; index < length(carry); ++index) {
+         range_check(colu: carry[index], min:-2**20, max: 2**20-1);     // TODO: review range
+    }
+
+    range_check(colu: a[0], min:0, max: CHUNK_SIZE-1);
+    range_check(colu: b[0], min:0, max: CHUNK_SIZE-1);
+    range_check(colu: c[0], min:0, max: CHUNK_SIZE-1);
+    range_check(colu: d[0], min:0, max: CHUNK_SIZE-1);
+    range_check(colu: c[1], min:0, max: CHUNK_SIZE-1);
+
+    lookup_assumes(QUICK_RANGE_TABLE_ID, [1 + na, a[1]]);
+    lookup_assumes(QUICK_RANGE_TABLE_ID, [1 + nb, b[1]]);
+    lookup_assumes(QUICK_RANGE_TABLE_ID, [1 + np, d[1]]);
+}

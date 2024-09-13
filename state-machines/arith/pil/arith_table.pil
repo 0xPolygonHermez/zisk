@@ -1,0 +1,100 @@
+require "std_lookup.pil"
+require "operations.pil"
+
+const int ARITH_TABLE_ID = 330;
+
+airtemplate ArithTable(int N = 2**8) {
+
+    // NOTE:
+    // Divisions and remainders by 0 are done by QuickOps
+
+    int na;     // a is negative
+    int nb;     // b is negative
+    int nr;     // rem is negative
+    int np;     // prod is negative
+    int na32;   // a is 32-bit negative, 31th bit is 1.
+    int nd32;   // d is 32-bit negative, 31th bit is 1.
+
+    int m32;    // 32 bits operation
+    int div;    // division operation (div,rem)
+    int sa;
+    int sb;
+
+    // negative a,c,d,na32,nd32 must be 0 if no signed_a
+    // na * (1 - sa) === 0;
+    // nr * (1 - sa) === 0;
+    // nr * (1 - div) === 0;
+    // np * (1 - sa) === 0;
+    // na32 * (1 - sa) === 0;
+    // nd32 * (1 - sa) === 0;
+
+    // negative b must be 0 if no signed_b
+    // nb * (1 - sb) === 0;
+
+    // na32, nd32 only available when 32 bits operation
+    // na32 * (1 - m32) === 0;
+    // nd32 * (1 - m32) === 0;
+
+    // nr, nd32 only could be one 1 in divisions
+    // nr * (1 - div) === 0;
+    // nd32 * (1 - div) === 0;
+
+    // if sb === 1 then sa must be 1, not allowed sa = 0, sb = 1
+    // sb * (1 - sa) === 0;
+    // m32 * (sa - sb) === 0;
+    // div * (sa - sb) === 0;
+    // (1 - div) * m32 * (1 - sa) === 0;
+    // (1 - div) * m32 * (1 - sb) === 0;
+
+    int op;    
+    op = 0xb0 + 2 * (sa  + sb + m32) + 2 * div * (m32 - sa + 4);
+
+    // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32 
+    // ----------------------------------------------------------------------------------
+    //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0   
+    //  0   0   1   0       *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   =0   d3   =0   =0  a3,      d3
+    //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3  
+    //  0   1   1   1    x  mul_w    *n/a*      (0xb6,0xb7)   a1   b1   =0   d3   c1   =0           d3, a1,b1,c1
+    //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0   
+    //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3  
+    //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
+    //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
+
+    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb 
+    // see 5 previous constraints.
+    // =0 means forced to zero by previous constraints
+    // comm = commutative (trivial: commutative operations)
+   
+    // positive_a1 = m32 * sa * (1 - na);
+    // negative_a1 = m32 * sa * na;
+
+    // positive_a3 = (1-m32) * sa * (1 - na);
+    // negative_a3 = (1-m32) * sa * na;
+
+    // positive_b1 = m32 * sa * (1 - nb);
+    // negative_b1 = m32 * sa * nb;
+
+    // positive_b3 = (1-m32) * sb * (1 - nb);
+    // negative_b3 = (1-m32) * sb * nb;
+
+    // positive_c1 = div * m32 * sa * (1 - np) + div * m32 * (1 - na32) + (1 - div) * m32 * (1 - na32);
+    // negative_c1 = div * m32 * sa * np + div * m32 * na32 + (1 - div) * m32 * na32;
+
+    // positive_c3 = div * (1-m32) * sa * (1 - np);
+    // negative_c3 = div * (1-m32) * sa * np;
+
+    // positive_d1 = div * m32 * (1 - nd32) + div * m32 * sa * (1 - nr);
+    // negative_d1 = div * m32 * nd32 + div * m32 * sa * nr;
+
+    // positive_d3 = (1-div) * sa * (1 - np) + div * (1-m32) * sa * (1 - nr);
+    // negative_d3 = (1-div) * sa * np + div * (1-m32) * sa * nr;
+            
+    // TODO: correct values
+
+
+    col fixed OP = [0..10]...;
+    col fixed FLAGS_AND_RANGES = [1,0...];
+    col witness multiplicity;
+
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES]);
+}
