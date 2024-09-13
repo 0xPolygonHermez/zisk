@@ -13,6 +13,8 @@ mod zisk_required_operation;
 mod zisk_rom;
 mod zv2zisk;
 
+pub mod zisk_ops;
+
 pub use elf2rom::*;
 pub use inst_context::*;
 pub use mem::*;
