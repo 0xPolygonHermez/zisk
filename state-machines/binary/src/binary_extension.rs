@@ -7,9 +7,11 @@ use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::BinaryExtension0Row;
+
+use crate::ExtensionTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -17,8 +19,14 @@ pub struct BinaryExtensionSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
+    // Thread controller to manage the execution of the state machines
+    threads_controller: Arc<ThreadController>,
+
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
+    // Secondary State machines
+    extension_table_sm: Arc<ExtensionTableSM>,
 }
 
 #[derive(Debug)]
@@ -27,12 +35,23 @@ pub enum BinaryExtensionSMErr {
 }
 
 impl BinaryExtensionSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let binary_extension_sm =
-            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
+    pub fn new<F>(
+        wcm: &mut WitnessManager<F>,
+        extension_table_sm: Arc<ExtensionTableSM>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
+        let binary_extension_sm = Self {
+            registered_predecessors: AtomicU32::new(0),
+            threads_controller: Arc::new(ThreadController::new()),
+            inputs: Mutex::new(Vec::new()),
+            extension_table_sm,
+        };
         let binary_extension_sm = Arc::new(binary_extension_sm);
 
         wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
+
+        binary_extension_sm.extension_table_sm.register_predecessor();
 
         binary_extension_sm
     }
@@ -49,6 +68,10 @@ impl BinaryExtensionSM {
                 true,
                 scope,
             );
+
+            self.threads_controller.wait_for_threads();
+
+            self.extension_table_sm.unregister_predecessor(scope);
         }
     }
 
@@ -60,11 +83,11 @@ impl BinaryExtensionSM {
         input: &Vec<ZiskRequiredOperation>,
     ) -> Result<Vec<BinaryExtension0Row<F>>, BinaryExtensionSMErr> {
         // Create the trace vector
-        let mut trace: Vec<BinaryExtension0Row<F>> = Vec::new();
+        let mut trace = Vec::new();
 
         for i in input {
             // Create an empty trace
-            let mut t: BinaryExtension0Row<F> = BinaryExtension0Row::<F> {
+            let mut t = BinaryExtension0Row::<F> {
                 m_op: F::from_canonical_u8(i.opcode),
                 ..Default::default()
             };
@@ -189,8 +212,13 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
+                self.threads_controller.add_working_thread();
+                let thread_controller = self.threads_controller.clone();
+
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
+
+                    thread_controller.remove_working_thread();
                 });
             }
         }

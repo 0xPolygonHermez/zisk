@@ -7,18 +7,27 @@ use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
+
+use crate::BasicTableSM;
+
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct BinaryBasicSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
+    // Thread controller to manage the execution of the state machines
+    threads_controller: Arc<ThreadController>,
+
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
+    // Secondary State machines
+    basic_table_sm: Arc<BasicTableSM>,
 }
 
 #[derive(Debug)]
@@ -27,12 +36,23 @@ pub enum BinaryBasicSMErr {
 }
 
 impl BinaryBasicSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let binary_basic =
-            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
+    pub fn new<F>(
+        wcm: &mut WitnessManager<F>,
+        basic_table_sm: Arc<BasicTableSM>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
+        let binary_basic = Self {
+            registered_predecessors: AtomicU32::new(0),
+            threads_controller: Arc::new(ThreadController::new()),
+            inputs: Mutex::new(Vec::new()),
+            basic_table_sm,
+        };
         let binary_basic = Arc::new(binary_basic);
 
         wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
+
+        binary_basic.basic_table_sm.register_predecessor();
 
         binary_basic
     }
@@ -49,6 +69,10 @@ impl BinaryBasicSM {
                 true,
                 scope,
             );
+
+            self.threads_controller.wait_for_threads();
+
+            self.basic_table_sm.unregister_predecessor(scope);
         }
     }
 
@@ -63,11 +87,11 @@ impl BinaryBasicSM {
         input: &Vec<ZiskRequiredOperation>,
     ) -> Result<Vec<Binary0Row<F>>, BinaryBasicSMErr> {
         // Create the trace vector
-        let mut trace: Vec<Binary0Row<F>> = Vec::new();
+        let mut trace = Vec::new();
 
         for i in input {
             // Create an empty trace
-            let mut t: Binary0Row<F> = Default::default();
+            let mut t = Binary0Row::<F>::default();
 
             // Execute the opcode
             let c: u64;
@@ -331,10 +355,14 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
+                self.threads_controller.add_working_thread();
+                let thread_controller = self.threads_controller.clone();
+
                 scope.spawn(move |_| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                     //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
-                    //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
+
+                    thread_controller.remove_working_thread();
                 });
             }
         }

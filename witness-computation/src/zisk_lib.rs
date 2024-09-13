@@ -1,8 +1,12 @@
 use log::debug;
-use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
+use sm_binary::{BasicTableSM, BinaryBasicSM, BinaryExtensionSM, BinarySM, ExtensionTableSM};
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
-use zisk_pil::{Pilout, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
+use zisk_pil::{
+    Pilout, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_SUBPROOF_ID,
+    BINARY_SUBPROOF_ID, BINARY_TABLE_AIR_IDS, BINARY_TABLE_SUBPROOF_ID, MAIN_AIR_IDS,
+    MAIN_SUBPROOF_ID,
+};
 
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
@@ -23,7 +27,9 @@ pub struct ZiskWitness<F> {
     pub arith_3264_sm: Arc<Arith3264SM>,
     pub binary_sm: Arc<BinarySM>,
     pub binary_basic_sm: Arc<BinaryBasicSM>,
+    pub basic_table_sm: Arc<BasicTableSM>,
     pub binary_extension_sm: Arc<BinaryExtensionSM>,
+    pub extension_table_sm: Arc<ExtensionTableSM>,
     pub main_sm: Arc<MainSM<F>>,
     pub mem_sm: Arc<MemSM>,
     pub mem_aligned_sm: Arc<MemAlignedSM>,
@@ -55,8 +61,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const ARITH32_AIR_IDS: &[usize] = &[4, 5];
         pub const ARITH64_AIR_IDS: &[usize] = &[6];
         pub const ARITH3264_AIR_IDS: &[usize] = &[7];
-        pub const BINARY_BASIC_AIR_IDS: &[usize] = &[8];
-        pub const BINARY_EXTENDED_AIR_IDS: &[usize] = &[9];
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
 
         let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MAIN_SUBPROOF_ID[0], MEM_ALIGN_AIR_IDS);
@@ -64,10 +68,25 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MemUnalignedSM::new(&mut wcm, MAIN_SUBPROOF_ID[0], MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let binary_basic_sm =
-            BinaryBasicSM::new(&mut wcm, MAIN_SUBPROOF_ID[0], BINARY_BASIC_AIR_IDS);
-        let binary_extension_sm =
-            BinaryExtensionSM::new(&mut wcm, MAIN_SUBPROOF_ID[0], BINARY_EXTENDED_AIR_IDS);
+        let basic_table_sm =
+            BasicTableSM::new(&mut wcm, BINARY_TABLE_SUBPROOF_ID[0], BINARY_TABLE_AIR_IDS);
+        let binary_basic_sm = BinaryBasicSM::new(
+            &mut wcm,
+            basic_table_sm.clone(),
+            BINARY_SUBPROOF_ID[0],
+            BINARY_AIR_IDS,
+        );
+        let extension_table_sm = ExtensionTableSM::new(
+            &mut wcm,
+            BINARY_EXTENSION_SUBPROOF_ID[0],
+            BINARY_EXTENSION_AIR_IDS,
+        );
+        let binary_extension_sm = BinaryExtensionSM::new(
+            &mut wcm,
+            extension_table_sm.clone(),
+            BINARY_EXTENSION_SUBPROOF_ID[0],
+            BINARY_EXTENSION_AIR_IDS,
+        );
         let binary_sm =
             BinarySM::new(&mut wcm, binary_basic_sm.clone(), binary_extension_sm.clone());
 
@@ -98,7 +117,9 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             arith_3264_sm,
             binary_sm,
             binary_basic_sm,
+            basic_table_sm,
             binary_extension_sm,
+            extension_table_sm,
             main_sm,
             mem_sm,
             mem_aligned_sm,
