@@ -115,6 +115,20 @@ macro_rules! define_ops {
                     _ => Err(InvalidCodeError)
                 }
             }
+
+			/// Executes opcodes, only if it does not require instruction context (e.g. it does
+			/// not have to access memory).
+			///
+			/// Panics if the opcode is invalid or does not support this operation.
+			#[inline(always)]
+			pub fn execute(code: u8, a: u64, b: u64) -> (u64, bool) {
+				match code {
+					$(
+						$code => Self::$name.call_ab(a, b),
+					)*
+					_ => panic!("Invalid opcode: {}", code),
+				}
+			}
         }
     };
 }
