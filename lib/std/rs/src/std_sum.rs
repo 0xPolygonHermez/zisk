@@ -1,16 +1,22 @@
 use std::{
+    cell::RefCell,
     fmt::Debug,
     sync::{Arc, Mutex},
 };
 
 use p3_field::Field;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx, SetupRepository};
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
 
 use crate::Decider;
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
 pub struct StdSum<F> {
+    // Proof-related data
+    setup_repository: RefCell<Arc<SetupRepository>>,
+    public_inputs: Arc<Vec<u8>>,
+    challenges: Arc<RefCell<Vec<F>>>,
+
     _phantom: std::marker::PhantomData<F>,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints)
 }
@@ -44,6 +50,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
 
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
+            setup_repository: RefCell::new(Arc::new(SetupRepository { setups: Vec::new() })),
+            public_inputs: Arc::new(Vec::new()),
+            challenges: Arc::new(RefCell::new(Vec::new())),
             _phantom: std::marker::PhantomData,
             sum_airs: Mutex::new(Vec::new()),
         })
@@ -86,7 +95,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         // Populate the im columns
                         for hint in im_hints {
                             let mut im = get_hint_field::<F>(
-                                sctx,
+                                self.setup_repository.borrow().as_ref(),
+                                self.public_inputs.clone(),
+                                self.challenges.clone(),
                                 air_instance,
                                 *hint as usize,
                                 "reference",
@@ -95,7 +106,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 false,
                             );
                             let num = get_hint_field::<F>(
-                                sctx,
+                                self.setup_repository.borrow().as_ref(),
+                                self.public_inputs.clone(),
+                                self.challenges.clone(),
                                 air_instance,
                                 *hint as usize,
                                 "numerator",
@@ -104,7 +117,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 false,
                             );
                             let den = get_hint_field::<F>(
-                                sctx,
+                                self.setup_repository.borrow().as_ref(),
+                                self.public_inputs.clone(),
+                                self.challenges.clone(),
                                 air_instance,
                                 *hint as usize,
                                 "denominator",
@@ -117,7 +132,13 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 // TODO: We should perform the following division in batch using div_lib
                                 im.set(i, num.get(i) / den.get(i));
                             }
-                            set_hint_field(sctx, air_instance, *hint, "reference", &im);
+                            set_hint_field(
+                                self.setup_repository.borrow().as_ref(),
+                                air_instance,
+                                *hint,
+                                "reference",
+                                &im,
+                            );
                         }
 
                         // We know that at most one product hint exists
@@ -132,7 +153,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
 
                         // Use the hint to populate the gsum column
                         let mut gsum = get_hint_field::<F>(
-                            sctx,
+                            self.setup_repository.borrow().as_ref(),
+                            self.public_inputs.clone(),
+                            self.challenges.clone(),
                             air_instance,
                             gsum_hint,
                             "reference",
@@ -141,7 +164,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             false,
                         );
                         let expr = get_hint_field::<F>(
-                            sctx,
+                            self.setup_repository.borrow().as_ref(),
+                            self.public_inputs.clone(),
+                            self.challenges.clone(),
                             air_instance,
                             gsum_hint,
                             "expression",
@@ -157,7 +182,13 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         }
 
                         // set the computed gsum column and its associated airgroup_val
-                        set_hint_field(sctx, air_instance, gsum_hint as u64, "reference", &gsum);
+                        set_hint_field(
+                            self.setup_repository.borrow().as_ref(),
+                            air_instance,
+                            gsum_hint as u64,
+                            "reference",
+                            &gsum,
+                        );
                         set_hint_field_val(
                             sctx,
                             air_instance,
