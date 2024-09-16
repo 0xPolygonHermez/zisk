@@ -67,10 +67,9 @@ impl<F: Field> StarkProver<F> {
         let base_filename_path =
             air_setup_folder.join(global_info.get_air_name(airgroup_id, air_id)).display().to_string();
 
-        let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
+        let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
 
         let p_setup = setup.p_setup;
-        let p_stark_info = setup.p_stark_info;
 
         let p_stark = starks_new_c(p_setup);
 
@@ -85,19 +84,12 @@ impl<F: Field> StarkProver<F> {
             verkey_filename: base_filename_path.clone() + ".verkey.json",
         };
 
-        let n_field_elements;
-        let merkle_tree_arity;
-        let merkle_tree_custom;
-
-        if stark_info.stark_struct.verification_hash_type == "BN128" {
-            n_field_elements = 1;
-            merkle_tree_arity = stark_info.stark_struct.merkle_tree_arity;
-            merkle_tree_custom = stark_info.stark_struct.merkle_tree_custom;
-        } else {
-            n_field_elements = Self::HASH_SIZE;
-            merkle_tree_arity = 2;
-            merkle_tree_custom = true;
-        }
+        let (n_field_elements, merkle_tree_arity, merkle_tree_custom) =
+            if stark_info.stark_struct.verification_hash_type == "BN128" {
+                (1, stark_info.stark_struct.merkle_tree_arity, stark_info.stark_struct.merkle_tree_custom)
+            } else {
+                (Self::HASH_SIZE, 2, true)
+            };
 
         let global_steps_fri: Vec<usize> = global_info.steps_fri.iter().map(|step| step.n_bits).collect();
 
@@ -108,7 +100,7 @@ impl<F: Field> StarkProver<F> {
             airgroup_id,
             config,
             p_setup,
-            p_stark_info,
+            p_stark_info: setup.p_stark_info,
             p_stark,
             p_proof: None,
             stark_info,

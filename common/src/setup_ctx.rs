@@ -1,15 +1,14 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::Setup;
 use crate::WitnessPilout;
 
-/// Air instance context for managing air instances (traces)
-#[allow(dead_code)]
-pub struct SetupCtx {
-    pub setups: Vec<Setup>,
+pub struct SetupRepository {
+    pub setups: Arc<Vec<Setup>>,
 }
 
-impl SetupCtx {
+impl SetupRepository {
     pub fn new(pilout: WitnessPilout, proving_key_path: &Path) -> Self {
         let setups = pilout
             .air_groups()
@@ -23,17 +22,31 @@ impl SetupCtx {
                     .map(move |(air_id, _)| Setup::new(proving_key_path, airgroup_id, air_id))
             })
             .collect::<Vec<Setup>>();
+        let setups = Arc::new(setups);
 
-        SetupCtx { setups }
+        Self { setups }
     }
 
     pub fn get_setup(&self, airgroup_id: usize, air_id: usize) -> Result<&Setup, String> {
-        for setup in &self.setups {
+        for setup in self.setups.iter() {
             if setup.airgroup_id == airgroup_id && setup.air_id == air_id {
                 return Ok(setup);
             }
         }
 
         Err(format!("Setup not found for airgroup_id: {}, Air_id: {}", airgroup_id, air_id))
+    }
+}
+/// Air instance context for managing air instances (traces)
+#[allow(dead_code)]
+pub struct SetupCtx {
+    pub setups: SetupRepository,
+}
+
+impl SetupCtx {
+    pub fn new(pilout: WitnessPilout, proving_key_path: &Path) -> Self {
+        let setups = SetupRepository::new(pilout, proving_key_path);
+
+        SetupCtx { setups }
     }
 }
