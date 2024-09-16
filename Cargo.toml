@@ -24,17 +24,17 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman-hints = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman-hints = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="develop" }
 #Local development
-proofman-common = { path = "../pil2-proofman/common" }
-proofman-hints = { path = "../pil2-proofman/hints" }
-proofman-macros = { path = "../pil2-proofman/macros" }
-proofman-util = { path = "../pil2-proofman/util" }
-proofman = { path = "../pil2-proofman/proofman" }
+# proofman-common = { path = "../pil2-proofman/common" }
+# proofman-hints = { path = "../pil2-proofman/hints" }
+# proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-util = { path = "../pil2-proofman/util" }
+# proofman = { path = "../pil2-proofman/proofman" }
 
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 log = "0.4"
