@@ -50,6 +50,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         let mut wcm = WitnessManager::new();
 
         // TODO REMOVE THIS WHEN READY IN ZISK_PIL
+        pub const MEM_AIRGROUP_ID: usize = 100;
         pub const MEM_ALIGN_AIR_IDS: &[usize] = &[1];
         pub const MEM_UNALIGNED_AIR_IDS: &[usize] = &[2, 3];
         pub const ARITH_AIRGROUP_ID: usize = 101;

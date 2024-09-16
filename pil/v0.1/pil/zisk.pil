@@ -20,11 +20,9 @@ airgroup Binary {
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
 }
 
-
 airgroup BinaryTable {
     BinaryTable(disable_fixed: 1);
 }
-
 
 airgroup BinaryExtension {
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
