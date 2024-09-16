@@ -177,8 +177,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
         let raw_ptr = verify_constraints_c(self.p_setup, buffer, public_inputs, challenges, subproof_values, evals);
 
-        let constraints_result = unsafe { Box::from_raw(raw_ptr as *mut ConstraintsResults) };
-
         unsafe {
             let constraints_result = Box::from_raw(raw_ptr as *mut ConstraintsResults);
             std::slice::from_raw_parts(constraints_result.constraints_info, constraints_result.n_constraints as usize)
