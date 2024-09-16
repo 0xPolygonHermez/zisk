@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
@@ -42,12 +42,13 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(
+        let air_instance = AirInstance::new(
             CONNECTION_SUBPROOF_ID[0],
             CONNECTION_2_AIR_IDS[0],
             None,
-            Some(buffer),
+            buffer,
         );
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
 
@@ -65,7 +66,7 @@ where
     ) {
         let mut rng = rand::thread_rng();
 
-        let air_instances_vec = &mut pctx.air_instances.write().unwrap();
+        let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx
             .pilout
@@ -85,7 +86,7 @@ where
                 .get_buffer_info("Connection".into(), CONNECTION_2_AIR_IDS[0])
                 .unwrap();
 
-            let buffer = air_instance.buffer.as_mut().unwrap();
+            let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx
                 .pilout

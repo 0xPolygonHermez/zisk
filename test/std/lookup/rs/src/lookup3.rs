@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
 
@@ -38,12 +38,10 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(
-            LOOKUP_SUBPROOF_ID[0],
-            LOOKUP_3_AIR_IDS[0],
-            None,
-            Some(buffer),
-        );
+        let air_instance =
+            AirInstance::new(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0], None, buffer);
+
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
 
@@ -56,7 +54,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        let air_instances_vec = &mut pctx.air_instances.write().unwrap();
+        let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx
             .pilout
@@ -76,7 +74,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
                 .get_buffer_info("Lookup".into(), LOOKUP_3_AIR_IDS[0])
                 .unwrap();
 
-            let buffer = air_instance.buffer.as_mut().unwrap();
+            let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx
                 .pilout
