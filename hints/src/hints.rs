@@ -3,7 +3,7 @@ use proofman_starks_lib_c::{
 };
 
 use p3_field::Field;
-use proofman_common::{AirInstance, ExtensionField, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExtensionField, ProofCtx, SetupCtx, SetupRepository};
 
 use std::os::raw::c_void;
 
@@ -235,7 +235,7 @@ pub fn get_hint_ids_by_name(p_setup: *mut c_void, name: &str) -> Vec<u64> {
 }
 
 pub fn get_hint_field<F: Clone + Copy + Debug>(
-    setup_ctx: &SetupCtx,
+    setup_repo: &SetupRepository,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -250,7 +250,7 @@ pub fn get_hint_field<F: Clone + Copy + Debug>(
     let evals = air_instance.evals.as_ptr() as *mut c_void;
     let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
 
-    let setup = setup_ctx.setups.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_repo.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let raw_ptr = get_hint_field_c(
         setup.p_setup,
