@@ -60,12 +60,9 @@ impl<F: PrimeField> U16Air<F> {
             .air_instances_repository
             .borrow()
             .find_air_instances(self.airgroup_id, self.air_id)[0];
-        let mut air_instance_rw = self
-            .air_instances_repository
-            .borrow()
-            .air_instances
-            .write()
-            .unwrap();
+
+        let air_instances = self.air_instances_repository.borrow();
+        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mut mul = get_hint_field::<F>(
@@ -80,7 +77,13 @@ impl<F: PrimeField> U16Air<F> {
             false,
         );
 
-        set_hint_field(sctx, air_instance, *hint as u64, "reference", &mut mul);
+        set_hint_field(
+            self.setup_repository.borrow().as_ref(),
+            air_instance,
+            *hint as u64,
+            "reference",
+            &mut mul,
+        );
 
         println!("{}: Drained inputs for AIR 'U16Air'", Self::MY_NAME);
     }
