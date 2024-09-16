@@ -1,15 +1,16 @@
-use std::mem;
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{
+    AirInstance, ExecutionCtx, ProofCtx, Setup, SetupCtx,
+};
 
 use proofman_common as common;
 pub use proofman_macros::trace;
-use rayon::Scope;
 
 // PIL Helpers
 trace!(U8Air0Row, U8Air0Trace<F> {
@@ -24,6 +25,9 @@ pub struct U8Air<F> {
     inputs: Mutex<Vec<F>>, // value -> multiplicity
     u8air_table: Mutex<Vec<F>>,
     offset: Mutex<usize>,
+
+    // Setup context reference
+    sctx: RefCell<Arc<Vec<Setup>>>,
 }
 
 impl<F: PrimeField> U8Air<F> {
@@ -36,6 +40,7 @@ impl<F: PrimeField> U8Air<F> {
             inputs: Mutex::new(Vec::new()),
             u8air_table: Mutex::new(Vec::new()),
             offset: Mutex::new(0),
+            sctx: RefCell::new(Arc::new(Vec::new())),
         });
 
         wcm.register_component(u8air.clone(), Some(airgroup_id), Some(&[air_id]));
@@ -43,16 +48,11 @@ impl<F: PrimeField> U8Air<F> {
         u8air
     }
 
-    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, _scope: Option<&Scope>) {
+    pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect::<Vec<_>>();
 
         self.update_multiplicity(drained_inputs);
-
-        let u8air_table = mem::take(&mut *self.u8air_table.lock().unwrap());
-
-        let air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, u8air_table);
-        pctx.air_instance_repo.add_air_instance(air_instance);
 
         println!("{}: Drained inputs for AIR 'U8Air'", Self::MY_NAME);
     }
@@ -93,17 +93,18 @@ impl<F: PrimeField> U8Air<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
-    fn start_proof(&self, _pctx: &ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
-        let (buffer_size, offsets) = ectx
+    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.sctx.replace(sctx.setups.clone());
+
+        let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
             .get_buffer_info("U8Air".into(), self.air_id)
             .unwrap();
+        let buffer = vec![F::zero(); buffer_size as usize];
 
-        let mut u8air_table = self.u8air_table.lock().unwrap();
-        *u8air_table = vec![F::zero(); buffer_size as usize];
-
-        *self.offset.lock().unwrap() = offsets[0] as usize;
+        let air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 
     fn calculate_witness(

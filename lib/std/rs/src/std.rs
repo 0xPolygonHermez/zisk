@@ -15,6 +15,7 @@ use crate::{Decider, RCAirData, StdProd, StdRangeCheck, StdSum};
 pub struct Std<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
+
     // STD components
     prod: Arc<StdProd<F>>,
     sum: Arc<StdSum<F>>,
