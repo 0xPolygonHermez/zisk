@@ -1,4 +1,4 @@
-use std::{mem, os::raw::c_void};
+use std::mem;
 
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
@@ -15,12 +15,7 @@ pub struct AirInstance<F> {
 }
 
 impl<F> AirInstance<F> {
-    pub fn new(
-        airgroup_id: usize,
-        air_id: usize,
-        air_segment_id: Option<usize>,
-        buffer: Vec<F>,
-    ) -> Self {
+    pub fn new(airgroup_id: usize, air_id: usize, air_segment_id: Option<usize>, buffer: Vec<F>) -> Self {
         AirInstance {
             airgroup_id,
             air_id,
@@ -38,7 +33,6 @@ impl<F> AirInstance<F> {
     }
 
     pub fn init_prover(&mut self, n_commits: usize, n_subproofvalues: usize, evals: Vec<F>, subproof_values: Vec<F>) {
-
         self.evals = evals;
         self.subproof_values = subproof_values;
 

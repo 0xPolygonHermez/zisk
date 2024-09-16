@@ -139,11 +139,12 @@ Finally, generate the proof using the following command:
 cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libfibonacci_square.so \
      --proving-key examples/fibonacci-square/build/provingKey/ \
-     --public-inputs examples/fibonacci-square/src/inputs.json
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+     --output-dir examples/fibonacci-square/build/proofs
 ```
 
 ### 2.7 Verify the Proof
 
 ```bash
-node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build -p tmp
+node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build -p examples/fibonacci-square/build/proofs
 ```

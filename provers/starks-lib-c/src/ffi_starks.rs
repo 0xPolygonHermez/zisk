@@ -188,7 +188,14 @@ pub fn set_hint_field_c(
 ) -> u64 {
     unsafe {
         let field_name = CString::new(hint_field_name).unwrap();
-        set_hint_field(p_setup_ctx, buffer, subproof_values, values, hint_id, field_name.as_ptr() as *mut std::os::raw::c_char)
+        set_hint_field(
+            p_setup_ctx,
+            buffer,
+            subproof_values,
+            values,
+            hint_id,
+            field_name.as_ptr() as *mut std::os::raw::c_char,
+        )
     }
 }
 
@@ -228,15 +235,14 @@ pub fn get_fri_pol_c(p_setup_ctx: *mut c_void, buffer: *mut c_void) -> *mut c_vo
     unsafe { get_fri_pol(p_setup_ctx, buffer) }
 }
 
-
 #[cfg(not(feature = "no_lib_link"))]
 pub fn calculate_fri_polynomial_c(
-        p_starks: *mut c_void, 
-        buffer: *mut c_void,
-        public_inputs: *mut c_void,
-        challenges: *mut c_void,
-        subproofValues: *mut c_void,
-        evals: *mut c_void,
+    p_starks: *mut c_void,
+    buffer: *mut c_void,
+    public_inputs: *mut c_void,
+    challenges: *mut c_void,
+    subproofValues: *mut c_void,
+    evals: *mut c_void,
 ) {
     unsafe {
         calculate_fri_polynomial(p_starks, buffer, public_inputs, challenges, subproofValues, evals);
@@ -245,12 +251,12 @@ pub fn calculate_fri_polynomial_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn calculate_quotient_polynomial_c(
-        p_starks: *mut c_void, 
-        buffer: *mut c_void,
-        public_inputs: *mut c_void,
-        challenges: *mut c_void,
-        subproofValues: *mut c_void,
-        evals: *mut c_void,
+    p_starks: *mut c_void,
+    buffer: *mut c_void,
+    public_inputs: *mut c_void,
+    challenges: *mut c_void,
+    subproofValues: *mut c_void,
+    evals: *mut c_void,
 ) {
     unsafe {
         calculate_quotient_polynomial(p_starks, buffer, public_inputs, challenges, subproofValues, evals);
@@ -259,13 +265,13 @@ pub fn calculate_quotient_polynomial_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn calculate_impols_expressions_c(
-    p_starks: *mut c_void, 
+    p_starks: *mut c_void,
     step: u64,
     buffer: *mut c_void,
     public_inputs: *mut c_void,
     challenges: *mut c_void,
     subproofValues: *mut c_void,
-    evals: *mut c_void
+    evals: *mut c_void,
 ) {
     unsafe {
         calculate_impols_expressions(p_starks, step, buffer, public_inputs, challenges, subproofValues, evals);
@@ -273,20 +279,20 @@ pub fn calculate_impols_expressions_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn commit_stage_c(
-    p_starks: *mut c_void,
-    element_type: u32,
-    step: u64,
-    buffer: *mut c_void,
-    p_proof: *mut c_void,
-) {
+pub fn commit_stage_c(p_starks: *mut c_void, element_type: u32, step: u64, buffer: *mut c_void, p_proof: *mut c_void) {
     unsafe {
         commit_stage(p_starks, element_type, step, buffer, p_proof);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_evals_c(p_stark: *mut c_void, buffer: *mut c_void, challenges: *mut c_void, evals: *mut c_void, pProof: *mut c_void) {
+pub fn compute_evals_c(
+    p_stark: *mut c_void,
+    buffer: *mut c_void,
+    challenges: *mut c_void,
+    evals: *mut c_void,
+    pProof: *mut c_void,
+) {
     unsafe {
         compute_evals(p_stark, buffer, challenges, evals, pProof);
     }
@@ -361,12 +367,12 @@ pub fn get_permutations_c(p_transcript: *mut c_void, res: *mut u64, n: u64, n_bi
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn verify_constraints_c(
-        p_setup: *mut c_void, 
-        buffer: *mut c_void,
-        public_inputs: *mut c_void,
-        challenges: *mut c_void,
-        subproofValues: *mut c_void,
-        evals: *mut c_void,
+    p_setup: *mut c_void,
+    buffer: *mut c_void,
+    public_inputs: *mut c_void,
+    challenges: *mut c_void,
+    subproofValues: *mut c_void,
+    evals: *mut c_void,
 ) -> *mut c_void {
     unsafe { verify_constraints(p_setup, buffer, public_inputs, challenges, subproofValues, evals) }
 }
@@ -406,7 +412,18 @@ pub fn print_by_name_c(
     let name_string = CString::new(name).unwrap();
     let name_ptr = name_string.as_ptr() as *mut std::os::raw::c_char;
     unsafe {
-        print_by_name(p_setup_ctx, buffer, public_inputs, challenges, subproof_values, name_ptr, lengths, first_print_value, last_print_value, return_values)
+        print_by_name(
+            p_setup_ctx,
+            buffer,
+            public_inputs,
+            challenges,
+            subproof_values,
+            name_ptr,
+            lengths,
+            first_print_value,
+            last_print_value,
+            return_values,
+        )
     }
 }
 
@@ -569,7 +586,6 @@ pub fn set_hint_field_c(
     0
 }
 
-
 #[cfg(feature = "no_lib_link")]
 pub fn starks_new_c(_p_config: *mut c_void) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "starks_new: This is a mock call because there is no linked library");
@@ -593,24 +609,24 @@ pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void)
 
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_fri_polynomial_c(
-    _p_starks: *mut c_void, 
+    _p_starks: *mut c_void,
     _buffer: *mut c_void,
     _public_inputs: *mut c_void,
     _challenges: *mut c_void,
     _subproofValues: *mut c_void,
-    _evals: *mut c_void) 
-{
+    _evals: *mut c_void,
+) {
     trace!("mckzkevm: ··· {}", "calculate_fri_polynomial: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_quotient_polynomial_c(
-    _p_starks: *mut c_void, 
+    _p_starks: *mut c_void,
     _buffer: *mut c_void,
     _public_inputs: *mut c_void,
     _challenges: *mut c_void,
     _subproofValues: *mut c_void,
-    _evals: *mut c_void
+    _evals: *mut c_void,
 ) {
     trace!("mckzkevm: ··· {}", "calculate_quotient_polynomial: This is a mock call because there is no linked library");
 }
@@ -623,7 +639,7 @@ pub fn calculate_impols_expressions_c(
     _public_inputs: *mut c_void,
     _challenges: *mut c_void,
     _subproofValues: *mut c_void,
-    _evals: *mut c_void
+    _evals: *mut c_void,
 ) {
     trace!(
         "{}: ··· {}",
@@ -644,7 +660,13 @@ pub fn commit_stage_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_evals_c(_p_stark: *mut c_void, _buffer: *mut c_void, _challenges: *mut c_void, _evals: *mut c_void, _pProof: *mut c_void) {
+pub fn compute_evals_c(
+    _p_stark: *mut c_void,
+    _buffer: *mut c_void,
+    _challenges: *mut c_void,
+    _evals: *mut c_void,
+    _pProof: *mut c_void,
+) {
     trace!("{}: ··· {}", "ffi     ", "compute_evals: This is a mock call because there is no linked library");
 }
 
@@ -722,12 +744,12 @@ pub fn get_permutations_c(_p_transcript: *mut c_void, _res: *mut u64, _n: u64, _
 
 #[cfg(feature = "no_lib_link")]
 pub fn verify_constraints_c(
-    _p_setup: *mut c_void, 
+    _p_setup: *mut c_void,
     _buffer: *mut c_void,
     _public_inputs: *mut c_void,
     _challenges: *mut c_void,
     _subproofValues: *mut c_void,
-    _evals: *mut c_void
+    _evals: *mut c_void,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "verify_constraints_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()

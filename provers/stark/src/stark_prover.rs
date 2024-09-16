@@ -127,7 +127,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         //initialize the common challenges if have not been initialized by another prover
-        proof_ctx.challenges = vec![F::zero(); self.stark_info.challenges_map.as_ref().unwrap().len() * Self::FIELD_EXTENSION];
+        proof_ctx.challenges =
+            vec![F::zero(); self.stark_info.challenges_map.as_ref().unwrap().len() * Self::FIELD_EXTENSION];
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
         let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
@@ -169,8 +170,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo> {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
-        let public_inputs =  proof_ctx.public_inputs.as_ptr() as *mut c_void;
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+        let public_inputs = proof_ctx.public_inputs.as_ptr() as *mut c_void;
         let challenges = proof_ctx.challenges.as_ptr() as *mut c_void;
         let evals = air_instance.evals.as_ptr() as *mut c_void;
         let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
@@ -187,8 +188,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
-        let public_inputs =  proof_ctx.public_inputs.as_ptr() as *mut c_void;
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+        let public_inputs = proof_ctx.public_inputs.as_ptr() as *mut c_void;
         let challenges = proof_ctx.challenges.as_ptr() as *mut c_void;
         let evals = air_instance.evals.as_ptr() as *mut c_void;
         let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
@@ -204,7 +205,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                     panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
                 }
             }
-            calculate_impols_expressions_c(self.p_stark, stage_id as u64, buffer, public_inputs, challenges, subproof_values, evals);
+            calculate_impols_expressions_c(
+                self.p_stark,
+                stage_id as u64,
+                buffer,
+                public_inputs,
+                challenges,
+                subproof_values,
+                evals,
+            );
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
@@ -229,7 +238,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
         let p_stark: *mut std::ffi::c_void = self.p_stark;
 
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
@@ -332,7 +341,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             calculate_hash_c(
                 p_stark,
                 hash.as_mut_ptr() as *mut c_void,
-            evals,
+                evals,
                 (self.stark_info.ev_map.len() * Self::FIELD_EXTENSION) as u64,
             );
             transcript.add_elements(hash.as_mut_ptr() as *mut c_void, self.n_field_elements);
@@ -391,7 +400,7 @@ impl<F: Field> StarkProver<F> {
     fn compute_evals(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<F>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
         let challenges = proof_ctx.challenges.as_ptr() as *mut c_void;
         let evals = air_instance.evals.as_mut_ptr() as *mut c_void;
 
@@ -405,9 +414,9 @@ impl<F: Field> StarkProver<F> {
 
     fn compute_fri_pol(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<F>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-        
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
-        let public_inputs =  proof_ctx.public_inputs.as_ptr() as *mut c_void;
+
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+        let public_inputs = proof_ctx.public_inputs.as_ptr() as *mut c_void;
         let challenges = proof_ctx.challenges.as_ptr() as *mut c_void;
         let evals = air_instance.evals.as_ptr() as *mut c_void;
         let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
@@ -422,7 +431,6 @@ impl<F: Field> StarkProver<F> {
     }
 
     fn compute_fri_folding(&mut self, step_index: u32, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript) {
-    
         let p_stark = self.p_stark;
         let p_proof = self.p_proof.unwrap();
 
@@ -440,18 +448,12 @@ impl<F: Field> StarkProver<F> {
         }
 
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-        let buffer =  air_instance.get_buffer_ptr() as *mut c_void;
+        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
 
         let challenges: &Vec<F> = &proof_ctx.challenges;
         let challenge: Vec<F> = challenges.iter().skip(challenges.len() - 3).cloned().collect();
 
-        compute_fri_folding_c(
-            p_stark,
-            step_index as u64,
-            p_proof,
-            buffer,
-            challenge.as_ptr() as *mut c_void,
-        );
+        compute_fri_folding_c(p_stark, step_index as u64, p_proof, buffer, challenge.as_ptr() as *mut c_void);
 
         if step_index < n_steps {
             let root = fri_proof_get_tree_root_c(p_proof, (step_index + 1) as u64, 0);

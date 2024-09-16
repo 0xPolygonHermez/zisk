@@ -1,4 +1,3 @@
-use log;
 use std::{cell::RefCell, sync::Arc};
 
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -79,9 +78,8 @@ impl<F: PrimeField + AbstractField + Copy> WitnessComponent<F> for Module<F> {
         _stage: u32,
         _air_instance_id: Option<usize>,
         _pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        return;
     }
 }

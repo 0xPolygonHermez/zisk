@@ -92,6 +92,5 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for FibonacciSquare<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        return;
     }
 }
