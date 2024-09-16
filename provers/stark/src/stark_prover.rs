@@ -125,9 +125,9 @@ impl<T: Field> StarkProver<T> {
 impl<F: Field> Prover<F> for StarkProver<F> {
     fn build(&mut self, proof_ctx: &mut ProofCtx<F>) {
         timer_start!(ESTARK_PROVER_BUILD);
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let ptr: *mut std::ffi::c_void = air_instance_ctx.get_buffer_ptr() as *mut c_void;
+        let ptr: *mut std::ffi::c_void = air_instance.get_buffer_ptr() as *mut c_void;
 
         //initialize the common challenges if have not been initialized by another prover
         proof_ctx.challenges.get_or_insert_with(|| {
@@ -146,17 +146,17 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             self.subproof_values.as_ptr() as *mut c_void,
         );
 
-        air_instance_ctx.set_params(p_params);
+        air_instance.set_params(p_params);
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
         let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
-        air_instance_ctx.init_vec(n_commits, n_subproof_values);
+        air_instance.init_vec(n_commits, n_subproof_values);
 
         self.p_proof = Some(fri_proof_new_c(self.p_setup));
 
         let number_stage1_commits = *self.stark_info.map_sections_n.get("cm1").unwrap() as usize;
         for i in 0..number_stage1_commits {
-            air_instance_ctx.set_commit_calculated(i);
+            air_instance.set_commit_calculated(i);
         }
 
         self.initialized = true;
@@ -181,20 +181,19 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo> {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let raw_ptr = verify_constraints_c(self.p_setup, air_instance_ctx.params.unwrap());
-
-        let constraints_result = unsafe { Box::from_raw(raw_ptr as *mut ConstraintsResults) };
+        let raw_ptr = verify_constraints_c(self.p_setup, air_instance.params.unwrap());
 
         unsafe {
+            let constraints_result = Box::from_raw(raw_ptr as *mut ConstraintsResults);
             std::slice::from_raw_parts(constraints_result.constraints_info, constraints_result.n_constraints as usize)
         }
         .to_vec()
     }
 
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
 
@@ -202,36 +201,36 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol)
-                    && !air_instance_ctx.commits_calculated[i]
+                    && !air_instance.commits_calculated[i]
                 {
                     panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
                 }
             }
-            calculate_impols_expressions_c(self.p_stark, air_instance_ctx.params.unwrap(), stage_id as u64);
+            calculate_impols_expressions_c(self.p_stark, air_instance.params.unwrap(), stage_id as u64);
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
-                    air_instance_ctx.set_commit_calculated(i);
+                    air_instance.set_commit_calculated(i);
                 }
             }
             if stage_id == proof_ctx.pilout.num_stages() {
                 let p_proof = self.p_proof.unwrap();
-                fri_proof_set_subproof_values_c(p_proof, air_instance_ctx.params.unwrap());
+                fri_proof_set_subproof_values_c(p_proof, air_instance.params.unwrap());
             }
         } else {
-            calculate_quotient_polynomial_c(self.p_stark, air_instance_ctx.params.unwrap());
+            calculate_quotient_polynomial_c(self.p_stark, air_instance.params.unwrap());
             for i in 0..n_commits {
                 let cm_pol: &crate::stark_info::PolMap =
                     self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == (proof_ctx.pilout.num_stages() + 1) as u64 {
-                    air_instance_ctx.set_commit_calculated(i);
+                    air_instance.set_commit_calculated(i);
                 }
             }
         }
     }
 
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
         let p_stark: *mut std::ffi::c_void = self.p_stark;
 
         debug!("{}: ··· Computing commit stage {}", Self::MY_NAME, stage_id);
@@ -244,7 +243,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
         for i in 0..n_commits {
             let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
-            if cm_pol.stage == stage_id as u64 && !air_instance_ctx.commits_calculated[i] {
+            if cm_pol.stage == stage_id as u64 && !air_instance.commits_calculated[i] {
                 panic!("Stage {} cannot be committed: Witness column {} is not calculated", stage_id, cm_pol.name);
             }
         }
@@ -253,7 +252,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
             for i in 0..n_subproof_values {
                 let subproof_value = self.stark_info.subproofvalues_map.as_ref().expect("REASON").get(i).unwrap();
-                if !air_instance_ctx.subproofvalue_calculated[i] {
+                if !air_instance.subproofvalue_calculated[i] {
                     panic!(
                         "Stage {} cannot be committed: Subproofvalue {} is not calculated",
                         stage_id, subproof_value.name
@@ -262,7 +261,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             }
         }
 
-        commit_stage_c(p_stark, element_type, stage_id as u64, air_instance_ctx.params.unwrap(), p_proof);
+        commit_stage_c(p_stark, element_type, stage_id as u64, air_instance.params.unwrap(), p_proof);
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
@@ -389,30 +388,30 @@ impl<F: Field> StarkProver<F> {
     }
 
     fn compute_evals(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<F>) {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let p_stark = self.p_stark;
         let p_proof = self.p_proof.unwrap();
 
         debug!("{}: ··· Computing evaluations", Self::MY_NAME);
 
-        compute_evals_c(p_stark, air_instance_ctx.params.unwrap(), p_proof);
+        compute_evals_c(p_stark, air_instance.params.unwrap(), p_proof);
     }
 
     fn compute_fri_pol(&mut self, _opening_id: u32, proof_ctx: &mut ProofCtx<F>) {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let p_stark = self.p_stark;
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
 
-        prepare_fri_polynomial_c(p_stark, air_instance_ctx.params.unwrap());
+        prepare_fri_polynomial_c(p_stark, air_instance.params.unwrap());
 
-        calculate_fri_polynomial_c(p_stark, air_instance_ctx.params.unwrap());
+        calculate_fri_polynomial_c(p_stark, air_instance.params.unwrap());
     }
 
     fn compute_fri_folding(&mut self, step_index: u32, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript) {
-        let air_instance_ctx = &mut proof_ctx.air_instances.write().unwrap()[self.prover_idx];
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
         let p_stark = self.p_stark;
         let p_proof = self.p_proof.unwrap();
 
@@ -435,7 +434,7 @@ impl<F: Field> StarkProver<F> {
         compute_fri_folding_c(
             p_stark,
             step_index as u64,
-            air_instance_ctx.params.unwrap(),
+            air_instance.params.unwrap(),
             challenge.as_ptr() as *mut c_void,
             p_proof,
         );
@@ -446,7 +445,7 @@ impl<F: Field> StarkProver<F> {
         } else {
             let hash: Vec<F> = vec![F::zero(); self.n_field_elements];
             let n_hash = (1 << (steps[n_steps as usize].n_bits)) * Self::FIELD_EXTENSION as u64;
-            let fri_pol = get_fri_pol_c(self.p_setup, air_instance_ctx.params.unwrap());
+            let fri_pol = get_fri_pol_c(self.p_setup, air_instance.params.unwrap());
             calculate_hash_c(p_stark, hash.as_ptr() as *mut c_void, fri_pol, n_hash);
             transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
         }

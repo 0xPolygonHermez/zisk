@@ -3,7 +3,7 @@ use proofman_starks_lib_c::{
 };
 
 use p3_field::Field;
-use proofman_common::{ExtensionField, AirInstanceCtx, SetupCtx};
+use proofman_common::{ExtensionField, AirInstance, SetupCtx};
 
 use std::os::raw::c_void;
 
@@ -236,16 +236,16 @@ pub fn get_hint_ids_by_name(p_setup: *mut c_void, name: &str) -> Vec<u64> {
 
 pub fn get_hint_field<F: Clone + Copy>(
     setup_ctx: &SetupCtx,
-    air_instance_ctx: &mut AirInstanceCtx<F>,
+    air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
     dest: bool,
     inverse: bool,
     print_expression: bool,
 ) -> HintFieldValue<F> {
-    let params = air_instance_ctx.params.unwrap();
+    let params = air_instance.params.unwrap();
 
-    let setup = setup_ctx.get_setup(air_instance_ctx.airgroup_id, air_instance_ctx.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let raw_ptr =
         get_hint_field_c(setup.p_setup, params, hint_id as u64, hint_field_name, dest, inverse, print_expression);
@@ -283,14 +283,14 @@ pub fn get_hint_field_constant<F: Clone + Copy>(
 
 pub fn set_hint_field<F: Copy + core::fmt::Debug>(
     setup_ctx: &SetupCtx,
-    air_instance_ctx: &mut AirInstanceCtx<F>,
+    air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
     values: &HintFieldValue<F>,
 ) {
-    let params = air_instance_ctx.params.unwrap();
+    let params = air_instance.params.unwrap();
 
-    let setup = setup_ctx.get_setup(air_instance_ctx.airgroup_id, air_instance_ctx.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let values_ptr: *mut c_void = match values {
         HintFieldValue::Column(vec) => vec.as_ptr() as *mut c_void,
@@ -300,19 +300,19 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
 
     let id = set_hint_field_c(setup.p_setup, params, values_ptr, hint_id, hint_field_name);
 
-    air_instance_ctx.set_commit_calculated(id as usize);
+    air_instance.set_commit_calculated(id as usize);
 }
 
 pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
     setup_ctx: &SetupCtx,
-    air_instance_ctx: &mut AirInstanceCtx<F>,
+    air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
     value: HintFieldOutput<F>,
 ) {
-    let params = air_instance_ctx.params.unwrap();
+    let params = air_instance.params.unwrap();
 
-    let setup = setup_ctx.get_setup(air_instance_ctx.airgroup_id, air_instance_ctx.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let mut value_array: Vec<F> = Vec::new();
 
@@ -331,17 +331,17 @@ pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
 
     let id = set_hint_field_c(setup.p_setup, params, values_ptr, hint_id, hint_field_name);
 
-    air_instance_ctx.set_subproofvalue_calculated(id as usize);
+    air_instance.set_subproofvalue_calculated(id as usize);
 }
 
 pub fn print_expression<F: Clone + Copy + Debug>(
     setup_ctx: &SetupCtx,
-    air_instance_ctx: &mut AirInstanceCtx<F>,
+    air_instance: &mut AirInstance<F>,
     expr: &HintFieldValue<F>,
     first_print_value: u64,
     last_print_value: u64,
 ) {
-    let setup = setup_ctx.get_setup(air_instance_ctx.airgroup_id, air_instance_ctx.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     match expr {
         HintFieldValue::Column(vec) => {
@@ -361,15 +361,15 @@ pub fn print_expression<F: Clone + Copy + Debug>(
 
 pub fn print_by_name<F: Clone + Copy>(
     setup_ctx: &SetupCtx,
-    air_instance_ctx: &mut AirInstanceCtx<F>,
+    air_instance: &mut AirInstance<F>,
     name: &str,
     lengths: Option<Vec<u64>>,
     first_print_value: u64,
     last_print_value: u64,
 ) -> Option<HintFieldValue<F>> {
-    let setup = setup_ctx.get_setup(air_instance_ctx.airgroup_id, air_instance_ctx.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let params = air_instance_ctx.params.unwrap();
+    let params = air_instance.params.unwrap();
 
     let mut lengths_vec = lengths.unwrap_or_default();
     let lengths_ptr = lengths_vec.as_mut_ptr();

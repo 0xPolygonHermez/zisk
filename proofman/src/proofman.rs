@@ -16,7 +16,7 @@ use transcript::FFITranscript;
 
 use crate::{WitnessLibrary, WitnessLibInitFn};
 
-use proofman_common::{ConstraintInfo, ExecutionCtx, ProofCtx, Prover, SetupCtx};
+use proofman_common::{AirInstancesRepository, ConstraintInfo, ExecutionCtx, ProofCtx, Prover, SetupCtx};
 
 use colored::*;
 
@@ -78,7 +78,10 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone())?;
 
-        let mut pctx = ProofCtx::create_ctx(witness_lib.pilout());
+        let air_instances_repo = AirInstancesRepository::new();
+        let air_instances_repo = Arc::new(air_instances_repo);
+
+        let mut pctx = ProofCtx::create_ctx(witness_lib.pilout(), air_instances_repo.clone());
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
 
@@ -141,7 +144,8 @@ impl<F: Field + 'static> ProofMan<F> {
             let mut valid_constraints = true;
             for (idx, prover) in provers.iter_mut().enumerate() {
                 let prover_info = prover.get_prover_info();
-                let air_instances = pctx.find_air_instances(prover_info.airgroup_id, prover_info.air_id);
+                let air_instances =
+                    pctx.air_instance_repo.find_air_instances(prover_info.airgroup_id, prover_info.air_id);
                 let air_instance_index = air_instances.iter().position(|&x| x == prover_info.prover_idx).unwrap();
                 let air = pctx.pilout.get_air(prover_info.airgroup_id, prover_info.air_id);
                 let mut valid_constraints_prover = true;
@@ -299,7 +303,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let mut group_ids = HashMap::new();
 
-        for air_instance in pctx.air_instances.read().unwrap().iter() {
+        for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
             let group_map = group_ids.entry(air_instance.airgroup_id).or_insert_with(HashMap::new);
             *group_map.entry(air_instance.air_id).or_insert(0) += 1;
         }
@@ -335,7 +339,7 @@ impl<F: Field + 'static> ProofMan<F> {
     ) {
         info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
 
-        for (prover_idx, air_instance) in pctx.air_instances.write().unwrap().iter_mut().enumerate() {
+        for (prover_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate() {
             debug!(
                 "{}: Initializing prover for air instance ({}, {})",
                 Self::MY_NAME,
@@ -353,6 +357,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
             provers.push(prover);
         }
+
         for prover in provers.iter_mut() {
             prover.build(pctx);
         }

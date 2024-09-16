@@ -49,7 +49,7 @@ impl<F> WitnessManager<F> {
 
     pub fn register_air(&mut self, airgroup_id: AirGroupId, air_id: AirId, component_idx: usize) {
         if self.airs.contains_key(&(airgroup_id, air_id)) {
-            panic!("{}: Air ID {} already registered", Self::MY_NAME, air_id);
+            panic!("{}: AirGroup ID + Air ID ({},{}) already registered", Self::MY_NAME, airgroup_id, air_id);
         }
 
         self.airs.insert((airgroup_id, air_id), component_idx);
@@ -74,14 +74,14 @@ impl<F> WitnessManager<F> {
     pub fn calculate_witness(&self, stage: u32, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
         info!("{}: --> Calculating witness (stage {})", Self::MY_NAME, stage);
 
-        let air_instances = pctx.air_instances.read().unwrap();
+        let air_instances = pctx.air_instance_repo.air_instances.read().unwrap();
 
         let mut components = HashMap::new();
-        for (air_instance_id, air_instance_ctx) in air_instances.iter().enumerate() {
-            let component = self.airs.get(&(air_instance_ctx.airgroup_id, air_instance_ctx.air_id)).unwrap();
+        for (air_instance_id, air_instance) in air_instances.iter().enumerate() {
+            let component = self.airs.get(&(air_instance.airgroup_id, air_instance.air_id)).unwrap();
 
             components
-                .entry((air_instance_ctx.airgroup_id, air_instance_ctx.air_id))
+                .entry((air_instance.airgroup_id, air_instance.air_id))
                 .or_insert_with(Vec::new)
                 .push((component, air_instance_id));
         }

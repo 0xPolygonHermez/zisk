@@ -1,52 +1,27 @@
-use std::sync::RwLock;
+use std::sync::Arc;
 
 use log::info;
 
-use crate::{AirInstanceCtx, WitnessPilout};
+use crate::{AirInstancesRepository, WitnessPilout};
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: Vec<u8>,
     pub pilout: WitnessPilout,
     pub challenges: Option<Vec<F>>,
-    pub air_instances: RwLock<Vec<AirInstanceCtx<F>>>,
+    pub air_instance_repo: Arc<AirInstancesRepository<F>>, // RwLock<Vec<AirInstance<F>>>,
 }
 
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(pilout: WitnessPilout) -> Self {
+    pub fn create_ctx(pilout: WitnessPilout, air_instance_repo: Arc<AirInstancesRepository<F>>) -> Self {
         info!("{}: ··· Creating proof context", Self::MY_NAME);
         if pilout.air_groups().is_empty() {
             panic!("No air groups found in PilOut");
         }
 
-        Self { public_inputs: Vec::new(), pilout, challenges: None, air_instances: RwLock::new(Vec::new()) }
-    }
-
-    pub fn add_air_instance_ctx(
-        &self,
-        airgroup_id: usize,
-        air_id: usize,
-        air_segment_id: Option<usize>,
-        buffer: Option<Vec<F>>,
-    ) {
-        let mut air_instances = self.air_instances.write().unwrap();
-        let prover_idx = air_instances.len();
-        air_instances.push(AirInstanceCtx::new(airgroup_id, air_id, air_segment_id, prover_idx, buffer));
-    }
-
-    pub fn find_air_instances(&self, airgroup_id: usize, air_id: usize) -> Vec<usize> {
-        let air_instances = self.air_instances.read().unwrap();
-
-        let mut indices = Vec::new();
-        for (index, air_instance) in air_instances.iter().enumerate() {
-            if air_instance.airgroup_id == airgroup_id && air_instance.air_id == air_id {
-                indices.push(index);
-            }
-        }
-
-        indices
+        Self { public_inputs: Vec::new(), pilout, challenges: None, air_instance_repo }
     }
 }
 
