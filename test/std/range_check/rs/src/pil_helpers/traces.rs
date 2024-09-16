@@ -4,7 +4,7 @@ use proofman_common as common;
 pub use proofman_macros::trace;
 
 trace!(RangeCheck40Row, RangeCheck40Trace<F> {
- a1: F,  a2: F,  a3: F,  a4: F,  a5: F,  a6: F,  a7: F,  a8: F,  sel1: F,  sel2: F,
+ a1: F, a2: F, a3: F, a4: F, a5: F, a6: F, a7: F, a8: F, sel1: F, sel2: F,
 });
 
 trace!(U8Air0Row, U8Air0Trace<F> {
@@ -13,8 +13,4 @@ trace!(U8Air0Row, U8Air0Trace<F> {
 
 trace!(U16Air0Row, U16Air0Trace<F> {
  mul: F,
-});
-
-trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 1],
 });

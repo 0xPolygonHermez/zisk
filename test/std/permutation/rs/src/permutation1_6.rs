@@ -25,7 +25,7 @@ where
 
         wcm.register_component(
             permutation1_6.clone(),
-            Some(PERMUTATION_AIRGROUP_ID[0]),
+            Some(PERMUTATION_AIRGROUP_ID),
             Some(PERMUTATION_1_6_AIR_IDS),
         );
 
@@ -43,7 +43,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_AIRGROUP_ID,
             PERMUTATION_1_6_AIR_IDS[0],
             None,
             buffer,
@@ -53,7 +53,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_AIRGROUP_ID,
             PERMUTATION_1_6_AIR_IDS[0],
             None,
             buffer,

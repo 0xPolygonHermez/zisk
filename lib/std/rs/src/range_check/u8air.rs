@@ -75,11 +75,12 @@ impl<F: PrimeField> U8Air<F> {
             false,
             false,
         );
+        
 
         set_hint_field(
             self.setup_repository.borrow().as_ref(),
             air_instance,
-            *hint as u64,
+            *hint,
             "reference",
             &mut mul,
         );

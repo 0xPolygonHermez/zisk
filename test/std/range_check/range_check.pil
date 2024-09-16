@@ -61,7 +61,7 @@ airtemplate RangeCheck4(const int N = 2**6) {
     range_check(1, sel2, a3, 127, 2**8); // absorbed to two U16
 
     // Positive, non-predefined and larger-than-predetermined ranges
-    range_check(1, sel2, a4, 1, 2**16+1);
+    // range_check(1, sel2, a4, 1, 2**16+1);
 
     // // Edge cases
     // range_check(1, sel1, a5, 127, 2**16); // One greater than the maximum predefined

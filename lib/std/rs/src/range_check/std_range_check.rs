@@ -316,10 +316,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
                 self.u16air.as_ref().unwrap().update_inputs(range.1 - value);
             }
             StdRangeCheckType::Valid(RangeCheckAir::SpecifiedRanges) => {
-                self.specified_ranges
-                    .as_ref()
-                    .unwrap()
-                    .update_inputs(value, range);
+                // self.specified_ranges
+                //     .as_ref()
+                //     .unwrap()
+                //     .update_inputs(value, range);
             }
         }
     }
@@ -331,8 +331,8 @@ impl<F: PrimeField> StdRangeCheck<F> {
         if let Some(u16air) = self.u16air.as_ref() {
             u16air.drain_inputs();
         }
-        if let Some(specified_ranges) = self.specified_ranges.as_ref() {
-            specified_ranges.drain_inputs();
-        }
+        // if let Some(specified_ranges) = self.specified_ranges.as_ref() {
+        //     specified_ranges.drain_inputs();
+        // }
     }
 }

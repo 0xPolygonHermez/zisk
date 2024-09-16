@@ -4,15 +4,13 @@ use proofman_common::WitnessPilout;
 
 pub const PILOUT_HASH: &[u8] = b"RangeCheck-hash";
 
-//SUBPROOFS CONSTANTS
+//AIRGROUP CONSTANTS
 
-pub const RANGE_CHECK_4_SUBPROOF_ID: &[usize] = &[0];
+pub const RANGE_CHECK_4_AIRGROUP_ID: usize = 0;
 
-pub const U_8_AIR_SUBPROOF_ID: &[usize] = &[1];
+pub const U_8_AIR_AIRGROUP_ID: usize = 1;
 
-pub const U_16_AIR_SUBPROOF_ID: &[usize] = &[2];
-
-pub const SPECIFIED_RANGES_SUBPROOF_ID: &[usize] = &[3];
+pub const U_16_AIR_AIRGROUP_ID: usize = 2;
 
 //AIR CONSTANTS
 
@@ -22,8 +20,6 @@ pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
 
 pub const U_16_AIR_AIR_IDS: &[usize] = &[0];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
-
 pub struct Pilout;
 
 impl Pilout {
@@ -31,20 +27,13 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("RangeCheck", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("RangeCheck4"));
-
         air_group.add_air(Some("RangeCheck4"), 64);
 
         let air_group = pilout.add_air_group(Some("U8Air"));
-
         air_group.add_air(Some("U8Air"), 256);
 
         let air_group = pilout.add_air_group(Some("U16Air"));
-
         air_group.add_air(Some("U16Air"), 65536);
-
-        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
-
-        air_group.add_air(Some("SpecifiedRanges"), 131072);
 
         pilout
     }

@@ -21,7 +21,7 @@ impl<F: PrimeField + Copy> Permutation2<F> {
 
         wcm.register_component(
             permutation2.clone(),
-            Some(PERMUTATION_AIRGROUP_ID[0]),
+            Some(PERMUTATION_AIRGROUP_ID),
             Some(PERMUTATION_2_6_AIR_IDS),
         );
 
@@ -39,7 +39,7 @@ impl<F: PrimeField + Copy> Permutation2<F> {
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_AIRGROUP_ID,
             PERMUTATION_2_6_AIR_IDS[0],
             None,
             buffer,
