@@ -80,14 +80,16 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
 
     // Secondary columns
     col witness use_last_carry;   // 1 if the operation uses the last carry as its result
-    col witness result_is_a;      // 1 if the result of ANY min/max operation variant is a, 0 otherwise
+    col witness op_is_min_max;      // 1 if op ∈ {MINU,MIN,MAXU,MAX}
 
     const expr cout32 = carry[bytes/2-1];
     const expr cout64 = carry[bytes-1];
+    expr cout = (1-mode32) * (cout64 - cout32) + cout32;
 
     use_last_carry * (1 - use_last_carry) === 0;
-    cout32 * (1 - cout32) === 0;
-    cout64 * (1 - cout64) === 0;
+    op_is_min_max * (1 - op_is_min_max) === 0;
+    cout32*(1 - cout32) === 0;
+    cout64*(1 - cout64) === 0;
 
     // Constraints to check the correctness of each binary operation
     /*
@@ -104,26 +106,24 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     */
 
     // Perform, at the byte level, lookups against the binary table on inputs:
-    //               [last, m_op, a, b, cin, result_is_a, c, cout]
+    //               [last, m_op, a, b, cin, c, cout + flags]
     // where last indicates whether the byte is the last one in the operation
-    // and result_is_a indicates whether the result of the operation is the value of a
 
-    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, result_is_a, free_in_c[0], carry[0]]);
+    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*op_is_min_max*cout]);
 
     expr _m_op = (1-mode32) * (m_op - EXT_32_OP) + EXT_32_OP;
-    expr _result_is_a = (1-mode32) * result_is_a;
     for (int i = 1; i < bytes; i++) {
         expr _free_in_a = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
         expr _free_in_b = (1-mode32) * free_in_b[i];
 
         if (i < bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], result_is_a, free_in_c[i], carry[i]]);
+            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
         } else if (i == bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], result_is_a, free_in_c[i], cout32 + 2 * use_last_carry * mode32]);
+            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*mode32]);
         } else if (i < bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _free_in_a, _free_in_b, carry[i-1], _result_is_a, free_in_c[i], carry[i]]);
+            lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
         } else  {
-            lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _free_in_a, _free_in_b, carry[i-1], _result_is_a, free_in_c[i], cout64 + 2 * use_last_carry * (1-mode32)]);
+            lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*(1-mode32)]);
         }
     }
 
@@ -155,12 +155,11 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     // e.g.: A = 0x12_34_56_78, B = 0x12_34_56_78
     // the lookup table ensures that C = 0x01_00_00_00 (since until the last chunk it cannot decide whether the EQ is true or not)
     // but we want C = 0x00_00_00_01
-    expr cout = (1-mode32) * (cout64 - cout32) + cout32;
     c[0] += use_last_carry * cout;
     c[input_chunks - 1] -= use_last_carry * cout;
 
-   expr op = m_op + 16 * mode32;
+    expr op = m_op + 16 * mode32;
 
     col witness multiplicity;
-    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, cout], multiplicity);
+    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, (1-op_is_min_max)*cout], multiplicity);
 }
