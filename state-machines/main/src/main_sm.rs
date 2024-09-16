@@ -11,9 +11,9 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
-use zisk_pil::{Main0Row, Main0Trace, MAIN_AIR_IDS, MAIN_SUBPROOF_ID};
+use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
@@ -197,45 +197,28 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         // Terminate the state machines with the remaining inputs
         let mut callback_inputs = self.callback_inputs.lock().unwrap();
         let last_air_segment = callback_inputs.last_mut().unwrap();
-
-        if !last_air_segment.inputs.is_empty() {
-            let air_segment = mem::take(last_air_segment);
-            pool.scope(|scope| {
-                scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, true);
-                });
-            });
-        } else {
-            // Look for the last segment and set the last_segment flag to true
-            let mut air_instances = pctx.air_instances.write().unwrap();
-
+        if last_air_segment.inputs.is_empty() {
             // Get the last segment
-            let air_instance = air_instances
-                .iter_mut()
-                .filter(|air_instance| {
-                    air_instance.airgroup_id == MAIN_SUBPROOF_ID[0] &&
-                        air_instance.air_id == MAIN_AIR_IDS[0] &&
-                        air_instance.air_segment_id.is_some()
-                })
-                .max_by_key(|air_instance| air_instance.air_segment_id.unwrap())
-                .unwrap();
+            let last_air_segment_idx =
+                pctx.air_instance_repo.find_last_segment(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).expect(
+                    "MainSM: No last segment found. This should not happen as the last segment is created in the previous block",
+                );
+
+            // Look for the last segment and set the last_segment flag to true
+            let mut air_instances = pctx.air_instance_repo.air_instances.write().unwrap();
+
+            let air_instance = &mut air_instances[last_air_segment_idx];
 
             // Get the buffer size and offsets to be able to access the trace
-            let (_, offsets) = match ectx
+            let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
                 .get_buffer_info("Main".into(), MAIN_AIR_IDS[0])
-            {
-                Ok((size, offsets)) => (size, offsets),
-                Err(err) => {
-                    // Handle the error case, for example:
-                    panic!("Error getting buffer info: {}", err);
-                }
-            };
+                .expect("Error getting buffer info");
 
             // Map the F buffer to a Main0Trace
             let mut main_trace = Main0Trace::<F>::map_buffer(
-                air_instance.buffer.as_mut().unwrap(),
+                &mut air_instance.buffer,
                 Self::MAX_ACCUMULATED,
                 offsets[0] as usize,
             )
@@ -246,6 +229,13 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             for i in 0..main_trace.num_rows() {
                 main_trace[i].main_last_segment = main_last_segment;
             }
+        } else {
+            let air_segment = mem::take(last_air_segment);
+            pool.scope(|scope| {
+                scope.spawn(move |_| {
+                    Self::create_air_instance(air_segment, pctx, ectx, true);
+                });
+            });
         }
     }
 
@@ -365,12 +355,13 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len()]
             .copy_from_slice(&main_trace_buffer);
 
-        pctx.add_air_instance_ctx(
-            MAIN_SUBPROOF_ID[0],
+        let air_instance = AirInstance::new(
+            MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
             Some(air_segment.air_segment_id as usize),
-            Some(buffer),
+            buffer,
         );
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 
     /// Proves a batch of inputs
