@@ -36,3 +36,10 @@ airgroup Arith {
     Arith(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
 }
 
+airgroup ArithTable {
+    ArithTable();
+}
+
+airgroup ArithRangeTable {
+    ArithRangeTable();
+}

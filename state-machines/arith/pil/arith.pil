@@ -1,7 +1,8 @@
 require "std_lookup.pil"
 require "std_range_check.pil"
 require "operations.pil"
-// require "arith_table.pil"
+require "arith_table.pil"
+require "arith_range_table.pil"
 
 //                generic   64     u64   mul_u64   32   *u32
 //      witness     45      41      30     26      27     13 
@@ -248,12 +249,12 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                                            2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 + 
                                            2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3]);
   
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_a1, a[1]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_b1, b[1]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_c1, c[1]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_d1, d[1]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_a3, a[3]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_b3, b[3]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_c3, c[3]]);
-    lookup_assumes(AIRTH_RANGE_TABLE_ID, [range_d3, d[3]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_a1, a[1]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_b1, b[1]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_c1, c[1]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_d1, d[1]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_a3, a[3]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_b3, b[3]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_c3, c[3]]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_d3, d[3]]);
 }

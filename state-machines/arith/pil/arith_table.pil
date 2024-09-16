@@ -1,53 +1,13 @@
 require "std_lookup.pil"
-require "operations.pil"
 
 const int ARITH_TABLE_ID = 330;
 
-airtemplate ArithTable(int N = 2**8) {
+airtemplate ArithTable(int N = 2**6) {
 
-    // NOTE:
-    // Divisions and remainders by 0 are done by QuickOps
-
-    int na;     // a is negative
-    int nb;     // b is negative
-    int nr;     // rem is negative
-    int np;     // prod is negative
-    int na32;   // a is 32-bit negative, 31th bit is 1.
-    int nd32;   // d is 32-bit negative, 31th bit is 1.
-
-    int m32;    // 32 bits operation
-    int div;    // division operation (div,rem)
-    int sa;
-    int sb;
-
-    // negative a,c,d,na32,nd32 must be 0 if no signed_a
-    // na * (1 - sa) === 0;
-    // nr * (1 - sa) === 0;
-    // nr * (1 - div) === 0;
-    // np * (1 - sa) === 0;
-    // na32 * (1 - sa) === 0;
-    // nd32 * (1 - sa) === 0;
-
-    // negative b must be 0 if no signed_b
-    // nb * (1 - sb) === 0;
-
-    // na32, nd32 only available when 32 bits operation
-    // na32 * (1 - m32) === 0;
-    // nd32 * (1 - m32) === 0;
-
-    // nr, nd32 only could be one 1 in divisions
-    // nr * (1 - div) === 0;
-    // nd32 * (1 - div) === 0;
-
-    // if sb === 1 then sa must be 1, not allowed sa = 0, sb = 1
-    // sb * (1 - sa) === 0;
-    // m32 * (sa - sb) === 0;
-    // div * (sa - sb) === 0;
-    // (1 - div) * m32 * (1 - sa) === 0;
-    // (1 - div) * m32 * (1 - sb) === 0;
-
-    int op;    
-    op = 0xb0 + 2 * (sa  + sb + m32) + 2 * div * (m32 - sa + 4);
+    
+    // TABLE
+    // op 
+    // m32|div|na|nb|nr|np|na32|nd32|range_a1(*)|range_b1(*)|range_c1(*)|range_d1(*)|range_a3(*)|range_b3(*)|range_c3(*)|range_d3(*)
 
     // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32 
     // ----------------------------------------------------------------------------------
@@ -59,42 +19,149 @@ airtemplate ArithTable(int N = 2**8) {
     //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3  
     //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
     //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
+    
+    const int OPS[14] = [0xb0, 0xb1, 0xb3, 0xb4, 0xb5, 0xb6, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf];
 
-    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb 
-    // see 5 previous constraints.
-    // =0 means forced to zero by previous constraints
-    // comm = commutative (trivial: commutative operations)
-   
-    // positive_a1 = m32 * sa * (1 - na);
-    // negative_a1 = m32 * sa * na;
+    col fixed OP;
+    col fixed FLAGS_AND_RANGES;
 
-    // positive_a3 = (1-m32) * sa * (1 - na);
-    // negative_a3 = (1-m32) * sa * na;
+    int index = 0;
+    int size = 0;
+    while (index < N) {
+        for (int iop = 0; iop < length(OPS); ++iop) {
+            int opcode = OPS[iop];
+            int m32 = 0;    // 32 bits operation
+            int div = 0;    // division operation (div,rem)
+            int sa = 0;
+            int sb = 0;
 
-    // positive_b1 = m32 * sa * (1 - nb);
-    // negative_b1 = m32 * sa * nb;
+            switch (opcode & 0xFE) {
+                case 0xb3: // mulsuh
+                    sa = 1;        
+                case 0xb4: // mul, mulh
+                    sa = 1;
+                    sb = 1;
+                case 0xb6: // mul_w
+                    m32 = 1;
+                    sa = 1;
+                case 0xb8: // divu, remu
+                    div = 1;
+                case 0xba: // div, rem
+                    sa = 1;
+                    sb = 1;
+                    div = 1;
+                case 0xbc: // divu_w, remu_w
+                    div = 1;
+                    m32 = 1;
+                case 0xbe: // div_w, rem_w
+                    sa = 1;
+                    sb = 1;
+                    div = 1;
+                    m32 = 1;            
+            }
 
-    // positive_b3 = (1-m32) * sb * (1 - nb);
-    // negative_b3 = (1-m32) * sb * nb;
-
-    // positive_c1 = div * m32 * sa * (1 - np) + div * m32 * (1 - na32) + (1 - div) * m32 * (1 - na32);
-    // negative_c1 = div * m32 * sa * np + div * m32 * na32 + (1 - div) * m32 * na32;
-
-    // positive_c3 = div * (1-m32) * sa * (1 - np);
-    // negative_c3 = div * (1-m32) * sa * np;
-
-    // positive_d1 = div * m32 * (1 - nd32) + div * m32 * sa * (1 - nr);
-    // negative_d1 = div * m32 * nd32 + div * m32 * sa * nr;
-
-    // positive_d3 = (1-div) * sa * (1 - np) + div * (1-m32) * sa * (1 - nr);
-    // negative_d3 = (1-div) * sa * np + div * (1-m32) * sa * nr;
+            // CASES:
+            // sa = 0 sb = 0  => [a >= 0, b >= 0]
+            // sa = 1 sb = 0  => [a >= 0, b >= 0], [a < 0, b >= 0]
+            // sa = 1 sb = 1  => [a >= 0, b >= 0], [a < 0, b >= 0], [a >= 0, b < 0], [a < 0, b < 0]
             
-    // TODO: correct values
+            int cases = 1 + sa + sb + sa * sb;
 
+            for (int icase = 0; icase < cases; ++icase) {
+                int na = 0;     // a is negative
+                int nb = 0;     // b is negative
+                int nr = 0;     // rem is negative
+                int np = 0;     // prod is negative
+                int na32 = 0;   // a is 32-bit negative, 31th bit is 1.
+                int nd32 = 0;   // d is 32-bit negative, 31th bit is 1.
+                switch (icase) {
+                    case 1:
+                        na = 1;
+                    case 2:
+                        nb = 1;
+                    case 3:
+                        na = 1;
+                        nb = 1;
+                }
+                np = na + nb - na * nb;
+                nr = div ? na : 0;
+                na32 = m32 ? na : 0;
+                nd32 = m32 ? nr : 0;
 
-    col fixed OP = [0..10]...;
-    col fixed FLAGS_AND_RANGES = [1,0...];
+                // negative a,c,d,na32,nd32 must be 0 if no signed_a
+                // na * (1 - sa) === 0;
+                // nr * (1 - sa) === 0;
+                // nr * (1 - div) === 0;
+                // np * (1 - sa) === 0;
+                // na32 * (1 - sa) === 0;
+                // nd32 * (1 - sa) === 0;
+
+                // negative b must be 0 if no signed_b
+                // nb * (1 - sb) === 0;
+
+                // na32, nd32 only available when 32 bits operation
+                // na32 * (1 - m32) === 0;
+                // nd32 * (1 - m32) === 0;
+
+                // nr, nd32 only could be one 1 in divisions
+                // nr * (1 - div) === 0;
+                // nd32 * (1 - div) === 0;
+
+                // if sb === 1 then sa must be 1, not allowed sa = 0, sb = 1
+                // sb * (1 - sa) === 0;
+                // m32 * (sa - sb) === 0;
+                // div * (sa - sb) === 0;
+                // (1 - div) * m32 * (1 - sa) === 0;
+                // (1 - div) * m32 * (1 - sb) === 0;
+        
+                // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32 
+                // ----------------------------------------------------------------------------------
+                //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0   
+                //  0   0   1   0       *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   =0   d3   =0   =0  a3,      d3
+                //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3  
+                //  0   1   1   1    x  mul_w    *n/a*      (0xb6,0xb7)   a1   b1   =0   d3   c1   =0           d3, a1,b1,c1
+                //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0   
+                //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3  
+                //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
+                //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
+
+                int range_a1 = m32 * sa ? 1 + na : 0;
+                int range_b1 = m32 * sb ? 1 + nb : 0;
+
+                int range_c1 = 0;
+                if (m32) {
+                    if (div) {
+                        range_c1 = np || na32 ? 2 : 1;
+                    } else {
+                        range_c1 = 1 + na32;
+                    }
+                }
+                int range_d1 = m32 * div ? (((np * sa) || nd32) ? 1:2) : 0;
+
+                int range_a3 = (1 - m32) * sa ? 1 + na : 0;
+                int range_b3 = (1 - m32) * sb ? 1 + na : 0;
+                int range_c3 = div * (1 - m32) * sa ? 1 + np : 0;
+                int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
+
+                OP[index] = opcode;
+                FLAGS_AND_RANGES[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * nr + 32 * np + 64 * na32 + 128 * nd32 +
+                                          2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 + 
+                                          2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3;
+                
+                index = index + 1;
+                if (index == N) break;          
+            }
+            if (index == N) break;          
+        }
+        if (size == 0) size = index;
+    }
+
+    println("ARITH_TABLE SIZE: ", size);   
+
     col witness multiplicity;
 
     lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES]);
+
+    // REMOVE
+    multiplicity * (multiplicity - 1) === 0;
 }
