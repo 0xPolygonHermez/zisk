@@ -3,7 +3,7 @@ members = [
     "cli",
     "core",
     "emulator",
-    "pil/fork_0",
+    "pil/v0.1",
     "riscv",
     "state-machines/arith",
     "state-machines/binary",
