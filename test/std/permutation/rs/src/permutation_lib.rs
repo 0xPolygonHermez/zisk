@@ -1,4 +1,4 @@
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{error::Error, path::PathBuf, process::Command, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
@@ -8,13 +8,13 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{Permutation1, Permutation1_1, Permutation1_2, Permutation2, Pilout};
+use crate::{Permutation1_6, Permutation1_7, Permutation1_8, Permutation2, Pilout};
 
 pub struct PermutationWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
-    pub permutation1: Arc<Permutation1<F>>,
-    pub permutation1_1: Arc<Permutation1_1<F>>,
-    pub permutation1_2: Arc<Permutation1_2<F>>,
+    pub permutation1_6: Arc<Permutation1_6<F>>,
+    pub permutation1_7: Arc<Permutation1_7<F>>,
+    pub permutation1_8: Arc<Permutation1_8<F>>,
     pub permutation2: Arc<Permutation2<F>>,
     pub std_lib: Arc<Std<F>>,
 }
@@ -36,16 +36,16 @@ where
         let mut wcm = WitnessManager::new();
 
         let std_lib = Std::new(&mut wcm, None);
-        let permutation1 = Permutation1::new(&mut wcm);
-        let permutation1_1 = Permutation1_1::new(&mut wcm);
-        let permutation1_2 = Permutation1_2::new(&mut wcm);
+        let permutation1_6 = Permutation1_6::new(&mut wcm);
+        let permutation1_7 = Permutation1_7::new(&mut wcm);
+        let permutation1_8 = Permutation1_8::new(&mut wcm);
         let permutation2 = Permutation2::new(&mut wcm);
 
         PermutationWitness {
             wcm,
-            permutation1,
-            permutation1_1,
-            permutation1_2,
+            permutation1_6,
+            permutation1_7,
+            permutation1_8,
             permutation2,
             std_lib,
         }
@@ -66,9 +66,9 @@ where
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
-        self.permutation1.execute(pctx, ectx, sctx);
-        self.permutation1_1.execute(pctx, ectx, sctx);
-        self.permutation1_2.execute(pctx, ectx, sctx);
+        self.permutation1_6.execute(pctx, ectx, sctx);
+        self.permutation1_7.execute(pctx, ectx, sctx);
+        self.permutation1_8.execute(pctx, ectx, sctx);
         self.permutation2.execute(pctx, ectx, sctx);
     }
 
@@ -100,4 +100,43 @@ pub extern "Rust" fn init_library(
         .init();
     let permutation_witness = PermutationWitness::new();
     Ok(Box::new(permutation_witness))
+}
+
+#[test]
+fn test_multiple_bash_commands() {
+    // TODO: Do it without commands.
+    // TODO: Make it path independent.
+
+    // Compile the pil file
+    let compilation = Command::new("node")
+        .arg("../pil2-compiler/src/pil.js")
+        .arg("-I")
+        .arg("lib/std/pil")
+        .arg("test/std/permutation/permutation.pil")
+        .arg("-o")
+        .arg("test/std/permutation/build/permutation.pilout")
+        .status()
+        .expect("Failed to execute command");
+
+    let proofman_dir = "../pil2-proofman";
+
+    let status = Command::new("cargo")
+        .arg("run")
+        .arg("--bin")
+        .arg("proofman-cli")
+        .arg("pil-helpers")
+        .arg("--pilout")
+        .arg("../pil2-components/test/std/permutation/build/permutation.pilout")
+        .arg("--path")
+        .arg("../pil2-components/test/std/permutation/rs/src")
+        .arg("-o")
+        .current_dir(proofman_dir)
+        .status()
+        .expect("Failed to execute command");
+
+    if status.success() {
+        println!("Command executed successfully");
+    } else {
+        println!("Command failed");
+    }
 }

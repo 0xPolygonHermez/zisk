@@ -37,6 +37,9 @@ airtemplate U8Air(const int N = 2**8) {
     }
 
     col witness mul;
+
+    @u8air{reference: mul};
+
     col fixed U8 = [0..BYTE];
     lookup_proves(OPIDS[0], [U8], mul, PIOP_NAME_RANGE_CHECK);
 }
@@ -47,17 +50,24 @@ airtemplate U16Air(const int N = 2**16) {
     }
 
     col witness mul;
+
+    @u16air{reference: mul};
+
     col fixed U16 = [0..TWOBYTES];
     lookup_proves(OPIDS[1], [U16], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int mins[], const int maxs[]) {
+    @specified_ranges{num_rows: N};
+
     col witness mul[opids_count];
 
     for (int j = 0; j < opids_count; j++) {
         int opid = opids[j];
         int min = mins[j];
         int max = maxs[j];
+
+        @specified_ranges{reference: mul[j], min: min, max: max};
 
         if (N < max - min + 1) {
             error(`The range [min,max]=[${min},${max}] is too big, the maximum range length is ${N}`);
@@ -95,8 +105,8 @@ function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1
     sign[2] = min2 < 0 ? 1 : 0;
     sign[3] = max2 < 0 ? 1 : 0;
     // Can I do it with predefined ranges?
-    @range_check{predefined: 0, colu: colu, min: min1, max: max1, min_neg: sign[0], max_neg: sign[1]};
-    @range_check{predefined: 0, colu: colu, min: min2, max: max2, min_neg: sign[2], max_neg: sign[3]};
+    @range_def{predefined: 0, min: min1, max: max1, min_neg: sign[0], max_neg: sign[1]};
+    @range_def{predefined: 0, min: min2, max: max2, min_neg: sign[2], max_neg: sign[3]};
 
     const int opid1 = opid_process(min1, max1);
     const int opid2 = opid_process(min2, max2);
@@ -129,7 +139,7 @@ function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int m
     int sign[2];
     sign[0] = min < 0 ? 1 : 0;
     sign[1] = max < 0 ? 1 : 0;
-    @range_check{predefined:predefined, colu: colu, min: min, max: max, min_neg: sign[0], max_neg: sign[1]};
+    @range_def{predefined: predefined, min: min, max: max, min_neg: sign[0], max_neg: sign[1]};
 
     if (min < 0) {
         println(`The provided min=${min} is negative. Falling back to specified range...`);

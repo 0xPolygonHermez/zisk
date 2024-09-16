@@ -4,57 +4,47 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
-use rand::{distributions::Standard, prelude::Distribution, seq::SliceRandom, Rng};
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Permutation10Trace, PERMUTATION_1_AIR_IDS, PERMUTATION_SUBPROOF_ID};
+use crate::{Permutation1_71Trace, PERMUTATION_1_7_AIR_IDS, PERMUTATION_AIRGROUP_ID};
 
-pub struct Permutation1<F> {
+pub struct Permutation1_7<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Permutation1<F>
+impl<F: PrimeField + Copy> Permutation1_7<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Permutation1";
+    const MY_NAME: &'static str = "Permutation1_7";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let permutation1 = Arc::new(Self {
+        let permutation1_7 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
         wcm.register_component(
-            permutation1.clone(),
-            Some(PERMUTATION_SUBPROOF_ID[0]),
-            Some(PERMUTATION_1_AIR_IDS),
+            permutation1_7.clone(),
+            Some(PERMUTATION_AIRGROUP_ID[0]),
+            Some(PERMUTATION_1_7_AIR_IDS),
         );
 
-        permutation1
+        permutation1_7
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
-        // Add two instances of this air, so that 2**6 + 2**6 = 2**7 to fit with permutation2
+        // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Permutation".into(), PERMUTATION_1_AIR_IDS[0])
+            .get_buffer_info("Permutation".into(), PERMUTATION_1_7_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_SUBPROOF_ID[0],
-            PERMUTATION_1_AIR_IDS[0],
-            None,
-            buffer,
-        );
-        pctx.air_instance_repo.add_air_instance(air_instance);
-
-        let buffer = vec![F::zero(); buffer_size as usize];
-
-        let air_instance = AirInstance::new(
-            PERMUTATION_SUBPROOF_ID[0],
-            PERMUTATION_1_AIR_IDS[0],
+            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_1_7_AIR_IDS[0],
             None,
             buffer,
         );
@@ -62,7 +52,7 @@ where
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation1<F>
+impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation1_7<F>
 where
     Standard: Distribution<F>,
 {
@@ -101,7 +91,7 @@ where
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
-            let mut trace = Permutation10Trace::map_buffer(
+            let mut trace = Permutation1_71Trace::map_buffer(
                 buffer.as_mut_slice(),
                 num_rows,
                 offsets[0] as usize,
@@ -125,23 +115,24 @@ where
                 trace[i].a4 = F::from_canonical_u8(100);
                 trace[i].b4 = F::from_canonical_u8(101);
 
-                trace[i].sel1 = F::from_bool(rng.gen_bool(0.5));
-                trace[i].sel3 = F::one();
+                trace[i].sel1 = F::one();
+                trace[i].sel3 = F::one(); // F::from_canonical_u8(rng.gen_range(0..=1));
             }
 
-            let mut indices: Vec<usize> = (0..num_rows).collect();
-            indices.shuffle(&mut rng);
+            // TODO: Add the permutation of indexes
 
             // Proves
             for i in 0..num_rows {
-                // We take a random permutation of the indices to show that the permutation check is passing
-                trace[i].c1 = trace[indices[i]].a1;
-                trace[i].d1 = trace[indices[i]].b1;
+                let index = num_rows - i - 1;
+                // let mut index = rng.gen_range(0..num_rows);
+                trace[i].c1 = trace[index].a1;
+                trace[i].d1 = trace[index].b1;
 
-                trace[i].c2 = trace[indices[i]].a3;
-                trace[i].d2 = trace[indices[i]].b3;
+                // index = rng.gen_range(0..num_rows);
+                trace[i].c2 = trace[index].a3;
+                trace[i].d2 = trace[index].b3;
 
-                trace[i].sel2 = trace[indices[i]].sel1;
+                trace[i].sel2 = trace[i].sel1;
             }
         }
 

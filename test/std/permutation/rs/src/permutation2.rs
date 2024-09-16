@@ -5,7 +5,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
 
-use crate::{Permutation23Trace, PERMUTATION_2_AIR_IDS, PERMUTATION_SUBPROOF_ID};
+use crate::{Permutation2_63Trace, PERMUTATION_2_6_AIR_IDS, PERMUTATION_AIRGROUP_ID};
 
 pub struct Permutation2<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -21,8 +21,8 @@ impl<F: PrimeField + Copy> Permutation2<F> {
 
         wcm.register_component(
             permutation2.clone(),
-            Some(PERMUTATION_SUBPROOF_ID[0]),
-            Some(PERMUTATION_2_AIR_IDS),
+            Some(PERMUTATION_AIRGROUP_ID[0]),
+            Some(PERMUTATION_2_6_AIR_IDS),
         );
 
         permutation2
@@ -33,14 +33,14 @@ impl<F: PrimeField + Copy> Permutation2<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Permutation".into(), PERMUTATION_2_AIR_IDS[0])
+            .get_buffer_info("Permutation".into(), PERMUTATION_2_6_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_SUBPROOF_ID[0],
-            PERMUTATION_2_AIR_IDS[0],
+            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_2_6_AIR_IDS[0],
             None,
             buffer,
         );
@@ -81,7 +81,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
-            let mut trace = Permutation23Trace::map_buffer(
+            let mut trace = Permutation2_63Trace::map_buffer(
                 buffer.as_mut_slice(),
                 num_rows,
                 offsets[0] as usize,

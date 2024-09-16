@@ -24,7 +24,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
                 let im_hints = get_hint_ids_by_name(setup.p_setup, "im_col");
                 let gsum_hints = get_hint_ids_by_name(setup.p_setup, "gsum_col");
                 if !gsum_hints.is_empty() {

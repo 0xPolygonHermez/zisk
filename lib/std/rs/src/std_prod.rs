@@ -23,7 +23,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
                 let prod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
@@ -58,9 +58,12 @@ impl<F: Copy + Debug + Field> StdProd<F> {
             prod_airs
                 .iter()
                 .for_each(|(airgroup_id, air_id, prod_hints)| {
-                    let air_instances = pctx.air_instance_repo.find_air_instances(*airgroup_id, *air_id);
+                    let air_instances = pctx
+                        .air_instance_repo
+                        .find_air_instances(*airgroup_id, *air_id);
                     air_instances.iter().for_each(|air_instance_id| {
-                        let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
+                        let air_instances_vec =
+                            &mut pctx.air_instance_repo.air_instances.write().unwrap();
 
                         let air_instance = &mut air_instances_vec[*air_instance_id];
 

@@ -6,30 +6,30 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Permutation1_22Trace, PERMUTATION_1_2_AIR_IDS, PERMUTATION_SUBPROOF_ID};
+use crate::{Permutation1_82Trace, PERMUTATION_1_8_AIR_IDS, PERMUTATION_AIRGROUP_ID};
 
-pub struct Permutation1_2<F> {
+pub struct Permutation1_8<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Permutation1_2<F>
+impl<F: PrimeField + Copy> Permutation1_8<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Permutation1_2";
+    const MY_NAME: &'static str = "Permutation1_8";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let permutation1_2 = Arc::new(Self {
+        let permutation1_8 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
         wcm.register_component(
-            permutation1_2.clone(),
-            Some(PERMUTATION_SUBPROOF_ID[0]),
-            Some(PERMUTATION_1_2_AIR_IDS),
+            permutation1_8.clone(),
+            Some(PERMUTATION_AIRGROUP_ID[0]),
+            Some(PERMUTATION_1_8_AIR_IDS),
         );
 
-        permutation1_2
+        permutation1_8
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -37,14 +37,14 @@ where
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Permutation".into(), PERMUTATION_1_2_AIR_IDS[0])
+            .get_buffer_info("Permutation".into(), PERMUTATION_1_8_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            PERMUTATION_SUBPROOF_ID[0],
-            PERMUTATION_1_2_AIR_IDS[0],
+            PERMUTATION_AIRGROUP_ID[0],
+            PERMUTATION_1_8_AIR_IDS[0],
             None,
             buffer,
         );
@@ -52,7 +52,7 @@ where
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation1_2<F>
+impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation1_8<F>
 where
     Standard: Distribution<F>,
 {
@@ -91,7 +91,7 @@ where
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
-            let mut trace = Permutation1_22Trace::map_buffer(
+            let mut trace = Permutation1_82Trace::map_buffer(
                 buffer.as_mut_slice(),
                 num_rows,
                 offsets[0] as usize,

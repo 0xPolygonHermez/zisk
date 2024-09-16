@@ -28,9 +28,9 @@ airtemplate Permutation2(const int N = 2**9) {
 };
 
 airgroup Permutation {
-    Permutation1();
-    Permutation1(N: 2**7);
-    Permutation1(N: 2**8);
+    Permutation1() alias `Permutation1_6`;
+    Permutation1(N: 2**7) alias "Permutation1_7";
+    Permutation1(N: 2**8) alias "Permutation1_8";
 
-    Permutation2();
+    Permutation2()  alias "Permutation2_6";
 }

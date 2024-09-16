@@ -63,11 +63,39 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
-                let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_check");
+                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+
+                // Obtain info from the range hints
+                let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_def");
                 for hint in rc_hints {
-                    // Register the ranges for the range check
+                    // Register the range
                     self.register_range(sctx, airgroup_id, air_id, hint);
+                }
+
+                // TODO: The following code can be run only once per air_group
+
+                // Obtain info from the mul hints
+
+                // U8Air
+                let u8air_hints = get_hint_ids_by_name(setup.p_setup, "u8air");
+                if u8air_hints.len() > 0 {
+                    let u8air = self.u8air.as_ref().unwrap();
+                    *u8air.hint.lock().unwrap() = u8air_hints[0];
+                }
+
+                // U16Air
+                let u16air_hints = get_hint_ids_by_name(setup.p_setup, "u16air");
+                if u16air_hints.len() > 0 {
+                    let u16air = self.u16air.as_ref().unwrap();
+                    *u16air.hint.lock().unwrap() = u16air_hints[0];
+                }
+
+                // SpecifiedRanges
+                let specified_ranges_hints =
+                    get_hint_ids_by_name(setup.p_setup, "specified_ranges");
+                for hint in specified_ranges_hints {
+                    let specified_ranges = self.specified_ranges.as_ref().unwrap();
+                    specified_ranges.hints.lock().unwrap().push(hint);
                 }
             });
         });
@@ -301,10 +329,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
             u8air.drain_inputs();
         }
         if let Some(u16air) = self.u16air.as_ref() {
-            u16air.drain_inputs(pctx, scope);
+            u16air.drain_inputs();
         }
         if let Some(specified_ranges) = self.specified_ranges.as_ref() {
-            specified_ranges.drain_inputs(pctx, scope);
+            specified_ranges.drain_inputs();
         }
     }
 }

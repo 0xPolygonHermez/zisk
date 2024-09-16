@@ -1,32 +1,33 @@
-use std::mem;
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-
-use proofman_common as common;
-pub use proofman_macros::trace;
-use rayon::Scope;
+use proofman_common::{
+    AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
+};
+use proofman_hints::{get_hint_field, set_hint_field, HintFieldOutput, HintFieldValue};
 
 use crate::Range;
-
-// PIL Helpers
-trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
-    mul: [F; 1], // TODO: This number cannot be hardcorded, it depens on the air that instantiates the range check
-});
 
 const PROVE_CHUNK_SIZE: usize = 1 << 10;
 
 pub struct SpecifiedRanges<F: PrimeField> {
+    // Proof-related data
+    setup_repository: RefCell<Arc<SetupRepository>>,
+    public_inputs: Arc<Vec<u8>>,
+    challenges: Arc<RefCell<Vec<F>>>,
+    air_instances_repository: RefCell<Arc<AirInstancesRepository<F>>>,
+    // Parameters
+    pub hints: Mutex<Vec<u64>>,
     airgroup_id: usize,
     air_id: usize,
+    // Inputs
+    num_rows: usize,
     ranges: Mutex<Vec<Range<F>>>,
     inputs: Mutex<Vec<(Range<F>, F)>>, // range -> value -> multiplicity
-    specified_ranges_table: Mutex<Vec<F>>,
-    offset: Mutex<usize>,
 }
 
 impl<F: PrimeField> SpecifiedRanges<F> {
@@ -34,12 +35,16 @@ impl<F: PrimeField> SpecifiedRanges<F> {
 
     pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let specified_ranges = Arc::new(Self {
+            setup_repository: RefCell::new(Arc::new(SetupRepository { setups: Vec::new() })),
+            public_inputs: Arc::new(Vec::new()),
+            challenges: Arc::new(RefCell::new(Vec::new())),
+            air_instances_repository: RefCell::new(Arc::new(AirInstancesRepository::new())),
+            hints: Mutex::new(Vec::new()),
             airgroup_id,
             air_id,
+            num_rows: 0,
             ranges: Mutex::new(Vec::new()),
             inputs: Mutex::new(Vec::new()),
-            specified_ranges_table: Mutex::new(Vec::new()),
-            offset: Mutex::new(0),
         });
 
         wcm.register_component(specified_ranges.clone(), Some(airgroup_id), Some(&[air_id]));
@@ -47,16 +52,40 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         specified_ranges
     }
 
-    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, _scope: Option<&Scope>) {
+    pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect::<Vec<_>>();
 
         self.update_multiplicity(drained_inputs);
 
-        let specified_ranges_table = mem::take(&mut *self.specified_ranges_table.lock().unwrap());
-        let air_instance =
-            AirInstance::new(self.airgroup_id, self.air_id, None, specified_ranges_table);
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        // Set the multiplicity column as done
+        let hint = self.hint.lock().unwrap();
+
+        let air_instance_id = self
+            .air_instances_repository
+            .borrow()
+            .find_air_instances(self.airgroup_id, self.air_id)[0];
+        let mut air_instance_rw = self
+            .air_instances_repository
+            .borrow()
+            .air_instances
+            .write()
+            .unwrap();
+        let air_instance = &mut air_instance_rw[air_instance_id];
+
+        let mut mul = get_hint_field::<F>(
+            self.setup_repository.borrow().as_ref(),
+            self.public_inputs.clone(),
+            self.challenges.clone(),
+            air_instance,
+            *hint as usize,
+            "reference",
+            true,
+            false,
+            false,
+        );
+
+        set_hint_field(sctx, air_instance, *hint as u64, "reference", &mut mul);
 
         println!(
             "{}: Drained inputs for AIR 'Specified Ranges'",
@@ -88,11 +117,26 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         // TODO! Do it in parallel
         // Update the multiplicity column
         let num_rows = 1 << 32; // TODO: Compute from ranges!!!
-        let mut specified_ranges_table = self.specified_ranges_table.lock().unwrap();
-        let offset = *self.offset.lock().unwrap();
-        let mut trace =
-            SpecifiedRanges0Trace::map_buffer(&mut specified_ranges_table, num_rows, offset)
-                .unwrap();
+
+        let air_instance_id = self
+            .air_instances_repository
+            .borrow()
+            .find_air_instances(self.airgroup_id, self.air_id)[0];
+        let air_instance_bind = self.air_instances_repository.borrow();
+        let mut air_instance_rw = air_instance_bind.air_instances.write().unwrap();
+        let air_instance = &mut air_instance_rw[air_instance_id];
+
+        let mut mul = get_hint_field::<F>(
+            self.setup_repository.borrow().as_ref(),
+            self.public_inputs.clone(),
+            self.challenges.clone(),
+            air_instance,
+            hint,
+            "reference",
+            true,
+            false,
+            false,
+        );
 
         let ranges = self.ranges.lock().unwrap();
         for (range, input) in &drained_inputs {
@@ -108,7 +152,11 @@ impl<F: PrimeField> SpecifiedRanges<F> {
 
             // Note: to avoid non-expected panics, we perform a reduction to the value
             //       In debug mode, this is, in fact, checked before
-            trace[value % num_rows].mul[range_index] += F::one();
+            let index = value % num_rows;
+            let previous_mul_val = mul.get(index);
+            mul.set(index, previous_mul_val + HintFieldOutput::Field(F::one()));
+
+            // trace[value % num_rows].mul[range_index] += F::one();
         }
 
         // for k in 0..trace[0].mul.len() {
@@ -143,17 +191,48 @@ impl<F: PrimeField> SpecifiedRanges<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.setup_repository.replace(sctx.setups.clone());
+        self.air_instances_repository
+            .replace(pctx.air_instance_repo.clone());
+
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("SpecifiedRanges".into(), self.air_id)
+            .get_buffer_info("U16Air".into(), self.air_id)
             .unwrap();
-
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed
+        let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
+        self.air_instances_repository
+            .borrow_mut()
+            .add_air_instance(air_instance);
+
+        // Set the number of rows
+        let hint = self.hints.lock().unwrap()[0] as usize;
+
+        let mut num_rows = get_hint_field::<F>(
+            self.setup_repository.borrow().as_ref(),
+            self.public_inputs.clone(),
+            self.challenges.clone(),
+            &mut air_instance,
+            hint,
+            "reference",
+            true,
+            false,
+            false,
+        );
+
+        let HintFieldValue::Field(num_rows) = num_rows else {
+            log::error!("Max_neg hint must be a field element");
+            panic!();
+        };
+
+        self.num_rows = num_rows
+            .as_canonical_biguint()
+            .to_usize()
+            .expect("Cannot convert to usize");
     }
 
     fn calculate_witness(
