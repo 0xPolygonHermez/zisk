@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use proofman_common as common;
 pub use proofman_macros::trace;
@@ -54,12 +54,9 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         self.update_multiplicity(drained_inputs);
 
         let specified_ranges_table = mem::take(&mut *self.specified_ranges_table.lock().unwrap());
-        pctx.add_air_instance_ctx(
-            self.airgroup_id,
-            self.air_id,
-            None,
-            Some(specified_ranges_table),
-        );
+        let air_instance =
+            AirInstance::new(self.airgroup_id, self.air_id, None, specified_ranges_table);
+        pctx.air_instance_repo.add_air_instance(air_instance);
 
         println!(
             "{}: Drained inputs for AIR 'Specified Ranges'",
@@ -155,7 +152,8 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        pctx.add_air_instance_ctx(self.airgroup_id, self.air_id, None, Some(buffer));
+        let air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 
     fn calculate_witness(

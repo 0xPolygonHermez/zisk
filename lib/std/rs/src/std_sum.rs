@@ -60,9 +60,12 @@ impl<F: Copy + Debug + Field> StdSum<F> {
             sum_airs
                 .iter()
                 .for_each(|(airgroup_id, air_id, im_hints, gsum_hints)| {
-                    let air_instances = pctx.find_air_instances(*airgroup_id, *air_id);
+                    let air_instances = pctx
+                        .air_instance_repo
+                        .find_air_instances(*airgroup_id, *air_id);
                     air_instances.iter().for_each(|air_instance_id| {
-                        let air_instaces_vec = &mut pctx.air_instances.write().unwrap();
+                        let air_instaces_vec =
+                            &mut pctx.air_instance_repo.air_instances.write().unwrap();
 
                         let air_instance = &mut air_instaces_vec[*air_instance_id];
 

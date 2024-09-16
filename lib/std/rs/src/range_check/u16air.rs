@@ -50,7 +50,8 @@ impl<F: PrimeField> U16Air<F> {
         self.update_multiplicity(drained_inputs);
 
         let u16air_table = mem::take(&mut *self.u16air_table.lock().unwrap());
-        pctx.add_air_instance_ctx(self.airgroup_id, self.air_id, None, Some(u16air_table));
+        let air_instance = common::AirInstance::new(self.airgroup_id, self.air_id, None, u16air_table);
+        pctx.air_instance_repo.add_air_instance(air_instance);
 
         println!("{}: Drained inputs for AIR 'U16Air'", Self::MY_NAME);
     }
