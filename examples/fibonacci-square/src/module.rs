@@ -1,12 +1,12 @@
 use log;
 use std::{cell::RefCell, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 use pil_std_lib::Std;
 use p3_field::{AbstractField, PrimeField};
 
-use crate::{FibonacciSquarePublics, Module0Trace, MODULE_SUBPROOF_ID, MODULE_AIR_IDS};
+use crate::{FibonacciSquarePublics, Module0Trace, MODULE_AIRGROUP_ID, MODULE_AIR_IDS};
 
 pub struct Module<F: PrimeField> {
     inputs: RefCell<Vec<(u64, u64)>>,
@@ -19,7 +19,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
     pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: RefCell::new(Vec::new()), std_lib });
 
-        wcm.register_component(module.clone(), Some(MODULE_SUBPROOF_ID[0]), Some(MODULE_AIR_IDS));
+        wcm.register_component(module.clone(), Some(MODULE_AIRGROUP_ID), Some(MODULE_AIR_IDS));
 
         module
     }
@@ -47,7 +47,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0]).num_rows();
+        let num_rows = pctx.pilout.get_air(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0]).num_rows();
         let mut trace = Module0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
         for (i, input) in self.inputs.borrow().iter().enumerate() {
@@ -67,7 +67,9 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         // }
         // log::info!("Result Module buffer: {:?}", result);
 
-        pctx.add_air_instance_ctx(MODULE_SUBPROOF_ID[0], MODULE_AIR_IDS[0], Some(0), Some(buffer));
+        let air_instance = AirInstance::new(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
+
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
 

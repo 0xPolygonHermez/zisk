@@ -33,7 +33,7 @@ struct ProofCtx {
 
 #[derive(Debug, Serialize)]
 struct AirGroupsCtx {
-    subproof_id: usize,
+    airgroup_id: usize,
     name: String,
     snake_name: String,
     airs: Vec<AirCtx>,
@@ -92,7 +92,7 @@ impl PilHelpersCmd {
 
         for (subproof_id, subproof) in pilout.subproofs.iter().enumerate() {
             wcctxs.push(AirGroupsCtx {
-                subproof_id,
+                airgroup_id: subproof_id,
                 name: subproof.name.as_ref().unwrap().clone().to_case(Case::Pascal),
                 snake_name: subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
                 airs: subproof
