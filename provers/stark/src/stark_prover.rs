@@ -276,7 +276,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             }
         }
 
-        commit_stage_c(p_stark, element_type, stage_id as u64, buffer, p_proof);
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
+        let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
+        commit_stage_c(p_stark, element_type, stage_id as u64, buffer, p_proof, buff_helper);
 
         timer_stop_and_log!(STARK_COMMIT_STAGE_, stage_id);
 
@@ -322,6 +324,19 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         } else {
             ProverStatus::OpeningStage
         }
+    }
+
+    fn get_buff_helper_size(&self) -> usize {
+        let mut max_cols = 0;
+        for stage in 1..=Self::num_stages(self) + 1 {
+            let n_cols = *self.stark_info.map_sections_n.get(&format!("cm{}", stage)).unwrap() as usize;
+            if n_cols > max_cols {
+                max_cols = n_cols;
+            }
+        }
+
+        let n_extended = (1 << self.stark_info.stark_struct.n_bits_ext) as usize;
+        max_cols * n_extended
     }
 
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
@@ -425,7 +440,9 @@ impl<F: Field> StarkProver<F> {
 
         debug!("{}: ··· Computing evaluations", Self::MY_NAME);
 
-        compute_evals_c(p_stark, buffer, challenges, evals, p_proof);
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
+        let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
+        compute_evals_c(p_stark, buffer, challenges, evals, p_proof, buff_helper);
     }
 
     fn compute_fri_pol(&mut self, _opening_id: u32, proof_ctx: Arc<ProofCtx<F>>) {

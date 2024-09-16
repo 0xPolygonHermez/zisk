@@ -24,10 +24,21 @@ impl<F> Default for Challenges<F> {
     }
 }
 
+pub struct BuffHelper<F> {
+    pub buff_helper: RwLock<Vec<F>>,
+}
+
+impl<F> Default for BuffHelper<F> {
+    fn default() -> Self {
+        Self { buff_helper: RwLock::new(Vec::new()) }
+    }
+}
+
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: PublicInputs,
     pub challenges: Challenges<F>,
+    pub buff_helper: BuffHelper<F>,
     pub pilout: WitnessPilout,
     pub air_instance_repo: AirInstancesRepository<F>,
 }
@@ -45,6 +56,7 @@ impl<F> ProofCtx<F> {
             public_inputs: PublicInputs::default(),
             pilout,
             challenges: Challenges::default(),
+            buff_helper: BuffHelper::default(),
             air_instance_repo: AirInstancesRepository::new(),
         }
     }

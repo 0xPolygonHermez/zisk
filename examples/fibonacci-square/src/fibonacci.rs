@@ -33,7 +33,6 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         ) {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
-        self.module.execute(pctx, ectx);
     }
 
     fn calculate_trace(

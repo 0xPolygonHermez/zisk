@@ -12,7 +12,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use crate::FibonacciSquarePublics;
 
-use crate::{FibonacciSquare, Pilout, Module};
+use crate::{FibonacciSquare, Pilout, Module, U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS};
 
 pub struct FibonacciWitness<F: PrimeField> {
     public_inputs_path: Option<PathBuf>,
@@ -76,6 +76,7 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.fibonacci.as_ref().unwrap().execute(pctx, ectx, sctx);
+        self.module.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {

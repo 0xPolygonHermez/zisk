@@ -358,6 +358,18 @@ impl<F: Field + 'static> ProofMan<F> {
             prover.build(pctx.clone());
         }
 
+        let mut buff_helper_size = 0 as usize;
+
+        for prover in provers.iter_mut() {
+            let buff_helper_prover_size = prover.get_buff_helper_size();
+            if buff_helper_prover_size > buff_helper_size {
+                buff_helper_size = buff_helper_prover_size;
+            }
+        }
+
+        let buff_helper: Vec<F> = vec![F::zero(); buff_helper_size];
+
+        *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
         timer_stop_and_log!(INITIALIZING_PROVERS);
     }
 

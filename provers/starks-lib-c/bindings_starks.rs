@@ -174,12 +174,13 @@ extern "C" {
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_"]
+    #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_S_"]
     pub fn extend_and_merkelize(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
         buffer: *mut ::std::os::raw::c_void,
         proof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -240,23 +241,25 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_"]
+    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_S_"]
     pub fn commit_stage(
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
         buffer: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_"]
+    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_S_"]
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
         challenges: *mut ::std::os::raw::c_void,
         evals: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {

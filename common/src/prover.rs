@@ -60,6 +60,7 @@ pub trait Prover<F> {
         transcript: &mut FFITranscript,
     ) -> ProverStatus;
 
+    fn get_buff_helper_size(&self) -> usize;
     fn get_proof(&self) -> *mut c_void;
     fn get_prover_info(&self) -> ProverInfo;
     fn save_proof(&self, id: u64, output_dir: &str);
