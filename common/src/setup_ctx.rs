@@ -5,7 +5,7 @@ use crate::Setup;
 use crate::WitnessPilout;
 
 pub struct SetupRepository {
-    pub setups: Arc<Vec<Setup>>,
+    pub setups: Vec<Setup>,
 }
 
 impl SetupRepository {
@@ -22,7 +22,6 @@ impl SetupRepository {
                     .map(move |(air_id, _)| Setup::new(proving_key_path, airgroup_id, air_id))
             })
             .collect::<Vec<Setup>>();
-        let setups = Arc::new(setups);
 
         Self { setups }
     }
@@ -40,12 +39,12 @@ impl SetupRepository {
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
 pub struct SetupCtx {
-    pub setups: SetupRepository,
+    pub setups: Arc<SetupRepository>,
 }
 
 impl SetupCtx {
     pub fn new(pilout: WitnessPilout, proving_key_path: &Path) -> Self {
-        let setups = SetupRepository::new(pilout, proving_key_path);
+        let setups = Arc::new(SetupRepository::new(pilout, proving_key_path));
 
         SetupCtx { setups }
     }
