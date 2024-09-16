@@ -1,5 +1,7 @@
 use log::debug;
-use sm_binary::{BasicTableSM, BinaryBasicSM, BinaryExtensionSM, BinarySM, ExtensionTableSM};
+use sm_binary::{
+    BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
+};
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::{
@@ -27,9 +29,9 @@ pub struct ZiskWitness<F> {
     pub arith_3264_sm: Arc<Arith3264SM>,
     pub binary_sm: Arc<BinarySM>,
     pub binary_basic_sm: Arc<BinaryBasicSM>,
-    pub basic_table_sm: Arc<BasicTableSM>,
+    pub binary_basic_table_sm: Arc<BinaryBasicTableSM>,
     pub binary_extension_sm: Arc<BinaryExtensionSM>,
-    pub extension_table_sm: Arc<ExtensionTableSM>,
+    pub binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     pub main_sm: Arc<MainSM<F>>,
     pub mem_sm: Arc<MemSM>,
     pub mem_aligned_sm: Arc<MemAlignedSM>,
@@ -71,22 +73,22 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MemUnalignedSM::new(&mut wcm, MEM_SUBPROOF_ID, MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let basic_table_sm =
-            BasicTableSM::new(&mut wcm, BINARY_TABLE_SUBPROOF_ID[0], BINARY_TABLE_AIR_IDS);
+        let binary_basic_table_sm =
+            BinaryBasicTableSM::new(&mut wcm, BINARY_TABLE_SUBPROOF_ID[0], BINARY_TABLE_AIR_IDS);
         let binary_basic_sm = BinaryBasicSM::new(
             &mut wcm,
-            basic_table_sm.clone(),
+            binary_basic_table_sm.clone(),
             BINARY_SUBPROOF_ID[0],
             BINARY_AIR_IDS,
         );
-        let extension_table_sm = ExtensionTableSM::new(
+        let binary_extension_table_sm = BinaryExtensionTableSM::new(
             &mut wcm,
             BINARY_EXTENSION_TABLE_SUBPROOF_ID[0],
             BINARY_EXTENSION_AIR_IDS,
         );
         let binary_extension_sm = BinaryExtensionSM::new(
             &mut wcm,
-            extension_table_sm.clone(),
+            binary_extension_table_sm.clone(),
             BINARY_EXTENSION_SUBPROOF_ID[0],
             BINARY_EXTENSION_AIR_IDS,
         );
@@ -120,9 +122,9 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             arith_3264_sm,
             binary_sm,
             binary_basic_sm,
-            basic_table_sm,
+            binary_basic_table_sm,
             binary_extension_sm,
-            extension_table_sm,
+            binary_extension_table_sm,
             main_sm,
             mem_sm,
             mem_aligned_sm,

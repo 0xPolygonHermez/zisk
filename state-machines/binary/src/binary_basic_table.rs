@@ -12,7 +12,7 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::BinaryTable0Row;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct BasicTableSM {
+pub struct BinaryBasicTableSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -25,15 +25,15 @@ pub enum BasicTableSMErr {
     InvalidOpcode,
 }
 
-impl BasicTableSM {
+impl BinaryBasicTableSM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let basic_table =
+        let binary_basic_table =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
-        let basic_table = Arc::new(basic_table);
+        let binary_basic_table = Arc::new(binary_basic_table);
 
-        wcm.register_component(basic_table.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
 
-        basic_table
+        binary_basic_table
     }
 
     pub fn register_predecessor(&self) {
@@ -42,7 +42,7 @@ impl BasicTableSM {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BasicTableSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <BinaryBasicTableSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -80,7 +80,7 @@ impl BasicTableSM {
     }
 }
 
-impl<F> WitnessComponent<F> for BasicTableSM {
+impl<F> WitnessComponent<F> for BinaryBasicTableSM {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -92,7 +92,7 @@ impl<F> WitnessComponent<F> for BasicTableSM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for BasicTableSM {
+impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicTableSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

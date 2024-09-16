@@ -12,7 +12,7 @@ use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
 
-use crate::BasicTableSM;
+use crate::BinaryBasicTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -27,7 +27,7 @@ pub struct BinaryBasicSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    basic_table_sm: Arc<BasicTableSM>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ pub enum BinaryBasicSMErr {
 impl BinaryBasicSM {
     pub fn new<F>(
         wcm: &mut WitnessManager<F>,
-        basic_table_sm: Arc<BasicTableSM>,
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -46,13 +46,13 @@ impl BinaryBasicSM {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
-            basic_table_sm,
+            binary_basic_table_sm,
         };
         let binary_basic = Arc::new(binary_basic);
 
         wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
 
-        binary_basic.basic_table_sm.register_predecessor();
+        binary_basic.binary_basic_table_sm.register_predecessor();
 
         binary_basic
     }
@@ -72,7 +72,7 @@ impl BinaryBasicSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.basic_table_sm.unregister_predecessor(scope);
+            self.binary_basic_table_sm.unregister_predecessor(scope);
         }
     }
 

@@ -11,7 +11,7 @@ use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::BinaryExtension0Row;
 
-use crate::ExtensionTableSM;
+use crate::BinaryExtensionTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -26,7 +26,7 @@ pub struct BinaryExtensionSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    extension_table_sm: Arc<ExtensionTableSM>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub enum BinaryExtensionSMErr {
 impl BinaryExtensionSM {
     pub fn new<F>(
         wcm: &mut WitnessManager<F>,
-        extension_table_sm: Arc<ExtensionTableSM>,
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -45,13 +45,13 @@ impl BinaryExtensionSM {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
-            extension_table_sm,
+            binary_extension_table_sm,
         };
         let binary_extension_sm = Arc::new(binary_extension_sm);
 
         wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
 
-        binary_extension_sm.extension_table_sm.register_predecessor();
+        binary_extension_sm.binary_extension_table_sm.register_predecessor();
 
         binary_extension_sm
     }
@@ -71,7 +71,7 @@ impl BinaryExtensionSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.extension_table_sm.unregister_predecessor(scope);
+            self.binary_extension_table_sm.unregister_predecessor(scope);
         }
     }
 

@@ -12,7 +12,7 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::BinaryExtensionTable0Row;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct ExtensionTableSM {
+pub struct BinaryExtensionTableSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -25,15 +25,15 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl ExtensionTableSM {
+impl BinaryExtensionTableSM {
     pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let basic_table =
+        let binary_extension_table =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
-        let basic_table = Arc::new(basic_table);
+        let binary_extension_table = Arc::new(binary_extension_table);
 
-        wcm.register_component(basic_table.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(binary_extension_table.clone(), Some(airgroup_id), Some(air_ids));
 
-        basic_table
+        binary_extension_table
     }
 
     pub fn register_predecessor(&self) {
@@ -42,7 +42,7 @@ impl ExtensionTableSM {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <ExtensionTableSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <BinaryExtensionTableSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -80,7 +80,7 @@ impl ExtensionTableSM {
     }
 }
 
-impl<F> WitnessComponent<F> for ExtensionTableSM {
+impl<F> WitnessComponent<F> for BinaryExtensionTableSM {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -92,7 +92,7 @@ impl<F> WitnessComponent<F> for ExtensionTableSM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for ExtensionTableSM {
+impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionTableSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
