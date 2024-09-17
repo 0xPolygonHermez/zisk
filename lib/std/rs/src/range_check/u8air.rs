@@ -1,3 +1,4 @@
+use core::num;
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +11,7 @@ use proofman_common::{
 };
 use proofman_hints::{get_hint_field, print_expression, set_hint_field, HintFieldOutput};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 10;
+const PROVE_CHUNK_SIZE: usize = 1 << 6 + 1;
 
 pub struct U8Air<F> {
     // Proof-related data
@@ -60,19 +61,18 @@ impl<F: PrimeField> U8Air<F> {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.push(value);
 
-            println!("{:?}", inputs);
-
             while inputs.len() >= PROVE_CHUNK_SIZE {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect();
 
+                println!("ROGEEEE");
                 self.update_multiplicity(drained_inputs);
+                println!("ROGEEEE2");
             }
         }
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<F>) {
-        println!("{:?}", drained_inputs);
         // TODO! Do it in parallel
         // Update the multiplicity column
         let num_rows = 1 << 8;
@@ -82,6 +82,7 @@ impl<F: PrimeField> U8Air<F> {
             .air_instances_repository
             .borrow()
             .find_air_instances(self.airgroup_id, self.air_id)[0];
+        println!("ROGEEEE3");
         let air_instance_bind = self.air_instances_repository.borrow();
         let mut air_instance_rw = air_instance_bind.air_instances.write().unwrap();
         let air_instance = &mut air_instance_rw[air_instance_id];
@@ -95,8 +96,11 @@ impl<F: PrimeField> U8Air<F> {
             "reference",
             true,
             false,
-            true,
+            false,
         );
+        for i in 0..10 {
+            println!("{}: {:?}", i, mul.get(i as usize));
+        }
 
         for input in &drained_inputs {
             let value = input
@@ -106,9 +110,17 @@ impl<F: PrimeField> U8Air<F> {
             // Note: to avoid non-expected panics, we perform a reduction to the value
             //       In debug mode, this is, in fact, checked before
             let index = value % num_rows;
-            let previous_mul_val = mul.get(index);
-            mul.set(index, previous_mul_val + HintFieldOutput::Field(F::one()));
+            mul.add(index, F::one());
         }
+
+        // TODO: To be removed
+        set_hint_field(
+            self.setup_repository.borrow().as_ref(),
+            air_instance,
+            hint as u64,
+            "reference",
+            &mul,
+        );
 
         log::info!("{}: Updated inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }
@@ -142,36 +154,39 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // Set the multiplicity column as done
-        let hint = self.hint.lock().unwrap();
+        // // Set the multiplicity column as done
+        // let hint = self.hint.lock().unwrap();
 
-        let air_instance_id = self
-            .air_instances_repository
-            .borrow()
-            .find_air_instances(self.airgroup_id, self.air_id)[0];
+        // let air_instance_id = self
+        //     .air_instances_repository
+        //     .borrow()
+        //     .find_air_instances(self.airgroup_id, self.air_id)[0];
 
-        let air_instances = self.air_instances_repository.borrow();
-        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
+        // let air_instances = self.air_instances_repository.borrow();
+        // let mut air_instance_rw = air_instances.air_instances.write().unwrap();
+        // let air_instance = &mut air_instance_rw[air_instance_id];
 
-        let mul = get_hint_field::<F>(
-            self.setup_repository.borrow().as_ref(),
-            self.public_inputs.clone(),
-            self.challenges.clone(),
-            air_instance,
-            *hint as usize,
-            "reference",
-            true,
-            false,
-            false,
-        );
+        // let mul = get_hint_field::<F>(
+        //     self.setup_repository.borrow().as_ref(),
+        //     self.public_inputs.clone(),
+        //     self.challenges.clone(),
+        //     air_instance,
+        //     *hint as usize,
+        //     "reference",
+        //     true,
+        //     false,
+        //     true,
+        // );
+        // for i in 0..10 {
+        //     println!("{}: {:?}", i, mul.get(i as usize));
+        // }
 
-        set_hint_field(
-            self.setup_repository.borrow().as_ref(),
-            air_instance,
-            *hint,
-            "reference",
-            &mul,
-        );
+        // set_hint_field(
+        //     self.setup_repository.borrow().as_ref(),
+        //     air_instance,
+        //     *hint,
+        //     "reference",
+        //     &mul,
+        // );
     }
 }

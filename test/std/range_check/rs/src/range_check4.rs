@@ -118,8 +118,8 @@ where
                     let selected1 = rng.gen_bool(0.5);
                     trace[i].sel1 = F::from_bool(selected1);
                     // selected1 and selected2 have to be disjoint for the range check to pass
-                    let selected2 = if selected1 { false } else { rng.gen_bool(0.5) };
-                    trace[i].sel2 = F::from_bool(true); //F::from_bool(selected2);
+                    let selected2 = true; //if selected1 { false } else { rng.gen_bool(0.5) };
+                    trace[i].sel2 = F::from_bool(selected2);
 
                     if selected1 {
                         // trace[i].a1 = F::from_canonical_u16(1);
