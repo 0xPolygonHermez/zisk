@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -34,9 +35,14 @@ impl MemUnalignedSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <MemUnalignedSM as Provable<MemUnalignedOp, OpResult>>::prove(self, &[], true, scope);
+            <MemUnalignedSM as Provable<MemUnalignedOp, OpResult, F>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
         }
     }
 
@@ -70,7 +76,7 @@ impl<F> WitnessComponent<F> for MemUnalignedSM {
     }
 }
 
-impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
+impl<F: AbstractField> Provable<MemUnalignedOp, OpResult, F> for MemUnalignedSM {
     fn calculate(&self, operation: MemUnalignedOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemUnalignedOp::Read(addr, width) => self.read(addr, width),
@@ -99,8 +105,16 @@ impl Provable<MemUnalignedOp, OpResult> for MemUnalignedSM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
+        let result = <MemUnalignedSM as Provable<MemUnalignedOp, (u64, bool), F>>::calculate(
+            self,
+            operation.clone(),
+        );
+        <MemUnalignedSM as Provable<MemUnalignedOp, (u64, bool), F>>::prove(
+            self,
+            &[operation],
+            drain,
+            scope,
+        );
         result
     }
 }

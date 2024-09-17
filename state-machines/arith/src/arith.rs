@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use crate::{Arith3264SM, Arith32SM, Arith64SM};
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -61,15 +62,20 @@ impl ArithSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+            <ArithSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
 
             self.threads_controller.wait_for_threads();
 
-            self.arith3264_sm.unregister_predecessor(scope);
-            self.arith64_sm.unregister_predecessor(scope);
-            self.arith32_sm.unregister_predecessor(scope);
+            self.arith3264_sm.unregister_predecessor::<F>(scope);
+            self.arith64_sm.unregister_predecessor::<F>(scope);
+            self.arith32_sm.unregister_predecessor::<F>(scope);
         }
     }
 }
@@ -86,7 +92,7 @@ impl<F> WitnessComponent<F> for ArithSM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for ArithSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -131,7 +137,12 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
+                <Arith32SM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+                    &arith32_sm_cloned,
+                    &drained_inputs32,
+                    drain,
+                    scope,
+                );
 
                 thread_controller.remove_working_thread();
             });
@@ -154,7 +165,12 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
+                <Arith64SM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+                    &arith64_sm_cloned,
+                    &drained_inputs64,
+                    drain,
+                    scope,
+                );
 
                 thread_controller.remove_working_thread();
             });
@@ -168,8 +184,16 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
+        let result = <ArithSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
+            self,
+            operation.clone(),
+        );
+        <ArithSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+            self,
+            &[operation],
+            drain,
+            scope,
+        );
         result
     }
 }

@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom};
 
 use proofman::WitnessManager;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
@@ -18,7 +18,7 @@ use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_common::{Provable, ThreadController};
+use sm_common::{OpResult, Provable, ThreadController};
 use sm_mem::MemSM;
 
 #[derive(Default)]
@@ -184,9 +184,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             self.threads_controller.wait_for_threads();
 
             // Unregister main state machine as a predecessor for all the secondary state machines
-            self.mem_sm.unregister_predecessor(scope);
-            self.binary_sm.unregister_predecessor(scope);
-            self.arith_sm.unregister_predecessor(scope);
+            self.mem_sm.unregister_predecessor::<F>(scope);
+            self.binary_sm.unregister_predecessor::<F>(scope);
+            self.arith_sm.unregister_predecessor::<F>(scope);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {
@@ -392,9 +392,15 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
-            mem_sm.prove(&memory, false, scope);
-            binary_sm.prove(&binary, false, scope);
-            arith_sm.prove(&arith, false, scope);
+            <MemSM as Provable<ZiskRequiredMemory, OpResult, F>>::prove(
+                &mem_sm, &memory, false, scope,
+            );
+            <BinarySM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+                &binary_sm, &binary, false, scope,
+            );
+            <ArithSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+                &arith_sm, &arith, false, scope,
+            );
 
             threads_controller.remove_working_thread();
         });

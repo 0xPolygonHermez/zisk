@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -57,14 +58,19 @@ impl BinarySM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinarySM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+            <BinarySM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
 
             self.threads_controller.wait_for_threads();
 
-            self.binary_basic_sm.unregister_predecessor(scope);
-            self.binary_extension_sm.unregister_predecessor(scope);
+            self.binary_basic_sm.unregister_predecessor::<F>(scope);
+            self.binary_extension_sm.unregister_predecessor::<F>(scope);
         }
     }
 }
@@ -81,7 +87,7 @@ impl<F> WitnessComponent<F> for BinarySM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinarySM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -120,7 +126,12 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                binary_basic_sm_cloned.prove(&drained_inputs_basic, drain, scope);
+                <BinaryBasicSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+                    &binary_basic_sm_cloned,
+                    &drained_inputs_basic,
+                    drain,
+                    scope,
+                );
 
                 thread_controller.remove_working_thread();
             });
@@ -141,7 +152,12 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                binary_extension_sm_cloned.prove(&drained_inputs_extension, drain, scope);
+                <BinaryExtensionSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+                    &binary_extension_sm_cloned,
+                    &drained_inputs_extension,
+                    drain,
+                    scope,
+                );
 
                 thread_controller.remove_working_thread();
             });
@@ -155,8 +171,16 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
+        let result = <BinarySM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
+            self,
+            operation.clone(),
+        );
+        <BinarySM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+            self,
+            &[operation],
+            drain,
+            scope,
+        );
         result
     }
 }

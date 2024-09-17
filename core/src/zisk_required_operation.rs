@@ -13,6 +13,15 @@ pub struct ZiskRequiredMemory {
     pub value: u64,
 }
 
+#[derive(Clone, Default)]
+pub struct ZiskRequiredBinaryBasedTable {
+    pub opcode: u8,
+    pub a: u64,
+    pub b: u64,
+    pub cin: u64,
+    pub last: u64,
+}
+
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,
     pub binary: Vec<ZiskRequiredOperation>,

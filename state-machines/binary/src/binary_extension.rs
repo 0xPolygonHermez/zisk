@@ -60,9 +60,9 @@ impl BinaryExtensionSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryExtensionSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <BinaryExtensionSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
                 self,
                 &[],
                 true,
@@ -71,7 +71,7 @@ impl BinaryExtensionSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.binary_extension_table_sm.unregister_predecessor(scope);
+            self.binary_extension_table_sm.unregister_predecessor::<F>(scope);
         }
     }
 
@@ -195,7 +195,7 @@ impl<F> WitnessComponent<F> for BinaryExtensionSM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryExtensionSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -230,8 +230,17 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
+        let result =
+            <BinaryExtensionSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
+                self,
+                operation.clone(),
+            );
+        <BinaryExtensionSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+            self,
+            &[operation],
+            drain,
+            scope,
+        );
         result
     }
 }

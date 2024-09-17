@@ -9,7 +9,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{opcode_execute, ZiskRequiredBinaryBasedTable, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
 
 use crate::BinaryBasicTableSM;
@@ -61,9 +61,9 @@ impl BinaryBasicSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <BinaryBasicSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
                 self,
                 &[],
                 true,
@@ -72,7 +72,7 @@ impl BinaryBasicSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.binary_basic_table_sm.unregister_predecessor(scope);
+            self.binary_basic_table_sm.unregister_predecessor::<F>(scope);
         }
     }
 
@@ -85,13 +85,16 @@ impl BinaryBasicSM {
 
     pub fn process_slice<F: AbstractField>(
         input: &Vec<ZiskRequiredOperation>,
-    ) -> Result<Vec<Binary0Row<F>>, BinaryBasicSMErr> {
+    ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasedTable>) {
         // Create the trace vector
-        let mut trace = Vec::new();
+        let mut trace: Vec<Binary0Row<F>> = Vec::new();
+
+        // Create the required vector
+        let mut required: Vec<ZiskRequiredBinaryBasedTable> = Vec::new();
 
         for i in input {
             // Create an empty trace
-            let mut t = Binary0Row::<F>::default();
+            let mut t: Binary0Row<F> = Default::default();
 
             // Execute the opcode
             let c: u64;
@@ -102,8 +105,8 @@ impl BinaryBasicSM {
             // Decompose the opcode into mode32 & op
             let mode32 = (i.opcode & 0x10) != 0;
             t.mode32 = F::from_bool(mode32);
-            let op = i.opcode & 0xEF;
-            t.m_op = F::from_canonical_u8(op);
+            let m_op = i.opcode & 0xEF;
+            t.m_op = F::from_canonical_u8(m_op);
 
             // Split a in bytes and store them in free_in_a
             let a_bytes: [u8; 8] = i.a.to_le_bytes();
@@ -128,7 +131,7 @@ impl BinaryBasicSM {
             let mut cin: u64 = 0;
             let plast: [u64; 8] =
                 if mode32 { [0, 0, 0, 1, 0, 0, 0, 0] } else { [0, 0, 0, 0, 0, 0, 0, 1] };
-            match op {
+            match m_op {
                 0x02 /* ADD, ADD_W */ => {
                     // Set use last carry to zero
                     t.use_last_carry = F::from_canonical_u64(0);
@@ -180,7 +183,7 @@ impl BinaryBasicSM {
                         }
 
                         // If the chunk is signed, then the result is the sign of a
-                        if (op == 0x05) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                        if (m_op == 0x05) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             //c = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
@@ -203,7 +206,7 @@ impl BinaryBasicSM {
                             //c = plast[i];
                         }
 
-                        if (op == 0x07) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                        if (m_op == 0x07) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             //c = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                             cout = c;
                         }
@@ -250,7 +253,7 @@ impl BinaryBasicSM {
                         }
 
                         // If the chunk is signed, then the result is the sign of a
-                        if (op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                        if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             //c = if a_bytes[i] & 0x80 != 0 { a_bytes[i] as u64 } else { b_bytes[i] as u64 };
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
@@ -277,7 +280,7 @@ impl BinaryBasicSM {
                         }
 
                         // If the chunk is signed, then the result is the sign of a
-                        if (op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                        if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             //c = if a_bytes[i] & 0x80 != 0 { b_bytes[i] as u64 } else { a_bytes[i] as u64 };
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
@@ -311,7 +314,7 @@ impl BinaryBasicSM {
                         t.carry[i] = F::from_canonical_u64(0);
                     }
                 }
-                _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", i.opcode),
+                _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={} m_op={}", i.opcode, m_op),
             }
 
             // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
@@ -319,10 +322,23 @@ impl BinaryBasicSM {
 
             // Store the trace in the vector
             trace.push(t);
+
+            // Create an empty required
+            let mut r: ZiskRequiredBinaryBasedTable = Default::default();
+
+            // Fill it
+            r.opcode = m_op;
+            r.a = i.a;
+            r.b = i.b;
+            r.cin = cin;
+            r.last = 0; // TODO: Ask Feli/Hector
+
+            // Store the required in the vector
+            required.push(r);
         }
 
-        // Return successfully
-        Ok(trace)
+        // Return
+        (trace, required)
     }
 }
 
@@ -338,7 +354,7 @@ impl<F> WitnessComponent<F> for BinaryBasicSM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryBasicSM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -358,9 +374,17 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                scope.spawn(move |_| {
+                let binary_basic_table_sm = self.binary_basic_table_sm.clone();
+
+                scope.spawn(move |scope| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
-                    //let trace = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
+                    let (trace, required) = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
+
+                    <BinaryBasicTableSM as Provable<
+                        ZiskRequiredBinaryBasedTable,
+                        (u64, bool),
+                        F,
+                    >>::prove(&binary_basic_table_sm, &required, false, &scope);
 
                     thread_controller.remove_working_thread();
                 });
@@ -374,8 +398,16 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
+        let result = <BinaryBasicSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
+            self,
+            operation.clone(),
+        );
+        <BinaryBasicSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
+            self,
+            &[operation],
+            drain,
+            scope,
+        );
         result
     }
 }
