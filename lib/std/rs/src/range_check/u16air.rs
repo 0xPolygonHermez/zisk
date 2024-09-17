@@ -16,7 +16,7 @@ const PROVE_CHUNK_SIZE: usize = 1 << 10;
 pub struct U16Air<F> {
     // Proof-related data
     setup_repository: RefCell<Arc<SetupRepository>>,
-    public_inputs: Arc<Vec<u8>>,
+    public_inputs: Arc<RefCell<Vec<u8>>>,
     challenges: Arc<RefCell<Vec<F>>>,
     air_instances_repository: RefCell<Arc<AirInstancesRepository<F>>>,
     // Parameters
@@ -33,7 +33,7 @@ impl<F: PrimeField> U16Air<F> {
     pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let u16air = Arc::new(Self {
             setup_repository: RefCell::new(Arc::new(SetupRepository { setups: Vec::new() })),
-            public_inputs: Arc::new(Vec::new()),
+            public_inputs: Arc::new(RefCell::new(Vec::new())),
             challenges: Arc::new(RefCell::new(Vec::new())),
             air_instances_repository: RefCell::new(Arc::new(AirInstancesRepository::new())),
             hint: Mutex::new(0),
