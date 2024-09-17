@@ -773,6 +773,7 @@ pub fn verify_global_constraints_c(
 }
 
 #[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
 pub fn print_by_name_c(
     _p_setup_ctx: *mut c_void,
     _buffer: *mut c_void,
