@@ -15,7 +15,7 @@ use crate::BinaryExtensionTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct BinaryExtensionSM {
+pub struct BinaryExtensionSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -26,7 +26,7 @@ pub struct BinaryExtensionSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -34,10 +34,10 @@ pub enum BinaryExtensionSMErr {
     InvalidOpcode,
 }
 
-impl BinaryExtensionSM {
-    pub fn new<F>(
+impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
+    pub fn new(
         wcm: &mut WitnessManager<F>,
-        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -60,9 +60,9 @@ impl BinaryExtensionSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryExtensionSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+            <BinaryExtensionSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -71,7 +71,7 @@ impl BinaryExtensionSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.binary_extension_table_sm.unregister_predecessor::<F>(scope);
+            self.binary_extension_table_sm.unregister_predecessor(scope);
         }
     }
 
@@ -79,7 +79,7 @@ impl BinaryExtensionSM {
         vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x24, 0x25, 0x26]
     }
 
-    pub fn process_slice<F: AbstractField>(
+    pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
     ) -> Result<Vec<BinaryExtension0Row<F>>, BinaryExtensionSMErr> {
         // Create the trace vector
@@ -183,7 +183,7 @@ impl BinaryExtensionSM {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryExtensionSM {
+impl<F> WitnessComponent<F> for BinaryExtensionSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -195,7 +195,7 @@ impl<F> WitnessComponent<F> for BinaryExtensionSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryExtensionSM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -230,17 +230,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryEx
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result =
-            <BinaryExtensionSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-                self,
-                operation.clone(),
-            );
-        <BinaryExtensionSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+        
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }

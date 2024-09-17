@@ -16,7 +16,7 @@ use crate::BinaryBasicTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct BinaryBasicSM {
+pub struct BinaryBasicSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -27,7 +27,7 @@ pub struct BinaryBasicSM {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -35,10 +35,10 @@ pub enum BinaryBasicSMErr {
     InvalidOpcode,
 }
 
-impl BinaryBasicSM {
-    pub fn new<F>(
+impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
+    pub fn new(
         wcm: &mut WitnessManager<F>,
-        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+        binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -61,9 +61,9 @@ impl BinaryBasicSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+            <BinaryBasicSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -72,7 +72,7 @@ impl BinaryBasicSM {
 
             self.threads_controller.wait_for_threads();
 
-            self.binary_basic_table_sm.unregister_predecessor::<F>(scope);
+            self.binary_basic_table_sm.unregister_predecessor(scope);
         }
     }
 
@@ -83,7 +83,7 @@ impl BinaryBasicSM {
         ]
     }
 
-    pub fn process_slice<F: AbstractField>(
+    pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
     ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasedTable>) {
         // Create the trace vector
@@ -342,7 +342,7 @@ impl BinaryBasicSM {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryBasicSM {
+impl<F> WitnessComponent<F> for BinaryBasicSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -354,7 +354,7 @@ impl<F> WitnessComponent<F> for BinaryBasicSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryBasicSM {
+impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -378,13 +378,9 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryBa
 
                 scope.spawn(move |scope| {
                     // TODO! Implement prove drained_inputs (a chunk of operations)
-                    let (trace, required) = BinaryBasicSM::process_slice::<F>(&_drained_inputs);
+                    let (trace, required) = Self::process_slice(&_drained_inputs);
 
-                    <BinaryBasicTableSM as Provable<
-                        ZiskRequiredBinaryBasedTable,
-                        (u64, bool),
-                        F,
-                    >>::prove(&binary_basic_table_sm, &required, false, &scope);
+                    binary_basic_table_sm.prove(&required, false, scope);
 
                     thread_controller.remove_working_thread();
                 });
@@ -398,16 +394,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryBa
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = <BinaryBasicSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-            self,
-            operation.clone(),
-        );
-        <BinaryBasicSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }

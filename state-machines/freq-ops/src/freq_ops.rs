@@ -37,12 +37,7 @@ impl FreqOpsSM {
 
     pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <FreqOpsSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
+            <FreqOpsSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
         }
     }
 }
@@ -59,7 +54,7 @@ impl<F> WitnessComponent<F> for FreqOpsSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for FreqOpsSM {
+impl Provable<ZiskRequiredOperation, OpResult> for FreqOpsSM {
     fn calculate(
         &self,
         _operation: ZiskRequiredOperation,
@@ -88,16 +83,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for FreqOpsS
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = <FreqOpsSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-            self,
-            operation.clone(),
-        );
-        <FreqOpsSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+        
         result
     }
 }

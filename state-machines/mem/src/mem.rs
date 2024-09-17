@@ -63,7 +63,7 @@ impl MemSM {
 
     pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <MemSM as Provable<ZiskRequiredMemory, OpResult, F>>::prove(self, &[], true, scope);
+            <MemSM as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
 
             self.threads_controller.remove_working_thread();
 
@@ -85,7 +85,7 @@ impl<F> WitnessComponent<F> for MemSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredMemory, OpResult, F> for MemSM {
+impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
     fn calculate(
         &self,
         _operation: ZiskRequiredMemory,

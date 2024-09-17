@@ -53,7 +53,7 @@ pub struct MainSM<F> {
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     // State machines
     mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM>,
+    binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 }
 
@@ -82,7 +82,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         rom_path: &Path,
         wcm: &mut WitnessManager<F>,
         mem_sm: Arc<MemSM>,
-        binary_sm: Arc<BinarySM>,
+        binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -185,7 +185,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
 
             // Unregister main state machine as a predecessor for all the secondary state machines
             self.mem_sm.unregister_predecessor::<F>(scope);
-            self.binary_sm.unregister_predecessor::<F>(scope);
+            self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor::<F>(scope);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
@@ -392,15 +392,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
-            <MemSM as Provable<ZiskRequiredMemory, OpResult, F>>::prove(
-                &mem_sm, &memory, false, scope,
-            );
-            <BinarySM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
-                &binary_sm, &binary, false, scope,
-            );
-            <ArithSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
-                &arith_sm, &arith, false, scope,
-            );
+            mem_sm.prove(&memory, false, scope);
+            binary_sm.prove(&binary, false, scope);
+            arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
         });

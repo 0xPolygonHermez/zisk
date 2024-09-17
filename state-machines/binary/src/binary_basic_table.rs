@@ -13,7 +13,7 @@ use zisk_pil::BinaryTable0Row;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
-pub struct BinaryBasicTableSM {
+pub struct BinaryBasicTableSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -22,6 +22,8 @@ pub struct BinaryBasicTableSM {
 
     // Row multiplicity table
     multiplicity: Mutex<[u32; MULTIPLICITY_TABLE_SIZE as usize]>,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -29,12 +31,13 @@ pub enum BasicTableSMErr {
     InvalidOpcode,
 }
 
-impl BinaryBasicTableSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: AbstractField + Send + Sync + 'static> BinaryBasicTableSM<F> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic_table = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             multiplicity: Mutex::new([0; MULTIPLICITY_TABLE_SIZE]),
+            _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
 
@@ -47,9 +50,9 @@ impl BinaryBasicTableSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicTableSM as Provable<ZiskRequiredBinaryBasedTable, OpResult, F>>::prove(
+            <BinaryBasicTableSM<F> as Provable<ZiskRequiredBinaryBasedTable, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -63,7 +66,7 @@ impl BinaryBasicTableSM {
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
     }
 
-    pub fn process_slice<F: AbstractField>(
+    pub fn process_slice(
         &self,
         input: &Vec<ZiskRequiredBinaryBasedTable>,
     ) -> Vec<BinaryTable0Row<F>> {
@@ -97,13 +100,13 @@ impl BinaryBasicTableSM {
             multiplicity[row as usize] += 1;
 
             // Create an empty trace
-            let mut t: BinaryTable0Row<F> = Default::default();
+            // let mut t: BinaryTable0Row<F> = Default::default();
 
-            // Find duplicates of this trace and reuse them by increasing their multiplicity.
-            t.multiplicity = F::from_canonical_u32(multiplicity[row as usize]);
+            // // Find duplicates of this trace and reuse them by increasing their multiplicity.
+            // t.multiplicity = F::from_canonical_u32(multiplicity[row as usize]);
 
-            // Store the trace in the vector
-            trace.push(t);
+            // // Store the trace in the vector
+            // trace.push(t);
         }
 
         // Return successfully
@@ -111,7 +114,7 @@ impl BinaryBasicTableSM {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryBasicTableSM {
+impl<F> WitnessComponent<F> for BinaryBasicTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -123,7 +126,9 @@ impl<F> WitnessComponent<F> for BinaryBasicTableSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredBinaryBasedTable, OpResult, F> for BinaryBasicTableSM {
+impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredBinaryBasedTable, OpResult>
+    for BinaryBasicTableSM<F>
+{
     fn calculate(
         &self,
         operation: ZiskRequiredBinaryBasedTable,
@@ -140,12 +145,14 @@ impl<F: AbstractField> Provable<ZiskRequiredBinaryBasedTable, OpResult, F> for B
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                //scope.spawn(move |_| {
+                // scope.spawn(move |_| {
                 // TODO! Implement prove drained_inputs (a chunk of operations)
                 //let trace = BasicTableSM::process_slice::<F>(&_drained_inputs);
-                let trace = self.process_slice::<F>(&_drained_inputs);
+
+                let trace = self.process_slice(&_drained_inputs);
+
                 //BinaryBasicTableSM::process_slice(self, _drained_inputs);
-                //});
+                // });
             }
         }
     }
@@ -156,17 +163,9 @@ impl<F: AbstractField> Provable<ZiskRequiredBinaryBasedTable, OpResult, F> for B
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = <BinaryBasicTableSM as Provable<
-            ZiskRequiredBinaryBasedTable,
-            (u64, bool),
-            F,
-        >>::calculate(self, operation.clone());
-        <BinaryBasicTableSM as Provable<ZiskRequiredBinaryBasedTable, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
         result
     }
 }

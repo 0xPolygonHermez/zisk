@@ -12,12 +12,14 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::BinaryExtensionTable0Row;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct BinaryExtensionTableSM {
+pub struct BinaryExtensionTableSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -25,10 +27,13 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl BinaryExtensionTableSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let binary_extension_table =
-            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
+impl<F: AbstractField + 'static> BinaryExtensionTableSM<F> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let binary_extension_table = Self {
+            registered_predecessors: AtomicU32::new(0),
+            inputs: Mutex::new(Vec::new()),
+            _phantom: std::marker::PhantomData,
+        };
         let binary_extension_table = Arc::new(binary_extension_table);
 
         wcm.register_component(binary_extension_table.clone(), Some(airgroup_id), Some(air_ids));
@@ -40,9 +45,9 @@ impl BinaryExtensionTableSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryExtensionTableSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+            <BinaryExtensionTableSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -56,7 +61,7 @@ impl BinaryExtensionTableSM {
         vec![0x0d, 0x0e, 0x0f, 0x24, 0x25, 0x26]
     }
 
-    pub fn process_slice<F: AbstractField>(
+    pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
     ) -> Result<Vec<BinaryExtensionTable0Row<F>>, ExtensionTableSMErr> {
         // Create the trace vector
@@ -80,7 +85,7 @@ impl BinaryExtensionTableSM {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryExtensionTableSM {
+impl<F> WitnessComponent<F> for BinaryExtensionTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -92,7 +97,7 @@ impl<F> WitnessComponent<F> for BinaryExtensionTableSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryExtensionTableSM {
+impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionTableSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -123,17 +128,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for BinaryEx
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result =
-            <BinaryExtensionTableSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-                self,
-                operation.clone(),
-            );
-        <BinaryExtensionTableSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }

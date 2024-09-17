@@ -37,7 +37,7 @@ impl MemAlignedSM {
 
     pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <MemAlignedSM as Provable<MemOp, OpResult, F>>::prove(self, &[], true, scope);
+            <MemAlignedSM as Provable<MemOp, OpResult>>::prove(self, &[], true, scope);
         }
     }
 
@@ -69,7 +69,7 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
     }
 }
 
-impl<F: AbstractField> Provable<MemOp, OpResult, F> for MemAlignedSM {
+impl Provable<MemOp, OpResult> for MemAlignedSM {
     fn calculate(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemOp::Read(addr) => self.read(addr),
@@ -98,9 +98,10 @@ impl<F: AbstractField> Provable<MemOp, OpResult, F> for MemAlignedSM {
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result =
-            <MemAlignedSM as Provable<MemOp, (u64, bool), F>>::calculate(self, operation.clone());
-        <MemAlignedSM as Provable<MemOp, (u64, bool), F>>::prove(self, &[operation], drain, scope);
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }

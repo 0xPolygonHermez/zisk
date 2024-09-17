@@ -37,12 +37,7 @@ impl Arith32SM {
 
     pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith32SM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
+            <Arith32SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
         }
     }
 
@@ -63,7 +58,7 @@ impl<F> WitnessComponent<F> for Arith32SM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for Arith32SM {
+impl Provable<ZiskRequiredOperation, OpResult> for Arith32SM {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -93,16 +88,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for Arith32S
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = <Arith32SM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-            self,
-            operation.clone(),
-        );
-        <Arith32SM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }

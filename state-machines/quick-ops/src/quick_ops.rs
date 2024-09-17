@@ -37,7 +37,7 @@ impl QuickOpsSM {
 
     pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <QuickOpsSM as Provable<ZiskRequiredOperation, OpResult, F>>::prove(
+            <QuickOpsSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -59,7 +59,7 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for QuickOpsSM {
+impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
     fn calculate(
         &self,
         _operation: ZiskRequiredOperation,
@@ -88,16 +88,10 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult, F> for QuickOps
         drain: bool,
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = <QuickOpsSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::calculate(
-            self,
-            operation.clone(),
-        );
-        <QuickOpsSM as Provable<ZiskRequiredOperation, (u64, bool), F>>::prove(
-            self,
-            &[operation],
-            drain,
-            scope,
-        );
+        let result = self.calculate(operation.clone());
+
+        self.prove(&[operation], drain, scope);
+
         result
     }
 }
