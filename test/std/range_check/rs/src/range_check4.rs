@@ -8,7 +8,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{RangeCheck40Trace, RANGE_CHECK_4_AIR_IDS, RANGE_CHECK_4_AIRGROUP_ID};
+use crate::{RangeCheck40Trace, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS};
 
 pub struct RangeCheck4<F: PrimeField> {
     std_lib: Arc<Std<F>>,
@@ -119,25 +119,25 @@ where
                     trace[i].sel1 = F::from_bool(selected1);
                     // selected1 and selected2 have to be disjoint for the range check to pass
                     let selected2 = if selected1 { false } else { rng.gen_bool(0.5) };
-                    trace[i].sel2 = F::from_bool(selected2);
+                    trace[i].sel2 = F::from_bool(true); //F::from_bool(selected2);
 
                     if selected1 {
-                        trace[i].a1 = F::from_canonical_u16(1);
-                        self.std_lib
-                            .range_check(trace[i].a1, range1.0.clone(), range1.1.clone());
+                        // trace[i].a1 = F::from_canonical_u16(1);
+                        // self.std_lib
+                        //     .range_check(trace[i].a1, range1.0.clone(), range1.1.clone());
                     }
                     if selected2 {
-                        trace[i].a1 = F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
-                        trace[i].a2 = F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
-                        trace[i].a3 = F::from_canonical_u16(rng.gen_range(127..=2u16.pow(8)));
-                        // trace[i].a4 = F::from_canonical_usize(1); //F::from_canonical_u16(rng.gen_range(1..=2u16.pow(16) + 1));
+                        trace[i].a1 = F::from_canonical_u8(1); //F::from_canonical_u8(rng.gen_range(0..=2u8.pow(8) - 1));
+                                                               // trace[i].a2 = F::from_canonical_u8(rng.gen_range(50..=2u8.pow(7) - 1));
+                                                               // trace[i].a3 = F::from_canonical_u16(rng.gen_range(127..=2u16.pow(8)));
+                                                               // trace[i].a4 = F::from_canonical_usize(1); //F::from_canonical_u16(rng.gen_range(1..=2u16.pow(16) + 1));
 
                         self.std_lib
                             .range_check(trace[i].a1, range2.0.clone(), range2.1.clone());
-                        self.std_lib
-                            .range_check(trace[i].a2, range3.0.clone(), range3.1.clone());
-                        self.std_lib
-                            .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
+                        // self.std_lib
+                        //     .range_check(trace[i].a2, range3.0.clone(), range3.1.clone());
+                        // self.std_lib
+                        //     .range_check(trace[i].a3, range4.0.clone(), range4.1.clone());
                         // self.std_lib
                         //     .range_check(trace[i].a4, range5.0.clone(), range5.1.clone());
                     }

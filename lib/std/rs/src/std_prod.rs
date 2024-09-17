@@ -11,11 +11,6 @@ use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_h
 use crate::Decider;
 
 pub struct StdProd<F> {
-    // Proof-related data
-    setup_repository: RefCell<Arc<SetupRepository>>,
-    public_inputs: Arc<Vec<u8>>,
-    challenges: Arc<RefCell<Vec<F>>>,
-
     _phantom: std::marker::PhantomData<F>,
     prod_airs: Mutex<Vec<(usize, usize, Vec<u64>)>>, // (airgroup_id, air_id, prod_hints)
 }
@@ -48,9 +43,6 @@ impl<F: Copy + Debug + Field> StdProd<F> {
 
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            setup_repository: RefCell::new(Arc::new(SetupRepository { setups: Vec::new() })),
-            public_inputs: Arc::new(Vec::new()),
-            challenges: Arc::new(RefCell::new(Vec::new())),
             _phantom: std::marker::PhantomData,
             prod_airs: Mutex::new(Vec::new()),
         })
@@ -102,9 +94,9 @@ impl<F: Copy + Debug + Field> StdProd<F> {
 
                         // Use the hint to populate the gprod column
                         let mut gprod = get_hint_field::<F>(
-                            self.setup_repository.borrow().as_ref(),
-                            self.public_inputs.clone(),
-                            self.challenges.clone(),
+                            sctx.setups.as_ref(),
+                            pctx.public_inputs.clone(),
+                            pctx.challenges.clone(),
                             air_instance,
                             gprod_hint,
                             "reference",
@@ -113,9 +105,9 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             false,
                         );
                         let num = get_hint_field::<F>(
-                            self.setup_repository.borrow().as_ref(),
-                            self.public_inputs.clone(),
-                            self.challenges.clone(),
+                            sctx.setups.as_ref(),
+                            pctx.public_inputs.clone(),
+                            pctx.challenges.clone(),
                             air_instance,
                             gprod_hint,
                             "numerator",
@@ -124,9 +116,9 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             false,
                         );
                         let den = get_hint_field::<F>(
-                            self.setup_repository.borrow().as_ref(),
-                            self.public_inputs.clone(),
-                            self.challenges.clone(),
+                            sctx.setups.as_ref(),
+                            pctx.public_inputs.clone(),
+                            pctx.challenges.clone(),
                             air_instance,
                             gprod_hint,
                             "denominator",
@@ -142,7 +134,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
 
                         // set the computed gprod column and its associated airgroup_val
                         set_hint_field(
-                            self.setup_repository.borrow().as_ref(),
+                            sctx.setups.as_ref(),
                             air_instance,
                             gprod_hint as u64,
                             "reference",

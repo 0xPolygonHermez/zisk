@@ -15,6 +15,7 @@ crate-type = ["dylib"]
 proofman = { path = "../../../../../pil2-proofman/proofman" }
 proofman-common = { path = "../../../../../pil2-proofman/common" }
 proofman-macros = { path = "../../../../../pil2-proofman/macros" }
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }
 pil-std-lib = { path = "../../../../lib/std/rs" }
 
 env_logger = { workspace = true }

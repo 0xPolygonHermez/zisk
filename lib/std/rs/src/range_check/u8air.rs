@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
-use proofman_hints::{get_hint_field, set_hint_field, HintFieldOutput};
+use proofman_hints::{get_hint_field, print_expression, set_hint_field, HintFieldOutput};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 10;
 
@@ -48,42 +48,10 @@ impl<F: PrimeField> U8Air<F> {
 
     pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
-        let drained_inputs = inputs.drain(..).collect::<Vec<_>>();
+        let drained_inputs = inputs.drain(..).collect();
 
+        // Perform the last update
         self.update_multiplicity(drained_inputs);
-
-        // Set the multiplicity column as done
-        let hint = self.hint.lock().unwrap();
-
-        let air_instance_id = self
-            .air_instances_repository
-            .borrow()
-            .find_air_instances(self.airgroup_id, self.air_id)[0];
-
-        let air_instances = self.air_instances_repository.borrow();
-        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
-
-        let mut mul = get_hint_field::<F>(
-            self.setup_repository.borrow().as_ref(),
-            self.public_inputs.clone(),
-            self.challenges.clone(),
-            air_instance,
-            *hint as usize,
-            "reference",
-            true,
-            false,
-            false,
-        );
-        
-
-        set_hint_field(
-            self.setup_repository.borrow().as_ref(),
-            air_instance,
-            *hint,
-            "reference",
-            &mut mul,
-        );
 
         println!("{}: Drained inputs for AIR 'U8Air'", Self::MY_NAME);
     }
@@ -92,9 +60,11 @@ impl<F: PrimeField> U8Air<F> {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.push(value);
 
+            println!("{:?}", inputs);
+
             while inputs.len() >= PROVE_CHUNK_SIZE {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+                let drained_inputs = inputs.drain(..num_drained).collect();
 
                 self.update_multiplicity(drained_inputs);
             }
@@ -102,6 +72,7 @@ impl<F: PrimeField> U8Air<F> {
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<F>) {
+        println!("{:?}", drained_inputs);
         // TODO! Do it in parallel
         // Update the multiplicity column
         let num_rows = 1 << 8;
@@ -124,7 +95,7 @@ impl<F: PrimeField> U8Air<F> {
             "reference",
             true,
             false,
-            false,
+            true,
         );
 
         for input in &drained_inputs {
@@ -171,5 +142,36 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
+        // Set the multiplicity column as done
+        let hint = self.hint.lock().unwrap();
+
+        let air_instance_id = self
+            .air_instances_repository
+            .borrow()
+            .find_air_instances(self.airgroup_id, self.air_id)[0];
+
+        let air_instances = self.air_instances_repository.borrow();
+        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
+        let air_instance = &mut air_instance_rw[air_instance_id];
+
+        let mul = get_hint_field::<F>(
+            self.setup_repository.borrow().as_ref(),
+            self.public_inputs.clone(),
+            self.challenges.clone(),
+            air_instance,
+            *hint as usize,
+            "reference",
+            true,
+            false,
+            false,
+        );
+
+        set_hint_field(
+            self.setup_repository.borrow().as_ref(),
+            air_instance,
+            *hint,
+            "reference",
+            &mul,
+        );
     }
 }
