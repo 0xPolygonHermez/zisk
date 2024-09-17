@@ -61,25 +61,25 @@ impl GlobalInfo {
         global_info
     }
 
-    pub fn get_air_setup_path(&self, air_group_id: usize, air_id: usize) -> PathBuf {
+    pub fn get_air_setup_path(&self, airgroup_id: usize, air_id: usize) -> PathBuf {
         let air_setup_folder =
-            format!("{}/{}/airs/{}/air", self.name, self.subproofs[air_group_id], self.airs[air_group_id][air_id].name);
+            format!("{}/{}/airs/{}/air", self.name, self.subproofs[airgroup_id], self.airs[airgroup_id][air_id].name);
 
         PathBuf::from(air_setup_folder)
     }
 
-    pub fn get_air_group_name(&self, air_group_id: usize) -> &str {
-        &self.subproofs[air_group_id]
+    pub fn get_air_group_name(&self, airgroup_id: usize) -> &str {
+        &self.subproofs[airgroup_id]
     }
 
-    pub fn get_air_group_id(&self, air_group_name: &str) -> usize {
+    pub fn get_airgroup_id(&self, air_group_name: &str) -> usize {
         self.subproofs
             .iter()
             .position(|name| name == air_group_name)
             .unwrap_or_else(|| panic!("Air group '{}' not found", air_group_name))
     }
 
-    pub fn get_air_name(&self, air_group_id: usize, air_id: usize) -> &str {
-        &self.airs[air_group_id][air_id].name
+    pub fn get_air_name(&self, airgroup_id: usize, air_id: usize) -> &str {
+        &self.airs[airgroup_id][air_id].name
     }
 }

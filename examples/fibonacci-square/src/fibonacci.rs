@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman::{WitnessManager, WitnessComponent};
 
 use p3_field::PrimeField;
 
-use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_SUBPROOF_ID, FIBONACCI_SQUARE_AIR_IDS};
+use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS};
 
 pub struct FibonacciSquare<F: PrimeField> {
     module: Arc<Module<F>>,
@@ -17,7 +17,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
     pub fn new(wcm: &mut WitnessManager<F>, module: Arc<Module<F>>) -> Arc<Self> {
         let fibonacci = Arc::new(Self { module });
 
-        wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_SUBPROOF_ID));
+        wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_AIRGROUP_ID), Some(FIBONACCI_SQUARE_AIR_IDS));
 
         fibonacci
     }
@@ -25,7 +25,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
         // TODO: We should create the instance here and fill the trace in calculate witness!!!
         if let Err(e) =
-            Self::calculate_trace(self, FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
+            Self::calculate_trace(self, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
         {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
@@ -34,7 +34,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
     fn calculate_trace(
         &self,
-        air_group_id: usize,
+        airgroup_id: usize,
         air_id: usize,
         pctx: &mut ProofCtx<F>,
         ectx: &ExecutionCtx,
@@ -50,7 +50,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(air_group_id, air_id).num_rows();
+        let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
         let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
         trace[0].a = F::from_canonical_u64(a);
@@ -65,7 +65,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
             trace[i].b = F::from_canonical_u64(b);
         }
 
-        // hint! 
+        // hint!
 
         pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
 
@@ -76,7 +76,8 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         // }
         // log::info!("Result Fibonacci buffer: {:?}", result);
 
-        pctx.add_air_instance_ctx(FIBONACCI_SQUARE_SUBPROOF_ID[0], FIBONACCI_SQUARE_AIR_IDS[0], Some(buffer));
+        let air_instance = AirInstance::new(FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], Some(0), buffer);
+        pctx.air_instance_repo.add_air_instance(air_instance);
 
         Ok(b)
     }
@@ -91,6 +92,5 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for FibonacciSquare<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        return;
     }
 }

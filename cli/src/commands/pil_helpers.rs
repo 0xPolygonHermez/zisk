@@ -27,13 +27,13 @@ struct ProofCtx {
     num_stages: u32,
     pilout_filename: String,
     air_groups: Vec<AirGroupsCtx>,
-    constant_subproofs: Vec<(String, usize)>,
+    constant_airgroups: Vec<(String, usize)>,
     constant_airs: Vec<(String, Vec<usize>, String)>,
 }
 
 #[derive(Debug, Serialize)]
 struct AirGroupsCtx {
-    subproof_id: usize,
+    airgroup_id: usize,
     name: String,
     snake_name: String,
     airs: Vec<AirCtx>,
@@ -87,12 +87,12 @@ impl PilHelpersCmd {
         let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
 
         let mut wcctxs = Vec::new();
-        let mut constant_subproofs: Vec<(String, usize)> = Vec::new();
+        let mut constant_airgroups: Vec<(String, usize)> = Vec::new();
         let mut constant_airs: Vec<(String, Vec<usize>, String)> = Vec::new();
 
         for (subproof_id, subproof) in pilout.subproofs.iter().enumerate() {
             wcctxs.push(AirGroupsCtx {
-                subproof_id,
+                airgroup_id: subproof_id,
                 name: subproof.name.as_ref().unwrap().clone().to_case(Case::Pascal),
                 snake_name: subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
                 airs: subproof
@@ -109,7 +109,7 @@ impl PilHelpersCmd {
             });
 
             // Prepare constants
-            constant_subproofs
+            constant_airgroups
                 .push((subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), subproof_id));
 
             for (air_idx, air) in subproof.airs.iter().enumerate() {
@@ -161,7 +161,7 @@ impl PilHelpersCmd {
             pilout_filename: self.pilout.file_name().unwrap().to_str().unwrap().to_string(),
             air_groups: wcctxs,
             constant_airs,
-            constant_subproofs,
+            constant_airgroups,
         };
 
         const MOD_RS: &str = include_str!("../../assets/templates/pil_helpers_mod.rs.tt");

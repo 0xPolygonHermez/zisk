@@ -1,4 +1,5 @@
-mod air_instance_ctx;
+mod air_instance;
+mod air_instances_repository;
 mod buffer_allocator;
 mod execution_ctx;
 mod lib_pilout;
@@ -10,7 +11,8 @@ mod setup_ctx;
 pub mod trace;
 pub mod global_info;
 
-pub use air_instance_ctx::*;
+pub use air_instance::*;
+pub use air_instances_repository::*;
 pub use buffer_allocator::*;
 pub use execution_ctx::*;
 pub use lib_pilout::*;

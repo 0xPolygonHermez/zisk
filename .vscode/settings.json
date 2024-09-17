@@ -10,6 +10,6 @@
         "./provers/starks-lib-c/Cargo.toml",
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
-        // "examples/fibonacci-square/Cargo.toml",
+        "examples/fibonacci-square/Cargo.toml",
     ]
 }

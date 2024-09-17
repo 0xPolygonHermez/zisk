@@ -4,29 +4,23 @@ use proofman_common::WitnessPilout;
 
 pub const PILOUT_HASH: &[u8] = b"{ project_name }-hash";
 
-//SUBPROOFS CONSTANTS
-{{ for constant in constant_subproofs }}
-pub const { constant.0 }_SUBPROOF_ID: &[usize] = &[{ constant.1 }];
+//AIRGROUP CONSTANTS
+{{ for constant in constant_airgroups }}
+pub const { constant.0 }_AIRGROUP_ID: usize = { constant.1 };
 {{ endfor }}
-
 //AIR CONSTANTS
 {{ for constant in constant_airs }}
 pub const { constant.0 }_AIR_IDS: &[usize] = &[{ constant.2 }];
 {{ endfor }}
-
 pub struct Pilout;
 
 impl Pilout \{
     pub fn pilout() -> WitnessPilout \{
         let mut pilout = WitnessPilout::new("{ project_name }", { num_stages }, PILOUT_HASH.to_vec());
-
 {{ for air_group in air_groups }}
         let air_group = pilout.add_air_group(Some("{ air_group.name }"));
-    {{ for air in air_group.airs }}
-        air_group.add_air(Some("{ air.name }"), { air.num_rows });
-    {{ endfor }}
+{{ for air in air_group.airs }}        air_group.add_air(Some("{ air.name }"), { air.num_rows });{{ endfor }}
 {{ endfor }}
-
         pilout
     }
 }

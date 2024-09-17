@@ -35,7 +35,6 @@ impl<F: PrimeField> FibonacciWitness<F> {
 
 impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
     fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
-        
         let public_inputs: FibonacciSquarePublics = if let Some(path) = &self.public_inputs_path {
             let mut file = File::open(path).unwrap();
 
@@ -45,15 +44,14 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 
             let mut contents = String::new();
 
-            let _ = file.read_to_string(&mut contents).map_err(|err| {
-                format!("Failed to read public inputs file: {}", err)
-            });
+            let _ =
+                file.read_to_string(&mut contents).map_err(|err| format!("Failed to read public inputs file: {}", err));
 
             serde_json::from_str(&contents).unwrap()
         } else {
             FibonacciSquarePublics::default()
         };
-        
+
         pctx.public_inputs = public_inputs.into();
 
         self.wcm.start_proof(pctx, ectx, sctx);
