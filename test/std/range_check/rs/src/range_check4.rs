@@ -107,7 +107,7 @@ where
                 let range2 = (BigInt::from(0), BigInt::from(2u8.pow(8) - 1));
                 let range3 = (BigInt::from(50), BigInt::from(2u8.pow(7) - 1));
                 let range4 = (BigInt::from(127), BigInt::from(2u16.pow(8)));
-                let range5 = (BigInt::from(1), BigInt::from(2u32.pow(16) + 1));
+                // let range5 = (BigInt::from(1), BigInt::from(2u32.pow(16) + 1));
 
                 for i in 0..num_rows {
                     // trace[i].a5 = F::from_canonical_u16(rng.gen_range(127..=2u16.pow(16)));

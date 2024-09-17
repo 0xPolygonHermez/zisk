@@ -324,7 +324,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         }
     }
 
-    pub fn drain_inputs(&self, pctx: &mut ProofCtx<F>, scope: Option<&Scope>) {
+    pub fn drain_inputs(&self, _pctx: &mut ProofCtx<F>, _scope: Option<&Scope>) {
         if let Some(u8air) = self.u8air.as_ref() {
             u8air.drain_inputs();
         }

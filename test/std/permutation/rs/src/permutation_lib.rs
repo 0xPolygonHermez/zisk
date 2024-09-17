@@ -1,4 +1,4 @@
-use std::{error::Error, path::PathBuf, process::Command, sync::Arc};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
@@ -102,41 +102,51 @@ pub extern "Rust" fn init_library(
     Ok(Box::new(permutation_witness))
 }
 
-#[test]
-fn test_multiple_bash_commands() {
-    // TODO: Do it without commands.
-    // TODO: Make it path independent.
+mod tests {
+    #[test]
+    fn test_multiple_bash_commands() {
+        // TODO: Do it without commands.
+        //  TODO: Make it path independent.
 
-    // Compile the pil file
-    let compilation = Command::new("node")
-        .arg("../pil2-compiler/src/pil.js")
-        .arg("-I")
-        .arg("lib/std/pil")
-        .arg("test/std/permutation/permutation.pil")
-        .arg("-o")
-        .arg("test/std/permutation/build/permutation.pilout")
-        .status()
-        .expect("Failed to execute command");
+        let root_path = std::env::current_dir().unwrap().join("../../../../");
+        let root_path = std::fs::canonicalize(root_path).unwrap();
 
-    let proofman_dir = "../pil2-proofman";
+        let build_dir = root_path.join("test/std/permutation/build/");
+        if !build_dir.exists() {
+            std::fs::create_dir_all(build_dir).unwrap();
+        }
 
-    let status = Command::new("cargo")
-        .arg("run")
-        .arg("--bin")
-        .arg("proofman-cli")
-        .arg("pil-helpers")
-        .arg("--pilout")
-        .arg("../pil2-components/test/std/permutation/build/permutation.pilout")
-        .arg("--path")
-        .arg("../pil2-components/test/std/permutation/rs/src")
-        .arg("-o")
-        .current_dir(proofman_dir)
-        .status()
-        .expect("Failed to execute command");
+        // Compile the pil file
+        let _compilation = std::process::Command::new("node")
+            .arg(root_path.join("../pil2-compiler/src/pil.js"))
+            .arg("-I")
+            .arg(root_path.join("lib/std/pil"))
+            .arg(root_path.join("test/std/permutation/permutation.pil"))
+            .arg("-o")
+            .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
+            .status()
+            .expect("Failed to execute command");
 
-    if status.success() {
-        println!("Command executed successfully");
-    } else {
-        println!("Command failed");
+        let proofman_dir = root_path.join("../pil2-proofman");
+
+        let status = std::process::Command::new("cargo")
+            .arg("run")
+            .arg("--bin")
+            .arg("proofman-cli")
+            .arg("pil-helpers")
+            .arg("--pilout")
+            .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
+            .arg("--path")
+            .arg(root_path.join("test/std/permutation/rs/src"))
+            .arg("-o")
+            .current_dir(proofman_dir)
+            .status()
+            .expect("Failed to execute command");
+
+        if status.success() {
+            println!("Command executed successfully");
+        } else {
+            println!("Command failed");
+        }
     }
 }
