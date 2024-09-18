@@ -3,12 +3,15 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::{
+    arith_table_inputs, ArithRangeTableInputs, ArithRangeTableSM, ArithSM, ArithTableInputs,
+    ArithTableSM,
+};
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-// use sm_common::{OpResult, Provable, ThreadController};
-use sm_common::{OpResult, Provable};
+use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 use zisk_pil::Arith0Row;
 
@@ -56,8 +59,14 @@ impl<F: AbstractField + Send + Sync + 'static> ArithFullSM<F> {
             );
         }
     }
-    pub fn process_slice(input: &Vec<ZiskRequiredOperation>) -> Vec<Arith0Row<F>> {
+    pub fn process_slice(
+        input: &Vec<ZiskRequiredOperation>,
+        range_table_inputs: &mut ArithRangeTableInputs<F>,
+        table_inputs: &mut ArithTableInputs<F>,
+    ) -> Vec<Arith0Row<F>> {
         let mut _trace: Vec<Arith0Row<F>> = Vec::new();
+        range_table_inputs.push(0, 0);
+        table_inputs.fast_push(0, 0, 0);
         _trace
     }
 }
@@ -91,7 +100,7 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
                 if drain && !inputs.is_empty() {
-                    println!("Arith3264SM: Draining inputs3264");
+                    println!("ArithFullSM: Draining inputs");
                 }
 
                 // self.threads_controller.add_working_thread();
@@ -100,8 +109,14 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                scope.spawn(move |scope| {
-                    let _trace = Self::process_slice(&_drained_inputs);
+                scope.spawn(move |_| {
+                    let mut arith_range_table_inputs = ArithRangeTableInputs::<F>::new();
+                    let mut arith_table_inputs = ArithTableInputs::<F>::new();
+                    let _trace = Self::process_slice(
+                        &_drained_inputs,
+                        &mut arith_range_table_inputs,
+                        &mut arith_table_inputs,
+                    );
                     // thread_controller.remove_working_thread();
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                 });

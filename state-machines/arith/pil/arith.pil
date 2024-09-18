@@ -245,18 +245,17 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     range_c3 * (1 - range_c3) * (2 - range_c3) === 0;
     range_d3 * (1 - range_d3) * (2 - range_d3) === 0;
 
-    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * nr + 32 * np + 64 * na32 + 128 * nd32 +
-                                           2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 + 
-                                           2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3]);
-  
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_a1, a[1]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_b1, b[1]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_c1, c[1]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_d1, d[1]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_a3, a[3]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_b3, b[3]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_c3, c[3]]);
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_d3, d[3]]);
+
+    arith_table_assumes(op, m32, div, na, nb, nr, np, na32, nd32, range_a1, range_b1, range_c1, range_d1, range_a3, range_b3, range_c3, range_d3);
+
+    arith_range_table_assumes(range_a1, a[1]);
+    arith_range_table_assumes(range_b1, b[1]);
+    arith_range_table_assumes(range_c1, c[1]);
+    arith_range_table_assumes(range_d1, d[1]);
+    arith_range_table_assumes(range_a3, a[3]);
+    arith_range_table_assumes(range_b3, b[3]);
+    arith_range_table_assumes(range_c3, c[3]);
+    arith_range_table_assumes(range_d3, d[3]);
 }
 
 function instance_arith(const int rows = 2**21, const int bus_id) {

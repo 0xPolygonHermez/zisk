@@ -35,7 +35,7 @@ airtemplate ArithTable(int N = 2**6) {
             int sb = 0;
 
             switch (opcode & 0xFE) {
-                case 0xb3: // mulsuh
+                case 0xb2: // mulsuh
                     sa = 1;        
                 case 0xb4: // mul, mulh
                     sa = 1;
@@ -43,6 +43,7 @@ airtemplate ArithTable(int N = 2**6) {
                 case 0xb6: // mul_w
                     m32 = 1;
                     sa = 1;
+                    sb = 1;
                 case 0xb8: // divu, remu
                     div = 1;
                 case 0xba: // div, rem
@@ -65,6 +66,8 @@ airtemplate ArithTable(int N = 2**6) {
             // sa = 1 sb = 1  => [a >= 0, b >= 0], [a < 0, b >= 0], [a >= 0, b < 0], [a < 0, b < 0]
             
             int cases = 1 + sa + sb + sa * sb;
+
+            println("#ARITH_TABLE", opcode, index, cases);
 
             for (int icase = 0; icase < cases; ++icase) {
                 int na = 0;     // a is negative
@@ -155,12 +158,26 @@ airtemplate ArithTable(int N = 2**6) {
         if (size == 0) size = index;
     }
 
-    println("ARITH_TABLE SIZE: ", size);   
+    println("ARITH_TABLE SIZE: ", size);  
+    println("ARITH_FLAGS: ", FLAGS_AND_RANGES);
+    for (index = 0; index < size; ++index) {
+        println(FLAGS_AND_RANGES[index]);
+    }
 
-    col witness multiplicity2;
+    col witness multiplicity;
 
-    lookup_proves(ARITH_TABLE_ID, mul: multiplicity2, cols: [OP, FLAGS_AND_RANGES]);
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES]);
 
     // REMOVE
-    multiplicity2 * (multiplicity2 - 1) === 0;
+    multiplicity * (multiplicity - 1) === 0;
+}
+
+function arith_table_assumes( const expr op, const expr m32, const expr div, const expr na, const expr nb, 
+                              const expr nr, const expr np, const expr na32, const expr nd32, 
+                              const expr range_a1, const expr range_b1, const expr range_c1, const expr range_d1, 
+                              const expr range_a3, const expr range_b3, const expr range_c3, const expr range_d3) {
+    // TODO: define rule for empty rows
+    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * nr + 32 * np + 64 * na32 + 128 * nd32 +
+                                               2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 + 
+                                               2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3]);
 }

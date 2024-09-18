@@ -6,7 +6,7 @@ use std::sync::{
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use rayon::Scope;
+use rayon::{vec, Scope};
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
@@ -50,7 +50,6 @@ impl<F: AbstractField + Send + Sync + 'static> ArithTableSM<F> {
             );
         }
     }
-
     pub fn operations() -> Vec<u8> {
         // TODO: use constants
         vec![0xb6, 0xb7, 0xbe, 0xbf]
