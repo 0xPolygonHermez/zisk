@@ -10,3 +10,11 @@ trace!(RangeCheck40Row, RangeCheck40Trace<F> {
 trace!(U8Air0Row, U8Air0Trace<F> {
  mul: F,
 });
+
+trace!(U16Air0Row, U16Air0Trace<F> {
+ mul: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 2],
+});

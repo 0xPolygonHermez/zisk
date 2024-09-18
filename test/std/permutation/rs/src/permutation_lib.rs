@@ -2,6 +2,7 @@ use std::{error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
+use proofman_cli::commands::pil_helpers::PilHelpersCmd;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
@@ -103,6 +104,8 @@ pub extern "Rust" fn init_library(
 }
 
 mod tests {
+    use proofman_cli::commands::pil_helpers::PilHelpersCmd;
+
     #[test]
     fn test_multiple_bash_commands() {
         // TODO: Do it without commands.
@@ -129,24 +132,32 @@ mod tests {
 
         let proofman_dir = root_path.join("../pil2-proofman");
 
-        let status = std::process::Command::new("cargo")
-            .arg("run")
-            .arg("--bin")
-            .arg("proofman-cli")
-            .arg("pil-helpers")
-            .arg("--pilout")
-            .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
-            .arg("--path")
-            .arg(root_path.join("test/std/permutation/rs/src"))
-            .arg("-o")
-            .current_dir(proofman_dir)
-            .status()
-            .expect("Failed to execute command");
+        let pil_helpers = PilHelpersCmd {
+            pilout: root_path.join("test/std/permutation/build/permutation.pilout"),
+            path: root_path.join("test/std/permutation/rs/src"),
+            overide: true,
+        };
 
-        if status.success() {
-            println!("Command executed successfully");
-        } else {
-            println!("Command failed");
-        }
+        pil_helpers.run().expect("Failed to generate pil_helpers");
+
+        // let status = std::process::Command::new("cargo")
+        //     .arg("run")
+        //     .arg("--bin")
+        //     .arg("proofman-cli")
+        //     .arg("pil-helpers")
+        //     .arg("--pilout")
+        //     .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
+        //     .arg("--path")
+        //     .arg(root_path.join("test/std/permutation/rs/src"))
+        //     .arg("-o")
+        //     .current_dir(proofman_dir)
+        //     .status()
+        //     .expect("Failed to execute command");
+
+        // if status.success() {
+        //     println!("Command executed successfully");
+        // } else {
+        //     println!("Command failed");
+        // }
     }
 }

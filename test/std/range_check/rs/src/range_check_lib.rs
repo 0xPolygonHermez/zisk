@@ -9,12 +9,9 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout,
-    /*RangeCheck1,*/
-    RangeCheck4, /*SPECIFIED_RANGES_AIR_IDS,
-                              SPECIFIED_RANGES_AIRGROUP_ID,
-                 U_16_AIR_AIRGROUP_ID, U_16_AIR_AIR_IDS,*/
-    U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS,
+    Pilout, /*RangeCheck1,*/
+    RangeCheck4, SPECIFIED_RANGES_AIRGROUP_ID, SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID,
+    U_16_AIR_AIR_IDS, U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS,
 };
 
 pub struct RangeCheckWitness<F: PrimeField> {
@@ -51,17 +48,17 @@ where
             air_id: U_8_AIR_AIR_IDS[0],
         });
 
-        // rc_air_data.push(RCAirData {
-        //     air_name: RangeCheckAir::U16Air,
-        //     airgroup_id: U_16_AIR_AIRGROUP_ID,
-        //     air_id: U_16_AIR_AIR_IDS[0],
-        // });
+        rc_air_data.push(RCAirData {
+            air_name: RangeCheckAir::U16Air,
+            airgroup_id: U_16_AIR_AIRGROUP_ID,
+            air_id: U_16_AIR_AIR_IDS[0],
+        });
 
-        // rc_air_data.push(RCAirData {
-        //     air_name: RangeCheckAir::SpecifiedRanges,
-        //     airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
-        //     air_id: SPECIFIED_RANGES_AIR_IDS[0],
-        // });
+        rc_air_data.push(RCAirData {
+            air_name: RangeCheckAir::SpecifiedRanges,
+            airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
+            air_id: SPECIFIED_RANGES_AIR_IDS[0],
+        });
 
         let std_lib = Std::new(&mut wcm, Some(rc_air_data));
         // let range_check1 = RangeCheck::new(&mut wcm, std_lib.clone());
