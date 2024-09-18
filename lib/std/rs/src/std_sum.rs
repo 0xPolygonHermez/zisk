@@ -5,7 +5,7 @@ use std::{
 
 use p3_field::Field;
 use proofman_common::{ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
+use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions};
 
 use crate::Decider;
 
@@ -92,9 +92,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 air_instance,
                                 *hint as usize,
                                 "reference",
-                                true,
-                                false,
-                                false,
+                                HintFieldOptions::dest(),
                             );
                             let num = get_hint_field::<F>(
                                 sctx.setups.as_ref(),
@@ -103,9 +101,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 air_instance,
                                 *hint as usize,
                                 "numerator",
-                                false,
-                                false,
-                                false,
+                                HintFieldOptions::default(),
                             );
                             let den = get_hint_field::<F>(
                                 sctx.setups.as_ref(),
@@ -114,9 +110,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 air_instance,
                                 *hint as usize,
                                 "denominator",
-                                false,
-                                false,
-                                false,
+                                HintFieldOptions::default(),
                             );
 
                             for i in 0..num_rows {
@@ -150,9 +144,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             air_instance,
                             gsum_hint,
                             "reference",
-                            true,
-                            false,
-                            false,
+                            HintFieldOptions::dest(),
                         );
                         let expr = get_hint_field::<F>(
                             sctx.setups.as_ref(),
@@ -161,9 +153,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             air_instance,
                             gsum_hint,
                             "expression",
-                            false,
-                            false,
-                            false,
+                            HintFieldOptions::default(),
                         );
 
                         gsum.set(0, expr.get(0));

@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
-use proofman_hints::{get_hint_field, set_hint_field, HintFieldOutput, HintFieldValue};
+use proofman_hints::{get_hint_field, set_hint_field, HintFieldOptions, HintFieldOutput, HintFieldValue};
 
 use crate::Range;
 
@@ -76,9 +76,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             air_instance,
             0, // TODO! Uncomment this -> *hint as usize,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
 
         set_hint_field(
@@ -135,9 +133,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             air_instance,
             0, // TODO! Uncommoent this -> hint,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
 
         let ranges = self.ranges.lock().unwrap();

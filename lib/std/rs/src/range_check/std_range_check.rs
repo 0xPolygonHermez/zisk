@@ -9,7 +9,7 @@ use p3_field::PrimeField;
 
 use proofman::WitnessManager;
 use proofman_common::{ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldValue};
+use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue};
 use rayon::Scope;
 
 use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
@@ -155,8 +155,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             air_id,
             hint as usize,
             "predefined",
-            false,
-            false,
+            HintFieldOptions::default(),
         );
         let min = get_hint_field_constant::<F>(
             sctx,
@@ -164,8 +163,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             air_id,
             hint as usize,
             "min",
-            false,
-            false,
+            HintFieldOptions::default(),
         );
         let min_neg = get_hint_field_constant::<F>(
             sctx,
@@ -173,8 +171,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             air_id,
             hint as usize,
             "min_neg",
-            false,
-            false,
+            HintFieldOptions::default(),
         );
         let max = get_hint_field_constant::<F>(
             sctx,
@@ -182,8 +179,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             air_id,
             hint as usize,
             "max",
-            false,
-            false,
+            HintFieldOptions::default(),
         );
         let max_neg = get_hint_field_constant::<F>(
             sctx,
@@ -191,8 +187,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             air_id,
             hint as usize,
             "max_neg",
-            false,
-            false,
+            HintFieldOptions::default(),
         );
 
         let HintFieldValue::Field(predefined) = predefined else {

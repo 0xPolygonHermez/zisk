@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
-use proofman_hints::{get_hint_field, print_expression, set_hint_field, HintFieldOutput};
+use proofman_hints::{get_hint_field, print_expression, set_hint_field, HintFieldOptions, HintFieldOutput};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 6 + 1;
 
@@ -94,9 +94,7 @@ impl<F: PrimeField> U8Air<F> {
             air_instance,
             hint,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
         for i in 0..10 {
             println!("{}: {:?}", i, mul.get(i as usize));

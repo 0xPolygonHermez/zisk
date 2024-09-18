@@ -6,7 +6,7 @@ use std::{
 
 use p3_field::Field;
 use proofman_common::{ProofCtx, SetupCtx, SetupRepository};
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val};
+use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions};
 
 use crate::Decider;
 
@@ -100,9 +100,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             air_instance,
                             gprod_hint,
                             "reference",
-                            true,
-                            false,
-                            false,
+                            HintFieldOptions::dest(),
                         );
                         let num = get_hint_field::<F>(
                             sctx.setups.as_ref(),
@@ -111,9 +109,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             air_instance,
                             gprod_hint,
                             "numerator",
-                            false,
-                            false,
-                            false,
+                            HintFieldOptions::default(),
                         );
                         let den = get_hint_field::<F>(
                             sctx.setups.as_ref(),
@@ -122,9 +118,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             air_instance,
                             gprod_hint,
                             "denominator",
-                            false,
-                            false,
-                            false,
+                            HintFieldOptions::default(),
                         );
 
                         gprod.set(0, num.get(0) / den.get(0));

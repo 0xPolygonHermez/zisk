@@ -9,7 +9,7 @@ use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
 
-use proofman_hints::{get_hint_field, set_hint_field, HintFieldOutput};
+use proofman_hints::{get_hint_field, set_hint_field, HintFieldOptions, HintFieldOutput};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 10;
 
@@ -72,9 +72,7 @@ impl<F: PrimeField> U16Air<F> {
             air_instance,
             *hint as usize,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
 
         set_hint_field(
@@ -122,9 +120,7 @@ impl<F: PrimeField> U16Air<F> {
             air_instance,
             hint,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
 
         for input in &drained_inputs {
