@@ -10,7 +10,7 @@ use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
 
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldValue};
+use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldValue, HintFieldOptions};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 const NUM_ROWS: usize = 1 << 16;
@@ -137,9 +137,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
             &mut air_instance,
             hint,
             "reference",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         ));
 
         self.air_instances_repository

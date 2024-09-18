@@ -10,8 +10,7 @@ use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
 use proofman_hints::{
-    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, print_by_name, set_hint_field,
-    HintFieldValue,
+    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, print_by_name, set_hint_field, HintFieldOptions, HintFieldValue
 };
 
 use crate::Range;
@@ -137,8 +136,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             air_id,
                             *hint as usize,
                             "min",
-                            false,
-                            false,
+                            HintFieldOptions::default(),
                         );
                         let max = get_hint_field_constant::<F>(
                             sctx,
@@ -146,8 +144,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             air_id,
                             *hint as usize,
                             "max",
-                            false,
-                            false,
+                            HintFieldOptions::default(),
                         );
                         let HintFieldValue::Field(min) = min else {
                             log::error!("Min hint must be a field element");
@@ -189,9 +186,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                 &mut air_instance,
                 hint.to_usize().unwrap(),
                 "reference",
-                true,
-                false,
-                false,
+                HintFieldOptions::dest(),
             ));
         }
 
@@ -205,9 +200,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
             &mut air_instance,
             hint as usize,
             "num_rows",
-            true,
-            false,
-            false,
+            HintFieldOptions::dest(),
         );
 
         let HintFieldValue::Field(num_rows) = num_rows else {
