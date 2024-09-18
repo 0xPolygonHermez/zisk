@@ -8,14 +8,14 @@ require "binary/pil/binary_extension_table.pil"
 require "arith/pil/arith.pil"
 
 const int OPERATION_BUS_ID = 5000;
-const int DEFAULT_N = 2**21;
+const int DEFAULT_ROWS = 2**21;
 
 airgroup Main {
-    Main(N: DEFAULT_N, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(DEFAULT_ROWS, RC: 2, operation_bus_id: OPERATION_BUS_ID);
 }
 
 airgroup Binary {
-    Binary(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
+    Binary(DEFAULT_ROWS, operation_bus_id: OPERATION_BUS_ID);
 }
 
 
@@ -25,7 +25,7 @@ airgroup BinaryTable {
 
 
 airgroup BinaryExtension {
-    BinaryExtension(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
+    BinaryExtension(DEFAULT_ROWS, operation_bus_id: OPERATION_BUS_ID);
 }
 
 airgroup BinaryExtensionTable {
@@ -33,13 +33,5 @@ airgroup BinaryExtensionTable {
 }
 
 airgroup Arith {
-    Arith(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
-}
-
-airgroup ArithTable {
-    ArithTable();
-}
-
-airgroup ArithRangeTable {
-    ArithRangeTable();
+    instance_arith(DEFAULT_ROWS, bus_id: OPERATION_BUS_ID);
 }

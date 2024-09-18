@@ -54,7 +54,7 @@ pub struct MainSM<F> {
     // State machines
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM>,
-    arith_sm: Arc<ArithSM>,
+    arith_sm: Arc<ArithSM<F>>,
 }
 
 impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
@@ -83,7 +83,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         wcm: &mut WitnessManager<F>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM>,
-        arith_sm: Arc<ArithSM>,
+        arith_sm: Arc<ArithSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {

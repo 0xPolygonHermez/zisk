@@ -3,7 +3,6 @@ require "std_lookup.pil"
 const int ARITH_TABLE_ID = 330;
 
 airtemplate ArithTable(int N = 2**6) {
-
     
     // TABLE
     // op 
@@ -158,10 +157,10 @@ airtemplate ArithTable(int N = 2**6) {
 
     println("ARITH_TABLE SIZE: ", size);   
 
-    col witness multiplicity;
+    col witness multiplicity2;
 
-    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES]);
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity2, cols: [OP, FLAGS_AND_RANGES]);
 
     // REMOVE
-    multiplicity * (multiplicity - 1) === 0;
+    multiplicity2 * (multiplicity2 - 1) === 0;
 }

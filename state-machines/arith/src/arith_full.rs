@@ -7,14 +7,19 @@ use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
+// use sm_common::{OpResult, Provable, ThreadController};
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_pil::Arith0Row;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct Arith32SM<F> {
+pub struct ArithFullSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
+
+    // Thread controller to manage the execution of the state machines
+    // threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
@@ -22,18 +27,19 @@ pub struct Arith32SM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
+impl<F: AbstractField + Send + Sync + 'static> ArithFullSM<F> {
     pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let _arith_32_sm = Self {
+        let arith_full_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             _phantom: std::marker::PhantomData,
+            //threads_controller: Arc::new(ThreadController::new()),
         };
-        let arith_32_sm = Arc::new(_arith_32_sm);
+        let arith_full_sm = Arc::new(arith_full_sm);
 
-        wcm.register_component(arith_32_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(arith_full_sm.clone(), Some(airgroup_id), Some(air_ids));
 
-        arith_32_sm
+        arith_full_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -42,7 +48,7 @@ impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith32SM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <ArithFullSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -50,13 +56,13 @@ impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
             );
         }
     }
-
-    pub fn operations() -> Vec<u8> {
-        vec![0xb6, 0xb7, 0xbe, 0xbf]
+    pub fn process_slice(input: &Vec<ZiskRequiredOperation>) -> Vec<Arith0Row<F>> {
+        let mut _trace: Vec<Arith0Row<F>> = Vec::new();
+        _trace
     }
 }
 
-impl<F> WitnessComponent<F> for Arith32SM<F> {
+impl<F> WitnessComponent<F> for ArithFullSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -69,7 +75,7 @@ impl<F> WitnessComponent<F> for Arith32SM<F> {
 }
 
 impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
-    for Arith32SM<F>
+    for ArithFullSM<F>
 {
     fn calculate(
         &self,
@@ -84,10 +90,19 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
+                if drain && !inputs.is_empty() {
+                    println!("Arith3264SM: Draining inputs3264");
+                }
+
+                // self.threads_controller.add_working_thread();
+                // let thread_controller = self.threads_controller.clone();
+
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                scope.spawn(move |_| {
+                scope.spawn(move |scope| {
+                    let _trace = Self::process_slice(&_drained_inputs);
+                    // thread_controller.remove_working_thread();
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                 });
             }

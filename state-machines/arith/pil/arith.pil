@@ -258,3 +258,9 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     lookup_assumes(ARITH_RANGE_TABLE_ID, [range_c3, c[3]]);
     lookup_assumes(ARITH_RANGE_TABLE_ID, [range_d3, d[3]]);
 }
+
+function instance_arith(const int rows = 2**21, const int bus_id) {
+    Arith(rows, operation_bus_id: bus_id);
+    ArithTable();
+    ArithRangeTable();
+}

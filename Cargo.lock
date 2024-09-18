@@ -1994,12 +1994,14 @@ name = "sm-arith"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "proofman-macros",
  "rayon",
  "sm-common",
  "zisk-core",
+ "zisk-pil",
 ]
 
 [[package]]

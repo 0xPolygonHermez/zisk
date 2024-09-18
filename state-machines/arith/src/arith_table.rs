@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -11,23 +12,28 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct Arith64SM {
+pub struct ArithTableSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
-impl Arith64SM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let arith64_sm =
-            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
-        let arith64_sm = Arc::new(arith64_sm);
+impl<F: AbstractField + Send + Sync + 'static> ArithTableSM<F> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let _arith_table_sm = Self {
+            registered_predecessors: AtomicU32::new(0),
+            inputs: Mutex::new(Vec::new()),
+            _phantom: std::marker::PhantomData,
+        };
+        let arith_table_sm = Arc::new(_arith_table_sm);
 
-        wcm.register_component(arith64_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(arith_table_sm.clone(), Some(airgroup_id), Some(air_ids));
 
-        arith64_sm
+        arith_table_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -36,16 +42,22 @@ impl Arith64SM {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith64SM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+            <ArithTableSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
         }
     }
 
     pub fn operations() -> Vec<u8> {
-        vec![0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb8, 0xb9, 0xba, 0xbb]
+        // TODO: use constants
+        vec![0xb6, 0xb7, 0xbe, 0xbf]
     }
 }
 
-impl<F> WitnessComponent<F> for Arith64SM {
+impl<F> WitnessComponent<F> for ArithTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -57,7 +69,7 @@ impl<F> WitnessComponent<F> for Arith64SM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for Arith64SM {
+impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithTableSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

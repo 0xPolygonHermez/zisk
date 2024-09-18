@@ -8,10 +8,10 @@ airtemplate ArithRangeTable(int N = 2**17) {
     col fixed RANGES = [0:2**16,1:2**15,2:2**15];
     col fixed VALUES = [0..2**16-1]...;
 
-    col witness multiplicity;
+    col witness multiplicity3;
 
-    lookup_proves(ARITH_TABLE_ID, [RANGES, VALUES], multiplicity);
+    lookup_proves(ARITH_TABLE_ID, [RANGES, VALUES], multiplicity3);
 
     // REMOVE
-    multiplicity * (multiplicity - 1) === 0;
+    multiplicity3 * (multiplicity3 - 1) === 0;
 }

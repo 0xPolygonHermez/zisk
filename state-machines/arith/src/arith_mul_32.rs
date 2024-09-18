@@ -12,7 +12,7 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct Arith32SM<F> {
+pub struct ArithMul32SM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -22,18 +22,18 @@ pub struct Arith32SM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
+impl<F: AbstractField + Send + Sync + 'static> ArithMul32SM<F> {
     pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let _arith_32_sm = Self {
+        let arith_mul_32_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             _phantom: std::marker::PhantomData,
         };
-        let arith_32_sm = Arc::new(_arith_32_sm);
+        let arith_mul_32_sm = Arc::new(arith_mul_32_sm);
 
-        wcm.register_component(arith_32_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(arith_mul_32_sm.clone(), Some(airgroup_id), Some(air_ids));
 
-        arith_32_sm
+        arith_mul_32_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -42,7 +42,7 @@ impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith32SM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <ArithMul32SM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -52,11 +52,12 @@ impl<F: AbstractField + Send + Sync + 'static> Arith32SM<F> {
     }
 
     pub fn operations() -> Vec<u8> {
+        // TODO: use constants
         vec![0xb6, 0xb7, 0xbe, 0xbf]
     }
 }
 
-impl<F> WitnessComponent<F> for Arith32SM<F> {
+impl<F> WitnessComponent<F> for ArithMul32SM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -68,9 +69,7 @@ impl<F> WitnessComponent<F> for Arith32SM<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
-    for Arith32SM<F>
-{
+impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithMul32SM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

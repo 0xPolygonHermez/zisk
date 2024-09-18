@@ -27,10 +27,10 @@ trace!(Arith0Row, Arith0Trace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, na32: F, nd32: F, m32: F, div: F, fab: F, secondary_res: F, op: F, bus_a_low: F, bus_a_high: F, bus_b_high: F, res1_low: F, div64: F, res1_high: F, multiplicity: F, range_a1: F, range_b1: F, range_c1: F, range_d1: F, range_a3: F, range_b3: F, range_c3: F, range_d3: F,
 });
 
-trace!(ArithTable0Row, ArithTable0Trace<F> {
- multiplicity: F,
+trace!(ArithTable1Row, ArithTable1Trace<F> {
+ multiplicity2: F,
 });
 
-trace!(ArithRangeTable0Row, ArithRangeTable0Trace<F> {
- multiplicity: F,
+trace!(ArithRangeTable2Row, ArithRangeTable2Trace<F> {
+ multiplicity3: F,
 });

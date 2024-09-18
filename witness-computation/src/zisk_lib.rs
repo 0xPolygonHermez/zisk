@@ -9,7 +9,7 @@ use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
-use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
+use sm_arith::ArithSM;
 use sm_main::MainSM;
 use sm_mem::{MemAlignedSM, MemSM, MemUnalignedSM};
 
@@ -17,10 +17,10 @@ pub struct ZiskWitness<F> {
     pub public_inputs_path: PathBuf,
     pub wcm: WitnessManager<F>,
     // State machines
-    pub arith_sm: Arc<ArithSM>,
-    pub arith_32_sm: Arc<Arith32SM>,
-    pub arith_64_sm: Arc<Arith64SM>,
-    pub arith_3264_sm: Arc<Arith3264SM>,
+    pub arith_sm: Arc<ArithSM<F>>,
+    /*    pub arith_32_sm: Arc<Arith32SM>,
+    pub arith_64_sm: Arc<ArithMul64SM>,
+    pub arith_3264_sm: Arc<ArithFullSM>,*/
     pub binary_sm: Arc<BinarySM>,
     pub binary_basic_sm: Arc<BinaryBasicSM>,
     pub binary_extension_sm: Arc<BinaryExtensionSM>,
@@ -53,10 +53,15 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const MEM_AIRGROUP_ID: usize = 100;
         pub const MEM_ALIGN_AIR_IDS: &[usize] = &[1];
         pub const MEM_UNALIGNED_AIR_IDS: &[usize] = &[2, 3];
-        pub const ARITH_AIRGROUP_ID: usize = 101;
-        pub const ARITH32_AIR_IDS: &[usize] = &[4, 5];
-        pub const ARITH64_AIR_IDS: &[usize] = &[6];
-        pub const ARITH3264_AIR_IDS: &[usize] = &[7];
+        // pub const ARITH_AIRGROUP_ID: usize = 101;
+
+        // pub const ARITH_32_AIR_IDS: &[usize] = &[4, 5];
+        // pub const ARITH_MUL_64_AIR_IDS: &[usize] = &[6];
+        // pub const ARITH_MUL_32_AIR_IDS: &[usize] = &[7];
+        // pub const ARITH_FULL_AIR_IDS: &[usize] = &[8];
+        // pub const ARITH_TABLE_AIR_IDS: &[usize] = &[9];
+        // pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[11];
+
         pub const QUICKOPS_AIRGROUP_ID: usize = 102;
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
 
@@ -74,11 +79,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         let binary_sm =
             BinarySM::new(&mut wcm, binary_basic_sm.clone(), binary_extension_sm.clone());
 
-        let arith_32_sm = Arith32SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH32_AIR_IDS);
-        let arith_64_sm = Arith64SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH64_AIR_IDS);
-        let arith_3264_sm = Arith3264SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH3264_AIR_IDS);
-        let arith_sm =
-            ArithSM::new(&mut wcm, arith_32_sm.clone(), arith_64_sm.clone(), arith_3264_sm.clone());
+        let arith_sm = ArithSM::new(&mut wcm);
 
         let quickops_sm = QuickOpsSM::new(&mut wcm, QUICKOPS_AIRGROUP_ID, QUICKOPS_AIR_IDS);
 
@@ -96,9 +97,9 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             public_inputs_path,
             wcm,
             arith_sm,
-            arith_32_sm,
-            arith_64_sm,
-            arith_3264_sm,
+            /*            arith_32_sm,
+            arith_64_sm: arith_mul_64_sm,
+            arith_3264_sm: arith_full_sm,*/
             binary_sm,
             binary_basic_sm,
             binary_extension_sm,

@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -11,23 +12,28 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct Arith3264SM {
+pub struct ArithMul64SM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
-impl Arith3264SM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let arith3264_sm =
-            Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
-        let arith3264_sm = Arc::new(arith3264_sm);
+impl<F: AbstractField + Send + Sync + 'static> ArithMul64SM<F> {
+    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let arith_mul_64_sm = Self {
+            registered_predecessors: AtomicU32::new(0),
+            inputs: Mutex::new(Vec::new()),
+            _phantom: std::marker::PhantomData,
+        };
+        let arith_mul_64_sm = Arc::new(arith_mul_64_sm);
 
-        wcm.register_component(arith3264_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(arith_mul_64_sm.clone(), Some(airgroup_id), Some(air_ids));
 
-        arith3264_sm
+        arith_mul_64_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -36,7 +42,7 @@ impl Arith3264SM {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <Arith3264SM as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            <ArithMul64SM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
@@ -44,9 +50,14 @@ impl Arith3264SM {
             );
         }
     }
+
+    pub fn operations() -> Vec<u8> {
+        // TODO: use constants
+        vec![0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb8, 0xb9, 0xba, 0xbb]
+    }
 }
 
-impl<F> WitnessComponent<F> for Arith3264SM {
+impl<F> WitnessComponent<F> for ArithMul64SM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -58,7 +69,7 @@ impl<F> WitnessComponent<F> for Arith3264SM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
+impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithMul64SM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -72,10 +83,6 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                if drain && !inputs.is_empty() {
-                    println!("Arith3264SM: Draining inputs3264");
-                }
-
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
