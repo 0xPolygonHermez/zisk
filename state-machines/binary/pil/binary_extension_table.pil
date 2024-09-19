@@ -51,7 +51,6 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
     col fixed C0;                                           // Output C0  (32 bits)
     col fixed C1;                                           // Output C1  (32 bits)
     for (int i = 0; i < N; i++) {
-        println(i);
         int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int _out = 0;
         switch (op) {
