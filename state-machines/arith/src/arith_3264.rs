@@ -21,7 +21,7 @@ pub struct Arith3264SM {
 }
 
 impl Arith3264SM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let arith3264_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);

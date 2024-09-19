@@ -34,7 +34,7 @@ pub struct MemSM {
 
 impl MemSM {
     pub fn new<F>(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         mem_aligned_sm: Arc<MemAlignedSM>,
         mem_unaligned_sm: Arc<MemUnalignedSM>,
     ) -> Arc<Self> {

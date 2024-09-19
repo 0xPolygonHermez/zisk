@@ -5,17 +5,19 @@ use std::sync::{
 
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation};
-use zisk_pil::BinaryExtension0Row;
+use zisk_pil::*;
 
 use crate::BinaryExtensionTableSM;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct BinaryExtensionSM<F> {
+    wcm: Arc<WitnessManager<F>>,
+
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -34,14 +36,15 @@ pub enum BinaryExtensionSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> BinaryExtensionSM<F> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
     pub fn new(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_extension_sm = Self {
+            wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -201,7 +204,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryExtensionSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryExtensionSM<F> {
+impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -213,7 +216,7 @@ impl<F> WitnessComponent<F> for BinaryExtensionSM<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
+impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
     for BinaryExtensionSM<F>
 {
     fn calculate(
@@ -237,13 +240,23 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
 
                 let binary_extension_table_sm = self.binary_extension_table_sm.clone();
 
-                scope.spawn(move |scope| {
-                    let (_trace, table_required) = Self::process_slice(&drained_inputs);
+                // scope.spawn(move |scope| {
+                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
 
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
+                    let trace = BinaryExtension0Trace::<F>::map_row_vec(trace_row).unwrap();
+
+                    let air_instance = AirInstance::new(
+                        BINARY_EXTENSION_AIRGROUP_ID,
+                        BINARY_EXTENSION_AIR_IDS[0],
+                        None,
+                        trace.buffer.unwrap(),
+                    );
+                    self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+
                     thread_controller.remove_working_thread();
-                });
+                // });
             }
         }
     }

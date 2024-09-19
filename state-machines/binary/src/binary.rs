@@ -30,9 +30,9 @@ pub struct BinarySM<F> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> BinarySM<F> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> BinarySM<F> {
     pub fn new(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         binary_basic_sm: Arc<BinaryBasicSM<F>>,
         binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     ) -> Arc<Self> {
@@ -75,7 +75,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinarySM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for BinarySM<F> {
+impl<F: Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -87,7 +87,7 @@ impl<F> WitnessComponent<F> for BinarySM<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
+impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
     for BinarySM<F>
 {
     fn calculate(

@@ -5,15 +5,17 @@ use std::sync::{
 
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
-use zisk_pil::BinaryTable0Row;
+use zisk_pil::*;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryBasicTableSM<F> {
+    wcm: Arc<WitnessManager<F>>,
+
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -31,9 +33,10 @@ pub enum BasicTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> BinaryBasicTableSM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic_table = Self {
+            wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             multiplicity: Mutex::new([0; MULTIPLICITY_TABLE_SIZE]),
@@ -114,7 +117,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicTableSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryBasicTableSM<F> {
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -126,8 +129,8 @@ impl<F> WitnessComponent<F> for BinaryBasicTableSM<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredBinaryBasicTable, OpResult>
-    for BinaryBasicTableSM<F>
+impl<F: AbstractField + Copy + Send + Sync + 'static>
+    Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F>
 {
     fn calculate(
         &self,
@@ -145,9 +148,18 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredBinaryBasicT
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                //scope.spawn(move |scope| {
-                let _trace = self.process_slice(&drained_inputs);
-                //});
+                // scope.spawn(move |scope| {
+                let trace_row = self.process_slice(&drained_inputs);
+                let trace = BinaryTable0Trace::<F>::map_row_vec(trace_row).unwrap();
+
+                let air_instance = AirInstance::new(
+                    BINARY_TABLE_AIRGROUP_ID,
+                    BINARY_TABLE_AIR_IDS[0],
+                    None,
+                    trace.buffer.unwrap(),
+                );
+                self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                // });
             }
         }
     }

@@ -33,7 +33,7 @@ pub struct ArithSM {
 
 impl ArithSM {
     pub fn new<F>(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         arith32_sm: Arc<Arith32SM>,
         arith64_sm: Arc<Arith64SM>,
         arith3264_sm: Arc<Arith3264SM>,

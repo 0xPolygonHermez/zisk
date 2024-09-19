@@ -5,15 +5,17 @@ use std::sync::{
 
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
-use zisk_pil::BinaryExtensionTable0Row;
+use zisk_pil::*;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryExtensionTableSM<F> {
+    wcm: Arc<WitnessManager<F>>,
+
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -31,9 +33,10 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> BinaryExtensionTableSM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionTableSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_extension_table = Self {
+            wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             multiplicity: Mutex::new([0; MULTIPLICITY_TABLE_SIZE]),
@@ -104,7 +107,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryExtensionTableSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for BinaryExtensionTableSM<F> {
+impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -116,7 +119,7 @@ impl<F> WitnessComponent<F> for BinaryExtensionTableSM<F> {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredBinaryExtensionTable, OpResult>
+impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredBinaryExtensionTable, OpResult>
     for BinaryExtensionTableSM<F>
 {
     fn calculate(
@@ -136,7 +139,17 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredBinaryExtens
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 //scope.spawn(move |_| {
-                let _trace = self.process_slice(&drained_inputs);
+                let trace_row = self.process_slice(&drained_inputs);
+                let trace = BinaryExtensionTable0Trace::<F>::map_row_vec(trace_row).unwrap();
+
+                let air_instance = AirInstance::new(
+                    BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+                    BINARY_EXTENSION_TABLE_AIR_IDS[0],
+                    None,
+                    trace.buffer.unwrap(),
+                );
+                self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+
                 //});
             }
         }

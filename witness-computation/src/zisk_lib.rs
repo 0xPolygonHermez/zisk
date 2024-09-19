@@ -20,7 +20,7 @@ pub struct ZiskWitness<F> {
     pub rom_path: PathBuf,
 
     // Witness computation manager
-    pub wcm: Option<WitnessManager<F>>,
+    pub wcm: Option<Arc<WitnessManager<F>>>,
 
     // State machines
     pub arith_sm: Option<Arc<ArithSM>>,
@@ -73,7 +73,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
     }
 
     fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let mut wcm = WitnessManager::new(pctx, ectx, sctx);
+        let wcm = WitnessManager::new(pctx, ectx, sctx);
+        let wcm = Arc::new(wcm);
 
         // TODO REMOVE THIS WHEN READY IN ZISK_PIL
         pub const MEM_AIRGROUP_ID: usize = 100;
@@ -86,37 +87,45 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const QUICKOPS_AIRGROUP_ID: usize = 102;
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
 
-        let mem_aligned_sm = MemAlignedSM::new(&mut wcm, MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS);
+        let mem_aligned_sm = MemAlignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm =
-            MemUnalignedSM::new(&mut wcm, MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS);
-        let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
+            MemUnalignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS);
+        let mem_sm = MemSM::new(wcm.clone(), mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
         let binary_basic_table_sm =
-            BinaryBasicTableSM::new(&mut wcm, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
-        let binary_basic_sm =
-            BinaryBasicSM::new(&mut wcm, binary_basic_table_sm, BINARY_AIRGROUP_ID, BINARY_AIR_IDS);
+            BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+        let binary_basic_sm = BinaryBasicSM::new(
+            wcm.clone(),
+            binary_basic_table_sm,
+            BINARY_AIRGROUP_ID,
+            BINARY_AIR_IDS,
+        );
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new(
-            &mut wcm,
+            wcm.clone(),
             BINARY_EXTENSION_TABLE_AIRGROUP_ID,
             BINARY_EXTENSION_TABLE_AIR_IDS,
         );
         let binary_extension_sm = BinaryExtensionSM::new(
-            &mut wcm,
+            wcm.clone(),
             binary_extension_table_sm,
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
         );
         let binary_sm =
-            BinarySM::new(&mut wcm, binary_basic_sm.clone(), binary_extension_sm.clone());
+            BinarySM::new(wcm.clone(), binary_basic_sm.clone(), binary_extension_sm.clone());
 
-        let arith_32_sm = Arith32SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH32_AIR_IDS);
-        let arith_64_sm = Arith64SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH64_AIR_IDS);
-        let arith_3264_sm = Arith3264SM::new(&mut wcm, ARITH_AIRGROUP_ID, ARITH3264_AIR_IDS);
-        let arith_sm =
-            ArithSM::new(&mut wcm, arith_32_sm.clone(), arith_64_sm.clone(), arith_3264_sm.clone());
+        let arith_32_sm = Arith32SM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH32_AIR_IDS);
+        let arith_64_sm = Arith64SM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH64_AIR_IDS);
+        let arith_3264_sm = Arith3264SM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH3264_AIR_IDS);
+        let arith_sm = ArithSM::new(
+            wcm.clone(),
+            arith_32_sm.clone(),
+            arith_64_sm.clone(),
+            arith_3264_sm.clone(),
+        );
 
-        let quickops_sm = QuickOpsSM::new(&mut wcm, QUICKOPS_AIRGROUP_ID, QUICKOPS_AIR_IDS);
+        let quickops_sm = QuickOpsSM::new(wcm.clone(), QUICKOPS_AIRGROUP_ID, QUICKOPS_AIR_IDS);
 
         let main_sm = MainSM::new(
             &self.rom_path,

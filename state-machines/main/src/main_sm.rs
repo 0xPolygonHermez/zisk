@@ -398,7 +398,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for MainSM<F> {
+impl<F: Send + Sync> WitnessComponent<F> for MainSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,

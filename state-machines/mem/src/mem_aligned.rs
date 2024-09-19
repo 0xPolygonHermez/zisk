@@ -21,7 +21,7 @@ pub struct MemAlignedSM {
 
 #[allow(unused, unused_variables)]
 impl MemAlignedSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let mem_aligned_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
