@@ -8,15 +8,15 @@ require "std_lookup.pil"
     ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
       ADD   │   0x02   │   0x02   │   X   │                │
       SUB   │   0x03   │   0x03   │   X   │                │
-      LTU   │   0x04   │   0x04   │   X   │       X        │
-      LT    │   0x05   │   0x05   │   X   │       X        │
-      LEU   │   0x06   │   0x06   │   X   │       X        │
-      LE    │   0x07   │   0x07   │   X   │       X        │
-      EQ    │   0x08   │   0x08   │   X   │       X        │
-      MINU  │   0x09   │   0x09   │   X   │       X        │
-      MIN   │   0x0a   │   0x0a   │   X   │       X        │
-      MAXU  │   0x0b   │   0x0b   │   X   │       X        │
-      MAX   │   0x0c   │   0x0c   │   X   │       X        │
+      LTU   │   0x04   │   0x04   │   X   │        X       │
+      LT    │   0x05   │   0x05   │   X   │        X       │
+      LEU   │   0x06   │   0x06   │   X   │        X       │
+      LE    │   0x07   │   0x07   │   X   │        X       │
+      EQ    │   0x08   │   0x08   │   X   │        X       │
+      MINU  │   0x09   │   0x09   │   X   │                │
+      MIN   │   0x0a   │   0x0a   │   X   │                │
+      MAXU  │   0x0b   │   0x0b   │   X   │                │
+      MAX   │   0x0c   │   0x0c   │   X   │                │
       AND   │   0x20   │   0x20   │       │                │
       OR    │   0x21   │   0x21   │       │                │
       XOR   │   0x22   │   0x22   │       │                │
@@ -32,10 +32,10 @@ require "std_lookup.pil"
      LEU_W  │   0x16   │   0x06   │   X   │       X        │
      LE_W   │   0x17   │   0x07   │   X   │       X        │
      EQ_W   │   0x18   │   0x08   │   X   │       X        │
-     MINU_W │   0x19   │   0x09   │   X   │       X        │
-     MIN_W  │   0x1a   │   0x0a   │   X   │       X        │
-     MAXU_W │   0x1b   │   0x0b   │   X   │       X        │
-     MAX_W  │   0x1c   │   0x0c   │   X   │       X        │
+     MINU_W │   0x19   │   0x09   │   X   │                │
+     MIN_W  │   0x1a   │   0x0a   │   X   │                │
+     MAXU_W │   0x1b   │   0x0b   │   X   │                │
+     MAX_W  │   0x1c   │   0x0c   │   X   │                │
     ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
 
     Opcodes:
@@ -76,18 +76,20 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     col witness free_in_a[bytes]; // input1
     col witness free_in_b[bytes]; // input2
     col witness free_in_c[bytes]; // output
-    col witness carry[bytes+1];   // bytes + 1 chunks carries [cin:0,cout:1],[cin:1,cout:2],...,[cin:bytes-1,cout:bytes]
+    col witness carry[bytes];     // bytes chunks carries [0,cout:0],[cin:0,cout:1],...,[cin:bytes-2,cout:bytes-1]
 
     // Secondary columns
-    col witness use_last_carry;   // flag indicating whether the operation uses the last carry as its result
+    col witness use_last_carry;   // 1 if the operation uses the last carry as its result
+    col witness op_is_min_max;      // 1 if op ∈ {MINU,MIN,MAXU,MAX}
 
-    const expr cin  = carry[0];
-    const expr cout32 = carry[bytes/2];
-    const expr cout64 = carry[bytes];
+    const expr cout32 = carry[bytes/2-1];
+    const expr cout64 = carry[bytes-1];
+    expr cout = (1-mode32) * (cout64 - cout32) + cout32;
 
     use_last_carry * (1 - use_last_carry) === 0;
-    cout32 * (1 - cout32) === 0;
-    cout64 * (1 - cout64) === 0;
+    op_is_min_max * (1 - op_is_min_max) === 0;
+    cout32*(1 - cout32) === 0;
+    cout64*(1 - cout64) === 0;
 
     // Constraints to check the correctness of each binary operation
     /*
@@ -103,21 +105,25 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
      m_op|EXT_32  1      a7|c3  b7|0  c7  carry6  carry7 + 2*use_last_carry
     */
 
-    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[1]]);
+    // Perform, at the byte level, lookups against the binary table on inputs:
+    //               [last, m_op, a, b, cin, c, cout + flags]
+    // where last indicates whether the byte is the last one in the operation
+
+    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*op_is_min_max*cout]);
 
     expr _m_op = (1-mode32) * (m_op - EXT_32_OP) + EXT_32_OP;
     for (int i = 1; i < bytes; i++) {
-        expr _freeInA = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
+        expr _free_in_a = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
         expr _free_in_b = (1-mode32) * free_in_b[i];
-    
+
         if (i < bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i], free_in_c[i], carry[i+1]]);
+            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
         } else if (i == bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i], free_in_c[i], cout32 + 2 * use_last_carry * mode32]);
+            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*mode32]);
         } else if (i < bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _freeInA, _free_in_b, carry[i], free_in_c[i], carry[i+1]]);
+            lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
         } else  {
-            lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _freeInA, _free_in_b, carry[i], free_in_c[i], cout64 + 2 * use_last_carry * (1-mode32)]);
+            lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*(1-mode32)]);
         }
     }
 
@@ -149,12 +155,11 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     // e.g.: A = 0x12_34_56_78, B = 0x12_34_56_78
     // the lookup table ensures that C = 0x01_00_00_00 (since until the last chunk it cannot decide whether the EQ is true or not)
     // but we want C = 0x00_00_00_01
-    expr cout = (1-mode32) * (cout64 - cout32) + cout32;
     c[0] += use_last_carry * cout;
     c[input_chunks - 1] -= use_last_carry * cout;
-    
+
     expr op = m_op + 16 * mode32;
 
     col witness multiplicity;
-    lookup_proves(operation_bus_id, [m_op, ...a, ...b, ...c, cout], multiplicity);
+    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, (1-op_is_min_max)*cout], multiplicity);
 }
