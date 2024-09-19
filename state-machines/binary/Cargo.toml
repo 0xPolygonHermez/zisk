@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 zisk-core = { path = "../../core" }
-zisk-pil = { path="../../pil/fork_0" }
+zisk-pil = { path="../../pil/v0.1" }
 sm-common = { path = "../common" }
 
 p3-field = { workspace=true }
