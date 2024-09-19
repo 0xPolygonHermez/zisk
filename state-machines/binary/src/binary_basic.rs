@@ -485,23 +485,24 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                 let binary_basic_table_sm = self.binary_basic_table_sm.clone();
 
-                // scope.spawn(move |scope| {
                 let (trace_row, table_required) = Self::process_slice(&_drained_inputs);
+                let wcm = self.wcm.clone();
 
-                binary_basic_table_sm.prove(&table_required, false, scope);
+                scope.spawn(move |scope| {
+                    binary_basic_table_sm.prove(&table_required, false, scope);
 
-                let trace = Binary0Trace::<F>::map_row_vec(trace_row).unwrap();
+                    let trace = Binary0Trace::<F>::map_row_vec(trace_row).unwrap();
 
-                let air_instance = AirInstance::new(
-                    BINARY_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                    None,
-                    trace.buffer.unwrap(),
-                );
-                self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                    let air_instance = AirInstance::new(
+                        BINARY_AIRGROUP_ID,
+                        BINARY_AIR_IDS[0],
+                        None,
+                        trace.buffer.unwrap(),
+                    );
+                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
-                thread_controller.remove_working_thread();
-                // });
+                    thread_controller.remove_working_thread();
+                });
             }
         }
     }

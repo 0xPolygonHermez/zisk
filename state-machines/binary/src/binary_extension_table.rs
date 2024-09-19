@@ -119,8 +119,8 @@ impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionTableSM<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredBinaryExtensionTable, OpResult>
-    for BinaryExtensionTableSM<F>
+impl<F: AbstractField + Copy + Send + Sync + 'static>
+    Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryExtensionTableSM<F>
 {
     fn calculate(
         &self,
@@ -138,7 +138,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredBinar
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                //scope.spawn(move |_| {
                 let trace_row = self.process_slice(&drained_inputs);
                 let trace = BinaryExtensionTable0Trace::<F>::map_row_vec(trace_row).unwrap();
 

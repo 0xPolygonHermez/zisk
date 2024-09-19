@@ -148,7 +148,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static>
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                // scope.spawn(move |scope| {
                 let trace_row = self.process_slice(&drained_inputs);
                 let trace = BinaryTable0Trace::<F>::map_row_vec(trace_row).unwrap();
 
@@ -159,7 +158,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static>
                     trace.buffer.unwrap(),
                 );
                 self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
-                // });
             }
         }
     }

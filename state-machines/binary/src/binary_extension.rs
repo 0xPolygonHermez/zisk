@@ -240,9 +240,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                 let binary_extension_table_sm = self.binary_extension_table_sm.clone();
 
-                // scope.spawn(move |scope| {
-                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
+                let (trace_row, table_required) = Self::process_slice(&drained_inputs);
+                let wcm = self.wcm.clone();
 
+                scope.spawn(move |scope| {
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
                     let trace = BinaryExtension0Trace::<F>::map_row_vec(trace_row).unwrap();
@@ -253,10 +254,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         None,
                         trace.buffer.unwrap(),
                     );
-                    self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
                     thread_controller.remove_working_thread();
-                // });
+                });
             }
         }
     }
