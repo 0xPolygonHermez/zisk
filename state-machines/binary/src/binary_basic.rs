@@ -307,9 +307,9 @@ impl<F> WitnessComponent<F> for BinaryBasicSM {
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

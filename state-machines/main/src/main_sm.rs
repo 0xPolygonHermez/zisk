@@ -80,7 +80,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         rom_path: &Path,
-        wcm: &mut WitnessManager<F>,
+        wcm: &'a WitnessManager<F>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM>,
         arith_sm: Arc<ArithSM>,
@@ -144,9 +144,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     pub fn execute(
         &self,
         public_inputs_path: &Path,
-        pctx: &mut ProofCtx<F>,
-        ectx: &mut ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
@@ -171,7 +171,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         pool.scope(|scope| {
             // Wrap the callback to capture the scope variable
             let callback = |emu_traces: EmuTrace| {
-                self.emulator_callback(&self.zisk_rom, emu_traces, scope, pctx, ectx)
+                self.emulator_callback(&self.zisk_rom, emu_traces, scope, pctx.clone(), ectx.clone())
             };
 
             let result = ZiskEmulator::process_rom(
@@ -246,8 +246,8 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         zisk_rom: &'a ZiskRom,
         emu_traces: EmuTrace,
         scope: &Scope<'a>,
-        pctx: &'a ProofCtx<F>,
-        ectx: &'a ExecutionCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
         let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
@@ -289,7 +289,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
                 "Too many inputs in a Main AIR segment"
             );
 
-            self.prove(emu_slice.required, ectx, scope);
+            self.prove(emu_slice.required, ectx.clone(), scope);
 
             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
@@ -311,8 +311,8 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     #[inline(always)]
     fn create_air_instance(
         air_segment: MainAirSegment<F>,
-        pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
         last_segment: bool,
     ) {
         info!(
@@ -371,7 +371,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `emu_required` - Inputs to be proved
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn prove(&self, mut emu_required: ZiskRequired, _ectx: &'a ExecutionCtx, scope: &Scope<'a>) {
+    fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
         let binary = mem::take(&mut emu_required.binary);
         let arith = mem::take(&mut emu_required.arith);
@@ -397,9 +397,9 @@ impl<F> WitnessComponent<F> for MainSM<F> {
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
