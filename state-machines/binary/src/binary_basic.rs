@@ -9,7 +9,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -72,7 +72,7 @@ impl BinaryBasicSM {
             // Execute the opcode
             let c: u64;
             let flag: bool;
-            (c, flag) = opcode_execute(i.opcode, i.a, i.b);
+            (c, flag) = ZiskOp::execute(i.opcode, i.a, i.b);
             let _flag = flag;
 
             // Decompose the opcode into mode32 & op
@@ -319,7 +319,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

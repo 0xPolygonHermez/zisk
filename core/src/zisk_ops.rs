@@ -10,7 +10,7 @@ use std::{
 };
 use tiny_keccak::keccakf;
 
-use crate::{InstContext, ZiskOperationType, SYS_ADDR};
+use crate::{InstContext, ZiskOperationType, ZiskRequiredOperation, SYS_ADDR};
 
 /// Determines the type of a [`ZiskOp`]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -859,4 +859,10 @@ pub fn opc_keccak(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_keccak() is not implemented");
+}
+
+impl From<ZiskRequiredOperation> for ZiskOp {
+    fn from(value: ZiskRequiredOperation) -> Self {
+        ZiskOp::try_from_code(value.opcode).unwrap()
+    }
 }
