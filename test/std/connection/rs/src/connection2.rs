@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Connection21Trace, CONNECTION_2_AIR_IDS, CONNECTION_SUBPROOF_ID};
+use crate::{Connection21Trace, CONNECTION_2_AIR_IDS, CONNECTION_AIRGROUP_ID};
 
 pub struct Connection2<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -25,7 +25,7 @@ where
 
         wcm.register_component(
             connection2.clone(),
-            Some(CONNECTION_SUBPROOF_ID[0]),
+            Some(CONNECTION_AIRGROUP_ID),
             Some(CONNECTION_2_AIR_IDS),
         );
 
@@ -43,7 +43,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            CONNECTION_SUBPROOF_ID[0],
+            CONNECTION_AIRGROUP_ID,
             CONNECTION_2_AIR_IDS[0],
             None,
             buffer,
@@ -90,7 +90,7 @@ where
 
             let num_rows = pctx
                 .pilout
-                .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_2_AIR_IDS[0])
+                .get_air(CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0])
                 .num_rows();
             let mut trace =
                 Connection21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)

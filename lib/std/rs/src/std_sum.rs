@@ -5,7 +5,9 @@ use std::{
 
 use p3_field::Field;
 use proofman_common::{ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions};
+use proofman_hints::{
+    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
+};
 
 use crate::Decider;
 

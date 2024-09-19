@@ -37,15 +37,15 @@ airtemplate RangeCheck3(const int N = 2**5) {
     range_check(0, colu: c2, min: 0, max: 2**8-1);
 };
 
-// airgroup RangeCheck3 {
-//     RangeCheck3();
-// }
-// airgroup RangeCheck2 {
-//     RangeCheck2();
-// }
-// airgroup RangeCheck1 {
-//     RangeCheck1();
-// }
+airgroup RangeCheck3 {
+    RangeCheck3();
+}
+airgroup RangeCheck2 {
+    RangeCheck2();
+}
+airgroup RangeCheck1 {
+    RangeCheck1();
+}
 
 airtemplate RangeCheck4(const int N = 2**6) {
 
@@ -65,11 +65,11 @@ airtemplate RangeCheck4(const int N = 2**6) {
 
     // Edge cases
     range_check(1, sel1, a5, 127, 2**16); // One greater than the maximum predefined
-    // range_check(1, sel1, a6, -1, 2**3);  // One less than the minimum predefined
+    range_check(1, sel1, a6, -1, 2**3);  // One less than the minimum predefined
 
-    // // Negative
-    // range_check(1, colu: a7, min: -2**7+1, max: -50);
-    // range_check(1, colu: a8, min: -2**8+1, max: -127);
+    // Negative
+    range_check(1, colu: a7, min: -2**7+1, max: -50);
+    range_check(1, colu: a8, min: -2**8+1, max: -127);
 };
 
 airgroup RangeCheck4 {

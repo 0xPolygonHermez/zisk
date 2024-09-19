@@ -10,7 +10,8 @@ use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
 use proofman_hints::{
-    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, print_by_name, set_hint_field, HintFieldOptions, HintFieldValue
+    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, set_hint_field,
+    HintFieldOptions, HintFieldValue,
 };
 
 use crate::Range;
@@ -83,6 +84,29 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         // Perform the last update
         self.update_multiplicity(drained_inputs);
 
+        // Set the multiplicity columns as done
+        let hints = self.hints.borrow();
+
+        let air_instance_id = self
+            .air_instances_repository
+            .borrow()
+            .find_air_instances(self.airgroup_id, self.air_id)[0];
+
+        let air_instances = self.air_instances_repository.borrow();
+        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
+        let air_instance = &mut air_instance_rw[air_instance_id];
+
+        let mul = self.muls.borrow();
+        for (index, hint) in hints.iter().enumerate().skip(1) {
+            set_hint_field(
+                self.setup_repository.borrow().as_ref(),
+                air_instance,
+                *hint,
+                "reference",
+                &mul[index - 1],
+            );
+        }
+
         log::info!(
             "{}: Drained inputs for AIR '{}'",
             Self::MY_NAME,
@@ -138,6 +162,14 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             "min",
                             HintFieldOptions::default(),
                         );
+                        let min_neg = get_hint_field_constant::<F>(
+                            sctx,
+                            airgroup_id,
+                            air_id,
+                            *hint as usize,
+                            "min_neg",
+                            HintFieldOptions::default(),
+                        );
                         let max = get_hint_field_constant::<F>(
                             sctx,
                             airgroup_id,
@@ -146,18 +178,59 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             "max",
                             HintFieldOptions::default(),
                         );
+                        let max_neg = get_hint_field_constant::<F>(
+                            sctx,
+                            airgroup_id,
+                            air_id,
+                            *hint as usize,
+                            "max_neg",
+                            HintFieldOptions::default(),
+                        );
                         let HintFieldValue::Field(min) = min else {
                             log::error!("Min hint must be a field element");
                             panic!();
                         };
+                        let min_neg = match min_neg {
+                            HintFieldValue::Field(value) => {
+                                if value.is_zero() {
+                                    false
+                                } else if value.is_one() {
+                                    true
+                                } else {
+                                    log::error!("Predefined hint must be either 0 or 1");
+                                    panic!("Invalid predefined hint value"); // Or return Err if you prefer error handling
+                                }
+                            }
+                            _ => {
+                                log::error!("Max_neg hint must be a field element");
+                                panic!("Invalid hint type"); // Or return Err if you prefer error handling
+                            }
+                        };
                         let HintFieldValue::Field(max) = max else {
-                            log::error!("Min_neg hint must be a field element");
+                            log::error!("Max hint must be a field element");
                             panic!();
                         };
+                        let max_neg = match max_neg {
+                            HintFieldValue::Field(value) => {
+                                if value.is_zero() {
+                                    false
+                                } else if value.is_one() {
+                                    true
+                                } else {
+                                    log::error!("Predefined hint must be either 0 or 1");
+                                    panic!("Invalid predefined hint value"); // Or return Err if you prefer error handling
+                                }
+                            }
+                            _ => {
+                                log::error!("Max_neg hint must be a field element");
+                                panic!("Invalid hint type"); // Or return Err if you prefer error handling
+                            }
+                        };
+
                         self.ranges
                             .lock()
                             .unwrap()
-                            .push(Range(min, max, false, false));
+                            .push(Range(min, max, min_neg, max_neg));
                     }
 
                     self.hints.borrow_mut().push(*hint);
@@ -224,37 +297,5 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // Set the multiplicity columns as done
-        let hints = self.hints.borrow();
-
-        let air_instance_id = self
-            .air_instances_repository
-            .borrow()
-            .find_air_instances(self.airgroup_id, self.air_id)[0];
-
-        let air_instances = self.air_instances_repository.borrow();
-        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
-
-        let mul = self.muls.borrow();
-        for (index, hint) in hints.iter().enumerate().skip(1) {
-            set_hint_field(
-                self.setup_repository.borrow().as_ref(),
-                air_instance,
-                *hint,
-                "reference",
-                &mul[index - 1],
-            );
-            let index = index - 1;
-            print_by_name(
-                _sctx,
-                _pctx,
-                air_instance,
-                "SpecifiedRanges.mul",
-                Some(vec![index as u64]),
-                0,
-                2,
-            );
-        }
     }
 }

@@ -839,6 +839,7 @@ dependencies = [
  "env_logger",
  "log",
  "num-bigint",
+ "num-traits",
  "p3-field",
  "p3-goldilocks",
  "pil-std-lib",

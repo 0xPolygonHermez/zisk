@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{ConnectionNew2Trace, CONNECTION_NEW_AIR_IDS, CONNECTION_SUBPROOF_ID};
+use crate::{ConnectionNew2Trace, CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS};
 
 pub struct ConnectionNew<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -25,7 +25,7 @@ where
 
         wcm.register_component(
             connection_new.clone(),
-            Some(CONNECTION_SUBPROOF_ID[0]),
+            Some(CONNECTION_AIRGROUP_ID),
             Some(CONNECTION_NEW_AIR_IDS),
         );
 
@@ -43,7 +43,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(
-            CONNECTION_SUBPROOF_ID[0],
+            CONNECTION_AIRGROUP_ID,
             CONNECTION_NEW_AIR_IDS[0],
             None,
             buffer,
@@ -90,7 +90,7 @@ where
 
             let num_rows = pctx
                 .pilout
-                .get_air(CONNECTION_SUBPROOF_ID[0], CONNECTION_NEW_AIR_IDS[0])
+                .get_air(CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0])
                 .num_rows();
             let mut trace = ConnectionNew2Trace::map_buffer(
                 buffer.as_mut_slice(),
@@ -116,18 +116,17 @@ where
                     frame[1] += num_rows / 2;
                 }
 
+                // TODO: Finish!
                 // // Start connection
                 // trace[i].a[2] = rng.gen();
                 // trace[i].b[2] = rng.gen();
                 // trace[i].c[2] = rng.gen();
-                // if i == 1 + frame[2] {
-                //     trace[i - 1].c[2] = trace[i].a[2];
-                //     conn_len[2] += 1;
-                // }
+                // if i == 3 + frame[2] {
+                //     trace[i - 1].c[2] = trace[i].c[2];
 
-                // if i == 2 + frame[2] {
-                //     trace[i - 1].c[2] = trace[i].a[2];
-                //     conn_len[2] += 1;
+                //     trace[0 + frame[2]].c[2] = trace[i].b[2];
+                //     trace[1 + frame[2]].a[2] = trace[i].b[2];
+                //     conn_len[2] += 2;
                 // }
 
                 // if i == 3 + frame[2] {
@@ -139,7 +138,7 @@ where
                 // }
 
                 // if conn_len[2] == 3 {
-                //     frame[2] += num_rows / 2;
+                //     frame[2] += num_rows / 4;
                 //     conn_len[2] = 0;
                 // }
 
@@ -183,25 +182,21 @@ where
                 trace[i].a[5] = rng.gen();
                 trace[i].b[5] = rng.gen();
                 trace[i].c[5] = rng.gen();
-                if i == 2 + frame[5] {
-                    trace[i].d[5] = trace[frame[5]].b[5];
+                if i == 3 + frame[5] {
+                    trace[i - 1].d[5] = trace[i].d[5];
+                    trace[i - 3].b[5] = trace[i].d[5];
                     conn_len[5] += 2;
+                }
+
+                if i == 8 {
+                    trace[5].b[5] = trace[i].c[5];
+                    trace[1].a[5] = trace[i].c[5];
                 }
 
                 if conn_len[5] == 2 {
                     frame[5] += num_rows / 2;
                     conn_len[5] = 0;
                 }
-            }
-
-            for i in 0..num_rows {
-                println!("a[{}]: {:?}", i, trace[i].a[3]);
-            }
-            for i in 0..num_rows {
-                println!("b[{}]: {:?}", i, trace[i].b[3]);
-            }
-            for i in 0..num_rows {
-                println!("c[{}]: {:?}", i, trace[i].c[3]);
             }
         }
 

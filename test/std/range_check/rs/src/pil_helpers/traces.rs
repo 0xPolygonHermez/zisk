@@ -3,6 +3,18 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
+trace!(RangeCheck30Row, RangeCheck30Trace<F> {
+ c1: F, c2: F,
+});
+
+trace!(RangeCheck20Row, RangeCheck20Trace<F> {
+ b1: F, b2: F, b3: F,
+});
+
+trace!(RangeCheck10Row, RangeCheck10Trace<F> {
+ a1: F, a2: F, a3: F, a4: F, a5: F, sel1: F, sel2: F, sel3: F,
+});
+
 trace!(RangeCheck40Row, RangeCheck40Trace<F> {
  a1: F, a2: F, a3: F, a4: F, a5: F, a6: F, a7: F, a8: F, sel1: F, sel2: F,
 });
@@ -16,5 +28,5 @@ trace!(U16Air0Row, U16Air0Trace<F> {
 });
 
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 2],
+ mul: [F; 11],
 });

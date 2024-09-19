@@ -9,7 +9,9 @@ use p3_field::PrimeField;
 
 use proofman::WitnessManager;
 use proofman_common::{ProofCtx, SetupCtx};
-use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue};
+use proofman_hints::{
+    get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue,
+};
 use rayon::Scope;
 
 use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
@@ -222,7 +224,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let byte = F::from_canonical_u8(BYTE);
         let twobytes = F::from_canonical_u16(TWOBYTES);
         // Associate to each unique range a range check type
-        let r#type = if predefined && range.0 >= zero && range.1 <= twobytes {
+        let r#type = if predefined && range.contained_in(&(0.into(), TWOBYTES.into())) {
             match range {
                 Range(min, max, ..) if min == zero && max == byte => {
                     StdRangeCheckType::Valid(RangeCheckAir::U8Air)

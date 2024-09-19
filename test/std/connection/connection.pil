@@ -95,9 +95,11 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_init(OPID[2], [a[2], b[2], c[2]], N/2);
     connection_update_one_cell(OPID[2], [c[2],1,c[2],1]);
     connection_update_one_cell(OPID[2], [c[2],2,c[2],3], N/4);
-    row[0] = [a[2],1,a[2],0];
-    row[1] = [c[2],2,b[2],3];
+    row[0] = [a[2],2,a[2],5];
+    row[1] = [c[2],6,b[2],4];
     connection_update_one_cell_batch(OPID[2], row);
+    row[0] = [b[2],1,a[2],0];
+    row[1] = [a[2],2,c[2],3];
     connection_update_one_cell_batch(OPID[2], row, N/4);
     connection_update_multiple_cells(OPID[2], [a[2],0,c[2],3,a[2],7]);
     connection_update_multiple_cells(OPID[2], [c[2],1,b[2],1,a[2],3], N/4);

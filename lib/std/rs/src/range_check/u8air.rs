@@ -8,7 +8,9 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{
     AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
 };
-use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldValue, HintFieldOptions};
+use proofman_hints::{
+    get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue,
+};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 const NUM_ROWS: usize = 1 << 8;
@@ -70,6 +72,26 @@ impl<F: PrimeField> U8Air<F> {
 
         // Perform the last update
         self.update_multiplicity(drained_inputs);
+
+        // Set the multiplicity column as done
+        let hint = self.hint.borrow();
+
+        let air_instance_id = self
+            .air_instances_repository
+            .borrow()
+            .find_air_instances(self.airgroup_id, self.air_id)[0];
+
+        let air_instances = self.air_instances_repository.borrow();
+        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
+        let air_instance = &mut air_instance_rw[air_instance_id];
+
+        set_hint_field(
+            self.setup_repository.borrow().as_ref(),
+            air_instance,
+            *hint,
+            "reference",
+            &self.mul.borrow(),
+        );
 
         log::info!("{}: Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }
@@ -147,24 +169,5 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
         _ectx: &ExecutionCtx,
         _sctx: &SetupCtx,
     ) {
-        // Set the multiplicity column as done
-        let hint = self.hint.borrow();
-
-        let air_instance_id = self
-            .air_instances_repository
-            .borrow()
-            .find_air_instances(self.airgroup_id, self.air_id)[0];
-
-        let air_instances = self.air_instances_repository.borrow();
-        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
-
-        set_hint_field(
-            self.setup_repository.borrow().as_ref(),
-            air_instance,
-            *hint,
-            "reference",
-            &self.mul.borrow(),
-        );
     }
 }

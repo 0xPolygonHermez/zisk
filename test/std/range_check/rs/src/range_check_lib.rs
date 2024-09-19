@@ -9,14 +9,16 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout, /*RangeCheck1,*/
-    RangeCheck4, SPECIFIED_RANGES_AIRGROUP_ID, SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID,
-    U_16_AIR_AIR_IDS, U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS,
+    Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4, SPECIFIED_RANGES_AIRGROUP_ID,
+    SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID, U_16_AIR_AIR_IDS, U_8_AIR_AIRGROUP_ID,
+    U_8_AIR_AIR_IDS,
 };
 
 pub struct RangeCheckWitness<F: PrimeField> {
     pub wcm: WitnessManager<F>,
-    // pub range_check1: Arc<RangeCheck1<F>>,
+    pub range_check1: Arc<RangeCheck1<F>>,
+    pub range_check2: Arc<RangeCheck2<F>>,
+    pub range_check3: Arc<RangeCheck3<F>>,
     pub range_check4: Arc<RangeCheck4<F>>,
     pub std_lib: Arc<Std<F>>,
 }
@@ -61,12 +63,16 @@ where
         });
 
         let std_lib = Std::new(&mut wcm, Some(rc_air_data));
-        // let range_check1 = RangeCheck::new(&mut wcm, std_lib.clone());
+        let range_check1 = RangeCheck1::new(&mut wcm, std_lib.clone());
+        let range_check2 = RangeCheck2::new(&mut wcm, std_lib.clone());
+        let range_check3 = RangeCheck3::new(&mut wcm, std_lib.clone());
         let range_check4 = RangeCheck4::new(&mut wcm, std_lib.clone());
 
         RangeCheckWitness {
             wcm,
-            // range_check1,
+            range_check1,
+            range_check2,
+            range_check3,
             range_check4,
             std_lib,
         }
@@ -87,7 +93,9 @@ where
 
     fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
         // Execute those components that need to be executed
-        // self.range_check1.execute(pctx, ectx, sctx);
+        self.range_check1.execute(pctx, ectx, sctx);
+        self.range_check2.execute(pctx, ectx, sctx);
+        self.range_check3.execute(pctx, ectx, sctx);
         self.range_check4.execute(pctx, ectx, sctx);
     }
 

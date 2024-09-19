@@ -48,19 +48,21 @@ airtemplate Lookup2(const int N = 2**12) {
     col witness sel1,sel2;
     col witness mul;
 
-    int opid = get_and_save();
-    lookup_assumes(opid, [a1, b1]);
-    lookup_proves(opid, [c1, d1]);
+    get_and_save(1);
+    get_and_save(1);
+    get_and_save(1);
+    get_and_save(1);
 
-    opid = get_and_save(1);
-    lookup_assumes(opid, [a2, b2]);
 
-    opid = get_and_save();
-    lookup_assumes(opid, [a3, b3], sel1);
-    lookup_proves(opid, [c2, d2], mul);
+    lookup_assumes(savedOPID[0], [a1, b1]);
+    lookup_proves(savedOPID[0], [c1, d1]);
 
-    opid = get_and_save(1);
-    lookup_assumes(opid, [a4, b4], sel2);
+    lookup_assumes(savedOPID[1], [a2, b2]);
+
+    lookup_assumes(savedOPID[2], [a3, b3], sel1);
+    lookup_proves(savedOPID[2], [c2, d2], mul);
+
+    lookup_assumes(savedOPID[3], [a4, b4], sel2);
 };
 
 airtemplate Lookup3(const int N = 2**14) {
@@ -68,9 +70,9 @@ airtemplate Lookup3(const int N = 2**14) {
     col witness c1,d1,c2,d2;
     col witness mul1,mul2;
 
-    lookup_proves(savedOPID[0], [c1, d1], mul1);
+    lookup_proves(savedOPID[1], [c1, d1], mul1);
 
-    lookup_proves(savedOPID[1], [c2, d2], mul2);
+    lookup_proves(savedOPID[3], [c2, d2], mul2);
 };
 
 airgroup Lookup {
@@ -78,9 +80,9 @@ airgroup Lookup {
 
     Lookup1(nLookups: 2);
 
-    Lookup2();
-    // Lookup2(N: 2**13);
-    // Lookup2(N: 2**15);
+    Lookup2() alias `Lookup2_12`;
+    Lookup2(N: 2**13) alias `Lookup2_13`;
+    Lookup2(N: 2**15) alias `Lookup2_15`;
 
     Lookup3();
 };

@@ -67,7 +67,7 @@ airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_coun
         int min = mins[j];
         int max = maxs[j];
 
-        @specified_ranges{reference: mul[j], min: min, max: max};
+        @specified_ranges{reference: mul[j], min: min, max: max, min_neg: min < 0, max_neg: max < 0};
 
         if (N < max - min + 1) {
             error(`The range [min,max]=[${min},${max}] is too big, the maximum range length is ${N}`);
@@ -99,14 +99,9 @@ function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1
     range_validator(min1, max1);
     range_validator(min2, max2);
 
-    int sign[4];
-    sign[0] = min1 < 0 ? 1 : 0;
-    sign[1] = max1 < 0 ? 1 : 0;
-    sign[2] = min2 < 0 ? 1 : 0;
-    sign[3] = max2 < 0 ? 1 : 0;
     // Can I do it with predefined ranges?
-    @range_def{predefined: 0, min: min1, max: max1, min_neg: sign[0], max_neg: sign[1]};
-    @range_def{predefined: 0, min: min2, max: max2, min_neg: sign[2], max_neg: sign[3]};
+    @range_def{predefined: 0, min: min1, max: max1, min_neg: min1 < 0 , max_neg: max1 < 0};
+    @range_def{predefined: 0, min: min2, max: max2, min_neg: min2 < 0 , max_neg: max2 < 0};
 
     const int opid1 = opid_process(min1, max1);
     const int opid2 = opid_process(min2, max2);
@@ -136,10 +131,7 @@ function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1
 function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int max) {
     range_validator(min, max);
 
-    int sign[2];
-    sign[0] = min < 0 ? 1 : 0;
-    sign[1] = max < 0 ? 1 : 0;
-    @range_def{predefined: predefined, min: min, max: max, min_neg: sign[0], max_neg: sign[1]};
+    @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0};
 
     if (min < 0) {
         println(`The provided min=${min} is negative. Falling back to specified range...`);

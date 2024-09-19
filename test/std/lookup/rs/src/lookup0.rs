@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup00Trace, LOOKUP_0_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Lookup00Trace, LOOKUP_0_AIR_IDS, LOOKUP_AIRGROUP_ID};
 
 pub struct Lookup0<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -25,7 +25,7 @@ where
 
         wcm.register_component(
             lookup0.clone(),
-            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_AIRGROUP_ID),
             Some(LOOKUP_0_AIR_IDS),
         );
 
@@ -42,8 +42,7 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance =
-            AirInstance::new(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0], None, buffer);
+        let air_instance = AirInstance::new(LOOKUP_AIRGROUP_ID, LOOKUP_0_AIR_IDS[0], None, buffer);
 
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
@@ -87,7 +86,7 @@ where
 
             let num_rows = pctx
                 .pilout
-                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_0_AIR_IDS[0])
+                .get_air(LOOKUP_AIRGROUP_ID, LOOKUP_0_AIR_IDS[0])
                 .num_rows();
             let mut trace =
                 Lookup00Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)

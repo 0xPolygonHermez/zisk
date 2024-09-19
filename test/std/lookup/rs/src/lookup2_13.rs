@@ -6,30 +6,30 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup22Trace, LOOKUP_2_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Lookup2_133Trace, LOOKUP_2_13_AIR_IDS, LOOKUP_AIRGROUP_ID};
 
-pub struct Lookup2<F> {
+pub struct Lookup2_13<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField + Copy> Lookup2<F>
+impl<F: PrimeField + Copy> Lookup2_13<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Lookup2";
+    const MY_NAME: &'static str = "Lookup2_13";
 
     pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
-        let lookup2 = Arc::new(Self {
+        let lookup2_13 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
 
         wcm.register_component(
-            lookup2.clone(),
-            Some(LOOKUP_SUBPROOF_ID[0]),
-            Some(LOOKUP_2_AIR_IDS),
+            lookup2_13.clone(),
+            Some(LOOKUP_AIRGROUP_ID),
+            Some(LOOKUP_2_13_AIR_IDS),
         );
 
-        lookup2
+        lookup2_13
     }
 
     pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
@@ -37,19 +37,19 @@ where
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Lookup".into(), LOOKUP_2_AIR_IDS[0])
+            .get_buffer_info("Lookup".into(), LOOKUP_2_13_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance =
-            AirInstance::new(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0], None, buffer);
+            AirInstance::new(LOOKUP_AIRGROUP_ID, LOOKUP_2_13_AIR_IDS[0], None, buffer);
 
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2<F>
+impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2_13<F>
 where
     Standard: Distribution<F>,
 {
@@ -80,17 +80,17 @@ where
             let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Lookup".into(), LOOKUP_2_AIR_IDS[0])
+                .get_buffer_info("Lookup".into(), LOOKUP_2_13_AIR_IDS[0])
                 .unwrap();
 
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx
                 .pilout
-                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_2_AIR_IDS[0])
+                .get_air(LOOKUP_AIRGROUP_ID, LOOKUP_2_13_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup22Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                Lookup2_133Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
                     .unwrap();
 
             // TODO: Add the ability to send inputs to lookup3

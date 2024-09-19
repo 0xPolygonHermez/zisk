@@ -5,7 +5,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
 
-use crate::{Lookup33Trace, LOOKUP_3_AIR_IDS, LOOKUP_SUBPROOF_ID};
+use crate::{Lookup35Trace, LOOKUP_3_AIR_IDS, LOOKUP_AIRGROUP_ID};
 
 pub struct Lookup3<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -21,7 +21,7 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         wcm.register_component(
             lookup3.clone(),
-            Some(LOOKUP_SUBPROOF_ID[0]),
+            Some(LOOKUP_AIRGROUP_ID),
             Some(LOOKUP_3_AIR_IDS),
         );
 
@@ -38,8 +38,7 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance =
-            AirInstance::new(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0], None, buffer);
+        let air_instance = AirInstance::new(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0], None, buffer);
 
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
@@ -78,23 +77,31 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
 
             let num_rows = pctx
                 .pilout
-                .get_air(LOOKUP_SUBPROOF_ID[0], LOOKUP_3_AIR_IDS[0])
+                .get_air(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0])
                 .num_rows();
             let mut trace =
-                Lookup33Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                Lookup35Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
                     .unwrap();
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);
                 trace[i].d1 = F::from_canonical_usize(i);
-                if i < 2usize.pow(12) {
-                    trace[i].mul1 = F::from_canonical_usize(1);
+                if i < (1 << 12) {
+                    trace[i].mul1 = F::from_canonical_usize(4);
+                } else if i < (1 << 13) {
+                    trace[i].mul1 = F::from_canonical_usize(3);
+                } else {
+                    trace[i].mul1 = F::from_canonical_usize(2);
                 }
 
                 trace[i].c2 = F::from_canonical_usize(i);
                 trace[i].d2 = F::from_canonical_usize(i);
-                if i < 2usize.pow(12) {
-                    trace[i].mul2 = F::from_canonical_usize(1);
+                if i < (1 << 12) {
+                    trace[i].mul2 = F::from_canonical_usize(4);
+                } else if i < (1 << 13) {
+                    trace[i].mul2 = F::from_canonical_usize(3);
+                } else {
+                    trace[i].mul2 = F::from_canonical_usize(2);
                 }
             }
         }

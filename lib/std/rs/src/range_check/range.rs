@@ -48,3 +48,25 @@ impl<F: PrimeField> PartialEq<(BigInt, BigInt)> for Range<F> {
         min_result == other.0 && max_result == other.1
     }
 }
+
+impl<F: PrimeField> Range<F> {
+    pub fn contained_in(&self, other: &(BigInt, BigInt)) -> bool {
+        let order = F::order().to_bigint().unwrap();
+
+        let min = self.0.as_canonical_biguint().to_bigint().unwrap();
+        let max = self.1.as_canonical_biguint().to_bigint().unwrap();
+
+        let min_result = if self.2 {
+            min.clone() - &order
+        } else {
+            min.clone()
+        };
+        let max_result = if self.3 {
+            max.clone() - &order
+        } else {
+            max.clone()
+        };
+
+        min_result >= other.0 && max_result <= other.1
+    }
+}

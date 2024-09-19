@@ -2,11 +2,11 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"Lookup-hash";
+pub const PILOUT_HASH: &[u8] = b"Build-hash";
 
-//SUBPROOFS CONSTANTS
+//AIRGROUP CONSTANTS
 
-pub const LOOKUP_SUBPROOF_ID: &[usize] = &[0];
+pub const LOOKUP_AIRGROUP_ID: usize = 0;
 
 //AIR CONSTANTS
 
@@ -14,25 +14,22 @@ pub const LOOKUP_0_AIR_IDS: &[usize] = &[0];
 
 pub const LOOKUP_1_AIR_IDS: &[usize] = &[1];
 
-pub const LOOKUP_2_AIR_IDS: &[usize] = &[2];
+pub const LOOKUP_2_12_AIR_IDS: &[usize] = &[2];
 
-pub const LOOKUP_3_AIR_IDS: &[usize] = &[3];
+pub const LOOKUP_2_13_AIR_IDS: &[usize] = &[3];
+
+pub const LOOKUP_2_15_AIR_IDS: &[usize] = &[4];
+
+pub const LOOKUP_3_AIR_IDS: &[usize] = &[5];
 
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Lookup", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Build", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Lookup"));
-
-        air_group.add_air(Some("Lookup0"), 1024);
-
-        air_group.add_air(Some("Lookup1"), 1024);
-
-        air_group.add_air(Some("Lookup2"), 4096);
-
-        air_group.add_air(Some("Lookup3"), 16384);
+        air_group.add_air(Some("Lookup0"), 1024);        air_group.add_air(Some("Lookup1"), 1024);        air_group.add_air(Some("Lookup2_12"), 4096);        air_group.add_air(Some("Lookup2_13"), 8192);        air_group.add_air(Some("Lookup2_15"), 32768);        air_group.add_air(Some("Lookup3"), 16384);
 
         pilout
     }

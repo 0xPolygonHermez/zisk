@@ -2,19 +2,31 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"RangeCheck-hash";
+pub const PILOUT_HASH: &[u8] = b"Build-hash";
 
 //AIRGROUP CONSTANTS
 
-pub const RANGE_CHECK_4_AIRGROUP_ID: usize = 0;
+pub const RANGE_CHECK_3_AIRGROUP_ID: usize = 0;
 
-pub const U_8_AIR_AIRGROUP_ID: usize = 1;
+pub const RANGE_CHECK_2_AIRGROUP_ID: usize = 1;
 
-pub const U_16_AIR_AIRGROUP_ID: usize = 2;
+pub const RANGE_CHECK_1_AIRGROUP_ID: usize = 2;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 3;
+pub const RANGE_CHECK_4_AIRGROUP_ID: usize = 3;
+
+pub const U_8_AIR_AIRGROUP_ID: usize = 4;
+
+pub const U_16_AIR_AIRGROUP_ID: usize = 5;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
 
 //AIR CONSTANTS
+
+pub const RANGE_CHECK_3_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_2_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_1_AIR_IDS: &[usize] = &[0];
 
 pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
 
@@ -28,7 +40,16 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("RangeCheck", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Build", 2, PILOUT_HASH.to_vec());
+
+        let air_group = pilout.add_air_group(Some("RangeCheck3"));
+        air_group.add_air(Some("RangeCheck3"), 32);
+
+        let air_group = pilout.add_air_group(Some("RangeCheck2"));
+        air_group.add_air(Some("RangeCheck2"), 16);
+
+        let air_group = pilout.add_air_group(Some("RangeCheck1"));
+        air_group.add_air(Some("RangeCheck1"), 8);
 
         let air_group = pilout.add_air_group(Some("RangeCheck4"));
         air_group.add_air(Some("RangeCheck4"), 64);
