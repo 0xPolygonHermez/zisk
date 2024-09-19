@@ -66,7 +66,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith32SM {
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result: OpResult = ZiskOp::execute(
-            ZiskOp::try_from_code(operation.opcode).map_err(|_| Error::default())?.code(),
+            ZiskOp::try_from_code(operation.opcode).map_err(|_| Error)?.code(),
             operation.a,
             operation.b,
         );
