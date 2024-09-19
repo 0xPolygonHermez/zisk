@@ -53,7 +53,7 @@ pub struct MainSM<F> {
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     // State machines
     mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM>,
+    binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 }
 
@@ -82,7 +82,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         rom_path: &Path,
         wcm: &'a WitnessManager<F>,
         mem_sm: Arc<MemSM>,
-        binary_sm: Arc<BinarySM>,
+        binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -171,7 +171,13 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         pool.scope(|scope| {
             // Wrap the callback to capture the scope variable
             let callback = |emu_traces: EmuTrace| {
-                self.emulator_callback(&self.zisk_rom, emu_traces, scope, pctx.clone(), ectx.clone())
+                self.emulator_callback(
+                    &self.zisk_rom,
+                    emu_traces,
+                    scope,
+                    pctx.clone(),
+                    ectx.clone(),
+                )
             };
 
             let result = ZiskEmulator::process_rom(
@@ -184,9 +190,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             self.threads_controller.wait_for_threads();
 
             // Unregister main state machine as a predecessor for all the secondary state machines
-            self.mem_sm.unregister_predecessor(scope);
+            self.mem_sm.unregister_predecessor::<F>(scope);
             self.binary_sm.unregister_predecessor(scope);
-            self.arith_sm.unregister_predecessor(scope);
+            self.arith_sm.unregister_predecessor::<F>(scope);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {

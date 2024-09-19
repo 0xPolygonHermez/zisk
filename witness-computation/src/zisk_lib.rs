@@ -1,5 +1,7 @@
 use log::debug;
-use sm_binary::{BinaryBasicSM, BinaryExtensionSM, BinarySM};
+use sm_binary::{
+    BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
+};
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
@@ -25,9 +27,9 @@ pub struct ZiskWitness<F> {
     pub arith_32_sm: Option<Arc<Arith32SM>>,
     pub arith_64_sm: Option<Arc<Arith64SM>>,
     pub arith_3264_sm: Option<Arc<Arith3264SM>>,
-    pub binary_sm: Option<Arc<BinarySM>>,
-    pub binary_basic_sm: Option<Arc<BinaryBasicSM>>,
-    pub binary_extension_sm: Option<Arc<BinaryExtensionSM>>,
+    pub binary_sm: Option<Arc<BinarySM<F>>>,
+    pub binary_basic_sm: Option<Arc<BinaryBasicSM<F>>>,
+    pub binary_extension_sm: Option<Arc<BinaryExtensionSM<F>>>,
     pub main_sm: Option<Arc<MainSM<F>>>,
     pub mem_sm: Option<Arc<MemSM>>,
     pub mem_aligned_sm: Option<Arc<MemAlignedSM>>,
@@ -89,9 +91,19 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MemUnalignedSM::new(&mut wcm, MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(&mut wcm, mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let binary_basic_sm = BinaryBasicSM::new(&mut wcm, BINARY_AIRGROUP_ID, BINARY_AIR_IDS);
+        let binary_basic_table_sm =
+            BinaryBasicTableSM::new(&mut wcm, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+        let binary_basic_sm =
+            BinaryBasicSM::new(&mut wcm, binary_basic_table_sm, BINARY_AIRGROUP_ID, BINARY_AIR_IDS);
+
+        let binary_extension_table_sm = BinaryExtensionTableSM::new(
+            &mut wcm,
+            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+            BINARY_EXTENSION_TABLE_AIR_IDS,
+        );
         let binary_extension_sm = BinaryExtensionSM::new(
             &mut wcm,
+            binary_extension_table_sm,
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
         );

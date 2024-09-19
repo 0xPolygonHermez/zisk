@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -13,7 +14,7 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 #[allow(dead_code)]
-pub struct BinarySM {
+pub struct BinarySM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -25,15 +26,15 @@ pub struct BinarySM {
     inputs_extension: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_basic_sm: Arc<BinaryBasicSM>,
-    binary_extension_sm: Arc<BinaryExtensionSM>,
+    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 }
 
-impl BinarySM {
-    pub fn new<F>(
+impl<F: AbstractField + Send + Sync + 'static> BinarySM<F> {
+    pub fn new(
         wcm: &mut WitnessManager<F>,
-        binary_basic_sm: Arc<BinaryBasicSM>,
-        binary_extension_sm: Arc<BinaryExtensionSM>,
+        binary_basic_sm: Arc<BinaryBasicSM<F>>,
+        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     ) -> Arc<Self> {
         let binary_sm = Self {
             registered_predecessors: AtomicU32::new(0),
@@ -59,7 +60,12 @@ impl BinarySM {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinarySM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
+            <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+                self,
+                &[],
+                true,
+                scope,
+            );
 
             self.threads_controller.wait_for_threads();
 
@@ -69,7 +75,7 @@ impl BinarySM {
     }
 }
 
-impl<F> WitnessComponent<F> for BinarySM {
+impl<F> WitnessComponent<F> for BinarySM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -81,7 +87,9 @@ impl<F> WitnessComponent<F> for BinarySM {
     }
 }
 
-impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
+impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
+    for BinarySM<F>
+{
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -94,8 +102,8 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         let mut _inputs_basic = Vec::new();
         let mut _inputs_extension = Vec::new();
 
-        let basic_operations = BinaryBasicSM::operations();
-        let extension_operations = BinaryExtensionSM::operations();
+        let basic_operations = BinaryBasicSM::<F>::operations();
+        let extension_operations = BinaryExtensionSM::<F>::operations();
 
         // TODO Split the operations into basic and extended operations in parallel
         for operation in operations {
@@ -114,6 +122,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
             let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
             let drained_inputs_basic = inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
+
             let binary_basic_sm_cloned = self.binary_basic_sm.clone();
 
             self.threads_controller.add_working_thread();
@@ -156,7 +165,9 @@ impl Provable<ZiskRequiredOperation, OpResult> for BinarySM {
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
+
         self.prove(&[operation], drain, scope);
+
         result
     }
 }

@@ -1,6 +1,6 @@
 use tiny_keccak::keccakf;
 
-use crate::{InstContext, ZiskOperation, SYS_ADDR};
+use crate::{InstContext, ZiskOperation, REG_A0};
 use std::{collections::HashMap, num::Wrapping};
 
 // Constant values used in operation functions
@@ -580,7 +580,7 @@ fn opc_max_w(ctx: &mut InstContext) {
 #[inline(always)]
 fn opc_keccak(ctx: &mut InstContext) {
     // Get address from register a1 = x11
-    let address = ctx.mem.read(SYS_ADDR + 10_u64 * 8, 8);
+    let address = ctx.mem.read(REG_A0, 8);
 
     // Allocate room for 25 u64 = 128 bytes = 1600 bits
     const WORDS: usize = 25;

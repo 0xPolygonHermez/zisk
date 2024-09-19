@@ -7,6 +7,7 @@ edition = "2021"
 sm-common = { path = "../common" }
 zisk-core = { path = "../../core" }
 
+p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman = { workspace = true }

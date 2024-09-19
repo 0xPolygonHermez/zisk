@@ -1987,6 +1987,7 @@ name = "sm-arith"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "proofman-macros",
@@ -2022,6 +2023,7 @@ name = "sm-freq-ops"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "proofman-macros",
@@ -2053,6 +2055,7 @@ name = "sm-mem"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "proofman-macros",
@@ -2066,6 +2069,7 @@ name = "sm-quick-ops"
 version = "0.1.0"
 dependencies = [
  "log",
+ "p3-field",
  "proofman",
  "proofman-common",
  "proofman-macros",
