@@ -135,7 +135,9 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             // Store c
             let c_bytes: [u8; 8] = c.to_le_bytes();
             for (i, value) in c_bytes.iter().enumerate() {
-                t.out[i] = F::from_canonical_u8(*value);
+                // TODO! 2-dimension
+                t.out[i][0] = F::from_canonical_u8(*value);
+                t.out[i][1] = F::from_canonical_u8(*value);
             }
 
             /*
@@ -240,10 +242,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                 let binary_extension_table_sm = self.binary_extension_table_sm.clone();
 
-                let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                 let wcm = self.wcm.clone();
 
                 scope.spawn(move |scope| {
+                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();

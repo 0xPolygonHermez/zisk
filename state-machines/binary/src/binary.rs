@@ -110,7 +110,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
             if basic_operations.contains(&operation.opcode) {
                 _inputs_basic.push(operation.clone());
             } else if extension_operations.contains(&operation.opcode) {
-                _inputs_extension.push(operation.clone());
+                // _inputs_extension.push(operation.clone());
             } else {
                 panic!("BinarySM: Operator {:#04x} not found", operation.opcode);
             }

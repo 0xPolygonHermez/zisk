@@ -115,30 +115,30 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
         m_op|EXT  7    in1_7|out0_(0/1/3)  in2|0   out0_7  out1_7
     */
 
-    lookup_assumes(BINARY_EXTENSION_TABLE_ID, [m_op, 0, in1[0], in2_low, out[0][0], out[0][1]]);
-    for (int j = 1; j < bytes; j++) {
-        expr _m_op = m_op;
-        expr _in1 = 0;
-        expr _in2 = 0;
-        if (j == 1)
-        {
-            _in1 = (1-mode8) * (in1[j] - out[0][0]) + out[0][0];
-            _in2 = (1-mode8) * in2_low;
-        }
-        else if (j < bytes/2 - 1)
-        {
-            _in1 = mode8*out[0][0] + mode16*out[1][0] + (1-mode8)*(1-mode16)*in1[j];
-            _in2 = (1-mode8)*(1-mode16)*in2_low;
-        }
-        else
-        {
-            _m_op = (1-mode32) * (m_op - EXT_OP) + EXT_OP;
-            _in1 = mode8*out[0][0] + mode16*out[1][0] + mode32*(out[bytes/2-1][0]) + (1-mode8)*(1-mode16)*(1-mode32)*in1[j];
-            _in2 = (1-mode8)*(1-mode16)*(1-mode32)*in2_low;
-        }
+    // lookup_assumes(BINARY_EXTENSION_TABLE_ID, [m_op, 0, in1[0], in2_low, out[0][0], out[0][1]]);
+    // for (int j = 1; j < bytes; j++) {
+    //     expr _m_op = m_op;
+    //     expr _in1 = 0;
+    //     expr _in2 = 0;
+    //     if (j == 1)
+    //     {
+    //         _in1 = (1-mode8) * (in1[j] - out[0][0]) + out[0][0];
+    //         _in2 = (1-mode8) * in2_low;
+    //     }
+    //     else if (j < bytes/2 - 1)
+    //     {
+    //         _in1 = mode8*out[0][0] + mode16*out[1][0] + (1-mode8)*(1-mode16)*in1[j];
+    //         _in2 = (1-mode8)*(1-mode16)*in2_low;
+    //     }
+    //     else
+    //     {
+    //         _m_op = (1-mode32) * (m_op - EXT_OP) + EXT_OP;
+    //         _in1 = mode8*out[0][0] + mode16*out[1][0] + mode32*(out[bytes/2-1][0]) + (1-mode8)*(1-mode16)*(1-mode32)*in1[j];
+    //         _in2 = (1-mode8)*(1-mode16)*(1-mode32)*in2_low;
+    //     }
 
-        lookup_assumes(BINARY_EXTENSION_TABLE_ID, [_m_op, j, _in1, _in2, out[j][0], out[j][1]]);
-    }
+    //     lookup_assumes(BINARY_EXTENSION_TABLE_ID, [_m_op, j, _in1, _in2, out[j][0], out[j][1]]);
+    // }
 
     // Relation with main
     col witness free_in2[4]; // 16-bit chunks except the first one that is of 10 bits
@@ -148,28 +148,28 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     in2[1] = free_in2[2] + free_in2[3]* 2**16;
 
     // The table only guarantees that in2_low∊[0,2^6-1], but if mode32 is set, then we have to enforce in2_low∊[0,2^5-1]
-    range_check(sel: mode32, colu: in2_low, min: 0, max: 2**5-1);
+    // range_check(sel: mode32, colu: in2_low, min: 0, max: 2**5-1);
 
-    multi_range_check(range_sel: mode32, colu: free_in2[0], min1: 0, max1: 2**11-1, min2: 0, max2: 2**10-1);
-    range_check(colu: free_in2[1], min: 0, max: 2**16-1);
-    range_check(colu: free_in2[2], min: 0, max: 2**16-1);
-    range_check(colu: free_in2[3], min: 0, max: 2**16-1);
+    // multi_range_check(range_sel: mode32, colu: free_in2[0], min1: 0, max1: 2**11-1, min2: 0, max2: 2**10-1);
+    // range_check(colu: free_in2[1], min: 0, max: 2**16-1);
+    // range_check(colu: free_in2[2], min: 0, max: 2**16-1);
+    // range_check(colu: free_in2[3], min: 0, max: 2**16-1);
 
     expr op = m_op + 16 * mode32;
     col witness multiplicity;
 
-    lookup_proves(
-        operation_bus_id,
-        [
-            op,     // TODO: use correct opcode
-            in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24,
-            in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24,
-            in2[0],
-            in2[1],
-            out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
-            out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
-            0
-        ],
-        multiplicity
-    )
+    // lookup_proves(
+    //     operation_bus_id,
+    //     [
+    //         op,     // TODO: use correct opcode
+    //         in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24,
+    //         in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24,
+    //         in2[0],
+    //         in2[1],
+    //         out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
+    //         out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
+    //         0
+    //     ],
+    //     multiplicity
+    // )
 }

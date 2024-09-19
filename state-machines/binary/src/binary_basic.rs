@@ -145,8 +145,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         let r = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                         debug_assert!((r & 0xff) == c_bytes[i] as u64);
                         cout = r >> 8;
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -161,7 +161,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x03 /* SUB, SUB_W */ => {
                     // Set use last carry to zero
@@ -172,8 +171,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Calculate carry
                         cout = if (a_bytes[i] as u64 - cin) >= b_bytes[i] as u64 { 0 } else { 1 };
                         debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -188,7 +187,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x04 | 0x05 /*LTU,LTU_W,LT,LT_W*/ => {
                     // Set use last carry to one
@@ -214,8 +212,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if (m_op == 0x05) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -230,7 +228,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x06 | 0x07 /* LEU, LEU_W, LE, LE_W */ => {
                     // Set use last carry to one
@@ -246,8 +243,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if (m_op == 0x07) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = c;
                         }
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -262,7 +259,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x08 /* EQ, EQ_W */ => {
                     // Set use last carry to one
@@ -281,8 +277,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if plast[i] == 1 {
                             cout = 1 - cout;
                         }
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -297,7 +293,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x09 | 0x0a /* MINU, MINU_W, MIN, MIN_W */ => {
                     // Set use last carry to one
@@ -317,8 +312,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -333,7 +328,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x0b | 0x0c /* MAXU, MAXU_W, MAX, MAX_W */ => {
                     // Set use last carry to one
@@ -353,8 +347,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
-                        t.carry[i] = F::from_canonical_u64(cin);
                         cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create an empty required
                         let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
@@ -369,13 +363,12 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         // Store the required in the vector
                         table_required.push(tr);
                     }
-                    t.carry[8] = F::from_canonical_u64(cin);
                 }
                 0x20 /*AND*/ => {
                     t.use_last_carry = F::from_canonical_u64(0);
 
                     // No carry
-                    for i in 0..9 {
+                    for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
@@ -396,7 +389,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                     t.use_last_carry = F::from_canonical_u64(0);
 
                     // No carry
-                    for i in 0..9 {
+                    for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
@@ -417,7 +410,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                     t.use_last_carry = F::from_canonical_u64(0);
 
                     // No carry
-                    for i in 0..9 {
+                    for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
@@ -485,10 +478,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                 let binary_basic_table_sm = self.binary_basic_table_sm.clone();
 
-                let (trace_row, table_required) = Self::process_slice(&_drained_inputs);
                 let wcm = self.wcm.clone();
 
                 scope.spawn(move |scope| {
+                    let (trace_row, table_required) = Self::process_slice(&_drained_inputs);
                     binary_basic_table_sm.prove(&table_required, false, scope);
 
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();

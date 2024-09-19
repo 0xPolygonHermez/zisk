@@ -23,7 +23,7 @@ pub struct BinaryBasicTableSM<F> {
     inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
 
     // Row multiplicity table
-    multiplicity: Mutex<[u32; MULTIPLICITY_TABLE_SIZE as usize]>,
+    multiplicity: Mutex<Vec<u32>>,
 
     _phantom: std::marker::PhantomData<F>,
 }
@@ -39,11 +39,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
-            multiplicity: Mutex::new([0; MULTIPLICITY_TABLE_SIZE]),
+            multiplicity: Mutex::new(vec![0; MULTIPLICITY_TABLE_SIZE]),
             _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
-
         wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_basic_table
@@ -62,27 +61,28 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
                 scope,
             );
 
-            let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
-            let (buffer_size, offsets) = buffer_allocator
-                .get_buffer_info("BinaryTable".into(), BINARY_TABLE_AIR_IDS[0])
-                .expect("BinaryTable buffer not found");
+            // let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
+            // let (buffer_size, offsets) = buffer_allocator
+            //     .get_buffer_info("BinaryTable".into(), BINARY_TABLE_AIR_IDS[0])
+            //     .expect("BinaryTable buffer not found");
 
-            let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
-            let mut trace_accessor = BinaryTable0Trace::map_buffer(
-                &mut buffer,
-                MULTIPLICITY_TABLE_SIZE,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            // let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+            // let mut trace_accessor = BinaryTable0Trace::map_buffer(
+            //     &mut buffer,
+            //     MULTIPLICITY_TABLE_SIZE,
+            //     offsets[0] as usize,
+            // )
+            // .unwrap();
 
-            let multiplicity = self.multiplicity.lock().unwrap();
-            for i in 0..MULTIPLICITY_TABLE_SIZE {
-                trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
-            }
+            // let multiplicity = self.multiplicity.lock().unwrap();
+            // for i in 0..MULTIPLICITY_TABLE_SIZE {
+            //     trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
+            // }
 
-            let air_instance =
-                AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
-            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            // let air_instance =
+            //     AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None,
+            // buffer); self.wcm.get_pctx().air_instance_repo.
+            // add_air_instance(air_instance);
         }
     }
 

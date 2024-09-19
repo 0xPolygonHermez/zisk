@@ -186,5 +186,5 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
     for (int i = 0; i < N; i++) {
         FLAGS[i] = COUT[i] + 2*OP_IS_MIN_MAX[i] + 4*RESULT_IS_A[i] + 8*USE_CARRY[i];
     }
-    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    // lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
 }

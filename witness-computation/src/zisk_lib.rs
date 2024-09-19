@@ -1,4 +1,5 @@
 use log::debug;
+// use pil_std_lib::Std;
 use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
 };
@@ -35,6 +36,7 @@ pub struct ZiskWitness<F> {
     pub mem_aligned_sm: Option<Arc<MemAlignedSM>>,
     pub mem_unaligned_sm: Option<Arc<MemUnalignedSM>>,
     pub quickops_sm: Option<Arc<QuickOpsSM>>,
+    // pub std: Option<Arc<Std<F>>>,
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
@@ -69,6 +71,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             mem_aligned_sm: None,
             mem_unaligned_sm: None,
             quickops_sm: None,
+            // std: None,
         })
     }
 
@@ -86,6 +89,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const ARITH3264_AIR_IDS: &[usize] = &[7];
         pub const QUICKOPS_AIRGROUP_ID: usize = 102;
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
+
+        // let std = Std::new(wcm.clone(), None);
 
         let mem_aligned_sm = MemAlignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm =
@@ -150,6 +155,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         self.mem_aligned_sm = Some(mem_aligned_sm);
         self.mem_unaligned_sm = Some(mem_unaligned_sm);
         self.quickops_sm = Some(quickops_sm);
+        // self.std = Some(std);
     }
 }
 

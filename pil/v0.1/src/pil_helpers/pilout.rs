@@ -41,7 +41,7 @@ impl Pilout {
         air_group.add_air(Some("Binary"), 2097152);
 
         let air_group = pilout.add_air_group(Some("BinaryTable"));
-        air_group.add_air(Some("BinaryTable"), 4194304);
+        air_group.add_air(Some("BinaryTable"), 8388608);
 
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
         air_group.add_air(Some("BinaryExtension"), 2097152);
