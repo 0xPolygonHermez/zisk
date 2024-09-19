@@ -246,13 +246,23 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                 scope.spawn(move |scope| {
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
-                    let trace = BinaryExtension0Trace::<F>::map_row_vec(trace_row).unwrap();
+                    let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
+                    let (buffer_size, offsets) = buffer_allocator
+                        .get_buffer_info("BinaryExtension".into(), BINARY_EXTENSION_AIR_IDS[0])
+                        .expect("Binary extension buffer not found");
+
+                    let trace_buffer =
+                        BinaryExtension0Trace::<F>::map_row_vec(trace_row).unwrap().buffer.unwrap();
+                    let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+
+                    buffer[offsets[0] as usize..offsets[0] as usize + trace_buffer.len()]
+                        .copy_from_slice(&trace_buffer);
 
                     let air_instance = AirInstance::new(
                         BINARY_EXTENSION_AIRGROUP_ID,
                         BINARY_EXTENSION_AIR_IDS[0],
                         None,
-                        trace.buffer.unwrap(),
+                        buffer,
                     );
                     wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 

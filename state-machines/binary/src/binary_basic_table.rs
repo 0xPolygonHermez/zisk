@@ -61,6 +61,28 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
                 true,
                 scope,
             );
+
+            let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
+            let (buffer_size, offsets) = buffer_allocator
+                .get_buffer_info("BinaryTable".into(), BINARY_TABLE_AIR_IDS[0])
+                .expect("BinaryTable buffer not found");
+
+            let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+            let mut trace_accessor = BinaryTable0Trace::map_buffer(
+                &mut buffer,
+                MULTIPLICITY_TABLE_SIZE,
+                offsets[0] as usize,
+            )
+            .unwrap();
+
+            let multiplicity = self.multiplicity.lock().unwrap();
+            for i in 0..MULTIPLICITY_TABLE_SIZE {
+                trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
+            }
+
+            let air_instance =
+                AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
+            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }
 
@@ -69,13 +91,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
     }
 
-    pub fn process_slice(
-        &self,
-        input: &Vec<ZiskRequiredBinaryBasicTable>,
-    ) -> Vec<BinaryTable0Row<F>> {
+    pub fn process_slice(&self, input: &Vec<ZiskRequiredBinaryBasicTable>) {
         // Create the trace vector
-        let mut trace: Vec<BinaryTable0Row<F>> = Vec::new();
-
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for i in input {
@@ -101,19 +118,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
             let row = offset_a + offset_b + offset_cin + offset_last + offset_operation;
             assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
             multiplicity[row as usize] += 1;
-
-            // Create an empty trace
-            let mut t: BinaryTable0Row<F> = Default::default();
-
-            // Find duplicates of this trace and reuse them by increasing their multiplicity.
-            t.multiplicity = F::from_canonical_u32(multiplicity[row as usize]);
-
-            // Store the trace in the vector
-            trace.push(t);
         }
-
-        // Return successfully
-        trace
     }
 }
 
@@ -148,16 +153,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static>
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                let trace_row = self.process_slice(&drained_inputs);
-                let trace = BinaryTable0Trace::<F>::map_row_vec(trace_row).unwrap();
-
-                let air_instance = AirInstance::new(
-                    BINARY_TABLE_AIRGROUP_ID,
-                    BINARY_TABLE_AIR_IDS[0],
-                    None,
-                    trace.buffer.unwrap(),
-                );
-                self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                self.process_slice(&drained_inputs);
             }
         }
     }

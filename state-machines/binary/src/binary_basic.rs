@@ -491,14 +491,20 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                 scope.spawn(move |scope| {
                     binary_basic_table_sm.prove(&table_required, false, scope);
 
-                    let trace = Binary0Trace::<F>::map_row_vec(trace_row).unwrap();
+                    let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
+                    let (buffer_size, offsets) = buffer_allocator
+                        .get_buffer_info("Binary".into(), BINARY_AIR_IDS[0])
+                        .expect("Binary basic buffer not found");
 
-                    let air_instance = AirInstance::new(
-                        BINARY_AIRGROUP_ID,
-                        BINARY_AIR_IDS[0],
-                        None,
-                        trace.buffer.unwrap(),
-                    );
+                    let trace_buffer =
+                        Binary0Trace::<F>::map_row_vec(trace_row).unwrap().buffer.unwrap();
+                    let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+
+                    buffer[offsets[0] as usize..offsets[0] as usize + trace_buffer.len()]
+                        .copy_from_slice(&trace_buffer);
+
+                    let air_instance =
+                        AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], None, buffer);
                     wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
                     thread_controller.remove_working_thread();
