@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation};
 use zisk_pil::BinaryExtension0Row;
 
 use crate::BinaryExtensionTableSM;
@@ -34,7 +34,7 @@ pub enum BinaryExtensionSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
+impl<F: AbstractField + Send + Sync + 'static> BinaryExtensionSM<F> {
     pub fn new(
         wcm: &mut WitnessManager<F>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
@@ -81,9 +81,12 @@ impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
 
     pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
-    ) -> Result<Vec<BinaryExtension0Row<F>>, BinaryExtensionSMErr> {
+    ) -> (Vec<BinaryExtension0Row<F>>, Vec<ZiskRequiredBinaryExtensionTable>) {
         // Create the trace vector
         let mut trace = Vec::new();
+
+        // Create the table required vector
+        let mut table_required: Vec<ZiskRequiredBinaryExtensionTable> = Vec::new();
 
         for i in input {
             // Create an empty trace
@@ -101,8 +104,8 @@ impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
             // Decompose the opcode into mode32 & op
             let mode32 = (i.opcode & 0x10) != 0;
             t.mode32 = F::from_bool(mode32);
-            let op = i.opcode & 0xEF;
-            t.m_op = F::from_canonical_u8(op);
+            let m_op = i.opcode & 0xEF;
+            t.m_op = F::from_canonical_u8(m_op);
             let mode16 = i.opcode == 0x25;
             t.mode16 = F::from_bool(mode16);
             let mode8 = i.opcode == 0x24;
@@ -115,7 +118,8 @@ impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
             }
 
             // Store b low part into in2_low
-            t.in2_low = F::from_canonical_u64(i.b & if mode32 { 0x1F } else { 0x3F });
+            let b_low = i.b & if mode32 { 0x1F } else { 0x3F };
+            t.in2_low = F::from_canonical_u64(b_low);
 
             // Store b high part into free_in2
             t.free_in2[0] = F::from_canonical_u64(
@@ -176,10 +180,24 @@ impl<F: AbstractField + 'static> BinaryExtensionSM<F> {
 
             // Store the trace in the vector
             trace.push(t);
+
+            for b in 0..8 {
+                // Create an empty required
+                let mut tr: ZiskRequiredBinaryExtensionTable = Default::default();
+
+                // Fill it
+                tr.opcode = m_op;
+                tr.a = a_bytes[b] as u64;
+                tr.b = b_low;
+                tr.offset = if mode32 { 5 } else { 6 };
+
+                // Store the required in the vector
+                table_required.push(tr);
+            }
         }
 
         // Return successfully
-        Ok(trace)
+        (trace, table_required)
     }
 }
 
@@ -195,7 +213,9 @@ impl<F> WitnessComponent<F> for BinaryExtensionSM<F> {
     }
 }
 
-impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
+impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
+    for BinaryExtensionSM<F>
+{
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -210,13 +230,17 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult> for BinaryExten
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                scope.spawn(move |_| {
-                    // TODO! Implement prove drained_inputs (a chunk of operations)
+                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
+
+                scope.spawn(move |scope| {
+                    let (_trace, table_required) = Self::process_slice(&drained_inputs);
+
+                    binary_extension_table_sm.prove(&table_required, false, scope);
 
                     thread_controller.remove_working_thread();
                 });
@@ -231,7 +255,7 @@ impl<F: AbstractField> Provable<ZiskRequiredOperation, OpResult> for BinaryExten
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
-        
+
         self.prove(&[operation], drain, scope);
 
         result

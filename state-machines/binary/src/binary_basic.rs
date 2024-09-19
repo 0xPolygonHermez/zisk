@@ -9,7 +9,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{opcode_execute, ZiskRequiredBinaryBasedTable, ZiskRequiredOperation};
+use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
 use zisk_pil::Binary0Row;
 
 use crate::BinaryBasicTableSM;
@@ -85,12 +85,12 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
 
     pub fn process_slice(
         required: &Vec<ZiskRequiredOperation>,
-    ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasedTable>) {
+    ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasicTable>) {
         // Create the trace vector
         let mut trace: Vec<Binary0Row<F>> = Vec::new();
 
         // Create the table required vector
-        let mut table_required: Vec<ZiskRequiredBinaryBasedTable> = Vec::new();
+        let mut table_required: Vec<ZiskRequiredBinaryBasicTable> = Vec::new();
 
         for r in required {
             // Create an empty trace
@@ -146,7 +146,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -173,7 +173,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -215,7 +215,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -247,7 +247,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -282,7 +282,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -318,7 +318,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -354,7 +354,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -376,7 +376,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -397,7 +397,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -418,7 +418,7 @@ impl<F: AbstractField + Send + Sync + 'static> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(0);
 
                         // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasedTable = Default::default();
+                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
 
                         // Fill it
                         tr.opcode = m_op;
@@ -483,10 +483,9 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
                 let binary_basic_table_sm = self.binary_basic_table_sm.clone();
 
                 scope.spawn(move |scope| {
-                    // TODO! Implement prove drained_inputs (a chunk of operations)
-                    let (trace, required) = Self::process_slice(&_drained_inputs);
+                    let (_trace, table_required) = Self::process_slice(&_drained_inputs);
 
-                    binary_basic_table_sm.prove(&required, false, scope);
+                    binary_basic_table_sm.prove(&table_required, false, scope);
 
                     thread_controller.remove_working_thread();
                 });

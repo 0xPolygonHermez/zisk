@@ -14,12 +14,20 @@ pub struct ZiskRequiredMemory {
 }
 
 #[derive(Clone, Default)]
-pub struct ZiskRequiredBinaryBasedTable {
+pub struct ZiskRequiredBinaryBasicTable {
     pub opcode: u8,
     pub a: u64,
     pub b: u64,
     pub cin: u64,
     pub last: u64,
+}
+
+#[derive(Clone, Default)]
+pub struct ZiskRequiredBinaryExtensionTable {
+    pub opcode: u8,
+    pub a: u64,
+    pub b: u64,
+    pub offset: u64,
 }
 
 pub struct ZiskRequired {
