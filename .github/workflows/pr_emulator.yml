@@ -1,4 +1,4 @@
-name: Risc Oficial Tests Check
+name: Risc
 on:
   push:
     branches: [develop]
@@ -6,7 +6,7 @@ on:
 
 jobs:
   docker-ziskof-check:
-    name: Docker Risc Oficial Tests Check
+    name: Official Tests Check
     runs-on: self-hosted
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
