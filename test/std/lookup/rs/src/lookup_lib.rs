@@ -109,3 +109,29 @@ pub extern "Rust" fn init_library(
     let lookup_witness = LookupWitness::new();
     Ok(Box::new(lookup_witness))
 }
+
+mod tests {
+    use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
+
+    #[test]
+    fn test_verify_constraints() {
+        let root_path = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .join("../../../../");
+        let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
+
+        let verify_constraints = VerifyConstraintsCmd {
+            witness_lib: root_path.join("target/debug/liblookup.so"),
+            rom: None,
+            public_inputs: None,
+            proving_key: root_path.join("test/std/lookup/build/provingKey"),
+            field: Field::Goldilocks,
+            verbose: 0,
+        };
+
+        if let Err(e) = verify_constraints.run() {
+            eprintln!("Failed to verify constraints: {:?}", e);
+            std::process::exit(1);
+        }
+    }
+}

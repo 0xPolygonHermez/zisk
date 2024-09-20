@@ -2,7 +2,7 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"Build-hash";
+pub const PILOUT_HASH: &[u8] = b"Connection-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -20,10 +20,12 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Build", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Connection", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Connection"));
-        air_group.add_air(Some("Connection1"), 8);        air_group.add_air(Some("Connection2"), 16);        air_group.add_air(Some("ConnectionNew"), 16);
+        air_group.add_air(Some("Connection1"), 8);
+        air_group.add_air(Some("Connection2"), 16);
+        air_group.add_air(Some("ConnectionNew"), 16);
 
         pilout
     }
