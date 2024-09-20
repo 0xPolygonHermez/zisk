@@ -6,6 +6,11 @@ fn main() {
         .join("../../../../");
     let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
 
+    // Re-run this build script if the pil file changes
+    println!("cargo:rerun-if-changed={}", root_path.join("test/std/range_check/range_check.pil").display());
+    println!("cargo:rerun-if-changed={}", root_path.join("test/std/range_check/src/pil_helpers").display());
+    println!("cargo:rerun-if-changed={}", root_path.join("test/std/range_check/build").display());
+
     let build_dir = root_path.join("test/std/range_check/build/");
     if !build_dir.exists() {
         std::fs::create_dir_all(&build_dir).expect("Failed to create build directory");
