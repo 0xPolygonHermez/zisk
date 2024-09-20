@@ -21,6 +21,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
+        let mut sum_airs_guard = self.sum_airs.lock().unwrap();
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
@@ -31,10 +32,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let gsum_hints = get_hint_ids_by_name(*setup.p_setup, "gsum_col");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.sum_airs
-                        .lock()
-                        .unwrap()
-                        .push((airgroup_id, air_id, im_hints, gsum_hints));
+                    sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints));
                 }
             });
         });

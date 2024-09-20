@@ -132,6 +132,8 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let air_groups = pctx.pilout.air_groups();
         let mut hints_guard = self.hints.lock().unwrap();
 
+        let mut ranges_guard = self.ranges.lock().unwrap();
+
         for air_group in air_groups.iter() {
             let airs = air_group.airs();
             for air in airs.iter() {
@@ -216,10 +218,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             }
                         };
 
-                        self.ranges
-                            .lock()
-                            .unwrap()
-                            .push(Range(min, max, min_neg, max_neg));
+                        ranges_guard.push(Range(min, max, min_neg, max_neg));
                     }
 
                     hints_guard.push(*hint);

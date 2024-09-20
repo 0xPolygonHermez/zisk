@@ -20,6 +20,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         let air_groups = pctx.pilout.air_groups();
+        let mut prod_airs_guard = self.prod_airs.lock().unwrap();
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
@@ -29,10 +30,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
                 let prod_hints = get_hint_ids_by_name(*setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.prod_airs
-                        .lock()
-                        .unwrap()
-                        .push((airgroup_id, air_id, prod_hints));
+                    prod_airs_guard.push((airgroup_id, air_id, prod_hints));
                 }
             });
         });
