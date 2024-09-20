@@ -79,6 +79,7 @@ jobs:
         with:
           toolchain: stable
           components: clippy
+          override: true
 
       - name: cargo clippy
         uses: actions-rs/cargo@v1
