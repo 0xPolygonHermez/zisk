@@ -1,4 +1,4 @@
-name: Risc
+name: RISC
 on:
   push:
     branches: [develop]
