@@ -1,4 +1,4 @@
-name: PR
+name: rust
 
 on:
   push:
