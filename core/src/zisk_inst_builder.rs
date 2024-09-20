@@ -203,7 +203,7 @@ impl ZiskInstBuilder {
         self.i.op = op.code();
         self.i.op_str = op.name();
         self.i.m32 = optxt.contains("_w");
-        // self.i.func = op.f;
+        self.i.func = op.get_call_function();
         self.i.op_type = op.op_type().into();
         Ok(())
     }

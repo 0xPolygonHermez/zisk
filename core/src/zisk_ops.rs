@@ -154,6 +154,15 @@ macro_rules! define_ops {
                 }
             }
 
+			/// Returns the call function of the operation
+            pub const fn get_call_function(&self) -> fn(&mut InstContext) -> () {
+                match self {
+                    $(
+                        Self::$name => $call_fn,
+                    )*
+                }
+            }
+
 			/// Executes the operation on the given inputs `a` and `b`
 			#[inline(always)]
             pub fn call_ab(&self, a: u64, b: u64) -> (u64, bool) {
