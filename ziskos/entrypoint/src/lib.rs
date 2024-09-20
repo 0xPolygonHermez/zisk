@@ -1,4 +1,3 @@
-#![feature(asm_const)]
 #![allow(unexpected_cfgs)]
 
 pub mod ziskos_definitions;
