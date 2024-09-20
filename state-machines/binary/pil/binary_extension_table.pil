@@ -16,6 +16,9 @@ require "constants.pil"
 const int EXT_OP = 6;
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
+const int P2_7_MASK = 2**7 - 1;
+const int P2_32_MASK = 2**32 - 1;
+const int P2_63_MASK = 2**63 - 1;
 
 airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 0) {
     
@@ -71,11 +74,11 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                 _out = _out >> b;
 
                 // Convert back to two's complement
-                _out = _out < 0 ? ((_out & (P2_63 - 1)) + P2_63) : _out;
+                _out = _out < 0 ? ((_out & P2_63_MASK) + P2_63) : _out;
 
             case 0x24: // SE_B
                 if (offset == 0) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
+                    _out = a & P2_7 ? (P2_7 | (a & P2_7_MASK)) : (a & P2_7_MASK);
                 } else {
                     _out = a & P2_7 ? 0xFF00 << (8*(offset - 1)) : 0;
                 }
@@ -84,7 +87,7 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                 if (offset == 0) {
                     _out = a
                 } else if (offset == 1) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
+                    _out = a & P2_7 ? (P2_7 | (a & P2_7_MASK)) : (a & P2_7_MASK);
                     _out = _out << 8;
                 } else {
                     _out = a & P2_7 ? 0xFF0000 << (8*(offset - 2)) : 0;
@@ -94,7 +97,7 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                 if (offset < 3) {
                     _out = a << (8*offset);
                 } else if (offset == 3) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
+                    _out = a & P2_7 ? (P2_7 | (a & P2_7_MASK)) : (a & P2_7_MASK);
                     _out = _out << 24;
                 } else {
                     _out = a & P2_7 ? 0xFF00000000 << (8*(offset - 4)) : 0;
@@ -108,8 +111,8 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                 error(`Invalid operation ${op}`);
         }
 
-        C0[i] = _out & (P2_32-1);
-        C1[i] = _out >> 32;
+        C0[i] = _out & P2_32_MASK;
+        C1[i] = (_out >> 32) & P2_32_MASK;
     }
 
     lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
