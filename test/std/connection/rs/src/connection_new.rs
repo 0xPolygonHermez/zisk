@@ -18,7 +18,7 @@ where
 {
     const MY_NAME: &'static str = "ConnectionNew";
 
-    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let connection_new = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
@@ -32,7 +32,7 @@ where
         connection_new
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -60,9 +60,9 @@ where
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 

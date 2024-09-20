@@ -76,13 +76,13 @@ impl<F: PrimeField> U8Air<F> {
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul = &*self.mul.lock().unwrap();
-        // set_hint_field(
-        //     self.setup_repository.lock().unwrap().as_ref(),
-        //     air_instance,
-        //     hint_id,
-        //     "reference",
-        //     mul,
-        // );
+        set_hint_field(
+            &*self.wcm.get_sctx().setups,
+            air_instance,
+            hint_id,
+            "reference",
+            mul,
+        );
 
         log::info!("{}: Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }
@@ -116,7 +116,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the mul hints
-                let u8air_hints = get_hint_ids_by_name(setup.p_setup, "u8air");
+                let u8air_hints = get_hint_ids_by_name(*setup.p_setup, "u8air");
                 if u8air_hints.len() > 0 {
                     *self.hint.lock().unwrap() = u8air_hints[0];
                 }

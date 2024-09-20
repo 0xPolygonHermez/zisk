@@ -86,14 +86,9 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul = &*self.muls.lock().unwrap();
+        let p_setup = &*self.wcm.get_sctx().setups;
         for (index, hint) in hints.iter().enumerate().skip(1) {
-            // set_hint_field(
-            //     self.setup_repository.borrow().as_ref(),
-            //     air_instance,
-            //     *hint,
-            //     "reference",
-            //     &mul[index - 1],
-            // );
+            set_hint_field(p_setup, air_instance, *hint, "reference", &mul[index - 1]);
         }
 
         log::info!(
@@ -142,9 +137,9 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
             for air in airs.iter() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                
+
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
-                let hints = get_hint_ids_by_name(setup.p_setup, "specified_ranges");
+                let hints = get_hint_ids_by_name(*setup.p_setup, "specified_ranges");
 
                 for (index, hint) in hints.iter().enumerate() {
                     if index > 0 {
@@ -232,8 +227,6 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
             }
         }
 
-        // self.setup_repository.replace(sctx.setups.clone());
-
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
@@ -244,38 +237,40 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
 
-        let muls_guard = self.muls.lock().unwrap();
-        for hint in self.hints.lock().unwrap().iter().skip(1) {
-            // muls_guard.push(get_hint_field::<F>(
-            //     self.setup_repository.borrow().as_ref(),
-            //     &pctx.public_inputs,
-            //     &pctx.challenges,
-            //     &mut air_instance,
-            //     hint.to_usize().unwrap(),
-            //     "reference",
-            //     HintFieldOptions::dest(),
-            // ));
+        let mut muls_guard = self.muls.lock().unwrap();
+        let setups = &*sctx.setups;
+
+        for hint in hints_guard.iter().skip(1) {
+            muls_guard.push(get_hint_field::<F>(
+                setups,
+                &pctx.public_inputs,
+                &pctx.challenges,
+                &mut air_instance,
+                hint.to_usize().unwrap(),
+                "reference",
+                HintFieldOptions::dest(),
+            ));
         }
 
         // Set the number of rows
-        let hint = self.hints.lock().unwrap()[0];
+        let hint = hints_guard[0];
 
-        // let num_rows = get_hint_field::<F>(
-        //     self.setup_repository.borrow().as_ref(),
-        //     &pctx.public_inputs,
-        //     &pctx.challenges,
-        //     &mut air_instance,
-        //     hint as usize,
-        //     "num_rows",
-        //     HintFieldOptions::dest(),
-        // );
+        let num_rows = get_hint_field::<F>(
+            setups,
+            &pctx.public_inputs,
+            &pctx.challenges,
+            &mut air_instance,
+            hint as usize,
+            "num_rows",
+            HintFieldOptions::dest(),
+        );
 
-        // let HintFieldValue::Field(num_rows) = num_rows else {
-        //     log::error!("Number of rows must be a field element");
-        //     panic!();
-        // };
+        let HintFieldValue::Field(num_rows) = num_rows else {
+            log::error!("Number of rows must be a field element");
+            panic!();
+        };
 
-        // *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
+        *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
 
         pctx.air_instance_repo.add_air_instance(air_instance);
     }

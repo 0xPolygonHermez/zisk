@@ -61,6 +61,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have rc-related hints
         let air_groups = pctx.pilout.air_groups();
+
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
@@ -69,7 +70,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the range hints
-                let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_def");
+                let rc_hints = get_hint_ids_by_name(*setup.p_setup, "range_def");
                 for hint in rc_hints {
                     // Register the range
                     self.register_range(sctx.clone(), airgroup_id, air_id, hint);
@@ -219,12 +220,10 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range = Range(min, max, min_neg, max_neg);
 
         // If the range is already defined, skip
-        let ranges = self.ranges.lock().unwrap();
+        let mut ranges = self.ranges.lock().unwrap();
         if ranges.iter().any(|r| r.range == range) {
             return;
         }
-        // Notice that we only compare the min and max values, not the sign
-        drop(ranges);
 
         // Otherwise, register the range
         let zero = F::zero();
@@ -248,7 +247,6 @@ impl<F: PrimeField> StdRangeCheck<F> {
         };
 
         // Update ranges
-        let mut ranges = self.ranges.lock().unwrap();
         ranges.push(StdRangeItem {
             rc_type: r#type,
             range,
@@ -303,7 +301,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         }
     }
 
-    pub fn drain_inputs(&self, _pctx: Arc< ProofCtx<F>>, _scope: Option<&Scope>) {
+    pub fn drain_inputs(&self, _pctx: Arc<ProofCtx<F>>, _scope: Option<&Scope>) {
         if let Some(u8air) = self.u8air.as_ref() {
             u8air.drain_inputs();
         }

@@ -11,14 +11,14 @@ use rand::{distributions::Standard, prelude::Distribution};
 use crate::{Lookup0, Lookup1, Lookup2_12, Lookup2_13, Lookup2_15, Lookup3, Pilout};
 
 pub struct LookupWitness<F: PrimeField> {
-    pub wcm: WitnessManager<F>,
-    pub lookup0: Arc<Lookup0<F>>,
-    pub lookup1: Arc<Lookup1<F>>,
-    pub lookup2_12: Arc<Lookup2_12<F>>,
-    pub lookup2_13: Arc<Lookup2_13<F>>,
-    pub lookup2_15: Arc<Lookup2_15<F>>,
-    pub lookup3: Arc<Lookup3<F>>,
-    pub std_lib: Arc<Std<F>>,
+    pub wcm: Option<Arc<WitnessManager<F>>>,
+    pub lookup0: Option<Arc<Lookup0<F>>>,
+    pub lookup1: Option<Arc<Lookup1<F>>>,
+    pub lookup2_12: Option<Arc<Lookup2_12<F>>>,
+    pub lookup2_13: Option<Arc<Lookup2_13<F>>>,
+    pub lookup2_15: Option<Arc<Lookup2_15<F>>>,
+    pub lookup3: Option<Arc<Lookup3<F>>>,
+    pub std_lib: Option<Arc<Std<F>>>,
 }
 
 impl<F: PrimeField> Default for LookupWitness<F>
@@ -35,26 +35,42 @@ where
     Standard: Distribution<F>,
 {
     pub fn new() -> Self {
-        let mut wcm = WitnessManager::new();
-
-        let std_lib = Std::new(&mut wcm, None);
-        let lookup0 = Lookup0::new(&mut wcm);
-        let lookup1 = Lookup1::new(&mut wcm);
-        let lookup2_12 = Lookup2_12::new(&mut wcm);
-        let lookup2_13 = Lookup2_13::new(&mut wcm);
-        let lookup2_15 = Lookup2_15::new(&mut wcm);
-        let lookup3 = Lookup3::new(&mut wcm);
-
         LookupWitness {
-            wcm,
-            lookup0,
-            lookup1,
-            lookup2_12,
-            lookup2_13,
-            lookup2_15,
-            lookup3,
-            std_lib,
+            wcm: None,
+            lookup0: None,
+            lookup1: None,
+            lookup2_12: None,
+            lookup2_13: None,
+            lookup2_15: None,
+            lookup3: None,
+            std_lib: None,
         }
+    }
+
+    pub fn initialize(
+        &mut self,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
+    ) {
+        let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
+
+        let std_lib = Std::new(wcm.clone(), None);
+        let lookup0 = Lookup0::new(wcm.clone());
+        let lookup1 = Lookup1::new(wcm.clone());
+        let lookup2_12 = Lookup2_12::new(wcm.clone());
+        let lookup2_13 = Lookup2_13::new(wcm.clone());
+        let lookup2_15 = Lookup2_15::new(wcm.clone());
+        let lookup3 = Lookup3::new(wcm.clone());
+
+        self.wcm = Some(wcm);
+        self.lookup0 = Some(lookup0);
+        self.lookup1 = Some(lookup1);
+        self.lookup2_12 = Some(lookup2_12);
+        self.lookup2_13 = Some(lookup2_13);
+        self.lookup2_15 = Some(lookup2_15);
+        self.lookup3 = Some(lookup3);
+        self.std_lib = Some(std_lib);
     }
 }
 
@@ -62,32 +78,60 @@ impl<F: PrimeField> WitnessLibrary<F> for LookupWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
-        self.wcm.start_proof(pctx, ectx, sctx);
+    fn start_proof(
+        &mut self,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
+    ) {
+        self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
+
+        self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
     }
 
     fn end_proof(&mut self) {
-        self.wcm.end_proof();
+        self.wcm.as_ref().unwrap().end_proof();
     }
 
-    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
-        self.lookup0.execute(pctx, ectx, sctx);
-        self.lookup1.execute(pctx, ectx, sctx);
-        self.lookup2_12.execute(pctx, ectx, sctx);
-        self.lookup2_13.execute(pctx, ectx, sctx);
-        self.lookup2_15.execute(pctx, ectx, sctx);
-        self.lookup3.execute(pctx, ectx, sctx);
+        self.lookup0
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.lookup1
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.lookup2_12
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.lookup2_13
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.lookup2_15
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.lookup3
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
     }
 
     fn calculate_witness(
         &mut self,
         stage: u32,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
-        self.wcm.calculate_witness(stage, pctx, ectx, sctx);
+        self.wcm
+            .as_ref()
+            .unwrap()
+            .calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {

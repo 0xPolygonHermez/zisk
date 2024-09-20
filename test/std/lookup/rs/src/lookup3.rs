@@ -14,7 +14,7 @@ pub struct Lookup3<F> {
 impl<F: PrimeField + Copy> Lookup3<F> {
     const MY_NAME: &'static str = "Lookup3";
 
-    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let lookup3 = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
@@ -28,7 +28,7 @@ impl<F: PrimeField + Copy> Lookup3<F> {
         lookup3
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -49,9 +49,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];

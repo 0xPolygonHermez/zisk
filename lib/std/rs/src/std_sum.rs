@@ -27,8 +27,8 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
-                let im_hints = get_hint_ids_by_name(setup.p_setup, "im_col");
-                let gsum_hints = get_hint_ids_by_name(setup.p_setup, "gsum_col");
+                let im_hints = get_hint_ids_by_name(*setup.p_setup, "im_col");
+                let gsum_hints = get_hint_ids_by_name(*setup.p_setup, "gsum_col");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.sum_airs

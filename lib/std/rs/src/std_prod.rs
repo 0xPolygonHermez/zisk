@@ -26,7 +26,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
-                let prod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
+                let prod_hints = get_hint_ids_by_name(*setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs
