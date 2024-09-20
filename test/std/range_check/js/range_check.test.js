@@ -9,7 +9,7 @@ function getSettings() {
     return {
         name: "Range-Check-" + Date.now(),
         airout: {
-            airoutFilename: path.join(basePath, 'range_check.pilout'),
+            airoutFilename: path.join(basePath, '../build/range_check.pilout'),
         },
         witnessCalculators: [
             { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck1" },
@@ -20,7 +20,7 @@ function getSettings() {
         ],
         setup: {
             settings: {
-                default: { blowupFactor: 2, nQueries: 10, foldingFactor: 2, finalDegree: 2 },
+                default: { },
             },
         },
         prover: {
