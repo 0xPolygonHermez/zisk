@@ -17,7 +17,7 @@ pub struct StdProd<F> {
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
-    fn decide(&self, sctx: &SetupCtx, pctx: &ProofCtx<F>) {
+    fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         let air_groups = pctx.pilout.air_groups();
         air_groups.iter().for_each(|air_group| {
@@ -52,8 +52,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
     pub fn calculate_witness(
         &self,
         stage: u32,
-        pctx: &ProofCtx<F>,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         if stage == 2 {
             let prod_airs = self.prod_airs.lock().unwrap();
@@ -96,8 +96,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         // Use the hint to populate the gprod column
                         let mut gprod = get_hint_field::<F>(
                             sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             gprod_hint,
                             "reference",
@@ -105,8 +105,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         );
                         let num = get_hint_field::<F>(
                             sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             gprod_hint,
                             "numerator",
@@ -114,8 +114,8 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         );
                         let den = get_hint_field::<F>(
                             sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             gprod_hint,
                             "denominator",
@@ -136,7 +136,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             &gprod,
                         );
                         set_hint_field_val(
-                            sctx,
+                            sctx.clone(),
                             air_instance,
                             gprod_hint as u64,
                             "result",

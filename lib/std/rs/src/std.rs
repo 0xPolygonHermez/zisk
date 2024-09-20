@@ -25,14 +25,14 @@ pub struct Std<F: PrimeField> {
 impl<F: PrimeField> Std<F> {
     const _MY_NAME: &'static str = "STD";
 
-    pub fn new(wcm: &mut WitnessManager<F>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
         // Instantiate the STD components
         let prod = StdProd::new();
         let sum = StdSum::new();
 
         // In particular, the range check component needs to be instantiated with the ids
         // of its (possibly) associated AIRs: U8Air ...
-        let range_check = StdRangeCheck::new(wcm, rc_air_data);
+        let range_check = StdRangeCheck::new(wcm.clone(), rc_air_data);
 
         let std = Arc::new(Self {
             registered_predecessors: AtomicU32::new(0),
@@ -51,7 +51,7 @@ impl<F: PrimeField> Std<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, pctx: &mut ProofCtx<F>, scope: Option<&Scope>) {
+    pub fn unregister_predecessor(&self, pctx: Arc< ProofCtx<F>>, scope: Option<&Scope>) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.range_check.drain_inputs(pctx, scope);
         }
@@ -63,11 +63,11 @@ impl<F: PrimeField> Std<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for Std<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+impl<F: PrimeField + Send + Sync> WitnessComponent<F> for Std<F> {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Run the deciders of the components on the correct stage to see if they need to calculate their witness
-        self.prod.decide(sctx, pctx);
-        self.sum.decide(sctx, pctx);
+        self.prod.decide(sctx.clone(), pctx.clone());
+        self.sum.decide(sctx.clone(), pctx.clone());
         self.range_check.decide(sctx, pctx);
     }
 
@@ -75,11 +75,9 @@ impl<F: PrimeField> WitnessComponent<F> for Std<F> {
         &self,
         stage: u32,
         _air_instance: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>
     ) {
-        if let Err(e) = self.prod.calculate_witness(stage, pctx, sctx) {
+        if let Err(e) = self.prod.calculate_witness(stage, pctx.clone(), sctx.clone()) {
             log::error!("Prod: Failed to calculate witness: {:?}", e);
             panic!();
         }

@@ -22,7 +22,7 @@ where
 {
     const MY_NAME: &'static str = "RangeCheck4";
 
-    pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let range_check4 = Arc::new(Self { std_lib });
 
         wcm.register_component(
@@ -37,7 +37,7 @@ where
         range_check4
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of the air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -65,9 +65,7 @@ where
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>
     ) {
         let mut rng = rand::thread_rng();
 

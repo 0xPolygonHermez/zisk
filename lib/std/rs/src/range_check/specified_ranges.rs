@@ -1,14 +1,11 @@
 use core::panic;
-use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{
-    AirInstance, AirInstancesRepository, ExecutionCtx, ProofCtx, SetupCtx, SetupRepository,
-};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_field_constant, get_hint_ids_by_name, set_hint_field,
     HintFieldOptions, HintFieldValue,
@@ -19,38 +16,33 @@ use crate::Range;
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 
 pub struct SpecifiedRanges<F: PrimeField> {
-    // Proof-related data
-    setup_repository: RefCell<Arc<SetupRepository>>,
-    public_inputs: Arc<RefCell<Vec<u8>>>,
-    challenges: Arc<RefCell<Vec<F>>>,
-    air_instances_repository: RefCell<Arc<AirInstancesRepository<F>>>,
+    wcm: Arc<WitnessManager<F>>,
+
     // Parameters
-    hints: RefCell<Vec<u64>>,
+    hints: Mutex<Vec<u64>>,
     airgroup_id: usize,
     air_id: usize,
+
     // Inputs
-    num_rows: RefCell<usize>,
+    num_rows: Mutex<usize>,
     ranges: Mutex<Vec<Range<F>>>,
     inputs: Mutex<Vec<(Range<F>, F)>>, // range -> value -> multiplicity
-    muls: RefCell<Vec<HintFieldValue<F>>>,
+    muls: Mutex<Vec<HintFieldValue<F>>>,
 }
 
 impl<F: PrimeField> SpecifiedRanges<F> {
     const MY_NAME: &'static str = "SpecifiedRanges";
 
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let specified_ranges = Arc::new(Self {
-            setup_repository: RefCell::new(Arc::new(SetupRepository { setups: Vec::new() })),
-            public_inputs: Arc::new(RefCell::new(Vec::new())),
-            challenges: Arc::new(RefCell::new(Vec::new())),
-            air_instances_repository: RefCell::new(Arc::new(AirInstancesRepository::new())),
-            hints: RefCell::new(Vec::new()),
+            wcm: wcm.clone(),
+            hints: Mutex::new(Vec::new()),
             airgroup_id,
             air_id,
-            num_rows: RefCell::new(0),
+            num_rows: Mutex::new(0),
             ranges: Mutex::new(Vec::new()),
             inputs: Mutex::new(Vec::new()),
-            muls: RefCell::new(Vec::new()),
+            muls: Mutex::new(Vec::new()),
         });
 
         wcm.register_component(specified_ranges.clone(), Some(airgroup_id), Some(&[air_id]));
@@ -85,26 +77,23 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         self.update_multiplicity(drained_inputs);
 
         // Set the multiplicity columns as done
-        let hints = self.hints.borrow();
+        let hints = self.hints.lock().unwrap();
 
-        let air_instance_id = self
-            .air_instances_repository
-            .borrow()
-            .find_air_instances(self.airgroup_id, self.air_id)[0];
-
-        let air_instances = self.air_instances_repository.borrow();
-        let mut air_instance_rw = air_instances.air_instances.write().unwrap();
+        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
+        let air_instance_id =
+            air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
+        let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instance_rw[air_instance_id];
 
-        let mul = self.muls.borrow();
+        let mul = &*self.muls.lock().unwrap();
         for (index, hint) in hints.iter().enumerate().skip(1) {
-            set_hint_field(
-                self.setup_repository.borrow().as_ref(),
-                air_instance,
-                *hint,
-                "reference",
-                &mul[index - 1],
-            );
+            // set_hint_field(
+            //     self.setup_repository.borrow().as_ref(),
+            //     air_instance,
+            //     *hint,
+            //     "reference",
+            //     &mul[index - 1],
+            // );
         }
 
         log::info!(
@@ -117,7 +106,9 @@ impl<F: PrimeField> SpecifiedRanges<F> {
     fn update_multiplicity(&self, drained_inputs: Vec<(Range<F>, F)>) {
         // TODO! Do it in parallel
         let ranges = self.ranges.lock().unwrap();
-        let num_rows = self.num_rows.borrow().clone();
+
+        let num_rows = self.num_rows.lock().unwrap();
+        let mut muls = self.muls.lock().unwrap();
         for (range, input) in &drained_inputs {
             let value = *input - range.0;
 
@@ -133,29 +124,32 @@ impl<F: PrimeField> SpecifiedRanges<F> {
 
             // Note: to avoid non-expected panics, we perform a reduction to the value
             //       In debug mode, this is, in fact, checked before
-            let index = value % num_rows;
-            self.muls.borrow_mut()[range_index].add(index, F::one());
+            let index = value % *num_rows;
+            muls[range_index].add(index, F::one());
         }
     }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // TODO: We can optimize this
         // Scan the pilout for airs that have rc-related hints
         let air_groups = pctx.pilout.air_groups();
+        let mut hints_guard = self.hints.lock().unwrap();
+
         for air_group in air_groups.iter() {
             let airs = air_group.airs();
             for air in airs.iter() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
+                
                 let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
-
                 let hints = get_hint_ids_by_name(setup.p_setup, "specified_ranges");
+
                 for (index, hint) in hints.iter().enumerate() {
                     if index > 0 {
                         let min = get_hint_field_constant::<F>(
-                            sctx,
+                            sctx.clone(),
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -163,7 +157,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let min_neg = get_hint_field_constant::<F>(
-                            sctx,
+                            sctx.clone(),
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -171,7 +165,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let max = get_hint_field_constant::<F>(
-                            sctx,
+                            sctx.clone(),
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -179,7 +173,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let max_neg = get_hint_field_constant::<F>(
-                            sctx,
+                            sctx.clone(),
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -233,14 +227,12 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             .push(Range(min, max, min_neg, max_neg));
                     }
 
-                    self.hints.borrow_mut().push(*hint);
+                    hints_guard.push(*hint);
                 }
             }
         }
 
-        self.setup_repository.replace(sctx.setups.clone());
-        self.air_instances_repository
-            .replace(pctx.air_instance_repo.clone());
+        // self.setup_repository.replace(sctx.setups.clone());
 
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -251,51 +243,50 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
 
         // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
-        for hint in self.hints.borrow().iter().skip(1) {
-            self.muls.borrow_mut().push(get_hint_field::<F>(
-                self.setup_repository.borrow().as_ref(),
-                self.public_inputs.clone(),
-                self.challenges.clone(),
-                &mut air_instance,
-                hint.to_usize().unwrap(),
-                "reference",
-                HintFieldOptions::dest(),
-            ));
+
+        let muls_guard = self.muls.lock().unwrap();
+        for hint in self.hints.lock().unwrap().iter().skip(1) {
+            // muls_guard.push(get_hint_field::<F>(
+            //     self.setup_repository.borrow().as_ref(),
+            //     &pctx.public_inputs,
+            //     &pctx.challenges,
+            //     &mut air_instance,
+            //     hint.to_usize().unwrap(),
+            //     "reference",
+            //     HintFieldOptions::dest(),
+            // ));
         }
 
         // Set the number of rows
-        let hint = self.hints.borrow()[0];
+        let hint = self.hints.lock().unwrap()[0];
 
-        let num_rows = get_hint_field::<F>(
-            self.setup_repository.borrow().as_ref(),
-            self.public_inputs.clone(),
-            self.challenges.clone(),
-            &mut air_instance,
-            hint as usize,
-            "num_rows",
-            HintFieldOptions::dest(),
-        );
+        // let num_rows = get_hint_field::<F>(
+        //     self.setup_repository.borrow().as_ref(),
+        //     &pctx.public_inputs,
+        //     &pctx.challenges,
+        //     &mut air_instance,
+        //     hint as usize,
+        //     "num_rows",
+        //     HintFieldOptions::dest(),
+        // );
 
-        let HintFieldValue::Field(num_rows) = num_rows else {
-            log::error!("Number of rows must be a field element");
-            panic!();
-        };
+        // let HintFieldValue::Field(num_rows) = num_rows else {
+        //     log::error!("Number of rows must be a field element");
+        //     panic!();
+        // };
 
-        self.num_rows
-            .replace(num_rows.as_canonical_biguint().to_usize().unwrap());
+        // *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
 
-        self.air_instances_repository
-            .borrow_mut()
-            .add_air_instance(air_instance);
+        pctx.air_instance_repo.add_air_instance(air_instance);
     }
 
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
