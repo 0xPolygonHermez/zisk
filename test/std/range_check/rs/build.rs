@@ -16,7 +16,7 @@ fn main() {
         .arg(root_path.join("../pil2-compiler/src/pil.js"))
         .arg("-I")
         .arg(root_path.join("lib/std/pil"))
-        .arg(root_path.join("test/std/range_check/range_check.pil"))
+        .arg(root_path.join("test/std/range_check/build.pil"))
         .arg("-o")
         .arg(root_path.join("test/std/range_check/build/range_check.pilout"))
         .status()
