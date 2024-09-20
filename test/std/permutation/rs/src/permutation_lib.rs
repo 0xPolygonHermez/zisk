@@ -2,7 +2,6 @@ use std::{error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_cli::commands::pil_helpers::PilHelpersCmd;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
@@ -139,6 +138,7 @@ pub extern "Rust" fn init_library(
     Ok(Box::new(permutation_witness))
 }
 
+#[cfg(test)]
 mod tests {
     use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
 

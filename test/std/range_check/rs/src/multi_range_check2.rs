@@ -20,7 +20,7 @@ where
 {
     const MY_NAME: &'static str = "MultiRangeCheck2";
 
-    pub fn new(wcm: Arc< WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let multi_range_check2 = Arc::new(Self { std_lib });
 
         wcm.register_component(
@@ -35,9 +35,7 @@ where
         multi_range_check2
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of the air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -119,12 +117,14 @@ where
 
                 if selected1 {
                     if range_selector1 {
-                        trace[i].a[0] = F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
+                        trace[i].a[0] =
+                            F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
 
                         self.std_lib
                             .range_check(trace[i].a[0], range1.0.clone(), range1.1.clone());
                     } else {
-                        trace[i].a[0] = F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
+                        trace[i].a[0] =
+                            F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
 
                         self.std_lib
                             .range_check(trace[i].a[0], range2.0.clone(), range2.1.clone());

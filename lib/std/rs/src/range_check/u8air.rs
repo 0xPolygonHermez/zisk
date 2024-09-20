@@ -77,7 +77,7 @@ impl<F: PrimeField> U8Air<F> {
 
         let mul = &*self.mul.lock().unwrap();
         set_hint_field(
-            &*self.wcm.get_sctx().setups,
+            &self.wcm.get_sctx().setups,
             air_instance,
             hint_id,
             "reference",
@@ -117,7 +117,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
 
                 // Obtain info from the mul hints
                 let u8air_hints = get_hint_ids_by_name(*setup.p_setup, "u8air");
-                if u8air_hints.len() > 0 {
+                if !u8air_hints.is_empty() {
                     *self.hint.lock().unwrap() = u8air_hints[0];
                 }
             }

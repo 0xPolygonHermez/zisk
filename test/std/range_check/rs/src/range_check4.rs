@@ -117,7 +117,7 @@ where
                     trace[i].a5 = F::from_canonical_u32(rng.gen_range(127..=(1 << 16)));
                     let mut a6_val: i128 = rng.gen_range(-1..=2i128.pow(3));
                     if a6_val < 0 {
-                        a6_val = F::order().to_i128().unwrap() + a6_val;
+                        a6_val += F::order().to_i128().unwrap();
                     }
                     trace[i].a6 = F::from_canonical_u64(a6_val as u64);
 
@@ -146,7 +146,7 @@ where
 
                 let mut a7_val: i128 = rng.gen_range(-2i128.pow(7) + 1..=-50);
                 if a7_val < 0 {
-                    a7_val = F::order().to_i128().unwrap() + a7_val;
+                    a7_val += F::order().to_i128().unwrap();
                 }
                 trace[i].a7 = F::from_canonical_u64(a7_val as u64);
                 self.std_lib
@@ -154,7 +154,7 @@ where
 
                 let mut a8_val: i128 = rng.gen_range(-2i128.pow(8) + 1..=-127);
                 if a8_val < 0 {
-                    a8_val = F::order().to_i128().unwrap() + a8_val;
+                    a8_val += F::order().to_i128().unwrap();
                 }
                 trace[i].a8 = F::from_canonical_u64(a8_val as u64);
                 self.std_lib

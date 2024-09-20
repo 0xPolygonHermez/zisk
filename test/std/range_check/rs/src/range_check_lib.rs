@@ -57,25 +57,23 @@ where
         // TODO: Ad macro data into RCAIRData: SpecifiedRanges0Trace.
         // In fact, I only need to pass the length of mul of Specified...
         // Anyways, this solution would be very very specific
-        let mut rc_air_data = Vec::new();
-
-        rc_air_data.push(RCAirData {
-            air_name: RangeCheckAir::U8Air,
-            airgroup_id: U_8_AIR_AIRGROUP_ID,
-            air_id: U_8_AIR_AIR_IDS[0],
-        });
-
-        rc_air_data.push(RCAirData {
-            air_name: RangeCheckAir::U16Air,
-            airgroup_id: U_16_AIR_AIRGROUP_ID,
-            air_id: U_16_AIR_AIR_IDS[0],
-        });
-
-        rc_air_data.push(RCAirData {
-            air_name: RangeCheckAir::SpecifiedRanges,
-            airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
-            air_id: SPECIFIED_RANGES_AIR_IDS[0],
-        });
+        let rc_air_data = vec![
+            RCAirData {
+                air_name: RangeCheckAir::U8Air,
+                airgroup_id: U_8_AIR_AIRGROUP_ID,
+                air_id: U_8_AIR_AIR_IDS[0],
+            },
+            RCAirData {
+                air_name: RangeCheckAir::U16Air,
+                airgroup_id: U_16_AIR_AIRGROUP_ID,
+                air_id: U_16_AIR_AIR_IDS[0],
+            },
+            RCAirData {
+                air_name: RangeCheckAir::SpecifiedRanges,
+                airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
+                air_id: SPECIFIED_RANGES_AIR_IDS[0],
+            },
+        ];
 
         let std_lib = Std::new(wcm.clone(), Some(rc_air_data));
         let range_check1 = RangeCheck1::new(wcm.clone(), std_lib.clone());
@@ -176,6 +174,7 @@ pub extern "Rust" fn init_library(
     Ok(Box::new(range_check_witness))
 }
 
+#[cfg(test)]
 mod tests {
     use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
 
