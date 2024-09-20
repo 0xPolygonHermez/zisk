@@ -319,15 +319,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             // Store the trace in the vector
             trace.push(t);
 
-            for b in 0..8 {
-                // Create an empty required
-                let mut tr: ZiskRequiredBinaryExtensionTable = Default::default();
-
-                // Fill it
-                tr.opcode = m_op;
-                tr.a = a_bytes[b] as u64;
-                tr.b = b_low;
-                tr.offset = if mode32 { 5 } else { 6 };
+            for a_byte in &a_bytes {
+                // Create a table required
+                let tr = ZiskRequiredBinaryExtensionTable {
+                    opcode: m_op,
+                    a: *a_byte as u64,
+                    b: b_low,
+                    offset: if mode32 { 5 } else { 6 },
+                };
 
                 // Store the required in the vector
                 table_required.push(tr);
