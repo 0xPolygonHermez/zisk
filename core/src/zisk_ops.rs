@@ -154,7 +154,7 @@ macro_rules! define_ops {
                 }
             }
 
-			/// Returns the call function of the operation
+            /// Returns the call function of the operation
             pub const fn get_call_function(&self) -> fn(&mut InstContext) -> () {
                 match self {
                     $(
