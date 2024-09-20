@@ -1,4 +1,5 @@
-name: Test setup
+name: Set up CI
+description: Set up CI
 inputs:
   pull_token:
     description: "Token to use for private repo access"
