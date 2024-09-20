@@ -9,11 +9,30 @@ on:
   merge_group:
 
 jobs:
-  test-x86_64:
-    name: Test on x86_64
+  cargo-check-x86_64:
+    name: cargo check (x86_64)
     runs-on: ubuntu-latest
     env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Setup CI
+        uses: ./.github/actions/setup
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          toolchain: stable
+          args: --all-targets --all-features
+
+  cargo-test-x86_64:
+    name: cargo test (x86_64)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
