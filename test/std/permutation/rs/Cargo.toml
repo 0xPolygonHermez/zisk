@@ -24,3 +24,6 @@ rand = { workspace = true }
 num-bigint = { workspace = true }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
+
+[build-dependencies]
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }

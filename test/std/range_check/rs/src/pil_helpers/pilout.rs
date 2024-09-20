@@ -14,11 +14,15 @@ pub const RANGE_CHECK_1_AIRGROUP_ID: usize = 2;
 
 pub const RANGE_CHECK_4_AIRGROUP_ID: usize = 3;
 
-pub const U_8_AIR_AIRGROUP_ID: usize = 4;
+pub const MULTI_RANGE_CHECK_1_AIRGROUP_ID: usize = 4;
 
-pub const U_16_AIR_AIRGROUP_ID: usize = 5;
+pub const MULTI_RANGE_CHECK_2_AIRGROUP_ID: usize = 5;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
+pub const U_8_AIR_AIRGROUP_ID: usize = 6;
+
+pub const U_16_AIR_AIRGROUP_ID: usize = 7;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 8;
 
 //AIR CONSTANTS
 
@@ -29,6 +33,10 @@ pub const RANGE_CHECK_2_AIR_IDS: &[usize] = &[0];
 pub const RANGE_CHECK_1_AIR_IDS: &[usize] = &[0];
 
 pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
+
+pub const MULTI_RANGE_CHECK_1_AIR_IDS: &[usize] = &[0];
+
+pub const MULTI_RANGE_CHECK_2_AIR_IDS: &[usize] = &[0];
 
 pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
 
@@ -53,6 +61,12 @@ impl Pilout {
 
         let air_group = pilout.add_air_group(Some("RangeCheck4"));
         air_group.add_air(Some("RangeCheck4"), 64);
+
+        let air_group = pilout.add_air_group(Some("MultiRangeCheck1"));
+        air_group.add_air(Some("MultiRangeCheck1"), 8);
+
+        let air_group = pilout.add_air_group(Some("MultiRangeCheck2"));
+        air_group.add_air(Some("MultiRangeCheck2"), 16);
 
         let air_group = pilout.add_air_group(Some("U8Air"));
         air_group.add_air(Some("U8Air"), 256);

@@ -9,9 +9,9 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4, SPECIFIED_RANGES_AIRGROUP_ID,
-    SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID, U_16_AIR_AIR_IDS, U_8_AIR_AIRGROUP_ID,
-    U_8_AIR_AIR_IDS,
+    MultiRangeCheck1, MultiRangeCheck2, Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4,
+    SPECIFIED_RANGES_AIRGROUP_ID, SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID, U_16_AIR_AIR_IDS,
+    U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS,
 };
 
 pub struct RangeCheckWitness<F: PrimeField> {
@@ -20,6 +20,8 @@ pub struct RangeCheckWitness<F: PrimeField> {
     pub range_check2: OnceCell<Arc<RangeCheck2<F>>>,
     pub range_check3: OnceCell<Arc<RangeCheck3<F>>>,
     pub range_check4: OnceCell<Arc<RangeCheck4<F>>>,
+    pub multi_range_check1: OnceCell<Arc<MultiRangeCheck1<F>>>,
+    pub multi_range_check2: OnceCell<Arc<MultiRangeCheck2<F>>>,
     pub std_lib: OnceCell<Arc<Std<F>>>,
 }
 
@@ -43,6 +45,8 @@ where
             range_check2: OnceCell::new(),
             range_check3: OnceCell::new(),
             range_check4: OnceCell::new(),
+            multi_range_check1: OnceCell::new(),
+            multi_range_check2: OnceCell::new(),
             std_lib: OnceCell::new(),
         }
     }
@@ -78,13 +82,17 @@ where
         let range_check2 = RangeCheck2::new(wcm.clone(), std_lib.clone());
         let range_check3 = RangeCheck3::new(wcm.clone(), std_lib.clone());
         let range_check4 = RangeCheck4::new(wcm.clone(), std_lib.clone());
+        let multi_range_check1 = MultiRangeCheck1::new(wcm.clone(), std_lib.clone());
+        let multi_range_check2 = MultiRangeCheck2::new(wcm.clone(), std_lib.clone());
 
-        self.wcm.set(wcm);
-        self.range_check1.set(range_check1);
-        self.range_check2.set(range_check2);
-        self.range_check3.set(range_check3);
-        self.range_check4.set(range_check4);
-        self.std_lib.set(std_lib);
+        let _ = self.wcm.set(wcm);
+        let _ = self.range_check1.set(range_check1);
+        let _ = self.range_check2.set(range_check2);
+        let _ = self.range_check3.set(range_check3);
+        let _ = self.range_check4.set(range_check4);
+        let _ = self.multi_range_check1.set(multi_range_check1);
+        let _ = self.multi_range_check2.set(multi_range_check2);
+        let _ = self.std_lib.set(std_lib);
     }
 }
 
@@ -121,7 +129,18 @@ where
             .get()
             .unwrap()
             .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.range_check4.get().unwrap().execute(pctx, ectx, sctx);
+        self.range_check4
+            .get()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.multi_range_check1
+            .get()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.multi_range_check2
+            .get()
+            .unwrap()
+            .execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(
@@ -155,4 +174,30 @@ pub extern "Rust" fn init_library(
         .init();
     let range_check_witness = RangeCheckWitness::new();
     Ok(Box::new(range_check_witness))
+}
+
+mod tests {
+    use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
+
+    #[test]
+    fn test_verify_constraints() {
+        let root_path = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .join("../../../../");
+        let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
+
+        let verify_constraints = VerifyConstraintsCmd {
+            witness_lib: root_path.join("target/debug/librange_check.so"),
+            rom: None,
+            public_inputs: None,
+            proving_key: root_path.join("test/std/range_check/build/provingKey"),
+            field: Field::Goldilocks,
+            verbose: 0,
+        };
+
+        if let Err(e) = verify_constraints.run() {
+            eprintln!("Failed to verify constraints: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 }

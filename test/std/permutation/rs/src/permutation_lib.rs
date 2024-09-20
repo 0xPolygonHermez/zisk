@@ -50,7 +50,7 @@ where
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
-        let mut wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
+        let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
         let std_lib = Std::new(wcm.clone(), None);
         let permutation1_6 = Permutation1_6::new(wcm.clone());
@@ -140,60 +140,27 @@ pub extern "Rust" fn init_library(
 }
 
 mod tests {
-    use proofman_cli::commands::pil_helpers::PilHelpersCmd;
+    use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
 
     #[test]
-    fn test_multiple_bash_commands() {
-        // TODO: Do it without commands.
-        //  TODO: Make it path independent.
+    fn test_verify_constraints() {
+        let root_path = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .join("../../../../");
+        let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
 
-        let root_path = std::env::current_dir().unwrap().join("../../../../");
-        let root_path = std::fs::canonicalize(root_path).unwrap();
-
-        let build_dir = root_path.join("test/std/permutation/build/");
-        if !build_dir.exists() {
-            std::fs::create_dir_all(build_dir).unwrap();
-        }
-
-        // Compile the pil file
-        let _compilation = std::process::Command::new("node")
-            .arg(root_path.join("../pil2-compiler/src/pil.js"))
-            .arg("-I")
-            .arg(root_path.join("lib/std/pil"))
-            .arg(root_path.join("test/std/permutation/permutation.pil"))
-            .arg("-o")
-            .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
-            .status()
-            .expect("Failed to execute command");
-
-        let proofman_dir = root_path.join("../pil2-proofman");
-
-        let pil_helpers = PilHelpersCmd {
-            pilout: root_path.join("test/std/permutation/build/permutation.pilout"),
-            path: root_path.join("test/std/permutation/rs/src"),
-            overide: true,
+        let verify_constraints = VerifyConstraintsCmd {
+            witness_lib: root_path.join("target/debug/libpermutation.so"),
+            rom: None,
+            public_inputs: None,
+            proving_key: root_path.join("test/std/permutation/build/provingKey"),
+            field: Field::Goldilocks,
+            verbose: 0,
         };
 
-        pil_helpers.run().expect("Failed to generate pil_helpers");
-
-        // let status = std::process::Command::new("cargo")
-        //     .arg("run")
-        //     .arg("--bin")
-        //     .arg("proofman-cli")
-        //     .arg("pil-helpers")
-        //     .arg("--pilout")
-        //     .arg(root_path.join("test/std/permutation/build/permutation.pilout"))
-        //     .arg("--path")
-        //     .arg(root_path.join("test/std/permutation/rs/src"))
-        //     .arg("-o")
-        //     .current_dir(proofman_dir)
-        //     .status()
-        //     .expect("Failed to execute command");
-
-        // if status.success() {
-        //     println!("Command executed successfully");
-        // } else {
-        //     println!("Command failed");
-        // }
+        if let Err(e) = verify_constraints.run() {
+            eprintln!("Failed to verify constraints: {:?}", e);
+            std::process::exit(1);
+        }
     }
 }

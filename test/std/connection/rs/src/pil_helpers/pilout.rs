@@ -23,9 +23,7 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("Build", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Connection"));
-        air_group.add_air(Some("Connection1"), 8);
-        air_group.add_air(Some("Connection2"), 16);
-        air_group.add_air(Some("ConnectionNew"), 16);
+        air_group.add_air(Some("Connection1"), 8);        air_group.add_air(Some("Connection2"), 16);        air_group.add_air(Some("ConnectionNew"), 16);
 
         pilout
     }

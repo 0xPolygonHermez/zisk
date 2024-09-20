@@ -29,12 +29,7 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("Build", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Lookup"));
-        air_group.add_air(Some("Lookup0"), 1024);
-        air_group.add_air(Some("Lookup1"), 1024);
-        air_group.add_air(Some("Lookup2_12"), 4096);
-        air_group.add_air(Some("Lookup2_13"), 8192);
-        air_group.add_air(Some("Lookup2_15"), 32768);
-        air_group.add_air(Some("Lookup3"), 16384);
+        air_group.add_air(Some("Lookup0"), 1024);        air_group.add_air(Some("Lookup1"), 1024);        air_group.add_air(Some("Lookup2_12"), 4096);        air_group.add_air(Some("Lookup2_13"), 8192);        air_group.add_air(Some("Lookup2_15"), 32768);        air_group.add_air(Some("Lookup3"), 16384);
 
         pilout
     }

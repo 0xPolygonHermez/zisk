@@ -32,7 +32,7 @@ where
         lookup0
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -58,7 +58,7 @@ where
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 

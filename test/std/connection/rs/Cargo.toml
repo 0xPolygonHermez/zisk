@@ -15,6 +15,7 @@ crate-type = ["dylib"]
 proofman = { path = "../../../../../pil2-proofman/proofman" }
 proofman-common = { path = "../../../../../pil2-proofman/common" }
 proofman-macros = { path = "../../../../../pil2-proofman/macros" }
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }
 pil-std-lib = { path = "../../../../lib/std/rs" }
 
 env_logger = { workspace = true }
@@ -23,3 +24,6 @@ rand = { workspace = true }
 num-bigint = { workspace = true }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
+
+[build-dependencies]
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }
