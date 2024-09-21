@@ -242,9 +242,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.17"
+version = "4.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e5a21b8495e732f1b3c364c9949b201ca7bae518c502c80256c96ad79eaf6ac"
+checksum = "b0956a43b323ac1afaffc053ed5c4b7c1f1800bacd1683c353aabbb752515dd3"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -252,9 +252,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.17"
+version = "4.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cf2dd12af7a047ad9d6da2b6b249759a22a7abc0f474c1dae1777afa4b21a73"
+checksum = "4d72166dd41634086d5803a47eb71ae740e61d84709c36f3c34110173db3961b"
 dependencies = [
  "anstream",
  "anstyle",
@@ -264,9 +264,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.13"
+version = "4.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501d359d5f3dcaf6ecdeee48833ae73ec6e42723a1e52419c79abf9507eec0a0"
+checksum = "4ac6a0c7b1a9e9a5186361f67dfa1b88213572f427fb9ab038efb2bd8c582dab"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1323,7 +1323,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "bytes",
  "log",
@@ -1400,9 +1400,9 @@ dependencies = [
 
 [[package]]
 name = "portable-atomic"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da544ee218f0d287a911e9c99a39a8c9bc8fcad3cb8db5959940044ecfc67265"
+checksum = "d30538d42559de6b034bc76fd6dd4c38961b1ee5c6c56e3808c50128fdbc22ce"
 
 [[package]]
 name = "powerfmt"
@@ -1463,7 +1463,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "colored",
  "env_logger",
@@ -1482,7 +1482,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "log",
  "p3-field",
@@ -1499,7 +1499,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -1509,7 +1509,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1519,7 +1519,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "log",
 ]
@@ -1527,7 +1527,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "colored",
  "sysinfo",
@@ -2116,7 +2116,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "log",
  "p3-field",
@@ -2432,7 +2432,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#560e975cc773ad0ab95a0769fe3fea341eac1179"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=new_api#2bc559c341478c92edb29608e32074cfc820b1df"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -2476,9 +2476,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-width"
-version = "0.1.13"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
 
 [[package]]
 name = "untrusted"
