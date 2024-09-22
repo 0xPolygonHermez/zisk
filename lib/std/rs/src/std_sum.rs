@@ -12,7 +12,7 @@ use proofman_hints::{
 
 use crate::Decider;
 
-use rayon::prelude::*; // Import rayon's parallel iterator methods
+use rayon::prelude::*;
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
 pub struct StdSum<F> {
@@ -118,15 +118,15 @@ impl<F: Copy + Debug + Field> StdSum<F> {
 
                             // Apply a map&reduce strategy to compute the division
                             // TODO! Explore how to do it in only one step
+                            // Step 1: Compute the division in parallel
                             let results: Vec<HintFieldOutput<F>> = (0..num_rows)
-                                .into_par_iter() // Parallel iterator from rayon
+                                .into_par_iter()
                                 .map(|i| num.get(i) / den.get(i))
                                 .collect(); // Collect results into a vector
 
                             // Step 2: Store the results in 'im'
-                            for (i, _) in results.iter().enumerate().take(num_rows) {
-                            // for i in 0..num_rows {
-                                im.set(i, results[i]);
+                            for (i, &value) in results.iter().enumerate() {
+                                im.set(i, value);
                             }
 
                             set_hint_field(
