@@ -1,22 +1,26 @@
-use std::{
-    fmt::Debug,
-    sync::{Arc, Mutex},
-};
+use core::panic;
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use p3_field::Field;
-use proofman_common::{ProofCtx, SetupCtx};
+use p3_field::{Field, PrimeField};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
+    HintFieldOutput,
 };
 
 use crate::Decider;
 
-pub struct StdProd<F> {
+const MODE_DEBUG: bool = false;
+
+pub struct StdProd<F: Copy> {
     _phantom: std::marker::PhantomData<F>,
     prod_airs: Mutex<Vec<(usize, usize, Vec<u64>)>>, // (airgroup_id, air_id, prod_hints)
+    bus_vals_num: Mutex<Vec<HintFieldOutput<F>>>,
+    bus_vals_den: Mutex<Vec<HintFieldOutput<F>>>,
 }
 
-impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
+impl<F: Field> Decider<F> for StdProd<F> {
     fn decide(&self, sctx: &SetupCtx, pctx: &ProofCtx<F>) {
         // Scan the pilout for airs that have prod-related hints
         let air_groups = pctx.pilout.air_groups();
@@ -39,22 +43,55 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
     }
 }
 
-impl<F: Copy + Debug + Field> StdProd<F> {
+impl<F: PrimeField> StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+        let std_prod = Arc::new(Self {
             _phantom: std::marker::PhantomData,
             prod_airs: Mutex::new(Vec::new()),
-        })
+            bus_vals_num: Mutex::new(Vec::new()),
+            bus_vals_den: Mutex::new(Vec::new()),
+        });
+
+        wcm.register_component(std_prod.clone(), None, None);
+
+        std_prod
     }
 
-    pub fn calculate_witness(
+    fn update_bus_vals(&self, val: HintFieldOutput<F>, is_num: bool) {
+        let mut bus_vals: MutexGuard<Vec<HintFieldOutput<F>>>;
+        let mut other_bus_vals: MutexGuard<Vec<HintFieldOutput<F>>>;
+        if is_num {
+            bus_vals = self.bus_vals_den.lock().unwrap();
+            other_bus_vals = self.bus_vals_num.lock().unwrap();
+        } else {
+            bus_vals = self.bus_vals_num.lock().unwrap();
+            other_bus_vals = self.bus_vals_den.lock().unwrap();
+        }
+
+        if bus_vals.contains(&val) {
+            let index = bus_vals.iter().position(|x| *x == val).unwrap();
+            bus_vals.remove(index);
+        } else {
+            other_bus_vals.push(val);
+        }
+    }
+}
+
+impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
+    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.decide(sctx, pctx);
+    }
+
+    fn calculate_witness(
         &self,
         stage: u32,
-        pctx: &ProofCtx<F>,
+        _air_instance: Option<usize>,
+        pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) {
         if stage == 2 {
             let prod_airs = self.prod_airs.lock().unwrap();
             prod_airs
@@ -123,8 +160,18 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         );
 
                         gprod.set(0, num.get(0) / den.get(0));
-                        for i in 1..num_rows {
-                            gprod.set(i, gprod.get(i - 1) * (num.get(i) / den.get(i)));
+                        if MODE_DEBUG {
+                            self.update_bus_vals(num.get(0), true);
+                            self.update_bus_vals(den.get(0), false);
+                            for i in 1..num_rows {
+                                self.update_bus_vals(num.get(i), true);
+                                self.update_bus_vals(den.get(i), false);
+                                gprod.set(i, gprod.get(i - 1) * (num.get(i) / den.get(i)));
+                            }
+                        } else {
+                            for i in 1..num_rows {
+                                gprod.set(i, gprod.get(i - 1) * (num.get(i) / den.get(i)));
+                            }
                         }
 
                         // set the computed gprod column and its associated airgroup_val
@@ -152,7 +199,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                     });
                 });
         }
-
-        Ok(0)
     }
+
+    fn end_proof(&self) {}
 }

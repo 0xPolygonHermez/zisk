@@ -3,13 +3,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use p3_field::Field;
-use proofman_common::{ProofCtx, SetupCtx};
+use p3_field::{Field, PrimeField};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
 };
 
 use crate::Decider;
+
+const MODE_DEBUG: bool = false;
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
 pub struct StdSum<F> {
@@ -41,22 +44,34 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
     }
 }
 
-impl<F: Copy + Debug + Field> StdSum<F> {
+impl<F: PrimeField> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum";
 
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+        let std_sum = Arc::new(Self {
             _phantom: std::marker::PhantomData,
             sum_airs: Mutex::new(Vec::new()),
-        })
+        });
+
+        wcm.register_component(std_sum.clone(), None, None);
+
+        std_sum
+    }
+}
+
+impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
+    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.decide(sctx, pctx);
     }
 
-    pub fn calculate_witness(
+    fn calculate_witness(
         &self,
         stage: u32,
-        pctx: &ProofCtx<F>,
+        _air_instance: Option<usize>,
+        pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
         sctx: &SetupCtx,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) {
         if stage == 2 {
             let sum_airs = self.sum_airs.lock().unwrap();
             sum_airs
@@ -189,7 +204,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                     });
                 });
         }
-
-        Ok(0)
     }
+
+    fn end_proof(&self) {}
 }

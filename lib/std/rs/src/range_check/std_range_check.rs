@@ -7,8 +7,8 @@ use std::{
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 
-use proofman::WitnessManager;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue,
 };
@@ -116,12 +116,16 @@ impl<F: PrimeField> StdRangeCheck<F> {
             }
         }
 
-        Arc::new(Self {
+        let std_range_check = Arc::new(Self {
             ranges: Mutex::new(Vec::new()),
             u8air,
             u16air,
             specified_ranges,
-        })
+        });
+
+        wcm.register_component(std_range_check.clone(), None, None);
+
+        std_range_check
     }
 
     pub fn register_range(&self, sctx: &SetupCtx, airgroup_id: usize, air_id: usize, hint: u64) {
@@ -306,5 +310,22 @@ impl<F: PrimeField> StdRangeCheck<F> {
         if let Some(specified_ranges) = self.specified_ranges.as_ref() {
             specified_ranges.drain_inputs();
         }
+    }
+}
+
+impl<F: PrimeField> WitnessComponent<F> for StdRangeCheck<F> {
+    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+        self.decide(sctx, pctx);
+    }
+
+    fn calculate_witness(
+        &self,
+        _stage: u32,
+        _air_instance: Option<usize>,
+        _pctx: &mut ProofCtx<F>,
+        _ectx: &ExecutionCtx,
+        _sctx: &SetupCtx,
+    ) {
+        // Nothing to do
     }
 }

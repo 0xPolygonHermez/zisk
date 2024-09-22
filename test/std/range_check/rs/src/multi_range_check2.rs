@@ -117,12 +117,14 @@ where
 
                 if selected1 {
                     if range_selector1 {
-                        trace[i].a[0] = F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
+                        trace[i].a[0] =
+                            F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
 
                         self.std_lib
                             .range_check(trace[i].a[0], range1.0.clone(), range1.1.clone());
                     } else {
-                        trace[i].a[0] = F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
+                        trace[i].a[0] =
+                            F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
 
                         self.std_lib
                             .range_check(trace[i].a[0], range2.0.clone(), range2.1.clone());
