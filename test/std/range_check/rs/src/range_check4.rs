@@ -71,7 +71,7 @@ where
         let mut rng = rand::thread_rng();
 
         log::info!(
-            "{}: Initiating witness computation for AIR '{}' at stage {}",
+            "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             "RangeCheck4",
             stage
@@ -167,12 +167,5 @@ where
         }
 
         self.std_lib.unregister_predecessor(pctx, None);
-
-        log::info!(
-            "{}: Completed witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            "RangeCheck4",
-            stage
-        );
     }
 }

@@ -70,7 +70,7 @@ where
             .get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
-            "{}: Initiating witness computation for AIR '{}' at stage {}",
+            "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),
             stage
@@ -122,12 +122,5 @@ where
                 trace[i].sel2 = F::from_bool(true);
             }
         }
-
-        log::info!(
-            "{}: Completed witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            air.name().unwrap_or("unknown"),
-            stage
-        );
     }
 }

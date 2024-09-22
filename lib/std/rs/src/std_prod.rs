@@ -73,7 +73,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
                         log::info!(
-                            "{}: Initiating witness computation for AIR '{}' at stage {}",
+                            "{}: ··· Witness computation for AIR '{}' at stage {}",
                             Self::MY_NAME,
                             air.name().unwrap_or("unknown"),
                             stage
@@ -139,13 +139,6 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             gprod_hint as u64,
                             "result",
                             gprod.get(num_rows - 1),
-                        );
-
-                        log::info!(
-                            "{}: Completed witness computation for AIR '{}' at stage {}",
-                            Self::MY_NAME,
-                            air.name().unwrap_or("unknown"),
-                            stage
                         );
                     });
                 });

@@ -31,7 +31,7 @@ pub struct SpecifiedRanges<F: PrimeField> {
 }
 
 impl<F: PrimeField> SpecifiedRanges<F> {
-    const MY_NAME: &'static str = "SpecifiedRanges";
+    const MY_NAME: &'static str = "SpecRang";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let specified_ranges = Arc::new(Self {

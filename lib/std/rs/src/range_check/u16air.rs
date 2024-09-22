@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
@@ -9,6 +9,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue,
 };
+use std::sync::atomic::Ordering;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 const NUM_ROWS: usize = 1 << 16;
@@ -17,7 +18,7 @@ pub struct U16Air<F: Copy> {
     wcm: Arc<WitnessManager<F>>,
 
     // Parameters
-    hint: Mutex<u64>,
+    hint: AtomicU64,
     airgroup_id: usize,
     air_id: usize,
     // Inputs
@@ -26,12 +27,12 @@ pub struct U16Air<F: Copy> {
 }
 
 impl<F: PrimeField> U16Air<F> {
-    const MY_NAME: &'static str = "U16Air";
+    const MY_NAME: &'static str = "U16Air  ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_id: usize) -> Arc<Self> {
         let u16air = Arc::new(Self {
             wcm: wcm.clone(),
-            hint: Mutex::new(0),
+            hint: AtomicU64::new(0),
             airgroup_id,
             air_id,
             inputs: Mutex::new(Vec::new()),
@@ -65,9 +66,6 @@ impl<F: PrimeField> U16Air<F> {
         // Perform the last update
         self.update_multiplicity(drained_inputs);
 
-        // Set the multiplicity column as done
-        let hint_id = *self.hint.lock().unwrap();
-
         let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
         let air_instance_id =
             air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
@@ -79,7 +77,7 @@ impl<F: PrimeField> U16Air<F> {
         set_hint_field(
             &self.wcm.get_sctx().setups,
             air_instance,
-            hint_id,
+            self.hint.load(Ordering::Acquire),
             "reference",
             mul,
         );
@@ -118,7 +116,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
                 // Obtain info from the mul hints
                 let u16air_hints = get_hint_ids_by_name(*setup.p_setup, "u16air");
                 if !u16air_hints.is_empty() {
-                    *self.hint.lock().unwrap() = u16air_hints[0];
+                    self.hint.store(u16air_hints[0], Ordering::Release);
                 }
             }
         }
@@ -135,7 +133,6 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
         // Add a new air instance. Since U16Air is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
 
-        let hint = self.hint.lock().unwrap().to_usize().unwrap();
         let setup_repo = &*sctx.setups;
 
         *self.mul.lock().unwrap() = get_hint_field::<F>(
@@ -143,7 +140,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
             &pctx.public_inputs,
             &pctx.challenges,
             &mut air_instance,
-            hint,
+            self.hint.load(Ordering::Acquire) as usize,
             "reference",
             HintFieldOptions::dest(),
         );

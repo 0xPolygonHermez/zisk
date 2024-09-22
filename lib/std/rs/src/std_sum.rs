@@ -7,9 +7,12 @@ use p3_field::Field;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
+    HintFieldOutput,
 };
 
 use crate::Decider;
+
+use rayon::prelude::*; // Import rayon's parallel iterator methods
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
 pub struct StdSum<F> {
@@ -40,7 +43,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
 }
 
 impl<F: Copy + Debug + Field> StdSum<F> {
-    const MY_NAME: &'static str = "STD Sum";
+    const MY_NAME: &'static str = "STD Sum ";
 
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -75,7 +78,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
                         log::info!(
-                            "{}: Initiating witness computation for AIR '{}' at stage {}",
+                            "{}: ··· Witness computation for AIR '{}' at stage {}",
                             Self::MY_NAME,
                             air.name().unwrap_or("unknown"),
                             stage
@@ -113,10 +116,19 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 HintFieldOptions::default(),
                             );
 
-                            for i in 0..num_rows {
-                                // TODO: We should perform the following division in batch using div_lib
-                                im.set(i, num.get(i) / den.get(i));
+                            // Apply a map&reduce strategy to compute the division
+                            // TODO! Explore how to do it in only one step
+                            let results: Vec<HintFieldOutput<F>> = (0..num_rows)
+                                .into_par_iter() // Parallel iterator from rayon
+                                .map(|i| num.get(i) / den.get(i))
+                                .collect(); // Collect results into a vector
+
+                            // Step 2: Store the results in 'im'
+                            for (i, _) in results.iter().enumerate().take(num_rows) {
+                            // for i in 0..num_rows {
+                                im.set(i, results[i]);
                             }
+
                             set_hint_field(
                                 sctx.setups.as_ref(),
                                 air_instance,
@@ -176,13 +188,6 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             gsum_hint as u64,
                             "result",
                             gsum.get(num_rows - 1),
-                        );
-
-                        log::info!(
-                            "{}: Completed witness computation for AIR '{}' at stage {}",
-                            Self::MY_NAME,
-                            air.name().unwrap_or("unknown"),
-                            stage
                         );
                     });
                 });
