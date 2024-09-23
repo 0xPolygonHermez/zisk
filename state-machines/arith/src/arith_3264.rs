@@ -74,7 +74,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
                 if drain && !inputs.is_empty() {
-                    println!("Arith3264SM: Draining inputs3264");
+                    // println!("Arith3264SM: Draining inputs3264");
                 }
 
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());

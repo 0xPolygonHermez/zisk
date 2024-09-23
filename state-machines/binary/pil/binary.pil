@@ -161,5 +161,5 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     expr op = m_op + 16 * mode32;
 
     col witness multiplicity;
-    // lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, (1-op_is_min_max)*cout], multiplicity);
+    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, (1-op_is_min_max)*cout], multiplicity);
 }

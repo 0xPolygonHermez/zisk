@@ -11,7 +11,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+const PROVE_CHUNK_SIZE: usize = 1 << 16;
 
 #[allow(dead_code)]
 pub struct BinarySM<F> {
@@ -66,7 +66,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinarySM<F> {
                 true,
                 scope,
             );
-
             self.threads_controller.wait_for_threads();
 
             self.binary_basic_sm.unregister_predecessor(scope);
@@ -129,7 +128,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                binary_basic_sm_cloned.prove(&drained_inputs_basic, drain, scope);
+                binary_basic_sm_cloned.prove(&drained_inputs_basic, false, scope);
 
                 thread_controller.remove_working_thread();
             });
@@ -150,7 +149,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                binary_extension_sm_cloned.prove(&drained_inputs_extension, drain, scope);
+                binary_extension_sm_cloned.prove(&drained_inputs_extension, false, scope);
 
                 thread_controller.remove_working_thread();
             });

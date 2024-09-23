@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use log::info;
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -14,7 +15,7 @@ use zisk_pil::*;
 
 use crate::BinaryBasicTableSM;
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+const PROVE_CHUNK_SIZE: usize = 1 << 16;
 
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -38,6 +39,8 @@ pub enum BinaryBasicSMErr {
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
+    const MY_NAME: &'static str = "BinarySM";
+
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
@@ -469,24 +472,29 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+            let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
+            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                let binary_basic_table_sm = self.binary_basic_table_sm.clone();
+                let wcm = self.wcm.clone();
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                let binary_basic_table_sm = self.binary_basic_table_sm.clone();
-
-                let wcm = self.wcm.clone();
-
                 scope.spawn(move |scope| {
-                    let (trace_row, table_required) = Self::process_slice(&_drained_inputs);
+                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                     binary_basic_table_sm.prove(&table_required, false, scope);
 
+                    info!(
+                        "{}: ··· Creating Binary basic instance [{} rows]",
+                        Self::MY_NAME,
+                        drained_inputs.len()
+                    );
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
-                        .get_buffer_info("Binary".into(), BINARY_AIR_IDS[0])
+                        .get_buffer_info(wcm.get_sctx(), BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0])
                         .expect("Binary basic buffer not found");
 
                     let trace_buffer =

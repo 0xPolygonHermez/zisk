@@ -149,8 +149,15 @@ impl<F: AbstractField + Copy + Send + Sync + 'static>
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+            let air = self
+                .wcm
+                .get_pctx()
+                .pilout
+                .get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+            let num_rows = air.num_rows();
+
+            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(num_rows, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 self.process_slice(&drained_inputs);

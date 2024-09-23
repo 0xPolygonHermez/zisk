@@ -57,7 +57,7 @@ pub struct MainSM<F> {
     arith_sm: Arc<ArithSM>,
 }
 
-impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
+impl<'a, F: AbstractField + Eq + Default + Copy + Send + Sync + 'static> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     /// Default number of inputs of the main state machine that are accumulated before being
@@ -146,7 +146,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         public_inputs_path: &Path,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
@@ -177,6 +177,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
                     scope,
                     pctx.clone(),
                     ectx.clone(),
+                    sctx.clone(),
                 )
             };
 
@@ -219,7 +220,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Main".into(), MAIN_AIR_IDS[0])
+                .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
                 .expect("Error getting buffer info");
 
             // Map the F buffer to a Main0Trace
@@ -239,7 +240,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_segment = mem::take(last_air_segment);
             pool.scope(|scope| {
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, true);
+                    Self::create_air_instance(air_segment, pctx, ectx, sctx, true);
                 });
             });
         }
@@ -254,6 +255,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         scope: &Scope<'a>,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
         let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
@@ -301,7 +303,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
                 let air_segment = mem::take(air_segment);
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, false);
+                    Self::create_air_instance(air_segment, pctx, ectx, sctx, false);
                 });
             }
         });
@@ -319,29 +321,40 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         air_segment: MainAirSegment<F>,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
         last_segment: bool,
     ) {
         info!(
-            "{}: ··· Creating Main segment #{} [{} inputs]",
+            "{}: ··· Creating Main segment #{} [{} rows]",
             Self::MY_NAME,
             air_segment.air_segment_id,
             air_segment.filled_inputs
         );
-
         // Compute buffer size using the BufferAllocator
-        let (buffer_size, offsets) =
-            match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
-                Ok((size, offsets)) => (size, offsets),
-                Err(err) => {
-                    // Handle the error case, for example:
-                    panic!("Error getting buffer info: {}", err);
-                }
-            };
+        let (buffer_size, offsets) = match ectx.buffer_allocator.as_ref().get_buffer_info(
+            &sctx,
+            MAIN_AIRGROUP_ID,
+            MAIN_AIR_IDS[0],
+        ) {
+            Ok((size, offsets)) => (size, offsets),
+            Err(err) => {
+                // Handle the error case, for example:
+                panic!("Error getting buffer info: {}", err);
+            }
+        };
 
         let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
 
+        // println!("Filled inputs: {}", air_segment.filled_inputs);
+        // println!("Num rows: {}", main_trace.num_rows());
         for i in air_segment.filled_inputs..main_trace.num_rows() {
             main_trace[i].flag = F::from_canonical_usize(1);
+            // main_trace[i] = main_trace[i - 1];
+            // if i > 943718 {
+            //     print!("main_trace[{}].is_ext: {:?} / ", i, main_trace[i].is_external_op);
+            //     print!("main_trace[{}].op: {:?} / ", i, main_trace[i].op);
+            //     println!("main_trace[{}].flag: {:?}", i, main_trace[i].flag);
+            // }
         }
 
         // TODO: Do it in parallel
@@ -353,6 +366,20 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             main_trace[i].main_last_segment = main_last_segment;
             main_trace[i].main_segment = main_segment;
         }
+
+        for i in 0..main_trace.num_rows() {
+            let is_external_op = main_trace[i].is_external_op;
+            let op = main_trace[i].op;
+            let flag = main_trace[i].flag;
+
+            let result = (F::one() - is_external_op) * (F::one() - op) * (F::one() - flag);
+
+            if result != F::zero() {
+                println!("row: {}", i);
+            }
+        }
+
+        // println!("main_trace[{}].flag: {:?}", 943720, main_trace[943720].flag);
 
         let main_trace_buffer = main_trace.buffer.unwrap();
 

@@ -1,4 +1,6 @@
-use log::debug;
+use log::trace;
+use pil_std_lib::Std;
+use proofman_hints::{print_by_name, print_row};
 // use pil_std_lib::Std;
 use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
@@ -7,7 +9,7 @@ use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
-use p3_field::AbstractField;
+use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
@@ -16,7 +18,7 @@ use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
 use sm_main::MainSM;
 use sm_mem::{MemAlignedSM, MemSM, MemUnalignedSM};
 
-pub struct ZiskWitness<F> {
+pub struct ZiskWitness<F: PrimeField> {
     pub public_inputs_path: PathBuf,
     pub rom_path: PathBuf,
 
@@ -36,10 +38,10 @@ pub struct ZiskWitness<F> {
     pub mem_aligned_sm: Option<Arc<MemAlignedSM>>,
     pub mem_unaligned_sm: Option<Arc<MemUnalignedSM>>,
     pub quickops_sm: Option<Arc<QuickOpsSM>>,
-    // pub std: Option<Arc<Std<F>>>,
+    pub std: Option<Arc<Std<F>>>,
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
+impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
     const MY_NAME: &'static str = "ZiskLib ";
 
     pub fn new(rom_path: PathBuf, public_inputs_path: PathBuf) -> Result<Self, Box<dyn Error>> {
@@ -71,7 +73,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             mem_aligned_sm: None,
             mem_unaligned_sm: None,
             quickops_sm: None,
-            // std: None,
+            std: None,
         })
     }
 
@@ -89,8 +91,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const ARITH3264_AIR_IDS: &[usize] = &[7];
         pub const QUICKOPS_AIRGROUP_ID: usize = 102;
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
-
-        // let std = Std::new(wcm.clone(), None);
 
         let mem_aligned_sm = MemAlignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm =
@@ -142,6 +142,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MAIN_AIR_IDS,
         );
 
+        _ = Std::new(wcm.clone(), None);
+
         self.wcm = Some(wcm);
         self.arith_sm = Some(arith_sm);
         self.arith_32_sm = Some(arith_32_sm);
@@ -159,7 +161,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> ZiskWitness<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
+impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(
         &mut self,
         pctx: Arc<ProofCtx<F>>,
@@ -175,8 +177,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
         self.wcm.as_ref().unwrap().end_proof();
     }
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        log::info!("{}: --> Executing proof", Self::MY_NAME);
-
         timer_start!(EXECUTE);
         // TODO let mut ectx = self.wcm.createExecutionContext(wneeds);
         // TODO Create the pool of threads to execute the state machines here?
@@ -196,15 +196,41 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> WitnessLibrary<F> for Zisk
         self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
-    fn debug(&mut self, _pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
-        // let mut air_instances = pctx.air_instances.write().unwrap();
+    fn debug(&mut self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+        let air_instances = pctx.air_instance_repo.air_instances.read().unwrap();
 
-        // for (_air_instance_id, air_instance_ctx) in air_instances.iter_mut().enumerate() {
-        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a_src_imm", None, 51, 52);
-        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a", Some(vec![0]), 51, 52);
-        //     _ = print_by_name(sctx, air_instance_ctx, "Main.a", Some(vec![1]), 51, 52);
-        //     _ = print_by_name(sctx, air_instance_ctx, "a_use_sp_imm1", None, 51, 52);
-        // }
+        for (_air_instance_id, air_instance) in air_instances.iter().enumerate() {
+            if air_instance.airgroup_id == 0 {
+                //         _ = print_by_name(
+                //             &sctx,
+                //             pctx.clone(),
+                //             air_instance,
+                //             "Main.is_external_op",
+                //             None,
+                //             943718,
+                //             943724,
+                //         );
+                //         _ = print_by_name(
+                //             &sctx,
+                //             pctx.clone(),
+                //             air_instance,
+                //             "Main.op",
+                //             Some(vec![0]),
+                //             943718,
+                //             943724,
+                //         );
+                // print_row(&sctx, &air_instance, 1, 943719);
+                // _ = print_by_name(
+                //     &sctx,
+                //     pctx.clone(),
+                //     air_instance,
+                //     "Main.flag",
+                //     Some(vec![1]),
+                //     943718,
+                //     943724,
+                // );
+            }
+        }
     }
     fn pilout(&self) -> WitnessPilout {
         Pilout::pilout()

@@ -250,7 +250,11 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
-                        .get_buffer_info("BinaryExtension".into(), BINARY_EXTENSION_AIR_IDS[0])
+                        .get_buffer_info(
+                            wcm.get_sctx(),
+                            BINARY_EXTENSION_AIRGROUP_ID,
+                            BINARY_EXTENSION_AIR_IDS[0],
+                        )
                         .expect("Binary extension buffer not found");
 
                     let trace_buffer =
