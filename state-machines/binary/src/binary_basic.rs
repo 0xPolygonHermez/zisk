@@ -15,8 +15,6 @@ use zisk_pil::*;
 
 use crate::BinaryBasicTableSM;
 
-const PROVE_CHUNK_SIZE: usize = 1 << 16;
-
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
@@ -497,15 +495,18 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         .get_buffer_info(wcm.get_sctx(), BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0])
                         .expect("Binary basic buffer not found");
 
+                    let trace_row_len = trace_row.len();
                     let trace_buffer =
-                        Binary0Trace::<F>::map_row_vec(trace_row).unwrap().buffer.unwrap();
+                        Binary0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
                     let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
-                    buffer[offsets[0] as usize..offsets[0] as usize + trace_buffer.len()]
+                    buffer[offsets[0] as usize..
+                        offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer);
 
                     let air_instance =
                         AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], None, buffer);
+
                     wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
                     thread_controller.remove_working_thread();

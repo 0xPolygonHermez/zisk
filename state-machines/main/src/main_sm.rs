@@ -330,31 +330,18 @@ impl<'a, F: AbstractField + Eq + Default + Copy + Send + Sync + 'static> MainSM<
             air_segment.air_segment_id,
             air_segment.filled_inputs
         );
+
         // Compute buffer size using the BufferAllocator
-        let (buffer_size, offsets) = match ectx.buffer_allocator.as_ref().get_buffer_info(
-            &sctx,
-            MAIN_AIRGROUP_ID,
-            MAIN_AIR_IDS[0],
-        ) {
-            Ok((size, offsets)) => (size, offsets),
-            Err(err) => {
-                // Handle the error case, for example:
-                panic!("Error getting buffer info: {}", err);
-            }
-        };
+        let (buffer_size, offsets) = ectx
+            .buffer_allocator
+            .as_ref()
+            .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
 
-        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
+        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs, false).unwrap();
 
-        // println!("Filled inputs: {}", air_segment.filled_inputs);
-        // println!("Num rows: {}", main_trace.num_rows());
         for i in air_segment.filled_inputs..main_trace.num_rows() {
-            main_trace[i].flag = F::from_canonical_usize(1);
-            // main_trace[i] = main_trace[i - 1];
-            // if i > 943718 {
-            //     print!("main_trace[{}].is_ext: {:?} / ", i, main_trace[i].is_external_op);
-            //     print!("main_trace[{}].op: {:?} / ", i, main_trace[i].op);
-            //     println!("main_trace[{}].flag: {:?}", i, main_trace[i].flag);
-            // }
+            main_trace[i] = main_trace[i - 1];
         }
 
         // TODO: Do it in parallel
@@ -366,20 +353,6 @@ impl<'a, F: AbstractField + Eq + Default + Copy + Send + Sync + 'static> MainSM<
             main_trace[i].main_last_segment = main_last_segment;
             main_trace[i].main_segment = main_segment;
         }
-
-        for i in 0..main_trace.num_rows() {
-            let is_external_op = main_trace[i].is_external_op;
-            let op = main_trace[i].op;
-            let flag = main_trace[i].flag;
-
-            let result = (F::one() - is_external_op) * (F::one() - op) * (F::one() - flag);
-
-            if result != F::zero() {
-                println!("row: {}", i);
-            }
-        }
-
-        // println!("main_trace[{}].flag: {:?}", 943720, main_trace[943720].flag);
 
         let main_trace_buffer = main_trace.buffer.unwrap();
 
@@ -394,6 +367,7 @@ impl<'a, F: AbstractField + Eq + Default + Copy + Send + Sync + 'static> MainSM<
             Some(air_segment.air_segment_id as usize),
             buffer,
         );
+
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 

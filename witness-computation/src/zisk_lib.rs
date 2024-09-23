@@ -1,7 +1,5 @@
 use log::trace;
 use pil_std_lib::Std;
-use proofman_hints::{print_by_name, print_row};
-// use pil_std_lib::Std;
 use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
 };
@@ -38,12 +36,9 @@ pub struct ZiskWitness<F: PrimeField> {
     pub mem_aligned_sm: Option<Arc<MemAlignedSM>>,
     pub mem_unaligned_sm: Option<Arc<MemUnalignedSM>>,
     pub quickops_sm: Option<Arc<QuickOpsSM>>,
-    pub std: Option<Arc<Std<F>>>,
 }
 
 impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
-    const MY_NAME: &'static str = "ZiskLib ";
-
     pub fn new(rom_path: PathBuf, public_inputs_path: PathBuf) -> Result<Self, Box<dyn Error>> {
         // Check rom_path path exists
         if !rom_path.exists() {
@@ -73,7 +68,6 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             mem_aligned_sm: None,
             mem_unaligned_sm: None,
             quickops_sm: None,
-            std: None,
         })
     }
 
@@ -157,7 +151,6 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         self.mem_aligned_sm = Some(mem_aligned_sm);
         self.mem_unaligned_sm = Some(mem_unaligned_sm);
         self.quickops_sm = Some(quickops_sm);
-        // self.std = Some(std);
     }
 }
 
@@ -196,42 +189,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
         self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
-    fn debug(&mut self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let air_instances = pctx.air_instance_repo.air_instances.read().unwrap();
-
-        for (_air_instance_id, air_instance) in air_instances.iter().enumerate() {
-            if air_instance.airgroup_id == 0 {
-                //         _ = print_by_name(
-                //             &sctx,
-                //             pctx.clone(),
-                //             air_instance,
-                //             "Main.is_external_op",
-                //             None,
-                //             943718,
-                //             943724,
-                //         );
-                //         _ = print_by_name(
-                //             &sctx,
-                //             pctx.clone(),
-                //             air_instance,
-                //             "Main.op",
-                //             Some(vec![0]),
-                //             943718,
-                //             943724,
-                //         );
-                // print_row(&sctx, &air_instance, 1, 943719);
-                // _ = print_by_name(
-                //     &sctx,
-                //     pctx.clone(),
-                //     air_instance,
-                //     "Main.flag",
-                //     Some(vec![1]),
-                //     943718,
-                //     943724,
-                // );
-            }
-        }
-    }
+    fn debug(&mut self, _pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {}
     fn pilout(&self) -> WitnessPilout {
         Pilout::pilout()
     }

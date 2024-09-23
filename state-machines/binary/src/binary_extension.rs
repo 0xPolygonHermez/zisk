@@ -257,8 +257,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         )
                         .expect("Binary extension buffer not found");
 
-                    let trace_buffer =
-                        BinaryExtension0Trace::<F>::map_row_vec(trace_row).unwrap().buffer.unwrap();
+                    let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
+                        .unwrap()
+                        .buffer
+                        .unwrap();
                     let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
                     buffer[offsets[0] as usize..offsets[0] as usize + trace_buffer.len()]
