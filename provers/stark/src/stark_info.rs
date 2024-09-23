@@ -59,6 +59,8 @@ pub enum OpType {
     Challenge = 5,
     #[serde(rename = "number")]
     Number = 6,
+    #[serde(rename = "string")]
+    String = 7
 }
 
 impl OpType {
@@ -71,6 +73,7 @@ impl OpType {
             OpType::SubproofValue => 4,
             OpType::Challenge => 5,
             OpType::Number => 6,
+            OpType::String => 7
         }
     }
 }

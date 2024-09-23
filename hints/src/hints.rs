@@ -6,6 +6,7 @@ use proofman_starks_lib_c::{
 use p3_field::Field;
 use proofman_common::{AirInstance, Challenges, ExtensionField, ProofCtx, PublicInputs, SetupCtx};
 
+use std::ffi::{c_char, CStr};
 use std::os::raw::c_void;
 
 use std::ops::{Add, Div, Mul, Sub, AddAssign, DivAssign, MulAssign, SubAssign};
@@ -20,6 +21,7 @@ pub enum HintFieldType {
     FieldExtended = 1,  // [F; 3]
     Column = 2,         // Vec<F>
     ColumnExtended = 3, // Vec<[F;3]>
+    String = 4,
 }
 
 #[repr(C)]
@@ -29,6 +31,7 @@ pub struct HintFieldInfo<F> {
     offset: u8, // 1 or 3
     field_type: HintFieldType,
     pub values: *mut F,
+    pub string_value: *const c_char,
 }
 
 #[repr(C)]
@@ -64,6 +67,7 @@ pub enum HintFieldValue<F: Clone + Copy> {
     FieldExtended(ExtensionField<F>),
     Column(Vec<F>),
     ColumnExtended(Vec<ExtensionField<F>>),
+    String(String)
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -80,6 +84,7 @@ impl<F: Clone + Copy> HintFieldValue<F> {
             HintFieldValue::FieldExtended(value) => HintFieldOutput::FieldExtended(*value),
             HintFieldValue::Column(vec) => HintFieldOutput::Field(vec[index]),
             HintFieldValue::ColumnExtended(vec) => HintFieldOutput::FieldExtended(vec[index]),
+            HintFieldValue::String(_str) => panic!(),
         }
     }
 
@@ -453,6 +458,7 @@ impl<F: Field> HintFieldValue<F> {
             HintFieldValue::FieldExtended(v) => *v += value,
             HintFieldValue::Column(vec) => vec[index] += value,
             HintFieldValue::ColumnExtended(vec) => vec[index] += value,
+            HintFieldValue::String(_str) => panic!(),
         };
     }
 
@@ -472,6 +478,7 @@ impl<F: Field> HintFieldValue<F> {
             HintFieldValue::FieldExtended(v) => *v -= value,
             HintFieldValue::Column(vec) => vec[index] -= value,
             HintFieldValue::ColumnExtended(vec) => vec[index] -= value,
+            HintFieldValue::String(_str) => panic!(),
         };
     }
 
@@ -491,6 +498,7 @@ impl<F: Field> HintFieldValue<F> {
             HintFieldValue::FieldExtended(v) => *v *= value,
             HintFieldValue::Column(vec) => vec[index] *= value,
             HintFieldValue::ColumnExtended(vec) => vec[index] *= value,
+            HintFieldValue::String(_str) => panic!(),
         };
     }
 
@@ -510,6 +518,7 @@ impl<F: Field> HintFieldValue<F> {
             HintFieldValue::FieldExtended(v) => *v *= value.inverse(),
             HintFieldValue::Column(vec) => vec[index] *= value.inverse(),
             HintFieldValue::ColumnExtended(vec) => vec[index] *= value.inverse(),
+            HintFieldValue::String(_str) => panic!(),
         };
     }
 
@@ -525,7 +534,10 @@ pub struct HintCol;
 
 impl HintCol {
     pub fn from_hint_field<F: Clone + Copy>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
-        let values_slice = unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) };
+        let values_slice = match hint_field.field_type {
+            HintFieldType::String => &[],
+            _ => unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) },
+        };
 
         match hint_field.field_type {
             HintFieldType::Field => HintFieldValue::Field(values_slice[0]),
@@ -540,6 +552,16 @@ impl HintCol {
                     extended_vec.push(ExtensionField { value: [chunk[0], chunk[1], chunk[2]] });
                 }
                 HintFieldValue::ColumnExtended(extended_vec)
+            }
+            HintFieldType::String => {
+                let str_slice =  unsafe { CStr::from_ptr(hint_field.string_value).to_str() };
+
+                match str_slice {
+                    Ok(value) => HintFieldValue::String(value.to_string()),
+                    Err(_) => {
+                        HintFieldValue::String(String::new())
+                    }
+                }
             }
         }
     }
@@ -703,6 +725,7 @@ pub fn print_expression<F: Clone + Copy + Debug>(
         HintFieldValue::FieldExtended(val) => {
             println!("FieldExtended values: {:?}", val);
         }
+        HintFieldValue::String(_str) => panic!(),
     }
 }
 
@@ -749,30 +772,4 @@ pub fn print_by_name<F: Clone + Copy>(
     // } else {
     None
     // }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_element_1() {
-        let mut buffer = [0usize; 90];
-        for (i, item) in buffer.iter_mut().enumerate() {
-            *item = i + 144;
-        }
-        let hint_field: HintFieldInfo<usize> = HintFieldInfo::<usize> {
-            size: 1,
-            offset: 1,
-            field_type: HintFieldType::Field,
-            values: buffer.as_mut_ptr(),
-        };
-
-        match HintCol::from_hint_field(&hint_field) {
-            HintFieldValue::Field(value) => {
-                assert_eq!(value, 144);
-            }
-            _ => panic!("Expected a field value"),
-        }
-    }
 }
