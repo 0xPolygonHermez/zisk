@@ -21,7 +21,7 @@ proofman-util = { workspace = true }
 proofman-hints = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace=true }
-pil-std-lib = { workspace = true }
+# pil-std-lib = { workspace = true }
 
 log = { workspace = true }
 env_logger = "0.11"
