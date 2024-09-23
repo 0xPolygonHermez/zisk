@@ -277,8 +277,8 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::calculate_challenges(pctx.pilout.num_stages() + 1, &mut provers, pctx.clone(), &mut transcript, 0);
 
         // Compute openings
-        Self::opening_stages(&mut provers, pctx.clone(), &mut transcript);
-
+        Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), &mut transcript);
+    
         let proof = Self::finalize_proof(
             &proving_key_path,
             &mut provers,
@@ -434,6 +434,7 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn opening_stages(
         provers: &mut [Box<dyn Prover<F>>],
         proof_ctx: Arc<ProofCtx<F>>,
+        setup_ctx: Arc<SetupCtx>,
         transcript: &mut FFITranscript,
     ) {
         for opening_id in 1..=provers[0].num_opening_stages() {
@@ -443,9 +444,27 @@ impl<F: Field + 'static> ProofMan<F> {
                 proof_ctx.clone(),
                 transcript,
             );
-            for (idx, prover) in provers.iter_mut().enumerate() {
-                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
-                prover.opening_stage(opening_id, proof_ctx.clone(), transcript);
+            if opening_id == 2 {
+                let setup_airs = setup_ctx.get_setup_airs();
+
+                for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
+                    for air_id in airgroup.iter() {
+                        let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                        if air_instances_idx.len() != 0 {
+                            provers[air_instances_idx[0]].calculate_xdivxsub(proof_ctx.clone());
+
+                            for idx in air_instances_idx {
+                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
+                                provers[idx].opening_stage(opening_id, proof_ctx.clone(), transcript);
+                            }
+                        }
+                    }
+                }
+            } else {
+                for (idx, prover) in provers.iter_mut().enumerate() {
+                    info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
+                    prover.opening_stage(opening_id, proof_ctx.clone(), transcript);
+                }
             }
             if opening_id < provers[0].num_opening_stages() {
                 Self::calculate_challenges(

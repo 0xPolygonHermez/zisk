@@ -326,6 +326,16 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         }
     }
 
+    fn calculate_xdivxsub(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
+        let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
+        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
+        let xdivxsub = (*buff_helper_guard).as_ptr() as *mut c_void;
+
+        calculate_xdivxsub_c(self.p_stark, xdivxsub, challenges);
+    }
+
     fn get_buff_helper_size(&self) -> usize {
         let mut max_cols = 0;
         for stage in 1..=Self::num_stages(self) + 1 {
@@ -462,9 +472,10 @@ impl<F: Field> StarkProver<F> {
 
         debug!("{}: ··· Computing FRI Polynomial", Self::MY_NAME);
 
-        prepare_fri_polynomial_c(p_stark, buffer, challenges);
-
-        calculate_fri_polynomial_c(p_stark, buffer, public_inputs, challenges, subproof_values, evals);
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
+        let xdivxsub = (*buff_helper_guard).as_ptr() as *mut c_void;
+        
+        calculate_fri_polynomial_c(p_stark, buffer, public_inputs, challenges, subproof_values, evals, xdivxsub);
     }
 
     fn compute_fri_folding(&mut self, step_index: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {

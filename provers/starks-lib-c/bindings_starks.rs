@@ -192,10 +192,10 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15prepare_fri_polPvS_S_"]
-    pub fn prepare_fri_pol(
+    #[link_name = "\u{1}_Z18calculate_xdivxsubPvS_S_"]
+    pub fn calculate_xdivxsub(
         pStarks: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
+        xDivXSub: *mut ::std::os::raw::c_void,
         challenges: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -207,7 +207,7 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_S_"]
     pub fn calculate_fri_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
@@ -215,6 +215,7 @@ extern "C" {
         challenges: *mut ::std::os::raw::c_void,
         subproofValues: *mut ::std::os::raw::c_void,
         evals: *mut ::std::os::raw::c_void,
+        xDivXSub: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {

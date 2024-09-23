@@ -53,6 +53,7 @@ pub trait Prover<F> {
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>);
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus;
+    fn calculate_xdivxsub(&mut self, proof_ctx: Arc<ProofCtx<F>>);
     fn opening_stage(
         &mut self,
         opening_id: u32,

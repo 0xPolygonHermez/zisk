@@ -236,8 +236,8 @@ pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn prepare_fri_polynomial_c(p_stark: *mut c_void, buffer: *mut c_void, challenges: *mut c_void) -> *mut c_void {
-    unsafe { prepare_fri_pol(p_stark, buffer, challenges) }
+pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xdivxsub: *mut c_void, challenges: *mut c_void) -> *mut c_void {
+    unsafe { calculate_xdivxsub(p_stark, xdivxsub, challenges) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -253,9 +253,10 @@ pub fn calculate_fri_polynomial_c(
     challenges: *mut c_void,
     subproofValues: *mut c_void,
     evals: *mut c_void,
+    xdivxsub: *mut c_void,
 ) {
     unsafe {
-        calculate_fri_polynomial(p_starks, buffer, public_inputs, challenges, subproofValues, evals);
+        calculate_fri_polynomial(p_starks, buffer, public_inputs, challenges, subproofValues, evals, xdivxsub);
     }
 }
 
@@ -639,6 +640,7 @@ pub fn calculate_fri_polynomial_c(
     _challenges: *mut c_void,
     _subproofValues: *mut c_void,
     _evals: *mut c_void,
+    _xdivxsub: *mut c_void,
 ) {
     trace!("mckzkevm: ··· {}", "calculate_fri_polynomial: This is a mock call because there is no linked library");
 }
@@ -697,11 +699,11 @@ pub fn compute_evals_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn prepare_fri_polynomial_c(_p_stark: *mut c_void, _buffer: *mut c_void, _challenges: *mut c_void) -> *mut c_void {
+pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _buffer: *mut c_void, _challenges: *mut c_void) -> *mut c_void {
     trace!(
         "{}: ··· {}",
         "ffi     ",
-        "prepare_fri_polynomial_c: This is a mock call because there is no linked library"
+        "calculate_xdivxsub_c: This is a mock call because there is no linked library"
     );
     std::ptr::null_mut()
 }
