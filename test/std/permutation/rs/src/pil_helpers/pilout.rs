@@ -25,10 +25,7 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("Permutation", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Permutation"));
-        air_group.add_air(Some("Permutation1_6"), 64);
-        air_group.add_air(Some("Permutation1_7"), 128);
-        air_group.add_air(Some("Permutation1_8"), 256);
-        air_group.add_air(Some("Permutation2_6"), 512);
+        air_group.add_air(Some("Permutation1_6"), 64);        air_group.add_air(Some("Permutation1_7"), 128);        air_group.add_air(Some("Permutation1_8"), 256);        air_group.add_air(Some("Permutation2_6"), 512);
 
         pilout
     }

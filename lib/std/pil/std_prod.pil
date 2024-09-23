@@ -88,7 +88,16 @@ private function initial_checks_prod(int proves, int opid, expr cols[]) {
 private function update_piop_prod(int name, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
     init_containers_prod(name, opid);
 
-    if (!is_direct) initial_checks_prod(proves, opid, cols);
+    if (!is_direct) {
+        initial_checks_prod(proves, opid, cols);
+
+        // Create debug hints for the witness computation
+        const string name_str = get_piop_name(name);
+        @gprod_member_data{name: name_str, opid: opid, proves: proves, ncols: length(cols), selector: sel};
+        for (int i = 0; i < length(cols); i++) {
+            @gprod_member{reference: cols[i]};
+        }
+    }
 
     init_challenges();
 

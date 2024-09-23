@@ -953,6 +953,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman",
+ "proofman-cli",
+ "proofman-common",
+ "proofman-macros",
+ "rand",
+]
+
+[[package]]
 name = "stark"
 version = "0.1.0"
 dependencies = [

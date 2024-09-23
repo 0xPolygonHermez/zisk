@@ -4,7 +4,8 @@ members = [
     "test/std/range_check/rs",
     "test/std/lookup/rs", 
     "test/std/connection/rs", 
-    "test/std/permutation/rs",
+    "test/std/permutation/rs", 
+    "test/simple/rs",
 ]
 
 resolver = "2"
