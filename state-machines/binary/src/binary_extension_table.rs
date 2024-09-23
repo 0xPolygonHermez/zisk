@@ -104,14 +104,10 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionTableSM<F> 
 
         for i in input {
             // Calculate the different row offset contributors, according to the PIL
-            let offset_a: u64;
-            let offset_b: u64;
-            let offset_offset: u64;
-            let offset_operation: u64;
-            offset_a = i.a;
-            offset_b = i.b * P2_6;
-            offset_offset = i.offset * P2_9;
-            offset_operation = (i.opcode as u64 - 2) * P2_12;
+            let offset_a = i.a;
+            let offset_b = i.b * P2_6;
+            let offset_offset = i.offset * P2_9;
+            let offset_operation = (i.opcode as u64 - 2) * P2_12;
             let row = offset_a + offset_b + offset_offset + offset_operation;
             assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
             multiplicity[row as usize] += 1;

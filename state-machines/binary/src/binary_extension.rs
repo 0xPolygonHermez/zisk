@@ -121,7 +121,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             }
 
             // Store b low part into in2_low
-            let b_low = i.b & if mode32 { 0x1F } else { 0x3F };
+            let b_low: u64 = i.b & if mode32 { 0x1F } else { 0x3F };
             t.in2_low = F::from_canonical_u64(b_low);
 
             // Store b high part into free_in2
@@ -132,53 +132,186 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             t.free_in2[2] = F::from_canonical_u64((i.b >> 32) & 0xFFFF);
             t.free_in2[3] = F::from_canonical_u64(i.b >> 48);
 
-            // Store c
-            let c_bytes: [u8; 8] = c.to_le_bytes();
-            for (i, value) in c_bytes.iter().enumerate() {
-                // TODO! 2-dimension
-                t.out[i][0] = F::from_canonical_u8(*value);
-                t.out[i][1] = F::from_canonical_u8(*value);
-            }
-
-            /*
+            // Calculate out based on opcode
             match i.opcode {
                 0x0d /* SLL */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position = j*8 + b_low;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position < 32 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
 
                 0x0e /* SRL */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position: i64 = j as i64*8 - b_low as i64;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position > 0 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else if position > -8 {
+                            let out = c & (0xff_u64 >> -position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
 
                 0x0f /* SRA */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position: i64 = j as i64*8 - b_low as i64;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position > 0 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else if position > -8 {
+                            let out = c & (0xff_u64 >> -position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
 
                 0x1d /* SLL_W */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position = j*8 + b_low;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position < 16 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                        }
+                        t.out[j as usize][1] = F::zero();
+                    }
                 },
 
                 0x1e /* SRL_W */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position: i64 = j as i64*8 - b_low as i64;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position > 0 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        }
+                        else if position > -8 {
+                            let out = c & (0xff_u64 >> -position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                        }
+                        t.out[j as usize][1] = F::zero();
+                    }
                 },
 
                 0x1f /* SRA_W */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position: i64 = j as i64*8 - b_low as i64;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position > 0 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        }
+                        else if position > -8 {
+                            let out = c & (0xff_u64 >> -position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                        }
+                        t.out[j as usize][1] = F::zero();
+                    }
                 },
 
                 0x24 /* SE_B */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position = j*8 + b_low;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position < 32 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
 
                 0x25 /* SE_H */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position = j*8 + b_low;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position < 32 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
 
                 0x26 /* SE_W */ => {
+                    for j in 0..8 {
+                        // Calculate position as the number of shifted bits for this byte
+                        let position = j*8 + b_low;
 
+                        // Calculate the 8-bits window of the result at this position
+                        if position < 32 {
+                            let out = c & (0xff_u64 << position);
+                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                        }
+                        else {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),
-            }*/
+            }
 
             // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
             t.multiplicity = F::one();
@@ -186,15 +319,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             // Store the trace in the vector
             trace.push(t);
 
-            for b in 0..8 {
-                // Create an empty required
-                let mut tr: ZiskRequiredBinaryExtensionTable = Default::default();
-
-                // Fill it
-                tr.opcode = m_op;
-                tr.a = a_bytes[b] as u64;
-                tr.b = b_low;
-                tr.offset = if mode32 { 5 } else { 6 };
+            for a_byte in &a_bytes {
+                // Create a table required
+                let tr = ZiskRequiredBinaryExtensionTable {
+                    opcode: m_op,
+                    a: *a_byte as u64,
+                    b: b_low,
+                    offset: if mode32 { 5 } else { 6 },
+                };
 
                 // Store the required in the vector
                 table_required.push(tr);

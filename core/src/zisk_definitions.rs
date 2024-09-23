@@ -64,7 +64,7 @@ pub const REG_FIRST: u64 = SYS_ADDR;
 
 // The 32 registers are mapped to the first 32x8 bytes of system memory
 pub const REG_X0: u64 = REG_FIRST;
-pub const REG_X1: u64 = REG_FIRST + 1_u64 * 8;
+pub const REG_X1: u64 = REG_FIRST + 8;
 pub const REG_X2: u64 = REG_FIRST + 2_u64 * 8;
 pub const REG_X3: u64 = REG_FIRST + 3_u64 * 8;
 pub const REG_X4: u64 = REG_FIRST + 4_u64 * 8;

@@ -58,7 +58,7 @@ impl Stats {
         } else {
             self.mops.mread_a += 1;
         }
-        if (address >= REG_FIRST) && (address <= REG_LAST) {
+        if (REG_FIRST..=REG_LAST).contains(&address) {
             self.rops.reads += 1;
         }
     }
@@ -73,7 +73,7 @@ impl Stats {
         } else {
             self.mops.mwrite_a += 1;
         }
-        if (address >= REG_FIRST) && (address <= REG_LAST) {
+        if (REG_FIRST..=REG_LAST).contains(&address) {
             self.rops.writes += 1;
         }
     }

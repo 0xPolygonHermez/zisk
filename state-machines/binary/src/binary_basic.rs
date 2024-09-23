@@ -149,15 +149,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -175,15 +174,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -216,15 +214,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a tablerequired
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -247,15 +244,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -281,15 +277,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -306,8 +301,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if a_bytes[i] <= b_bytes[i] {
                             cout = 1;
                         }
-                        else {
-                        }
 
                         // If the chunk is signed, then the result is the sign of a
                         if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
@@ -316,15 +309,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -341,8 +333,6 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         if a_bytes[i] >= b_bytes[i] {
                             cout = 1;
                         }
-                        else {
-                        }
 
                         // If the chunk is signed, then the result is the sign of a
                         if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
@@ -351,15 +341,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = cin;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -372,15 +361,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = 0;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin: 0,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -393,15 +381,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = 0;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin: 0,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -414,15 +401,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::from_canonical_u64(0);
 
-                        // Create an empty required
-                        let mut tr: ZiskRequiredBinaryBasicTable = Default::default();
-
-                        // Fill it
-                        tr.opcode = m_op;
-                        tr.a = a_bytes[i] as u64;
-                        tr.b = b_bytes[i] as u64;
-                        tr.cin = 0;
-                        tr.last = plast[i];
+                        // Create a table required
+                        let tr = ZiskRequiredBinaryBasicTable {
+                            opcode: m_op,
+                            a: a_bytes[i] as u64,
+                            b: b_bytes[i] as u64,
+                            cin: 0,
+                            last: plast[i],
+                        };
 
                         // Store the required in the vector
                         table_required.push(tr);
