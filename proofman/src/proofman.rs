@@ -437,34 +437,54 @@ impl<F: Field + 'static> ProofMan<F> {
         setup_ctx: Arc<SetupCtx>,
         transcript: &mut FFITranscript,
     ) {
-        for opening_id in 1..=provers[0].num_opening_stages() {
+
+        let setup_airs = setup_ctx.get_setup_airs();
+
+        // Calculate evals
+        Self::get_challenges(proof_ctx.pilout.num_stages() + 2, provers, proof_ctx.clone(), transcript);
+        for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
+            for air_id in airgroup.iter() {
+                let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                if air_instances_idx.len() != 0 {
+                    provers[air_instances_idx[0]].calculate_lev(proof_ctx.clone());
+
+                    for idx in air_instances_idx {
+                        info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
+                        provers[idx].opening_stage(1, proof_ctx.clone(), transcript);
+                    }
+                }
+            }
+        }
+        Self::calculate_challenges(proof_ctx.pilout.num_stages() + 2, provers, proof_ctx.clone(), transcript, 0);
+
+        // Calculate fri polynomial
+        Self::get_challenges(proof_ctx.pilout.num_stages() + 3, provers, proof_ctx.clone(), transcript);
+        for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
+            for air_id in airgroup.iter() {
+                let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                if air_instances_idx.len() != 0 {
+                    provers[air_instances_idx[0]].calculate_xdivxsub(proof_ctx.clone());
+
+                    for idx in air_instances_idx {
+                        info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
+                        provers[idx].opening_stage(2, proof_ctx.clone(), transcript);
+                    }
+                }
+            }
+        }
+        Self::calculate_challenges(proof_ctx.pilout.num_stages() + 3, provers, proof_ctx.clone(), transcript, 0);
+
+        // FRI Steps
+        for opening_id in 3..=provers[0].num_opening_stages() {
             Self::get_challenges(
                 proof_ctx.pilout.num_stages() + 1 + opening_id,
                 provers,
                 proof_ctx.clone(),
                 transcript,
             );
-            if opening_id == 2 {
-                let setup_airs = setup_ctx.get_setup_airs();
-
-                for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
-                    for air_id in airgroup.iter() {
-                        let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
-                        if air_instances_idx.len() != 0 {
-                            provers[air_instances_idx[0]].calculate_xdivxsub(proof_ctx.clone());
-
-                            for idx in air_instances_idx {
-                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
-                                provers[idx].opening_stage(opening_id, proof_ctx.clone(), transcript);
-                            }
-                        }
-                    }
-                }
-            } else {
-                for (idx, prover) in provers.iter_mut().enumerate() {
-                    info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, opening_id, idx);
-                    prover.opening_stage(opening_id, proof_ctx.clone(), transcript);
-                }
+            for (idx, prover) in provers.iter_mut().enumerate() {
+                info!("{}: Computing FRI step {} for prover {}", Self::MY_NAME, opening_id - 3, idx);
+                prover.opening_stage(opening_id, proof_ctx.clone(), transcript);
             }
             if opening_id < provers[0].num_opening_stages() {
                 Self::calculate_challenges(

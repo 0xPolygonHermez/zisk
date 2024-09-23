@@ -336,6 +336,27 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         calculate_xdivxsub_c(self.p_stark, xdivxsub, challenges);
     }
 
+    fn calculate_lev(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
+        let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
+        
+
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
+        let lev = (*buff_helper_guard).as_ptr() as *mut c_void;
+        
+        let challenges_map = self.stark_info.challenges_map.as_ref().unwrap();
+
+        let mut xi_challenge_index: usize = 0;
+        for i in 0..challenges_map.len() {
+            if challenges_map[i].stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenges_map[i].stage_id == 0 as u64 {
+               xi_challenge_index = i;
+               break;
+            }
+        }
+
+        let xi_challenge = &(*challenges_guard)[xi_challenge_index * Self::FIELD_EXTENSION] as *const F as *mut c_void;
+        compute_lev_c(self.p_stark, xi_challenge, lev);
+    }
+
     fn get_buff_helper_size(&self) -> usize {
         let mut max_cols = 0;
         for stage in 1..=Self::num_stages(self) + 1 {
@@ -440,9 +461,6 @@ impl<F: Field> StarkProver<F> {
 
         let buffer = air_instance.get_buffer_ptr() as *mut c_void;
 
-        let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
-        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
-
         let evals = air_instance.evals.as_mut_ptr() as *mut c_void;
 
         let p_stark = self.p_stark;
@@ -452,7 +470,8 @@ impl<F: Field> StarkProver<F> {
 
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
-        compute_evals_c(p_stark, buffer, challenges, evals, p_proof, buff_helper);
+
+        compute_evals_c(p_stark, buffer, buff_helper, evals, p_proof);    
     }
 
     fn compute_fri_pol(&mut self, _opening_id: u32, proof_ctx: Arc<ProofCtx<F>>) {

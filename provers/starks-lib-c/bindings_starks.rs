@@ -253,14 +253,21 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z11compute_levPvS_S_"]
+    pub fn compute_lev(
+        pStarks: *mut ::std::os::raw::c_void,
+        xiChallenge: *mut ::std::os::raw::c_void,
+        LEv: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_"]
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
+        LEv: *mut ::std::os::raw::c_void,
         evals: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
-        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {

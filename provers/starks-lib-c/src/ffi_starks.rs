@@ -304,16 +304,26 @@ pub fn commit_stage_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn compute_lev_c(
+    p_stark: *mut c_void,
+    xi_challenge: *mut c_void,
+    lev: *mut c_void,
+) {
+    unsafe {
+        compute_lev(p_stark, xi_challenge, lev);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn compute_evals_c(
     p_stark: *mut c_void,
     buffer: *mut c_void,
-    challenges: *mut c_void,
+    lev: *mut c_void,
     evals: *mut c_void,
     pProof: *mut c_void,
-    pBuffHelper: *mut c_void,
 ) {
     unsafe {
-        compute_evals(p_stark, buffer, challenges, evals, pProof, pBuffHelper);
+        compute_evals(p_stark, buffer, lev, evals, pProof);
     }
 }
 
@@ -687,13 +697,22 @@ pub fn commit_stage_c(
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn compute_lev_c(
+    _p_stark: *mut c_void,
+    _xi_challenge: *mut c_void,
+    _lev: *mut c_void,
+) {
+    trace!("{}: ··· {}", "ffi     ", "compute_lev_c: This is a mock call because there is no linked library");
+}
+
+
+#[cfg(feature = "no_lib_link")]
 pub fn compute_evals_c(
     _p_stark: *mut c_void,
     _buffer: *mut c_void,
-    _challenges: *mut c_void,
+    _lev: *mut c_void,
     _evals: *mut c_void,
     _pProof: *mut c_void,
-    _p_buff_helper: *mut c_void,
 ) {
     trace!("{}: ··· {}", "ffi     ", "compute_evals: This is a mock call because there is no linked library");
 }
