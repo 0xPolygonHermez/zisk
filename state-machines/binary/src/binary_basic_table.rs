@@ -5,16 +5,16 @@ use std::sync::{
 
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{/* AirInstance, */ ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
-use zisk_pil::*;
+//use zisk_pil::*;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryBasicTableSM<F> {
-    wcm: Arc<WitnessManager<F>>,
+    //wcm: Arc<WitnessManager<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -36,7 +36,7 @@ pub enum BasicTableSMErr {
 impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic_table = Self {
-            wcm: wcm.clone(),
+            //wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
             multiplicity: Mutex::new(vec![0; MULTIPLICITY_TABLE_SIZE]),
