@@ -86,9 +86,15 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul = &*self.muls.lock().unwrap();
-        let p_setup = &*self.wcm.get_sctx().setups;
+
         for (index, hint) in hints.iter().enumerate().skip(1) {
-            set_hint_field(p_setup, air_instance, *hint, "reference", &mul[index - 1]);
+            set_hint_field(
+                self.wcm.get_sctx(),
+                air_instance,
+                *hint,
+                "reference",
+                &mul[index - 1],
+            );
         }
 
         log::info!(
@@ -140,13 +146,13 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
 
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let hints = get_hint_ids_by_name(*setup.p_setup, "specified_ranges");
 
                 for (index, hint) in hints.iter().enumerate() {
                     if index > 0 {
                         let min = get_hint_field_constant::<F>(
-                            sctx.clone(),
+                            &sctx,
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -154,7 +160,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let min_neg = get_hint_field_constant::<F>(
-                            sctx.clone(),
+                            &sctx,
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -162,7 +168,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let max = get_hint_field_constant::<F>(
-                            sctx.clone(),
+                            &sctx,
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -170,7 +176,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                             HintFieldOptions::default(),
                         );
                         let max_neg = get_hint_field_constant::<F>(
-                            sctx.clone(),
+                            &sctx,
                             airgroup_id,
                             air_id,
                             *hint as usize,
@@ -229,7 +235,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("SpecifiedRanges".into(), self.air_id)
+            .get_buffer_info(&sctx,  self.airgroup_id, self.air_id)
             .unwrap();
         let buffer = vec![F::zero(); buffer_size as usize];
 
@@ -237,11 +243,10 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
 
         let mut muls_guard = self.muls.lock().unwrap();
-        let setups = &*sctx.setups;
 
         for hint in hints_guard.iter().skip(1) {
             muls_guard.push(get_hint_field::<F>(
-                setups,
+                &sctx,
                 &pctx.public_inputs,
                 &pctx.challenges,
                 &mut air_instance,
@@ -255,7 +260,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let hint = hints_guard[0];
 
         let num_rows = get_hint_field::<F>(
-            setups,
+            &sctx,
             &pctx.public_inputs,
             &pctx.challenges,
             &mut air_instance,

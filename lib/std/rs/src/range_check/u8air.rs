@@ -75,7 +75,7 @@ impl<F: PrimeField> U8Air<F> {
 
         let mul = &*self.mul.lock().unwrap();
         set_hint_field(
-            &self.wcm.get_sctx().setups,
+            self.wcm.get_sctx(),
             air_instance,
             self.hint.load(Ordering::Acquire),
             "reference",
@@ -111,7 +111,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
             for air in airs.iter() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the mul hints
                 let u8air_hints = get_hint_ids_by_name(*setup.p_setup, "u8air");
@@ -126,17 +126,15 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("U8Air".into(), self.air_id)
+            .get_buffer_info(&sctx, self.airgroup_id, self.air_id)
             .unwrap();
         let buffer = vec![F::zero(); buffer_size as usize];
 
         // Add a new air instance. Since U8Air is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
 
-        let setup_repo = &*sctx.setups;
-
         *self.mul.lock().unwrap() = get_hint_field::<F>(
-            setup_repo,
+            &sctx,
             &pctx.public_inputs,
             &pctx.challenges,
             &mut air_instance,

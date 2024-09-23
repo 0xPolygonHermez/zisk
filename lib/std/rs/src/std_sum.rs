@@ -30,7 +30,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let im_hints = get_hint_ids_by_name(*setup.p_setup, "im_col");
                 let gsum_hints = get_hint_ids_by_name(*setup.p_setup, "gsum_col");
                 if !gsum_hints.is_empty() {
@@ -89,7 +89,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         // Populate the im columns
                         for hint in im_hints {
                             let mut im = get_hint_field::<F>(
-                                sctx.setups.as_ref(),
+                                &sctx,
                                 &pctx.public_inputs,
                                 &pctx.challenges,
                                 air_instance,
@@ -98,7 +98,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 HintFieldOptions::dest(),
                             );
                             let num = get_hint_field::<F>(
-                                sctx.setups.as_ref(),
+                                &sctx,
                                 &pctx.public_inputs,
                                 &pctx.challenges,
                                 air_instance,
@@ -107,7 +107,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 HintFieldOptions::default(),
                             );
                             let den = get_hint_field::<F>(
-                                sctx.setups.as_ref(),
+                                &sctx,
                                 &pctx.public_inputs,
                                 &pctx.challenges,
                                 air_instance,
@@ -129,13 +129,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                                 im.set(i, value);
                             }
 
-                            set_hint_field(
-                                sctx.setups.as_ref(),
-                                air_instance,
-                                *hint,
-                                "reference",
-                                &im,
-                            );
+                            set_hint_field(&sctx, air_instance, *hint, "reference", &im);
                         }
 
                         // We know that at most one product hint exists
@@ -150,7 +144,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
 
                         // Use the hint to populate the gsum column
                         let mut gsum = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
+                            &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
@@ -159,7 +153,7 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                             HintFieldOptions::dest(),
                         );
                         let expr = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
+                            &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
@@ -175,15 +169,9 @@ impl<F: Copy + Debug + Field> StdSum<F> {
                         }
 
                         // set the computed gsum column and its associated airgroup_val
-                        set_hint_field(
-                            sctx.setups.as_ref(),
-                            air_instance,
-                            gsum_hint as u64,
-                            "reference",
-                            &gsum,
-                        );
+                        set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
                         set_hint_field_val(
-                            sctx.clone(),
+                            &sctx,
                             air_instance,
                             gsum_hint as u64,
                             "result",

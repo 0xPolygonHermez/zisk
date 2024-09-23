@@ -688,6 +688,7 @@ dependencies = [
  "p3-goldilocks",
  "pilout",
  "proofman",
+ "proofman-common",
  "proofman-util",
  "serde",
  "tinytemplate",

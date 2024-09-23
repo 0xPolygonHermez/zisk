@@ -26,7 +26,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdProd<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let prod_hints = get_hint_ids_by_name(*setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
@@ -93,7 +93,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
 
                         // Use the hint to populate the gprod column
                         let mut gprod = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
+                            &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
@@ -102,7 +102,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             HintFieldOptions::dest(),
                         );
                         let num = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
+                            &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
@@ -111,7 +111,7 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                             HintFieldOptions::default(),
                         );
                         let den = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
+                            &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
@@ -126,15 +126,9 @@ impl<F: Copy + Debug + Field> StdProd<F> {
                         }
 
                         // set the computed gprod column and its associated airgroup_val
-                        set_hint_field(
-                            sctx.setups.as_ref(),
-                            air_instance,
-                            gprod_hint as u64,
-                            "reference",
-                            &gprod,
-                        );
+                        set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
                         set_hint_field_val(
-                            sctx.clone(),
+                            &sctx,
                             air_instance,
                             gprod_hint as u64,
                             "result",

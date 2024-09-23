@@ -67,7 +67,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the range hints
                 let rc_hints = get_hint_ids_by_name(*setup.p_setup, "range_def");
@@ -134,7 +134,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         hint: u64,
     ) {
         let predefined = get_hint_field_constant::<F>(
-            sctx.clone(),
+            &sctx,
             airgroup_id,
             air_id,
             hint as usize,
@@ -142,7 +142,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             HintFieldOptions::default(),
         );
         let min = get_hint_field_constant::<F>(
-            sctx.clone(),
+            &sctx,
             airgroup_id,
             air_id,
             hint as usize,
@@ -150,7 +150,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             HintFieldOptions::default(),
         );
         let min_neg = get_hint_field_constant::<F>(
-            sctx.clone(),
+            &sctx,
             airgroup_id,
             air_id,
             hint as usize,
@@ -158,7 +158,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             HintFieldOptions::default(),
         );
         let max = get_hint_field_constant::<F>(
-            sctx.clone(),
+            &sctx,
             airgroup_id,
             air_id,
             hint as usize,
@@ -166,7 +166,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
             HintFieldOptions::default(),
         );
         let max_neg = get_hint_field_constant::<F>(
-            sctx,
+            &sctx,
             airgroup_id,
             air_id,
             hint as usize,
