@@ -32,12 +32,12 @@ where
         lookup2_15
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Lookup".into(), LOOKUP_2_15_AIR_IDS[0])
+            .get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
@@ -59,7 +59,7 @@ where
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
@@ -80,7 +80,7 @@ where
             let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Lookup".into(), LOOKUP_2_15_AIR_IDS[0])
+                .get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0])
                 .unwrap();
 
             let buffer = &mut air_instance.buffer;

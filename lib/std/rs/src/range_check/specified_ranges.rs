@@ -235,7 +235,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info(&sctx,  self.airgroup_id, self.air_id)
+            .get_buffer_info(&sctx, self.airgroup_id, self.air_id)
             .unwrap();
         let buffer = vec![F::zero(); buffer_size as usize];
 
