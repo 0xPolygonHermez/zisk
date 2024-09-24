@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use log::info;
 use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -12,8 +13,6 @@ use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOp
 use zisk_pil::*;
 
 use crate::BinaryExtensionTableSM;
-
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct BinaryExtensionSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -37,6 +36,8 @@ pub enum BinaryExtensionSMErr {
 }
 
 impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
+    const MY_NAME: &'static str = "BnaryESM";
+
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
@@ -365,20 +366,27 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+            let air = self.wcm.get_pctx().pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+
+            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
+                let wcm = self.wcm.clone();
 
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
-
-                let wcm = self.wcm.clone();
-
                 scope.spawn(move |scope| {
                     let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                     binary_extension_table_sm.prove(&table_required, false, scope);
+
+                    info!(
+                        "{}: ··· Creating Binary extension instance [{} rows]",
+                        Self::MY_NAME,
+                        drained_inputs.len()
+                    );
 
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
@@ -389,13 +397,14 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         )
                         .expect("Binary extension buffer not found");
 
+                    let trace_row_len = trace_row.len();
                     let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
                         .unwrap()
                         .buffer
                         .unwrap();
                     let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
-                    buffer[offsets[0] as usize..offsets[0] as usize + trace_buffer.len()]
+                    buffer[offsets[0] as usize..offsets[0] as usize + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer);
 
                     let air_instance = AirInstance::new(
@@ -404,6 +413,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         None,
                         buffer,
                     );
+
                     wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
                     thread_controller.remove_working_thread();

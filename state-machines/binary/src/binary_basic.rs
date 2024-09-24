@@ -464,6 +464,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
 
                 let binary_basic_table_sm = self.binary_basic_table_sm.clone();
                 let wcm = self.wcm.clone();
+                
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
