@@ -37,7 +37,11 @@ jobs:
         run: |
           git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com
           git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com".insteadOf https://github.com
-      
+
+      - name: Show git config
+        run: |
+          git config --global --list
+
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
