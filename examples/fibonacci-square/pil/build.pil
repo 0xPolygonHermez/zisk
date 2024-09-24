@@ -4,8 +4,8 @@ require "module.pil"
 // Notice that these two components have a one-to-one reationship, so they must have the same number of rows
 // for them to make sense and for the relationshhip to be satisfied
 airgroup FibonacciSquare {
-    FibonacciSquare(N: 2**3);
+    FibonacciSquare(N: 2**10);
 }
 airgroup Module {
-    Module(N: 2**3);
+    Module(N: 2**10);
 }

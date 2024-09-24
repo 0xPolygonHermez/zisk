@@ -14,7 +14,7 @@ pub struct FibonacciSquare<F: PrimeField> {
 impl<F: PrimeField + Copy> FibonacciSquare<F> {
     const MY_NAME: &'static str = "FibonacciSquare";
 
-    pub fn new(wcm: &mut WitnessManager<F>, module: Arc<Module<F>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, module: Arc<Module<F>>) -> Arc<Self> {
         let fibonacci = Arc::new(Self { module });
 
         wcm.register_component(fibonacci.clone(), Some(FIBONACCI_SQUARE_AIRGROUP_ID), Some(FIBONACCI_SQUARE_AIR_IDS));
@@ -22,11 +22,15 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         fibonacci
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
         // TODO: We should create the instance here and fill the trace in calculate witness!!!
-        if let Err(e) =
-            Self::calculate_trace(self, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx)
-        {
+        if let Err(e) = Self::calculate_trace(
+            self,
+            FIBONACCI_SQUARE_AIRGROUP_ID,
+            FIBONACCI_SQUARE_AIR_IDS[0],
+            pctx.clone(),
+            ectx.clone(),
+        ) {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
         self.module.execute(pctx, ectx);
@@ -36,13 +40,12 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         &self,
         airgroup_id: usize,
         air_id: usize,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
-        let public_inputs: FibonacciSquarePublics = pctx.public_inputs.as_slice().into();
-
+        let public_inputs: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let (module, mut a, mut b, _out) = public_inputs.inner();
 
         let (buffer_size, offsets) =
@@ -65,9 +68,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
             trace[i].b = F::from_canonical_u64(b);
         }
 
-        // hint!
-
-        pctx.public_inputs[24..32].copy_from_slice(&b.to_le_bytes());
+        pctx.public_inputs.inputs.write().unwrap()[24..32].copy_from_slice(&b.to_le_bytes());
 
         // Not needed, for debugging!
         // let mut result = F::zero();
@@ -88,9 +89,9 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for FibonacciSquare<F> {
         &self,
         _stage: u32,
         _air_instance_id: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

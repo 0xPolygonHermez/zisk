@@ -9,6 +9,7 @@ readme = "README.md"
 pilout = { path = "../pilout" }
 proofman-util = { path = "../util" }
 proofman = { path = "../proofman" }
+proofman-common = { path = "../common" }
 
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }

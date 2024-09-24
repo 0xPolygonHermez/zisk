@@ -1,7 +1,5 @@
 // use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use proofman_util::{timer_start, timer_stop_and_log};
-use log::debug;
 use serde::{Deserialize, Deserializer};
 
 #[allow(dead_code)]
@@ -194,13 +192,6 @@ fn default_hash_commits() -> bool {
 
 impl StarkInfo {
     pub fn from_json(stark_info_json: &str) -> Self {
-        timer_start!(STARK_INFO_LOAD);
-
-        debug!("strkinfo: ··· Loading StarkInfo JSON");
-        let stark_info: StarkInfo = serde_json::from_str(stark_info_json).expect("Failed to parse JSON file");
-
-        timer_stop_and_log!(STARK_INFO_LOAD);
-
-        stark_info
+        serde_json::from_str(stark_info_json).expect("Failed to parse JSON file")
     }
 }

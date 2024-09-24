@@ -1,5 +1,6 @@
 use std::os::raw::c_void;
 use std::os::raw::c_char;
+use std::sync::Arc;
 
 use transcript::FFITranscript;
 
@@ -45,17 +46,17 @@ pub struct ConstraintsResults {
 }
 
 pub trait Prover<F> {
-    fn build(&mut self, proof_ctx: &mut ProofCtx<F>);
+    fn build(&mut self, proof_ctx: Arc<ProofCtx<F>>);
     fn new_transcript(&self) -> FFITranscript;
     fn num_stages(&self) -> u32;
     fn num_opening_stages(&self) -> u32;
-    fn get_challenges(&self, stage_id: u32, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
-    fn calculate_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>);
-    fn commit_stage(&mut self, stage_id: u32, proof_ctx: &mut ProofCtx<F>) -> ProverStatus;
+    fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
+    fn calculate_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>);
+    fn commit_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus;
     fn opening_stage(
         &mut self,
         opening_id: u32,
-        proof_ctx: &mut ProofCtx<F>,
+        proof_ctx: Arc<ProofCtx<F>>,
         transcript: &mut FFITranscript,
     ) -> ProverStatus;
 
@@ -63,8 +64,8 @@ pub trait Prover<F> {
     fn get_prover_info(&self) -> ProverInfo;
     fn save_proof(&self, id: u64, output_dir: &str);
 
-    fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
-    fn add_publics_to_transcript(&self, proof_ctx: &mut ProofCtx<F>, transcript: &FFITranscript);
+    fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
+    fn add_publics_to_transcript(&self, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
 
-    fn verify_constraints(&self, proof_ctx: &mut ProofCtx<F>) -> Vec<ConstraintInfo>;
+    fn verify_constraints(&self, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo>;
 }

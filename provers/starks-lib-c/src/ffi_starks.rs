@@ -13,6 +13,14 @@ include!("../bindings_starks.rs");
 #[cfg(not(feature = "no_lib_link"))]
 use std::ffi::CString;
 
+pub struct StepsParams {
+    pub buffer: *mut c_void,
+    pub public_inputs: *mut c_void,
+    pub challenges: *mut c_void,
+    pub subproof_values: *mut c_void,
+    pub evals: *mut c_void,
+}
+
 #[cfg(not(feature = "no_lib_link"))]
 pub fn save_challenges_c(p_challenges: *mut std::os::raw::c_void, global_info_file: &str, output_dir: &str) {
     unsafe {
@@ -148,11 +156,7 @@ pub fn get_hint_ids_by_name_c(p_setup: *mut c_void, hint_name: &str) -> *mut c_v
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_hint_field_c(
     p_setup_ctx: *mut c_void,
-    buffer: *mut c_void,
-    public_inputs: *mut c_void,
-    challenges: *mut c_void,
-    subproofValues: *mut c_void,
-    evals: *mut c_void,
+    steps_params: StepsParams,
     hint_id: u64,
     hint_field_name: &str,
     dest: bool,
@@ -163,11 +167,11 @@ pub fn get_hint_field_c(
     unsafe {
         get_hint_field(
             p_setup_ctx,
-            buffer,
-            public_inputs,
-            challenges,
-            subproofValues,
-            evals,
+            steps_params.buffer,
+            steps_params.public_inputs,
+            steps_params.challenges,
+            steps_params.subproof_values,
+            steps_params.evals,
             hint_id,
             field_name.as_ptr() as *mut std::os::raw::c_char,
             dest,
@@ -399,10 +403,7 @@ pub fn verify_global_constraints_c(
 #[cfg(not(feature = "no_lib_link"))]
 pub fn print_by_name_c(
     p_setup_ctx: *mut c_void,
-    buffer: *mut c_void,
-    public_inputs: *mut c_void,
-    challenges: *mut c_void,
-    subproof_values: *mut c_void,
+    steps_params: StepsParams,
     name: &str,
     lengths: *mut u64,
     first_print_value: u64,
@@ -414,10 +415,10 @@ pub fn print_by_name_c(
     unsafe {
         print_by_name(
             p_setup_ctx,
-            buffer,
-            public_inputs,
-            challenges,
-            subproof_values,
+            steps_params.buffer,
+            steps_params.public_inputs,
+            steps_params.challenges,
+            steps_params.subproof_values,
             name_ptr,
             lengths,
             first_print_value,
@@ -437,6 +438,13 @@ pub fn print_expression_c(
 ) {
     unsafe {
         print_expression(p_setup_ctx, pol, dim, first_print_value, last_print_value);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn print_row_c(p_setup_ctx: *mut c_void, buffer: *mut c_void, stage: u64, row: u64) {
+    unsafe {
+        print_row(p_setup_ctx, buffer, stage, row);
     }
 }
 
@@ -556,14 +564,9 @@ pub fn get_hint_ids_by_name_c(_p_setup_ctx: *mut c_void, _hint_name: &str) -> *m
 }
 
 #[cfg(feature = "no_lib_link")]
-#[allow(clippy::too_many_arguments)]
 pub fn get_hint_field_c(
     _p_setup_ctx: *mut c_void,
-    _buffer: *mut c_void,
-    _public_inputs: *mut c_void,
-    _challenges: *mut c_void,
-    _subproofValues: *mut c_void,
-    _evals: *mut c_void,
+    _steps_params: StepsParams,
     _hint_id: u64,
     _hint_field_name: &str,
     _dest: bool,
@@ -773,13 +776,9 @@ pub fn verify_global_constraints_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-#[allow(clippy::too_many_arguments)]
 pub fn print_by_name_c(
     _p_setup_ctx: *mut c_void,
-    _buffer: *mut c_void,
-    _public_inputs: *mut c_void,
-    _challenges: *mut c_void,
-    _subproof_values: *mut c_void,
+    _steps_params: StepsParams,
     _name: &str,
     _lengths: *mut u64,
     _first_print_value: u64,
@@ -788,6 +787,11 @@ pub fn print_by_name_c(
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "print_by_name_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn print_row_c(_p_setup_ctx: *mut c_void, _buffer: *mut c_void, _stage: u64, _row: u64) {
+    trace!("{}: ··· {}", "ffi     ", "print_row_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

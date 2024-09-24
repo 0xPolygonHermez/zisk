@@ -33,7 +33,7 @@ fn main() {
         .format_timestamp(None)
         .format_level(true)
         .format_target(false)
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(log::LevelFilter::Debug)
         .init();
 
     print_banner(false);

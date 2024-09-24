@@ -43,6 +43,22 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_Z23fri_proof_get_zkinproofmPvS_S_S_PcS0_"]
+    pub fn fri_proof_get_zkinproof(
+        proof_id: u64,
+        pFriProof: *mut ::std::os::raw::c_void,
+        pPublics: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        fileDir: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24fri_proof_free_zkinproofPv"]
+    pub fn fri_proof_free_zkinproof(pZkinProof: *mut ::std::os::raw::c_void);
+}
+extern "C" {
     #[link_name = "\u{1}_Z14fri_proof_freePv"]
     pub fn fri_proof_free(pFriProof: *mut ::std::os::raw::c_void);
 }
@@ -70,6 +86,14 @@ extern "C" {
     pub fn stark_info_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z16get_stark_info_nPv"]
+    pub fn get_stark_info_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24get_stark_info_n_publicsPv"]
+    pub fn get_stark_info_n_publics(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
     #[link_name = "\u{1}_Z15get_map_total_nPv"]
     pub fn get_map_total_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
 }
@@ -89,6 +113,14 @@ extern "C" {
     #[link_name = "\u{1}_Z14const_pols_newPcPv"]
     pub fn const_pols_new(
         filename: *mut ::std::os::raw::c_char,
+        pStarkInfo: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z24const_pols_with_tree_newPcS_Pv"]
+    pub fn const_pols_with_tree_new(
+        filename: *mut ::std::os::raw::c_char,
+        treeFilename: *mut ::std::os::raw::c_char,
         pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -335,6 +367,15 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z9print_rowPvS_mm"]
+    pub fn print_row(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        stage: u64,
+        row: u64,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z16print_expressionPvS_mmm"]
     pub fn print_expression(
         pSetupCtx: *mut ::std::os::raw::c_void,
@@ -345,11 +386,42 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19gen_recursive_proofPvS_S_S_"]
+    #[link_name = "\u{1}_Z19gen_recursive_proofPvS_S_Pc"]
     pub fn gen_recursive_proof(
         pSetupCtx: *mut ::std::os::raw::c_void,
         pAddress: *mut ::std::os::raw::c_void,
-        pFriProof: *mut ::std::os::raw::c_void,
         pPublicInputs: *mut ::std::os::raw::c_void,
-    );
+        proof_file: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z12get_zkin_ptrPc"]
+    pub fn get_zkin_ptr(zkin_file: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11public2zkinPvS_Pcmb"]
+    pub fn public2zkin(
+        pZkin: *mut ::std::os::raw::c_void,
+        pPublics: *mut ::std::os::raw::c_void,
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        airgroupId: u64,
+        isAggregated: bool,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z21add_recursive2_verkeyPvPc"]
+    pub fn add_recursive2_verkey(
+        pZkin: *mut ::std::os::raw::c_void,
+        recursive2VerKeyFilename: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15join_zkin_finalPvS_PcPS_S1_"]
+    pub fn join_zkin_final(
+        pPublics: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        zkinRecursive2: *mut *mut ::std::os::raw::c_void,
+        starkInfoRecursive2: *mut *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 }

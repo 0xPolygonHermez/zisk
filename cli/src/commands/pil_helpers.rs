@@ -148,8 +148,16 @@ impl PilHelpersCmd {
                     .for_each(|symbol| {
                         let air = wcctxs[subproof_id].airs.get_mut(air_id).unwrap();
                         let name = symbol.name.split_once('.').map(|x| x.1).unwrap_or(&symbol.name);
-                        let r#type =
-                            if symbol.dim == 0 { "F".to_string() } else { format!("[F; {}]", symbol.lengths[0]) };
+                        let r#type = if symbol.lengths.is_empty() {
+                            "F".to_string() // Case when lengths.len() == 0
+                        } else {
+                            // Start with "F" and apply each length in reverse order
+                            symbol
+                                .lengths
+                                .iter()
+                                .rev()
+                                .fold("F".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
+                        };
                         air.columns.push(ColumnCtx { name: name.to_owned(), r#type });
                     });
             }

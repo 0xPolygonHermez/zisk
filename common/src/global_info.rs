@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-// use serde_json::Value as JsonValue;
-use log::debug;
 use serde::Deserialize;
+
+use log::{debug, trace};
 use proofman_util::{timer_start, timer_stop_and_log};
 
 #[derive(Deserialize)]
@@ -43,6 +43,18 @@ pub struct GlobalInfoStepsFRI {
 }
 
 impl GlobalInfo {
+    pub fn new(proving_key_path: &Path) -> Self {
+        timer_start!(GLOBAL_INFO_LOAD);
+
+        debug!("glblinfo: ··· Loading GlobalInfo JSON {}", proving_key_path.display());
+
+        let global_info = Self::from_file(&proving_key_path.join("pilout.globalInfo.json"));
+
+        timer_stop_and_log!(GLOBAL_INFO_LOAD);
+
+        global_info
+    }
+
     pub fn from_file(global_info_path: &PathBuf) -> Self {
         let global_info_json = std::fs::read_to_string(global_info_path)
             .unwrap_or_else(|_| panic!("Failed to read file {}", global_info_path.display()));
@@ -51,14 +63,7 @@ impl GlobalInfo {
     }
 
     pub fn from_json(global_info_json: &str) -> Self {
-        timer_start!(GLOBAL_INFO_LOAD);
-
-        debug!("glblinfo: ··· Loading GlobalInfo JSON");
-        let global_info: GlobalInfo = serde_json::from_str(global_info_json).expect("Failed to parse JSON file");
-
-        timer_stop_and_log!(GLOBAL_INFO_LOAD);
-
-        global_info
+        serde_json::from_str(global_info_json).expect("Failed to parse JSON file")
     }
 
     pub fn get_air_setup_path(&self, airgroup_id: usize, air_id: usize) -> PathBuf {

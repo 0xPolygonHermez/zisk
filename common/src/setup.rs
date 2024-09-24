@@ -1,12 +1,13 @@
 use std::{os::raw::c_void, path::Path};
 
-use log::trace;
+use log::info;
 
 use proofman_starks_lib_c::{const_pols_new_c, expressions_bin_new_c, setup_ctx_new_c, stark_info_new_c};
 
 use crate::GlobalInfo;
 
 /// Air instance context for managing air instances (traces)
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct Setup {
     pub airgroup_id: usize,
@@ -15,14 +16,14 @@ pub struct Setup {
     pub p_stark_info: *mut c_void,
 }
 
+unsafe impl Send for Setup {}
+unsafe impl Sync for Setup {}
+
 impl Setup {
     const MY_NAME: &'static str = "Setup";
 
-    pub fn new(proving_key_path: &Path, airgroup_id: usize, air_id: usize) -> Self {
-        let global_info = GlobalInfo::from_file(&proving_key_path.join("pilout.globalInfo.json"));
-
+    pub fn new(proving_key_path: &Path, global_info: &GlobalInfo, airgroup_id: usize, air_id: usize) -> Self {
         let air_setup_folder = proving_key_path.join(global_info.get_air_setup_path(airgroup_id, air_id));
-        trace!("{}   : ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
 
         // Check path exists and is a folder
         if !air_setup_folder.exists() {
@@ -34,6 +35,8 @@ impl Setup {
 
         let base_filename_path =
             air_setup_folder.join(global_info.get_air_name(airgroup_id, air_id)).display().to_string();
+
+        info!("{}   : ··· Loading setup for AIR [{}:{}]: {:?}", Self::MY_NAME, airgroup_id, air_id, air_setup_folder);
 
         let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
         let expressions_bin_path = base_filename_path.clone() + ".bin";
