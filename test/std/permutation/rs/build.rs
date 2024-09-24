@@ -1,4 +1,4 @@
-use proofman_cli::commands::pil_helpers::PilHelpersCmd;
+// use proofman_cli::commands::pil_helpers::PilHelpersCmd;
 
 fn main() {
     // let root_path = std::env::current_dir()

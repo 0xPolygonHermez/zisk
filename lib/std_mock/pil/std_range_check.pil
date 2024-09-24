@@ -1,0 +1,5 @@
+function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int max) {
+}
+
+function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1, int max1, int min2, int max2) {
+}

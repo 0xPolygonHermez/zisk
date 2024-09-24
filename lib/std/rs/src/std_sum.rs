@@ -26,15 +26,16 @@ pub struct StdSum<F: Copy> {
 }
 
 impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
-    fn decide(&self, sctx: &SetupCtx, pctx: &ProofCtx<F>) {
+    fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
+        let mut sum_airs_guard = self.sum_airs.lock().unwrap();
         air_groups.iter().for_each(|air_group| {
             let airs = air_group.airs();
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let im_hints = get_hint_ids_by_name(setup.p_setup, "im_col");
                 let gsum_hints = get_hint_ids_by_name(setup.p_setup, "gsum_col");
                 let debug_hints_data = get_hint_ids_by_name(setup.p_setup, "gsum_member_data");
@@ -55,8 +56,8 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
     }
 }
 
-impl<F: PrimeField> StdSum<F> {
-    const MY_NAME: &'static str = "STD Sum";
+impl<F: Copy + Debug + PrimeField> StdSum<F> {
+    const MY_NAME: &'static str = "STD Sum ";
 
     pub fn new(mode: StdMode, wcm: &mut WitnessManager<F>) -> Arc<Self> {
         let std_sum = Arc::new(Self {
@@ -221,7 +222,7 @@ impl<F: PrimeField> StdSum<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.decide(sctx, pctx);
     }
 
@@ -229,9 +230,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         &self,
         stage: u32,
         _air_instance: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         if stage == 2 {
             let sum_airs = self.sum_airs.lock().unwrap();

@@ -21,7 +21,7 @@ where
 {
     const MY_NAME: &'static str = "RangeCheck4";
 
-    pub fn new(wcm: &mut WitnessManager<F>, std_lib: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let range_check4 = Arc::new(Self { std_lib });
 
         wcm.register_component(
@@ -36,12 +36,12 @@ where
         range_check4
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of the air
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("RangeCheck4".into(), RANGE_CHECK_4_AIR_IDS[0])
+            .get_buffer_info(&sctx, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
@@ -64,14 +64,14 @@ where
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
         log::info!(
-            "{}: Initiating witness computation for AIR '{}' at stage {}",
+            "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             "RangeCheck4",
             stage
@@ -81,7 +81,7 @@ where
             let (buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("RangeCheck4".into(), RANGE_CHECK_4_AIR_IDS[0])
+                .get_buffer_info(&sctx, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0])
                 .unwrap();
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
@@ -117,7 +117,7 @@ where
                     trace[i].a5 = F::from_canonical_u32(rng.gen_range(127..=(1 << 16)));
                     let mut a6_val: i128 = rng.gen_range(-1..=2i128.pow(3));
                     if a6_val < 0 {
-                        a6_val = F::order().to_i128().unwrap() + a6_val;
+                        a6_val += F::order().to_i128().unwrap();
                     }
                     trace[i].a6 = F::from_canonical_u64(a6_val as u64);
 
@@ -146,7 +146,7 @@ where
 
                 let mut a7_val: i128 = rng.gen_range(-2i128.pow(7) + 1..=-50);
                 if a7_val < 0 {
-                    a7_val = F::order().to_i128().unwrap() + a7_val;
+                    a7_val += F::order().to_i128().unwrap();
                 }
                 trace[i].a7 = F::from_canonical_u64(a7_val as u64);
                 self.std_lib
@@ -154,7 +154,7 @@ where
 
                 let mut a8_val: i128 = rng.gen_range(-2i128.pow(8) + 1..=-127);
                 if a8_val < 0 {
-                    a8_val = F::order().to_i128().unwrap() + a8_val;
+                    a8_val += F::order().to_i128().unwrap();
                 }
                 trace[i].a8 = F::from_canonical_u64(a8_val as u64);
                 self.std_lib
@@ -167,12 +167,5 @@ where
         }
 
         self.std_lib.unregister_predecessor(pctx, None);
-
-        log::info!(
-            "{}: Completed witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            "RangeCheck4",
-            stage
-        );
     }
 }

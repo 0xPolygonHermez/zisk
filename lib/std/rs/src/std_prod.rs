@@ -24,8 +24,8 @@ pub struct StdProd<F: Copy> {
     bus_vals_den: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
 }
 
-impl<F: Field> Decider<F> for StdProd<F> {
-    fn decide(&self, sctx: &SetupCtx, pctx: &ProofCtx<F>) {
+impl<F: Copy + Debug + PrimeField> StdProd<F> {
+    fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         for airgroup in pctx.pilout.air_groups() {
             for air in airgroup.airs() {
@@ -204,7 +204,7 @@ impl<F: PrimeField> StdProd<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
-    fn start_proof(&self, pctx: &ProofCtx<F>, _ectx: &ExecutionCtx, sctx: &SetupCtx) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.decide(sctx, pctx);
     }
 
@@ -212,9 +212,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         &self,
         stage: u32,
         _air_instance: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         if stage == 2 {
             let prod_airs = self.prod_airs.lock().unwrap();

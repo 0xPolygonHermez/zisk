@@ -18,7 +18,7 @@ where
 {
     const MY_NAME: &'static str = "ConnectionNew";
 
-    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let connection_new = Arc::new(Self {
             _phantom: std::marker::PhantomData,
         });
@@ -32,12 +32,12 @@ where
         connection_new
     }
 
-    pub fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, _sctx: &SetupCtx) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info("Connection".into(), CONNECTION_NEW_AIR_IDS[0])
+            .get_buffer_info(&sctx, CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
@@ -60,9 +60,9 @@ where
         &self,
         stage: u32,
         air_instance_id: Option<usize>,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
@@ -73,7 +73,7 @@ where
             .get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
-            "{}: Initiating witness computation for AIR '{}' at stage {}",
+            "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),
             stage
@@ -83,7 +83,7 @@ where
             let (_buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Connection".into(), CONNECTION_NEW_AIR_IDS[0])
+                .get_buffer_info(&sctx, CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0])
                 .unwrap();
 
             let buffer = &mut air_instance.buffer;
@@ -199,12 +199,5 @@ where
                 }
             }
         }
-
-        log::info!(
-            "{}: Completed witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            air.name().unwrap_or("unknown"),
-            stage
-        );
     }
 }

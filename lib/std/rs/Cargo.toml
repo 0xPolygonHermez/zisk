@@ -4,18 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-# proofman-hints = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-# pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-#Local development
-proofman = { path = "../../../../pil2-proofman/proofman" }
-proofman-common = { path = "../../../../pil2-proofman/common" }
-proofman-hints = { path = "../../../../pil2-proofman/hints" }
-proofman-macros = { path = "../../../../pil2-proofman/macros" }
-proofman-util = { path = "../../../../pil2-proofman/util" }
-pilout = { path = "../../../../pil2-proofman/pilout" }
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-hints = { workspace = true }
+proofman-util = { workspace = true }
+pilout = { workspace = true }
 
 log = { version = "0.4", default-features = false }
 num-bigint = "0.4"

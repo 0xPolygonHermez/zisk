@@ -51,30 +51,39 @@ impl Pilout {
         let mut pilout = WitnessPilout::new("RangeCheck", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("RangeCheck3"));
+
         air_group.add_air(Some("RangeCheck3"), 32);
 
         let air_group = pilout.add_air_group(Some("RangeCheck2"));
+
         air_group.add_air(Some("RangeCheck2"), 16);
 
         let air_group = pilout.add_air_group(Some("RangeCheck1"));
+
         air_group.add_air(Some("RangeCheck1"), 8);
 
         let air_group = pilout.add_air_group(Some("RangeCheck4"));
+
         air_group.add_air(Some("RangeCheck4"), 64);
 
         let air_group = pilout.add_air_group(Some("MultiRangeCheck1"));
+
         air_group.add_air(Some("MultiRangeCheck1"), 8);
 
         let air_group = pilout.add_air_group(Some("MultiRangeCheck2"));
+
         air_group.add_air(Some("MultiRangeCheck2"), 16);
 
         let air_group = pilout.add_air_group(Some("U8Air"));
+
         air_group.add_air(Some("U8Air"), 256);
 
         let air_group = pilout.add_air_group(Some("U16Air"));
+
         air_group.add_air(Some("U16Air"), 65536);
 
         let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
+
         air_group.add_air(Some("SpecifiedRanges"), 131072);
 
         pilout

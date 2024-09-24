@@ -33,19 +33,17 @@ impl<F: PrimeField> Std<F> {
         // of its (possibly) associated AIRs: U8Air ...
         let range_check = StdRangeCheck::new(MODE, wcm, rc_air_data);
 
-        let std = Arc::new(Self {
+        Arc::new(Self {
             range_check,
             range_check_predecessors: AtomicU32::new(0),
-        });
-
-        std
+        })
     }
 
     pub fn register_predecessor(&self) {
         self.range_check_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, pctx: &mut ProofCtx<F>, scope: Option<&Scope>) {
+    pub fn unregister_predecessor(&self, pctx: Arc<ProofCtx<F>>, scope: Option<&Scope>) {
         if self.range_check_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.range_check.drain_inputs(pctx, scope);
         }
