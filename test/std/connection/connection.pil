@@ -75,6 +75,7 @@ airtemplate Connection3(const int N = 2**12) {
 airtemplate ConnectionNew(const int N = 2**4) {
 
     const int OPID[6] = [2,3,4,5,6,7];
+    const int OPID[6] = [2,3,4,5,6,7];
 
     col witness a[6];
     col witness b[6];
@@ -88,6 +89,7 @@ airtemplate ConnectionNew(const int N = 2**4) {
     connection_connect(OPID[0]);
 
     connection_init(OPID[1], [a[1], b[1], c[1]]);
+    connection_update_one_cell(OPID[1], [c[1],1,c[1],1]);
     connection_update_one_cell(OPID[1], [c[1],1,c[1],1]);
     connection_update_one_cell(OPID[1], [c[1],2,c[1],3], N/2);
     connection_connect(OPID[1]);
