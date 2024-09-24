@@ -15,7 +15,8 @@ pub struct ZiskInstBuilder {
 }
 
 impl ZiskInstBuilder {
-    pub fn new(paddr: u64) -> ZiskInstBuilder {
+    #[inline]
+    pub const fn new(paddr: u64) -> ZiskInstBuilder {
         let regs_addr = SYS_ADDR;
 
         ZiskInstBuilder {
