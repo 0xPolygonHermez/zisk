@@ -10,6 +10,22 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-hints = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-cli = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+#Local development
+# proofman = { path = "../pil2-proofman/proofman" }
+# proofman-common = { path = "../pil2-proofman/common" }
+# proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-hints = { path = "../pil2-proofman/hints" }
+# proofman-util = { path = "../pil2-proofman/util" }
+# proofman-cli = { path = "../pil2-proofman/cli" }
+# pilout = { path = "../pil2-proofman/pilout" }
+
 env_logger = "0.11"
 log = { version = "0.4", default-features = false }
 rand = "0.8.5"
