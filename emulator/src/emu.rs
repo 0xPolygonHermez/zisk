@@ -630,7 +630,7 @@ impl<'a> Emu<'a> {
             b_src_mem: F::from_bool(instruction.b_src == SRC_MEM),
             b_offset_imm0: F::from_canonical_u64(instruction.b_offset_imm0),
             #[cfg(not(feature = "sp"))]
-            b_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
+            b_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
             #[cfg(feature = "sp")]
             b_use_sp_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
             b_src_ind: F::from_bool(instruction.b_src == SRC_IND),
