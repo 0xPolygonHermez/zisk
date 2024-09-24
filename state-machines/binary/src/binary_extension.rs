@@ -80,7 +80,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
     }
 
     pub fn operations() -> Vec<u8> {
-        vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x24, 0x25, 0x26]
+        vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x23, 0x24, 0x25]
     }
 
     pub fn process_slice(
@@ -110,9 +110,9 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
             t.mode32 = F::from_bool(mode32);
             let m_op = i.opcode & 0xEF;
             t.m_op = F::from_canonical_u8(m_op);
-            let mode16 = i.opcode == 0x25;
+            let mode16 = i.opcode == 0x24;
             t.mode16 = F::from_bool(mode16);
-            let mode8 = i.opcode == 0x24;
+            let mode8 = i.opcode == 0x23;
             t.mode8 = F::from_bool(mode8);
 
             // Split a in bytes and store them in in1
@@ -258,7 +258,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
                     }
                 },
 
-                0x24 /* SE_B */ => {
+                0x23 /* SE_B */ => {
                     for j in 0..8 {
                         // Calculate position as the number of shifted bits for this byte
                         let position = j*8 + b_low;
@@ -276,7 +276,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
                     }
                 },
 
-                0x25 /* SE_H */ => {
+                0x24 /* SE_H */ => {
                     for j in 0..8 {
                         // Calculate position as the number of shifted bits for this byte
                         let position = j*8 + b_low;
@@ -294,7 +294,7 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
                     }
                 },
 
-                0x26 /* SE_W */ => {
+                0x25 /* SE_W */ => {
                     for j in 0..8 {
                         // Calculate position as the number of shifted bits for this byte
                         let position = j*8 + b_low;

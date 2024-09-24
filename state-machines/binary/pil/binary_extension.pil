@@ -10,14 +10,14 @@ List:
     │  name  │  bits  │   op     │   m_op   │
     ┼────────┼────────┼──────────┼──────────┼
     │  SLL   │   64   │   0x0d   │   0x0d   │
-    │  SRL   │   64   │   0x0e   │   0x0e   │   
+    │  SRL   │   64   │   0x0e   │   0x0e   │
     │  SRA   │   64   │   0x0f   │   0x0f   │
     │  SLL_W │   32   │   0x1d   │   0x0d   │
     │  SRL_W │   32   │   0x1e   │   0x0e   │
     │  SRA_W │   32   │   0x1f   │   0x0f   │
-    │  SE_B  │   32   │   0x24   │   0x24   │
-    │  SE_H  │   32   │   0x25   │   0x25   │
-    │  SE_W  │   32   │   0x26   │   0x26   │
+    │  SE_B  │   32   │   0x23   │   0x23   │
+    │  SE_H  │   32   │   0x24   │   0x24   │
+    │  SE_W  │   32   │   0x35   │   0x25   │
     ┼────────┼────────┼──────────┼──────────┼
 
     Opcodes:
@@ -28,9 +28,9 @@ List:
     0/1     SLL      SLL_W    0x0d     (0x0d,0x1d)
     0/1     SRL      SRL_W    0x0e     (0x0e,0x1e)
     0/1     SRA      SRA_W    0x0f     (0x0f,0x1f)
-     0      SE_B              0x24      0x24
-     0      SE_H              0x25      0x25
-     0      SE_W              0x26      0x26
+     0      SE_B              0x23      0x23
+     0      SE_H              0x24      0x24
+     1      SE_W              0x25      0x35
 
 Examples:
 =======================================
@@ -98,9 +98,9 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     (mode8 + mode16 + mode32) * (mode8 + mode16 + mode32 - 1) === 0;
 
     // Associate the mode with its possible operations
-    mode8 * (0x24 - m_op) === 0;
-    mode16 * (0x25 - m_op) === 0;
-    // mode32 * (0x34 - m_op) * (0x45 - m_op) * (0x44 - m_op) * (0x26 - m_op) === 0;
+    mode8 * (0x23 - m_op) === 0;
+    mode16 * (0x24 - m_op) === 0;
+    mode32 * (0x25 - m_op) * (0x0d - m_op) * (0x0e - m_op) * (0x0f - m_op) === 0;
 
     /*
         opid      j    in1                 in2     out0    out1

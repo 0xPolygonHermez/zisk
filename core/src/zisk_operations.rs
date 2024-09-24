@@ -610,9 +610,9 @@ pub fn opcode_execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
     match opcode {
         0x00 => op_flag(a, b),
         0x01 => op_copyb(a, b),
-        0x24 => op_signextend_b(a, b),
-        0x25 => op_signextend_h(a, b),
-        0x26 => op_signextend_w(a, b),
+        0x23 => op_signextend_b(a, b),
+        0x24 => op_signextend_h(a, b),
+        0x25 => op_signextend_w(a, b),
         0x02 => op_add(a, b),
         0x12 => op_add_w(a, b),
         0x03 => op_sub(a, b),
@@ -667,9 +667,9 @@ pub fn opcode_string(opcode: u8) -> &'static str {
     match opcode {
         0x00 => "flag",
         0x01 => "copyb",
-        0x24 => "signextend_b",
-        0x25 => "signextend_h",
-        0x26 => "signextend_w",
+        0x23 => "signextend_b",
+        0x24 => "signextend_h",
+        0x25 => "signextend_w",
         0x02 => "add",
         0x12 => "add_w",
         0x03 => "sub",
@@ -742,9 +742,9 @@ impl ZiskOperations {
         let ops: Vec<ZiskOperation> = vec![
             ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: opc_flag },
             ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: opc_copyb },
-            ZiskOperation { n: "signextend_b", s: 109, t: "be", c: 0x24, f: opc_signextend_b },
-            ZiskOperation { n: "signextend_h", s: 109, t: "be", c: 0x25, f: opc_signextend_h },
-            ZiskOperation { n: "signextend_w", s: 109, t: "be", c: 0x26, f: opc_signextend_w },
+            ZiskOperation { n: "signextend_b", s: 109, t: "be", c: 0x23, f: opc_signextend_b },
+            ZiskOperation { n: "signextend_h", s: 109, t: "be", c: 0x24, f: opc_signextend_h },
+            ZiskOperation { n: "signextend_w", s: 109, t: "be", c: 0x25, f: opc_signextend_w },
             ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: opc_add },
             ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: opc_add_w },
             ZiskOperation { n: "sub", t: "b", s: 77, c: 0x03, f: opc_sub },
@@ -813,13 +813,13 @@ pub fn op_from_str(op: &str) -> ZiskOperation {
         "flag" => ZiskOperation { n: "flag", t: "i", s: 0, c: 0x00, f: opc_flag },
         "copyb" => ZiskOperation { n: "copyb", t: "i", s: 0, c: 0x01, f: opc_copyb },
         "signextend_b" => {
-            ZiskOperation { n: "signextend_b", t: "be", s: 109, c: 0x24, f: opc_signextend_b }
+            ZiskOperation { n: "signextend_b", t: "be", s: 109, c: 0x23, f: opc_signextend_b }
         }
         "signextend_h" => {
-            ZiskOperation { n: "signextend_h", t: "be", s: 109, c: 0x25, f: opc_signextend_h }
+            ZiskOperation { n: "signextend_h", t: "be", s: 109, c: 0x24, f: opc_signextend_h }
         }
         "signextend_w" => {
-            ZiskOperation { n: "signextend_w", t: "be", s: 109, c: 0x26, f: opc_signextend_w }
+            ZiskOperation { n: "signextend_w", t: "be", s: 109, c: 0x25, f: opc_signextend_w }
         }
         "add" => ZiskOperation { n: "add", t: "b", s: 77, c: 0x02, f: opc_add },
         "add_w" => ZiskOperation { n: "add_w", t: "b", s: 77, c: 0x12, f: opc_add_w },
@@ -875,9 +875,9 @@ pub fn str_to_opcode(s: &str) -> u8 {
     let op: u8 = match s {
         "flag" => 0x00,
         "copyb" => 0x01,
-        "signextend_b" => 0x24,
-        "signextend_h" => 0x25,
-        "signextend_w" => 0x26,
+        "signextend_b" => 0x23,
+        "signextend_h" => 0x24,
+        "signextend_w" => 0x25,
         "add" => 0x02,
         "add_w" => 0x12,
         "sub" => 0x03,
