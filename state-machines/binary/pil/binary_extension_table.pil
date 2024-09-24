@@ -6,10 +6,10 @@ require "constants.pil"
 // SLL/SLL_W  *  (OP:0x0d)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 |        2^17
 // SRL/SRL_W  *  (OP:0x0e)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18
 // SRA/SRA_W  *  (OP:0x0f)    2^8 (A) * 2^6 (B) * 2^3 (OFFSET) = 2^17 | 2^18 + 2^17
-// SE_B          (OP:0x24)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                   + 2^11
-// SE_H          (OP:0x25)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12
-// SE_W          (OP:0x26)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12 + 2^11
-// EXT           (OP:0x27)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17     + 2^13               => 2^19
+// SE_B          (OP:0x14)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17                   + 2^11
+// SE_H          (OP:0x15)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12
+// SE_W          (OP:0x16)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17            + 2^12 + 2^11
+// EXT           (OP:0x17)    2^8 (A)           * 2^3 (OFFSET) = 2^11 | 2^18 + 2^17     + 2^13               => 2^19
 // ------------------------------------------------------------------------------------------------------------------
 // (*) The W variant has the second operand as a 5-bit value instead of 6-bit, but this is controlled outside
 
@@ -46,7 +46,7 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                         [0:P2_8..(bytes-1):P2_8]:4]...;
 
     col fixed OP = [13:P2_17..15:P2_17,                       // OP         (3 bits)
-                    36:P2_11..39:P2_11]...;
+                    20:P2_11..33:P2_11]...;
 
     col fixed C0;                                           // Output C0  (32 bits)
     col fixed C1;                                           // Output C1  (32 bits)
