@@ -13,7 +13,7 @@ require "constants.pil"
 // ------------------------------------------------------------------------------------------------------------------
 // (*) The W variant has the second operand as a 5-bit value instead of 6-bit, but this is controlled outside
 
-const int EXT_OP = 6;
+const int EXT_OP = 0x27;
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
 
