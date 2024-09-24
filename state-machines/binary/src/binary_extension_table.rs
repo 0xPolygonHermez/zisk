@@ -10,7 +10,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
 use zisk_pil::*;
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+const PROVE_CHUNK_SIZE: usize = 1 << 16;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryExtensionTableSM<F> {
