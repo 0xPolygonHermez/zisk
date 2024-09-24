@@ -1,4 +1,5 @@
 use core::panic;
+use rayon::prelude::*;
 use std::{
     collections::BTreeMap,
     fmt::Debug,
@@ -25,7 +26,7 @@ pub struct StdSum<F: Copy> {
     bus_vals_right: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
 }
 
-impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
+impl<F: Field> Decider<F> for StdSum<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
@@ -42,7 +43,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
                 let debug_hints = get_hint_ids_by_name(setup.p_setup, "gsum_member");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.sum_airs.lock().unwrap().push((
+                    sum_airs_guard.push((
                         airgroup_id,
                         air_id,
                         im_hints,
@@ -59,7 +60,7 @@ impl<F: Copy + Debug + Field> Decider<F> for StdSum<F> {
 impl<F: Copy + Debug + PrimeField> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum ";
 
-    pub fn new(mode: StdMode, wcm: &mut WitnessManager<F>) -> Arc<Self> {
+    pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let std_sum = Arc::new(Self {
             mode,
             sum_airs: Mutex::new(Vec::new()),
@@ -91,9 +92,9 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
     ) {
         for (i, hint) in debug_hints_data.iter().enumerate() {
             let sumid = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                &sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "sumid",
@@ -101,9 +102,9 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             );
 
             let proves = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                &sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "proves",
@@ -121,9 +122,9 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             };
 
             let ncols = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                &sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "ncols",
@@ -140,9 +141,9 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             };
 
             let mul = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                &sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "selector",
@@ -152,9 +153,9 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             let mut bus_vals = BTreeMap::new();
             for (j, hint) in debug_hints[i * ncols..(i + 1) * ncols].iter().enumerate() {
                 let col = get_hint_field::<F>(
-                    sctx.setups.as_ref(),
-                    pctx.public_inputs.clone(),
-                    pctx.challenges.clone(),
+                    &sctx,
+                    &pctx.public_inputs,
+                    &pctx.challenges,
                     air_instance,
                     *hint as usize,
                     "reference",
@@ -187,7 +188,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 for _ in 0..mul {
                     // TODO: The sumid strategy seems not to work
                     let bus_value = bus_vals.values().filter_map(|v| Some(v.get(j))).collect();
-                    self.update_bus_vals(sumid, bus_value, j, proves);
+                    self.update_bus_vals(sumid, bus_value, j, !proves);
                 }
             }
         }
@@ -267,8 +268,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     if self.mode == StdMode::Debug {
                         self.debug(
-                            pctx,
-                            sctx,
+                            &pctx,
+                            &sctx,
                             air_instance,
                             num_rows,
                             debug_hints_data.clone(),
@@ -279,38 +280,45 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     // Populate the im columns
                     for hint in im_hints {
                         let mut im = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &sctx,
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             *hint as usize,
                             "reference",
                             HintFieldOptions::dest(),
                         );
                         let num = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &sctx,
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             *hint as usize,
                             "numerator",
                             HintFieldOptions::default(),
                         );
                         let den = get_hint_field::<F>(
-                            sctx.setups.as_ref(),
-                            pctx.public_inputs.clone(),
-                            pctx.challenges.clone(),
+                            &sctx,
+                            &pctx.public_inputs,
+                            &pctx.challenges,
                             air_instance,
                             *hint as usize,
                             "denominator",
-                            HintFieldOptions::default(),
+                            HintFieldOptions::inverse(),
                         );
 
-                        for i in 0..num_rows {
-                            // TODO: We should perform the following division in batch using div_lib
-                            im.set(i, num.get(i) / den.get(i));
+                        // Apply a map&reduce strategy to compute the division
+                        // TODO! Explore how to do it in only one step
+                        // Step 1: Compute the division in parallel
+                        let results: Vec<HintFieldOutput<F>> = (0..num_rows)
+                            .into_par_iter()
+                            .map(|i| num.get(i) * den.get(i))
+                            .collect(); // Collect results into a vector
+                                        // Step 2: Store the results in 'im'
+                        for (i, &value) in results.iter().enumerate() {
+                            im.set(i, value);
                         }
-                        set_hint_field(sctx.setups.as_ref(), air_instance, *hint, "reference", &im);
+                        set_hint_field(&sctx, air_instance, *hint, "reference", &im);
                     }
 
                     // We know that at most one product hint exists
@@ -325,18 +333,18 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     // Use the hint to populate the gsum column
                     let mut gsum = get_hint_field::<F>(
-                        sctx.setups.as_ref(),
-                        pctx.public_inputs.clone(),
-                        pctx.challenges.clone(),
+                        &sctx,
+                        &pctx.public_inputs,
+                        &pctx.challenges,
                         air_instance,
                         gsum_hint,
                         "reference",
                         HintFieldOptions::dest(),
                     );
                     let expr = get_hint_field::<F>(
-                        sctx.setups.as_ref(),
-                        pctx.public_inputs.clone(),
-                        pctx.challenges.clone(),
+                        &sctx,
+                        &pctx.public_inputs,
+                        &pctx.challenges,
                         air_instance,
                         gsum_hint,
                         "expression",
@@ -350,15 +358,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     }
 
                     // set the computed gsum column and its associated airgroup_val
-                    set_hint_field(
-                        sctx.setups.as_ref(),
-                        air_instance,
-                        gsum_hint as u64,
-                        "reference",
-                        &gsum,
-                    );
+                    set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
                     set_hint_field_val(
-                        sctx,
+                        &sctx,
                         air_instance,
                         gsum_hint as u64,
                         "result",
@@ -385,8 +387,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
             if !bus_vals_left.is_empty() || !bus_vals_right.is_empty() {
                 log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
-                println!("\t ► Unmatching bus values thrown as 'prove':");
-                for (opid, vals) in bus_vals_left.iter() {
+                println!("\t ► Unmatching bus values thrown as 'assume':");
+                for (opid, vals) in bus_vals_right.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
                     let left_to_print = print_rows(
                         vals.iter().map(|(row, val)| (*row, val)),
@@ -404,8 +406,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     println!();
                 }
 
-                println!("\t ► Unmatching bus values thrown as 'assume':");
-                for (opid, vals) in bus_vals_right.iter() {
+                println!("\t ► Unmatching bus values thrown as 'prove':");
+                for (opid, vals) in bus_vals_left.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
                     let left_to_print = print_rows(
                         vals.iter().map(|(row, val)| (*row, val)),

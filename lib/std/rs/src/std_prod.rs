@@ -24,14 +24,14 @@ pub struct StdProd<F: Copy> {
     bus_vals_den: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
 }
 
-impl<F: Copy + Debug + PrimeField> StdProd<F> {
+impl<F: PrimeField> Decider<F> for StdProd<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         for airgroup in pctx.pilout.air_groups() {
             for air in airgroup.airs() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.setups.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
                 let gprod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
                 let debug_hints_data = get_hint_ids_by_name(setup.p_setup, "gprod_member_data");
                 let debug_hints = get_hint_ids_by_name(setup.p_setup, "gprod_member");
@@ -53,7 +53,7 @@ impl<F: Copy + Debug + PrimeField> StdProd<F> {
 impl<F: PrimeField> StdProd<F> {
     const MY_NAME: &'static str = "STD Prod";
 
-    pub fn new(mode: StdMode, wcm: &mut WitnessManager<F>) -> Arc<Self> {
+    pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let std_prod = Arc::new(Self {
             mode,
             prod_airs: Mutex::new(Vec::new()),
@@ -85,9 +85,9 @@ impl<F: PrimeField> StdProd<F> {
     ) {
         for (i, hint) in debug_hints_data.iter().enumerate() {
             let opid = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "opid",
@@ -99,9 +99,9 @@ impl<F: PrimeField> StdProd<F> {
             };
 
             let proves = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "proves",
@@ -119,9 +119,9 @@ impl<F: PrimeField> StdProd<F> {
             };
 
             let ncols = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "ncols",
@@ -138,9 +138,9 @@ impl<F: PrimeField> StdProd<F> {
             };
 
             let selector = get_hint_field::<F>(
-                sctx.setups.as_ref(),
-                pctx.public_inputs.clone(),
-                pctx.challenges.clone(),
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
                 air_instance,
                 *hint as usize,
                 "selector",
@@ -150,9 +150,9 @@ impl<F: PrimeField> StdProd<F> {
             let mut bus_vals = BTreeMap::new();
             for (j, hint) in debug_hints[i * ncols..(i + 1) * ncols].iter().enumerate() {
                 let col = get_hint_field::<F>(
-                    sctx.setups.as_ref(),
-                    pctx.public_inputs.clone(),
-                    pctx.challenges.clone(),
+                    sctx,
+                    &pctx.public_inputs,
+                    &pctx.challenges,
                     air_instance,
                     *hint as usize,
                     "reference",
@@ -248,8 +248,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     if self.mode == StdMode::Debug {
                         self.debug(
-                            pctx,
-                            sctx,
+                            &pctx,
+                            &sctx,
                             air_instance,
                             num_rows,
                             debug_hints_data.clone(),
@@ -269,27 +269,27 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     // Use the hint to populate the gprod column
                     let mut gprod = get_hint_field::<F>(
-                        sctx.setups.as_ref(),
-                        pctx.public_inputs.clone(),
-                        pctx.challenges.clone(),
+                        &sctx,
+                        &pctx.public_inputs,
+                        &pctx.challenges,
                         air_instance,
                         gprod_hint,
                         "reference",
                         HintFieldOptions::dest(),
                     );
                     let num = get_hint_field::<F>(
-                        sctx.setups.as_ref(),
-                        pctx.public_inputs.clone(),
-                        pctx.challenges.clone(),
+                        &sctx,
+                        &pctx.public_inputs,
+                        &pctx.challenges,
                         air_instance,
                         gprod_hint,
                         "numerator",
                         HintFieldOptions::default(),
                     );
                     let den = get_hint_field::<F>(
-                        sctx.setups.as_ref(),
-                        pctx.public_inputs.clone(),
-                        pctx.challenges.clone(),
+                        &sctx,
+                        &pctx.public_inputs,
+                        &pctx.challenges,
                         air_instance,
                         gprod_hint,
                         "denominator",
@@ -302,15 +302,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     }
 
                     // set the computed gprod column and its associated airgroup_val
-                    set_hint_field(
-                        sctx.setups.as_ref(),
-                        air_instance,
-                        gprod_hint as u64,
-                        "reference",
-                        &gprod,
-                    );
+                    set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
                     set_hint_field_val(
-                        sctx,
+                        &sctx,
                         air_instance,
                         gprod_hint as u64,
                         "result",

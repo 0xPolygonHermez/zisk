@@ -21,7 +21,7 @@
 // }
 
 // impl StdDivLib {
-//     pub fn new<F>(wcm: &mut WitnessManager<F>, air_ids: &[usize]) -> Arc<Self> {
+//     pub fn new<F>(wcm: Arc<WitnessManager<F>>, air_ids: &[usize]) -> Arc<Self> {
 //         let arith32_sm = Self { inputs: Mutex::new(Vec::new()) };
 //         let arith32_sm = Arc::new(arith32_sm);
 

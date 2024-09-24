@@ -84,7 +84,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
 
     pub fn new(
         mode: StdMode,
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         air_data: Option<Vec<RCAirData>>,
     ) -> Arc<Self> {
         let mut u8air = None;

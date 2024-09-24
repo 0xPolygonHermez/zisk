@@ -11,10 +11,10 @@ use rand::{distributions::Standard, prelude::Distribution};
 use crate::{Pilout, SimpleLeft, SimpleRight};
 
 pub struct SimpleWitness<F: PrimeField> {
-    pub wcm: WitnessManager<F>,
-    pub simple_left: Arc<SimpleLeft<F>>,
-    pub simple_right: Arc<SimpleRight<F>>,
-    pub std_lib: Arc<Std<F>>,
+    pub wcm: Option<Arc<WitnessManager<F>>>,
+    pub simple_left: Option<Arc<SimpleLeft<F>>>,
+    pub simple_right: Option<Arc<SimpleRight<F>>>,
+    pub std_lib: Option<Arc<Std<F>>>,
 }
 
 impl<F: PrimeField> Default for SimpleWitness<F>
@@ -31,18 +31,30 @@ where
     Standard: Distribution<F>,
 {
     pub fn new() -> Self {
-        let mut wcm = WitnessManager::new();
-
-        let std_lib = Std::new(&mut wcm, None);
-        let simple_left = SimpleLeft::new(&mut wcm);
-        let simple_right = SimpleRight::new(&mut wcm);
-
-        SimpleWitness {
-            wcm,
-            simple_left,
-            simple_right,
-            std_lib,
+        Self {
+            wcm: None,
+            simple_left: None,
+            simple_right: None,
+            std_lib: None,
         }
+    }
+
+    pub fn initialize(
+        &mut self,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
+    ) {
+        let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
+
+        let std_lib = Std::new(wcm.clone(), None);
+        let simple_left = SimpleLeft::new(wcm.clone());
+        let simple_right = SimpleRight::new(wcm.clone());
+
+        self.wcm = Some(wcm);
+        self.std_lib = Some(std_lib);
+        self.simple_left = Some(simple_left);
+        self.simple_right = Some(simple_right);
     }
 }
 
@@ -50,28 +62,44 @@ impl<F: PrimeField> WitnessLibrary<F> for SimpleWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(&mut self, pctx: &mut ProofCtx<F>, ectx: &ExecutionCtx, sctx: &SetupCtx) {
-        self.wcm.start_proof(pctx, ectx, sctx);
+    fn start_proof(
+        &mut self,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
+    ) {
+        self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
+
+        self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
     }
 
     fn end_proof(&mut self) {
-        self.wcm.end_proof();
+        self.wcm.as_ref().unwrap().end_proof();
     }
 
-    fn execute(&self, pctx: &mut ProofCtx<F>, ectx: &mut ExecutionCtx, sctx: &SetupCtx) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
-        self.simple_left.execute(pctx, ectx, sctx);
-        self.simple_right.execute(pctx, ectx, sctx);
+        self.simple_left
+            .as_ref()
+            .unwrap()
+            .execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.simple_right
+            .as_ref()
+            .unwrap()
+            .execute(pctx, ectx, sctx);
     }
 
     fn calculate_witness(
         &mut self,
         stage: u32,
-        pctx: &mut ProofCtx<F>,
-        ectx: &ExecutionCtx,
-        sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
-        self.wcm.calculate_witness(stage, pctx, ectx, sctx);
+        self.wcm
+            .as_ref()
+            .unwrap()
+            .calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {

@@ -12,7 +12,7 @@ use proofman_common::ProofCtx;
 
 use crate::{RCAirData, StdMode, StdProd, StdRangeCheck, StdSum};
 
-const MODE: StdMode = StdMode::Standard;
+const MODE: StdMode = StdMode::Debug;
 
 pub struct Std<F: PrimeField> {
     range_check: Arc<StdRangeCheck<F>>,
@@ -22,12 +22,12 @@ pub struct Std<F: PrimeField> {
 impl<F: PrimeField> Std<F> {
     const _MY_NAME: &'static str = "STD";
 
-    pub fn new(wcm: &mut WitnessManager<F>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
         log::info!("The STD has been initialized on mode {}", MODE);
 
         // Instantiate the STD components
-        StdProd::new(MODE, wcm);
-        StdSum::new(MODE, wcm);
+        StdProd::new(MODE, wcm.clone());
+        StdSum::new(MODE, wcm.clone());
 
         // In particular, the range check component needs to be instantiated with the ids
         // of its (possibly) associated AIRs: U8Air ...
