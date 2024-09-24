@@ -7,9 +7,18 @@ fn main() {
     let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
 
     // Re-run this build script if the pil file changes
-    println!("cargo:rerun-if-changed={}", root_path.join("test/std/lookup/lookup.pil").display());
-    println!("cargo:rerun-if-changed={}", root_path.join("test/std/lookup/src/pil_helpers").display());
-    println!("cargo:rerun-if-changed={}", root_path.join("test/std/lookup/build").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        root_path.join("test/std/lookup/lookup.pil").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        root_path.join("test/std/lookup/src/pil_helpers").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        root_path.join("test/std/lookup/build").display()
+    );
 
     let build_dir = root_path.join("test/std/lookup/build/");
     if !build_dir.exists() {
