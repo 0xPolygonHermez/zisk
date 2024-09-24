@@ -9,22 +9,12 @@ require "std_permutation.pil";
 // as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
 
 const int DEFAULT_CONNECTION_N = 0;
-const int DEFAULT_CONNECTION_N = 0;
 
 // Two user interfaces
 
 // 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
 //    and when it is done, executes the connect() method to perform the connection argument.
 //    The user also needs to execute init() at the beginning.
-
-function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT_CONNECTION_N, int bus_type = 0) {
-    if (default_frame_size == DEFAULT_CONNECTION_N) default_frame_size = N;
-
-    if (default_frame_size < 1) {
-        error(`The frame size of connect #${opid} must be at least 1`);
-    } else if (default_frame_size > N) {
-        error(`The frame size of connect #${opid} must be at most ${N}`);
-    }
 
 function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT_CONNECTION_N, int bus_type = 0) {
     if (default_frame_size == DEFAULT_CONNECTION_N) default_frame_size = N;
@@ -57,13 +47,11 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
         int closed;
         int bus_type;
         int default_frame_size;
-        int default_frame_size;
         int cols_num = 0;
 
         expr map_cols[cols_count];
         col fixed CONN[cols_count];
 
-        // 1st dimension: The number of connections can be as large as one wants. Until we have dynamic arrays, we fix the size to cols·rows
         // 1st dimension: The number of connections can be as large as one wants. Until we have dynamic arrays, we fix the size to cols·rows
         // 2nd dimension:
         //      - 0: connection identifier.
@@ -71,7 +59,6 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
         //      - 2: first row index.
         //      - 3: second column index.
         //      - 4: second row index.
-        int conn_indicator[cols_count*N][5];
         int conn_indicator[cols_count*N][5];
         int conn_index = 0;
         int counter = 0;
@@ -81,7 +68,6 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
         // Properties of each connection in the air
         connid.closed = 0;
         connid.bus_type = bus_type;
-        connid.default_frame_size = default_frame_size;
         connid.default_frame_size = default_frame_size;
         connid.cols_num = cols_count;
 
@@ -111,7 +97,6 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
 
         // Send to the bus the original columns
         permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
-        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
 
         // Initialize polynomial CONN[0](X) as X and CONN[i](X) as k_i·X, for i >= 0
         for (int j = 0; j < N; j++) {
@@ -135,16 +120,8 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
  * connection_update_one_cell(opid, [a,1,b,2], N/2);
  */
 function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
-function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
-    }
-
-    use air.std.connect.`id${opid}`;
-
-    // If there is some default frame size and frame size is the default, use the default frame size
-    if (frame_size == DEFAULT_CONNECTION_N) {
-        frame_size = default_frame_size;
     }
 
     use air.std.connect.`id${opid}`;
@@ -211,22 +188,6 @@ function connection_update_one_cell_batch(int opid, expr conn[][], int frame_siz
         error(`The frame size of connect #${opid} must be at most ${N}`);
     }
 
-function connection_update_one_cell_batch(int opid, expr conn[][], int frame_size = DEFAULT_CONNECTION_N) {
-    if (!defined(air.std.connect.`id${opid}`)) {
-        error(`Connect #${opid} has not been initialized`);
-    }
-
-    // If there is some default frame size and frame size is the default, use the default frame size
-    if (frame_size == DEFAULT_CONNECTION_N) {
-        frame_size = air.std.connect.`id${opid}`.default_frame_size;
-    }
-
-    if (frame_size < 1) {
-        error(`The frame size of connect #${opid} must be at least 1`);
-    } else if (frame_size > N) {
-        error(`The frame size of connect #${opid} must be at most ${N}`);
-    }
-
     const int len = length(conn);
     if (len == 0) {
         error(`Connection #${opid} cannot be empty`);
@@ -252,14 +213,8 @@ function connection_update_one_cell_batch(int opid, expr conn[][], int frame_siz
  * connection_update_multiple_cells(opid, [c,10,b,3,a,65,c,9,c,8], N/2);
  */
 function connection_update_multiple_cells(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
-function connection_update_multiple_cells(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
-    }
-
-    // If there is some default frame size and frame size is the default, use the default frame size
-    if (frame_size == DEFAULT_CONNECTION_N) {
-        frame_size = air.std.connect.`id${opid}`.default_frame_size;
     }
 
     // If there is some default frame size and frame size is the default, use the default frame size
@@ -427,7 +382,6 @@ function connection_connect(int opid) {
 
     // Send to the bus the permuted columns
     for (int i = 0; i < cols_num; i++) {
-        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
         permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
     }
 
