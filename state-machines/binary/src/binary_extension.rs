@@ -366,7 +366,11 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self.wcm.get_pctx().pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+            let air = self
+                .wcm
+                .get_pctx()
+                .pilout
+                .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -404,7 +408,8 @@ impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOpera
                         .unwrap();
                     let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
-                    buffer[offsets[0] as usize..offsets[0] as usize + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
+                    buffer[offsets[0] as usize..
+                        offsets[0] as usize + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer);
 
                     let air_instance = AirInstance::new(
