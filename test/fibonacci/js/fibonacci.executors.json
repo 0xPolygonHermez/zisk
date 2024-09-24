@@ -1,0 +1,5 @@
+[
+    { "filename": "test/fibonacci/js/executor_fibonaccisq.js", "settings": {}, "sm": "FibonacciSquare" },
+    { "filename": "test/fibonacci/js/executor_module.js", "settings": {}, "sm": "Module" },
+    { "filename": "lib/std/js/std.js", "settings": {} }
+]

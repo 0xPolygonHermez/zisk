@@ -3,19 +3,17 @@ const path = require('path');
 const { executeFullProveTest, checkConstraintsTest, generateSetupTest } = require("pil2-proofman/test/test_utils.js");
 
 const basePath = path.join(__dirname, '.');
-const libPath = path.join(basePath, '..', '..', '..', 'lib');
+const libPath = path.join(basePath, '..', '..', '..', '..', 'lib');
 
 function getSettings() {
     return {
-        name: "Range-Check-" + Date.now(),
+        name: "Multi-Range-Check-" + Date.now(),
         airout: {
-            airoutFilename: path.join(basePath, 'range_check.pilout'),
+            airoutFilename: path.join(basePath, 'multi_range_check.pilout'),
         },
         witnessCalculators: [
-            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck1" },
-            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck2" },
-            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck3" },
-            { filename: path.join(basePath, 'executor.js'), settings: {}, sm: "RangeCheck4" },
+            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck1" },
+            { filename: path.join(basePath, 'multi_executor.js'), settings: {}, sm: "MultiRangeCheck2" },
             { filename: path.join(libPath, 'std/js/std.js'), settings: {} },
         ],
         setup: {
@@ -51,11 +49,11 @@ describe("Range Check tests", async function () {
         setup = await generateSetupTest(config);
     });
 
-    it("Verify the Range Check versatility", async () => {
+    it("Verify the Multi Range Check versatility", async () => {
         await checkConstraintsTest(setup, publics, optionsVerifyConstraints);
     });
 
-    it.only("Generate a Range Check proof", async () => {
+    it.only("Generate a Multi Range Check proof", async () => {
         await executeFullProveTest(setup, publics, options, config.aggregation?.genProof);
     });
 });

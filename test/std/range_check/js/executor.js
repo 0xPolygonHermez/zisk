@@ -2,7 +2,7 @@ const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calcul
 
 const log = require("pil2-proofman/logger.js");
 
-const { getRandom } = require("../../utils.js");
+const { getRandom } = require("../../../utils.js");
 
 module.exports = class RangeCheckTest extends WitnessCalculatorComponent {
     constructor(wcManager, proofCtx) {

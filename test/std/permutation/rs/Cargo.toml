@@ -1,0 +1,29 @@
+[package]
+name = "permutation"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+# pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-components.git", branch ="std_rust" }
+#Local development
+proofman = { path = "../../../../../pil2-proofman/proofman" }
+proofman-common = { path = "../../../../../pil2-proofman/common" }
+proofman-macros = { path = "../../../../../pil2-proofman/macros" }
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }
+pil-std-lib = { path = "../../../../lib/std/rs" }
+
+env_logger = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+num-bigint = { workspace = true }
+p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }
+
+[build-dependencies]
+proofman-cli = { path = "../../../../../pil2-proofman/cli" }

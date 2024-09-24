@@ -26,11 +26,3 @@ airtemplate MultiRangeCheck2(const int N = 2**4) {
 
     multi_range_check(sel[1], range_sel[1], a[1], 0, 2**7-1, 0, 2**4-1);
 };
-
-airgroup MultiRangeCheck1 {
-    MultiRangeCheck1();
-}
-
-airgroup MultiRangeCheck2 {
-    MultiRangeCheck2();
-}
