@@ -50,6 +50,26 @@ impl<F: PrimeField> PartialEq<(BigInt, BigInt)> for Range<F> {
 }
 
 impl<F: PrimeField> Range<F> {
+    pub fn contains(&self, value: F) -> bool {
+        let order = F::order().to_bigint().unwrap();
+
+        let value = value.as_canonical_biguint().to_bigint().unwrap();
+
+        let min = self.0.as_canonical_biguint().to_bigint().unwrap();
+        let max = self.1.as_canonical_biguint().to_bigint().unwrap();
+
+        let min_result = min.clone();
+        let max_result = max.clone();
+        if self.2 && !self.3 {
+            // If min is negative, then the range looks like [p-a,b], which means that
+            // value should lie in [0,b]∪[p-a,p-1]
+            return (value >= min_result && value <= max_result)
+                || (value >= BigInt::from(0) && value <= max_result + order);
+        }
+
+        value >= min_result && value <= max_result
+    }
+
     pub fn contained_in(&self, other: &(BigInt, BigInt)) -> bool {
         let order = F::order().to_bigint().unwrap();
 

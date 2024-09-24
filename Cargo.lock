@@ -961,6 +961,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman",
+ "proofman-cli",
+ "proofman-common",
+ "proofman-macros",
+ "rand",
+]
+
+[[package]]
 name = "stark"
 version = "0.1.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#8197cec0636b5dc506f28f765ccb1dcc906a6b04"

@@ -14,9 +14,7 @@ use proofman_hints::{
 };
 use rayon::Scope;
 
-use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
-
-const MODE_DEBUG: bool = false;
+use crate::{Decider, Range, SpecifiedRanges, StdMode, U16Air, U8Air};
 
 const BYTE: u8 = 255;
 const TWOBYTES: u16 = 65535;
@@ -45,6 +43,7 @@ struct StdRangeItem<F: PrimeField> {
 
 // TODO: Remove Arc
 pub struct StdRangeCheck<F: PrimeField> {
+    mode: StdMode,
     ranges: Mutex<Vec<StdRangeItem<F>>>,
     u8air: Option<Arc<U8Air<F>>>,
     u16air: Option<Arc<U16Air<F>>>,
@@ -83,7 +82,11 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
 impl<F: PrimeField> StdRangeCheck<F> {
     const _MY_NAME: &'static str = "STD Range Check";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
+    pub fn new(
+        mode: StdMode,
+        wcm: Arc<WitnessManager<F>>,
+        air_data: Option<Vec<RCAirData>>,
+    ) -> Arc<Self> {
         let mut u8air = None;
         let mut u16air = None;
         let mut specified_ranges = None;
@@ -119,6 +122,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         }
 
         let std_range_check = Arc::new(Self {
+            mode,
             ranges: Mutex::new(Vec::new()),
             u8air,
             u16air,
@@ -272,7 +276,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range_item = range_item.unwrap();
         let range = range_item.range;
 
-        if MODE_DEBUG && (value < range.0 || value > range.1) {
+        if self.mode == StdMode::Debug && !range.contains(value) {
             log::error!(
                 "Value {} is not in the range [min,max] = {:?}",
                 value,
