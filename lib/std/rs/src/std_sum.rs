@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::BTreeMap,
     fmt::Debug,
@@ -376,7 +377,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
     fn end_proof(&self) {
         if self.mode == StdMode::Debug {
-            let max_values_to_print = 10;
+            let max_values_to_print = 5;
 
             let bus_vals_left = self.bus_vals_left.as_ref().unwrap().lock().unwrap();
             let bus_vals_right = self.bus_vals_right.as_ref().unwrap().lock().unwrap();
@@ -384,37 +385,61 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                 log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
                 println!("\t ► Unmatching bus values thrown as 'prove':");
-                bus_vals_left.iter().for_each(|(opid, vals)| {
+                for (opid, vals) in bus_vals_left.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let mut n = max_values_to_print;
-                    for (row, val) in vals {
-                        println!("\t    • Row {}: {:?}", row, val);
-
-                        n -= 1;
-                        if n == 0 {
-                            println!("\t      ...");
-                            break;
-                        }
+                    let left_to_print = print_rows(
+                        vals.iter().map(|(row, val)| (*row, val)),
+                        max_values_to_print,
+                    );
+                    if left_to_print == 0 {
+                        println!("\t      ...");
+                    } else {
+                        break;
                     }
+                    print_rows(
+                        vals.iter().rev().map(|(row, val)| (*row, val)),
+                        max_values_to_print,
+                    );
                     println!();
-                });
+                }
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
-                bus_vals_right.iter().for_each(|(opid, vals)| {
+                for (opid, vals) in bus_vals_right.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let mut n = max_values_to_print;
-                    for (row, val) in vals {
-                        println!("\t    • Row {}: {:?}", row, val);
-
-                        n -= 1;
-                        if n == 0 {
-                            println!("\t      ...");
-                            break;
-                        }
+                    let left_to_print = print_rows(
+                        vals.iter().map(|(row, val)| (*row, val)),
+                        max_values_to_print,
+                    );
+                    if left_to_print == 0 {
+                        println!("\t      ...");
+                    } else {
+                        break;
                     }
+                    print_rows(
+                        vals.iter().rev().map(|(row, val)| (*row, val)),
+                        max_values_to_print,
+                    );
                     println!();
-                });
+                }
             }
+        }
+
+        fn print_rows<'a, I, F>(vals: I, max_values_to_print: usize) -> usize
+        where
+            I: Iterator<Item = (usize, &'a Vec<HintFieldOutput<F>>)>,
+            F: Field,
+        {
+            let mut n = max_values_to_print;
+            for (row, val) in vals {
+                println!("\t    • Row {}: {:?}", row, val);
+
+                n -= 1;
+                if n == 0 {
+                    break;
+                }
+            }
+
+            n
         }
     }
 }

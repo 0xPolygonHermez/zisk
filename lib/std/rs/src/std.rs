@@ -12,7 +12,7 @@ use proofman_common::ProofCtx;
 
 use crate::{RCAirData, StdMode, StdProd, StdRangeCheck, StdSum};
 
-const MODE: StdMode = StdMode::Debug;
+const MODE: StdMode = StdMode::Standard;
 
 pub struct Std<F: PrimeField> {
     range_check: Arc<StdRangeCheck<F>>,
