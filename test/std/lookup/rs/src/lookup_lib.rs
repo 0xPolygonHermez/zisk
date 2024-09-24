@@ -110,6 +110,7 @@ pub extern "Rust" fn init_library(
     Ok(Box::new(lookup_witness))
 }
 
+#[cfg(test)]
 mod tests {
     use proofman_cli::commands::verify_constraints::{Field, VerifyConstraintsCmd};
 

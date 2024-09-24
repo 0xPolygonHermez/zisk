@@ -92,9 +92,23 @@ private function initial_checks_sum(int proves, int opid[], expr cols[]) {
  * @param cols columns of the PIOP
  */
 private function update_piop_sum(int name, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
+    println(opid, length(opid), length(opid) == 2);
+    if (length(opid) > 2) {
+        error("Support for more than 2 opids is not implemented yet");
+    }
+
     init_containers_sum(name, opid);
 
-    if (!is_direct) initial_checks_sum(proves, opid, cols);
+    if (!is_direct) {
+        initial_checks_sum(proves, opid, cols);
+
+        // Create debug hints for the witness computation
+        const string name_str = get_piop_name(name);
+        @gsum_member_data{name: name_str, sumid: sumid, proves: proves, ncols: length(cols), selector: sel};
+        for (int i = 0; i < length(cols); i++) {
+            @gsum_member{reference: cols[i]};
+        }
+    }
 
     init_challenges();
 
