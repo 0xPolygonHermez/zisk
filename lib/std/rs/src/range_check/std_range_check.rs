@@ -70,7 +70,7 @@ impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
                 let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the range hints
-                let rc_hints = get_hint_ids_by_name(*setup.p_setup, "range_def");
+                let rc_hints = get_hint_ids_by_name(setup.p_setup, "range_def");
                 for hint in rc_hints {
                     // Register the range
                     self.register_range(sctx.clone(), airgroup_id, air_id, hint);

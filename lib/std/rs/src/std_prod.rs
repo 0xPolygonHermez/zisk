@@ -4,15 +4,13 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use p3_field::{Field, PrimeField};
+use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
     HintFieldOutput,
 };
-
-use crate::Decider;
 
 const MODE_DEBUG: bool = false;
 
@@ -34,7 +32,7 @@ impl<F: Copy + Debug + PrimeField> StdProd<F> {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
                 let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
-                let prod_hints = get_hint_ids_by_name(*setup.p_setup, "gprod_col");
+                let prod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
                 if !prod_hints.is_empty() {
                     // Save the air for latter witness computation
                     prod_airs_guard.push((airgroup_id, air_id, prod_hints));
@@ -88,9 +86,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
     fn calculate_witness(
         &self,
         stage: u32,
-        air_instance: Option<usize>,
+        _air_instance: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
+        _ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
         if stage == 2 {
