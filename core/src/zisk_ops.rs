@@ -215,9 +215,9 @@ macro_rules! define_ops {
 define_ops! {
     (Flag, "flag", Internal, 0, 0x00, opc_flag, op_flag),
     (CopyB, "copyb", Internal, 0, 0x01, opc_copyb, op_copyb),
-    (SignExtendB, "signextend_b", BinaryE, 109, 0x24, opc_signextend_b, op_signextend_b),
-    (SignExtendH, "signextend_h", BinaryE, 109, 0x25, opc_signextend_h, op_signextend_h),
-    (SignExtendW, "signextend_w", BinaryE, 109, 0x26, opc_signextend_w, op_signextend_w),
+    (SignExtendB, "signextend_b", BinaryE, 109, 0x22, opc_signextend_b, op_signextend_b),
+    (SignExtendH, "signextend_h", BinaryE, 109, 0x24, opc_signextend_h, op_signextend_h),
+    (SignExtendW, "signextend_w", BinaryE, 109, 0x25, opc_signextend_w, op_signextend_w),
     (Add, "add", Binary, 77, 0x02, opc_add, op_add),
     (AddW, "add_w", Binary, 77, 0x12, opc_add_w, op_add_w),
     (Sub, "sub", Binary, 77, 0x03, opc_sub, op_sub),
