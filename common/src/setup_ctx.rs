@@ -27,14 +27,10 @@ impl SetupRepository {
             .enumerate()
             .map(|(airgroup_id, air_group)| {
                 let mut air_group_setups = Vec::new();
-                air_group
-                    .airs()
-                    .iter()
-                    .enumerate()
-                    .for_each(|(air_id, _)| {
-                        setups.insert((airgroup_id, air_id), OnceCell::new());
-                        air_group_setups.push(air_id);
-                    });
+                air_group.airs().iter().enumerate().for_each(|(air_id, _)| {
+                    setups.insert((airgroup_id, air_id), OnceCell::new());
+                    air_group_setups.push(air_id);
+                });
                 air_group_setups
             })
             .collect::<Vec<Vec<usize>>>();

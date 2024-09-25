@@ -335,10 +335,10 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let challenges_map = self.stark_info.challenges_map.as_ref().unwrap();
 
         let mut xi_challenge_index: usize = 0;
-        for i in 0..challenges_map.len() {
-            if challenges_map[i].stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenges_map[i].stage_id == 0 as u64 {
-               xi_challenge_index = i;
-               break;
+        for (i, challenge) in challenges_map.iter().enumerate() {
+            if challenge.stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenge.stage_id == 0_u64 {
+                xi_challenge_index = i;
+                break;
             }
         }
 
@@ -348,17 +348,17 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
     fn calculate_lev(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
-        
+
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let lev = (*buff_helper_guard).as_ptr() as *mut c_void;
-        
+
         let challenges_map = self.stark_info.challenges_map.as_ref().unwrap();
 
         let mut xi_challenge_index: usize = 0;
-        for i in 0..challenges_map.len() {
-            if challenges_map[i].stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenges_map[i].stage_id == 0 as u64 {
-               xi_challenge_index = i;
-               break;
+        for (i, challenge) in challenges_map.iter().enumerate() {
+            if challenge.stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenge.stage_id == 0_u64 {
+                xi_challenge_index = i;
+                break;
             }
         }
 
@@ -480,7 +480,7 @@ impl<F: Field> StarkProver<F> {
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
 
-        compute_evals_c(p_stark, buffer, buff_helper, evals, p_proof);    
+        compute_evals_c(p_stark, buffer, buff_helper, evals, p_proof);
     }
 
     fn compute_fri_pol(&mut self, _opening_id: u32, proof_ctx: Arc<ProofCtx<F>>) {
@@ -502,7 +502,7 @@ impl<F: Field> StarkProver<F> {
 
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let xdivxsub = (*buff_helper_guard).as_ptr() as *mut c_void;
-        
+
         calculate_fri_polynomial_c(p_stark, buffer, public_inputs, challenges, subproof_values, evals, xdivxsub);
     }
 

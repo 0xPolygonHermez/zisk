@@ -427,6 +427,15 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z20join_zkin_recursive2PcPvS0_S0_"]
+    pub fn join_zkin_recursive2(
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        zkin1: *mut ::std::os::raw::c_void,
+        zkin2: *mut ::std::os::raw::c_void,
+        starkInfoRecursive2: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z15join_zkin_finalPvS_PcPS_S1_"]
     pub fn join_zkin_final(
         pPublics: *mut ::std::os::raw::c_void,

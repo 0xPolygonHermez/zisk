@@ -304,11 +304,7 @@ pub fn commit_stage_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_lev_c(
-    p_stark: *mut c_void,
-    xi_challenge: *mut c_void,
-    lev: *mut c_void,
-) {
+pub fn compute_lev_c(p_stark: *mut c_void, xi_challenge: *mut c_void, lev: *mut c_void) {
     unsafe {
         compute_lev(p_stark, xi_challenge, lev);
     }
@@ -697,14 +693,9 @@ pub fn commit_stage_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_lev_c(
-    _p_stark: *mut c_void,
-    _xi_challenge: *mut c_void,
-    _lev: *mut c_void,
-) {
+pub fn compute_lev_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _lev: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "compute_lev_c: This is a mock call because there is no linked library");
 }
-
 
 #[cfg(feature = "no_lib_link")]
 pub fn compute_evals_c(
@@ -719,11 +710,7 @@ pub fn compute_evals_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _buffer: *mut c_void) -> *mut c_void {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "calculate_xdivxsub_c: This is a mock call because there is no linked library"
-    );
+    trace!("{}: ··· {}", "ffi     ", "calculate_xdivxsub_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 

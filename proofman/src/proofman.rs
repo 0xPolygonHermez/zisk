@@ -278,7 +278,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Compute openings
         Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), &mut transcript);
-    
+
         let proof = Self::finalize_proof(
             &proving_key_path,
             &mut provers,
@@ -437,15 +437,15 @@ impl<F: Field + 'static> ProofMan<F> {
         setup_ctx: Arc<SetupCtx>,
         transcript: &mut FFITranscript,
     ) {
-
         let setup_airs = setup_ctx.get_setup_airs();
 
         // Calculate evals
         Self::get_challenges(proof_ctx.pilout.num_stages() + 2, provers, proof_ctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
-                if air_instances_idx.len() != 0 {
+                let air_instances_idx: Vec<usize> =
+                    proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                if !air_instances_idx.is_empty() {
                     provers[air_instances_idx[0]].calculate_lev(proof_ctx.clone());
 
                     for idx in air_instances_idx {
@@ -461,8 +461,9 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(proof_ctx.pilout.num_stages() + 3, provers, proof_ctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> = proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
-                if air_instances_idx.len() != 0 {
+                let air_instances_idx: Vec<usize> =
+                    proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                if !air_instances_idx.is_empty() {
                     provers[air_instances_idx[0]].calculate_xdivxsub(proof_ctx.clone());
 
                     for idx in air_instances_idx {
