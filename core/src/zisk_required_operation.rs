@@ -1,5 +1,6 @@
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {
+    pub step: u64,
     pub opcode: u8,
     pub a: u64,
     pub b: u64,

@@ -133,6 +133,9 @@ impl<F: Field> BinaryExtensionSM<F> {
             t.free_in2[2] = F::from_canonical_u64((i.b >> 32) & 0xFFFF);
             t.free_in2[3] = F::from_canonical_u64(i.b >> 48);
 
+            // Set main SM step
+            t.main_step = F::from_canonical_u64(i.step);
+
             // Calculate out based on opcode
             match i.opcode {
                 0x0d /* SLL */ => {
@@ -304,11 +307,17 @@ impl<F: Field> BinaryExtensionSM<F> {
                         t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                         t.out[j as usize][1] = F::zero();
                     }
-
-                    let fill = if (i.a & 0x80000000) == 0 { F::zero()} else { F::from_canonical_u8(0xff)};
-                    for j in 4..8 {
-                        t.out[j as usize][0] = F::zero();
-                        t.out[j as usize][1] = fill;
+                    if (i.b & 0x80000000) == 0 {
+                        for j in 4..8 {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::zero();
+                        }
+                    }
+                    else {
+                        for j in 4..8 {
+                            t.out[j as usize][0] = F::zero();
+                            t.out[j as usize][1] = F::from_canonical_u64(0xff_u64 << (8*(j-4)));
+                        }
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),

@@ -592,7 +592,6 @@ impl<'a> Emu<'a> {
         self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
-        self.ctx.inst_ctx.step += 1;
 
         // Build and store the full trace
         let full_trace_step = EmuFullTraceStep {
@@ -663,6 +662,7 @@ impl<'a> Emu<'a> {
             ZiskOperationType::Internal => (),
             ZiskOperationType::Arith => {
                 let required_operation = ZiskRequiredOperation {
+                    step: self.ctx.inst_ctx.step,
                     opcode: instruction.op,
                     a: if instruction.m32 {
                         self.ctx.inst_ctx.a & 0xffffffff
@@ -679,6 +679,7 @@ impl<'a> Emu<'a> {
             }
             ZiskOperationType::Binary => {
                 let required_operation = ZiskRequiredOperation {
+                    step: self.ctx.inst_ctx.step,
                     opcode: instruction.op,
                     a: if instruction.m32 {
                         self.ctx.inst_ctx.a & 0xffffffff
@@ -695,6 +696,8 @@ impl<'a> Emu<'a> {
             }
             _ => panic!("Emu::step_slice() found invalid op_type"),
         }
+
+        self.ctx.inst_ctx.step += 1;
     }
 
     /// Returns if the emulation ended

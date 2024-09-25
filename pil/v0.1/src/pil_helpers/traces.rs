@@ -8,7 +8,7 @@ trace!(Main0Row, Main0Trace<F> {
 });
 
 trace!(Binary0Row, Binary0Trace<F> {
- m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F,
+ m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
 
 trace!(BinaryTable0Row, BinaryTable0Trace<F> {
@@ -16,7 +16,7 @@ trace!(BinaryTable0Row, BinaryTable0Trace<F> {
 });
 
 trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
- m_op: F, mode8: F, mode16: F, mode32: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], free_in2: [F; 4], multiplicity: F,
+ m_op: F, mode8: F, mode16: F, mode32: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], free_in2: [F; 4], multiplicity: F, main_step: F,
 });
 
 trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {

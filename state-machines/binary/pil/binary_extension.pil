@@ -158,9 +158,11 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     expr op = m_op + 16 * mode32;
     col witness multiplicity;
 
+    col witness main_step;
     lookup_proves(
         operation_bus_id,
         [
+            main_step,
             op,     // TODO: use correct opcode
             in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24,
             in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24,
