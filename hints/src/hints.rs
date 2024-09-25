@@ -632,14 +632,6 @@ pub fn get_hint_field_constant<F: Clone + Copy>(
         evals: std::ptr::null_mut(),
     };
 
-    let steps_params = StepsParams {
-        buffer: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        subproof_values: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
-    };
-
     let raw_ptr = get_hint_field_c(
         setup.p_setup,
         steps_params,

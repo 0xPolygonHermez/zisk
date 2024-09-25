@@ -6,7 +6,6 @@ use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::{RCAirData, RangeCheckAir, Std};
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
-use crate::pil_helpers::*;
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -75,7 +74,7 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
     }
 
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        self.fibonacci.as_ref().unwrap().execute(pctx, ectx, sctx);
+        self.fibonacci.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.module.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
