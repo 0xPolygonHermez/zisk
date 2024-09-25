@@ -153,6 +153,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "connection"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-cli",
+ "proofman-common 0.1.0",
+ "proofman-macros 0.1.0",
+ "rand",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,6 +376,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
+name = "lookup"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-cli",
+ "proofman-common 0.1.0",
+ "proofman-macros 0.1.0",
+ "rand",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -534,6 +568,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "permutation"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-cli",
+ "proofman-common 0.1.0",
+ "proofman-macros 0.1.0",
+ "rand",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -544,12 +595,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "pil-std-lib"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "num-bigint",
+ "num-traits",
+ "p3-field",
+ "p3-goldilocks",
+ "pilout 0.1.0",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-common 0.1.0",
+ "proofman-hints 0.1.0",
+ "proofman-util 0.1.0",
+ "rayon",
+]
+
+[[package]]
 name = "pilout"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "log",
- "proofman-util",
+ "proofman-util 0.1.0",
+ "prost",
+ "prost-build",
+]
+
+[[package]]
+name = "pilout"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "bytes",
+ "log",
+ "proofman-util 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
  "prost",
  "prost-build",
 ]
@@ -598,12 +678,31 @@ dependencies = [
  "log",
  "p3-field",
  "p3-goldilocks",
- "pilout",
- "proofman-common",
- "proofman-starks-lib-c",
- "proofman-util",
- "stark",
- "transcript",
+ "pilout 0.1.0",
+ "proofman-common 0.1.0",
+ "proofman-starks-lib-c 0.1.0",
+ "proofman-util 0.1.0",
+ "stark 0.1.0",
+ "transcript 0.1.0",
+]
+
+[[package]]
+name = "proofman"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "colored",
+ "env_logger",
+ "libloading",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "pilout 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-common 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-starks-lib-c 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-util 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "stark 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "transcript 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
 ]
 
 [[package]]
@@ -617,10 +716,10 @@ dependencies = [
  "log",
  "p3-field",
  "p3-goldilocks",
- "pilout",
- "proofman",
- "proofman-common",
- "proofman-util",
+ "pilout 0.1.0",
+ "proofman 0.1.0",
+ "proofman-common 0.1.0",
+ "proofman-util 0.1.0",
  "serde",
  "tinytemplate",
 ]
@@ -631,14 +730,31 @@ version = "0.1.0"
 dependencies = [
  "log",
  "p3-field",
- "pilout",
- "proofman-macros",
- "proofman-starks-lib-c",
- "proofman-util",
+ "pilout 0.1.0",
+ "proofman-macros 0.1.0",
+ "proofman-starks-lib-c 0.1.0",
+ "proofman-util 0.1.0",
  "serde",
  "serde_derive",
  "serde_json",
- "transcript",
+ "transcript 0.1.0",
+]
+
+[[package]]
+name = "proofman-common"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "log",
+ "p3-field",
+ "pilout 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-macros 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-starks-lib-c 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-util 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "transcript 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
 ]
 
 [[package]]
@@ -646,13 +762,33 @@ name = "proofman-hints"
 version = "0.1.0"
 dependencies = [
  "p3-field",
- "proofman-common",
- "proofman-starks-lib-c",
+ "proofman-common 0.1.0",
+ "proofman-starks-lib-c 0.1.0",
+]
+
+[[package]]
+name = "proofman-hints"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "p3-field",
+ "proofman-common 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-starks-lib-c 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "proofman-macros"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -667,8 +803,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "proofman-starks-lib-c"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "proofman-util"
 version = "0.1.0"
+dependencies = [
+ "colored",
+ "sysinfo",
+]
+
+[[package]]
+name = "proofman-util"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
 dependencies = [
  "colored",
  "sysinfo",
@@ -764,6 +917,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "range-check"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "num-traits",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-cli",
+ "proofman-common 0.1.0",
+ "proofman-macros 0.1.0",
+ "rand",
 ]
 
 [[package]]
@@ -867,20 +1038,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "pilout 0.1.0",
+ "proofman 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-cli",
+ "proofman-common 0.1.0",
+ "proofman-macros 0.1.0",
+ "rand",
+]
+
+[[package]]
 name = "stark"
 version = "0.1.0"
 dependencies = [
  "log",
  "p3-field",
  "p3-goldilocks",
- "proofman-common",
- "proofman-hints",
- "proofman-starks-lib-c",
- "proofman-util",
+ "proofman-common 0.1.0",
+ "proofman-hints 0.1.0",
+ "proofman-starks-lib-c 0.1.0",
+ "proofman-util 0.1.0",
  "serde",
  "serde_derive",
  "serde_json",
- "transcript",
+ "transcript 0.1.0",
+]
+
+[[package]]
+name = "stark"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "proofman-common 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-hints 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-starks-lib-c 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "proofman-util 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "transcript 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
 ]
 
 [[package]]
@@ -978,7 +1185,15 @@ dependencies = [
 name = "transcript"
 version = "0.1.0"
 dependencies = [
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 0.1.0",
+]
+
+[[package]]
+name = "transcript"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#0c73f0d514cec1166bd8cee47653c94305e12791"
+dependencies = [
+ "proofman-starks-lib-c 0.1.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop)",
 ]
 
 [[package]]

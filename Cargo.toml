@@ -10,6 +10,12 @@ members = [
     "provers/starks-lib-c",
     "transcript",
     "util",
+    "pil2-components/lib/std/rs",
+    "pil2-components/test/std/range_check/rs",
+    "pil2-components/test/std/lookup/rs",
+    "pil2-components/test/std/connection/rs",
+    "pil2-components/test/std/permutation/rs",
+    "pil2-components/test/simple/rs",
     # whoever re-enables this, it has to work out of
     # the box with `cargo check --workspace` or CI will
     # break and dev experience will be bad since repo
@@ -20,8 +26,21 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+proofman-macros = { path = "macros", version = "0.1.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-common = { path = "common", version = "0.1.0" }
+proofman-hints = { path = "hints", version = "0.1.0" }
+proofman-util = { path = "util", version = "0.1.0" }
+proofman-cli = { path = "cli", version = "0.1.0" }
+pilout = { path = "pilout", version = "0.1.0" }
 log = { version = "0.4", default-features = false }
 env_logger = "0.11"
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
-proofman-macros = { path = "macros", version = "0.1.0" }
+bytes = "1.7"
+prost = "0.13"
+rand = "0.8"
+num-bigint = "0.4"
+prost-build = "0.13"
+num-traits = "0.2"
+rayon = "1"
