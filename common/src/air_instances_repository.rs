@@ -21,6 +21,19 @@ impl<F> AirInstancesRepository<F> {
         self.air_instances.write().unwrap().push(air_instance);
     }
 
+    pub fn find_airgroup_instances(&self, airgroup_id: usize) -> Vec<usize> {
+        let air_instances = self.air_instances.read().unwrap();
+
+        let mut indices = Vec::new();
+        for (index, air_instance) in air_instances.iter().enumerate() {
+            if air_instance.airgroup_id == airgroup_id {
+                indices.push(index);
+            }
+        }
+
+        indices
+    }
+
     pub fn find_air_instances(&self, airgroup_id: usize, air_id: usize) -> Vec<usize> {
         let air_instances = self.air_instances.read().unwrap();
 

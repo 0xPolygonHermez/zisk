@@ -140,11 +140,30 @@ cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libfibonacci_square.so \
      --proving-key examples/fibonacci-square/build/provingKey/ \
      --public-inputs examples/fibonacci-square/src/inputs.json \
-     --output-dir examples/fibonacci-square/build/proofs
+     --output-dir examples/fibonacci-square/build/proofs -d
 ```
 
 ### 2.7 Verify the Proof
 
 ```bash
 node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs
+```
+
+### 2.6 Generate Final Proof
+
+Finally, generate the proof using the following command:
+
+```bash
+cargo run --bin proofman-cli prove \
+     --witness-lib ./target/debug/libfibonacci_square.so \
+     --proving-key examples/fibonacci-square/build/provingKey/ \
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+     --output-dir examples/fibonacci-square/build/proofs \
+     -a
+```
+
+### 2.8 Verify final proof
+
+```bash
+node ../pil2-stark-js/src/main_verifier.js -v examples/fibonacci-square/build/provingKey/build/final/final.verkey.json -s examples/fibonacci-square/build/provingKey/build/final/final.starkinfo.json -i examples/fibonacci-square/build/provingKey/build/final/final.verifierinfo.json -o examples/fibonacci-square/build/proofs/proofs/final_proof.json -b examples/fibonacci-square/build/proofs/publics.json
 ```

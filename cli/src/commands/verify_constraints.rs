@@ -6,7 +6,7 @@ use crate::commands::field::Field;
 
 use p3_goldilocks::Goldilocks;
 
-use proofman::ProofMan;
+use proofman::{ProofMan, ProofOptions};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -56,14 +56,14 @@ impl VerifyConstraintsCmd {
             _ => 1,
         };
 
-        let _valid_constraints = match self.field {
-            Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
+        match self.field {
+            Field::Goldilocks => ProofMan::<GL>::generate_proof(
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                debug_mode,
+                ProofOptions::new(debug_mode, false, false),
             )?,
         };
 

@@ -52,7 +52,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0]).num_rows();
+        let num_rows = pctx.global_info.airs[MODULE_AIRGROUP_ID][MODULE_AIR_IDS[0]].num_rows;
         let mut trace = Module0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
         //range_check(colu: mod - x_mod, min: 1, max: 2**8-1);

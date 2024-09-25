@@ -1,8 +1,7 @@
 use std::sync::RwLock;
+use std::path::PathBuf;
 
-use log::info;
-
-use crate::{AirInstancesRepository, WitnessPilout};
+use crate::{AirInstancesRepository, GlobalInfo};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
@@ -39,29 +38,27 @@ pub struct ProofCtx<F> {
     pub public_inputs: PublicInputs,
     pub challenges: Challenges<F>,
     pub buff_helper: BuffHelper<F>,
-    pub pilout: WitnessPilout,
+    pub global_info: GlobalInfo,
     pub air_instance_repo: AirInstancesRepository<F>,
 }
 
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(pilout: WitnessPilout) -> Self {
-        info!("{}: ··· Creating proof context", Self::MY_NAME);
-        if pilout.air_groups().is_empty() {
-            panic!("No air groups found in PilOut");
-        }
+    pub fn create_ctx(proving_key_path: PathBuf) -> Self {
+        log::info!("{}: ··· Creating proof context", Self::MY_NAME);
+
+        let global_info: GlobalInfo = GlobalInfo::new(&proving_key_path);
 
         Self {
+            global_info,
             public_inputs: PublicInputs::default(),
-            pilout,
             challenges: Challenges::default(),
             buff_helper: BuffHelper::default(),
             air_instance_repo: AirInstancesRepository::new(),
         }
     }
 }
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

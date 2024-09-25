@@ -52,7 +52,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
+        let num_rows = pctx.global_info.airs[airgroup_id][air_id].num_rows;
         let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
         trace[0].a = F::from_canonical_u64(a);

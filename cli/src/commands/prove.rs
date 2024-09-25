@@ -6,7 +6,7 @@ use crate::commands::field::Field;
 
 use p3_goldilocks::Goldilocks;
 
-use proofman::ProofMan;
+use proofman::{ProofMan, ProofOptions};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -36,6 +36,12 @@ pub struct ProveCmd {
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
+
+    #[clap(short = 'a', long, default_value_t = false)]
+    pub aggregation: bool,
+
+    #[clap(short = 'd', long, default_value_t = false)]
+    pub debug: bool,
 }
 
 impl ProveCmd {
@@ -43,16 +49,18 @@ impl ProveCmd {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        let _proof = match self.field {
-            Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
-                self.witness_lib.clone(),
-                self.rom.clone(),
-                self.public_inputs.clone(),
-                self.proving_key.clone(),
-                self.output_dir.clone(),
-                0,
-            )?,
-        };
+        type GL = Goldilocks;
+
+        ProofMan::<GL>::generate_proof(
+            self.witness_lib.clone(),
+            self.rom.clone(),
+            self.public_inputs.clone(),
+            self.proving_key.clone(),
+            self.output_dir.clone(),
+            ProofOptions::new(0, self.aggregation, self.debug),
+        )?;
+
+        println!("Proofs generated successfully");
 
         Ok(())
     }
