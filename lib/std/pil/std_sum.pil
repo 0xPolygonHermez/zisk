@@ -126,7 +126,15 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         on final airgroup piop_gsum_airgroup_direct();
     } else {
         use air.std.gsum;
-        gsum_s[gsum_nargs] = proves ? sel : 0-sel; // TODO: Fix
+        
+        if (proves) {
+            gsum_s[gsum_nargs] = sel;
+        } else {
+            // TODO: Fix
+            gsum_s[gsum_nargs] = 0-sel;
+        }
+        // gsum_s[gsum_nargs] = proves ? sel : 0-sel; // TODO: Fix
+                
         gsum_e[gsum_nargs] = cols_compressed;
         gsum_t[gsum_nargs] = proves;
         gsum_nargs++;
