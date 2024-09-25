@@ -81,7 +81,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
             let air_instance =
                 AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
-            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            // self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }
 
