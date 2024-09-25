@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -20,7 +21,7 @@ pub struct QuickOpsSM {
 }
 
 impl QuickOpsSM {
-    pub fn new<F>(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let quickop_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let quickop_sm = Arc::new(quickop_sm);
@@ -34,7 +35,7 @@ impl QuickOpsSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <QuickOpsSM as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
@@ -51,9 +52,9 @@ impl<F> WitnessComponent<F> for QuickOpsSM {
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
@@ -88,7 +89,9 @@ impl Provable<ZiskRequiredOperation, OpResult> for QuickOpsSM {
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
+
         self.prove(&[operation], drain, scope);
+
         result
     }
 }

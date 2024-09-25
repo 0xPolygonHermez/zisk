@@ -1,4 +1,4 @@
-use zisk_core::{ZiskInst, ZiskOperations};
+use zisk_core::{ZiskInst, ZiskOperations, REG_FIRST, REG_LAST};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -19,9 +19,16 @@ struct MemoryOperations {
     mwrite_na2: u64,
 }
 
+#[derive(Default, Debug, Clone)]
+struct RegistryOperations {
+    reads: u64,
+    writes: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Stats {
     mops: MemoryOperations,
+    rops: RegistryOperations,
     usual: u64,
     steps: u64,
     ops: [u64; 256],
@@ -30,7 +37,13 @@ pub struct Stats {
 /// Default constructor for Stats structure
 impl Default for Stats {
     fn default() -> Self {
-        Self { mops: MemoryOperations::default(), usual: 0, steps: 0, ops: [0; 256] }
+        Self {
+            mops: MemoryOperations::default(),
+            rops: RegistryOperations::default(),
+            usual: 0,
+            steps: 0,
+            ops: [0; 256],
+        }
     }
 }
 
@@ -45,6 +58,9 @@ impl Stats {
         } else {
             self.mops.mread_a += 1;
         }
+        if (REG_FIRST..=REG_LAST).contains(&address) {
+            self.rops.reads += 1;
+        }
     }
 
     pub fn on_memory_write(&mut self, address: u64, width: u64) {
@@ -56,6 +72,9 @@ impl Stats {
             }
         } else {
             self.mops.mwrite_a += 1;
+        }
+        if (REG_FIRST..=REG_LAST).contains(&address) {
+            self.rops.writes += 1;
         }
     }
 
@@ -151,6 +170,25 @@ impl Stats {
             total_opcode_cost, total_opcode_steps, total_opcodes
         );
         output += &format!("    Usual: {:.2} sec {} steps\n", cost_usual, self.usual);
+        output += &format!(
+            "    Memory: {} a reads + {} na1 reads + {} na2 reads + {} a writes + {} na1 writes + {} na2 writes = {} reads + {} writes = {} r/w\n",
+            self.mops.mread_a,
+            self.mops.mread_na1,
+            self.mops.mread_na2,
+            self.mops.mwrite_a,
+            self.mops.mwrite_na1,
+            self.mops.mwrite_na2,
+            self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2,
+            self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2,
+            self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2 +
+            self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2,
+        );
+        output += &format!(
+            "    Registy: {} reads + {} writes = {} r/w\n",
+            self.rops.reads,
+            self.rops.writes,
+            self.rops.reads + self.rops.writes
+        );
 
         output += "\nOpcodes:\n";
 

@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use crate::{Arith3264SM, Arith32SM, Arith64SM};
+use p3_field::AbstractField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -32,7 +33,7 @@ pub struct ArithSM {
 
 impl ArithSM {
     pub fn new<F>(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         arith32_sm: Arc<Arith32SM>,
         arith64_sm: Arc<Arith64SM>,
         arith3264_sm: Arc<Arith3264SM>,
@@ -61,15 +62,15 @@ impl ArithSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
 
             self.threads_controller.wait_for_threads();
 
-            self.arith3264_sm.unregister_predecessor(scope);
-            self.arith64_sm.unregister_predecessor(scope);
-            self.arith32_sm.unregister_predecessor(scope);
+            self.arith3264_sm.unregister_predecessor::<F>(scope);
+            self.arith64_sm.unregister_predecessor::<F>(scope);
+            self.arith32_sm.unregister_predecessor::<F>(scope);
         }
     }
 }
@@ -79,9 +80,9 @@ impl<F> WitnessComponent<F> for ArithSM {
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
@@ -120,7 +121,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
 
         while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
             if drain && !inputs32.is_empty() {
-                println!("ArithSM: Draining inputs32");
+                // println!("ArithSM: Draining inputs32");
             }
 
             let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
@@ -143,7 +144,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
 
         while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
             if drain && !inputs64.is_empty() {
-                println!("ArithSM: Draining inputs64");
+                // println!("ArithSM: Draining inputs64");
             }
 
             let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
@@ -169,7 +170,9 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
+
         self.prove(&[operation], drain, scope);
+
         result
     }
 }

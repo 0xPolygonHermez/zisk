@@ -14,13 +14,14 @@ sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-quick-ops = { path = "../state-machines/quick-ops" }
-zisk-pil = { path = "../pil/fork_0" }
+zisk-pil = { path = "../pil/v0.1" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-hints = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace=true }
+pil-std-lib = { workspace = true }
 
 log = { workspace = true }
 env_logger = "0.11"

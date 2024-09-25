@@ -109,23 +109,23 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     //               [last, m_op, a, b, cin, c, cout + flags]
     // where last indicates whether the byte is the last one in the operation
 
-    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*op_is_min_max*cout]);
+    // lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*op_is_min_max*cout]);
 
     expr _m_op = (1-mode32) * (m_op - EXT_32_OP) + EXT_32_OP;
-    for (int i = 1; i < bytes; i++) {
-        expr _free_in_a = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
-        expr _free_in_b = (1-mode32) * free_in_b[i];
+    // for (int i = 1; i < bytes; i++) {
+    //     expr _free_in_a = (1-mode32) * (free_in_a[i] - free_in_c[bytes/2-1]) + free_in_c[bytes/2-1];
+    //     expr _free_in_b = (1-mode32) * free_in_b[i];
 
-        if (i < bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
-        } else if (i == bytes/2 - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*mode32]);
-        } else if (i < bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
-        } else  {
-            lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*(1-mode32)]);
-        }
-    }
+    //     if (i < bytes/2 - 1) {
+    //         lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
+    //     } else if (i == bytes/2 - 1) {
+    //         lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*mode32]);
+    //     } else if (i < bytes - 1) {
+    //         lookup_assumes(BINARY_TABLE_ID, [0, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*op_is_min_max*cout]);
+    //     } else  {
+    //         lookup_assumes(BINARY_TABLE_ID, [1-mode32, _m_op, _free_in_a, _free_in_b, carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*op_is_min_max*cout + 8*use_last_carry*(1-mode32)]);
+    //     }
+    // }
 
     // Constraints to make sure that this component is called from the main component
     expr a[input_chunks];
