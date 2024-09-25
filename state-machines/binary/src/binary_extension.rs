@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use log::info;
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -35,7 +35,7 @@ pub enum BinaryExtensionSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionSM<F> {
+impl<F: Field> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BnaryESM";
 
     pub fn new(
@@ -351,9 +351,7 @@ impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
-    for BinaryExtensionSM<F>
-{
+impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

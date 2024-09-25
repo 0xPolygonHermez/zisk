@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -30,7 +30,7 @@ pub struct BinarySM<F> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> BinarySM<F> {
+impl<F: Field> BinarySM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         binary_basic_sm: Arc<BinaryBasicSM<F>>,
@@ -86,9 +86,7 @@ impl<F: Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
-    for BinarySM<F>
-{
+impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

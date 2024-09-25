@@ -1,5 +1,5 @@
 use log::info;
-use p3_field::AbstractField;
+use p3_field::Field;
 
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
@@ -57,7 +57,7 @@ pub struct MainSM<F> {
     arith_sm: Arc<ArithSM>,
 }
 
-impl<'a, F: AbstractField + Eq + Default + Copy + Send + Sync + 'static> MainSM<F> {
+impl<'a, F: Field> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     /// Default number of inputs of the main state machine that are accumulated before being

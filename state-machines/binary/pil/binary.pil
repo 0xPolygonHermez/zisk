@@ -139,10 +139,12 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
 
     int i_byte = 0;
     int i_chunk = 0;
+    int factor = 0;
     for (int i = 0; i < bytes; i++) {
-        a[i_chunk] += (256 ** i_byte * free_in_a[i]);
-        b[i_chunk] += (256 ** i_byte * free_in_b[i]);
-        c[i_chunk] += (256 ** i_byte * free_in_c[i]);
+        factor = 256 ** i_byte;
+        a[i_chunk] += (factor * free_in_a[i]);
+        b[i_chunk] += (factor * free_in_b[i]);
+        c[i_chunk] += (factor * free_in_c[i]);
         i_byte++;
         if (i_byte == input_chunk_bytes) {
             i_byte = 0;
@@ -156,7 +158,7 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     // the lookup table ensures that C = 0x01_00_00_00 (since until the last chunk it cannot decide whether the EQ is true or not)
     // but we want C = 0x00_00_00_01
     c[0] += use_last_carry * cout;
-    c[input_chunks - 1] -= use_last_carry * cout;
+    c[input_chunks - 1] -= use_last_carry * cout * factor;
 
     expr op = m_op + 16 * mode32;
 
