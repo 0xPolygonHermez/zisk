@@ -22,3 +22,15 @@ trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
 trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
 });
+
+trace!(U8Air0Row, U8Air0Trace<F> {
+ mul: F,
+});
+
+trace!(U16Air0Row, U16Air0Trace<F> {
+ mul: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 2],
+});
