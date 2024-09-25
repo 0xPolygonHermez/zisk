@@ -77,6 +77,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
     col fixed C;             // Output C (8 bits)
     col fixed COUT;          // Output carry (1 bit)
     col fixed OP_IS_MIN_MAX; // Min,Max indicator (1 bit)
+    col fixed FLAGS;
     for (int i = 0; i < N; i++) {
         const int [plast, op, a, b, cin, result_is_a] = [LAST[i], OP[i], A[i], B[i], CIN[i], RESULT_IS_A[i]];
         int c = 0;
@@ -120,7 +121,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
             case 0x08: // EQ,EQ_W
                 if (a == b && !cin) c = plast;
                 else cout = 1;
-                cout = plast ? !cout : cout;
+                cout = plast ? 1-cout : cout;
 
             case 0x09,0x0a: // MINU,MINU_W,MIN,MIN_W
                 // cout = 1 indicates that a is lower than b
@@ -180,11 +181,10 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
         C[i] = c;
         COUT[i] = cout;
         OP_IS_MIN_MAX[i] = op_is_min_max;
+
+        // Compute flags
+        FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i];
     }
 
-    col fixed FLAGS;
-    for (int i = 0; i < N; i++) {
-        FLAGS[i] = COUT[i] + 2*OP_IS_MIN_MAX[i] + 4*RESULT_IS_A[i] + 8*USE_CARRY[i];
-    }
-    // lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
 }
