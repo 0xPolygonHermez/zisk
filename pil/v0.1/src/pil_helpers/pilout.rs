@@ -16,6 +16,12 @@ pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 3;
 
 pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 4;
 
+pub const U_8_AIR_AIRGROUP_ID: usize = 5;
+
+pub const U_16_AIR_AIRGROUP_ID: usize = 6;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 7;
+
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
@@ -27,6 +33,12 @@ pub const BINARY_TABLE_AIR_IDS: &[usize] = &[0];
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[0];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
 
 pub struct Pilout;
 
@@ -53,6 +65,18 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
 
         air_group.add_air(Some("BinaryExtensionTable"), 524288);
+
+        let air_group = pilout.add_air_group(Some("U8Air"));
+
+        air_group.add_air(Some("U8Air"), 256);
+
+        let air_group = pilout.add_air_group(Some("U16Air"));
+
+        air_group.add_air(Some("U16Air"), 65536);
+
+        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
+
+        air_group.add_air(Some("SpecifiedRanges"), 2048);
 
         pilout
     }

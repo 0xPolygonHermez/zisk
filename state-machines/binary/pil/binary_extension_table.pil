@@ -18,6 +18,8 @@ const int BINARY_EXTENSION_TABLE_ID = 124;
 
 airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 0) {
     
+    #pragma memory m1 start
+    
     col witness multiplicity;
 
     if (disable_fixed) {
@@ -36,6 +38,8 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
     const int bits = 64;
     const int bytes = bits / 8;
 
+    #pragma timer tt start
+    #pragma timer t1 start
     col fixed A = [0..255]...;                              // Input A    (8 bits)
 
     col fixed OFFSET = [0:P2_8..(bytes-1):P2_8]...;         // Offset     (3 bits)
@@ -47,10 +51,16 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
                     0x23:P2_11, 0x24:P2_11, 0x25:P2_11,     // SE_B, SE_H, SE_W
                     0x26:P2_11]...;                         // EXT_32
 
+    #pragma timer t1 end
+    #pragma timer t2 start
+
+    #pragma fixed_size dword
     col fixed C0;                                           // Output C0  (32 bits)
+    #pragma fixed_size dword
     col fixed C1;                                           // Output C1  (32 bits)
+
+    #pragma transpile
     for (int i = 0; i < N; i++) {
-        println(i);
         int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int _out = 0;
         switch (op) {
@@ -111,6 +121,9 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
         C0[i] = _out & (P2_32-1);
         C1[i] = (_out >> 32) & (P2_32-1);
     }
+    #pragma timer t2 end
+    #pragma timer tt end
 
-    // lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
+    #pragma memory m1 end
 }

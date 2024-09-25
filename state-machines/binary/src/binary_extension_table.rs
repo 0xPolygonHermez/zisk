@@ -90,7 +90,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
                 None,
                 buffer,
             );
-            // self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }
 

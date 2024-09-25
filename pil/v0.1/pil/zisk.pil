@@ -1,6 +1,6 @@
 require "constants.pil"
 // require "std_permutation.pil"
-require "../../../state-machines/main/pil/main.pil"
+require "main/pil/main.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
@@ -16,7 +16,7 @@ airgroup Binary {
 }
 
 airgroup BinaryTable {
-    BinaryTable(disable_fixed: 1);
+    BinaryTable();
 }
 
 airgroup BinaryExtension {
@@ -24,5 +24,5 @@ airgroup BinaryExtension {
 }
 
 airgroup BinaryExtensionTable {
-    BinaryExtensionTable(disable_fixed: 1);
+    BinaryExtensionTable();
 }
