@@ -9,7 +9,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
-use p3_field::AbstractField;
+use p3_field::Field;
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct Arith3264SM {
@@ -35,7 +35,7 @@ impl Arith3264SM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <Arith3264SM as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,

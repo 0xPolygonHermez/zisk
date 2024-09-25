@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::{Arith3264SM, Arith32SM, Arith64SM};
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -62,7 +62,7 @@ impl ArithSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
 

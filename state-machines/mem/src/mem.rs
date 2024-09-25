@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::{MemAlignedSM, MemUnalignedSM};
-use p3_field::AbstractField;
+use p3_field::Field;
 use rayon::Scope;
 use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredMemory;
@@ -61,7 +61,7 @@ impl MemSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor<F: AbstractField>(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <MemSM as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
 
