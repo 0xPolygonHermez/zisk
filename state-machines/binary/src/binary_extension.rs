@@ -295,20 +295,20 @@ impl<F: Field> BinaryExtensionSM<F> {
                 },
 
                 0x25 /* SE_W */ => {
-                    for j in 0..8 {
+                    for j in 0..4 {
                         // Calculate position as the number of shifted bits for this byte
-                        let position = j*8 + b_low;
+                        let position = j*8;
 
                         // Calculate the 8-bits window of the result at this position
-                        //if position < 32 {
-                            let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
-                        /*}
-                        else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
-                        }*/
+                        let out = c & (0xff_u64 << position);
+                        t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                        t.out[j as usize][1] = F::zero();
+                    }
+
+                    let fill = if (i.a & 0x80000000) == 0 { F::zero()} else { F::from_canonical_u8(0xff)};
+                    for j in 4..8 {
+                        t.out[j as usize][0] = F::zero();
+                        t.out[j as usize][1] = fill;
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),
