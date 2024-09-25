@@ -465,10 +465,13 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+            let num_rows = self
+                .wcm
+                .get_pctx()
+                .global_info.airs[BINARY_AIRGROUP_ID][BINARY_AIR_IDS[0]].num_rows;
 
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
+            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(num_rows, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 let binary_basic_table_sm = self.binary_basic_table_sm.clone();
