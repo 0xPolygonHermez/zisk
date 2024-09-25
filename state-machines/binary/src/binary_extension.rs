@@ -141,7 +141,7 @@ impl<F: Field> BinaryExtensionSM<F> {
                         let position = j*8 + b_low;
 
                         // Calculate the 8-bits window of the result at this position
-                        if position < 32 {
+                        if position < 64 {
                             let out = c & (0xff_u64 << position);
                             t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                             t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
@@ -205,7 +205,7 @@ impl<F: Field> BinaryExtensionSM<F> {
                         let position = j*8 + b_low;
 
                         // Calculate the 8-bits window of the result at this position
-                        if position < 16 {
+                        if position < 32 {
                             let out = c & (0xff_u64 << position);
                             t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                         }
@@ -264,7 +264,7 @@ impl<F: Field> BinaryExtensionSM<F> {
                         let position = j*8 + b_low;
 
                         // Calculate the 8-bits window of the result at this position
-                        if position < 32 {
+                        if position < 8 {
                             let out = c & (0xff_u64 << position);
                             t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                             t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
@@ -282,7 +282,7 @@ impl<F: Field> BinaryExtensionSM<F> {
                         let position = j*8 + b_low;
 
                         // Calculate the 8-bits window of the result at this position
-                        if position < 32 {
+                        if position < 16 {
                             let out = c & (0xff_u64 << position);
                             t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                             t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
@@ -300,15 +300,15 @@ impl<F: Field> BinaryExtensionSM<F> {
                         let position = j*8 + b_low;
 
                         // Calculate the 8-bits window of the result at this position
-                        if position < 32 {
+                        //if position < 32 {
                             let out = c & (0xff_u64 << position);
                             t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
                             t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
-                        }
+                        /*}
                         else {
                             t.out[j as usize][0] = F::zero();
                             t.out[j as usize][1] = F::zero();
-                        }
+                        }*/
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),

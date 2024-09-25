@@ -664,16 +664,32 @@ impl<'a> Emu<'a> {
             ZiskOperationType::Arith => {
                 let required_operation = ZiskRequiredOperation {
                     opcode: instruction.op,
-                    a: self.ctx.inst_ctx.a,
-                    b: self.ctx.inst_ctx.b,
+                    a: if instruction.m32 {
+                        self.ctx.inst_ctx.a & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.a
+                    },
+                    b: if instruction.m32 {
+                        self.ctx.inst_ctx.b & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.b
+                    },
                 };
                 emu_slice.required.arith.push(required_operation);
             }
             ZiskOperationType::Binary => {
                 let required_operation = ZiskRequiredOperation {
                     opcode: instruction.op,
-                    a: self.ctx.inst_ctx.a,
-                    b: self.ctx.inst_ctx.b,
+                    a: if instruction.m32 {
+                        self.ctx.inst_ctx.a & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.a
+                    },
+                    b: if instruction.m32 {
+                        self.ctx.inst_ctx.b & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.b
+                    },
                 };
                 emu_slice.required.binary.push(required_operation);
             }
