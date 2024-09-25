@@ -195,8 +195,8 @@ extern "C" {
     #[link_name = "\u{1}_Z18calculate_xdivxsubPvS_S_"]
     pub fn calculate_xdivxsub(
         pStarks: *mut ::std::os::raw::c_void,
+        xiChallenge: *mut ::std::os::raw::c_void,
         xDivXSub: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {

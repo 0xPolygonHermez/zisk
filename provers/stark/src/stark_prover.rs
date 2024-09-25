@@ -328,18 +328,27 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
     fn calculate_xdivxsub(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
-        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
 
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let xdivxsub = (*buff_helper_guard).as_ptr() as *mut c_void;
 
-        calculate_xdivxsub_c(self.p_stark, xdivxsub, challenges);
+        let challenges_map = self.stark_info.challenges_map.as_ref().unwrap();
+
+        let mut xi_challenge_index: usize = 0;
+        for i in 0..challenges_map.len() {
+            if challenges_map[i].stage == (proof_ctx.pilout.num_stages() + 2) as u64 && challenges_map[i].stage_id == 0 as u64 {
+               xi_challenge_index = i;
+               break;
+            }
+        }
+
+        let xi_challenge = &(*challenges_guard)[xi_challenge_index * Self::FIELD_EXTENSION] as *const F as *mut c_void;
+        calculate_xdivxsub_c(self.p_stark, xi_challenge, xdivxsub);
     }
 
     fn calculate_lev(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
         
-
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let lev = (*buff_helper_guard).as_ptr() as *mut c_void;
         

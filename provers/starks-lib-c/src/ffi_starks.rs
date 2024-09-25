@@ -236,8 +236,8 @@ pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xdivxsub: *mut c_void, challenges: *mut c_void) -> *mut c_void {
-    unsafe { calculate_xdivxsub(p_stark, xdivxsub, challenges) }
+pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xi_challenge: *mut c_void, xdivxsub: *mut c_void) -> *mut c_void {
+    unsafe { calculate_xdivxsub(p_stark, xi_challenge, xdivxsub) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -718,7 +718,7 @@ pub fn compute_evals_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _buffer: *mut c_void, _challenges: *mut c_void) -> *mut c_void {
+pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _buffer: *mut c_void) -> *mut c_void {
     trace!(
         "{}: ··· {}",
         "ffi     ",
