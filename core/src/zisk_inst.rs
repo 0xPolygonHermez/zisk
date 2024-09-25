@@ -1,6 +1,6 @@
 use crate::{source_to_str, store_to_str, InstContext};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ZiskOperationType {
     None,
     Internal,

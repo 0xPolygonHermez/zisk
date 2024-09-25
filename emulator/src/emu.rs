@@ -654,6 +654,7 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.inst_ctx.end),
             m32: F::from_bool(instruction.m32),
+            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
         };
         emu_slice.full_trace.push(full_trace_step);
 
