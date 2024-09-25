@@ -353,13 +353,11 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25verify_global_constraintsPcS_PvS0_m"]
+    #[link_name = "\u{1}_Z25verify_global_constraintsPcPvPS0_"]
     pub fn verify_global_constraints(
-        globalInfoFile: *mut ::std::os::raw::c_char,
         globalConstraintsBinFile: *mut ::std::os::raw::c_char,
         publics: *mut ::std::os::raw::c_void,
-        pProofs: *mut ::std::os::raw::c_void,
-        nProofs: u64,
+        airgroupValues: *mut *mut ::std::os::raw::c_void,
     ) -> bool;
 }
 extern "C" {

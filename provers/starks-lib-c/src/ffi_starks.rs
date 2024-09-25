@@ -464,20 +464,15 @@ pub fn verify_constraints_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn verify_global_constraints_c(
-    global_info_file: &str,
     global_constraints_bin_file: &str,
     publics: *mut c_void,
-    proofs: *mut c_void,
-    n_proofs: u64,
+    airgroupvalues: *mut *mut c_void,
 ) -> bool {
     unsafe {
-        let global_info_file_name = CString::new(global_info_file).unwrap();
-        let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
-
         let global_constraints_bin_file_name = CString::new(global_constraints_bin_file).unwrap();
         let global_constraints_bin_file_ptr = global_constraints_bin_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-        verify_global_constraints(global_info_file_ptr, global_constraints_bin_file_ptr, publics, proofs, n_proofs)
+        verify_global_constraints(global_constraints_bin_file_ptr, publics, airgroupvalues)
     }
 }
 
@@ -948,11 +943,9 @@ pub fn verify_constraints_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn verify_global_constraints_c(
-    _global_info_file: &str,
     _global_constraints_bin_file: &str,
     _publics: *mut c_void,
-    _proofs: *mut c_void,
-    _n_proofs: u64,
+    _airgroupvalues: *mut *mut c_void,
 ) -> bool {
     trace!(
         "{}: ··· {}",
