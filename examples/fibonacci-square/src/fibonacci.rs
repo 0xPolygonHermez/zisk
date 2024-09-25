@@ -24,14 +24,9 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // TODO: We should create the instance here and fill the trace in calculate witness!!!
-        if let Err(e) = Self::calculate_trace(
-            self,
-            FIBONACCI_SQUARE_AIRGROUP_ID,
-            FIBONACCI_SQUARE_AIR_IDS[0],
-            pctx,
-            ectx,
-            sctx,
-        ) {
+        if let Err(e) =
+            Self::calculate_trace(self, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx, sctx)
+        {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
     }
@@ -42,15 +37,18 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         air_id: usize,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>
+        sctx: Arc<SetupCtx>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let public_inputs: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let (module, mut a, mut b, _out) = public_inputs.inner();
 
-        let (buffer_size, offsets) =
-            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0])?;
+        let (buffer_size, offsets) = ectx.buffer_allocator.as_ref().get_buffer_info(
+            &sctx,
+            FIBONACCI_SQUARE_AIRGROUP_ID,
+            FIBONACCI_SQUARE_AIR_IDS[0],
+        )?;
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 

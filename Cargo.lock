@@ -244,23 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
-name = "fibonacci-square"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "proofman",
- "proofman-common",
- "proofman-macros",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

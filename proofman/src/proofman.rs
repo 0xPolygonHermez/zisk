@@ -358,7 +358,7 @@ impl<F: Field + 'static> ProofMan<F> {
             prover.build(pctx.clone());
         }
 
-        let mut buff_helper_size = 0 as usize;
+        let mut buff_helper_size = 0_usize;
 
         for prover in provers.iter_mut() {
             let buff_helper_prover_size = prover.get_buff_helper_size();
