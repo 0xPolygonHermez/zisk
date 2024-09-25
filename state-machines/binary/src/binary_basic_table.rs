@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -33,7 +33,7 @@ pub enum BasicTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryBasicTableSM<F> {
+impl<F: Field> BinaryBasicTableSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_basic_table = Self {
             wcm: wcm.clone(),
@@ -133,9 +133,7 @@ impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static>
-    Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F>
-{
+impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredBinaryBasicTable,

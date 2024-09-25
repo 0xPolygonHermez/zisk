@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -33,7 +33,7 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static> BinaryExtensionTableSM<F> {
+impl<F: Field> BinaryExtensionTableSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let binary_extension_table = Self {
             wcm: wcm.clone(),
@@ -127,9 +127,7 @@ impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionTableSM<F> {
     }
 }
 
-impl<F: AbstractField + Copy + Send + Sync + 'static>
-    Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryExtensionTableSM<F>
-{
+impl<F: Field> Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryExtensionTableSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredBinaryExtensionTable,
