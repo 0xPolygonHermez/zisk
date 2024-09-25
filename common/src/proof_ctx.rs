@@ -33,6 +33,18 @@ impl<F> Default for BuffHelper<F> {
     }
 }
 
+pub struct ProofOptions {
+    pub debug_mode: u64,
+    pub aggregation: bool,
+    pub save_proofs: bool,
+}
+
+impl ProofOptions {
+    pub fn new(debug_mode: u64, aggregation: bool, save_proofs: bool) -> Self {
+        Self { debug_mode, aggregation, save_proofs }
+    }
+}
+
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
     pub public_inputs: PublicInputs,

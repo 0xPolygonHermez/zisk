@@ -6,7 +6,8 @@ use crate::commands::field::Field;
 
 use p3_goldilocks::Goldilocks;
 
-use proofman::{ProofMan, ProofOptions};
+use proofman::ProofMan;
+use proofman_common::ProofOptions;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
