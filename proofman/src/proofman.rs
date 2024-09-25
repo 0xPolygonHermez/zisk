@@ -49,7 +49,7 @@ pub struct ProofOptions {
 
 impl ProofOptions {
     pub fn new(debug_mode: u64, aggregation: bool, save_proofs: bool) -> Self {
-        Self {debug_mode, aggregation, save_proofs}
+        Self { debug_mode, aggregation, save_proofs }
     }
 }
 
