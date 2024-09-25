@@ -65,8 +65,6 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
             let q = x / module;
             let x_mod = input.1;
 
-            self.std_lib.range_check(F::from_canonical_u64(module - x_mod), range.0.clone(), range.1.clone());
-
             trace[i].x = F::from_canonical_u64(x);
             trace[i].q = F::from_canonical_u64(q);
             trace[i].x_mod = F::from_canonical_u64(x_mod);
