@@ -1,0 +1,1 @@
+"generic" padding to replace specific paddings of poseidon, keccak, sha256

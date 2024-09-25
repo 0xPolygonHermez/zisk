@@ -1,0 +1,34 @@
+main:
+  rows:
+    - 2**22
+    - 2**23
+    - 2**25
+  registers:
+    names: 
+      - A
+      - B
+      - C
+    chunks: 8
+  pc-register: zkPC
+  single-registers:
+    names: 
+      - GAS
+      - SP
+      - PC
+  components:
+    binary:
+      config:
+        rows:
+          - 2**23
+          - 2**26
+        bits: 32
+        clocks: 16
+      sel: bin
+      map:
+        - binCode
+        - A
+        - B + sel * C
+        - op        
+    arith:
+      sel: arith
+      

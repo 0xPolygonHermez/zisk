@@ -1,0 +1,60 @@
+const int ROM_ID = 2;
+
+airtemplate Rom(int N = 2**8) {
+
+    const int NR = 8;
+
+    col fixed CONST[NR];
+    col fixed COND_CONST, OFFSET;
+    col fixed IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+              IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
+              INC_STACK, JMP_ADDR, ELSE_ADDR, LINE;
+    col fixed FLAGS;
+
+    col witness mul;
+
+    include "rom_compiled.pil";
+
+    // repeat_last_source_line();
+    lookup_proves(ROM_ID, [...CONST, COND_CONST, IN_A, IN_B, IN_C, IN_ROTL_C, IN_D, IN_E, IN_SR, IN_FREE, IN_FREE0,
+                            IN_CTX, IN_SP, IN_PC, IN_STEP, IN_RR, IN_RCX, IND, IND_RR,
+                            FLAGS, OFFSET, INC_STACK, JMP_ADDR, ELSE_ADDR, LINE], mul);
+}
+
+function last_rom_line(int zkpc, int values[]) {
+    for (int irow = zkpc; irow < N; ++irow) {
+        add_rom_line(irow, values);
+    }
+}
+function add_rom_line(int zkpc, int values[]) {
+    const int nr = air.NR;
+
+    air.LINE[zkpc] = zkpc;
+    air.COND_CONST[zkpc] = values[0];
+    air.IN_A[zkpc] = values[1];
+    air.IN_B[zkpc] = values[2];
+    air.IN_C[zkpc] = values[3];
+    air.IN_ROTL_C[zkpc] = values[4];
+    air.IN_D[zkpc] = values[5];
+    air.IN_E[zkpc] = values[6];
+    air.IN_SR[zkpc] = values[7];
+    air.IN_FREE[zkpc] = values[8];
+    air.IN_FREE0[zkpc] = values[9];
+    air.IN_CTX[zkpc] = values[10];
+    air.IN_SP[zkpc] = values[11];
+    air.IN_PC[zkpc] = values[12];
+    air.IN_STEP[zkpc] = values[13];
+    air.IN_RR[zkpc] = values[14];
+    air.IN_RCX[zkpc] = values[15];
+    air.IND[zkpc] = values[16];
+    air.IND_RR[zkpc] = values[17];
+    air.OFFSET[zkpc] = values[18];
+    air.INC_STACK[zkpc] = values[19];
+    air.JMP_ADDR[zkpc] = values[20];
+    air.ELSE_ADDR[zkpc] = values[21];
+    air.FLAGS[zkpc] = values[22];
+
+    for (int i = 0; i < nr; ++i) {
+        air.CONST[i][zkpc] = values[23 + i];
+    }
+}

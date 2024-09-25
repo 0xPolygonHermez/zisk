@@ -1,0 +1,88 @@
+require "std_lookup.pil";
+
+int OPID = 0;
+int savedOPID[10];
+int index = 0;
+function get_and_save(const int save = 0): int {
+    OPID++;
+    if (save) {
+        savedOPID[index] = OPID;
+        index++;
+    }
+    return OPID;
+}
+
+airtemplate Lookup0(const int N = 2**10, const int nLookups) {
+
+    col witness f[2*nLookups];
+    col witness t[2*nLookups];
+    col witness sel[nLookups];
+    col witness mul[nLookups];
+
+    for (int i = 0; i < nLookups; i++) {
+        const int opid = get_and_save();
+        lookup_assumes(opid, [f[2*i], f[2*i+1]], sel[i]);
+        lookup_proves(opid, [t[2*i], t[2*i+1]], mul[i]);
+    }
+}
+
+airtemplate Lookup1(const int N = 2**10, const int nLookups) {
+
+    col witness f[nLookups];
+    col witness t;
+    col witness sel[nLookups];
+    col witness mul;
+
+    const int opid = get_and_save();
+    for (int i = 0; i < nLookups; i++) {
+        lookup_assumes(opid, [f[i]], sel[i]);
+    }
+
+    lookup_proves(opid, [t], mul);
+}
+
+airtemplate Lookup2(const int N = 2**12) {
+
+    col witness a1,b1,a2,b2,a3,b3,a4,b4;
+    col witness c1,d1,c2,d2;
+    col witness sel1,sel2;
+    col witness mul;
+
+    get_and_save(1);
+    get_and_save(1);
+    get_and_save(1);
+    get_and_save(1);
+
+
+    lookup_assumes(savedOPID[0], [a1, b1]);
+    lookup_proves(savedOPID[0], [c1, d1]);
+
+    lookup_assumes(savedOPID[1], [a2, b2]);
+
+    lookup_assumes(savedOPID[2], [a3, b3], sel1);
+    lookup_proves(savedOPID[2], [c2, d2], mul);
+
+    lookup_assumes(savedOPID[3], [a4, b4], sel2);
+};
+
+airtemplate Lookup3(const int N = 2**14) {
+
+    col witness c1,d1,c2,d2;
+    col witness mul1,mul2;
+
+    lookup_proves(savedOPID[1], [c1, d1], mul1);
+
+    lookup_proves(savedOPID[3], [c2, d2], mul2);
+};
+
+airgroup Lookup {
+    Lookup0(nLookups: 2);
+
+    Lookup1(nLookups: 2);
+
+    Lookup2() alias `Lookup2_12`;
+    Lookup2(N: 2**13) alias `Lookup2_13`;
+    Lookup2(N: 2**15) alias `Lookup2_15`;
+
+    Lookup3();
+};

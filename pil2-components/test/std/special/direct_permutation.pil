@@ -1,0 +1,24 @@
+require "std_permutation.pil";
+
+airtemplate DirectPermutation(const int N = 2**4) {
+
+    const int OPID = 19;
+    const int VALUE1 = 256;
+    const int VALUE2 = 111;
+    const int VALUE3 = 222;
+    const int SEL = 1;
+
+    col witness a,b;
+
+    permutation_assumes(OPID, [a]);
+    permutation_proves(OPID, [b]);
+
+    permutation_upcd(OPID, [VALUE1], SEL);
+    permutation_upcd(OPID, [VALUE2], 1-SEL);
+    permutation_upcd(OPID, [VALUE3], SEL);
+    permutation_upcd(OPID, [VALUE2], 1-SEL);
+}
+
+airgroup DirectPermutation {
+    DirectPermutation();
+}

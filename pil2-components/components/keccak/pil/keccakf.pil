@@ -1,0 +1,46 @@
+include "tools.pil"
+include "keccakf_table.pil"
+
+const int KECCAKF_ID = 56
+
+subproof KeccakF(2**23) {
+
+    const int bits = 11;
+    const int chunks = 4;
+
+    const int PROGRAM_LEN = 134000
+    col fixed GATE_TYPE = [[0:10,1,0:15]...,0:(N%PROGRAM_LEN)];
+
+    col witness in1Chunk[chunks], in2Chunk[chunks], outChunk[chunks];
+    
+    const int FACTOR = 2**bits;
+    expr _in1,_in2,_out;
+    for (int chunk = chunks - 1; chunk >= 0; chunk -= 1) {
+        lookup_assumes(KECCAKF_TABLE_ID, [GATE_TYPE, in1Chunk[chunk], in2Chunk[chunk], outChunk[chunk]]);
+        _in1 = _in1 * FACTOR + in1Chunk[chunk];
+        _in2 = _in2 * FACTOR + in2Chunk[chunk];
+        _out = _out * FACTOR + outChunk[chunk];
+    }
+    const expr in1 = _in1;
+    const expr in2 = _in2;
+    const expr out = _out;
+
+    col fixed FIELD_LATCH = [0:44,1]...;
+    col fixed L1 = [1,0...];
+    col witness bit;
+
+    expr bitToField = 0;
+    for (int index = 0; index < bits; ++index) {
+        bitToField += (bits - index - 1)'bit * 2**index;
+    }
+
+    bit *(1-bit) === 0;
+    FIELD_LATCH * (bitToField - in1) === 0;
+
+    // TODO: connections
+    // col constant ConnA, ConnB, ConnC, GateType;
+    // {in1, in2, out} connect {ConnA, ConnB, ConnC};
+
+    L1 * in1 === 0;                    // [L1] in1 == 0000...0000
+    L1 (2**(bits*chunks)-1-in2) === 0; // [L1] in2 == 1111...1111
+}

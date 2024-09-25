@@ -1,0 +1,9 @@
+subproof Range32(2**23) {
+
+    col fixed CLK = [0,1]...;
+    col witness value;
+    col witness bits;
+    col witness result;
+
+    result * (1 - result) === 0;
+}

@@ -1,0 +1,104 @@
+// PIL Binary Operations Table used by Binary
+//
+// ADD   (OP:0)                2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |                      2^18
+// SUB   (OP:1)                2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19
+// LT    (OP:2)   *            2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |               2^19 + 2^18
+// SLT   (OP:3)   *            2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20
+// EQ    (OP:4)   *            2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20        + 2^18
+// AND   (OP:5)                2^16 (AxB) * 2^1 (CIN) * 2^1 (LAST)      = 2^18 |        2^20 + 2^19
+// OR    (OP:6)                2^16 (AxB) *             2^1 (LAST)      = 2^17 |        2^20 + 2^19        + 2^17
+// XOR   (OP:7)                2^16 (AxB) *             2^1 (LAST)      = 2^17 |        2^20 + 2^19 + 2^18           => 2^21
+// --------------------------------------------------------------------------------------------------------------------------
+// LT4   (OP:108) * LAST = 0   2^16 (AxB) * 2^1 (CIN)                   = 2^17 |        2^20 + 2^19 + 2^18 + 2^17
+//                * LAST = 1   2^16 (AxB) * 2^1 (CIN) * 2^2 (SUM_CARRY) = 2^19 | 2^21 +      + 2^18 + 2^17           => 2^22
+// (*) USE CARRY
+// To complete full-fill to 22 bits are available 13 operations of 17 bits
+// 
+// SUM_CARRY = SUM(3 LT4 CARRY OUT) ∈ [0,1,2,3] only 3 could produce an cout = 1 in last = 1 with LT4 operation
+
+const int BINARY_TABLE_ID = 21;
+
+subproof aggregate BinaryTable(2**22) {
+
+    const int P2_16 = 2**16;
+    const int P2_17 = 2**17;
+    const int P2_18 = 2**18;
+    const int P2_19 = 2**19;
+        
+    col fixed A = [0..255]...;                        // Input A    (8 bits)
+
+    col fixed B = [0:256..255:256]...;                // Input B    (8 bits)
+    
+    col fixed OP = [0:P2_18..5:P2_18,
+                    6:P2_17..7:P2_17,
+                    108:(P2_17+P2_19)]...; 
+
+    col fixed CIN = [[0:P2_16,1:P2_16]:6,
+                      0:(P2_17*2),
+                     [0:P2_16,1:P2_16],[0:P2_16..7:P2_16]]...;
+
+    col fixed LAST = [[0:P2_17, 1:P2_17]:6,
+                      [0:P2_16, 1:P2_16]:2,
+                      [0:P2_17, 1:P2_19]]...;         // Last byte  (1 bits)
+
+
+    col fixed USE_CARRY = [ 0:(P2_18*2),          // USE_CARRY(ADD, SUB) = 0
+                           [0:P2_17, 1:P2_17]:3,  // USE_CARRY(LT,SLT,EQ) = LAST
+                            0:(P2_18+3*P2_17),    // USE_CARRY(AND,OR,XOR) = 0 + USE_CARRY(LT4 && LAST=0) = 0
+                            1:P2_19]...;          // USE_CARRY(LT4 && LAST=1) = LAST
+    
+    col fixed C;                                  // Output C   (8 bits)
+    col fixed COUT;                               // CarryOut   (1 bits)
+    col fixed FLAGS;
+
+
+    // P_FLAGS = cOut + 2 * useCarry + 4 * usePreviousAreLt4 + 8 * reset4
+    // In even byte clocks, useCarry = usePreviousAreLt4 = 0 and cOut = cMiddle, therefore FLAGS = cMiddle + 8 * reset4
+    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS]);
+
+    #pragma fixed
+    for (int i = 0; i < N; ++i) {
+        int [a, b, cin, plast, c, cout, op] = [A[i], B[i], CIN[i], LAST[i], 0, 0, OP[i]];
+        switch (op) {
+            case 0: // ADD
+                c = (cin + a + b) & 0xFF;
+                cout = (cin + a + b) >> 8;
+
+            case 1: // SUB
+                cout = ((a - cin) >= b ? 0 : 1);
+                c = 256 * cout + a - cin - b;
+
+            case 2,3: // LT,SLT
+                if (a < b) {
+                    cout = 1;
+                    c = plast;
+                } else if (a == b) {
+                    cout = cin;
+                    c = plast * cin;
+                }
+                if (op == 3 && plast && (a & 0x80) != (b & 0x80)) {
+                    c = (a & 0x80);
+                    cout = c;
+                }
+
+            case 4: // EQ
+                if (a == b && !cin)  c = plast;
+                else cout = 1;
+                cout = plast ? !cout : cout;
+
+            case 5: // AND
+                c = a & b;
+                cout = cin || c;
+
+            case 6: // OR
+                c = a | b;
+
+            case 7: // XOR
+                c = a ^ b;
+
+        }
+        C[i] = c;
+        COUT[i] = c;
+    }
+}
+

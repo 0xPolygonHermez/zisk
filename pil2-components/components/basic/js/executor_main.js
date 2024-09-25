@@ -1,0 +1,54 @@
+const path = require('path');
+const Processor = require('./processor/processor.js');
+const { WitnessCalculatorComponent } = require('pil2-proofman/src/witness_calculator_component.js');
+const log = require("pil2-proofman/logger.js");
+
+module.exports = class BasicMain extends WitnessCalculatorComponent {
+    constructor(wcManager, proofCtx) {
+        super("Basic Main", wcManager, proofCtx);
+    }
+
+    async witnessComputation(stageId, subproofId, airInstance, publics) {
+        log.info(`[${this.name}]`, `Starting witness computation stage ${stageId}.`);
+        if(stageId === 1) {
+            const instanceId = airInstance.instanceId;
+
+            if (instanceId !== -1) {
+                log.error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
+                throw new Error(`[${this.name}]`, `Air instance id already existing in stageId 1.`);
+            }
+
+            airInstance.airId = 0; // TODO: This should be updated automatically
+
+            const air = this.proofCtx.airout.subproofs[subproofId].airs[airInstance.airId];
+
+            log.info(`[${this.name}]`, `Creating air instance for air '${air.name}' with N=${air.numRows} rows.`);
+            let result = this.proofCtx.addAirInstance(subproofId, airInstance, air.numRows);
+
+            if (result === false) {
+                log.error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+                throw new Error(`[${this.name}]`, `Air instance for air '${air.name}' with N=${air.numRows} rows failed.`);
+            }
+
+            this.createPolynomialTraces(stageId, airInstance, publics);
+
+            // Create a Rom instance and a Mem instance
+            await this.wcManager.sendData("Basic Rom", {"airId": 0});
+            await this.wcManager.sendData("Basic Mem", {"airId": 0});
+            // Note: We do it after the witness computation of the main component because the rest are dependent on it,
+            //       and there is no better way to do it in this model. The optimal would be do it in parallel every time
+            //       the main provides with an input to the rest of the components.
+        }
+
+        return;
+    }
+
+    createPolynomialTraces(stageId, airInstance, publics) {
+        log.info(`[${this.name}]`, `Computing column traces stage ${stageId}.`);
+
+        const cols = airInstance.wtnsPols.Main;
+
+        const processor = new Processor(cols, {romFile: path.join(__dirname, '..', 'rom/rom.json'), proofCtx: this.proofCtx});
+        processor.execute(publics);
+    }
+}

@@ -1,0 +1,54 @@
+include "tools.pil"
+
+const int SHA256F_TABLE_ID = 67;
+
+subproof Sha256FTable(2**23) {
+
+    const int bits = 7;    
+    const int TO = 2**7 - 1;
+    const int TO4 = 4 * TO;
+    const int MASK = 2**7 - 1;
+
+    const int GATE_XOR = 0;
+    const int GATE_CH = 1;
+    const int GATE_MAJ = 2;
+    const int GATE_ADD = 3;
+
+    col fixed GATE_TYPE = [GATE_XOR, GATE_CH, GATE_MAJ, GATE_ADD]...;
+    col fixed IN1 = [0:TO4**2..TO:TO4**2]...;
+    col fixed IN2 = [0:TO4..TO:TO4]...;
+    col fixed IN3 = [0:4..TO:4]...;
+    // TODO: expressions inside fixed definition
+    // col fixed OUT = [IN1 ^ IN2 ^ IN3, 
+    //                 (IN1 & IN2) ^ ((MASK ^ IN1) & IN3),
+    //                 (IN1 & IN2) ^ (IN1 & IN3) ^ (IN2 & IN3),
+    //                  IN1 ^ IN2 ^ IN3]...;
+    // col fixed CARRY_OUT = [0,0,0,(IN1 & IN2) | (IN1 & IN3) | (IN2 & IN3)]...;
+    col fixed OUT;
+    col fixed CARRY_OUT;
+
+    for (int irow = 0; irow < N; irow += 4) {
+        const int in1 = IN1[irow];
+        const int in2 = IN2[irow];
+        const int in3 = IN3[irow];
+        const int xor = in1 ^ in2 ^ in3;
+
+        // xor
+        OUT[irow] = xor;
+        CARRY_OUT[irow] = 0;
+
+        // ch
+        OUT[irow+1] = (in1 & in2) ^ ((MASK ^ in1) & in3);
+        CARRY_OUT[irow+1] = 0;
+
+        // maj
+        OUT[irow+2] = (in1 & in2) ^ (in1 & in3) ^ (in2 & in3);
+        CARRY_OUT[irow+2] = 0;
+
+        // 
+        OUT[irow+3] = xor;
+        CARRY_OUT[irow+3] = 0;
+    }
+
+    lookup_proves(SHA256F_TABLE_ID, [GATE_TYPE, IN1, IN2, IN3, OUT, CARRY_OUT]);
+}

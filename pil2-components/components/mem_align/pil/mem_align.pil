@@ -1,0 +1,149 @@
+const int MEM_ALIGN_ID = 50;
+const int MEM_ALIGN_BYTE_BUS_ID = MEM_ALIGN_ID + 1;
+
+const int MAX_LEN = 32;
+const int MAX_OFFSET = 64;
+const int LEN_FACTOR = 2 ** 7;
+
+const int LEFT_ALIGN_FLAG = 2 ** 13;
+const int LITTLE_ENDIAN_FLAG = 2 ** 14;
+
+require "std_permutation.pil"
+require "std_lookup.pil"
+include "mem_align_table.pil"
+
+subproof MemAlign(2**16) {
+
+    const int NR = 8;  // number registers
+    const int BPR = 4; // bytes per register
+    const int CLOCKS = NR * BPR;
+
+    /*
+    * OPERATIONS
+    *
+    *  (m0,m1,D) => v
+    *  (m0,m1,D,v) => (w0, w1)
+    *
+    *  @m0 = addr   @m1 = addr + 32 (ethereum)
+    *
+    *  Ethereum => BigEndian
+    *  m0[7],m0[6],...,m0[1],m0[0],m1[7],m1[6],...,m1[1],m1[0]
+    *
+    *  inM (8 bits, 32 steps)
+    *
+    *  mode = offset (0-64) + 128 * len (0-32, 0=32 x BC) +
+    *         8192 * left/right alignment (1 => left) +
+    *         16384 * little endian/big endian (1 => little endian)
+    *
+    *  BC: backward compatibility
+    */
+
+    // 32 bytes of M0, M1 ordered from HSB to LSB (32, 31, 30, ... == M[7].3, M[7].2, M[7].1, M[7].0, M[6].3, ..)
+    col witness inM[2];
+
+    // inValueByteShifted are bytes of V ordered to be aligned with offset and memory (M0,M1,W0,W1). 
+    col witness inValueByteShifted;
+
+    // inValueSorted are bytes of V ordered to rebuild V value, this value used in main permutation check.
+    col witness inValueByte;
+
+    // flag to indicate a write
+    col witness wr;
+
+    // mode to coding input arguments (offset, length, alignment, endian) on a single register
+    col witness mode;
+
+    // when m0 is "active", means aligned with inV an must be read/write from/to M0
+    col witness selM0;
+
+    // when m1 is "active", means aligned with inV an must be read/write from/to M1
+    col witness selM1;
+
+    // it's a free input verified by lookup to define byte-position inside V, of the 
+    // current inValueShifted byte.
+    col witness bytePos;
+
+    // used to identify each 32-clock input
+    col fixed ID = [1:CLOCKS,2:CLOCKS..+..];
+    col fixed RESET = [0:(CLOCKS-1),1]...;
+
+    // flag to active permutation check with a valid result
+    col witness result;
+
+    // binary constraints
+    (1 - result) * result === 0;
+    (1 - wr)  * wr === 0;
+    (1 - selM0) * selM0 === 0;
+    (1 - selM1) * selM1 === 0;
+
+    // latch constraints
+    (1 - RESET) * wr' === (1 - RESET) * wr;
+    (1 - RESET) * mode' === (1 - RESET) * mode;
+
+    // result only active in last clock, when all information is rebuild
+    (1 - RESET) * result === 0;
+
+    col fixed CYCLE = [0..(CLOCKS-1)]...;
+
+    // RangeCheck
+    // 2^16 * 2^6 = 2^22
+
+    // TODO:
+    // multi_range_check([...inM,imV], 0, 255);
+
+    lookup_assumes(MEM_ALIGN_TABLE_ID, [CYCLE, mode*4 + selM1 * 2 + selM0, bytePos]);
+    // reduced for develop: { Global.STEP32, mode*4 + selM1 * 2 + selM0, bytePos } in { Global.STEP32, MODE_SELM1_SELM0, T_BYTE_POS};
+
+    col witness selV;
+
+    (1 - selV) * selV === 0;
+    
+    // if selM0 or selM1 is active then selV must be 1
+    (selM0 + selM1) * (selV - 1) === 0;
+
+    // if selM0 and selM1 are zero, selV must be equal to wr.
+    (1 - selM0 - selM1) * (selV - wr) === 0;
+
+    // when reading selV must be zero because it's important than "non-selected"
+    // or "padding" part of v must be zero. But when verifing that a write operation,
+    // be more usefull if this part could be dirty.
+
+    permutation_assumes(MEM_ALIGN_BYTE_BUS_ID, [ID, bytePos, selV * inValueByteShifted]);
+    permutation_proves(MEM_ALIGN_BYTE_BUS_ID, [ID, CYCLE, inValueByte]);
+
+    // data to "write" on w, if current byte must be override by V contains inV
+    // if not contains inM "in reading mode" value don't matter
+    // because there are two permutation checks, one for read and other for write.
+
+    const expr inW0 = inM[0] + selM0 * (inValueByteShifted - inM[0]);
+    const expr inW1 = inM[1] + selM1 * (inValueByteShifted - inM[1]);
+
+    // when reading, inW must be equal to inM
+
+    (1 - wr) * (inW0 - inM[0]) === 0;
+    (1 - wr) * (inW1 - inM[1]) === 0;
+
+    expr m0[NR], m1[NR], v[NR], w0[NR], w1[NR];
+
+    // inM bytes: 31,30,29,...,2,1,0
+    for (int chunk = 0; chunk < NR; ++chunk) {
+        m0[chunk] = 0;
+        m1[chunk] = 0;
+        v[chunk] = 0;
+        w0[chunk] = 0;
+        w1[chunk] = 0;
+
+        int base = 1;        
+        for (int ibyte = 0; ibyte < BPR; ++ibyte) {
+            int prior = chunk * BPR + ibyte;
+            m0[chunk] = m0[chunk] + (prior)'inM[0] * base;
+            m1[chunk] = m1[chunk] + (prior)'inM[1] * base;
+            v[chunk]  = v[chunk]  + (prior)'inValueByte * base;
+            w0[chunk] = w0[chunk] + (prior)'inW0 * base;
+            w1[chunk] = w1[chunk] + (prior)'inW1 * base;
+            base = base * 256;
+        }
+    }
+
+    permutation_proves(MEM_ALIGN_ID, [wr, ...m0, ...m1, ...v, mode, wr, ...w0, ...w1], result);
+}

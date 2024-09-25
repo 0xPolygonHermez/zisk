@@ -1,0 +1,26 @@
+Get_NonZero:
+
+
+    ; Root Node (same as before)                # end of tree
+    ;  / \                                      |
+    ;     Intermediate Node (same as before)    ^ climb tree
+    ;      / \                                  |
+    ;         Leaf Value Node (same as before)  * start here
+
+    ; Found the key and a non-zero value. We have to create the value hash entry and the
+    ; corresponding leaf node that will be the first value of old root, and then climb
+    ; the tree up to the top
+
+    ; Create the value hash and the leaf node hash, which will be the initial value of old root
+
+    ; ValueHash = Hash0( VALUE_LOW, VALUE_HIGH )
+    VALUE_LOW => HASH_LEFT
+    VALUE_HIGH => HASH_RIGHT
+    $ => HASH_RIGHT                 :HASH0
+
+    ; OldRoot = LeafNodeHash = Hash1( Rkey, Hash0( VALUE_LOW, VALUE_HIGH ) )
+    ${GetRkey()} => RKEY, HASH_LEFT
+    $ => OLD_ROOT                   :HASH1
+
+    ; Init LEVEL
+    ${GetLevel()} => LEVEL          :JMP(Get_ClimbUp)

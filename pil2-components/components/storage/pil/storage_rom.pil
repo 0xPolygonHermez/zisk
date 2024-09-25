@@ -1,0 +1,57 @@
+include "tools.pil"
+const int STORAGE_ROM_ID = 10;
+
+subproof StorageRom(2**16) {
+
+    col fixed ROM_FLAGS;
+    col fixed CONST0;
+    col fixed JMP_ADDRESS;
+    col fixed LINE;
+    col fixed IN_SIBLING_RKEY;
+    
+    include "storage_rom_compiled.pil";
+
+    repeat_last_source_line();
+    lookup_proves(STORAGE_ROM_ID, [LINE, ROM_FLAGS, CONST0, JMP_ADDRESS, IN_SIBLING_RKEY]);
+}
+
+private function source(int line, int flags, int const0, int jmpAddress, int inSiblingRkey) {
+    container air.source {
+        int lastLine;
+    }
+    air.source.lastLine = line;
+    air.LINE[line] = line;
+    air.ROM_FLAGS[line] = flags;
+    air.CONST0[line] = const0;
+    air.JMP_ADDRESS[line] = jmpAddress;
+    air.IN_SIBLING_RKEY[line] = inSiblingRkey;
+}
+
+private function repeat_last_source_line() {
+    int rline = air.source.lastLine;
+    int line = rline + 1;
+    // #pragma debugger
+    /* while (line < N) {
+        air.LINE[line] = air.LINE[rline];
+        air.ROM_FLAGS[line] = air.ROM_FLAGS[rline];
+        air.CONST0[line] = air.CONST0[rline];
+        air.JMP_ADDRESS[line] = air.JMP_ADDRESS[rline];
+        air.IN_SIBLING_RKEY[line] = air.IN_SIBLING_RKEY[rline];
+        line = line + 1;
+    }*/
+    const int _LINE = air.LINE[rline];
+    const int _ROM_FLAGS = air.ROM_FLAGS[rline];
+    const int _CONST0 = air.CONST0[rline];
+    const int _JMP_ADDRESS = air.JMP_ADDRESS[rline];
+    const int _IN_SIBLING_RKEY = air.IN_SIBLING_RKEY[rline];
+    #pragma timer t1 start
+    while (line < N) {
+        air.LINE[line] = _LINE;
+        air.ROM_FLAGS[line] = _ROM_FLAGS;
+        air.CONST0[line] = _CONST0;
+        air.JMP_ADDRESS[line] = _JMP_ADDRESS;
+        air.IN_SIBLING_RKEY[line] = _IN_SIBLING_RKEY;
+        line = line + 1;
+    }
+    #pragma timer t1 end
+}

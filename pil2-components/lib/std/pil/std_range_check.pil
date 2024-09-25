@@ -1,0 +1,328 @@
+require "std_lookup.pil";
+// require "std_permutation.pil";
+// require "std_chunk_checker.pil";
+
+// With the logup protocol, it is more performant to look up to the same range;
+// so we'll try to "absorb" all the introduced ranges into some of the default ranges.
+// Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
+
+const int MAX_RANGE_LEN = (PRIME - 1) / 2;
+
+const int OPIDS[2] = [100, 101];
+int last_assigned_opid = OPIDS[length(OPIDS) - 1];
+
+private function next_available_opid(): int {
+    last_assigned_opid++;
+    return last_assigned_opid;
+}
+
+function get_opid(int min, int max): int {
+    if (min == 0) {
+        if (max == BYTE) {
+            return OPIDS[0];
+        } else if (max == TWOBYTES) {
+            return OPIDS[1];
+        }
+    }
+
+    return next_available_opid();
+}
+
+const int BYTE = 2**8-1;
+const int TWOBYTES = 2**16-1;
+
+airtemplate U8Air(const int N = 2**8) {
+    if (N != 2**8) {
+        error(`The number of rows N should be 2**8 to use the predefined range U8, got N=${N} instead`);
+    }
+
+    col witness mul;
+
+    @u8air{reference: mul};
+
+    col fixed U8 = [0..BYTE];
+    lookup_proves(OPIDS[0], [U8], mul, PIOP_NAME_RANGE_CHECK);
+}
+
+airtemplate U16Air(const int N = 2**16) {
+    if (N != 2**16) {
+        error(`The number of rows N should be 2**16 to use the predefined range U16, got N=${N} instead`);
+    }
+
+    col witness mul;
+
+    @u16air{reference: mul};
+
+    col fixed U16 = [0..TWOBYTES];
+    lookup_proves(OPIDS[1], [U16], mul, PIOP_NAME_RANGE_CHECK);
+}
+
+airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int mins[], const int maxs[]) {
+    @specified_ranges{num_rows: N};
+
+    col witness mul[opids_count];
+
+    for (int j = 0; j < opids_count; j++) {
+        int opid = opids[j];
+        int min = mins[j];
+        int max = maxs[j];
+
+        @specified_ranges{reference: mul[j], min: min, max: max, min_neg: min < 0, max_neg: max < 0};
+
+        if (N < max - min + 1) {
+            error(`The range [min,max]=[${min},${max}] is too big, the maximum range length is ${N}`);
+        }
+
+        col fixed RANGE = [min..max-1,max...];
+        lookup_proves(opid, [RANGE], mul[j], PIOP_NAME_RANGE_CHECK);
+    }
+}
+
+function range_check_group(const int predefined = 1, const expr sels[], const expr cols[], const int min, const int max) {
+    for (int i = 0; i < length(cols); i = i + 1) {
+        range_check(predefined, sels[i], cols[i], min, max);
+    }
+}
+/**
+ * If range_sel = 1, then the range [min1,max1] is checked, otherwise [min2,max2]
+ * @param predefined 1 if use the predefined range, 0 if create the specified range
+ * @param sel selection vector
+ * @param colu column to be range checked
+ * @param min minimum value of the range
+ * @param max maximum value of the range
+ */
+function multi_range_check(expr sel = 1, expr range_sel = 1, expr colu, int min1, int max1, int min2, int max2) {
+    if (min1 == min2 && max1 == max2) {
+        error(`The ranges defined in the multi range check are the same: [${min1},${max1}]`);
+    }
+
+    range_validator(min1, max1);
+    range_validator(min2, max2);
+
+    // Can I do it with predefined ranges?
+    @range_def{predefined: 0, min: min1, max: max1, min_neg: min1 < 0 , max_neg: max1 < 0};
+    @range_def{predefined: 0, min: min2, max: max2, min_neg: min2 < 0 , max_neg: max2 < 0};
+
+    const int opid1 = opid_process(min1, max1);
+    const int opid2 = opid_process(min2, max2);
+
+    lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) + opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
+
+    on final airgroup declareRangeAir();
+
+    // Note: This solution improves the naive solution:
+    //   · range_check(0, sel*range_sel, colu, min1, max1).
+    //   · range_check(0, sel*(1-range_sel), colu, min2, max2).
+    // by just performing 1 assume and 2 proves instead
+    //
+    // Q: Can I do it with 1 assume and 1 prove? E.g.:
+    // lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) - opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
+    // lookup_proves(opid, [min1..max1-1,max1...]U[min2..max2-1,max2...], mul, PIOP_NAME_RANGE_CHECK);
+}
+
+/**
+ * TODO: Add description
+ * @param predefined 1 if use the predefined range, 0 if create the specified range
+ * @param sel selection vector
+ * @param colu column to be range checked
+ * @param min minimum value of the range
+ * @param max maximum value of the range
+ */
+function range_check(int predefined = 1, expr sel = 1, expr colu, int min, int max) {
+    range_validator(min, max);
+
+    @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0};
+
+    if (min < 0) {
+        println(`The provided min=${min} is negative. Falling back to specified range...`);
+    } else if (max > TWOBYTES) {
+        println(`The provided max=${max} is greater than the maximum predefined ${TWOBYTES}. Falling back to specified range...`);
+    }
+
+    if (predefined && min >= 0 && max <= TWOBYTES) {
+        container proof.std.rcpre alias rcpreprove {
+            int max_airgroup_id = 0;
+            int u8_used = 0;
+            int u16_used = 0;
+        }
+
+        if (rcpreprove.max_airgroup_id < AIRGROUP_ID) {
+            rcpreprove.max_airgroup_id = AIRGROUP_ID;
+        }
+
+        if (min == 0 && (max == BYTE || max == TWOBYTES)) {
+            const int is_u8 = max == BYTE ? 1 : 0;
+
+            rcpreprove.u8_used = rcpreprove.u8_used ? 1 : is_u8;
+            rcpreprove.u16_used = rcpreprove.u16_used ? 1 : (1 - is_u8);
+
+            lookup_assumes(is_u8 ? OPIDS[0] : OPIDS[1], [colu], sel, PIOP_NAME_RANGE_CHECK);
+        } else {
+            // Here, we need to reuse to some of the default ranges depending
+            // on the values of min and max
+            if (max <= BYTE) {
+                // reuse U8
+                rcpreprove.u8_used = 1;
+
+                // first prove that colu - min is in U8
+                lookup_assumes(OPIDS[0], [colu - min], sel, PIOP_NAME_RANGE_CHECK);
+
+                // then prove that max - colu is in U8
+                lookup_assumes(OPIDS[0], [max - colu], sel, PIOP_NAME_RANGE_CHECK);
+            } else if (max <= TWOBYTES) {
+                // reuse U16
+                rcpreprove.u16_used = 1;
+
+                // first prove that colu - min is in U16
+                lookup_assumes(OPIDS[1], [colu - min], sel, PIOP_NAME_RANGE_CHECK);
+
+                // second prove that max - colu is in U16
+                lookup_assumes(OPIDS[1], [max - colu], sel, PIOP_NAME_RANGE_CHECK);
+
+            // TODO: This is for the big case, to be decided!
+            // } else {
+            //     error("Not implemented yet");
+
+            //     // reuse U16
+            //     rcpreprove.u16_used = 1;
+
+            //     // represent max and min in base TWOBYTES
+            //     // min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
+            //     // val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
+            //     // max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
+            //     // where n = nchunks_max
+
+            //     // We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
+            //     // and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
+            //     // We'll need auxiliar columns to encode this two big OR in terms of constraints
+            //     // ChunkChecker(N*nchunks_max, min, max);
+
+            //     // Moreover, we should check the decomposition is correct
+            //     permutation_assumes(CHUNK_CHECKER_ID, [colu], name: PIOP_NAME_RANGE_CHECK);
+            // }
+
+            // TODO: This is for the negative case, to be decided!
+            // } else {
+            //     error("Not implemented yet");
+
+            //     // Path where min < 0 and max > 0
+            //     // We split the range [min,max] into two ranges [min,0] and [0,max]
+            //     // and we prove that either val is in the first range or the second one
+            //     // choosing it based on a new selector
+            //     // These are four range checks in total, two for each range (either to U8 or U16 based on the values of min max)
+
+            //     // col witness rangeSel;
+
+            //     // // first prove that colu - min is in U16
+                   // // lookup_assumes(OPIDS[1], [colu - (PRIME + min)], rangeSel*sel, PIOP_NAME_RANGE_CHECK);
+
+            //     // // second prove that max - colu is in U16
+                   // // lookup_assumes(OPIDS[1], [max - colu], rangeSel*sel, PIOP_NAME_RANGE_CHECK);
+            }
+        }
+
+        on final airgroup declarePreRangeAir();
+    } else {
+        const int opid = opid_process(min, max);
+
+        lookup_assumes(opid, [colu], sel, PIOP_NAME_RANGE_CHECK);
+
+        on final airgroup declareRangeAir();
+    }
+}
+
+private function range_validator(const int min, const int max) {
+    if (min > max) {
+        error(`min = ${min} cannot be greater than max = ${max}`);
+    } else if (min == max) {
+        error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
+    } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
+        const int diff = max - min + 1;
+
+        string diff_str = `(${colu} - ${min})`;
+        for (int i = 1; i < diff; i = i + 1) {
+            diff_str = diff_str + `·(${colu} - ${min + i})`;
+        }
+
+        println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
+    } else if (max - min + 1 > MAX_RANGE_LEN) {
+        error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_RANGE_LEN}`);
+    } else if (max >= PRIME) {
+        error(`The maximum value of the range cannot be greater than the field order ${PRIME}`);
+    } else if (min <= -PRIME) {
+        error(`The minimum value of the range cannot be less than the negative field order ${-PRIME}`);
+    }
+}
+
+private function opid_process(const int min, const int max): int {
+    container proof.std.rc alias rcprove {
+        int max_airgroup_id = 0;
+        int opids_count = 0;
+        int max_diff = 0;
+
+        // FIX: dynamic arrays not ready
+        int opids[100];
+        int mins[100];
+        int maxs[100];
+    }
+
+    if (rcprove.max_airgroup_id < AIRGROUP_ID) {
+        rcprove.max_airgroup_id = AIRGROUP_ID;
+    }
+
+    // If the range has already been introduced, we reuse the same opid
+    int opid = 0;
+    for (int i = 0; i < rcprove.opids_count; i++) {
+        if (min == rcprove.mins[i] && max == rcprove.maxs[i]) {
+            return rcprove.opids[i];
+        }
+    }
+
+    // Otherwise, we get a new opid
+    opid = get_opid(min, max);
+    rcprove.mins[rcprove.opids_count] = min;
+    rcprove.maxs[rcprove.opids_count] = max;
+    rcprove.opids[rcprove.opids_count] = opid;
+    rcprove.opids_count++;
+    rcprove.max_diff = max - min > rcprove.max_diff ? max - min : rcprove.max_diff;
+
+    return opid;
+}
+
+private function declarePreRangeAir() {
+    use proof.std.rcpre;
+
+    if (AIRGROUP_ID != max_airgroup_id) {
+        return;
+    }
+
+    if (u8_used) {
+        airgroup U8Air {
+            U8Air();
+        }
+    }
+
+    if (u16_used) {
+        airgroup U16Air {
+            U16Air();
+        }
+    }
+}
+
+private function declareRangeAir() {
+    use proof.std.rc;
+
+    if (AIRGROUP_ID != max_airgroup_id) {
+        return;
+    }
+
+    const int next_pow2 = 2**(log2(max_diff));
+
+    _SpecifiedRanges(next_pow2,opids,opids_count,mins,maxs);
+}
+
+function _SpecifiedRanges(int a,int b[],int c,int d[],int e[]) {
+    airgroup SpecifiedRanges {
+        SpecifiedRanges(a,b,c,d,e);
+    }
+}

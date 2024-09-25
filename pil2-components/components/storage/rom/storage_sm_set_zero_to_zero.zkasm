@@ -1,0 +1,14 @@
+Set_ZeroToZero:
+
+    ; Since we are setting a zero in a key that already had a zero,
+    ; It's same as get_zero operation, but with set latch
+
+    1 => NEW_ROOT                               :JMP(Get_Zero)
+
+Set_ZeroToZero_GetZero_Return:
+
+    OLD_ROOT => NEW_ROOT
+
+    ; At this point consistency is granted: OLD_ROOT, NEW_ROOT, RKEY (complete key), VALUE_LOW, VALUE_HIGH, LEVEL
+    ; Return to the main loop
+                                                :LATCH_SET, JMP(Run)

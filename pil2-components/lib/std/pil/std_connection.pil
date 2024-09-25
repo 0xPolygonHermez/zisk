@@ -1,0 +1,470 @@
+require "std_constants.pil";
+require "std_permutation.pil";
+
+// In order to prove correctness of a connection, we should compute the product:
+//       (f_0+𝛂·X+ɣ)   · (f_1+𝛂·k_1·X+ɣ)·...·(f_N+𝛂·k_N·X+ɣ)
+//    ---------------------------------------------------------------------------------
+//     (f_0+𝛂·PER_0+ɣ) · (f_1+𝛂·PER_1+ɣ)·...·(f_N+𝛂·PER_N+ɣ)
+// and PER_i(X) describe a permutation of the group_domain
+// as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
+
+const int DEFAULT_CONNECTION_N = 0;
+
+// Two user interfaces
+
+// 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
+//    and when it is done, executes the connect() method to perform the connection argument.
+//    The user also needs to execute init() at the beginning.
+
+function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT_CONNECTION_N, int bus_type = 0) {
+    if (default_frame_size == DEFAULT_CONNECTION_N) default_frame_size = N;
+
+    if (default_frame_size < 1) {
+        error(`The frame size of connect #${opid} must be at least 1`);
+    } else if (default_frame_size > N) {
+        error(`The frame size of connect #${opid} must be at most ${N}`);
+    }
+
+    const int cols_count = length(cols);
+
+    if (cols_count < 1) {
+        error(`The number of columns of connect #${opid} must be at least 1`);
+    }
+
+    container proof.std.connect alias kscont {
+        int ks_count = 0;
+        int ks[100];
+    }
+
+    container air.std.connect alias conn {
+        int opids_count = 0;
+        int opids[100];
+
+        col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
+    }
+
+    container air.std.connect.`id${opid}` alias connid {
+        int closed;
+        int bus_type;
+        int default_frame_size;
+        int cols_num = 0;
+
+        expr map_cols[cols_count];
+        col fixed CONN[cols_count];
+
+        // 1st dimension: The number of connections can be as large as one wants. Until we have dynamic arrays, we fix the size to cols·rows
+        // 2nd dimension:
+        //      - 0: connection identifier.
+        //      - 1: first column index.
+        //      - 2: first row index.
+        //      - 3: second column index.
+        //      - 4: second row index.
+        int conn_indicator[cols_count*N][5];
+        int conn_index = 0;
+        int counter = 0;
+    }
+
+    if (connid.cols_num == 0) {
+        // Properties of each connection in the air
+        connid.closed = 0;
+        connid.bus_type = bus_type;
+        connid.default_frame_size = default_frame_size;
+        connid.cols_num = cols_count;
+
+        // Properties of every connection in the air
+        conn.opids[conn.opids_count] = opid;
+        conn.opids_count = conn.opids_count + 1;
+    } else {
+        error(`Init of connect #${opid} has already been called`);
+    }
+
+    // Compute the ks if necessary, otherwise reuse the already computed ones
+    if (cols_count > kscont.ks_count) {
+        for (int i = kscont.ks_count; i < cols_count; i++) {
+            // Check https://eprint.iacr.org/2019/953.pdf for details on why we need such k
+            kscont.ks[i] = k_coset ** i;
+        }
+
+        // update the already computed ks
+        kscont.ks_count = cols_count;
+    }
+
+    for (int i = 0; i < cols_count; i++) {
+        const int k = kscont.ks[i];
+
+        // Create a mapping of indexes to set a specific order of the columns the first time it is called
+        connid.map_cols[i] = cols[i];
+
+        // Send to the bus the original columns
+        permutation_assumes(opid, [cols[i], k * conn.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+
+        // Initialize polynomial CONN[0](X) as X and CONN[i](X) as k_i·X, for i >= 0
+        for (int j = 0; j < N; j++) {
+            connid.CONN[i][j] = k * conn.ID[j];
+        }
+    }
+
+    // At the end of the air, check if the initialized connections were ever closed
+    on final air checkClosed();
+}
+
+/**
+ * It connects the cell of a column with a different cell of any other column (including itself). It can be used in batch.
+ *
+ * @param {int} opid - The (unique) identifier of the connection
+ * @param {expr[][]} conn - Array of columns and rows of the cells to be swapped
+ * @param {int} frame_size - Frame at which the cells are swapped and gets repeated until the end
+ * @example
+ * col witness a,b;
+ * connection_init(opid, [a, b]);
+ * connection_update_one_cell(opid, [a,1,b,2], N/2);
+ */
+function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
+    if (!defined(air.std.connect.`id${opid}`)) {
+        error(`Connect #${opid} has not been initialized`);
+    }
+
+    use air.std.connect.`id${opid}`;
+
+    // If there is some default frame size and frame size is the default, use the default frame size
+    if (frame_size == DEFAULT_CONNECTION_N) {
+        frame_size = default_frame_size;
+    }
+
+    if (frame_size < 1) {
+        error(`The frame size of connect #${opid} must be at least 1`);
+    } else if (frame_size > N) {
+        error(`The frame size of connect #${opid} must be at most ${N}`);
+    }
+
+    const int len = length(conn);
+    if (len == 0) {
+        error(`Connection #${opid} cannot be empty`);
+    } else if (len != 4) {
+        error(`Connection #${opid} is not well defined, expected 4 elements but got ${len}`);
+    }
+
+    const int frame_number = N / frame_size;
+
+    const int col1_index = find_col_index(opid, conn[0]);
+    const int row1_index = conn[1];
+
+    const int col2_index = find_col_index(opid, conn[2]);
+    const int row2_index = conn[3];
+
+    if (row1_index < 0 || row1_index >= frame_size) {
+        error(`The row ${row1_index} of column ${conn[0]} is out of bounds in connection #${opid}`);
+    } else if (row2_index < 0 || row2_index >= frame_size) {
+        error(`The row ${row2_index} of column ${conn[2]} is out of bounds in connection #${opid}`);
+    }
+
+    if (col1_index == col2_index && row1_index == row2_index) {
+        println(`You are connecting the row ${row1_index} of ${conn[0]} to itself in connection #${opid}, consider removing it. Skipping...`); // Fix: Add a warn instead
+        return;
+    }
+
+    // Define the connection for each frame
+    for (int f = 0; f < frame_number; f++)  {
+        define_connection(opid, col1_index, row1_index + f*frame_size, col2_index, row2_index + f*frame_size);
+    }
+}
+
+/**
+ * connection_update_one_cell_batch(opid, [[b,3,c,0],[a,1,c,0]], N/2);
+ */
+function connection_update_one_cell_batch(int opid, expr conn[][], int frame_size = DEFAULT_CONNECTION_N) {
+    if (!defined(air.std.connect.`id${opid}`)) {
+        error(`Connect #${opid} has not been initialized`);
+    }
+
+    // If there is some default frame size and frame size is the default, use the default frame size
+    if (frame_size == DEFAULT_CONNECTION_N) {
+        frame_size = air.std.connect.`id${opid}`.default_frame_size;
+    }
+
+    if (frame_size < 1) {
+        error(`The frame size of connect #${opid} must be at least 1`);
+    } else if (frame_size > N) {
+        error(`The frame size of connect #${opid} must be at most ${N}`);
+    }
+
+    const int len = length(conn);
+    if (len == 0) {
+        error(`Connection #${opid} cannot be empty`);
+    }
+
+    for (int i = 0; i < len; i++) {
+        connection_update_one_cell(opid, conn[i], frame_size);
+    }
+}
+
+/**
+ * It connects multiple cells at once.
+ *
+ * Check https://youtu.be/Crzw7ccuHd0?t=1276&si=M8sVdwvKhmIZQnJZ for a pictorial representation
+ *
+ * @param {int} opid - The (unique) identifier of the connection
+ * @param {expr[]} conn - Array of columns and rows of the cells to be swapped
+ * @param {int} frame_size - Frame at which the cells are swapped and gets repeated until the end
+ * @example
+ * col witness a,b;
+ * connection_init(opid, [a, b, c, d]);
+ * connection_update_multiple_cells(opid, [d,2,d,3,b,0]);
+ * connection_update_multiple_cells(opid, [c,10,b,3,a,65,c,9,c,8], N/2);
+ */
+function connection_update_multiple_cells(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
+    if (!defined(air.std.connect.`id${opid}`)) {
+        error(`Connect #${opid} has not been initialized`);
+    }
+
+    // If there is some default frame size and frame size is the default, use the default frame size
+    if (frame_size == DEFAULT_CONNECTION_N) {
+        frame_size = air.std.connect.`id${opid}`.default_frame_size;
+    }
+
+    if (frame_size < 1) {
+        error(`The frame size of connect #${opid} must be at least 1`);
+    } else if (frame_size > N) {
+        error(`The frame size of connect #${opid} must be at most ${N}`);
+    }
+
+    const int len = length(conn);
+    if (len == 0) {
+        error(`Connection #${opid} cannot be empty`);
+    } else if (len == 2) {
+        error(`Connection #${opid} must connect at least two cells`);
+    } else if (len % 2 != 0) {
+        error(`Connection #${opid} is not well defined`);
+    }
+
+    const int frame_number = N / frame_size;
+
+    for (int i = 0; i < len - 2; i = i + 2) {
+        const int col1_index = find_col_index(opid, conn[i]);
+        const int row1_index = conn[i+1];
+
+        const int col2_index = find_col_index(opid, conn[i+2]);
+        const int row2_index = conn[i+3];
+
+        if (row1_index < 0 || row1_index >= frame_size) {
+            error(`The row ${row1_index} of column ${conn[i]} is out of bounds`);
+        } else if (row2_index < 0 || row2_index >= frame_size) {
+            error(`The row ${row2_index} of column ${conn[i+2]} is out of bounds`);
+        }
+
+        if (col1_index == col2_index && row1_index == row2_index) {
+            println(`You are connecting the row ${row1_index} of ${conn[i]} to itself, consider removing it. Skipping...`); // Fix: Add a warn instead
+            continue;
+        }
+
+        // Define the connection for each frame
+        for (int f = 0; f < frame_number; f++)  {
+            define_connection(opid, col1_index, row1_index + f*frame_size, col2_index, row2_index + f*frame_size);
+        }
+    }
+}
+
+private function define_connection(int opid, int col1_index, int row1_index, int col2_index, int row2_index) {
+    use air.std.connect.`id${opid}`;
+
+    int alreay_connected = 0;
+    for (int i = 0; i < counter; i++) {
+        // const int conn[5] = conn_indicator[i]; // Fix: No implemented yet
+        const int cond1 = col1_index == conn_indicator[i][1] && row1_index == conn_indicator[i][2];
+        const int cond2 = col2_index == conn_indicator[i][3] && row2_index == conn_indicator[i][4];
+        const int cond3 = col1_index == conn_indicator[i][3] && row1_index == conn_indicator[i][4] && col2_index == conn_indicator[i][1] && row2_index == conn_indicator[i][2];
+
+        if ((cond1 && cond2) || cond3) {
+            // Connection already defined, mapping structure does not change
+            return;
+        } else if (cond1 || cond2) {
+            // Connecting with an already connected cell, use the same connection
+            conn_indicator[counter][0] = conn_indicator[i][0];
+            alreay_connected = 1;
+            break;
+        }
+    }
+
+    if (!alreay_connected) {
+        conn_indicator[counter][0] = conn_index;
+        conn_index = conn_index + 1;
+    }
+
+    // Store the connection
+    conn_indicator[counter] = [counter, col1_index, row1_index, col2_index, row2_index];
+
+    counter = counter + 1;
+}
+
+function connection_connect(int opid) {
+    if (!defined(air.std.connect.`id${opid}`)) {
+        error(`Connect #${opid} has not been initialized`);
+    }
+
+    use air.std.connect.`id${opid}`;
+
+    // Compute the permutation of connected cells
+    for (int i = 0; i < counter; i++) {
+        // const int conni[5] = conn_indicator[i]; // Fix: No implemented yet
+        const int conn_id = conn_indicator[i][0];
+        const int col1_id = conn_indicator[i][1];
+        const int row1_id = conn_indicator[i][2];
+        const int col2_id = conn_indicator[i][3];
+        const int row2_id = conn_indicator[i][4];
+
+        // Find all connections with the same identifier
+        int conn_cluster[N*cols_num][2];
+        conn_cluster[0][0] = col1_id;
+        conn_cluster[0][1] = row1_id;
+        conn_cluster[1][0] = col2_id;
+        conn_cluster[1][1] = row2_id;
+        int cluster_index = 2;
+        for (int j = i + 1; j < counter; j++) {
+            // const int connj[5] = conn_indicator[j]; // Fix: No implemented yet
+            if (conn_indicator[j][0] == conn_id) {
+                const int col1_id_j = conn_indicator[j][1];
+                const int row1_id_j = conn_indicator[j][2];
+                const int col2_id_j = conn_indicator[j][3];
+                const int row2_id_j = conn_indicator[j][4];
+
+                // Put the different cells in the same cluster
+                int already_in_cluster_col1 = 0;
+                int already_in_cluster_col2 = 0;
+                for (int k = 0; k < cluster_index; k++) {
+                    if (col1_id_j == conn_cluster[k][0] && row1_id_j == conn_cluster[k][1]) {
+                        already_in_cluster_col1 = 1;
+                    }
+                    if (col2_id_j == conn_cluster[k][0] && row2_id_j == conn_cluster[k][1]) {
+                        already_in_cluster_col2 = 1;
+                    }
+                    if (already_in_cluster_col1 && already_in_cluster_col2) {
+                        break; // Both are already in the cluster, no need to continue
+                    }
+                }
+
+                if (!already_in_cluster_col1) {
+                    conn_cluster[cluster_index][0] = col1_id_j;
+                    conn_cluster[cluster_index][1] = row1_id_j;
+                    cluster_index = cluster_index + 1;
+                }
+
+                if (!already_in_cluster_col2) {
+                    conn_cluster[cluster_index][0] = col2_id_j;
+                    conn_cluster[cluster_index][1] = row2_id_j;
+                    cluster_index = cluster_index + 1;
+                }
+
+                // remove the element conn_indicator[j] from the list
+                for (int k = j; k < counter - 1; k++) {
+                    // conn_indicator[k] = conn_indicator[k+1]; // Fix: No implemented yet
+                    conn_indicator[k][0] = conn_indicator[k+1][0];
+                    conn_indicator[k][1] = conn_indicator[k+1][1];
+                    conn_indicator[k][2] = conn_indicator[k+1][2];
+                    conn_indicator[k][3] = conn_indicator[k+1][3];
+                    conn_indicator[k][4] = conn_indicator[k+1][4];
+                }
+                counter = counter - 1;
+            }
+        }
+
+        // Rotate the cells in the cluster
+        for (int j = 0; j < cluster_index - 1; j++) {
+            const int col1_id_clust = conn_cluster[j][0];
+            const int row1_id_clust = conn_cluster[j][1];
+            const int col2_id_clust = conn_cluster[j+1][0];
+            const int row2_id_clust = conn_cluster[j+1][1];
+
+            const int tmp = CONN[col1_id_clust][row1_id_clust];
+            CONN[col1_id_clust][row1_id_clust] = CONN[col2_id_clust][row2_id_clust];
+            CONN[col2_id_clust][row2_id_clust] = tmp;
+        }
+    }
+
+    // Send to the bus the permuted columns
+    for (int i = 0; i < cols_num; i++) {
+        permutation_proves(opid, [map_cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+    }
+
+    // Mark the connection as closed
+    closed = 1;
+}
+
+private function find_col_index(int opid, expr column): int {
+    use air.std.connect.`id${opid}`;
+
+    for (int i = 0; i < cols_num; i++) {
+        if (map_cols[i] == column) {
+            return i;
+        }
+    }
+
+    error(`Column ${column} was not defined in connect #${opid}`);
+}
+
+private function checkClosed() {
+    for (int i = 0; i < air.std.connect.opids_count; i++) {
+        const int opid = air.std.connect.opids[i];
+        use air.std.connect.`id${opid}`;
+        if (closed == 0) {
+            error(`Connection #${opid} was never closed`);
+        }
+    }
+}
+
+// 2] Interface where the user knows both the inputs (placed in assumes) and the
+//    permutation (placed in proves) of the argument.
+
+/**
+ * TODO
+ *
+ * @param {int} opid - The (unique) identifier of the connection
+ * @param {expr[]} cols - Array of columns to be connected
+ * @param {expr[]} conn - Fixed columns indicating the connection
+ * @example
+ * col witness a,b,c;
+ * col fixed S1,S2,S3;
+ * // Compute S1, S2, S3...
+ * connection(opid, [a, b, c], [S1, S2, S3]);
+ * connection(opid, [a, b, c], [S1, S2, S3], N/2);
+ */
+function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
+    const int len = length(cols);
+    if (len == 0) {
+        error(`Connection #${opid} cannot be empty`);
+    } else if (len != length(CONN)) {
+        error(`The number of columns and permutations of connect #${opid} must be the same`);
+    }
+
+    if (!defined(air.std.connect)) {
+        container air.std.connect {
+            col fixed ID = [1,GEN[BITS]..*..]; // {1,g,g²,...,gᴺ⁻¹} --> multiplicative group of order 2**BITS = N
+        }
+    }
+
+    // Reuse the possibly defined ks
+    if (defined(proof.std.connect)) {
+        use proof.std.connect;
+
+        if (len > ks_count) {
+            for (int i = ks_count; i < len; i++) {
+                ks[i] = k_coset ** i;
+            }
+
+            // update the already computed ks
+            ks_count = len;
+        }
+
+        // Send to the bus the original columns and the permuted columns
+        for (int i = 0; i < len; i++) {
+            permutation_assumes(opid, [cols[i], ks[i]*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+        }
+    } else {
+        for (int i = 0; i < len; i++) {
+            const int k = k_coset ** i;
+
+            permutation_assumes(opid, [cols[i], k*air.std.connect.ID], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+            permutation_proves(opid, [cols[i], CONN[i]], bus_type: bus_type, name: PIOP_NAME_CONNECTION);
+        }
+    }
+}

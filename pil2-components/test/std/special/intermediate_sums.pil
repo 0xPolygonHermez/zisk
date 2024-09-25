@@ -1,0 +1,148 @@
+require "std_common.pil";
+
+/*
+
+Table of generated numbers (*):
+
+ #BusCalls | SumExp | #Cols1 |   #Cols2      | #Cols3 |  Total | #Constraints |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    1      |  Std   |   3    | 4 (3 im)/12   |   2/6  |  12/24 |      4       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    1      | Manual |   3    | 3 (0 im)/9    |   1/3  |  8/16  |      4       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    2      |  Std   |   6    | 4 (3 im)/12   |   2/6  |  12/24 |      4       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    2      | Manual |   6    | 3 (0 im)/9    |   2/6  |  11/21 |      3       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    4      |  Std   |   12   | 13 (12 im)/39 |   2/6  |  27/57 |      13      |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    4      | Manual |   12   | 5 (0 im)/15   |   2/6  |  19/33 |      5       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    6      |  Std   |   18   | 31 (30 im)/93 |   2/6  | 51/117 |      31      |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    6      | Manual |   18   | 7 (0 im)/21   |   2/6  |  27/45 |      7       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    8      |  Std   |   24   | 57 (56 im)/171|   2/6  | 83/201 |      57      |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+    8      | Manual |   24   | 9 (0 im)/27   |   2/6  |  35/57 |      9       |
+───────────┼────────┼────────┼───────────────┼────────┼────────┼──────────────┼
+
+(*) Numbers assume a blowup factor of 1
+*/
+
+airtemplate Intermediates(int N = 2**8, int busCalls = 6) {
+    col witness f[busCalls];
+    col witness t[busCalls];
+    col witness mul[busCalls];
+
+    col fixed L1 = [1,0...];
+    col witness stage(2) gsum;
+    /*
+                                        muli         1
+    gsum === 'gsum * (1 - L1) + ∑ᵢ ( -------- - -------- )
+                                       ti + ɣ     fi + ɣ
+    */
+
+    expr LHS = 1;
+    expr RHS1 = 0;
+    for (int i = 0; i < busCalls; i++) {
+        LHS = LHS * (t[i] + std_gamma);
+
+        expr tPartial = mul[i];
+        for (int j = 0; j < busCalls; j++) {
+            if (j == i) continue;
+            tPartial = tPartial * (t[j] + std_gamma);
+        }
+        RHS1 = RHS1 + tPartial;
+    }
+
+    expr RHS2a = LHS;
+    expr RHS2b = 0;
+    for (int i = 0; i < busCalls; i = i + 1) {
+        LHS = LHS * (f[i] + std_gamma);
+        RHS1 = RHS1 * (f[i] + std_gamma);
+
+        expr tPartial = 1;
+        for (int j = 0; j < busCalls; j = j + 1) {
+            if (j == i) continue;
+            tPartial = tPartial * (f[j] + std_gamma);
+        }
+        RHS2b = RHS2b + tPartial;
+    }
+
+    expr RHS2 = RHS2a * RHS2b;
+    expr RHS = RHS1 - RHS2;
+
+    (gsum - 'gsum * (1 - L1)) * LHS === RHS;
+}
+
+
+airtemplate IntermediatesIm(int N = 2**8, int busCalls = 6, int nTerms = 2) {
+    assert(busCalls%nTerms == 0);
+
+    const int nIm = busCalls/nTerms;
+
+    col witness f[busCalls];
+    col witness t[busCalls];
+    col witness mul[busCalls];
+
+    col witness stage(2) im[2*nIm];
+
+    col fixed L1 = [1,0...];
+    col witness stage(2) gsum;
+
+    expr posIms = 0;
+    expr negIms = 0;
+    for (int i = 0; i < nIm; i++) {
+
+        //            mul[3*i]           mul[3*i+1]          mul[3*i+2]
+        // im[i] = --------------- + ----------------- + -----------------
+        //            t[3*i] + ɣ        t[3*i+1] + ɣ        t[3*i+2] + ɣ
+
+        //                   1                  1                   1
+        // im[nIm+i] = --------------- + ----------------- + -----------------
+        //               f[3*i] + ɣ        f[3*i+1] + ɣ        f[3*i+2] + ɣ
+        expr tProds = 1;
+        expr fProds = 1;
+        expr tSums = 0;
+        expr fSums = 0;
+        for (int j = 0; j < nTerms; j++) {
+            tProds = tProds * (t[nTerms * i + j] + std_gamma);
+            fProds = fProds * (f[nTerms * i + j] + std_gamma);
+
+            expr tPartial = mul[nTerms * i + j];
+            expr fPartial = 1;
+            for (int k = 0; k < nTerms; k++) {
+                if (k == j) continue;
+                tPartial = tPartial * (t[nTerms * i + k] + std_gamma);
+                fPartial = fPartial * (f[nTerms * i + k] + std_gamma);
+            }
+            tSums += tPartial;
+            fSums += fPartial;
+        }
+        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
+        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
+        im[i] * tProds === tSums;
+        im[nIm+i] * fProds === fSums;
+
+        posIms += im[i];
+        negIms += im[nIm+i];
+    }
+    gsum === 'gsum * (1 - L1) + posIms - negIms;
+}
+
+airgroup Intermediates {
+    init_challenges();
+
+    // Intermediates(busCalls: 2);
+    // IntermediatesIm(busCalls: 2);
+
+    // Intermediates(busCalls: 4);
+    // IntermediatesIm(busCalls: 4);
+
+    // Intermediates(busCalls: 6);
+    // IntermediatesIm(busCalls: 6);
+
+    Intermediates(busCalls: 8);
+    // IntermediatesIm(busCalls: 8);
+}

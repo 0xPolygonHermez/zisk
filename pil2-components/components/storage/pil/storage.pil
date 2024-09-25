@@ -1,0 +1,164 @@
+include "tools.pil"
+include "poseidong.pil";
+include "climb_key.pil";
+
+const int STORAGE_ID = 90;
+
+subproof Storage(2**23) {
+
+    col witness free0, free1, free2, free3;
+
+    // Registers
+    col witness hashLeft[4];
+    col witness hashRight[4];
+    col witness oldRoot[4];
+    col witness newRoot[4];
+    col witness valueLow[4];
+    col witness valueHigh[4];
+    col witness siblingValueHash[4];
+    col witness rkey[4];
+    col witness siblingRkey[4];
+    col witness rkeyBit;
+    col witness level;
+    col witness pc;
+
+    col witness inOldRoot;
+    col witness inNewRoot;
+    col witness inValueLow;
+    col witness inValueHigh;
+    col witness inSiblingValueHash;
+    col witness inRkey;
+    col witness inRkeyBit;
+    col witness inSiblingRkey;
+    col witness inFree;
+    col witness inRotlVh;
+    col witness inLevel;
+
+    col witness setHashLeft;
+    col witness setHashRight;
+    col witness setOldRoot;
+    col witness setNewRoot;
+    col witness setValueLow;
+    col witness setValueHigh;
+    col witness setSiblingValueHash;
+    col witness setRkey;
+    col witness setSiblingRkey;
+    col witness setRkeyBit;
+    col witness setLevel;
+
+    col witness hash;
+    col witness hashType;
+    col witness latchSet;
+    col witness latchGet;
+    col witness climbRkey;
+    col witness climbSiblingRkey;
+    col witness climbBitN;
+    col witness jmpz;
+    col witness jmpnz;
+    col witness jmp;
+    col witness const0;
+    col witness jmpAddress;
+
+    col witness incCounter;
+    incCounter' === incCounter * (1 - latchSet - latchGet - Global.L1) + hash;
+
+    // We assume hash and latch never goes together
+    // We assume first instruction is not a latch nor a hash.
+
+    // Selectors
+
+    const expr op[4];
+    const expr climbKey[4];
+    for (int index = 0; index < 4; ++index) {
+        op[index] = (index == 0 ? 0 : (inLevel * level + inRkeyBit * rkeyBit + const0)) +
+            inOldRoot * oldRoot[index] +
+            inNewRoot * newRoot[index] +
+            inValueLow * valueLow[index] +
+            inValueHigh * valueHigh[index] +
+            inSiblingValueHash * siblingValueHash[index] +
+            inSiblingRkey * siblingRkey[index] +
+            inRkey * rkey[index] +
+            inFree * free[index] +
+            inRotlVh * valueHigh[(index + 3) % 4];
+
+        climbKey[index] = climbRkey * rkey[index] + climbSiblingRkey * siblingRkey[index];
+        // Setters
+
+        hashLeft[index]' === setHashLeft * (op[index] - hashLeft[index]) + hashLeft[index];
+        hashRight[index]' === setHashRight * (op[index] - hashRight[index]) + hashRight[index];
+        oldRoot[index]' === setOldRoot * (op[index] - oldRoot[index]) + oldRoot[index];
+        newRoot[index]' === setNewRoot * (op[index] - newRoot[index]) + newRoot[index];
+        valueLow[index]' === setValueLow * (op[index] - valueLow[index]) + valueLow[index];
+        valueHigh[index]' === setValueHigh * (op[index] - valueHigh[index]) + valueHigh[index];
+        siblingValueHash[index]' === setSiblingValueHash * (op[index] - siblingValueHash[index]) + siblingValueHash[index];
+        rkey[index]' === setRkey * (op[index] - rkey[index]) + rkey[index];
+        siblingRkey[index]' === setSiblingRkey * (op[index] - siblingRkey[index]) + siblingRkey[index];
+    }
+
+    rkeyBit' === setRkeyBit * (op0-rkeyBit) + rkeyBit;
+    rkeyBit * (1 - rkeyBit) === 0;
+
+    level' === setLevel * (op0-level) + level;
+
+    // Instruction that guarantees that op = hash(hl, hr); the poseidon SM will do the work; the result will be feeded by free
+
+    multiset_assumes(POSEIDON_G_ID, hash, [ ...hashLeft, ...hashRight3, hashType, 0, 0, 0, ...op0]);
+/*
+    } is PoseidonG.result3 {
+            PoseidonG.in0,
+            PoseidonG.in1,
+            PoseidonG.in2,
+            PoseidonG.in3,
+            PoseidonG.in4,
+            PoseidonG.in5,
+            PoseidonG.in6,
+            PoseidonG.in7,
+            PoseidonG.hashType,
+            PoseidonG.cap1,
+            PoseidonG.cap2,
+            PoseidonG.cap3,
+            PoseidonG.hash0,
+            PoseidonG.hash1,
+            PoseidonG.hash2,
+            PoseidonG.hash3};
+*/
+    const expr climbKeyBit = climbBitN * (1 - rkeyBit) + (1 - climbBitN) * rkeyBit;
+
+    multiset_assumes(CLIMB_KEY_ID, climbRkey + climbSiblingRkey, [...climbKey, level, climbKeyBit, ...op0])
+    /*
+    climbRkey + climbSiblingRkey {
+        climbRkey * rkey0 + climbSiblingRkey * siblingRkey0, climbRkey * rkey1 + climbSiblingRkey * siblingRkey1, climbRkey * rkey2 + climbSiblingRkey * siblingRkey2, climbRkey * rkey3 + climbSiblingRkey * siblingRkey3,
+        level, climbKeyBit,
+        op0, op1, op2, op3
+    } is ClimbKey.result {
+        ClimbKey.key0, ClimbKey.key1, ClimbKey.key2, ClimbKey.key3,
+        ClimbKey.level', ClimbKey.bit,
+        ClimbKey.key0', ClimbKey.key1', ClimbKey.key2', ClimbKey.key3'
+    };*/
+
+    
+    col witness op0inv;
+
+    const expr opIsZero === 1 - op0 * op0inv;
+    opIsZero * op0 === 0;
+
+    const expr doJump === jmp + jmpz * opIsZero + jmpnz * (1 - opIsZero);
+    pc' === doJump * (jmpAddress - pc - 1) + pc + 1;
+
+    pc * Global.L1 === 0;
+    incCounter * Global.L1 === 0;
+
+    // Last pc' must return to be pc = 0 in order to close the program loop
+    // Once the work is done, the rest of instructions must be:
+    // if op0 = $n-1 (last instruction of the program) then pc = 0 (jump to the beginning of the program)
+
+    const expr storageRomFlags = compact_bin_cols ([
+            hash, hashType, latchGet, latchSet, climbRkey, climbSiblingRkey, climbBitN,
+            jmp, jmpz, jmpnz, setHashLeft, setHashRight, setLevel, setNewRoot, setOldRoot,
+            setRkey, setRkeyBit, setSiblingRkey, setSiblingValueHash, setValueHigh, setValueLow,
+            inFree, inNewRoot, inOldRoot, inRkey, inRkeyBit, inSiblingValueHash,
+            inValueLow, inValueHigh, inRotlVh, inLevel]);
+
+
+    lookup_assumes(STORAGE_ROM_ID, [storageRomFlags, const0, jmpAddress, pc, inSiblingRkey]);
+}

@@ -1,0 +1,22 @@
+[package]
+name = "simple"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-cli = { workspace = true }
+pilout = { workspace = true }
+pil-std-lib = { path = "../../../lib/std/rs" }
+
+env_logger = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+num-bigint = { workspace = true }
+p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }

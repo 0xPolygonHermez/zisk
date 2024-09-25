@@ -1,0 +1,18 @@
+[package]
+name = "pil-std-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-hints = { workspace = true }
+proofman-util = { workspace = true }
+pilout = { workspace = true }
+
+log = { version = "0.4", default-features = false }
+num-bigint = "0.4"
+num-traits = "0.2"
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+rayon = "1.10.0"

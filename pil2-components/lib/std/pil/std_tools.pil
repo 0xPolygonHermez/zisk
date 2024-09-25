@@ -1,0 +1,6 @@
+function get_L1 () : expr {
+    if (!defined(__L1__)) {
+        col fixed __L1__ = [1,0...];
+    }
+    return __L1__;
+}
