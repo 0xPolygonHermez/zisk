@@ -17,11 +17,13 @@ use proofman_hints::{
 use crate::{Decider, StdMode};
 
 type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
+type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
+
 pub struct StdProd<F: Copy> {
     mode: StdMode,
     prod_airs: Mutex<Vec<ProdAirsItem>>, // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
-    bus_vals_num: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
-    bus_vals_den: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
+    bus_vals_num: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
+    bus_vals_den: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
 }
 
 impl<F: PrimeField> Decider<F> for StdProd<F> {
@@ -136,8 +138,8 @@ impl<F: PrimeField> StdProd<F> {
                 HintFieldOptions::default(),
             );
 
-            let mut bus_vals = BTreeMap::new();
-            for (j, hint) in debug_hints[i * ncols..(i + 1) * ncols].iter().enumerate() {
+            let mut bus_vals = Vec::new();
+            for hint in debug_hints[i * ncols..(i + 1) * ncols].iter() {
                 let col = get_hint_field::<F>(
                     sctx,
                     &pctx.public_inputs,
@@ -148,7 +150,7 @@ impl<F: PrimeField> StdProd<F> {
                     HintFieldOptions::default(),
                 );
 
-                bus_vals.insert(j, col);
+                bus_vals.push(col);
             }
 
             for j in 0..num_rows {
@@ -157,7 +159,7 @@ impl<F: PrimeField> StdProd<F> {
                     if sel.is_zero() {
                         continue;
                     }
-                    let bus_value = bus_vals.values().filter_map(|v| Some(v.get(j))).collect();
+                    let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
                     self.update_bus_vals(opid, bus_value, j, proves);
                 }
             }

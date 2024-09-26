@@ -153,23 +153,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "connection"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "proofman",
- "proofman-cli",
- "proofman-common",
- "proofman-macros",
- "rand",
-]
-
-[[package]]
 name = "convert_case"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -376,23 +359,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "lookup"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "proofman",
- "proofman-cli",
- "proofman-common",
- "proofman-macros",
- "rand",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -565,23 +531,6 @@ version = "0.1.0"
 source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "permutation"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "proofman",
- "proofman-cli",
- "proofman-common",
- "proofman-macros",
- "rand",
 ]
 
 [[package]]
@@ -835,24 +784,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "range-check"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "num-traits",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "proofman",
- "proofman-cli",
- "proofman-common",
- "proofman-macros",
- "rand",
-]
-
-[[package]]
 name = "rayon"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -950,24 +881,6 @@ dependencies = [
  "memchr",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "simple"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "num-bigint",
- "p3-field",
- "p3-goldilocks",
- "pil-std-lib",
- "pilout",
- "proofman",
- "proofman-cli",
- "proofman-common",
- "proofman-macros",
- "rand",
 ]
 
 [[package]]

@@ -7,3 +7,7 @@ edition = "2021"
 proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 proofman-common = { path = "../common" }
 p3-field.workspace = true
+
+[features]
+default = []
+no_lib_link = ["proofman-starks-lib-c/no_lib_link"]
