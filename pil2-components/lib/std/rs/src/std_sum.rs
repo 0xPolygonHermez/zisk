@@ -77,7 +77,8 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         debug_hints_data: Vec<u64>,
         debug_hints: Vec<u64>,
     ) {
-        for (i, hint) in debug_hints_data.iter().enumerate() {
+        let mut past_ncols = 0;
+        for hint in debug_hints_data.iter() {
             let sumid = get_hint_field::<F>(
                 sctx,
                 &pctx.public_inputs,
@@ -135,7 +136,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             );
 
             let mut bus_vals = Vec::new();
-            for hint in debug_hints[i * ncols..(i + 1) * ncols].iter() {
+            for hint in debug_hints[past_ncols..(past_ncols + ncols)].iter() {
                 let col = get_hint_field::<F>(
                     sctx,
                     &pctx.public_inputs,
@@ -148,6 +149,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
                 bus_vals.push(col);
             }
+            past_ncols += ncols;
 
             for j in 0..num_rows {
                 let mul = if let HintFieldOutput::Field(mul) = mul.get(j) {
@@ -167,7 +169,6 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
                 let mul = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                 for _ in 0..mul {
-                    // TODO: The sumid strategy seems not to work
                     let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
                     self.update_bus_vals(sumid, bus_value, j, !proves);
                 }
