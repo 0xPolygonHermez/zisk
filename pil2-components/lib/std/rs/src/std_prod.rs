@@ -139,7 +139,7 @@ impl<F: PrimeField> StdProd<F> {
             );
 
             let mut bus_vals = Vec::new();
-            for  hint in debug_hints[i * ncols..(i + 1) * ncols].iter() {
+            for hint in debug_hints[i * ncols..(i + 1) * ncols].iter() {
                 let col = get_hint_field::<F>(
                     sctx,
                     &pctx.public_inputs,
@@ -150,7 +150,7 @@ impl<F: PrimeField> StdProd<F> {
                     HintFieldOptions::default(),
                 );
 
-                bus_vals.push( col);
+                bus_vals.push(col);
             }
 
             for j in 0..num_rows {
