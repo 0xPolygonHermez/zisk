@@ -1,0 +1,78 @@
+require "goldilocks.pil";
+
+/*
+    name     | code | note
+-------------|------|----------------------------------------------------------------------------
+ Default     |  0   | default name set by the library
+ Permutation |  1   | name as "Permutation"
+ Lookup      |  2   | name as "Lookup"
+ Range Check |  3   | name as "Range Check"
+ Connection  |  4   | name as "Connection"
+ Isolated    |  5   | name used for isolated components which avoids checks with other components
+*/
+
+const int PIOP_NAME_DEFAULT = 0;
+const int PIOP_NAME_PERMUTATION = 1;
+const int PIOP_NAME_LOOKUP = 2;
+const int PIOP_NAME_RANGE_CHECK = 3;
+const int PIOP_NAME_CONNECTION = 4;
+const int PIOP_NAME_ISOLATED = 5;
+
+function get_piop_name(const int name): string {
+    switch (name) {
+        case PIOP_NAME_PERMUTATION:
+            return "Permutation";
+        case PIOP_NAME_LOOKUP:
+            return "Lookup";
+        case PIOP_NAME_RANGE_CHECK:
+            return "Range Check";
+        case PIOP_NAME_CONNECTION:
+            return "Connection";
+        case PIOP_NAME_ISOLATED:
+            return "Isolated";
+        default:
+            error(`Unknown name code: ${name}`);
+    }
+}
+
+/*
+    name    | code | note
+------------|------|----------------------------------------------------------------------------
+ Default    |  0   | default bus set by the library
+ Sum        |  1   | use the sum bus
+ Prod       |  2   | use the product bus
+*/
+
+const int PIOP_BUS_DEFAULT = 0;
+const int PIOP_BUS_SUM = 1;
+const int PIOP_BUS_PROD = 2;
+
+/*
+    name    | code
+------------|-----
+ Goldilocks |  0
+ Mersenne31 |  1
+ BN254      |  2
+*/
+
+const int FIELDS[3] = [0,1,2];
+
+const int ACTIVE_FIELD = 0;
+
+const int GEN[256];
+switch (FIELDS[ACTIVE_FIELD]) {
+    // Goldilocks
+    case 0:
+        for (int i = 0; i < length(Goldilocks_Gen); i++) {
+            GEN[i] = Goldilocks_Gen[i];
+        }
+
+        for (int i = length(Goldilocks_Gen); i < length(GEN); i++) {
+            GEN[i] = 0;
+        }
+
+    default:
+        error("Unknown field");
+}
+
+const int k_coset = Goldilocks_k;

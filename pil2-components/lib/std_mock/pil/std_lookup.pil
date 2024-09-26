@@ -1,0 +1,5 @@
+function lookup_assumes(const int opid, const expr cols[], const expr sel = 1) {
+}
+
+function lookup_proves(const int opid, const expr cols[], const expr mul = 1) {
+}

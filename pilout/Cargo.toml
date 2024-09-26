@@ -6,10 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytes = "1.7.1"
-prost = "0.13"
-log = { workspace = true }
-proofman-util = { path = "../util" }
+bytes.workspace = true
+prost.workspace = true
+log.workspace = true
+proofman-util.workspace = true
 
 [build-dependencies]
-prost-build = "0.13.0"
+prost-build.workspace = true

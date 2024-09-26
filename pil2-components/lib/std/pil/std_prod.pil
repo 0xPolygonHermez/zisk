@@ -1,0 +1,223 @@
+require "std_common.pil"
+
+// Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
+
+function prod_assumes(const int name, const int opid, const expr cols[], const expr sel = 1) {
+    update_piop_prod(name, 0, opid, sel, cols);
+}
+
+function prod_proves(const int name, const int opid, const expr cols[], const expr sel = 1, int is_direct = 0) {
+    update_piop_prod(name, 1, opid, sel, cols, is_direct);
+}
+
+private function init_containers_prod(int name, int opid) {
+    container proof.std.gprod {
+        // FIX: dynamic arrays not ready
+        int opids_count = 0;
+        int opids[100];
+        expr gprod = 1;  // Resulting prod of every airgroup and every air.
+                         // Declared as expression (unknown at runtime), but used as field element.
+    }
+
+    container airgroup.std.gprod {
+        airgroupval aggregate(prod) gprod_result;
+
+        int direct_gprod_count = 0;
+        expr direct_gprod[100];
+    }
+
+    container air.std.gprod {
+        int gprod_assumes_count = 0;
+        expr gprod_assumes_sel[100];
+        expr gprod_assumes[100];
+
+        int gprod_proves_count = 0;
+        expr gprod_proves_sel[100];
+        expr gprod_proves[100];
+    }
+
+    // Container used for final checks
+    container proof.std.gprod.`id${opid}` {
+        int name = name;
+        int cols;
+        int proves = 0;
+        int assumes = 0;
+    }
+}
+
+private function initial_checks_prod(int proves, int opid, expr cols[]) {
+    const int cols_count = length(cols);
+
+    if (cols_count < 1) {
+        string side = proves ? "proves" : "assumes";
+        error(`The number of columns of ${side} #${opid} must be at least 1`);
+    }
+
+    // Assumes and proves of the same opid must have the same number of columns
+    if (proof.std.gprod.`id${opid}`.cols == 0) {
+        // first time called
+        proof.std.gprod.`id${opid}`.cols = cols_count;
+        // add opid on a list to verify at final
+        proof.std.gprod.opids[proof.std.gprod.opids_count] = opid;
+        proof.std.gprod.opids_count++;
+    } else if (cols_count != proof.std.gprod.`id${opid}`.cols) {
+        const int expected_cols = proof.std.gprod.`id${opid}`.cols;
+        error(`The number of columns of PIOP #${opid} must be ${expected_cols} but was ${cols_count}`);
+    }
+
+    // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
+    // proves and assumes to verify at the end that all of them match
+    if (proves) {
+        proof.std.gprod.`id${opid}`.proves++;
+    } else {
+        proof.std.gprod.`id${opid}`.assumes++;
+    }
+}
+
+/**
+ * Given a selector sel and columns C₀,...,Cₙ₋₁, it:
+ *      · 1] defines the running grandproduct constraints for each air
+ *      · 2] add each airgroupvalue of each airgroup to the running prod
+ *      · 3] checks that the overall prod is zero
+ * @param name name of the PIOP
+ * @param proves boolean indicating if updating a proves or a assumes
+ * @param opid (unique) identifier of the PIOP
+ * @param sel selector of the PIOP
+ * @param cols columns of the PIOP
+ */
+private function update_piop_prod(int name, int proves, int opid, expr sel, expr cols[], int is_direct = 0) {
+    init_containers_prod(name, opid);
+
+    if (!is_direct) {
+        initial_checks_prod(proves, opid, cols);
+
+        // Create debug hints for the witness computation
+        const string name_str = get_piop_name(name);
+        @gprod_member_data{name: name_str, opid: opid, proves: proves, ncols: length(cols), selector: sel};
+        for (int i = 0; i < length(cols); i++) {
+            @gprod_member{reference: cols[i]};
+        }
+    }
+
+    init_challenges();
+
+    // selected vector to simple column reduction
+    expr cols_compressed = compress_cols(opid, cols);
+
+    if (is_direct) {
+        use airgroup.std.gprod;
+
+        // adding the expression from which the proof constraint will be directly updated
+        direct_gprod[direct_gprod_count] = sel * (cols_compressed - 1) + 1;
+        direct_gprod_count++;
+
+        // update values at the airgroup level
+        on final airgroup piop_gprod_airgroup_direct();
+    } else {
+        use air.std.gprod;
+        if (proves) {
+            // adding all prods of proves called in this air
+            gprod_proves_sel[gprod_proves_count] = sel;
+            gprod_proves[gprod_proves_count] = cols_compressed;
+            gprod_proves_count++;
+        } else {
+            // adding all prods of assumes called in this air
+            gprod_assumes_sel[gprod_assumes_count] = sel;
+            gprod_assumes[gprod_assumes_count] = cols_compressed;
+            gprod_assumes_count++;
+        }
+
+        // define constraints at the air level
+        on final air piop_gprod_air();
+
+        // update values at the airgroup level
+        on final airgroup piop_gprod_airgroup();
+    }
+
+    // update constraints at the proof level
+    on final proof piop_gprod_proof();
+}
+
+/**
+ * It defines the constraints for the grandproduct based on the rapidUp protocol https://eprint.iacr.org/2022/1050.pdf
+ */
+private function piop_gprod_air() {
+    use air.std.gprod;
+
+    col witness stage(2) gprod;
+
+    //                                        (st1·(t1+ɣ-1)+1)·(st2·(t2+ɣ-1)+1)
+    //  gprod === ('gprod * (1 - L1) + L1) * -----------------------------------
+    //                                        (sf1·(f1+ɣ-1)+1)·(sf2·(f2+ɣ-1)+1)
+    //
+    // Note: The ti and fi are not necessarily related to each other
+
+    col fixed _L1 = [1,0...]; // TODO: Fix
+
+    expr numerator = 1;
+    for (int i = 0; i < gprod_proves_count; i++) {
+        numerator = numerator * (gprod_proves_sel[i] * (gprod_proves[i] + std_gamma - 1) + 1);
+    }
+
+    expr denominator = 1;
+    for (int i = 0; i < gprod_assumes_count; i++) {
+        denominator = denominator * (gprod_assumes_sel[i] * (gprod_assumes[i] + std_gamma - 1) + 1);
+    }
+
+    @gprod_col{reference: gprod, numerator: numerator, denominator: denominator, result: airgroup.std.gprod.gprod_result};
+
+    gprod * denominator === ('gprod * (1 - _L1) + _L1) * numerator;
+    _L1' * (gprod - airgroup.std.gprod.gprod_result) === 0;
+}
+
+// Note: We don't "update" the prod at the airgroup level (i.e., all the resulting prods generated by each air)
+//       because we don't know how many airs will be generated at compile time. Therefore we use the same
+//       term to refer to both things: the value generated at each air and the value generated at each airgroup.
+//       It is like jumping from the air level to the proof (global) level, from the constraint point of view.
+
+/**
+ * It updates the expression for the grandprod at the proof level indirectly with the airgroup values
+ */
+private function piop_gprod_airgroup() {
+    proof.std.gprod.gprod *= airgroup.std.gprod.gprod_result;
+}
+
+/**
+ * It updates the expression for the grandprod at the proof level directly
+ */
+private function piop_gprod_airgroup_direct() {
+    use airgroup.std.gprod;
+    for (int i = 0; i < direct_gprod_count; i++) {
+        proof.std.gprod.gprod *= direct_gprod[i];
+    }
+}
+
+/**
+ * It defines the constraints for the grandprod at the proof level
+ */
+private function piop_gprod_proof() {
+    check_gprod_was_completed();
+
+    proof.std.gprod.gprod === 1;
+}
+
+/**
+ * It checks that all the assumes and proves of the same opid have been defined
+ * @param name name of the PIOP
+ */
+private function check_gprod_was_completed() {
+    for (int index = 0; index < proof.std.gprod.opids_count; index++) {
+        int opid = proof.std.gprod.opids[index];
+        use proof.std.gprod.`id${opid}`;
+
+        if (name == PIOP_NAME_ISOLATED) continue;
+
+        const string name_str = get_piop_name(name);
+
+        if (assumes == 0) {
+            error(`${name_str} #${opid} defined without assume`);
+        } else if (proves == 0) {
+            error(`${name_str} #${opid} defined without proves`);
+        }
+    }
+}

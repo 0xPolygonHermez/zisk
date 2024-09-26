@@ -1,0 +1,7 @@
+const int BUS_DEFAULT = 0;
+
+function permutation_assumes(const int opid, const expr cols[], const expr sel = 1, int bus_type = BUS_DEFAULT) {
+}
+
+function permutation_proves(const int opid, const expr cols[], const expr sel = 1, int bus_type = BUS_DEFAULT) {
+}

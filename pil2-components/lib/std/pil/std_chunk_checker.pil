@@ -1,0 +1,62 @@
+const int CHUNK_CHECKER_ID = 99;
+
+// represent max and min in base 2¹⁶
+// min = m₀ + 2¹⁶·m₁ + (2¹⁶)²·m₂ + ... + (2¹⁶)ⁿ¹·mₙ
+// val = v₀ + 2¹⁶·v₁ + (2¹⁶)²·v₂ + ... + (2¹⁶)ⁿ²·vₙ
+// max = M₀ + 2¹⁶·M₁ + (2¹⁶)²·M₂ + ... + (2¹⁶)ⁿ³·Mₙ
+// where n = maxChunkNum
+
+// We have to check that either (2¹⁶ > vₙ - mₙ > 0) or (vₙ - mₙ = 0 and 2¹⁶ > vₙ₋₁ - mₙ₋₁ > 0) or ...
+// and also that either (2¹⁶ > Mₙ - vₙ > 0) or (Mₙ - vₙ = 0 and 2¹⁶ > Mₙ₋₁ - vₙ₋₁ > 0) or ...
+air ChunkChecker(const int N, const int min, const int max, const int BASE = 2**16) {
+    const int maxChunkNum = log2(max) / log2(BASE) + 1; // floor(log2(max) / log2(BASE)) + 1
+    const int minChunkNum = log2(min) / log2(BASE) + 1;
+
+    // column used to store the chunks of the value to be checked
+    col witness chunks;
+
+    // selectors to indicate whether the current value chunk is greater/smaller than the min/max chunk
+    col witness chunkValGtChunkMin;
+    col witness chunkValLtChunkMax;
+
+    // selectors to indicate whether we can say that the value is greater/smaller than the min/max
+    col witness valGtMin;
+    col witness valLtMax;
+
+    // check previous cols are selectors
+    valGtMin * (1 - valGtMin) === 0;
+    valLtMax * (1 - valLtMax) === 0;
+    chunkValGtChunkMin * (1 - chunkValGtChunkMin) === 0;
+    chunkValLtChunkMax * (1 - chunkValLtChunkMax) === 0;
+
+    col fixed MAX_INDICATOR = [0:(maxChunkNum-1),1]...;
+
+    // At the beginning of each maxChunkNum-clock cycle, valGtMin/valLtMax are ignored because they refer to the previous value
+    valGtMin' === valGtMin * (1 - 'MAX_INDICATOR) + chunkValGtChunkMin;
+    valLtMax' === valLtMax * (1 - 'MAX_INDICATOR) + chunkValLtChunkMax;
+
+    // At the end of each maxChunkNum-clock cycle, valGtMin/valLtMax must be equal to 1
+    (valGtMin - 1) * MAX_INDICATOR === 0;
+    (valLtMax - 1) * MAX_INDICATOR === 0;
+
+    int _min = min;
+    int _max = max;
+    expr decomp = 0;
+    for (int i = 0; i < maxChunkNum; i++) {
+        decomp = decomp + chunks'i * BASE**i;
+
+        const int min_chunk = _min % BASE;
+        const int max_chunk = _max % BASE;
+        _min = _min / BASE;
+        _max = _max / BASE;
+
+        if (i < minChunkNum) {
+            lookup_assumes(OPIDS[1], [(chunks - min_chunk) * (1 - valGtMin)], sel, PIOP_NAME_RANGE_CHECK);
+        }
+
+        lookup_assumes(OPIDS[1], [(max_chunk - colu_chunk) * (1 - valLtMax)], sel, PIOP_NAME_RANGE_CHECK);
+    }
+
+    // constraint asserting that the decomposition is correct
+    permutation_proves(CHUNK_CHECKER_ID, [decomp], MAX_INDICATOR', name: PIOP_NAME_RANGE_CHECK);
+}

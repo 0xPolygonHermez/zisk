@@ -1,0 +1,24 @@
+require "range_check.pil";
+require "multi_range_check.pil";
+
+airgroup RangeCheck3 {
+    RangeCheck3();
+}
+airgroup RangeCheck2 {
+    RangeCheck2();
+}
+airgroup RangeCheck1 {
+    RangeCheck1();
+}
+
+airgroup RangeCheck4 {
+    RangeCheck4();
+}
+
+airgroup MultiRangeCheck1 {
+    MultiRangeCheck1();
+}
+
+airgroup MultiRangeCheck2 {
+    MultiRangeCheck2();
+}

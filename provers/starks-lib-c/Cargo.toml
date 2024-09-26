@@ -6,8 +6,8 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-log = { workspace = true }
+log.workspace = true
 
 [features]
-default = []
+default = ["no_lib_link"]
 no_lib_link = []
