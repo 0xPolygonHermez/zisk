@@ -14,3 +14,7 @@ p3-field.workspace = true
 proofman-macros.workspace = true
 proofman-util = { path = "../util" }
 proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
+
+[features]
+default = []
+no_lib_link = ["proofman-starks-lib-c/no_lib_link"]

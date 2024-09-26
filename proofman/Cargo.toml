@@ -18,3 +18,7 @@ p3-field.workspace = true
 
 libloading = "0.8.4"
 colored = "2"
+
+[features]
+default = []
+no_lib_link = ["proofman-starks-lib-c/no_lib_link"]
