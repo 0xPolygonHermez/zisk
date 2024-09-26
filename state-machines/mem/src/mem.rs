@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use crate::{MemAlignedSM, MemUnalignedSM};
+use p3_field::Field;
 use rayon::Scope;
 use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredMemory;
@@ -33,7 +34,7 @@ pub struct MemSM {
 
 impl MemSM {
     pub fn new<F>(
-        wcm: &mut WitnessManager<F>,
+        wcm: Arc<WitnessManager<F>>,
         mem_aligned_sm: Arc<MemAlignedSM>,
         mem_unaligned_sm: Arc<MemUnalignedSM>,
     ) -> Arc<Self> {
@@ -60,14 +61,14 @@ impl MemSM {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <MemSM as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
 
             self.threads_controller.remove_working_thread();
 
-            self.mem_aligned_sm.unregister_predecessor(scope);
-            self.mem_unaligned_sm.unregister_predecessor(scope);
+            self.mem_aligned_sm.unregister_predecessor::<F>(scope);
+            self.mem_unaligned_sm.unregister_predecessor::<F>(scope);
         }
     }
 }
@@ -77,9 +78,9 @@ impl<F> WitnessComponent<F> for MemSM {
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

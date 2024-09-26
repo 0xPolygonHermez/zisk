@@ -15,3 +15,7 @@ proofman = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }
+
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]

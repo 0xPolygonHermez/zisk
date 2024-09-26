@@ -64,9 +64,9 @@ impl<'de> Deserialize<'de> for ZiskOperator {
         match value {
             0x00 => Ok(ZiskOperator::Flag),
             0x01 => Ok(ZiskOperator::CopyB),
-            0x24 => Ok(ZiskOperator::SignExtendB),
-            0x25 => Ok(ZiskOperator::SignExtendH),
-            0x26 => Ok(ZiskOperator::SignExtendW),
+            0x23 => Ok(ZiskOperator::SignExtendB),
+            0x24 => Ok(ZiskOperator::SignExtendH),
+            0x25 => Ok(ZiskOperator::SignExtendW),
             0x02 => Ok(ZiskOperator::Add),
             0x12 => Ok(ZiskOperator::AddW),
             0x03 => Ok(ZiskOperator::Sub),
