@@ -27,7 +27,7 @@ resolver = "2"
 
 [workspace.dependencies]
 proofman-macros = { path = "macros", version = "0.1.0" }
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman = { path = "proofman", version = "0.1.0" }
 proofman-common = { path = "common", version = "0.1.0" }
 proofman-hints = { path = "hints", version = "0.1.0" }
 proofman-util = { path = "util", version = "0.1.0" }
