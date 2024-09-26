@@ -19,11 +19,13 @@ use proofman_hints::{
 use crate::{Decider, StdMode};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>);
+type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
+
 pub struct StdSum<F: Copy> {
     mode: StdMode,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
-    bus_vals_left: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
-    bus_vals_right: Option<Mutex<BTreeMap<F, Vec<(usize, Vec<HintFieldOutput<F>>)>>>>, // opid -> (row, bus_val)
+    bus_vals_left: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
+    bus_vals_right: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
 }
 
 impl<F: Field> Decider<F> for StdSum<F> {
@@ -77,7 +79,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
     ) {
         for (i, hint) in debug_hints_data.iter().enumerate() {
             let sumid = get_hint_field::<F>(
-                &sctx,
+                sctx,
                 &pctx.public_inputs,
                 &pctx.challenges,
                 air_instance,
@@ -87,7 +89,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             );
 
             let proves = get_hint_field::<F>(
-                &sctx,
+                sctx,
                 &pctx.public_inputs,
                 &pctx.challenges,
                 air_instance,
@@ -107,7 +109,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             };
 
             let ncols = get_hint_field::<F>(
-                &sctx,
+                sctx,
                 &pctx.public_inputs,
                 &pctx.challenges,
                 air_instance,
@@ -123,7 +125,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             };
 
             let mul = get_hint_field::<F>(
-                &sctx,
+                sctx,
                 &pctx.public_inputs,
                 &pctx.challenges,
                 air_instance,
@@ -132,10 +134,10 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            let mut bus_vals = BTreeMap::new();
-            for (j, hint) in debug_hints[i * ncols..(i + 1) * ncols].iter().enumerate() {
+            let mut bus_vals = Vec::new();
+            for hint in debug_hints[i * ncols..(i + 1) * ncols].iter() {
                 let col = get_hint_field::<F>(
-                    &sctx,
+                    sctx,
                     &pctx.public_inputs,
                     &pctx.challenges,
                     air_instance,
@@ -144,7 +146,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                     HintFieldOptions::default(),
                 );
 
-                bus_vals.insert(j, col);
+                bus_vals.push(col);
             }
 
             for j in 0..num_rows {
@@ -166,7 +168,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 let mul = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                 for _ in 0..mul {
                     // TODO: The sumid strategy seems not to work
-                    let bus_value = bus_vals.values().filter_map(|v| Some(v.get(j))).collect();
+                    let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
                     self.update_bus_vals(sumid, bus_value, j, !proves);
                 }
             }
