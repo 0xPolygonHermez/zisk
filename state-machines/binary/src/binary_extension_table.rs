@@ -84,7 +84,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
                 trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
             }
 
-            let air_instance = AirInstance::new(
+            let _air_instance = AirInstance::new(
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,

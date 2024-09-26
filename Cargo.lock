@@ -770,9 +770,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da62f120a8a37763efb0cf8fdf264b884c7b8b9ac8660b900c8661030c00e6ba"
+checksum = "41296eb09f183ac68eec06e03cdbea2e759633d4067b2f6552fc2e009bcad08b"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -783,7 +783,6 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower",
  "tower-service",
  "tracing",
 ]
@@ -937,9 +936,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.158"
+version = "0.2.159"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
+checksum = "561d97a539a36e26a9a5fad1ea11a3039a67714694aaa379433e580854bc3dc5"
 
 [[package]]
 name = "libgit2-sys"
@@ -1323,7 +1322,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-components.git?branch=develop#2c71d465b18a0f68ffc43462b5f16ed36e595c8a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "log",
  "num-bigint",
@@ -1341,33 +1340,13 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "bytes",
  "log",
  "proofman-util",
  "prost",
  "prost-build",
-]
-
-[[package]]
-name = "pin-project"
-version = "1.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6bf43b791c5b9e34c3d182969b4abb522f9343702850a2e57f460d00d09b4b3"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f38a4412a78282e09a2cf38d195ea5420d15ba0602cb375210efbc877243965"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1481,7 +1460,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "colored",
  "env_logger",
@@ -1500,7 +1479,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "log",
  "p3-field",
@@ -1517,7 +1496,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -1527,7 +1506,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1537,7 +1516,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "log",
 ]
@@ -1545,7 +1524,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "colored",
  "sysinfo",
@@ -1722,9 +1701,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.4"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0884ad60e090bf1345b93da0a5de8923c93884cd03f40dfcfddd3b4bee661853"
+checksum = "355ae415ccd3a04315d3f8246e86d67689ea74d88d915576e1589a351062a13b"
 dependencies = [
  "bitflags 2.6.0",
 ]
@@ -2134,7 +2113,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "log",
  "p3-field",
@@ -2390,27 +2369,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tower"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fa9be0de6cf49e536ce1851f987bd21a43b771b09473c3549a6c853db37c1c"
-dependencies = [
- "futures-core",
- "futures-util",
- "pin-project",
- "pin-project-lite",
- "tokio",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "tower-layer"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
-
-[[package]]
 name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2450,7 +2408,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#592b0c0f9a94d6c98405a7a27f78938316e230c2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#4facad164f673005e03587cbdd430e0784b73e72"
 dependencies = [
  "proofman-starks-lib-c",
 ]

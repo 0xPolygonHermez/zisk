@@ -79,7 +79,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
             }
 
-            let air_instance =
+            let _air_instance =
                 AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
             // self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }

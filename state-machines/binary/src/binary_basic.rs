@@ -152,7 +152,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         let r = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                         debug_assert!((r & 0xff) == c_bytes[i] as u64);
                         cout = r >> 8;
-                        cin = if i == carry_byte { 0 } else { cout };                    
+                        cin = if i == carry_byte { 0 } else { cout };
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create a table required
@@ -177,7 +177,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         // Calculate carry
                         cout = if (a_bytes[i] as u64 - cin) >= b_bytes[i] as u64 { 0 } else { 1 };
                         debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
-                        cin = if i == carry_byte { 0 } else { cout };                    
+                        cin = if i == carry_byte { 0 } else { cout };
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         // Create a table required
