@@ -31,7 +31,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          toolchain: nightly-2024-07-21
+          args: --release --features no_lib_link
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1

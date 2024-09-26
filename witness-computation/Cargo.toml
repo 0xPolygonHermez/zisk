@@ -14,15 +14,19 @@ sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-quick-ops = { path = "../state-machines/quick-ops" }
-zisk-pil = { path = "../pil/fork_0" }
+zisk-pil = { path = "../pil/v0.1" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-hints = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace=true }
+pil-std-lib = { workspace = true }
 
 log = { workspace = true }
 env_logger = "0.11"
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link", "proofman-hints/no_lib_link", "proofman/no_lib_link"]

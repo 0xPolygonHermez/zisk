@@ -10,10 +10,14 @@ sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
-zisk-pil = { path = "../../pil/fork_0" }
+zisk-pil = { path = "../../pil/v0.1" }
 
 proofman-common = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
+
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]

@@ -5,8 +5,8 @@ use crate::{
     STORE_MEM,
 };
 
-#[cfg(feature = "sp")]
-use crate::SRC_SP;
+// #[cfg(feature = "sp")]
+// use crate::SRC_SP;
 
 /// RO data structure
 #[derive(Debug, Default)]
@@ -104,10 +104,10 @@ impl ZiskRom {
             if i.store_ra {
                 inst_json["store_ra"] = i.store_ra.into();
             }
-            #[cfg(feature = "sp")]
-            if i.store_use_sp {
-                inst_json["store_use_sp"] = i.store_use_sp.into();
-            }
+            // #[cfg(feature = "sp")]
+            // if i.store_use_sp {
+            //     inst_json["store_use_sp"] = i.store_use_sp.into();
+            // }
             inst_json["store"] = i.store.into();
             if i.store_offset != 0 {
                 inst_json["store_offset"] = i.store_offset.into();
@@ -115,17 +115,17 @@ impl ZiskRom {
             if i.set_pc {
                 inst_json["set_pc"] = i.set_pc.into();
             }
-            #[cfg(feature = "sp")]
-            if i.set_sp {
-                inst_json["set_sp"] = i.set_sp.into();
-            }
+            // #[cfg(feature = "sp")]
+            // if i.set_sp {
+            //     inst_json["set_sp"] = i.set_sp.into();
+            // }
             if i.ind_width != 0 {
                 inst_json["ind_width"] = i.ind_width.into();
             }
-            #[cfg(feature = "sp")]
-            if i.inc_sp != 0 {
-                inst_json["inc_sp"] = i.inc_sp.into();
-            }
+            // #[cfg(feature = "sp")]
+            // if i.inc_sp != 0 {
+            //     inst_json["inc_sp"] = i.inc_sp.into();
+            // }
             if i.end {
                 inst_json["end"] = i.end.into();
             }
@@ -135,14 +135,14 @@ impl ZiskRom {
             if i.a_src == SRC_STEP {
                 inst_json["a_src_step"] = json::JsonValue::from(1);
             }
-            #[cfg(feature = "sp")]
-            if i.a_src == SRC_SP {
-                inst_json["a_src_sp"] = json::JsonValue::from(1);
-            }
-            #[cfg(feature = "sp")]
-            if i.a_use_sp_imm1 != 0 {
-                inst_json["a_use_sp_imm1"] = i.a_use_sp_imm1.into();
-            }
+            // #[cfg(feature = "sp")]
+            // if i.a_src == SRC_SP {
+            //     inst_json["a_src_sp"] = json::JsonValue::from(1);
+            // }
+            // #[cfg(feature = "sp")]
+            // if i.a_use_sp_imm1 != 0 {
+            //     inst_json["a_use_sp_imm1"] = i.a_use_sp_imm1.into();
+            // }
             if i.a_offset_imm0 != 0 {
                 inst_json["a_offset_imm0"] = i.a_offset_imm0.into();
             }
@@ -152,10 +152,10 @@ impl ZiskRom {
             if i.b_src == SRC_IND {
                 inst_json["b_src_ind"] = json::JsonValue::from(1);
             }
-            #[cfg(feature = "sp")]
-            if i.b_use_sp_imm1 != 0 {
-                inst_json["b_use_sp_imm1"] = i.b_use_sp_imm1.into();
-            }
+            // #[cfg(feature = "sp")]
+            // if i.b_use_sp_imm1 != 0 {
+            //     inst_json["b_use_sp_imm1"] = i.b_use_sp_imm1.into();
+            // }
             if i.b_offset_imm0 != 0 {
                 inst_json["b_offset_imm0"] = i.b_offset_imm0.into();
             }
@@ -210,27 +210,27 @@ impl ZiskRom {
             let i = &self.insts[key].i;
             let rom_flags = self.get_rom_flags(i);
 
-            #[cfg(feature = "sp")]
-            {
-                *s += &format!(
-                    "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
-                    key,
-                    rom_flags,
-                    i.op,
-                    i.a_offset_imm0,
-                    i.b_offset_imm0,
-                    i.ind_width,
-                    i.store_offset,
-                    i.jmp_offset1,
-                    i.jmp_offset2,
-                    i.inc_sp,
-                    i.b_use_sp_imm1,
-                    i.op_str,
-                    i.verbose,
-                );
-            }
+            // #[cfg(feature = "sp")]
+            // {
+            //     *s += &format!(
+            //         "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
+            //         key,
+            //         rom_flags,
+            //         i.op,
+            //         i.a_offset_imm0,
+            //         i.b_offset_imm0,
+            //         i.ind_width,
+            //         i.store_offset,
+            //         i.jmp_offset1,
+            //         i.jmp_offset2,
+            //         i.inc_sp,
+            //         i.b_use_sp_imm1,
+            //         i.op_str,
+            //         i.verbose,
+            //     );
+            // }
 
-            #[cfg(not(feature = "sp"))]
+            // #[cfg(not(feature = "sp"))]
             {
                 *s += &format!(
                     "romLine({},{},{},{},{},{},{},{},{}); // {}: {}\n",
@@ -293,13 +293,13 @@ impl ZiskRom {
             v.extend(aux);
             aux = i.jmp_offset2.to_le_bytes();
             v.extend(aux);
-            #[cfg(feature = "sp")]
-            {
-                aux = i.inc_sp.to_le_bytes();
-                v.extend(aux);
-                aux = i.b_use_sp_imm1.to_le_bytes();
-                v.extend(aux);
-            }
+            // #[cfg(feature = "sp")]
+            // {
+            //     aux = i.inc_sp.to_le_bytes();
+            //     v.extend(aux);
+            //     aux = i.b_use_sp_imm1.to_le_bytes();
+            //     v.extend(aux);
+            // }
         }
         println!(
             "ZiskRom::save_to_bin() {} bytes, {} instructions, {:02} bytes/inst",
@@ -355,25 +355,25 @@ impl ZiskRom {
     }
 
     pub fn get_rom_flags(&self, i: &ZiskInst) -> u64 {
-        #[cfg(feature = "sp")]
-        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
-            ((i.a_src == SRC_MEM) as u64) << 1 |
-            ((i.b_src == SRC_IMM) as u64) << 2 |
-            ((i.b_src == SRC_MEM) as u64) << 3 |
-            (i.store_ra as u64) << 4 |
-            ((i.store == STORE_MEM) as u64) << 5 |
-            ((i.store == STORE_IND) as u64) << 6 |
-            (i.set_pc as u64) << 7 |
-            (i.m32 as u64) << 8 |
-            (i.end as u64) << 9 |
-            (i.is_external_op as u64) << 10 |
-            ((i.a_src == SRC_SP) as u64) << 11 |
-            (i.a_use_sp_imm1) << 12 |
-            ((i.a_src == SRC_STEP) as u64) << 13 |
-            ((i.b_src == SRC_IND) as u64) << 14 |
-            (i.store_use_sp as u64) << 15;
+        // #[cfg(feature = "sp")]
+        // let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
+        //     ((i.a_src == SRC_MEM) as u64) << 1 |
+        //     ((i.b_src == SRC_IMM) as u64) << 2 |
+        //     ((i.b_src == SRC_MEM) as u64) << 3 |
+        //     (i.store_ra as u64) << 4 |
+        //     ((i.store == STORE_MEM) as u64) << 5 |
+        //     ((i.store == STORE_IND) as u64) << 6 |
+        //     (i.set_pc as u64) << 7 |
+        //     (i.m32 as u64) << 8 |
+        //     (i.end as u64) << 9 |
+        //     (i.is_external_op as u64) << 10 |
+        //     ((i.a_src == SRC_SP) as u64) << 11 |
+        //     (i.a_use_sp_imm1) << 12 |
+        //     ((i.a_src == SRC_STEP) as u64) << 13 |
+        //     ((i.b_src == SRC_IND) as u64) << 14 |
+        //     (i.store_use_sp as u64) << 15;
 
-        #[cfg(not(feature = "sp"))]
+        // #[cfg(not(feature = "sp"))]
         let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
             ((i.a_src == SRC_MEM) as u64) << 1 |
             ((i.b_src == SRC_IMM) as u64) << 2 |

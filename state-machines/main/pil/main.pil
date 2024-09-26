@@ -5,7 +5,7 @@
 
 const int BOOT_ADDR = 0x1000;
 
-airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
 
     col fixed SEGMENT_L1 = [1,0...];
     col fixed SEGMENT_STEP = [0..(N-1)];
@@ -45,6 +45,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
 
     // Instruction
 
+    // a_src_step
+    // a_src_mem 
+    // a_src_imm
+    // a_src_sp
+    // b_src_mem
+    // b_src_imm
+    // b_src_ind
+
     // Source A
 
     col witness a_src_imm;         // Selector
@@ -55,10 +63,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
         col witness air.sp;
         col witness air.a_src_sp;
         col witness air.a_use_sp_imm1;
-        col witness air.a_src_step;
     } else {
-        col witness air.a_src_step_imm1;
+        col witness air.a_imm1;
     }
+    col witness a_src_step;
 
     // Source B
 
@@ -68,11 +76,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
 
     if (stack_enabled) {
         col witness air.b_use_sp_imm1;
-        col witness air.b_src_ind;
     } else {
-        col witness air.b_src_ind_imm1;
+        col witness air.b_imm1;
     }
-
+    col witness b_src_ind;
     col witness ind_width;  // 8 , 4, 2, 1
 
     // Operations related
@@ -112,15 +119,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
     const expr sel_mem_b;
     const expr addr[3];
 
+    sel_mem_b = b_src_mem + b_src_ind;
     if (stack_enabled) {
-        sel_mem_b = b_src_mem + b_src_ind;
         addr[0] = a_offset_imm0 + a_use_sp_imm1 * sp;
         addr[1] = b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;
         addr[2] = store_offset + store_ind * a[0] + store_use_sp * sp;
     } else {
-        sel_mem_b = b_src_mem + b_src_ind_imm1;
         addr[0] = a_offset_imm0;
-        addr[1] = b_offset_imm0 + b_src_ind_imm1 * (a[0] + 2**32 * a[1]);
+        addr[1] = b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]);
         addr[2] = store_offset + store_ind * a[0];
     }
 
@@ -146,7 +152,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
 
 
     // Operation.assume => how organize software
-    // lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
+    col witness operation_bus_enabled;
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * operation_bus_enabled);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -163,28 +170,23 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
         a_imm[1] = a_use_sp_imm1;
         b_imm[1] = b_use_sp_imm1;
     } else {
-        a_src_c = 1 - a_src_step_imm1 - a_src_mem - a_src_imm;
-        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind_imm1;
-        a_imm[1] = a_src_step_imm1;
-        b_imm[1] = b_src_ind_imm1;
+        a_src_c = 1 - a_src_step - a_src_mem - a_src_imm;
+        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
+        a_imm[1] = a_imm1;
+        b_imm[1] = b_imm1;
     }
 
     for (int index = 0; index < RC; ++index) {
         if (stack_enabled) {
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
-            a_src_sp*(a[index] - (index == 0 ? sp: 0 )) === 0;
-
-            // a_src_step ===> set a = STEP (only less significant index, rest must be 0)
-            a_src_step *( a[index] - (index == 0 ? STEP : 0)) === 0;
-        } else {
-            a_src_step_imm1 *( a[index] - (index == 0 ? STEP : 0)) === 0;
+            a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
+        a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
+        a_src_c * (a[index] - last_c[index]) === 0;
+        b_src_c * (b[index] - last_c[index]) === 0;
 
-        a_src_c*(a[index] - last_c[index]) === 0;
-        b_src_c*(b[index] - last_c[index]) === 0;
-
-        a_src_imm*(a[index] - a_imm[index]) === 0;
-        b_src_imm*(b[index] - b_imm[index]) === 0;
+        a_src_imm * (a[index] - a_imm[index]) === 0;
+        b_src_imm * (b[index] - b_imm[index]) === 0;
 
         // continuations_transition(last_c[index], c[index]); // last_c[index]' = c[index];
 
@@ -234,6 +236,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
 
     flag * (1 - flag) === 0;
 
+    /*
     if (stack_enabled) {    
         const expr rom_flags =  a_src_imm + 2 * a_src_mem + 4 * b_src_imm + 8 * b_src_mem + 16 * store_ra + 32 * store_mem + 64 * store_ind + 128 * set_pc + 256 * m32 + 512 * end + 1024 * is_external_op +
                                2**11 * a_src_sp + 2**12 * a_use_sp_imm1 + 2**13 * a_src_step + 2**14 * b_src_ind + 2**15 * store_use_sp;
@@ -242,4 +245,5 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 1, const int ope
         const expr rom_flags = a_src_imm + 2 * a_src_mem + 4 * b_src_imm + 8 * b_src_mem + 16 * store_ra + 32 * store_mem + 64 * store_ind + 128 * set_pc + 256 * m32 + 512 * end + 1024 * is_external_op;
         // lookup_assumes(ROM_ID, cols: [pc, rom_flags, op, a_offset_imm0, b_offset_imm0, ind_width, store_offset, jmp_offset1, jmp_offset2, a_src_step_imm1, b_src_ind_imm1]);
     }
+    */
 }
