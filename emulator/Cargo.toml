@@ -38,3 +38,4 @@ harness = false
 [features]
 default = []
 # sp = []
+no_lib_link = ["zisk-pil/no_lib_link"]
