@@ -12,7 +12,13 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
 
     Starks<ElementType> starks(setupCtx);
 
-    ExpressionsAvx expressionsAvx(setupCtx);
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
 
     uint64_t nFieldElements = setupCtx.starkInfo.starkStruct.verificationHashType == std::string("BN128") ? 1 : HASH_SIZE;
 
@@ -108,8 +114,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         return hintField.name == "reference";
     });
     
-    expressionsAvx.calculateExpression(params, den, denField->id, true);
-    expressionsAvx.calculateExpression(params, num, numField->id);
+    expressionsCtx.calculateExpression(params, den, denField->id, true);
+    expressionsCtx.calculateExpression(params, num, numField->id);
 
 
     Goldilocks3::copy((Goldilocks3::Element *)&gprod[0], &Goldilocks3::one());

@@ -336,8 +336,14 @@ HintFieldInfo getHintField(SetupCtx& setupCtx, Goldilocks::Element *buffer, Gold
         if(print_expression && setupCtx.expressionsBin.expressionsInfo[hintField->id].line != "") {
             cout << "the expression with id: " << hintField->id << " " << setupCtx.expressionsBin.expressionsInfo[hintField->id].line << endl;
         }
-        ExpressionsAvx expressionAvx(setupCtx);
-        expressionAvx.calculateExpression(params, hintFieldInfo.values, hintField->id, inverse);
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
+        expressionsCtx.calculateExpression(params, hintFieldInfo.values, hintField->id, inverse);
     } else if (hintField->operand == opType::public_) {
         hintFieldInfo.size = 1;
         hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];

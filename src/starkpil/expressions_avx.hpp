@@ -2,6 +2,8 @@
 #define EXPRESSIONS_AVX_HPP
 #include "expressions_ctx.hpp"
 
+#ifdef __AVX2__
+
 class ExpressionsAvx : public ExpressionsCtx {
 public:
     uint64_t nrowsPack = 4;
@@ -852,4 +854,5 @@ public:
     }
 };
 
+#endif
 #endif

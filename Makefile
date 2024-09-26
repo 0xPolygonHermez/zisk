@@ -12,18 +12,34 @@ WITNESS_LIB := ./witness_lib
 
 CXX := g++
 AS := nasm
-CXXFLAGS := -std=c++17 -Wall -pthread -flarge-source-files -Wno-unused-label -rdynamic -mavx2 #-Wfatal-errors
+CXXFLAGS := -std=c++17 -Wall -pthread -flarge-source-files -Wno-unused-label -rdynamic #-Wfatal-errors
 LDFLAGS := -lprotobuf -lsodium -lgpr -lpthread -lpqxx -lpq -lgmp -lstdc++ -lgmpxx -lsecp256k1 -lcrypto -luuid -fopenmp -liomp5 
 CFLAGS := -fopenmp
 ASFLAGS := -felf64
 
-# Verify if AVX-512 is supported
-# for now disabled, to enable it, you only need to uncomment these lines
-#AVX512_SUPPORTED := $(shell cat /proc/cpuinfo | grep -E 'avx512' -m 1)
+# Check if AVX-512 is supported
+AVX512_SUPPORTED := $(shell cat /proc/cpuinfo | grep -E 'avx512' -m 1)
+ifneq ($(AVX512_SUPPORTED),)
+    CXXFLAGS += -mavx512f -D__AVX512__
+    $(info AVX-512 is supported by the CPU)
+	USE_ASSEMBLY := 1
+else
+    $(info AVX-512 is not supported by the CPU)
+    
+    # Check if AVX2 is supported
+    AVX2_SUPPORTED := $(shell cat /proc/cpuinfo | grep -E 'avx2' -m 1)
+    ifneq ($(AVX2_SUPPORTED),)
+        CXXFLAGS += -mavx2 -D__AVX2__
+        $(info AVX2 is supported by the CPU)
+		USE_ASSEMBLY := 1
+    else
+        $(info AVX2 is not supported by the CPU)
+		USE_ASSEMBLY := 0  # Neither AVX-512 nor AVX2 is supported
+    endif
+endif
 
-#ifneq ($(AVX512_SUPPORTED),)
-#	CXXFLAGS += -mavx512f -D__AVX512__
-#endif
+# Add USE_ASSEMBLY to CXXFLAGS
+CXXFLAGS += -DUSE_ASSEMBLY=$(USE_ASSEMBLY)
 
 # Debug build flags
 ifeq ($(dbg),1)

@@ -320,7 +320,13 @@ void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, Goldilocks::
 
     TimerStart(STARK_CALCULATE_IMPOLS_EXPS);
 
-    ExpressionsAvx expressionsAvx(setupCtx);
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
 
     StepsParams params {
         pols : buffer,
@@ -331,13 +337,13 @@ void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, Goldilocks::
         xDivXSub: nullptr,
     };
 
-    expressionsAvx.calculateExpressions(params, nullptr, setupCtx.expressionsBin.expressionsBinArgsImPols, setupCtx.expressionsBin.imPolsInfo[step - 1], false, false, true);
+    expressionsCtx.calculateExpressions(params, nullptr, setupCtx.expressionsBin.expressionsBinArgsImPols, setupCtx.expressionsBin.imPolsInfo[step - 1], false, false, true);
 
     // uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
     // Goldilocks::Element* pAddr = &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]];
     // for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
     //     if(setupCtx.starkInfo.cmPolsMap[i].imPol && setupCtx.starkInfo.cmPolsMap[i].stage == step) {
-    //         expressionsAvx.calculateExpression(params, pAddr, setupCtx.starkInfo.cmPolsMap[i].expId);
+    //         expressionsCtx.calculateExpression(params, pAddr, setupCtx.starkInfo.cmPolsMap[i].expId);
     //         Goldilocks::Element* imAddr = &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("cm" + to_string(step), false)] + setupCtx.starkInfo.cmPolsMap[i].stagePos];
     //     #pragma omp parallel
     //         for(uint64_t j = 0; j < N; ++j) {
@@ -352,7 +358,13 @@ void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, Goldilocks::
 template <typename ElementType>
 void Starks<ElementType>::calculateQuotientPolynomial(Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals) {
     TimerStart(STARK_CALCULATE_QUOTIENT_POLYNOMIAL);
-    ExpressionsAvx expressionsAvx(setupCtx);
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
     StepsParams params {
         pols : buffer,
         publicInputs,
@@ -361,14 +373,20 @@ void Starks<ElementType>::calculateQuotientPolynomial(Goldilocks::Element *buffe
         evals,
         xDivXSub: nullptr,
     };
-    expressionsAvx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
+    expressionsCtx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
     TimerStopAndLog(STARK_CALCULATE_QUOTIENT_POLYNOMIAL);
 }
 
 template <typename ElementType>
 void Starks<ElementType>::calculateFRIPolynomial(Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals, Goldilocks::Element *xDivXSub) {
     TimerStart(STARK_CALCULATE_FRI_POLYNOMIAL);
-    ExpressionsAvx expressionsAvx(setupCtx);
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
     StepsParams params {
         pols : buffer,
         publicInputs,
@@ -377,6 +395,6 @@ void Starks<ElementType>::calculateFRIPolynomial(Goldilocks::Element *buffer, Go
         evals,
         xDivXSub,
     };
-    expressionsAvx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]], setupCtx.starkInfo.friExpId);
+    expressionsCtx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]], setupCtx.starkInfo.friExpId);
     TimerStopAndLog(STARK_CALCULATE_FRI_POLYNOMIAL);
 }
