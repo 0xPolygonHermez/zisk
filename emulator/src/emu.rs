@@ -3,8 +3,8 @@ use std::mem;
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep};
 use p3_field::AbstractField;
 use riscv::RiscVRegisters;
-#[cfg(feature = "sp")]
-use zisk_core::SRC_SP;
+// #[cfg(feature = "sp")]
+// use zisk_core::SRC_SP;
 use zisk_core::{
     ZiskInst, ZiskOperationType, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom,
     OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
@@ -70,8 +70,8 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
             }
             SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
-            #[cfg(feature = "sp")]
-            SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
                 "Emu::source_a() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -101,8 +101,8 @@ impl<'a> Emu<'a> {
             }
             SRC_IMM => (),
             SRC_STEP => (),
-            #[cfg(feature = "sp")]
-            SRC_SP => (),
+            // #[cfg(feature = "sp")]
+            // SRC_SP => (),
             _ => panic!(
                 "Emu::source_a_slice() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
@@ -287,15 +287,15 @@ impl<'a> Emu<'a> {
     }
 
     /// Set SP, if specified by the current instruction
-    #[cfg(feature = "sp")]
-    #[inline(always)]
-    pub fn set_sp(&mut self, instruction: &ZiskInst) {
-        if instruction.set_sp {
-            self.ctx.inst_ctx.sp = self.ctx.inst_ctx.c;
-        } else {
-            self.ctx.inst_ctx.sp += instruction.inc_sp;
-        }
-    }
+    // #[cfg(feature = "sp")]
+    // #[inline(always)]
+    // pub fn set_sp(&mut self, instruction: &ZiskInst) {
+    //     if instruction.set_sp {
+    //         self.ctx.inst_ctx.sp = self.ctx.inst_ctx.c;
+    //     } else {
+    //         self.ctx.inst_ctx.sp += instruction.inc_sp;
+    //     }
+    // }
 
     /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
@@ -325,8 +325,8 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c(instruction);
-        #[cfg(feature = "sp")]
-        self.set_sp(instruction);
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
@@ -473,8 +473,8 @@ impl<'a> Emu<'a> {
         self.store_c(instruction);
 
         // Set SP, if specified by the current instruction
-        #[cfg(feature = "sp")]
-        self.set_sp(instruction);
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
 
         // Set PC, based on current PC, current flag and current instruction
         self.set_pc(instruction);
@@ -588,8 +588,8 @@ impl<'a> Emu<'a> {
         self.source_b_slice(instruction, trace_step.b, &mut emu_slice.required);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction, &mut emu_slice.required);
-        #[cfg(feature = "sp")]
-        self.set_sp(instruction);
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
@@ -616,22 +616,22 @@ impl<'a> Emu<'a> {
             a_src_imm: F::from_bool(instruction.a_src == SRC_IMM),
             a_src_mem: F::from_bool(instruction.a_src == SRC_MEM),
             a_offset_imm0: F::from_canonical_u64(instruction.a_offset_imm0),
-            #[cfg(not(feature = "sp"))]
+            // #[cfg(not(feature = "sp"))]
             a_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
-            #[cfg(feature = "sp")]
-            sp: F::from_canonical_u64(self.ctx.inst_ctx.sp),
-            #[cfg(feature = "sp")]
-            a_src_sp: F::from_bool(instruction.a_src == SRC_SP),
-            #[cfg(feature = "sp")]
-            a_use_sp_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
+            // #[cfg(feature = "sp")]
+            // sp: F::from_canonical_u64(self.ctx.inst_ctx.sp),
+            // #[cfg(feature = "sp")]
+            // a_src_sp: F::from_bool(instruction.a_src == SRC_SP),
+            // #[cfg(feature = "sp")]
+            // a_use_sp_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
             a_src_step: F::from_bool(instruction.a_src == SRC_STEP),
             b_src_imm: F::from_bool(instruction.b_src == SRC_IMM),
             b_src_mem: F::from_bool(instruction.b_src == SRC_MEM),
             b_offset_imm0: F::from_canonical_u64(instruction.b_offset_imm0),
-            #[cfg(not(feature = "sp"))]
+            // #[cfg(not(feature = "sp"))]
             b_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
-            #[cfg(feature = "sp")]
-            b_use_sp_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
+            // #[cfg(feature = "sp")]
+            // b_use_sp_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
             b_src_ind: F::from_bool(instruction.b_src == SRC_IND),
             ind_width: F::from_canonical_u64(instruction.ind_width),
             is_external_op: F::from_bool(instruction.is_external_op),
@@ -641,12 +641,12 @@ impl<'a> Emu<'a> {
             store_ind: F::from_bool(instruction.store == STORE_IND),
             store_offset: F::from_canonical_u64(instruction.store_offset as u64),
             set_pc: F::from_bool(instruction.set_pc),
-            #[cfg(feature = "sp")]
-            store_use_sp: F::from_bool(instruction.store_use_sp),
-            #[cfg(feature = "sp")]
-            set_sp: F::from_bool(instruction.set_sp),
-            #[cfg(feature = "sp")]
-            inc_sp: F::from_canonical_u64(instruction.inc_sp),
+            // #[cfg(feature = "sp")]
+            // store_use_sp: F::from_bool(instruction.store_use_sp),
+            // #[cfg(feature = "sp")]
+            // set_sp: F::from_bool(instruction.set_sp),
+            // #[cfg(feature = "sp")]
+            // inc_sp: F::from_canonical_u64(instruction.inc_sp),
             jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
             main_segment: F::from_canonical_u64(0),
