@@ -32,21 +32,26 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Zisk", 1, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
+
         air_group.add_air(Some("Main"), 2097152);
 
         let air_group = pilout.add_air_group(Some("Binary"));
+
         air_group.add_air(Some("Binary"), 2097152);
 
         let air_group = pilout.add_air_group(Some("BinaryTable"));
-        air_group.add_air(Some("BinaryTable"), 4194304);
+
+        air_group.add_air(Some("BinaryTable"), 8388608);
 
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
+
         air_group.add_air(Some("BinaryExtension"), 2097152);
 
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
+
         air_group.add_air(Some("BinaryExtensionTable"), 524288);
 
         pilout

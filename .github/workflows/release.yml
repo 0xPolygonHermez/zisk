@@ -164,8 +164,8 @@ jobs:
 
       - name: Set up git private repo access
         run: |
-          git config --global url."https://${{ secrets.PRIVATE_PULL_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.PRIVATE_PULL_TOKEN }}@github.com".insteadOf https://github.com
+          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com
+          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com".insteadOf https://github.com
 
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'

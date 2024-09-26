@@ -45,13 +45,13 @@ impl ThreadController {
     /// Increments the count of active working threads. This is typically called
     /// when a new thread is started and begins performing work.
     pub fn add_working_thread(&self) {
-        self.working_threads.fetch_add(1, Ordering::Relaxed);
+        self.working_threads.fetch_add(1, Ordering::Release);
     }
 
     /// Decrements the count of active working threads. If this brings the count
     /// to zero, it notifies any threads waiting for all work to complete.
     pub fn remove_working_thread(&self) {
-        if self.working_threads.fetch_sub(1, Ordering::Relaxed) == 1 {
+        if self.working_threads.fetch_sub(1, Ordering::Release) == 1 {
             let _guard = self.mutex.lock().unwrap();
             self.condvar.notify_all();
         }
