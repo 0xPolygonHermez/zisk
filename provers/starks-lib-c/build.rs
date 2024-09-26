@@ -1,6 +1,10 @@
 use std::env;
 
 fn main() {
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
+        return;
+    }
     if std::env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
         let library_folder = "../../../zkevm-prover/lib";
         let library_short_name = "starks";
