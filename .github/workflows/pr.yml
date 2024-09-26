@@ -25,14 +25,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          toolchain: nightly-2024-07-21
           args: --all-targets --all-features
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          toolchain: nightly-2024-07-21
           args: --release --features no_lib_link
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
@@ -53,6 +51,7 @@ jobs:
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
+          toolchain: nightly
           command: fmt
           args: --all -- --check
         env:

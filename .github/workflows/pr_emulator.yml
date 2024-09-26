@@ -26,10 +26,9 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: actions/checkout@v2
-      - name: Install nightly
+      - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly-2024-07-21
             override: true
             components: rustfmt, clippy
       
@@ -51,7 +50,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          toolchain: nightly-2024-07-21
           args: --release --all-features -p ziskemu
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
