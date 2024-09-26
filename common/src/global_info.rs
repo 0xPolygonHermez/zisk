@@ -134,6 +134,6 @@ impl GlobalInfo {
     }
 
     pub fn get_air_has_compressor(&self, airgroup_id: usize, air_id: usize) -> bool {
-        self.airs[airgroup_id][air_id].has_compressor.expect("Has compressor is not set")
+        self.airs[airgroup_id][air_id].has_compressor.unwrap_or(false)
     }
 }
