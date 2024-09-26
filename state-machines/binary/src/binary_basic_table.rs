@@ -11,7 +11,7 @@ use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
 use zisk_pil::*;
 
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
+const MULTIPLICITY_TABLE_SIZE: usize = 1 << 23;
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -23,7 +23,7 @@ pub struct BinaryBasicTableSM<F> {
     inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
 
     // Row multiplicity table
-    multiplicity: Mutex<Vec<u32>>,
+    multiplicity: Mutex<Vec<u64>>,
 
     _phantom: std::marker::PhantomData<F>,
 }
@@ -63,7 +63,11 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
             let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
             let (buffer_size, offsets) = buffer_allocator
-                .get_buffer_info(self.wcm.get_sctx(), BINARY_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0])
+                .get_buffer_info(
+                    self.wcm.get_sctx(),
+                    BINARY_TABLE_AIRGROUP_ID,
+                    BINARY_TABLE_AIR_IDS[0],
+                )
                 .expect("BinaryTable buffer not found");
 
             let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
@@ -76,10 +80,10 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
             let multiplicity = self.multiplicity.lock().unwrap();
             for i in 0..MULTIPLICITY_TABLE_SIZE {
-                trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
+                trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
 
-            let _air_instance =
+            let air_instance =
                 AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
             self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }

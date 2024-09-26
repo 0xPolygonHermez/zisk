@@ -11,7 +11,7 @@ use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
 use zisk_pil::*;
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
+const MULTIPLICITY_TABLE_SIZE: usize = 1 << 19;
 
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -23,7 +23,7 @@ pub struct BinaryExtensionTableSM<F> {
     inputs: Mutex<Vec<ZiskRequiredBinaryExtensionTable>>,
 
     // Row multiplicity table
-    multiplicity: Mutex<Vec<u32>>,
+    multiplicity: Mutex<Vec<u64>>,
 
     _phantom: std::marker::PhantomData<F>,
 }
@@ -66,7 +66,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             let (buffer_size, offsets) = buffer_allocator
                 .get_buffer_info(
                     self.wcm.get_sctx(),
-                    BINARY_EXTENSION_AIRGROUP_ID,
+                    BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                     BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 )
                 .expect("Binary extension Table buffer not found");
@@ -81,10 +81,10 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
             let multiplicity = self.multiplicity.lock().unwrap();
             for i in 0..MULTIPLICITY_TABLE_SIZE {
-                trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
+                trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
 
-            let _air_instance = AirInstance::new(
+            let air_instance = AirInstance::new(
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,
