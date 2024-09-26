@@ -120,7 +120,9 @@ void MerkleTreeGL::merkelize()
 {
 #ifdef __AVX512__
     PoseidonGoldilocks::merkletree_avx512(nodes, source, width, height);
-#else
+#elif defined(__AVX2__)
     PoseidonGoldilocks::merkletree_avx(nodes, source, width, height);
+#else
+    PoseidonGoldilocks::merkletree_seq(nodes, source, width, height);
 #endif
 }
