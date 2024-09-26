@@ -12,16 +12,8 @@ impl<F: PrimeField> Debug for Range<F> {
         let min = self.0.as_canonical_biguint().to_bigint().unwrap();
         let max = self.1.as_canonical_biguint().to_bigint().unwrap();
 
-        let min_result = if self.2 {
-            min.clone() - &order
-        } else {
-            min.clone()
-        };
-        let max_result = if self.3 {
-            max.clone() - &order
-        } else {
-            max.clone()
-        };
+        let min_result = if self.2 { min.clone() - &order } else { min.clone() };
+        let max_result = if self.3 { max.clone() - &order } else { max.clone() };
 
         write!(f, "[{},{}]", min_result, max_result)
     }
@@ -34,16 +26,8 @@ impl<F: PrimeField> PartialEq<(BigInt, BigInt)> for Range<F> {
         let min = self.0.as_canonical_biguint().to_bigint().unwrap();
         let max = self.1.as_canonical_biguint().to_bigint().unwrap();
 
-        let min_result = if self.2 {
-            min.clone() - &order
-        } else {
-            min.clone()
-        };
-        let max_result = if self.3 {
-            max.clone() - &order
-        } else {
-            max.clone()
-        };
+        let min_result = if self.2 { min.clone() - &order } else { min.clone() };
+        let max_result = if self.3 { max.clone() - &order } else { max.clone() };
 
         min_result == other.0 && max_result == other.1
     }
@@ -76,16 +60,8 @@ impl<F: PrimeField> Range<F> {
         let min = self.0.as_canonical_biguint().to_bigint().unwrap();
         let max = self.1.as_canonical_biguint().to_bigint().unwrap();
 
-        let min_result = if self.2 {
-            min.clone() - &order
-        } else {
-            min.clone()
-        };
-        let max_result = if self.3 {
-            max.clone() - &order
-        } else {
-            max.clone()
-        };
+        let min_result = if self.2 { min.clone() - &order } else { min.clone() };
+        let max_result = if self.3 { max.clone() - &order } else { max.clone() };
 
         min_result >= other.0 && max_result <= other.1
     }

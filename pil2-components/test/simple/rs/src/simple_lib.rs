@@ -31,20 +31,10 @@ where
     Standard: Distribution<F>,
 {
     pub fn new() -> Self {
-        Self {
-            wcm: None,
-            simple_left: None,
-            simple_right: None,
-            std_lib: None,
-        }
+        Self { wcm: None, simple_left: None, simple_right: None, std_lib: None }
     }
 
-    pub fn initialize(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
         let std_lib = Std::new(wcm.clone(), None);
@@ -62,12 +52,7 @@ impl<F: PrimeField> WitnessLibrary<F> for SimpleWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
         self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
@@ -79,27 +64,12 @@ where
 
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
-        self.simple_left
-            .as_ref()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.simple_right
-            .as_ref()
-            .unwrap()
-            .execute(pctx, ectx, sctx);
+        self.simple_left.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.simple_right.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
-        self.wcm
-            .as_ref()
-            .unwrap()
-            .calculate_witness(stage, pctx, ectx, sctx);
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+        self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {

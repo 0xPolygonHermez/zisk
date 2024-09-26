@@ -23,11 +23,7 @@ where
     pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let range_check1 = Arc::new(Self { std_lib });
 
-        wcm.register_component(
-            range_check1.clone(),
-            Some(RANGE_CHECK_2_AIRGROUP_ID),
-            Some(RANGE_CHECK_2_AIR_IDS),
-        );
+        wcm.register_component(range_check1.clone(), Some(RANGE_CHECK_2_AIRGROUP_ID), Some(RANGE_CHECK_2_AIR_IDS));
 
         // Register dependency relations
         range_check1.std_lib.register_predecessor();
@@ -45,12 +41,7 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            RANGE_CHECK_2_AIRGROUP_ID,
-            RANGE_CHECK_2_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance = AirInstance::new(RANGE_CHECK_2_AIRGROUP_ID, RANGE_CHECK_2_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
@@ -69,12 +60,7 @@ where
     ) {
         let mut rng = rand::thread_rng();
 
-        log::info!(
-            "{}: ··· Witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            "RangeCheck2",
-            stage
-        );
+        log::info!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheck2", stage);
 
         if stage == 1 {
             let (buffer_size, offsets) = ectx
@@ -85,13 +71,9 @@ where
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
-            let num_rows = pctx
-                .pilout
-                .get_air(RANGE_CHECK_2_AIRGROUP_ID, RANGE_CHECK_2_AIR_IDS[0])
-                .num_rows();
+            let num_rows = pctx.pilout.get_air(RANGE_CHECK_2_AIRGROUP_ID, RANGE_CHECK_2_AIR_IDS[0]).num_rows();
             let mut trace =
-                RangeCheck20Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+                RangeCheck20Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let range1 = (BigInt::from(0), BigInt::from((1 << 8) - 1));
             let range2 = (BigInt::from(0), BigInt::from((1 << 9) - 1));
@@ -102,12 +84,9 @@ where
                 trace[i].b2 = F::from_canonical_u16(rng.gen_range(0..=(1 << 9) - 1));
                 trace[i].b3 = F::from_canonical_u16(rng.gen_range(0..=(1 << 10) - 1));
 
-                self.std_lib
-                    .range_check(trace[i].b1, range1.0.clone(), range1.1.clone());
-                self.std_lib
-                    .range_check(trace[i].b2, range2.0.clone(), range2.1.clone());
-                self.std_lib
-                    .range_check(trace[i].b3, range3.0.clone(), range3.1.clone());
+                self.std_lib.range_check(trace[i].b1, range1.0.clone(), range1.1.clone());
+                self.std_lib.range_check(trace[i].b2, range2.0.clone(), range2.1.clone());
+                self.std_lib.range_check(trace[i].b3, range3.0.clone(), range3.1.clone());
             }
 
             let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();

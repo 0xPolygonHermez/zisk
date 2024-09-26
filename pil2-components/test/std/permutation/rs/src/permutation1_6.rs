@@ -19,15 +19,9 @@ where
     const MY_NAME: &'static str = "Permutation1_6";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let permutation1_6 = Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        });
+        let permutation1_6 = Arc::new(Self { _phantom: std::marker::PhantomData });
 
-        wcm.register_component(
-            permutation1_6.clone(),
-            Some(PERMUTATION_AIRGROUP_ID),
-            Some(PERMUTATION_1_6_AIR_IDS),
-        );
+        wcm.register_component(permutation1_6.clone(), Some(PERMUTATION_AIRGROUP_ID), Some(PERMUTATION_1_6_AIR_IDS));
 
         permutation1_6
     }
@@ -42,22 +36,12 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID,
-            PERMUTATION_1_6_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance = AirInstance::new(PERMUTATION_AIRGROUP_ID, PERMUTATION_1_6_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID,
-            PERMUTATION_1_6_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance = AirInstance::new(PERMUTATION_AIRGROUP_ID, PERMUTATION_1_6_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
@@ -91,22 +75,15 @@ where
         );
 
         if stage == 1 {
-            let (_, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, air_id)
-                .unwrap();
+            let (_, offsets) =
+                ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, air_id).unwrap();
 
             let buffer = &mut air_instance.buffer;
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
-            let mut trace = Permutation1_60Trace::map_buffer(
-                buffer.as_mut_slice(),
-                num_rows,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            let mut trace =
+                Permutation1_60Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // TODO: Add the ability to send inputs to permutation2
             //       and consequently add random selectors

@@ -40,21 +40,13 @@ where
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info(
-                &sctx,
-                MULTI_RANGE_CHECK_1_AIRGROUP_ID,
-                MULTI_RANGE_CHECK_1_AIR_IDS[0],
-            )
+            .get_buffer_info(&sctx, MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            MULTI_RANGE_CHECK_1_AIRGROUP_ID,
-            MULTI_RANGE_CHECK_1_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance =
+            AirInstance::new(MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
@@ -73,39 +65,21 @@ where
     ) {
         let mut rng = rand::thread_rng();
 
-        log::info!(
-            "{}: ··· Witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            "MultiRangeCheck1",
-            stage
-        );
+        log::info!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "MultiRangeCheck1", stage);
 
         if stage == 1 {
             let (buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info(
-                    &sctx,
-                    MULTI_RANGE_CHECK_1_AIRGROUP_ID,
-                    MULTI_RANGE_CHECK_1_AIR_IDS[0],
-                )
+                .get_buffer_info(&sctx, MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0])
                 .unwrap();
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
-            let num_rows = pctx
-                .pilout
-                .get_air(
-                    MULTI_RANGE_CHECK_1_AIRGROUP_ID,
-                    MULTI_RANGE_CHECK_1_AIR_IDS[0],
-                )
-                .num_rows();
-            let mut trace = MultiRangeCheck10Trace::map_buffer(
-                buffer.as_mut_slice(),
-                num_rows,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            let num_rows =
+                pctx.pilout.get_air(MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0]).num_rows();
+            let mut trace =
+                MultiRangeCheck10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let range1 = (BigInt::from(0), BigInt::from((1 << 7) - 1));
             let range2 = (BigInt::from(0), BigInt::from((1 << 8) - 1));
@@ -133,13 +107,11 @@ where
                     if range_selector1 {
                         trace[i].a[0] = F::from_canonical_u16(rng.gen_range(0..=(1 << 7) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[0], range1.0.clone(), range1.1.clone());
+                        self.std_lib.range_check(trace[i].a[0], range1.0.clone(), range1.1.clone());
                     } else {
                         trace[i].a[0] = F::from_canonical_u16(rng.gen_range(0..=(1 << 8) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[0], range2.0.clone(), range2.1.clone());
+                        self.std_lib.range_check(trace[i].a[0], range2.0.clone(), range2.1.clone());
                     }
                 }
 
@@ -147,29 +119,23 @@ where
                     if range_selector2 {
                         trace[i].a[1] = F::from_canonical_u16(rng.gen_range(0..=(1 << 7) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[1], range1.0.clone(), range1.1.clone());
+                        self.std_lib.range_check(trace[i].a[1], range1.0.clone(), range1.1.clone());
                     } else {
                         trace[i].a[1] = F::from_canonical_u16(rng.gen_range(0..=(1 << 6) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[1], range3.0.clone(), range3.1.clone());
+                        self.std_lib.range_check(trace[i].a[1], range3.0.clone(), range3.1.clone());
                     }
                 }
 
                 if selected3 {
                     if range_selector3 {
-                        trace[i].a[2] =
-                            F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
+                        trace[i].a[2] = F::from_canonical_u16(rng.gen_range((1 << 5)..=(1 << 8) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[2], range4.0.clone(), range4.1.clone());
+                        self.std_lib.range_check(trace[i].a[2], range4.0.clone(), range4.1.clone());
                     } else {
-                        trace[i].a[2] =
-                            F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
+                        trace[i].a[2] = F::from_canonical_u16(rng.gen_range((1 << 8)..=(1 << 9) - 1));
 
-                        self.std_lib
-                            .range_check(trace[i].a[2], range5.0.clone(), range5.1.clone());
+                        self.std_lib.range_check(trace[i].a[2], range5.0.clone(), range5.1.clone());
                     }
                 }
             }

@@ -58,11 +58,7 @@ where
         // In fact, I only need to pass the length of mul of Specified...
         // Anyways, this solution would be very very specific
         let rc_air_data = vec![
-            RCAirData {
-                air_name: RangeCheckAir::U8Air,
-                airgroup_id: U_8_AIR_AIRGROUP_ID,
-                air_id: U_8_AIR_AIR_IDS[0],
-            },
+            RCAirData { air_name: RangeCheckAir::U8Air, airgroup_id: U_8_AIR_AIRGROUP_ID, air_id: U_8_AIR_AIR_IDS[0] },
             RCAirData {
                 air_name: RangeCheckAir::U16Air,
                 airgroup_id: U_16_AIR_AIRGROUP_ID,
@@ -98,12 +94,7 @@ impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
         self.wcm.get().unwrap().start_proof(pctx, ectx, sctx);
@@ -115,43 +106,16 @@ where
 
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
-        self.range_check1
-            .get()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.range_check2
-            .get()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.range_check3
-            .get()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.range_check4
-            .get()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.multi_range_check1
-            .get()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.multi_range_check2
-            .get()
-            .unwrap()
-            .execute(pctx, ectx, sctx);
+        self.range_check1.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.range_check2.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.range_check3.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.range_check4.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.multi_range_check1.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.multi_range_check2.get().unwrap().execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
-        self.wcm
-            .get()
-            .unwrap()
-            .calculate_witness(stage, pctx, ectx, sctx);
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+        self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {
@@ -180,9 +144,7 @@ mod tests {
 
     #[test]
     fn test_verify_constraints() {
-        let root_path = std::env::current_dir()
-            .expect("Failed to get current directory")
-            .join("../../../../");
+        let root_path = std::env::current_dir().expect("Failed to get current directory").join("../../../../");
         let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
 
         let verify_constraints = VerifyConstraintsCmd {

@@ -12,8 +12,8 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
-    HintFieldOutput, HintFieldValue,
+    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput,
+    HintFieldValue,
 };
 
 use crate::{Decider, StdMode};
@@ -43,14 +43,7 @@ impl<F: Field> Decider<F> for StdSum<F> {
                 let debug_hints = get_hint_ids_by_name(setup.p_setup, "gsum_member");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
-                    sum_airs_guard.push((
-                        airgroup_id,
-                        air_id,
-                        im_hints,
-                        gsum_hints,
-                        debug_hints_data,
-                        debug_hints,
-                    ));
+                    sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints));
                 }
             });
         });
@@ -64,16 +57,8 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         let std_sum = Arc::new(Self {
             mode,
             sum_airs: Mutex::new(Vec::new()),
-            bus_vals_left: if mode == StdMode::Debug {
-                Some(Mutex::new(BTreeMap::new()))
-            } else {
-                None
-            },
-            bus_vals_right: if mode == StdMode::Debug {
-                Some(Mutex::new(BTreeMap::new()))
-            } else {
-                None
-            },
+            bus_vals_left: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
+            bus_vals_right: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
         });
 
         wcm.register_component(std_sum.clone(), None, None);
@@ -131,10 +116,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
             let ncols = if let HintFieldValue::Field(ncols) = ncols {
-                ncols
-                    .as_canonical_biguint()
-                    .to_usize()
-                    .expect("Cannot convert to usize")
+                ncols.as_canonical_biguint().to_usize().expect("Cannot convert to usize")
             } else {
                 log::error!("Proves hint must be a field element");
                 panic!();
@@ -181,10 +163,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                     continue;
                 }
 
-                let mul = mul
-                    .as_canonical_biguint()
-                    .to_usize()
-                    .expect("Cannot convert to usize");
+                let mul = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                 for _ in 0..mul {
                     // TODO: The sumid strategy seems not to work
                     let bus_value = bus_vals.values().filter_map(|v| Some(v.get(j))).collect();
@@ -210,10 +189,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
             bus_vals_map.remove(idx);
         } else {
-            other_bus_vals
-                .entry(opid)
-                .or_insert(Vec::new())
-                .push((row, val));
+            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val));
         }
 
         if bus_vals_map.is_empty() {
@@ -238,16 +214,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         if stage == 2 {
             let sum_airs = self.sum_airs.lock().unwrap();
 
-            for (airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints) in
-                sum_airs.iter()
-            {
-                let air_instance_ids = pctx
-                    .air_instance_repo
-                    .find_air_instances(*airgroup_id, *air_id);
+            for (airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints) in sum_airs.iter() {
+                let air_instance_ids = pctx.air_instance_repo.find_air_instances(*airgroup_id, *air_id);
 
                 for air_instance_id in air_instance_ids {
-                    let air_instaces_vec =
-                        &mut pctx.air_instance_repo.air_instances.write().unwrap();
+                    let air_instaces_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
 
                     let air_instance = &mut air_instaces_vec[air_instance_id];
 
@@ -267,14 +238,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let num_rows = air.num_rows();
 
                     if self.mode == StdMode::Debug {
-                        self.debug(
-                            &pctx,
-                            &sctx,
-                            air_instance,
-                            num_rows,
-                            debug_hints_data.clone(),
-                            debug_hints.clone(),
-                        );
+                        self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone(), debug_hints.clone());
                     }
 
                     // Populate the im columns
@@ -310,11 +274,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                         // Apply a map&reduce strategy to compute the division
                         // TODO! Explore how to do it in only one step
                         // Step 1: Compute the division in parallel
-                        let results: Vec<HintFieldOutput<F>> = (0..num_rows)
-                            .into_par_iter()
-                            .map(|i| num.get(i) * den.get(i))
-                            .collect(); // Collect results into a vector
-                                        // Step 2: Store the results in 'im'
+                        let results: Vec<HintFieldOutput<F>> =
+                            (0..num_rows).into_par_iter().map(|i| num.get(i) * den.get(i)).collect(); // Collect results into a vector
+                                                                                                      // Step 2: Store the results in 'im'
                         for (i, &value) in results.iter().enumerate() {
                             im.set(i, value);
                         }
@@ -323,10 +285,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     // We know that at most one product hint exists
                     let gsum_hint = if gsum_hints.len() > 1 {
-                        panic!(
-                            "Multiple product hints found for AIR '{}'",
-                            air.name().unwrap_or("unknown")
-                        );
+                        panic!("Multiple product hints found for AIR '{}'", air.name().unwrap_or("unknown"));
                     } else {
                         gsum_hints[0] as usize
                     };
@@ -359,13 +318,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     // set the computed gsum column and its associated airgroup_val
                     set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
-                    set_hint_field_val(
-                        &sctx,
-                        air_instance,
-                        gsum_hint as u64,
-                        "result",
-                        gsum.get(num_rows - 1),
-                    );
+                    set_hint_field_val(&sctx, air_instance, gsum_hint as u64, "result", gsum.get(num_rows - 1));
 
                     log::info!(
                         "{}: Completed witness computation for AIR '{}' at stage {}",
@@ -390,38 +343,26 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                 println!("\t ► Unmatching bus values thrown as 'assume':");
                 for (opid, vals) in bus_vals_right.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(
-                        vals.iter().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
                     if left_to_print == 0 {
                         println!("\t      ...");
                     } else {
                         break;
                     }
-                    print_rows(
-                        vals.iter().rev().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
                     println!();
                 }
 
                 println!("\t ► Unmatching bus values thrown as 'prove':");
                 for (opid, vals) in bus_vals_left.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(
-                        vals.iter().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
                     if left_to_print == 0 {
                         println!("\t      ...");
                     } else {
                         break;
                     }
-                    print_rows(
-                        vals.iter().rev().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
                     println!();
                 }
             }

@@ -10,8 +10,8 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
-    HintFieldOutput, HintFieldValue,
+    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput,
+    HintFieldValue,
 };
 
 use crate::{Decider, StdMode};
@@ -57,16 +57,8 @@ impl<F: PrimeField> StdProd<F> {
         let std_prod = Arc::new(Self {
             mode,
             prod_airs: Mutex::new(Vec::new()),
-            bus_vals_num: if mode == StdMode::Debug {
-                Some(Mutex::new(BTreeMap::new()))
-            } else {
-                None
-            },
-            bus_vals_den: if mode == StdMode::Debug {
-                Some(Mutex::new(BTreeMap::new()))
-            } else {
-                None
-            },
+            bus_vals_num: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
+            bus_vals_den: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
         });
 
         wcm.register_component(std_prod.clone(), None, None);
@@ -128,10 +120,7 @@ impl<F: PrimeField> StdProd<F> {
                 HintFieldOptions::default(),
             );
             let ncols = if let HintFieldValue::Field(ncols) = ncols {
-                ncols
-                    .as_canonical_biguint()
-                    .to_usize()
-                    .expect("Cannot convert to usize")
+                ncols.as_canonical_biguint().to_usize().expect("Cannot convert to usize")
             } else {
                 log::error!("Proves hint must be a field element");
                 panic!();
@@ -191,10 +180,7 @@ impl<F: PrimeField> StdProd<F> {
         if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
             bus_vals_map.remove(idx);
         } else {
-            other_bus_vals
-                .entry(opid)
-                .or_insert(Vec::new())
-                .push((row, val));
+            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val));
         }
 
         if bus_vals_map.is_empty() {
@@ -219,16 +205,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         if stage == 2 {
             let prod_airs = self.prod_airs.lock().unwrap();
 
-            for (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints) in
-                prod_airs.iter()
-            {
-                let air_instance_ids = pctx
-                    .air_instance_repo
-                    .find_air_instances(*airgroup_id, *air_id);
+            for (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints) in prod_airs.iter() {
+                let air_instance_ids = pctx.air_instance_repo.find_air_instances(*airgroup_id, *air_id);
 
                 for air_instance_id in air_instance_ids {
-                    let air_instances_vec =
-                        &mut pctx.air_instance_repo.air_instances.write().unwrap();
+                    let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
                     let air_instance = &mut air_instances_vec[air_instance_id];
 
                     // Get the air associated with the air_instance
@@ -247,22 +228,12 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     let num_rows = air.num_rows();
 
                     if self.mode == StdMode::Debug {
-                        self.debug(
-                            &pctx,
-                            &sctx,
-                            air_instance,
-                            num_rows,
-                            debug_hints_data.clone(),
-                            debug_hints.clone(),
-                        );
+                        self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone(), debug_hints.clone());
                     }
 
                     // We know that at most one product hint exists
                     let gprod_hint = if gprod_hints.len() > 1 {
-                        panic!(
-                            "Multiple product hints found for AIR '{}'",
-                            air.name().unwrap_or("unknown")
-                        );
+                        panic!("Multiple product hints found for AIR '{}'", air.name().unwrap_or("unknown"));
                     } else {
                         gprod_hints[0] as usize
                     };
@@ -303,13 +274,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     // set the computed gprod column and its associated airgroup_val
                     set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
-                    set_hint_field_val(
-                        &sctx,
-                        air_instance,
-                        gprod_hint as u64,
-                        "result",
-                        gprod.get(num_rows - 1),
-                    );
+                    set_hint_field_val(&sctx, air_instance, gprod_hint as u64, "result", gprod.get(num_rows - 1));
 
                     log::info!(
                         "{}: Completed witness computation for AIR '{}' at stage {}",
@@ -334,38 +299,26 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                 println!("\t ► Unmatching bus values thrown as 'prove':");
                 for (opid, vals) in bus_vals_num.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(
-                        vals.iter().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
                     if left_to_print == 0 {
                         println!("\t      ...");
                     } else {
                         break;
                     }
-                    print_rows(
-                        vals.iter().rev().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
                     println!();
                 }
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
                 for (opid, vals) in bus_vals_den.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(
-                        vals.iter().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
                     if left_to_print == 0 {
                         println!("\t      ...");
                     } else {
                         break;
                     }
-                    print_rows(
-                        vals.iter().rev().map(|(row, val)| (*row, val)),
-                        max_values_to_print,
-                    );
+                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
                     println!();
                 }
             }

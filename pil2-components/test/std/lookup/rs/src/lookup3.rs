@@ -15,26 +15,17 @@ impl<F: PrimeField + Copy> Lookup3<F> {
     const MY_NAME: &'static str = "Lookup3";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let lookup3 = Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        });
+        let lookup3 = Arc::new(Self { _phantom: std::marker::PhantomData });
 
-        wcm.register_component(
-            lookup3.clone(),
-            Some(LOOKUP_AIRGROUP_ID),
-            Some(LOOKUP_3_AIR_IDS),
-        );
+        wcm.register_component(lookup3.clone(), Some(LOOKUP_AIRGROUP_ID), Some(LOOKUP_3_AIR_IDS));
 
         lookup3
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0])
-            .unwrap();
+        let (buffer_size, _) =
+            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0]).unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
@@ -55,9 +46,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
     ) {
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx
-            .pilout
-            .get_air(air_instance.airgroup_id, air_instance.air_id);
+        let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
@@ -67,21 +56,13 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         );
 
         if stage == 1 {
-            let (_, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0])
-                .unwrap();
+            let (_, offsets) =
+                ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0]).unwrap();
 
             let buffer = &mut air_instance.buffer;
 
-            let num_rows = pctx
-                .pilout
-                .get_air(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0])
-                .num_rows();
-            let mut trace =
-                Lookup35Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+            let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0]).num_rows();
+            let mut trace = Lookup35Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);

@@ -33,10 +33,7 @@ impl<F: PrimeField> Std<F> {
         // of its (possibly) associated AIRs: U8Air ...
         let range_check = StdRangeCheck::new(MODE, wcm, rc_air_data);
 
-        Arc::new(Self {
-            range_check,
-            range_check_predecessors: AtomicU32::new(0),
-        })
+        Arc::new(Self { range_check, range_check_predecessors: AtomicU32::new(0) })
     }
 
     pub fn register_predecessor(&self) {

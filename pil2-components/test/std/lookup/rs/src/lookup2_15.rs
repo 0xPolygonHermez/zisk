@@ -19,31 +19,21 @@ where
     const MY_NAME: &'static str = "Lookup2_15";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let lookup2_15 = Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        });
+        let lookup2_15 = Arc::new(Self { _phantom: std::marker::PhantomData });
 
-        wcm.register_component(
-            lookup2_15.clone(),
-            Some(LOOKUP_AIRGROUP_ID),
-            Some(LOOKUP_2_15_AIR_IDS),
-        );
+        wcm.register_component(lookup2_15.clone(), Some(LOOKUP_AIRGROUP_ID), Some(LOOKUP_2_15_AIR_IDS));
 
         lookup2_15
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0])
-            .unwrap();
+        let (buffer_size, _) =
+            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0]).unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance =
-            AirInstance::new(LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0], None, buffer);
+        let air_instance = AirInstance::new(LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0], None, buffer);
 
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
@@ -65,9 +55,7 @@ where
 
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx
-            .pilout
-            .get_air(air_instance.airgroup_id, air_instance.air_id);
+        let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
@@ -85,13 +73,8 @@ where
 
             let buffer = &mut air_instance.buffer;
 
-            let num_rows = pctx
-                .pilout
-                .get_air(LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0])
-                .num_rows();
-            let mut trace =
-                Lookup2_154Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+            let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0]).num_rows();
+            let mut trace = Lookup2_154Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // TODO: Add the ability to send inputs to lookup3
             //       and consequently add random selectors

@@ -5,9 +5,7 @@ use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_hints::{
-    get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue,
-};
+use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue};
 use std::sync::atomic::Ordering;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
@@ -67,20 +65,13 @@ impl<F: PrimeField> U8Air<F> {
         self.update_multiplicity(drained_inputs);
 
         let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        let air_instance_id =
-            air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
+        let air_instance_id = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
 
         let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul = &*self.mul.lock().unwrap();
-        set_hint_field(
-            self.wcm.get_sctx(),
-            air_instance,
-            self.hint.load(Ordering::Acquire),
-            "reference",
-            mul,
-        );
+        set_hint_field(self.wcm.get_sctx(), air_instance, self.hint.load(Ordering::Acquire), "reference", mul);
 
         log::info!("{}: Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }
@@ -88,10 +79,7 @@ impl<F: PrimeField> U8Air<F> {
     fn update_multiplicity(&self, drained_inputs: Vec<F>) {
         // TODO! Do it in parallel
         for input in &drained_inputs {
-            let value = input
-                .as_canonical_biguint()
-                .to_usize()
-                .expect("Cannot convert to usize");
+            let value = input.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
             // Note: to avoid non-expected panics, we perform a reduction to the value
             //       In debug mode, this is, in fact, checked before
             let index = value % NUM_ROWS;
@@ -123,11 +111,8 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
 
         // self.setup_repository.replace(sctx.setups.clone());
 
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, self.airgroup_id, self.air_id)
-            .unwrap();
+        let (buffer_size, _) =
+            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
         let buffer = vec![F::zero(); buffer_size as usize];
 
         // Add a new air instance. Since U8Air is a table, only this air instance is needed

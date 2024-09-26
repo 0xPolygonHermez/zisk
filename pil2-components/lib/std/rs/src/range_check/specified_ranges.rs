@@ -7,8 +7,7 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, set_hint_field,
-    HintFieldOptions, HintFieldValue,
+    get_hint_field, get_hint_field_constant, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue,
 };
 
 use crate::Range;
@@ -61,11 +60,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             // Update the multiplicity column
             self.update_multiplicity(drained_inputs);
 
-            log::info!(
-                "{}: Updated inputs for AIR '{}'",
-                Self::MY_NAME,
-                "SpecifiedRanges"
-            );
+            log::info!("{}: Updated inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");
         }
     }
 
@@ -80,28 +75,17 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         let hints = self.hints.lock().unwrap();
 
         let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        let air_instance_id =
-            air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
+        let air_instance_id = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
         let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul = &*self.muls.lock().unwrap();
 
         for (index, hint) in hints.iter().enumerate().skip(1) {
-            set_hint_field(
-                self.wcm.get_sctx(),
-                air_instance,
-                *hint,
-                "reference",
-                &mul[index - 1],
-            );
+            set_hint_field(self.wcm.get_sctx(), air_instance, *hint, "reference", &mul[index - 1]);
         }
 
-        log::info!(
-            "{}: Drained inputs for AIR '{}'",
-            Self::MY_NAME,
-            "SpecifiedRanges"
-        );
+        log::info!("{}: Drained inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<(Range<F>, F)>) {
@@ -113,15 +97,9 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         for (range, input) in &drained_inputs {
             let value = *input - range.0;
 
-            let value = value
-                .as_canonical_biguint()
-                .to_usize()
-                .expect("Cannot convert to usize");
+            let value = value.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
 
-            let range_index = ranges
-                .iter()
-                .position(|r| r == range)
-                .expect("Range not found");
+            let range_index = ranges.iter().position(|r| r == range).expect("Range not found");
 
             // Note: to avoid non-expected panics, we perform a reduction to the value
             //       In debug mode, this is, in fact, checked before
@@ -232,11 +210,8 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
             }
         }
 
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, self.airgroup_id, self.air_id)
-            .unwrap();
+        let (buffer_size, _) =
+            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
         let buffer = vec![F::zero(); buffer_size as usize];
 
         // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed

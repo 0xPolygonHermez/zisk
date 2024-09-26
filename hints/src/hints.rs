@@ -67,7 +67,7 @@ pub enum HintFieldValue<F: Clone + Copy> {
     FieldExtended(ExtensionField<F>),
     Column(Vec<F>),
     ColumnExtended(Vec<ExtensionField<F>>),
-    String(String)
+    String(String),
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -554,13 +554,11 @@ impl HintCol {
                 HintFieldValue::ColumnExtended(extended_vec)
             }
             HintFieldType::String => {
-                let str_slice =  unsafe { CStr::from_ptr(hint_field.string_value).to_str() };
+                let str_slice = unsafe { CStr::from_ptr(hint_field.string_value).to_str() };
 
                 match str_slice {
                     Ok(value) => HintFieldValue::String(value.to_string()),
-                    Err(_) => {
-                        HintFieldValue::String(String::new())
-                    }
+                    Err(_) => HintFieldValue::String(String::new()),
                 }
             }
         }

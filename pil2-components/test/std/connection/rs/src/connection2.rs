@@ -19,15 +19,9 @@ where
     const MY_NAME: &'static str = "Connection2";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let connection2 = Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        });
+        let connection2 = Arc::new(Self { _phantom: std::marker::PhantomData });
 
-        wcm.register_component(
-            connection2.clone(),
-            Some(CONNECTION_AIRGROUP_ID),
-            Some(CONNECTION_2_AIR_IDS),
-        );
+        wcm.register_component(connection2.clone(), Some(CONNECTION_AIRGROUP_ID), Some(CONNECTION_2_AIR_IDS));
 
         connection2
     }
@@ -42,12 +36,7 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            CONNECTION_AIRGROUP_ID,
-            CONNECTION_2_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance = AirInstance::new(CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
@@ -68,9 +57,7 @@ where
 
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx
-            .pilout
-            .get_air(air_instance.airgroup_id, air_instance.air_id);
+        let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
         log::info!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
@@ -88,13 +75,9 @@ where
 
             let buffer = &mut air_instance.buffer;
 
-            let num_rows = pctx
-                .pilout
-                .get_air(CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0])
-                .num_rows();
+            let num_rows = pctx.pilout.get_air(CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0]).num_rows();
             let mut trace =
-                Connection21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+                Connection21Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a = rng.gen();

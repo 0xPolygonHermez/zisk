@@ -32,21 +32,10 @@ where
     Standard: Distribution<F>,
 {
     pub fn new() -> Self {
-        ConnectionWitness {
-            wcm: None,
-            connection1: None,
-            connection2: None,
-            connection_new: None,
-            std_lib: None,
-        }
+        ConnectionWitness { wcm: None, connection1: None, connection2: None, connection_new: None, std_lib: None }
     }
 
-    pub fn initialize(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
         let std_lib = Std::new(wcm.clone(), None);
@@ -66,12 +55,7 @@ impl<F: PrimeField> WitnessLibrary<F> for ConnectionWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
         self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
@@ -83,31 +67,13 @@ where
 
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
-        self.connection1
-            .as_ref()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.connection2
-            .as_ref()
-            .unwrap()
-            .execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.connection_new
-            .as_ref()
-            .unwrap()
-            .execute(pctx, ectx, sctx);
+        self.connection1.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.connection2.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.connection_new.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
-        self.wcm
-            .as_ref()
-            .unwrap()
-            .calculate_witness(stage, pctx, ectx, sctx);
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+        self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {
@@ -136,9 +102,7 @@ mod tests {
 
     #[test]
     fn test_verify_constraints() {
-        let root_path = std::env::current_dir()
-            .expect("Failed to get current directory")
-            .join("../../../../");
+        let root_path = std::env::current_dir().expect("Failed to get current directory").join("../../../../");
         let root_path = std::fs::canonicalize(root_path).expect("Failed to canonicalize root path");
 
         let verify_constraints = VerifyConstraintsCmd {

@@ -15,15 +15,9 @@ impl<F: PrimeField + Copy> Permutation2<F> {
     const MY_NAME: &'static str = "Permutation2";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let permutation2 = Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        });
+        let permutation2 = Arc::new(Self { _phantom: std::marker::PhantomData });
 
-        wcm.register_component(
-            permutation2.clone(),
-            Some(PERMUTATION_AIRGROUP_ID),
-            Some(PERMUTATION_2_6_AIR_IDS),
-        );
+        wcm.register_component(permutation2.clone(), Some(PERMUTATION_AIRGROUP_ID), Some(PERMUTATION_2_6_AIR_IDS));
 
         permutation2
     }
@@ -38,12 +32,7 @@ impl<F: PrimeField + Copy> Permutation2<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(
-            PERMUTATION_AIRGROUP_ID,
-            PERMUTATION_2_6_AIR_IDS[0],
-            None,
-            buffer,
-        );
+        let air_instance = AirInstance::new(PERMUTATION_AIRGROUP_ID, PERMUTATION_2_6_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
@@ -72,21 +61,14 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         );
 
         if stage == 1 {
-            let (_, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, air_id)
-                .unwrap();
+            let (_, offsets) =
+                ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, air_id).unwrap();
 
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
-            let mut trace = Permutation2_63Trace::map_buffer(
-                buffer.as_mut_slice(),
-                num_rows,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            let mut trace =
+                Permutation2_63Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // Note: Here it is assumed that num_rows of permutation2 is equal to
             //       the sum of num_rows of each variant of permutation1.
