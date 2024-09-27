@@ -11,7 +11,7 @@ use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
 use zisk_pil::*;
 
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 23;
+const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,

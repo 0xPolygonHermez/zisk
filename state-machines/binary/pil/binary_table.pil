@@ -2,21 +2,21 @@ require "constants.pil";
 
 // PIL Binary Operations Table used by Binary
 //                                                                                                     Running Total
-// MINU/MINU_W  (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21               + 2^18
-// MIN/MIN_W    (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21        + 2^19 + 2^18
-// MAXU/MAXU_W  (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21 + 2^20        + 2^18
-// MAX/MAX_W    (OP:0x0c)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^21 + 2^20 + 2^19 + 2^18
-// LTU/LTU_W    (OP:0x04)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                      2^19 + 2^18
-// LT/LT_W      (OP:0x05)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |               2^20
-// EQ/EQ_W      (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |               2^20 + 2^19 + 2^18
-// ADD/ADD_W    (OP:0x02)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                             2^18
-// SUB/SUB_W    (OP:0x03)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |                      2^19
-// LEU/LEU_W    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |               2^20        + 2^18
-// LE/LE_W      (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |               2^20 + 2^19
-// AND/AND_W    (OP:0x20)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 |        2^21 + 2^20 + 2^19 + 2^18 + 2^17
-// OR/OR_W      (OP:0x21)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22                             + 2^17
-// XOR/XOR_W    (OP:0x22)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22                      + 2^18
-// EXT_32       (OP:0x23)       2^16 (AxB)                                                  = 2^16 | 2^22                      + 2^18 + 2^17 => 2^23
+// MINU/MINU_W  (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |               2^19      
+// MIN/MIN_W    (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20                   
+// MAXU/MAXU_W  (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20 + 2^19            
+// MAX/MAX_W    (OP:0x0c)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 | 2^21
+// LTU/LTU_W    (OP:0x04)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21               + 2^18
+// LT/LT_W      (OP:0x05)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21        + 2^19           
+// EQ/EQ_W      (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21        + 2^19 + 2^18
+// ADD/ADD_W    (OP:0x02)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21 + 2^20
+// SUB/SUB_W    (OP:0x03)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21 + 2^20        + 2^18
+// LEU/LEU_W    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20        + 2^18 + 2^17
+// LE/LE_W      (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19      
+// AND/AND_W    (OP:0x20)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19        + 2^17
+// OR/OR_W      (OP:0x21)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19 + 2^18
+// XOR/XOR_W    (OP:0x22)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19 + 2^18 + 2^17
+// EXT_32       (OP:0x23)       2^16 (AxB)                                                  = 2^16 | 2^21 + 2^20 + 2^19 + 2^18 + 2^17 + 2^16 => 2^22
 // --------------------------------------------------------------------------------------------------------------------------
 // (*) Use carry
 // (**) Do not use last indicator, but it is used for simplicity of the lookup
@@ -25,7 +25,7 @@ require "constants.pil";
 const int EXT_32_OP = 0x23;
 const int BINARY_TABLE_ID = 125;
 
-airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
+airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
 
     #pragma memory m1 start
     col witness multiplicity;
@@ -39,8 +39,8 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
         return;
     }
 
-    if (N < 2**23) {
-        error(`N must be at least 2^23, but N=${N} was provided`);
+    if (N < 2**22) {
+        error(`N must be at least 2^22, but N=${N} was provided`);
     }
 
     #pragma timer tt start
