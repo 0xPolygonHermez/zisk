@@ -374,7 +374,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             true => buff_size_stages,
             false => buff_size_xdivxsub,
         }
-
     }
 
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
