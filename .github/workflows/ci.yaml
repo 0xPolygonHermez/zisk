@@ -7,6 +7,8 @@ on:
 jobs:
   cargo-test:
     name: cargo test
+    env:
+      STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,6 +17,27 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install -y protobuf-compiler build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev postgresql libpqxx-dev libpqxx-doc nasm libsecp256k1-dev libprotoc-dev libsodium-dev libprotobuf-dev libssl-dev cmake libgrpc++-dev uuid-dev
+
+      - name: Check out pil2-stark
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-stark
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: develop
+          path: pil2-stark
+
+      - name: Install pil2-stark
+        working-directory: pil2-stark
+        run: |
+          git submodule init
+          git submodule update
+          make clean
+          make starks_lib -j
+          make -j bctree
       - name: cargo test
         run: cargo test --workspace --features no_lib_link
   cargo-check:
@@ -27,11 +50,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
-      - name: Modify stark-prover-lib
-        run: |
-          sed -i 's/default = \["no_lib_link"\]/default = \[\]/g' ./provers/starks-lib-c/Cargo.toml
-      - name: cargo check
-        run: cargo check --workspace --features no_lib_link
   cargo-fmt:
     name: cargo fmt
     runs-on: ubuntu-latest
@@ -52,8 +70,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
-      - name: Modify stark-prover-lib
-        run: sed -i 's/default = \[\]/default = \["no_lib_link"\]/g' ./provers/starks-lib-c/Cargo.toml
       - name: cargo fix --workspace
         run: |
           # Run cargo fix on the project
@@ -94,7 +110,7 @@ jobs:
         run: cargo audit
   fibonacci-square:
     name: Test fibonacci square
-    runs-on: [self-hosted, zisk]
+    runs-on: ubuntu-latest
     env:
       STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     steps:
@@ -201,8 +217,8 @@ jobs:
 
       - name: Generate proof
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs -d
 
       - name: Verify proof
         run: |
-          node pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build -p examples/fibonacci-square/build/proofs
+          node pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey -p examples/fibonacci-square/build/proofs
