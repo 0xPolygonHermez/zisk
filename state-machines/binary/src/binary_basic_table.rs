@@ -11,8 +11,6 @@ use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
 use zisk_pil::*;
 
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
-
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
@@ -23,6 +21,7 @@ pub struct BinaryBasicTableSM<F> {
     inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
 
     // Row multiplicity table
+    num_rows: usize,
     multiplicity: Mutex<Vec<u64>>,
 
     _phantom: std::marker::PhantomData<F>,
@@ -35,11 +34,14 @@ pub enum BasicTableSMErr {
 
 impl<F: Field> BinaryBasicTableSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let air = wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+
         let binary_basic_table = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
-            multiplicity: Mutex::new(vec![0; MULTIPLICITY_TABLE_SIZE]),
+            num_rows: air.num_rows(),
+            multiplicity: Mutex::new(vec![0; air.num_rows()]),
             _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
@@ -71,15 +73,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 .expect("BinaryTable buffer not found");
 
             let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
-            let mut trace_accessor = BinaryTable0Trace::map_buffer(
-                &mut buffer,
-                MULTIPLICITY_TABLE_SIZE,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            let mut trace_accessor =
+                BinaryTable0Trace::map_buffer(&mut buffer, self.num_rows, offsets[0] as usize)
+                    .unwrap();
 
             let multiplicity = self.multiplicity.lock().unwrap();
-            for i in 0..MULTIPLICITY_TABLE_SIZE {
+            for i in 0..self.num_rows {
                 trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
 
@@ -119,7 +118,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 offset_operation = (11 * P2_18) + (i.opcode as u64 - 32) * P2_17;
             }
             let row = offset_a + offset_b + offset_cin + offset_last + offset_operation;
-            assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
+            assert!(row < self.num_rows as u64);
             multiplicity[row as usize] += 1;
         }
     }
