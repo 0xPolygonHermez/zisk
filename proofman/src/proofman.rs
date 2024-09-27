@@ -132,7 +132,7 @@ impl<F: Field + 'static> ProofMan<F> {
         if debug_mode != 0 {
             let mut proofs: Vec<*mut c_void> = provers.iter().map(|prover| prover.get_proof()).collect();
 
-            log::info!("{}: --> Verifying constraints", Self::MY_NAME);
+            log::info!("{}: --> Checking constraints", Self::MY_NAME);
 
             witness_lib.debug(pctx.clone(), ectx.clone(), sctx.clone());
 
@@ -143,7 +143,14 @@ impl<F: Field + 'static> ProofMan<F> {
                 let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
                 let mut valid_constraints_prover = true;
-                log::debug!("{}: ··· Air {} Instance {}:", Self::MY_NAME, air.name().unwrap(), idx);
+                log::info!(
+                    "{}:     ► Instance #{}: Air [{}:{}] {}",
+                    Self::MY_NAME,
+                    idx,
+                    air_instance.airgroup_id,
+                    air_instance.air_id,
+                    air.name().unwrap()
+                );
                 for constraint in &constraints[idx] {
                     if (debug_mode == 1 && constraint.n_rows == 0) || (debug_mode != 3 && constraint.im_pol) {
                         continue;
@@ -155,7 +162,7 @@ impl<F: Field + 'static> ProofMan<F> {
                         "is valid".bright_green()
                     };
                     if constraint.im_pol {
-                        log::debug!(
+                        log::info!(
                             "{}: ···    Intermediate polynomial (stage {}) {} -> {:?}",
                             Self::MY_NAME,
                             constraint.stage,
@@ -163,8 +170,8 @@ impl<F: Field + 'static> ProofMan<F> {
                             line_str.to_str().unwrap()
                         );
                     } else {
-                        log::debug!(
-                            "{}: ···    Constraint {} (stage {}) {} -> {:?}",
+                        log::info!(
+                            "{}:     · Constraint #{} (stage {}) {} -> {:?}",
                             Self::MY_NAME,
                             constraint.id,
                             constraint.stage,
@@ -179,15 +186,15 @@ impl<F: Field + 'static> ProofMan<F> {
                     for i in 0..n_rows {
                         let row = constraint.rows[i as usize];
                         if row.dim == 1 {
-                            log::debug!(
-                                "{}: ···        Failed at row {} with value: {}",
+                            log::info!(
+                                "{}: ···        \u{2717} Failed at row {} with value: {}",
                                 Self::MY_NAME,
                                 row.row,
                                 row.value[0]
                             );
                         } else {
-                            log::debug!(
-                                "{}: ···        Failed at row {} with value: [{}, {}, {}]",
+                            log::info!(
+                                "{}: ···        \u{2717} Failed at row {} with value: [{}, {}, {}]",
                                 Self::MY_NAME,
                                 row.row,
                                 row.value[0],
@@ -196,37 +203,30 @@ impl<F: Field + 'static> ProofMan<F> {
                             );
                         }
                     }
-                    log::debug!("{}: ···   ", Self::MY_NAME);
                 }
 
                 if !valid_constraints_prover {
-                    log::debug!(
+                    log::info!(
                         "{}: ··· {}",
                         Self::MY_NAME,
-                        format!(
-                            "Not all constraints for instance {} of air {} were verified!",
-                            idx,
-                            air.name().unwrap()
-                        )
-                        .bright_yellow()
-                        .bold()
-                    );
-                } else {
-                    log::debug!(
-                        "{}: ··· {}",
-                        Self::MY_NAME,
-                        format!("All constraints for instance {} of air {} were verified!", idx, air.name().unwrap())
-                            .bright_cyan()
+                        format!("\u{2717} Not all constraints for Instance #{} were verified", idx,)
+                            .bright_red()
                             .bold()
                     );
+                } else {
+                    log::info!(
+                        "{}:     {}",
+                        Self::MY_NAME,
+                        format!("\u{2713} All constraints for Instance #{} were verified", idx,).bright_green().bold()
+                    );
                 }
-                log::debug!("{}: ···   ", Self::MY_NAME);
+
                 if !valid_constraints_prover {
                     valid_constraints = false;
                 }
             }
 
-            log::info!("{}: <-- Verifying constraints", Self::MY_NAME);
+            log::info!("{}: <-- Checking constraints", Self::MY_NAME);
 
             log::info!("{}: --> Checking global constraints", Self::MY_NAME);
 
@@ -243,24 +243,28 @@ impl<F: Field + 'static> ProofMan<F> {
 
             log::info!("{}: <-- Checking global constraints", Self::MY_NAME);
 
-            if !global_constraints_verified {
-                log::debug!(
+            if global_constraints_verified {
+                log::info!(
                     "{}: ··· {}",
                     Self::MY_NAME,
-                    "Not all global constraints were verified.".bright_yellow().bold()
+                    "\u{2713} All global constraints were successfully verified".bright_green().bold()
                 );
             } else {
-                log::debug!(
+                log::info!(
                     "{}: ··· {}",
                     Self::MY_NAME,
-                    "All global constraints were successfully verified.".bright_cyan().bold()
+                    "\u{2717} Not all global constraints were verified".bright_red().bold()
                 );
             }
 
             if valid_constraints && global_constraints_verified {
-                log::debug!("{}: ··· {}", Self::MY_NAME, "All constraints were verified!".bright_green().bold());
+                log::info!("{}: ··· {}", Self::MY_NAME, "\u{2713} All constraints were verified".bright_green().bold());
             } else {
-                log::debug!("{}: ··· {}", Self::MY_NAME, "Not all constraints were verified.".bright_red().bold());
+                log::info!(
+                    "{}: ··· {}",
+                    Self::MY_NAME,
+                    "\u{2717} Not all constraints were verified.".bright_red().bold()
+                );
             }
 
             return Ok(vec![]);

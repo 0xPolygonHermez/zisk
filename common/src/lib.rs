@@ -1,7 +1,7 @@
 mod air_instance;
 mod air_instances_repository;
 mod buffer_allocator;
-mod debug_mode;
+// mod debug_mode;
 mod execution_ctx;
 mod lib_pilout;
 mod proof_ctx;
@@ -15,7 +15,7 @@ pub mod global_info;
 pub use air_instance::*;
 pub use air_instances_repository::*;
 pub use buffer_allocator::*;
-pub use debug_mode::*;
+// pub use debug_mode::*;
 pub use execution_ctx::*;
 pub use lib_pilout::*;
 pub use proof_ctx::*;
