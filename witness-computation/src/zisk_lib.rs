@@ -10,7 +10,7 @@ use zisk_pil::*;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
 use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
 use sm_main::MainSM;
@@ -19,6 +19,7 @@ use sm_mem::{MemAlignedSM, MemSM, MemUnalignedSM};
 pub struct ZiskWitness<F: PrimeField> {
     pub public_inputs_path: PathBuf,
     pub rom_path: PathBuf,
+    verbose_mode: VerboseMode,
 
     // Witness computation manager
     pub wcm: Option<Arc<WitnessManager<F>>>,
@@ -39,7 +40,11 @@ pub struct ZiskWitness<F: PrimeField> {
 }
 
 impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
-    pub fn new(rom_path: PathBuf, public_inputs_path: PathBuf) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        rom_path: PathBuf,
+        public_inputs_path: PathBuf,
+        verbose_mode: VerboseMode,
+    ) -> Result<Self, Box<dyn Error>> {
         // Check rom_path path exists
         if !rom_path.exists() {
             return Err(format!("ROM file not found at path: {:?}", rom_path).into());
@@ -55,6 +60,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         Ok(ZiskWitness {
             public_inputs_path,
             rom_path,
+            verbose_mode,
             wcm: None,
             arith_sm: None,
             arith_32_sm: None,
@@ -163,7 +169,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
     ) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
-        self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
+        self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx, self.verbose_mode.clone());
     }
 
     fn end_proof(&mut self) {
@@ -199,16 +205,17 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
 pub extern "Rust" fn init_library(
     rom_path: Option<PathBuf>,
     public_inputs_path: PathBuf,
+    verbose_mode: VerboseMode,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)
         .format_level(true)
         .format_target(false)
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(verbose_mode.clone().into())
         .init();
 
     let rom_path = rom_path.ok_or("ROM path is required")?;
 
-    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path)?;
+    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path, verbose_mode)?;
     Ok(Box::new(zisk_witness))
 }
