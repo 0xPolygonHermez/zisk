@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -22,8 +22,8 @@ pub struct ArithRangeTableSM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> ArithRangeTableSM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: Field> ArithRangeTableSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let arith_range_table_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
@@ -57,14 +57,14 @@ impl<F: AbstractField + Send + Sync + 'static> ArithRangeTableSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for ArithRangeTableSM<F> {
+impl<F: Field> WitnessComponent<F> for ArithRangeTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

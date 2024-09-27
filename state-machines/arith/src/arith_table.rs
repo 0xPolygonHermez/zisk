@@ -3,10 +3,10 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use rayon::{vec, Scope};
+use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredOperation};
 
@@ -22,8 +22,8 @@ pub struct ArithTableSM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> ArithTableSM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: Field> ArithTableSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let _arith_table_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
@@ -56,14 +56,14 @@ impl<F: AbstractField + Send + Sync + 'static> ArithTableSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for ArithTableSM<F> {
+impl<F: Field> WitnessComponent<F> for ArithTableSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

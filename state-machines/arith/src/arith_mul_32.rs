@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -22,8 +22,8 @@ pub struct ArithMul32SM<F> {
     _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> ArithMul32SM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+impl<F: Field> ArithMul32SM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let arith_mul_32_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
@@ -57,14 +57,14 @@ impl<F: AbstractField + Send + Sync + 'static> ArithMul32SM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for ArithMul32SM<F> {
+impl<F: Field> WitnessComponent<F> for ArithMul32SM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
@@ -83,6 +83,10 @@ impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithMul32SM<F> {
             inputs.extend_from_slice(operations);
 
             while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
+                if drain && !inputs.is_empty() {
+                    // println!("Arith3264SM: Draining inputs3264");
+                }
+
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
@@ -100,7 +104,9 @@ impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithMul32SM<F> {
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
+
         self.prove(&[operation], drain, scope);
+
         result
     }
 }

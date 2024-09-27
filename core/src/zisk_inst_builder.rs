@@ -3,8 +3,8 @@ use crate::{
     STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
-#[cfg(feature = "sp")]
-use crate::SRC_SP;
+// #[cfg(feature = "sp")]
+// use crate::SRC_SP;
 
 #[derive(Debug)]
 pub struct ZiskInstBuilder {
@@ -26,11 +26,11 @@ impl ZiskInstBuilder {
                 store: STORE_NONE,
                 store_offset: 0,
                 set_pc: false,
-                #[cfg(feature = "sp")]
-                set_sp: false,
+                // #[cfg(feature = "sp")]
+                // set_sp: false,
                 ind_width: 8,
-                #[cfg(feature = "sp")]
-                inc_sp: 0,
+                // #[cfg(feature = "sp")]
+                // inc_sp: 0,
                 end: false,
                 a_src: 0,
                 a_use_sp_imm1: 0,
@@ -57,8 +57,8 @@ impl ZiskInstBuilder {
             "mem" => SRC_MEM,
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
-            #[cfg(feature = "sp")]
-            "sp" => SRC_SP,
+            // #[cfg(feature = "sp")]
+            // "sp" => SRC_SP,
             "step" => SRC_STEP,
             _ => panic!("ZiskInstBuilder::a_src() called with invalid src={}", src),
         }
@@ -191,10 +191,10 @@ impl ZiskInstBuilder {
         self.i.set_pc = true;
     }
 
-    #[cfg(feature = "sp")]
-    pub fn set_sp(&mut self) {
-        self.i.set_sp = true;
-    }
+    // #[cfg(feature = "sp")]
+    // pub fn set_sp(&mut self) {
+    //     self.i.set_sp = true;
+    // }
 
     pub fn op(&mut self, optxt: &str) {
         let op = op_from_str(optxt);
@@ -223,10 +223,10 @@ impl ZiskInstBuilder {
         self.i.end = true;
     }
 
-    #[cfg(feature = "sp")]
-    pub fn inc_sp(&mut self, inc: u64) {
-        self.i.inc_sp += inc;
-    }
+    // #[cfg(feature = "sp")]
+    // pub fn inc_sp(&mut self, inc: u64) {
+    //     self.i.inc_sp += inc;
+    // }
 
     pub fn verbose(&mut self, s: &str) {
         self.i.verbose = s.to_owned();

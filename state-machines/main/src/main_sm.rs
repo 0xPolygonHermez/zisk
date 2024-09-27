@@ -1,5 +1,5 @@
 use log::info;
-use p3_field::AbstractField;
+use p3_field::Field;
 
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
@@ -53,11 +53,11 @@ pub struct MainSM<F> {
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     // State machines
     mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM>,
+    binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM<F>>,
 }
 
-impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
+impl<'a, F: Field> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     /// Default number of inputs of the main state machine that are accumulated before being
@@ -80,9 +80,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         rom_path: &Path,
-        wcm: &mut WitnessManager<F>,
+        wcm: &'a WitnessManager<F>,
         mem_sm: Arc<MemSM>,
-        binary_sm: Arc<BinarySM>,
+        binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -144,9 +144,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     pub fn execute(
         &self,
         public_inputs_path: &Path,
-        pctx: &mut ProofCtx<F>,
-        ectx: &mut ExecutionCtx,
-        _sctx: &SetupCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
@@ -171,7 +171,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         pool.scope(|scope| {
             // Wrap the callback to capture the scope variable
             let callback = |emu_traces: EmuTrace| {
-                self.emulator_callback(&self.zisk_rom, emu_traces, scope, pctx, ectx)
+                self.emulator_callback(
+                    &self.zisk_rom,
+                    emu_traces,
+                    scope,
+                    pctx.clone(),
+                    ectx.clone(),
+                    sctx.clone(),
+                )
             };
 
             let result = ZiskEmulator::process_rom(
@@ -184,7 +191,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             self.threads_controller.wait_for_threads();
 
             // Unregister main state machine as a predecessor for all the secondary state machines
-            self.mem_sm.unregister_predecessor(scope);
+            self.mem_sm.unregister_predecessor::<F>(scope);
             self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor(scope);
 
@@ -213,7 +220,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let (_, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info("Main".into(), MAIN_AIR_IDS[0])
+                .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
                 .expect("Error getting buffer info");
 
             // Map the F buffer to a Main0Trace
@@ -233,7 +240,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             let air_segment = mem::take(last_air_segment);
             pool.scope(|scope| {
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, true);
+                    Self::create_air_instance(air_segment, pctx, ectx, sctx, true);
                 });
             });
         }
@@ -246,8 +253,9 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
         zisk_rom: &'a ZiskRom,
         emu_traces: EmuTrace,
         scope: &Scope<'a>,
-        pctx: &'a ProofCtx<F>,
-        ectx: &'a ExecutionCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
         let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
@@ -289,13 +297,13 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
                 "Too many inputs in a Main AIR segment"
             );
 
-            self.prove(emu_slice.required, ectx, scope);
+            self.prove(emu_slice.required, ectx.clone(), scope);
 
             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
             if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
                 let air_segment = mem::take(air_segment);
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, false);
+                    Self::create_air_instance(air_segment, pctx, ectx, sctx, false);
                 });
             }
         });
@@ -311,31 +319,29 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     #[inline(always)]
     fn create_air_instance(
         air_segment: MainAirSegment<F>,
-        pctx: &ProofCtx<F>,
-        ectx: &ExecutionCtx,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
         last_segment: bool,
     ) {
         info!(
-            "{}: ··· Creating Main segment #{} [{} inputs]",
+            "{}: ··· Creating Main segment #{} [{} rows]",
             Self::MY_NAME,
             air_segment.air_segment_id,
             air_segment.filled_inputs
         );
 
         // Compute buffer size using the BufferAllocator
-        let (buffer_size, offsets) =
-            match ectx.buffer_allocator.as_ref().get_buffer_info("Main".into(), MAIN_AIR_IDS[0]) {
-                Ok((size, offsets)) => (size, offsets),
-                Err(err) => {
-                    // Handle the error case, for example:
-                    panic!("Error getting buffer info: {}", err);
-                }
-            };
+        let (buffer_size, offsets) = ectx
+            .buffer_allocator
+            .as_ref()
+            .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
 
-        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs).unwrap();
+        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs, false).unwrap();
 
         for i in air_segment.filled_inputs..main_trace.num_rows() {
-            main_trace[i].flag = F::from_canonical_usize(1);
+            main_trace[i] = main_trace[i - 1];
         }
 
         // TODO: Do it in parallel
@@ -361,6 +367,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
             Some(air_segment.air_segment_id as usize),
             buffer,
         );
+
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 
@@ -371,7 +378,7 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     /// * `emu_required` - Inputs to be proved
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
-    fn prove(&self, mut emu_required: ZiskRequired, _ectx: &'a ExecutionCtx, scope: &Scope<'a>) {
+    fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
         let binary = mem::take(&mut emu_required.binary);
         let arith = mem::take(&mut emu_required.arith);
@@ -392,14 +399,14 @@ impl<'a, F: AbstractField + Default + Copy + Send + Sync + 'static> MainSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for MainSM<F> {
+impl<F: Send + Sync> WitnessComponent<F> for MainSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

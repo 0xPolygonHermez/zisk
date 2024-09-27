@@ -30,8 +30,8 @@ impl<F> ArithRangeTableInputs<F> {
         self.fast_push(range_id, value);
     }
     fn get_row(range_id: u8, value: u64) -> usize {
-        usize::try_from(value + if range_id > 0 { 2 << 16 } else { 0 }).unwrap() %
-            ARITH_RANGE_TABLE_SIZE
+        usize::try_from(value + if range_id > 0 { 2 << 16 } else { 0 }).unwrap()
+            % ARITH_RANGE_TABLE_SIZE
     }
     fn check_value(range_id: u8, value: u64) {
         match range_id {

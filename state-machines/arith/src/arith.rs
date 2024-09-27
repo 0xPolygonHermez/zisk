@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use p3_field::AbstractField;
+use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -37,8 +37,8 @@ pub struct ArithSM<F> {
     arith_table_sm: Arc<ArithTableSM<F>>,
 }
 
-impl<F: AbstractField + Send + Sync + 'static> ArithSM<F> {
-    pub fn new(wcm: &mut WitnessManager<F>) -> Arc<Self> {
+impl<F: Field> ArithSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         // TODO: change this call, for calls to WitnessManager to obtain from airGroupId and airIds
         // ON each SM, not need pass to the constructor
         let arith_full_ids = ArithSM::<F>::get_ids_by_name("Arith");
@@ -55,16 +55,24 @@ impl<F: AbstractField + Send + Sync + 'static> ArithSM<F> {
             inputs_32: Mutex::new(Vec::new()),
             inputs_mul_32: Mutex::new(Vec::new()),
             inputs_mul_64: Mutex::new(Vec::new()),
-            arith_full_sm: ArithFullSM::new(wcm, arith_full_ids.0, &[arith_full_ids.1]),
-            arith_32_sm: Arith32SM::new(wcm, arith_32_ids.0, &[arith_32_ids.1]),
-            arith_mul_32_sm: ArithMul32SM::new(wcm, arith_mul_32_ids.0, &[arith_mul_32_ids.1]),
-            arith_mul_64_sm: ArithMul64SM::new(wcm, arith_mul_64_ids.0, &[arith_mul_64_ids.1]),
+            arith_full_sm: ArithFullSM::new(wcm.clone(), arith_full_ids.0, &[arith_full_ids.1]),
+            arith_32_sm: Arith32SM::new(wcm.clone(), arith_32_ids.0, &[arith_32_ids.1]),
+            arith_mul_32_sm: ArithMul32SM::new(
+                wcm.clone(),
+                arith_mul_32_ids.0,
+                &[arith_mul_32_ids.1],
+            ),
+            arith_mul_64_sm: ArithMul64SM::new(
+                wcm.clone(),
+                arith_mul_64_ids.0,
+                &[arith_mul_64_ids.1],
+            ),
             arith_range_table_sm: ArithRangeTableSM::new(
-                wcm,
+                wcm.clone(),
                 arith_range_table_ids.0,
                 &[arith_range_table_ids.1],
             ),
-            arith_table_sm: ArithTableSM::new(wcm, arith_table_ids.0, &[arith_table_ids.1]),
+            arith_table_sm: ArithTableSM::new(wcm.clone(), arith_table_ids.0, &[arith_table_ids.1]),
         };
         let arith_sm = Arc::new(arith_sm);
 
@@ -119,21 +127,19 @@ impl<F: AbstractField + Send + Sync + 'static> ArithSM<F> {
     }
 }
 
-impl<F> WitnessComponent<F> for ArithSM<F> {
+impl<F: Field> WitnessComponent<F> for ArithSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
         _air_instance: Option<usize>,
-        _pctx: &mut ProofCtx<F>,
-        _ectx: &ExecutionCtx,
-        _sctx: &SetupCtx,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
 
-impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, OpResult>
-    for ArithSM<F>
-{
+impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -167,7 +173,7 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
 
         while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
             if drain && !inputs32.is_empty() {
-                println!("ArithSM: Draining inputs32");
+                // println!("ArithSM: Draining inputs32");
             }
 
             let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
@@ -190,7 +196,7 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
 
         while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
             if drain && !inputs64.is_empty() {
-                println!("ArithSM: Draining inputs64");
+                // println!("ArithSM: Draining inputs64");
             }
 
             let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
@@ -216,7 +222,9 @@ impl<F: AbstractField + Send + Sync + 'static> Provable<ZiskRequiredOperation, O
         scope: &Scope,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         let result = self.calculate(operation.clone());
+
         self.prove(&[operation], drain, scope);
+
         result
     }
 }

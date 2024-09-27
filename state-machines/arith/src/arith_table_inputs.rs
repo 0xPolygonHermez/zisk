@@ -115,20 +115,20 @@ impl<F> ArithTableInputs<F> {
         range_c3: u32,
         range_d3: u32,
     ) -> u32 {
-        m32 + 0x000002 * div +
-            0x000004 * na +
-            0x000008 * nb +
-            0x000010 * nr +
-            0x000020 * np +
-            0x000040 * na32 +
-            0x000080 * nd32 +
-            0x000100 * range_a1 +
-            0x000400 * range_b1 +
-            0x001000 * range_c1 +
-            0x004000 * range_d1 +
-            0x010000 * range_a3 +
-            0x040000 * range_b3 +
-            0x100000 * range_c3 +
-            0x400000 * range_d3
+        m32 + 0x000002 * div
+            + 0x000004 * na
+            + 0x000008 * nb
+            + 0x000010 * nr
+            + 0x000020 * np
+            + 0x000040 * na32
+            + 0x000080 * nd32
+            + 0x000100 * range_a1
+            + 0x000400 * range_b1
+            + 0x001000 * range_c1
+            + 0x004000 * range_d1
+            + 0x010000 * range_a3
+            + 0x040000 * range_b3
+            + 0x100000 * range_c3
+            + 0x400000 * range_d3
     }
 }
