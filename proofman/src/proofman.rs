@@ -464,10 +464,12 @@ impl<F: Field + 'static> ProofMan<F> {
                     {
                         proves_out.push(proves[prover_idx]);
                     } else {
-                        let air_setup_folder =
-                        pctx.global_info.get_air_setup_path(air_instance.airgroup_id, air_instance.air_id, proof_type);
+                        let air_setup_folder = pctx.global_info.get_air_setup_path(
+                            air_instance.airgroup_id,
+                            air_instance.air_id,
+                            proof_type,
+                        );
                         trace!("{}   : ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
-
 
                         let base_filename_path = if *proof_type == ProofType::Compressor {
                             air_setup_folder.join("compressor").display().to_string()
@@ -611,28 +613,30 @@ impl<F: Field + 'static> ProofMan<F> {
                         for instance in instances.iter() {
                             proves_recursive2_airgroup.push(proves[*instance]);
                         }
-                        
+
                         //create a vector of sice indices length
                         let mut alive = instances.len();
                         while alive > 1 {
                             for i in 0..alive / 2 {
                                 let j = i * 2;
                                 if j + 1 < alive {
-                                    let base_filename_path = air_setup_folder.join("recursive2").display().to_string();                
-        
+                                    let base_filename_path = air_setup_folder.join("recursive2").display().to_string();
+
                                     // witness computation
                                     let rust_lib_filename = base_filename_path.clone() + ".so";
                                     let rust_lib_path = Path::new(rust_lib_filename.as_str());
-            
+
                                     if !rust_lib_path.exists() {
-                                        return Err(
-                                            format!("Rust lib dynamic library not found at path: {:?}", rust_lib_path).into()
-                                        );
+                                        return Err(format!(
+                                            "Rust lib dynamic library not found at path: {:?}",
+                                            rust_lib_path
+                                        )
+                                        .into());
                                     }
-                                    
+
                                     // get setup
                                     let setup: &proofman_common::Setup =
-                                    sctx.get_setup(airgroup, 0).expect("Setup not found");
+                                        sctx.get_setup(airgroup, 0).expect("Setup not found");
 
                                     let p_setup: *mut c_void = setup.p_setup;
                                     let p_stark_info: *mut c_void = setup.p_stark_info;
@@ -648,7 +652,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
                                     let publics = vec![F::zero(); n_publics as usize];
                                     let p_publics = publics.as_ptr() as *mut c_void;
-                                    
+
                                     let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
                                     let challenges_guard = pctx.challenges.challenges.read().unwrap();
 
@@ -658,17 +662,18 @@ impl<F: Field + 'static> ProofMan<F> {
                                     // Load the dynamic library at runtime
                                     let library = unsafe { Library::new(rust_lib_path)? };
                                     unsafe {
-                                        let get_commited_pols: Symbol<GetCommitedPolsFunc> = library.get(b"getCommitedPols\0")?;
-                                        
+                                        let get_commited_pols: Symbol<GetCommitedPolsFunc> =
+                                            library.get(b"getCommitedPols\0")?;
+
                                         // Call the function
                                         let dat_filename = base_filename_path.clone() + ".dat";
                                         let dat_filename_str = CString::new(dat_filename.as_str()).unwrap();
                                         let dat_filename_ptr = dat_filename_str.as_ptr() as *mut std::os::raw::c_char;
-            
+
                                         let exec_filename = base_filename_path.clone() + ".exec";
                                         let exec_filename_str = CString::new(exec_filename.as_str()).unwrap();
                                         let exec_filename_ptr = exec_filename_str.as_ptr() as *mut std::os::raw::c_char;
-                                        
+
                                         let zkin_recursive2 = join_zkin_recursive2_c(
                                             public_inputs,
                                             challenges,
@@ -677,8 +682,7 @@ impl<F: Field + 'static> ProofMan<F> {
                                             proves_recursive2_airgroup[j + 1],
                                             p_stark_info,
                                         );
-                                        
-                                        
+
                                         get_commited_pols(
                                             p_address,
                                             p_publics,
@@ -691,15 +695,24 @@ impl<F: Field + 'static> ProofMan<F> {
                                         );
                                     }
 
-                                    let output_file_path = output_dir_path
-                                        .join(format!("proofs/recursive2_{}_{}_{}.json", pctx.global_info.subproofs[airgroup], j, j + 1));
-            
+                                    let output_file_path = output_dir_path.join(format!(
+                                        "proofs/recursive2_{}_{}_{}.json",
+                                        pctx.global_info.subproofs[airgroup],
+                                        j,
+                                        j + 1
+                                    ));
+
                                     let proof_file = match save_proof {
                                         true => output_file_path.to_string_lossy().into_owned(),
                                         false => String::from(""),
                                     };
-        
-                                    proves_recursive2_airgroup[j] = gen_recursive_proof_c(p_setup, p_address, publics.as_ptr() as *mut c_void, &proof_file);
+
+                                    proves_recursive2_airgroup[j] = gen_recursive_proof_c(
+                                        p_setup,
+                                        p_address,
+                                        publics.as_ptr() as *mut c_void,
+                                        &proof_file,
+                                    );
                                 }
                             }
                             alive = (alive + 1) / 2;

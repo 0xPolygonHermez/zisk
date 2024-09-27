@@ -20,8 +20,8 @@ impl SetupRepository {
 
         // Initialize Hashmao for each airgroup_id, air_id
         let setup_airs = match setup_type != &ProofType::Final {
-            true => {
-                global_info.airs
+            true => global_info
+                .airs
                 .iter()
                 .enumerate()
                 .map(|(airgroup_id, air_group)| {
@@ -32,10 +32,9 @@ impl SetupRepository {
                     });
                     air_group_setups
                 })
-                .collect::<Vec<Vec<usize>>>()
-            }
+                .collect::<Vec<Vec<usize>>>(),
             false => {
-                let mut air_group_setups:Vec<Vec<usize>> = Vec::new();
+                let mut air_group_setups: Vec<Vec<usize>> = Vec::new();
                 setups.insert((0, 0), OnceCell::new());
                 air_group_setups.push(vec![0]);
                 air_group_setups

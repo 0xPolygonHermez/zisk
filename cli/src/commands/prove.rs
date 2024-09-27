@@ -53,9 +53,9 @@ impl ProveCmd {
         type GL = Goldilocks;
 
         if !Path::new(&self.output_dir.join("proofs")).exists() {
-            fs::create_dir_all(&self.output_dir.join("proofs")).unwrap();
+            fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
         }
-        
+
         ProofMan::<GL>::generate_proof(
             self.witness_lib.clone(),
             self.rom.clone(),

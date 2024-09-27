@@ -21,7 +21,7 @@ pub fn verify_constraints_proof<F: Field>(
     mut witness_lib: Box<dyn WitnessLibrary<F>>,
     options: ProofOptions,
 ) {
-    const MY_NAME: &'static str = "ConstraintVerifier";
+    const MY_NAME: &str = "ConstraintVerifier";
     const FIELD_EXTENSION: usize = 3;
 
     log::info!("{}: --> Verifying constraints", MY_NAME);
@@ -134,17 +134,32 @@ pub fn verify_constraints_proof<F: Field>(
     for agg_types in pctx.global_info.agg_types.iter() {
         let mut values = vec![F::zero(); agg_types.len() * FIELD_EXTENSION];
         for (idx, agg_type) in agg_types.iter().enumerate() {
-            if agg_type.agg_type == 1 { values[idx * FIELD_EXTENSION] = F::one(); }
+            if agg_type.agg_type == 1 {
+                values[idx * FIELD_EXTENSION] = F::one();
+            }
         }
         airgroupvalues.push(values);
     }
 
     for prover in provers.iter() {
         let prover_info = prover.get_prover_info();
-        let airgroup_vals = &mut pctx.air_instance_repo.air_instances.write().unwrap()[prover_info.prover_idx].subproof_values;
+        let airgroup_vals =
+            &mut pctx.air_instance_repo.air_instances.write().unwrap()[prover_info.prover_idx].subproof_values;
         for (idx, agg_type) in pctx.global_info.agg_types[prover_info.airgroup_id].iter().enumerate() {
-            let mut acc = ExtensionField {value: [airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION], airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION + 1], airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION + 2]] };
-            let instance_airgroup_val = ExtensionField {value: [airgroup_vals[idx * FIELD_EXTENSION], airgroup_vals[idx * FIELD_EXTENSION + 1], airgroup_vals[idx * FIELD_EXTENSION + 2]] };
+            let mut acc = ExtensionField {
+                value: [
+                    airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION],
+                    airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION + 1],
+                    airgroupvalues[prover_info.airgroup_id][idx * FIELD_EXTENSION + 2],
+                ],
+            };
+            let instance_airgroup_val = ExtensionField {
+                value: [
+                    airgroup_vals[idx * FIELD_EXTENSION],
+                    airgroup_vals[idx * FIELD_EXTENSION + 1],
+                    airgroup_vals[idx * FIELD_EXTENSION + 2],
+                ],
+            };
             if agg_type.agg_type == 0 {
                 acc += instance_airgroup_val;
             } else {

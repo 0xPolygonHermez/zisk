@@ -366,7 +366,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         }
 
         let n_extended = (1 << self.stark_info.stark_struct.n_bits_ext) as usize;
-        max_cols * n_extended
+        let buff_size_stages = max_cols * n_extended;
+
+        let buff_size_xdivxsub = self.stark_info.opening_points.len() * 3 * n_extended;
+
+        match buff_size_stages > buff_size_xdivxsub {
+            true => buff_size_stages,
+            false => buff_size_xdivxsub,
+        }
+
     }
 
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
