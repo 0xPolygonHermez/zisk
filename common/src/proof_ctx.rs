@@ -1,7 +1,7 @@
 use std::sync::RwLock;
 use std::path::PathBuf;
 
-use crate::{AirInstancesRepository, GlobalInfo};
+use crate::{AirInstancesRepository, GlobalInfo, WitnessPilout};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
@@ -47,6 +47,7 @@ impl ProofOptions {
 
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
+    pub pilout: WitnessPilout,
     pub public_inputs: PublicInputs,
     pub challenges: Challenges<F>,
     pub buff_helper: BuffHelper<F>,
@@ -57,12 +58,13 @@ pub struct ProofCtx<F> {
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(proving_key_path: PathBuf) -> Self {
+    pub fn create_ctx(pilout: WitnessPilout, proving_key_path: PathBuf) -> Self {
         log::info!("{}: ··· Creating proof context", Self::MY_NAME);
 
         let global_info: GlobalInfo = GlobalInfo::new(&proving_key_path);
 
         Self {
+            pilout,
             global_info,
             public_inputs: PublicInputs::default(),
             challenges: Challenges::default(),

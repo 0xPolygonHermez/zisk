@@ -92,7 +92,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone())?;
 
-        let pctx = Arc::new(ProofCtx::create_ctx(proving_key_path.clone()));
+        let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
         let sctx = Arc::new(SetupCtx::new(&pctx.global_info, &ProofType::Basic));
 

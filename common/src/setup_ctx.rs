@@ -21,23 +21,21 @@ impl SetupRepository {
         // Initialize Hashmao for each airgroup_id, air_id
         let setup_airs = match setup_type != &ProofType::Final {
             true => {
-                global_info
-                    .airs
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(airgroup_id, air_group)| {
-                        let mut air_group_setups = Vec::new();
-                        air_group.iter().enumerate().for_each(|(air_id, _)| {
-                            setups.insert((airgroup_id, air_id), OnceCell::new());
-                            // Create an inner vector for each air group
-                            air_group_setups.push(vec![air_id]);
-                        });
-                        air_group_setups
-                    })
-                    .collect::<Vec<Vec<usize>>>()
+                global_info.airs
+                .iter()
+                .enumerate()
+                .map(|(airgroup_id, air_group)| {
+                    let mut air_group_setups = Vec::new();
+                    air_group.iter().enumerate().for_each(|(air_id, _)| {
+                        setups.insert((airgroup_id, air_id), OnceCell::new());
+                        air_group_setups.push(air_id);
+                    });
+                    air_group_setups
+                })
+                .collect::<Vec<Vec<usize>>>()
             }
             false => {
-                let mut air_group_setups = Vec::new();
+                let mut air_group_setups:Vec<Vec<usize>> = Vec::new();
                 setups.insert((0, 0), OnceCell::new());
                 air_group_setups.push(vec![0]);
                 air_group_setups
