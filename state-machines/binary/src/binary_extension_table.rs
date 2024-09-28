@@ -3,14 +3,16 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
-use zisk_pil::*;
-const PROVE_CHUNK_SIZE: usize = 1 << 16;
+use zisk_pil::{
+    BinaryExtensionTable0Trace, BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS,
+};
 
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -34,6 +36,8 @@ pub enum ExtensionTableSMErr {
 }
 
 impl<F: Field> BinaryExtensionTableSM<F> {
+    const MY_NAME: &'static str = "BinaryET";
+
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let air = wcm
             .get_pctx()
@@ -49,7 +53,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             _phantom: std::marker::PhantomData,
         };
         let binary_extension_table = Arc::new(binary_extension_table);
-
         wcm.register_component(binary_extension_table.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_extension_table
@@ -89,6 +92,12 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             for i in 0..self.num_rows {
                 trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
+
+            info!(
+                "{}: ··· Creating Binary extension table instance [{} rows]",
+                Self::MY_NAME,
+                self.num_rows,
+            );
 
             let air_instance = AirInstance::new(
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
@@ -146,8 +155,8 @@ impl<F: Field> Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryEx
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
+            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(self.num_rows, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 self.process_slice(&drained_inputs);

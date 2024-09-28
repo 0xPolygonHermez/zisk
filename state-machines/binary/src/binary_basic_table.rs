@@ -3,13 +3,14 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
-use zisk_pil::*;
+use zisk_pil::{BinaryTable0Trace, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -33,6 +34,8 @@ pub enum BasicTableSMErr {
 }
 
 impl<F: Field> BinaryBasicTableSM<F> {
+    const MY_NAME: &'static str = "BinaryT ";
+
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let air = wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
 
@@ -81,6 +84,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
             for i in 0..self.num_rows {
                 trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
+
+            info!(
+                "{}: ··· Creating Binary basic table instance [{} rows]",
+                Self::MY_NAME,
+                self.num_rows,
+            );
 
             let air_instance =
                 AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
@@ -149,15 +158,8 @@ impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicT
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self
-                .wcm
-                .get_pctx()
-                .pilout
-                .get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-            let num_rows = air.num_rows();
-
-            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(num_rows, inputs.len());
+            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(self.num_rows, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 self.process_slice(&drained_inputs);
