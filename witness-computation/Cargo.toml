@@ -18,7 +18,6 @@ zisk-pil = { path = "../pil/v0.1" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman-hints = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
@@ -29,4 +28,4 @@ p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754e
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman-hints/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
