@@ -324,11 +324,14 @@ impl<'a, F: Field> MainSM<F> {
         sctx: Arc<SetupCtx>,
         last_segment: bool,
     ) {
+        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         info!(
-            "{}: ··· Creating Main segment #{} [{} rows]",
+            "{}: ··· Creating Main segment #{} [{} / {} rows filled {}%]",
             Self::MY_NAME,
             air_segment.air_segment_id,
-            air_segment.filled_inputs
+            air_segment.filled_inputs,
+            air.num_rows(),
+            (air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0) as u32
         );
 
         // Compute buffer size using the BufferAllocator

@@ -37,7 +37,7 @@ pub enum BinaryBasicSMErr {
 }
 
 impl<F: Field> BinaryBasicSM<F> {
-    const MY_NAME: &'static str = "BinarySM";
+    const MY_NAME: &'static str = "Binary  ";
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
@@ -481,10 +481,14 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                     binary_basic_table_sm.prove(&table_required, false, scope);
 
+                    let air = wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+
                     info!(
-                        "{}: ··· Creating Binary basic instance [{} rows]",
+                        "{}: ··· Creating Binary basic instance [{} / {} rows filled {}%]",
                         Self::MY_NAME,
-                        drained_inputs.len()
+                        drained_inputs.len(),
+                        air.num_rows(),
+                        (drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0) as u32
                     );
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
