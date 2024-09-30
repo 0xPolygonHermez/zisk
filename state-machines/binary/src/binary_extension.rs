@@ -36,7 +36,7 @@ pub enum BinaryExtensionSMErr {
 }
 
 impl<F: Field> BinaryExtensionSM<F> {
-    const MY_NAME: &'static str = "BnaryESM";
+    const MY_NAME: &'static str = "BinaryE ";
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
@@ -393,10 +393,17 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F
                     let (trace_row, table_required) = Self::process_slice(&drained_inputs);
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
+                    let air = wcm
+                        .get_pctx()
+                        .pilout
+                        .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+
                     info!(
-                        "{}: ··· Creating Binary extension instance [{} rows]",
+                        "{}: ··· Creating Binary extension instance [{} / {} rows filled {}%]",
                         Self::MY_NAME,
-                        drained_inputs.len()
+                        drained_inputs.len(),
+                        air.num_rows(),
+                        (drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0) as u32
                     );
 
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
