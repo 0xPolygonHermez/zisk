@@ -200,6 +200,18 @@ jobs:
         run: |
           sed -i 's/# *"pil2-components\/test\/std\/lookup\/rs"/"pil2-components\/test\/std\/lookup\/rs"/' ./Cargo.toml
 
+      - name: Modify Cargo.toml std permutation
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/permutation\/rs"/"pil2-components\/test\/std\/permutation\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std range-check
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/range-check\/rs"/"pil2-components\/test\/std\/range-check\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std simple
+        run: |
+          sed -i 's/# *"pil2-components\/test\/simple\/rs"/"pil2-components\/test\/simple\/rs"/' ./Cargo.toml
+
       - name: Modify Cargo.toml Fibonacci Square
         run: |
           sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
@@ -235,7 +247,7 @@ jobs:
       - name: Create dir build lookup
         run: |
           mkdir -p ./pil2-components/test/std/lookup/build/
-          
+
       - name: Compile PIL Lookup
         run: |
           node pil2-compiler/src/pil.js ./pil2-components/test/std/lookup/lookup.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/lookup/build/build.pilout
@@ -248,7 +260,54 @@ jobs:
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/lookup/build/build.pilout --path ./pil2-components/test/std/lookup/rs/src -o
 
+      - name: Create dir build permutation
+        run: |
+          mkdir -p ./pil2-components/test/std/permutation/build/
 
+      - name: Compile PIL permutation
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/permutation/permutation.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/permutation/build/build.pilout
+
+      - name: Generate setup permutation
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/permutation/build/build.pilout -b ./pil2-components/test/std/permutation/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers permutation
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/permutation/build/build.pilout --path ./pil2-components/test/std/permutation/rs/src -o
+
+      - name: Create dir build range-check
+        run: |
+          mkdir -p ./pil2-components/test/std/range-check/build/
+
+      - name: Compile PIL range-check
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/range-check/range-check.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range-check/build/build.pilout
+
+      - name: Generate setup range-check
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/range-check/build/build.pilout -b ./pil2-components/test/std/range-check/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers range-check
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/range-check/build/build.pilout --path ./pil2-components/test/std/range-check/rs/src -o
+
+      - name: Create dir build simple
+        run: |
+          mkdir -p ./pil2-components/test/simple/build/
+
+      - name: Compile PIL simple
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/simple/simple.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/simple/build/build.pilout
+
+      - name: Generate setup simple
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/simple/build/build.pilout -b ./pil2-components/test/simple/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers simple
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/simple/build/build.pilout --path ./pil2-components/test/simple/rs/src -o
+          
       - name: Cargo build
         run: RUST_BACKTRACE=1 cargo build -v
 
@@ -274,7 +333,7 @@ jobs:
 
       - name: Verify proof Connection
         run: |
-          node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build
 
       - name: Verify constraints Lookup
         run: |
@@ -286,4 +345,40 @@ jobs:
 
       - name: Verify proof Lookup
         run: |
-          node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build
+
+      - name: Verify constraints permutation
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey
+
+      - name: Generate proof permutation
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey --output-dir ./pil2-components/test/std/permutation/build -d
+
+      - name: Verify proof permutation
+        run: |
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/permutation/build/provingKey -p ./pil2-components/test/std/permutation/build
+
+      - name: Verify constraints range-check
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/librange-check.so --proving-key ./pil2-components/test/std/range-check/build/provingKey
+
+      - name: Generate proof range-check
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange-check.so --proving-key ./pil2-components/test/std/range-check/build/provingKey --output-dir ./pil2-components/test/std/range-check/build -d
+
+      - name: Verify proof range-check
+        run: |
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range-check/build/provingKey -p ./pil2-components/test/std/range-check/build
+
+      - name: Verify constraints simple
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey
+
+      - name: Generate proof simple
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey --output-dir ./pil2-components/test/simple/build -d
+
+      - name: Verify proof simple
+        run: |
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/simple/build/provingKey -p ./pil2-components/test/simple/build
