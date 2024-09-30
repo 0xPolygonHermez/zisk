@@ -196,6 +196,10 @@ jobs:
         run: |
           sed -i 's/# *"pil2-components\/test\/std\/connection\/rs"/"pil2-components\/test\/std\/connection\/rs"/' ./Cargo.toml
 
+      - name: Modify Cargo.toml std lookup
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/lookup\/rs"/"pil2-components\/test\/std\/lookup\/rs"/' ./Cargo.toml
+
       - name: Modify Cargo.toml Fibonacci Square
         run: |
           sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
@@ -212,6 +216,10 @@ jobs:
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
 
+      - name: Create dir build connection
+        run: |
+          mkdir -p ./pil2-components/test/std/connection/build/
+
       - name: Compile PIL Connection
         run: |
           node pil2-compiler/src/pil.js ./pil2-components/test/std/connection/connection.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/connection/build/build.pilout
@@ -223,6 +231,22 @@ jobs:
       - name: Generate PIL Helpers Connection
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/connection/build/build.pilout --path ./pil2-components/test/std/connection/rs/src -o
+
+      - name: Create dir build lookup
+        run: |
+          mkdir -p ./pil2-components/test/std/lookup/build/
+          
+      - name: Compile PIL Lookup
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/lookup/lookup.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/lookup/build/build.pilout
+
+      - name: Generate setup Lookup
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/lookup/build/build.pilout -b ./pil2-components/test/std/lookup/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers Lookup
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/lookup/build/build.pilout --path ./pil2-components/test/std/lookup/rs/src -o
 
 
       - name: Cargo build
@@ -251,3 +275,15 @@ jobs:
       - name: Verify proof Connection
         run: |
           node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build
+
+      - name: Verify constraints Lookup
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey
+
+      - name: Generate proof Lookup
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey --output-dir ./pil2-components/test/std/lookup/build -d
+
+      - name: Verify proof Lookup
+        run: |
+          node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build
