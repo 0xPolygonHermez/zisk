@@ -21,7 +21,7 @@ pub fn verify_constraints_proof<F: Field>(
     mut witness_lib: Box<dyn WitnessLibrary<F>>,
     options: ProofOptions,
 ) {
-    const MY_NAME: &str = "ConstraintVerifier";
+    const MY_NAME: &str = "CstrVrfy";
     const FIELD_EXTENSION: usize = 3;
 
     log::info!("{}: --> Verifying constraints", MY_NAME);

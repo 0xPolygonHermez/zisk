@@ -188,37 +188,66 @@ jobs:
           make starks_lib -j
           make -j bctree
 
-      - name: Compile PIL
+      - name: Modify Cargo.toml std
         run: |
-          node pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil -I ./pil2-components/lib/std/pil -o ./examples/fibonacci-square/pil/build.pilout
+          sed -i 's/# *"pil2-components\/lib\/std\/rs"/"pil2-components\/lib\/std\/rs"/' ./Cargo.toml
 
-      - name: Generate setup
+      - name: Modify Cargo.toml std connection
         run: |
-          node pil2-proofman-js/src/main_setup.js -a ./examples/fibonacci-square/pil/build.pilout -b ./examples/fibonacci-square/build -t pil2-stark/build/bctree
+          sed -i 's/# *"pil2-components\/test\/std\/connection\/rs"/"pil2-components\/test\/std\/connection\/rs"/' ./Cargo.toml
 
-      - name: Generate PIL Helpers
-        run: |
-          cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
-
-      - name: Modify Cargo.toml
+      - name: Modify Cargo.toml Fibonacci Square
         run: |
           sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
 
-      - name: Modify stark-prover-lib
+      - name: Compile PIL Fibonacci Square
         run: |
-          sed -i 's/default = \["no_lib_link"\]/default = \[\]/g' ./provers/starks-lib-c/Cargo.toml
+          node pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil -I ./pil2-components/lib/std/pil -o ./examples/fibonacci-square/pil/build.pilout
+
+      - name: Generate setup Fibonacci Square
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./examples/fibonacci-square/pil/build.pilout -b ./examples/fibonacci-square/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
+
+      - name: Compile PIL Connection
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/connection/connection.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/connection/build/build.pilout
+
+      - name: Generate setup Connection
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/connection/build/build.pilout -b ./pil2-components/test/std/connection/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers Connection
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/connection/build/build.pilout --path ./pil2-components/test/std/connection/rs/src -o
+
 
       - name: Cargo build
         run: RUST_BACKTRACE=1 cargo build -v
 
-      - name: Verify constraints
+      - name: Verify constraints Fibonacci Square
         run: |
           cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json
 
-      - name: Generate proof
+      - name: Generate proof Fibonacci Square
         run: |
           cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs -d
 
-      - name: Verify proof
+      - name: Verify proof Fibonacci Square
         run: |
           node pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey -p examples/fibonacci-square/build/proofs
+
+      - name: Verify constraints Connection
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey
+
+      - name: Generate proof Connection
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey --output-dir ./pil2-components/test/std/connection/build -d
+
+      - name: Verify proof Connection
+        run: |
+          node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build

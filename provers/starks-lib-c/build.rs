@@ -20,7 +20,7 @@ fn main() {
             path
         } else {
             // Fallback if STARKS_LIB_C is not set
-            library_folder = "../../../zkevm-prover/lib".to_string();
+            library_folder = "../../../pil2-stark/lib".to_string();
             format!("{}/lib{}.a", library_folder, library_short_name)
         };
 
