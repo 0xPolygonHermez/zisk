@@ -15,7 +15,7 @@ use proofman_hints::{
     HintFieldValue,
 };
 
-use crate::{Decider, StdMode};
+use crate::{Decider, StdMode, ModeName};
 
 type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
 type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
@@ -23,8 +23,12 @@ type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 pub struct StdProd<F: Copy + Display> {
     mode: StdMode,
     prod_airs: Mutex<Vec<ProdAirsItem>>, // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
-    bus_vals_num: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
-    bus_vals_den: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
+    debug_data: Option<DebugData<F>>,
+}
+
+struct DebugData<F: Copy> {
+    bus_vals_num: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
+    bus_vals_den: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
 }
 
 impl<F: PrimeField> Decider<F> for StdProd<F> {
@@ -61,10 +65,13 @@ impl<F: PrimeField> StdProd<F> {
 
     pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let std_prod = Arc::new(Self {
-            mode,
+            mode: mode.clone(),
             prod_airs: Mutex::new(Vec::new()),
-            bus_vals_num: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
-            bus_vals_den: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
+            debug_data: if mode.name == ModeName::Debug {
+                Some(DebugData { bus_vals_num: Mutex::new(BTreeMap::new()), bus_vals_den: Mutex::new(BTreeMap::new()) })
+            } else {
+                None
+            },
         });
 
         wcm.register_component(std_prod.clone(), None, None);
@@ -91,9 +98,16 @@ impl<F: PrimeField> StdProd<F> {
                 "opid",
                 HintFieldOptions::default(),
             );
-            let HintFieldValue::Field(opid) = opid else {
-                log::error!("Opid hint must be a field element");
-                panic!();
+            let opid = if let HintFieldValue::Field(opid) = opid {
+                if let Some(opids) = &self.mode.opids {
+                    if !opids.contains(&opid.as_canonical_biguint().to_u64().expect("Cannot convert to u64")) {
+                        continue;
+                    }
+                }
+
+                opid
+            } else {
+                panic!("sumid must be a field element");
             };
 
             let proves = get_hint_field::<F>(
@@ -158,11 +172,18 @@ impl<F: PrimeField> StdProd<F> {
             }
 
             for j in 0..num_rows {
-                let sel = selector.get(j);
-                if let HintFieldOutput::Field(sel) = sel {
-                    if sel.is_zero() {
-                        continue;
+                let sel = if let HintFieldOutput::Field(selector) = selector.get(j) {
+                    if !selector.is_zero() && !selector.is_one() {
+                        log::error!("Selector must be either 0 or 1");
+                        panic!();
                     }
+                    selector.is_one()
+                } else {
+                    log::error!("Selector must be a field element");
+                    panic!();
+                };
+
+                if sel {
                     let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
                     self.update_bus_vals(opid, bus_value, j, proves);
                 }
@@ -174,11 +195,11 @@ impl<F: PrimeField> StdProd<F> {
         let mut bus_vals;
         let mut other_bus_vals;
         if is_num {
-            bus_vals = self.bus_vals_den.as_ref().unwrap().lock().unwrap();
-            other_bus_vals = self.bus_vals_num.as_ref().unwrap().lock().unwrap();
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
         } else {
-            bus_vals = self.bus_vals_num.as_ref().unwrap().lock().unwrap();
-            other_bus_vals = self.bus_vals_den.as_ref().unwrap().lock().unwrap();
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
         }
 
         let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
@@ -228,7 +249,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     let num_rows = air.num_rows();
 
-                    if self.mode == StdMode::Debug {
+                    if self.mode.name == ModeName::Debug {
                         self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone(), debug_hints.clone());
                     }
 
@@ -282,58 +303,51 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
     }
 
     fn end_proof(&self) {
-        if self.mode == StdMode::Debug {
+        if self.mode.name == ModeName::Debug {
             let max_values_to_print = 5;
 
-            let bus_vals_num = self.bus_vals_num.as_ref().unwrap().lock().unwrap();
-            let bus_vals_den = self.bus_vals_den.as_ref().unwrap().lock().unwrap();
+            let bus_vals_num = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
+            let bus_vals_den = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
             if !bus_vals_num.is_empty() || !bus_vals_den.is_empty() {
                 log::error!("{}: Some bus values do not match.", Self::MY_NAME);
-
-                println!("\t ► Unmatching bus values thrown as 'prove':");
-                for (opid, vals) in bus_vals_num.iter() {
-                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
-                    if left_to_print == 0 {
-                        println!("\t      ...");
-                    } else {
-                        break;
-                    }
-                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
-                    println!();
-                }
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
                 for (opid, vals) in bus_vals_den.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
-                    if left_to_print == 0 {
-                        println!("\t      ...");
-                    } else {
-                        break;
-                    }
-                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
-                    println!();
+                    print_rows(vals, max_values_to_print);
+                }
+
+                println!("\t ► Unmatching bus values thrown as 'prove':");
+                for (opid, vals) in bus_vals_num.iter() {
+                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
+                    print_rows(vals, max_values_to_print);
                 }
             }
         }
 
-        fn print_rows<'a, I, F>(vals: I, max_values_to_print: usize) -> usize
-        where
-            I: Iterator<Item = (usize, &'a Vec<HintFieldOutput<F>>)>,
-            F: Field,
-        {
-            let mut n = max_values_to_print;
-            for (row, val) in vals {
-                println!("\t    • Row {}: {:?}", row, val);
+        fn print_rows<F: Field>(vals: &Vec<(usize, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
+            let num_values = vals.len();
 
-                n -= 1;
-                if n == 0 {
-                    break;
+            if max_values_to_print >= num_values {
+                for (row, val) in vals {
+                    println!("\t    • Row {}: {:?}", row, val);
                 }
+                return;
             }
 
-            n
+            // Print the first max_values_to_print
+            for (row, val) in vals[..max_values_to_print].into_iter() {
+                println!("\t    • Row {}: {:?}", row, val);
+            }
+
+            println!("\t      ...");
+
+            // Print the last max_values_to_print
+            for (row, val) in vals[num_values - max_values_to_print..].into_iter() {
+                println!("\t    • Row {}: {:?}", row, val);
+            }
+
+            println!();
         }
     }
 }

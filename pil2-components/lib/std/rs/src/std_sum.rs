@@ -16,7 +16,7 @@ use proofman_hints::{
     HintFieldValue,
 };
 
-use crate::{Decider, StdMode};
+use crate::{Decider, StdMode, ModeName};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>);
 type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
@@ -24,8 +24,12 @@ type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 pub struct StdSum<F: Copy + Display> {
     mode: StdMode,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
-    bus_vals_left: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
-    bus_vals_right: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
+    debug_data: Option<DebugData<F>>,
+}
+
+struct DebugData<F: Copy> {
+    bus_vals_left: Mutex<BTreeMap<F, BusVals<F>>>,  // opid -> (row, bus_val)
+    bus_vals_right: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
 }
 
 impl<F: Field> Decider<F> for StdSum<F> {
@@ -60,10 +64,16 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
     pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let std_sum = Arc::new(Self {
-            mode,
+            mode: mode.clone(),
             sum_airs: Mutex::new(Vec::new()),
-            bus_vals_left: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
-            bus_vals_right: if mode == StdMode::Debug { Some(Mutex::new(BTreeMap::new())) } else { None },
+            debug_data: if mode.name == ModeName::Debug {
+                Some(DebugData {
+                    bus_vals_left: Mutex::new(BTreeMap::new()),
+                    bus_vals_right: Mutex::new(BTreeMap::new()),
+                })
+            } else {
+                None
+            },
         });
 
         wcm.register_component(std_sum.clone(), None, None);
@@ -91,6 +101,15 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 "sumid",
                 HintFieldOptions::default(),
             );
+            if let HintFieldOutput::Field(sumid) = sumid.get(0) {
+                if let Some(opids) = &self.mode.opids {
+                    if !opids.contains(&sumid.as_canonical_biguint().to_u64().expect("Cannot convert to u64")) {
+                        continue;
+                    }
+                }
+            } else {
+                panic!("sumid must be a field element");
+            };
 
             let proves = get_hint_field::<F>(
                 sctx,
@@ -160,42 +179,43 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 } else {
                     panic!("mul must be a field element");
                 };
-                let sumid = if let HintFieldOutput::Field(sumid) = sumid.get(j) {
-                    sumid
-                } else {
-                    panic!("sumid must be a field element");
-                };
 
-                if mul.is_zero() {
-                    continue;
-                }
+                // TODO: bus_throws should be used as a counter of the value, not repeating the calls multiple times...
+                if !mul.is_zero() {
+                    let bus_throws = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
 
-                let mul = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-                for _ in 0..mul {
+                    let sumid = if let HintFieldOutput::Field(sumid) = sumid.get(j) {
+                        sumid
+                    } else {
+                        panic!("sumid must be a field element");
+                    };
+
                     let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
-                    self.update_bus_vals(sumid, bus_value, j, !proves);
+                    self.update_bus_vals(sumid, bus_value, j, !proves, bus_throws);
                 }
             }
         }
     }
 
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
+    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool, times: usize) {
         let mut bus_vals;
         let mut other_bus_vals;
         if is_num {
-            bus_vals = self.bus_vals_left.as_ref().unwrap().lock().unwrap();
-            other_bus_vals = self.bus_vals_right.as_ref().unwrap().lock().unwrap();
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
         } else {
-            bus_vals = self.bus_vals_right.as_ref().unwrap().lock().unwrap();
-            other_bus_vals = self.bus_vals_left.as_ref().unwrap().lock().unwrap();
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
         }
 
         let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
 
-        if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
-            bus_vals_map.remove(idx);
-        } else {
-            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val));
+        for _ in 0..times {
+            if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
+                bus_vals_map.remove(idx);
+            } else {
+                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val.clone()));
+            }
         }
 
         if bus_vals_map.is_empty() {
@@ -238,7 +258,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     let num_rows = air.num_rows();
 
-                    if self.mode == StdMode::Debug {
+                    if self.mode.name == ModeName::Debug {
                         self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone(), debug_hints.clone());
                     }
 
@@ -326,58 +346,51 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
     }
 
     fn end_proof(&self) {
-        if self.mode == StdMode::Debug {
+        if self.mode.name == ModeName::Debug {
             let max_values_to_print = 5;
 
-            let bus_vals_left = self.bus_vals_left.as_ref().unwrap().lock().unwrap();
-            let bus_vals_right = self.bus_vals_right.as_ref().unwrap().lock().unwrap();
+            let bus_vals_left = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
+            let bus_vals_right = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
             if !bus_vals_left.is_empty() || !bus_vals_right.is_empty() {
                 log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
                 for (opid, vals) in bus_vals_right.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
-                    if left_to_print == 0 {
-                        println!("\t      ...");
-                    } else {
-                        break;
-                    }
-                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
-                    println!();
+                    print_rows(vals, max_values_to_print);
                 }
 
                 println!("\t ► Unmatching bus values thrown as 'prove':");
                 for (opid, vals) in bus_vals_left.iter() {
                     println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
-                    let left_to_print = print_rows(vals.iter().map(|(row, val)| (*row, val)), max_values_to_print);
-                    if left_to_print == 0 {
-                        println!("\t      ...");
-                    } else {
-                        break;
-                    }
-                    print_rows(vals.iter().rev().map(|(row, val)| (*row, val)), max_values_to_print);
-                    println!();
+                    print_rows(vals, max_values_to_print);
                 }
             }
         }
 
-        fn print_rows<'a, I, F>(vals: I, max_values_to_print: usize) -> usize
-        where
-            I: Iterator<Item = (usize, &'a Vec<HintFieldOutput<F>>)>,
-            F: Field,
-        {
-            let mut n = max_values_to_print;
-            for (row, val) in vals {
-                println!("\t    • Row {}: {:?}", row, val);
+        fn print_rows<F: Field>(vals: &Vec<(usize, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
+            let num_values = vals.len();
 
-                n -= 1;
-                if n == 0 {
-                    break;
+            if max_values_to_print >= num_values {
+                for (row, val) in vals {
+                    println!("\t    • Row {}: {:?}", row, val);
                 }
+                return;
             }
 
-            n
+            // Print the first max_values_to_print
+            for (row, val) in vals[..max_values_to_print].into_iter() {
+                println!("\t    • Row {}: {:?}", row, val);
+            }
+
+            println!("\t      ...");
+
+            // Print the last max_values_to_print
+            for (row, val) in vals[num_values - max_values_to_print..].into_iter() {
+                println!("\t    • Row {}: {:?}", row, val);
+            }
+
+            println!();
         }
     }
 }
