@@ -183,25 +183,6 @@ impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {
         }
     }
 }
-pub trait GetValue<F: Clone + Copy> {
-    fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>>;
-}
-
-impl<F: Clone + Copy> GetValue<F> for HintFieldValues<F> {
-    fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>> {
-        self.values.iter().map(|(key, value)| (key.clone(), value.get(index))).collect()
-    }
-}
-
-pub trait GetValueV<F: Clone + Copy> {
-    fn get(&self, index: usize) -> Vec<HintFieldOutput<F>>;
-}
-
-impl<F: Clone + Copy> GetValueV<F> for Vec<HintFieldValue<F>> {
-    fn get(&self, index: usize) -> Vec<HintFieldOutput<F>> {
-        self.iter().map(|value| value.get(index)).collect()
-    }
-}
 
 impl<F: Field> Add<F> for HintFieldOutput<F> {
     type Output = Self;
