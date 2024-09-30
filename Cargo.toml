@@ -10,17 +10,17 @@ members = [
     "provers/starks-lib-c",
     "transcript",
     "util",
-    "pil2-components/lib/std/rs",
-    # "pil2-components/test/std/range_check/rs",
-    # "pil2-components/test/std/lookup/rs",
-    # "pil2-components/test/std/connection/rs",
-    # "pil2-components/test/std/permutation/rs",
-    # "pil2-components/test/simple/rs",
+    #"pil2-components/lib/std/rs",
+    #"pil2-components/test/std/range_check/rs",
+    #"pil2-components/test/std/lookup/rs",
+    #"pil2-components/test/std/connection/rs",
+    #"pil2-components/test/std/permutation/rs",
+    #"pil2-components/test/simple/rs",
     # whoever re-enables this, it has to work out of
     # the box with `cargo check --workspace` or CI will
     # break and dev experience will be bad since repo
     # won't build with a fresh clone
-    # "examples/fibonacci-square",
+    #"examples/fibonacci-square",
 ]
 
 resolver = "2"

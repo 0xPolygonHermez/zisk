@@ -1,24 +1,42 @@
-use std::env;
+use std::{env, path::Path};
 
 fn main() {
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
         return;
     }
+    // Check if the "NO_LIB_LINK" feature is enabled
     if std::env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
-        let library_folder = "../../../zkevm-prover/lib";
         let library_short_name = "starks";
-        let library_name = format!("lib{}.a", library_short_name);
-        let library_path = format!("{}/{}", library_folder, library_name);
+        let library_folder: String;
+        let library_path = if let Ok(path) = env::var("STARKS_LIB_C") {
+            // If STARKS_LIB_C is set, use its value
+            library_folder = std::path::absolute(Path::new(&path).parent().unwrap_or_else(|| Path::new(".")))
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            println!("Library folder: {}  and library path: {}", library_folder, path);
+            path
+        } else {
+            // Fallback if STARKS_LIB_C is not set
+            library_folder = "../../../pil2-stark/lib".to_string();
+            format!("{}/lib{}.a", library_folder, library_short_name)
+        };
 
-        println!("cargo:rerun-if-changed={}", env::current_dir().unwrap().join(library_path).display());
+        println!("Library folder: {}  and library path: {}", library_folder, library_path);
 
-        // Tipically the libraries are in: sudo find /usr /lib /lib64 /usr/lib /usr/lib64 -name "libstdc++.a"
-        println!("cargo:rustc-link-search=native={}", env::current_dir().unwrap().join(library_folder).display());
+        // Trigger a rebuild if the library path changes
+        println!("cargo:rerun-if-changed={}", env::current_dir().unwrap().join(&library_path).display());
 
+        // Add the library folder to the linker search path
+        println!("cargo:rustc-link-search=native={}", env::current_dir().unwrap().join(&library_folder).display());
+
+        // Add additional common library search paths
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu/");
         println!("cargo:rustc-link-search=native=/usr/lib/gcc/x86_64-linux-gnu/11/");
 
+        // Add linker arguments
         println!("cargo:rustc-link-arg=-fopenmp");
         println!("cargo:rustc-link-arg=-MMD");
         println!("cargo:rustc-link-arg=-MP");
@@ -29,25 +47,29 @@ fn main() {
         println!("cargo:rustc-link-arg=-rdynamic");
         println!("cargo:rustc-link-arg=-mavx2");
 
+        // Link the static library specified by `library_short_name`
         println!("cargo:rustc-link-lib=static={}", library_short_name);
 
-        println!("cargo:rustc-link-lib=protobuf");
-        println!("cargo:rustc-link-lib=sodium");
-        println!("cargo:rustc-link-lib=grpc++");
-        println!("cargo:rustc-link-lib=grpc");
-        println!("cargo:rustc-link-lib=gpr");
-        println!("cargo:rustc-link-lib=grpc++_reflection");
-        println!("cargo:rustc-link-lib=pthread");
-        println!("cargo:rustc-link-lib=pqxx");
-        println!("cargo:rustc-link-lib=pq");
-        println!("cargo:rustc-link-lib=gmp");
-        println!("cargo:rustc-link-lib=stdc++");
-        println!("cargo:rustc-link-lib=gmpxx");
-        println!("cargo:rustc-link-lib=secp256k1");
-        println!("cargo:rustc-link-lib=crypto");
-        println!("cargo:rustc-link-lib=uuid");
-
-        //-lgrpc++ -lgrpc -lgpr
-        println!("cargo:rustc-link-lib=iomp5");
+        // Link other required libraries
+        for lib in &[
+            "protobuf",
+            "sodium",
+            "grpc++",
+            "grpc",
+            "gpr",
+            "grpc++_reflection",
+            "pthread",
+            "pqxx",
+            "pq",
+            "gmp",
+            "stdc++",
+            "gmpxx",
+            "secp256k1",
+            "crypto",
+            "uuid",
+            "iomp5",
+        ] {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
     }
 }

@@ -544,23 +544,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pil-std-lib"
-version = "0.1.0"
-dependencies = [
- "log",
- "num-bigint",
- "num-traits",
- "p3-field",
- "p3-goldilocks",
- "pilout",
- "proofman",
- "proofman-common",
- "proofman-hints",
- "proofman-util",
- "rayon",
-]
-
-[[package]]
 name = "pilout"
 version = "0.1.0"
 dependencies = [

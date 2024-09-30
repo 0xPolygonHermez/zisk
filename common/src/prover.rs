@@ -12,6 +12,14 @@ pub enum ProverStatus {
     OpeningStage,
     StagesCompleted,
 }
+#[derive(Clone, PartialEq)]
+pub enum ProofType {
+    Basic,
+    Compressor,
+    Recursive1,
+    Recursive2,
+    Final,
+}
 
 pub struct ProverInfo {
     pub airgroup_id: usize,
@@ -53,16 +61,14 @@ pub trait Prover<F> {
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>);
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus;
-    fn opening_stage(
-        &mut self,
-        opening_id: u32,
-        proof_ctx: Arc<ProofCtx<F>>,
-        transcript: &mut FFITranscript,
-    ) -> ProverStatus;
+    fn calculate_xdivxsub(&mut self, proof_ctx: Arc<ProofCtx<F>>);
+    fn calculate_lev(&mut self, proof_ctx: Arc<ProofCtx<F>>);
+    fn opening_stage(&mut self, opening_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus;
 
+    fn get_buff_helper_size(&self) -> usize;
     fn get_proof(&self) -> *mut c_void;
     fn get_prover_info(&self) -> ProverInfo;
-    fn save_proof(&self, id: u64, output_dir: &str);
+    fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void;
 
     fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
     fn add_publics_to_transcript(&self, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);

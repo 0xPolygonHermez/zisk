@@ -74,7 +74,7 @@ impl<F> WitnessManager<F> {
     }
 
     pub fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        info!("{}: ··· CALCULATING WITNESS stage {} / {}", Self::MY_NAME, stage, pctx.pilout.num_stages());
+        info!("{}: ··· CALCULATING WITNESS stage {} / {}", Self::MY_NAME, stage, pctx.global_info.n_challenges.len());
 
         timer_start!(CALCULATING_WITNESS);
 

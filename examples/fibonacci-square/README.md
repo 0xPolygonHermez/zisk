@@ -140,7 +140,7 @@ cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libfibonacci_square.so \
      --proving-key examples/fibonacci-square/build/provingKey/ \
      --public-inputs examples/fibonacci-square/src/inputs.json \
-     --output-dir examples/fibonacci-square/build/proofs
+     --output-dir examples/fibonacci-square/build/proofs -d
 ```
 
 ### 2.7 Verify the Proof
@@ -149,24 +149,21 @@ cargo run --bin proofman-cli prove \
 node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs
 ```
 
+### 2.6 Generate Final Proof
 
-node ../pil2-compiler/src/pil.js ../pil2-components/test/fibonacci/pil/build.pil \
-     -I ../pil2-components/lib/std/pil \
-     -o ./examples/fibonacci-square/pil/build.pilout \
-&& node ../pil2-proofman-js/src/main_setup.js \
-     -a ./examples/fibonacci-square/pil/build.pilout \
-     -b ./examples/fibonacci-square/build \
-&& cargo run --bin proofman-cli pil-helpers \
-     --pilout ./examples/fibonacci-square/pil/build.pilout \
-     --path ./examples/fibonacci-square/src -o \
-&& cargo build \
-&& cargo run --bin proofman-cli verify-constraints \
-     --witness-lib ./target/debug/libfibonacci_square.so \
-     --proving-key examples/fibonacci-square/build/provingKey/ \
-     --public-inputs examples/fibonacci-square/src/inputs.json \
-&& cargo run --bin proofman-cli prove \
+Finally, generate the proof using the following command:
+
+```bash
+cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libfibonacci_square.so \
      --proving-key examples/fibonacci-square/build/provingKey/ \
      --public-inputs examples/fibonacci-square/src/inputs.json \
      --output-dir examples/fibonacci-square/build/proofs \
-&& node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey -p examples/fibonacci-square/build/proofs
+     -a
+```
+
+### 2.8 Verify final proof
+
+```bash
+node ../pil2-stark-js/src/main_verifier.js -v examples/fibonacci-square/build/provingKey/build/final/final.verkey.json -s examples/fibonacci-square/build/provingKey/build/final/final.starkinfo.json -i examples/fibonacci-square/build/provingKey/build/final/final.verifierinfo.json -o examples/fibonacci-square/build/proofs/proofs/final_proof.json -b examples/fibonacci-square/build/proofs/publics.json
+```

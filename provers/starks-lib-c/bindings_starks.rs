@@ -174,12 +174,13 @@ extern "C" {
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_"]
+    #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_S_"]
     pub fn extend_and_merkelize(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
         buffer: *mut ::std::os::raw::c_void,
         proof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -191,11 +192,11 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15prepare_fri_polPvS_S_"]
-    pub fn prepare_fri_pol(
+    #[link_name = "\u{1}_Z18calculate_xdivxsubPvS_S_"]
+    pub fn calculate_xdivxsub(
         pStarks: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
+        xiChallenge: *mut ::std::os::raw::c_void,
+        xDivXSub: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -206,7 +207,7 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_S_"]
     pub fn calculate_fri_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
@@ -214,6 +215,7 @@ extern "C" {
         challenges: *mut ::std::os::raw::c_void,
         subproofValues: *mut ::std::os::raw::c_void,
         evals: *mut ::std::os::raw::c_void,
+        xDivXSub: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -240,13 +242,22 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_"]
+    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_S_"]
     pub fn commit_stage(
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
         buffer: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11compute_levPvS_S_"]
+    pub fn compute_lev(
+        pStarks: *mut ::std::os::raw::c_void,
+        xiChallenge: *mut ::std::os::raw::c_void,
+        LEv: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -254,7 +265,7 @@ extern "C" {
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
+        LEv: *mut ::std::os::raw::c_void,
         evals: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
@@ -342,13 +353,11 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25verify_global_constraintsPcS_PvS0_m"]
+    #[link_name = "\u{1}_Z25verify_global_constraintsPcPvPS0_"]
     pub fn verify_global_constraints(
-        globalInfoFile: *mut ::std::os::raw::c_char,
         globalConstraintsBinFile: *mut ::std::os::raw::c_char,
         publics: *mut ::std::os::raw::c_void,
-        pProofs: *mut ::std::os::raw::c_void,
-        nProofs: u64,
+        airgroupValues: *mut *mut ::std::os::raw::c_void,
     ) -> bool;
 }
 extern "C" {
@@ -413,6 +422,17 @@ extern "C" {
     pub fn add_recursive2_verkey(
         pZkin: *mut ::std::os::raw::c_void,
         recursive2VerKeyFilename: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20join_zkin_recursive2PcPvS0_S0_S0_S0_"]
+    pub fn join_zkin_recursive2(
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        pPublics: *mut ::std::os::raw::c_void,
+        pChallenges: *mut ::std::os::raw::c_void,
+        zkin1: *mut ::std::os::raw::c_void,
+        zkin2: *mut ::std::os::raw::c_void,
+        starkInfoRecursive2: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {

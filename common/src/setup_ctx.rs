@@ -1,61 +1,63 @@
 use std::cell::OnceCell;
 use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
 
 use crate::GlobalInfo;
 use crate::Setup;
-use crate::WitnessPilout;
+use crate::ProofType;
 
 #[derive(Debug)]
 pub struct SetupRepository {
     setups: HashMap<(usize, usize), OnceCell<Setup>>,
+    setup_airs: Vec<Vec<usize>>,
 }
 
 unsafe impl Send for SetupRepository {}
 unsafe impl Sync for SetupRepository {}
 
 impl SetupRepository {
-    pub fn new(pilout: WitnessPilout) -> Self {
+    pub fn new(global_info: &GlobalInfo, setup_type: &ProofType) -> Self {
         let mut setups = HashMap::new();
 
         // Initialize Hashmao for each airgroup_id, air_id
-        pilout.air_groups().iter().enumerate().for_each(|(airgroup_id, air_group)| {
-            air_group.airs().iter().enumerate().for_each(|(air_id, _)| {
-                setups.insert((airgroup_id, air_id), OnceCell::new());
-            });
-        });
-        // let setups = pilout
-        //     .air_groups()
-        //     .iter()
-        //     .enumerate()
-        //     .flat_map(|(airgroup_id, air_group)| {
-        //         air_group
-        //             .airs()
-        //             .iter()
-        //             .enumerate()
-        //             .map(move |(air_id, _)| OnceCell::new()) // Setup::new(proving_key_path, global_info, airgroup_id, air_id)
-        //     })
-        //     .collect::<Vec<OnceCell<Setup>>>();
+        let setup_airs = match setup_type != &ProofType::Final {
+            true => global_info
+                .airs
+                .iter()
+                .enumerate()
+                .map(|(airgroup_id, air_group)| {
+                    let mut air_group_setups = Vec::new();
+                    air_group.iter().enumerate().for_each(|(air_id, _)| {
+                        setups.insert((airgroup_id, air_id), OnceCell::new());
+                        air_group_setups.push(air_id);
+                    });
+                    air_group_setups
+                })
+                .collect::<Vec<Vec<usize>>>(),
+            false => {
+                let mut air_group_setups: Vec<Vec<usize>> = Vec::new();
+                setups.insert((0, 0), OnceCell::new());
+                air_group_setups.push(vec![0]);
+                air_group_setups
+            }
+        };
 
-        Self { setups }
+        Self { setups, setup_airs }
     }
 }
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
 pub struct SetupCtx {
     global_info: GlobalInfo,
-    proving_key_path: PathBuf,
-
     setup_repository: SetupRepository,
+    setup_type: ProofType,
 }
 
 impl SetupCtx {
-    pub fn new(pilout: WitnessPilout, proving_key_path: &Path) -> Self {
+    pub fn new(global_info: &GlobalInfo, setup_type: &ProofType) -> Self {
         SetupCtx {
-            global_info: GlobalInfo::new(proving_key_path),
-            proving_key_path: proving_key_path.to_path_buf(),
-            setup_repository: SetupRepository::new(pilout),
+            setup_repository: SetupRepository::new(global_info, setup_type),
+            global_info: global_info.clone(),
+            setup_type: setup_type.clone(),
         }
     }
 
@@ -69,9 +71,13 @@ impl SetupCtx {
         if setup.get().is_some() {
             return Ok(setup.get().unwrap());
         } else {
-            let _setup = Setup::new(&self.proving_key_path, &self.global_info, airgroup_id, air_id);
+            let _setup = Setup::new(&self.global_info, airgroup_id, air_id, &self.setup_type);
             setup.set(_setup).unwrap();
             return Ok(setup.get().unwrap());
         }
+    }
+
+    pub fn get_setup_airs(&self) -> Vec<Vec<usize>> {
+        self.setup_repository.setup_airs.clone()
     }
 }

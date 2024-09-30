@@ -22,18 +22,13 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         fibonacci
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // TODO: We should create the instance here and fill the trace in calculate witness!!!
-        if let Err(e) = Self::calculate_trace(
-            self,
-            FIBONACCI_SQUARE_AIRGROUP_ID,
-            FIBONACCI_SQUARE_AIR_IDS[0],
-            pctx.clone(),
-            ectx.clone(),
-        ) {
+        if let Err(e) =
+            Self::calculate_trace(self, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx, sctx)
+        {
             panic!("Failed to calculate fibonacci: {:?}", e);
         }
-        self.module.execute(pctx, ectx);
     }
 
     fn calculate_trace(
@@ -42,18 +37,22 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         air_id: usize,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let public_inputs: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let (module, mut a, mut b, _out) = public_inputs.inner();
 
-        let (buffer_size, offsets) =
-            ectx.buffer_allocator.as_ref().get_buffer_info("FibonacciSquare".into(), FIBONACCI_SQUARE_AIR_IDS[0])?;
+        let (buffer_size, offsets) = ectx.buffer_allocator.as_ref().get_buffer_info(
+            &sctx,
+            FIBONACCI_SQUARE_AIRGROUP_ID,
+            FIBONACCI_SQUARE_AIR_IDS[0],
+        )?;
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
+        let num_rows = pctx.global_info.airs[airgroup_id][air_id].num_rows;
         let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
         trace[0].a = F::from_canonical_u64(a);

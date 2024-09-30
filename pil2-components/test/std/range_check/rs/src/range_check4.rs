@@ -119,14 +119,14 @@ where
                     self.std_lib.range_check(trace[i].a4, range5.0.clone(), range5.1.clone());
                 }
 
-                let mut a7_val: i128 = rng.gen_range(-2i128.pow(7) + 1..=-50);
+                let mut a7_val: i128 = rng.gen_range(-(2i128.pow(7)) + 1..=-50);
                 if a7_val < 0 {
                     a7_val += F::order().to_i128().unwrap();
                 }
                 trace[i].a7 = F::from_canonical_u64(a7_val as u64);
                 self.std_lib.range_check(trace[i].a7, range8.0.clone(), range8.1.clone());
 
-                let mut a8_val: i128 = rng.gen_range(-2i128.pow(8) + 1..=-127);
+                let mut a8_val: i128 = rng.gen_range(-(2i128.pow(8)) + 1..=-127);
                 if a8_val < 0 {
                     a8_val += F::order().to_i128().unwrap();
                 }

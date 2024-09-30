@@ -22,11 +22,9 @@ fn main() {
     // println!("cargo:rerun-if-changed={}", build_dir.display());
     // println!("cargo:rerun-if-changed={}", pil_helpers_dir.display());
 
-    // panic!();
-
     // // Compile the pil file
     // let pil_compilation = std::process::Command::new("node")
-    //     .arg(root_path.join("../pil2-compiler/src/pil.js"))
+    //     .arg(root_path.join("../../pil2-compiler/src/pil.js"))
     //     .arg("-I")
     //     .arg(root_path.join("lib/std/pil"))
     //     .arg(root_path.join("test/std/connection/connection.pil"))
@@ -54,7 +52,7 @@ fn main() {
 
     // // Generate proving key
     // let proving_key_generation = std::process::Command::new("node")
-    //     .arg(root_path.join("../pil2-proofman-js/src/main_setup.js"))
+    //     .arg(root_path.join("../../pil2-proofman-js/src/main_setup.js"))
     //     .arg("-a")
     //     .arg(root_path.join("test/std/connection/build/connection.pilout"))
     //     .arg("-b")

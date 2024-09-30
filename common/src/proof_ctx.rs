@@ -1,8 +1,7 @@
 use std::sync::RwLock;
+use std::path::PathBuf;
 
-use log::info;
-
-use crate::{AirInstancesRepository, WitnessPilout};
+use crate::{AirInstancesRepository, GlobalInfo, WitnessPilout};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
@@ -24,32 +23,56 @@ impl<F> Default for Challenges<F> {
     }
 }
 
+pub struct BuffHelper<F> {
+    pub buff_helper: RwLock<Vec<F>>,
+}
+
+impl<F> Default for BuffHelper<F> {
+    fn default() -> Self {
+        Self { buff_helper: RwLock::new(Vec::new()) }
+    }
+}
+
+pub struct ProofOptions {
+    pub debug_mode: u64,
+    pub aggregation: bool,
+    pub save_proofs: bool,
+}
+
+impl ProofOptions {
+    pub fn new(debug_mode: u64, aggregation: bool, save_proofs: bool) -> Self {
+        Self { debug_mode, aggregation, save_proofs }
+    }
+}
+
 #[allow(dead_code)]
 pub struct ProofCtx<F> {
+    pub pilout: WitnessPilout,
     pub public_inputs: PublicInputs,
     pub challenges: Challenges<F>,
-    pub pilout: WitnessPilout,
+    pub buff_helper: BuffHelper<F>,
+    pub global_info: GlobalInfo,
     pub air_instance_repo: AirInstancesRepository<F>,
 }
 
 impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
-    pub fn create_ctx(pilout: WitnessPilout) -> Self {
-        info!("{}: ··· Creating proof context", Self::MY_NAME);
-        if pilout.air_groups().is_empty() {
-            panic!("No air groups found in PilOut");
-        }
+    pub fn create_ctx(pilout: WitnessPilout, proving_key_path: PathBuf) -> Self {
+        log::info!("{}: ··· Creating proof context", Self::MY_NAME);
+
+        let global_info: GlobalInfo = GlobalInfo::new(&proving_key_path);
 
         Self {
-            public_inputs: PublicInputs::default(),
             pilout,
+            global_info,
+            public_inputs: PublicInputs::default(),
             challenges: Challenges::default(),
+            buff_helper: BuffHelper::default(),
             air_instance_repo: AirInstancesRepository::new(),
         }
     }
 }
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
