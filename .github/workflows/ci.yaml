@@ -206,7 +206,7 @@ jobs:
 
       - name: Modify Cargo.toml std range-check
         run: |
-          sed -i 's/# *"pil2-components\/test\/std\/range-check\/rs"/"pil2-components\/test\/std\/range-check\/rs"/' ./Cargo.toml
+          sed -i 's/# *"pil2-components\/test\/std\/range_check\/rs"/"pil2-components\/test\/std\/range_check\/rs"/' ./Cargo.toml
 
       - name: Modify Cargo.toml std simple
         run: |
