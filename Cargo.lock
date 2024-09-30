@@ -2962,7 +2962,6 @@ dependencies = [
  "pil-std-lib",
  "proofman",
  "proofman-common",
- "proofman-hints",
  "proofman-util",
  "sm-arith",
  "sm-binary",
