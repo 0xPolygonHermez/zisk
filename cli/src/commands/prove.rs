@@ -8,6 +8,8 @@ use p3_goldilocks::Goldilocks;
 
 use proofman::ProofMan;
 use proofman_common::ProofOptions;
+use std::fs;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -53,9 +55,9 @@ impl ProveCmd {
         type GL = Goldilocks;
 
         if !Path::new(&self.output_dir.join("proofs")).exists() {
-            fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
+            fs::create_dir_all(&self.output_dir.join("proofs")).unwrap();
         }
-
+        
         ProofMan::<GL>::generate_proof(
             self.witness_lib.clone(),
             self.rom.clone(),

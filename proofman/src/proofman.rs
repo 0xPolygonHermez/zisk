@@ -8,6 +8,8 @@ use std::os::raw::c_char;
 use std::fs;
 use proofman_starks_lib_c::*;
 
+use colored::*;
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
