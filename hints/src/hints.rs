@@ -184,6 +184,19 @@ impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {
     }
 }
 
+pub trait GetValue<F: Clone + Copy> {
+    fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>>;
+}
+
+impl<F: Clone + Copy> GetValue<F> for HintFieldValues<F> {
+    fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>> {
+        self.values
+            .iter() // Iterate over key-value pairs in the HashMap
+            .map(|(key, value)| (key.clone(), value.get(index))) // Apply get to each value
+            .collect() // Collect results into a HashMap
+    }
+}
+
 impl<F: Field> Add<F> for HintFieldOutput<F> {
     type Output = Self;
 
