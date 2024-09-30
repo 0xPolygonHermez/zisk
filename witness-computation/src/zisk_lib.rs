@@ -1,8 +1,8 @@
 use log::trace;
 use pil_std_lib::Std;
-use sm_binary::{
-    BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
-};
+// use sm_binary::{
+//     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
+// };
 use sm_quick_ops::QuickOpsSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
@@ -28,9 +28,9 @@ pub struct ZiskWitness<F: PrimeField> {
     pub arith_32_sm: Option<Arc<Arith32SM>>,
     pub arith_64_sm: Option<Arc<Arith64SM>>,
     pub arith_3264_sm: Option<Arc<Arith3264SM>>,
-    pub binary_sm: Option<Arc<BinarySM<F>>>,
-    pub binary_basic_sm: Option<Arc<BinaryBasicSM<F>>>,
-    pub binary_extension_sm: Option<Arc<BinaryExtensionSM<F>>>,
+    // pub binary_sm: Option<Arc<BinarySM<F>>>,
+    // pub binary_basic_sm: Option<Arc<BinaryBasicSM<F>>>,
+    // pub binary_extension_sm: Option<Arc<BinaryExtensionSM<F>>>,
     pub main_sm: Option<Arc<MainSM<F>>>,
     pub mem_sm: Option<Arc<MemSM>>,
     pub mem_aligned_sm: Option<Arc<MemAlignedSM>>,
@@ -60,9 +60,9 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             arith_32_sm: None,
             arith_64_sm: None,
             arith_3264_sm: None,
-            binary_sm: None,
-            binary_basic_sm: None,
-            binary_extension_sm: None,
+            // binary_sm: None,
+            // binary_basic_sm: None,
+            // binary_extension_sm: None,
             main_sm: None,
             mem_sm: None,
             mem_aligned_sm: None,
@@ -91,28 +91,28 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MemUnalignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS);
         let mem_sm = MemSM::new(wcm.clone(), mem_aligned_sm.clone(), mem_unaligned_sm.clone());
 
-        let binary_basic_table_sm =
-            BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
-        let binary_basic_sm = BinaryBasicSM::new(
-            wcm.clone(),
-            binary_basic_table_sm,
-            BINARY_AIRGROUP_ID,
-            BINARY_AIR_IDS,
-        );
+        // let binary_basic_table_sm =
+        //     BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+        // let binary_basic_sm = BinaryBasicSM::new(
+        //     wcm.clone(),
+        //     binary_basic_table_sm,
+        //     BINARY_AIRGROUP_ID,
+        //     BINARY_AIR_IDS,
+        // );
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new(
-            wcm.clone(),
-            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
-            BINARY_EXTENSION_TABLE_AIR_IDS,
-        );
-        let binary_extension_sm = BinaryExtensionSM::new(
-            wcm.clone(),
-            binary_extension_table_sm,
-            BINARY_EXTENSION_AIRGROUP_ID,
-            BINARY_EXTENSION_AIR_IDS,
-        );
-        let binary_sm =
-            BinarySM::new(wcm.clone(), binary_basic_sm.clone(), binary_extension_sm.clone());
+        // let binary_extension_table_sm = BinaryExtensionTableSM::new(
+        //     wcm.clone(),
+        //     BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+        //     BINARY_EXTENSION_TABLE_AIR_IDS,
+        // );
+        // let binary_extension_sm = BinaryExtensionSM::new(
+        //     wcm.clone(),
+        //     binary_extension_table_sm,
+        //     BINARY_EXTENSION_AIRGROUP_ID,
+        //     BINARY_EXTENSION_AIR_IDS,
+        // );
+        // let binary_sm =
+        //     BinarySM::new(wcm.clone(), binary_basic_sm.clone(), binary_extension_sm.clone());
 
         let arith_32_sm = Arith32SM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH32_AIR_IDS);
         let arith_64_sm = Arith64SM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH64_AIR_IDS);
@@ -130,7 +130,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             &self.rom_path,
             &wcm,
             mem_sm.clone(),
-            binary_sm.clone(),
+            // binary_sm.clone(),
             arith_sm.clone(),
             MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS,
@@ -143,9 +143,9 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         self.arith_32_sm = Some(arith_32_sm);
         self.arith_64_sm = Some(arith_64_sm);
         self.arith_3264_sm = Some(arith_3264_sm);
-        self.binary_sm = Some(binary_sm);
-        self.binary_basic_sm = Some(binary_basic_sm);
-        self.binary_extension_sm = Some(binary_extension_sm);
+        // self.binary_sm = Some(binary_sm);
+        // self.binary_basic_sm = Some(binary_basic_sm);
+        // self.binary_extension_sm = Some(binary_extension_sm);
         self.main_sm = Some(main_sm);
         self.mem_sm = Some(mem_sm);
         self.mem_aligned_sm = Some(mem_aligned_sm);

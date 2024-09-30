@@ -2,7 +2,7 @@ use log::info;
 use p3_field::Field;
 
 use rayon::{Scope, ThreadPoolBuilder};
-use sm_binary::BinarySM;
+// use sm_binary::BinarySM;
 use std::{
     fs, mem,
     path::{Path, PathBuf},
@@ -53,7 +53,7 @@ pub struct MainSM<F> {
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     // State machines
     mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM<F>>,
+    // binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 }
 
@@ -82,7 +82,7 @@ impl<'a, F: Field> MainSM<F> {
         rom_path: &Path,
         wcm: &'a WitnessManager<F>,
         mem_sm: Arc<MemSM>,
-        binary_sm: Arc<BinarySM<F>>,
+        // binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -118,7 +118,7 @@ impl<'a, F: Field> MainSM<F> {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
             mem_sm: mem_sm.clone(),
-            binary_sm: binary_sm.clone(),
+            // binary_sm: binary_sm.clone(),
             arith_sm: arith_sm.clone(),
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
@@ -127,7 +127,7 @@ impl<'a, F: Field> MainSM<F> {
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
-        main_sm.binary_sm.register_predecessor();
+        // main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 
         main_sm
@@ -192,7 +192,7 @@ impl<'a, F: Field> MainSM<F> {
 
             // Unregister main state machine as a predecessor for all the secondary state machines
             self.mem_sm.unregister_predecessor::<F>(scope);
-            self.binary_sm.unregister_predecessor(scope);
+            // self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor::<F>(scope);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
@@ -384,14 +384,14 @@ impl<'a, F: Field> MainSM<F> {
         let arith = mem::take(&mut emu_required.arith);
 
         let mem_sm = self.mem_sm.clone();
-        let binary_sm = self.binary_sm.clone();
+        // let binary_sm = self.binary_sm.clone();
         let arith_sm = self.arith_sm.clone();
 
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
             mem_sm.prove(&memory, false, scope);
-            binary_sm.prove(&binary, false, scope);
+            // binary_sm.prove(&binary, false, scope);
             arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
