@@ -10,7 +10,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
 use zisk_pil::*;
 
 use crate::BinaryBasicTableSM;
@@ -103,7 +103,7 @@ impl<F: Field> BinaryBasicSM<F> {
             // Execute the opcode
             let c: u64;
             let flag: bool;
-            (c, flag) = opcode_execute(r.opcode, r.a, r.b);
+            (c, flag) = ZiskOp::execute(r.opcode, r.a, r.b);
             let _flag = flag;
 
             // Decompose the opcode into mode32 & op
@@ -457,7 +457,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

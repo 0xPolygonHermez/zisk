@@ -1,6 +1,7 @@
 use crate::{
-    op_from_str, ZiskInst, ZiskOperationType, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    zisk_ops::{InvalidNameError, OpType, ZiskOp},
+    ZiskInst, ZiskOperationType, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR,
 };
 
 // #[cfg(feature = "sp")]
@@ -14,7 +15,8 @@ pub struct ZiskInstBuilder {
 }
 
 impl ZiskInstBuilder {
-    pub fn new(paddr: u64) -> ZiskInstBuilder {
+    #[inline]
+    pub const fn new(paddr: u64) -> ZiskInstBuilder {
         let regs_addr = SYS_ADDR;
 
         ZiskInstBuilder {
@@ -196,14 +198,15 @@ impl ZiskInstBuilder {
     //     self.i.set_sp = true;
     // }
 
-    pub fn op(&mut self, optxt: &str) {
-        let op = op_from_str(optxt);
-        self.i.is_external_op = op.t != "i";
-        self.i.op = op.c;
-        self.i.op_str = op.n;
+    pub fn op(&mut self, optxt: &str) -> Result<(), InvalidNameError> {
+        let op = ZiskOp::try_from_name(optxt)?;
+        self.i.is_external_op = op.op_type() != OpType::Internal;
+        self.i.op = op.code();
+        self.i.op_str = op.name();
         self.i.m32 = optxt.contains("_w");
-        self.i.func = op.f;
-        self.i.op_type = op.op_type();
+        self.i.func = op.get_call_function();
+        self.i.op_type = op.op_type().into();
+        Ok(())
     }
 
     pub fn j(&mut self, j1: i32, j2: i32) {
