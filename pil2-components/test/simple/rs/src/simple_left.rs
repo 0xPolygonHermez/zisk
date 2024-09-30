@@ -59,7 +59,7 @@ where
         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
         log::info!(
-            "{}: Initiating witness computation for AIR '{}' at stage {}",
+            "{}: ··· Computing witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),
             stage
@@ -100,12 +100,5 @@ where
                 trace[i].d = trace[indices[i]].b;
             }
         }
-
-        log::info!(
-            "{}: Completed witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            air.name().unwrap_or("unknown"),
-            stage
-        );
     }
 }

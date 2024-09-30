@@ -231,12 +231,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    log::info!(
-                        "{}: Initiating witness computation for AIR '{}' at stage {}",
-                        Self::MY_NAME,
-                        air_name,
-                        stage
-                    );
+                    log::info!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 
@@ -322,13 +317,6 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     // set the computed gsum column and its associated airgroup_val
                     set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
                     set_hint_field_val(&sctx, air_instance, gsum_hint as u64, "result", gsum.get(num_rows - 1));
-
-                    log::info!(
-                        "{}: Completed witness computation for AIR '{}' at stage {}",
-                        Self::MY_NAME,
-                        air.name().unwrap_or("unknown"),
-                        stage
-                    );
                 }
             }
         }

@@ -488,19 +488,23 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut air_groups: Vec<_> = air_instances.keys().collect();
         air_groups.sort();
 
-        info!("---------------------------------------------");
-        info!("{}: {} Air instances found:", Self::MY_NAME, air_instances_repo.len());
+        info!("{}: >>> PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
+        info!("{}:     ► {} Air instances found:", Self::MY_NAME, air_instances_repo.len());
         for air_group in air_groups {
             let air_group_instances = air_instances.get(air_group).unwrap();
             let mut air_names: Vec<_> = air_group_instances.keys().collect();
             air_names.sort();
 
-            info!("{}: AirGroup [{}]", Self::MY_NAME, air_group);
+            info!("{}:       Air Group [{}]", Self::MY_NAME, air_group);
             for air_name in air_names {
                 let count = air_group_instances.get(air_name).unwrap();
-                info!("{}:   · {} x Air [{}]", Self::MY_NAME, count, air_name);
+                log::info!(
+                    "{}:       {}",
+                    Self::MY_NAME,
+                    format!("· {} x Air [{}]", count, air_name).bright_white().bold()
+                );
             }
         }
-        info!("---------------------------------------------");
+        info!("{}: <<< PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
     }
 }
