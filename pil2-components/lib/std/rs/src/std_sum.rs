@@ -12,13 +12,12 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput,
-    HintFieldValue,
+    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, GetValueV, HintFieldOptions, HintFieldOutput, HintFieldValue
 };
 
 use crate::{Decider, StdMode, ModeName};
 
-type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>);
+type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
 type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 
 pub struct StdSum<F: Copy + Display> {
@@ -52,7 +51,7 @@ impl<F: Field> Decider<F> for StdSum<F> {
                 let debug_hints = get_hint_ids_by_name(p_setup, "gsum_member");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
-                    sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints));
+                    sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data));
                 }
             });
         });
@@ -88,10 +87,18 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         air_instance: &mut AirInstance<F>,
         num_rows: usize,
         debug_hints_data: Vec<u64>,
-        debug_hints: Vec<u64>,
     ) {
-        let mut past_ncols = 0;
         for hint in debug_hints_data.iter() {
+            let _name = get_hint_field::<F>(
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
+                air_instance,
+                *hint as usize,
+                "name_piop",
+                HintFieldOptions::default(),
+            );
+
             let sumid = get_hint_field::<F>(
                 sctx,
                 &pctx.public_inputs,
@@ -131,22 +138,6 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 panic!();
             };
 
-            let ncols = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "ncols",
-                HintFieldOptions::default(),
-            );
-            let ncols = if let HintFieldValue::Field(ncols) = ncols {
-                ncols.as_canonical_biguint().to_usize().expect("Cannot convert to usize")
-            } else {
-                log::error!("Proves hint must be a field element");
-                panic!();
-            };
-
             let mul = get_hint_field::<F>(
                 sctx,
                 &pctx.public_inputs,
@@ -157,21 +148,25 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            let mut bus_vals = Vec::new();
-            for hint in debug_hints[past_ncols..(past_ncols + ncols)].iter() {
-                let col = get_hint_field::<F>(
-                    sctx,
-                    &pctx.public_inputs,
-                    &pctx.challenges,
-                    air_instance,
-                    *hint as usize,
-                    "reference",
-                    HintFieldOptions::default(),
-                );
+            let expressions = get_hint_field_a::<F>(
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
+                air_instance,
+                *hint as usize,
+                "references",
+                HintFieldOptions::default(),
+            );
 
-                bus_vals.push(col);
-            }
-            past_ncols += ncols;
+            // let _names = get_hint_field::<F>(
+            //     sctx,
+            //     &pctx.public_inputs,
+            //     &pctx.challenges,
+            //     air_instance,
+            //     *hint as usize,
+            //     "names",
+            //     HintFieldOptions::default(),
+            // );
 
             for j in 0..num_rows {
                 let mul = if let HintFieldOutput::Field(mul) = mul.get(j) {
@@ -190,8 +185,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         panic!("sumid must be a field element");
                     };
 
-                    let bus_value = bus_vals.iter().map(|col| col.get(j)).collect();
-                    self.update_bus_vals(sumid, bus_value, j, !proves, bus_throws);
+                    self.update_bus_vals(sumid, expressions.get(j), j, !proves, bus_throws);
                 }
             }
         }
@@ -240,7 +234,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         if stage == 2 {
             let sum_airs = self.sum_airs.lock().unwrap();
 
-            for (airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints) in sum_airs.iter() {
+            for (airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data) in sum_airs.iter() {
                 let air_instance_ids = pctx.air_instance_repo.find_air_instances(*airgroup_id, *air_id);
 
                 for air_instance_id in air_instance_ids {
@@ -259,7 +253,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let num_rows = air.num_rows();
 
                     if self.mode.name == ModeName::Debug {
-                        self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone(), debug_hints.clone());
+                        self.debug(&pctx, &sctx, air_instance, num_rows, debug_hints_data.clone());
                     }
 
                     // Populate the im columns

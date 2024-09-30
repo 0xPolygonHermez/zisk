@@ -102,11 +102,12 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         initial_checks_sum(proves, opid, cols);
 
         // Create debug hints for the witness computation
-        const string name_str = get_piop_name(name);
-        @gsum_member_data{name: name_str, sumid: sumid, proves: proves, ncols: length(cols), selector: sel};
-        for (int i = 0; i < length(cols); i++) {
-            @gsum_member{reference: cols[i]};
+        const int ncols = length(cols);
+        string name_cols[ncols];
+        for (int i = 0; i < ncols; i++) {
+            name_cols[i] = string(cols[i]);
         }
+        @gsum_member_data{name_piop: get_piop_name(name), sumid: sumid, proves: proves, selector: sel, references: cols};
     }
 
     init_challenges();
