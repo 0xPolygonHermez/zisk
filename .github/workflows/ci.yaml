@@ -108,7 +108,7 @@ jobs:
         run: cargo install cargo-audit
       - name: cargo audit
         run: cargo audit
-  fibonacci-square:
+  tests:
     name: Test fibonacci square
     runs-on: ubuntu-latest
     env:
@@ -278,19 +278,19 @@ jobs:
 
       - name: Create dir build range-check
         run: |
-          mkdir -p ./pil2-components/test/std/range-check/build/
+          mkdir -p ./pil2-components/test/std/range_check/build/
 
       - name: Compile PIL range-check
         run: |
-          node pil2-compiler/src/pil.js ./pil2-components/test/std/range-check/range-check.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range-check/build/build.pilout
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/range_check.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range_check/build/build.pilout
 
       - name: Generate setup range-check
         run: |
-          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/range-check/build/build.pilout -b ./pil2-components/test/std/range-check/build -t pil2-stark/build/bctree
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/range_check/build/build.pilout -b ./pil2-components/test/std/range_check/build -t pil2-stark/build/bctree
 
       - name: Generate PIL Helpers range-check
         run: |
-          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/range-check/build/build.pilout --path ./pil2-components/test/std/range-check/rs/src -o
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/range_check/build/build.pilout --path ./pil2-components/test/std/range_check/rs/src -o
 
       - name: Create dir build simple
         run: |
@@ -361,15 +361,15 @@ jobs:
 
       - name: Verify constraints range-check
         run: |
-          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/librange-check.so --proving-key ./pil2-components/test/std/range-check/build/provingKey
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey
 
       - name: Generate proof range-check
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange-check.so --proving-key ./pil2-components/test/std/range-check/build/provingKey --output-dir ./pil2-components/test/std/range-check/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey --output-dir ./pil2-components/test/std/range_check/build -d
 
       - name: Verify proof range-check
         run: |
-          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range-check/build/provingKey -p ./pil2-components/test/std/range-check/build
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range_check/build/provingKey -p ./pil2-components/test/std/range_check/build
 
       - name: Verify constraints simple
         run: |
