@@ -109,7 +109,7 @@ jobs:
       - name: cargo audit
         run: cargo audit
   tests:
-    name: Test fibonacci square
+    name: Test fibonacci square && std
     runs-on: ubuntu-latest
     env:
       STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
@@ -282,7 +282,7 @@ jobs:
 
       - name: Compile PIL range-check
         run: |
-          node pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/range_check.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range_check/build/build.pilout
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/build.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range_check/build/build.pilout
 
       - name: Generate setup range-check
         run: |
