@@ -1,40 +1,12 @@
 // extern crate env_logger;
-use clap::{Parser, ValueEnum};
-// use proofman_common::VerboseMode;
-use std::{fmt::Display, path::PathBuf};
+use clap::Parser;
+use std::path::PathBuf;
 use colored::Colorize;
+use crate::commands::field::Field;
 
 use p3_goldilocks::Goldilocks;
 
 use proofman::ProofMan;
-
-use std::str::FromStr;
-
-#[derive(Parser, Debug, Clone, ValueEnum)]
-pub enum Field {
-    Goldilocks,
-    // Add other variants here as needed
-}
-
-impl FromStr for Field {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Goldilocks" => Ok(Field::Goldilocks),
-            // Add parsing for other variants here
-            _ => Err(format!("'{}' is not a valid value for Field", s)),
-        }
-    }
-}
-
-impl Display for Field {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Field::Goldilocks => write!(f, "goldilocks"),
-        }
-    }
-}
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -77,8 +49,6 @@ impl VerifyConstraintsCmd {
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        type GL = Goldilocks;
-
         let debug_mode = match self.verbose {
             0 => 1, // Default to Error
             1 => 2, // -v
@@ -87,7 +57,7 @@ impl VerifyConstraintsCmd {
         };
 
         let _valid_constraints = match self.field {
-            Field::Goldilocks => ProofMan::<GL>::generate_proof(
+            Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
