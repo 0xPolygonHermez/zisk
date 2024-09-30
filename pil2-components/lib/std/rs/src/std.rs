@@ -21,7 +21,7 @@ impl<F: PrimeField> Std<F> {
     const _MY_NAME: &'static str = "STD";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
-        let mode = StdMode { name: ModeName::Standard, opids: None};
+        let mode = StdMode { name: ModeName::Debug, opids: None};
 
         log::info!("The STD has been initialized on mode {}", mode.name);
 

@@ -12,13 +12,13 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, GetValueV, HintFieldOptions, HintFieldOutput, HintFieldValue
+    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput, HintFieldValue
 };
 
 use crate::{Decider, StdMode, ModeName};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
-type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
+type BusVals<F> = Vec<(usize, F, Vec<HintFieldOutput<F>>)>;
 
 pub struct StdSum<F: Copy + Display> {
     mode: StdMode,
@@ -27,8 +27,8 @@ pub struct StdSum<F: Copy + Display> {
 }
 
 struct DebugData<F: Copy> {
-    bus_vals_left: Mutex<BTreeMap<F, BusVals<F>>>,  // opid -> (row, bus_val)
-    bus_vals_right: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
+    bus_vals_left: Mutex<BTreeMap<F, BusVals<F>>>,  // opid -> (row, multiplicity, bus_val)
+    bus_vals_right: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
 }
 
 impl<F: Field> Decider<F> for StdSum<F> {
@@ -177,21 +177,19 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
                 // TODO: bus_throws should be used as a counter of the value, not repeating the calls multiple times...
                 if !mul.is_zero() {
-                    let bus_throws = mul.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-
                     let sumid = if let HintFieldOutput::Field(sumid) = sumid.get(j) {
                         sumid
                     } else {
                         panic!("sumid must be a field element");
                     };
 
-                    self.update_bus_vals(sumid, expressions.get(j), j, !proves, bus_throws);
+                    self.update_bus_vals(sumid, expressions.get(j), j, !proves, mul);
                 }
             }
         }
     }
 
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool, times: usize) {
+    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool, times: F) {
         let mut bus_vals;
         let mut other_bus_vals;
         if is_num {
@@ -204,12 +202,20 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
         let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
 
-        for _ in 0..times {
-            if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
-                bus_vals_map.remove(idx);
+        if let Some((idx, (_, t, _))) = bus_vals_map.iter().enumerate().find(|(_, (_, _, v))| *v == val) {
+            let diff = times - *t;
+            if times > *t {
+                bus_vals_map[idx].1 = F::zero();
+                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val.clone()));
             } else {
-                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val.clone()));
+                bus_vals_map[idx].1 -= times;
             }
+
+            if bus_vals_map[idx].1.is_zero() {
+                bus_vals_map.remove(idx);
+            }
+        } else {
+            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val.clone()));
         }
 
         if bus_vals_map.is_empty() {
@@ -362,26 +368,26 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
             }
         }
 
-        fn print_rows<F: Field>(vals: &Vec<(usize, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
+        fn print_rows<F: Field>(vals: &Vec<(usize, F, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
             let num_values = vals.len();
 
             if max_values_to_print >= num_values {
-                for (row, val) in vals {
-                    println!("\t    • Row {}: {:?}", row, val);
+                for (row, mul,  val) in vals {
+                    println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
                 }
                 return;
             }
 
             // Print the first max_values_to_print
-            for (row, val) in vals[..max_values_to_print].into_iter() {
-                println!("\t    • Row {}: {:?}", row, val);
+            for (row, mul, val) in vals[..max_values_to_print].into_iter() {
+                println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
             }
 
             println!("\t      ...");
 
             // Print the last max_values_to_print
-            for (row, val) in vals[num_values - max_values_to_print..].into_iter() {
-                println!("\t    • Row {}: {:?}", row, val);
+            for (row, mul, val) in vals[num_values - max_values_to_print..].into_iter() {
+                println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
             }
 
             println!();
