@@ -52,20 +52,20 @@ impl ProveCmd {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        type GL = Goldilocks;
-
         if !Path::new(&self.output_dir.join("proofs")).exists() {
             fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
         }
 
-        ProofMan::<GL>::generate_proof(
-            self.witness_lib.clone(),
-            self.rom.clone(),
-            self.public_inputs.clone(),
-            self.proving_key.clone(),
-            self.output_dir.clone(),
-            ProofOptions::new(0, self.aggregation, self.debug),
-        )?;
+        match self.field {
+            Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
+                self.witness_lib.clone(),
+                self.rom.clone(),
+                self.public_inputs.clone(),
+                self.proving_key.clone(),
+                self.output_dir.clone(),
+                ProofOptions::new(0, self.aggregation, self.debug),
+            )?,
+        };
 
         println!("Proofs generated successfully");
 
