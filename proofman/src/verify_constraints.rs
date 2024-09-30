@@ -35,9 +35,7 @@ pub fn verify_constraints_proof<F: Field>(
     }
 
     let mut valid_constraints = true;
-    for (air_instance_index, air_instance) in
-        pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate()
-    {
+    for (air_instance_index, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate() {
         let air_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
         let mut valid_constraints_prover = true;
         log::info!(
@@ -114,7 +112,9 @@ pub fn verify_constraints_proof<F: Field>(
             log::info!(
                 "{}:     {}",
                 MY_NAME,
-                format!("\u{2713} All constraints for Instance #{} were verified", air_instance_index,).bright_green().bold()
+                format!("\u{2713} All constraints for Instance #{} were verified", air_instance_index,)
+                    .bright_green()
+                    .bold()
             );
         }
 
@@ -191,20 +191,12 @@ pub fn verify_constraints_proof<F: Field>(
             "\u{2713} All global constraints were successfully verified".bright_green().bold()
         );
     } else {
-        log::info!(
-            "{}: ··· {}",
-            MY_NAME,
-            "\u{2717} Not all global constraints were verified".bright_red().bold()
-        );
+        log::info!("{}: ··· {}", MY_NAME, "\u{2717} Not all global constraints were verified".bright_red().bold());
     }
 
     if valid_constraints && global_constraints_verified {
         log::info!("{}: ··· {}", MY_NAME, "\u{2713} All constraints were verified".bright_green().bold());
     } else {
-        log::info!(
-            "{}: ··· {}",
-            MY_NAME,
-            "\u{2717} Not all constraints were verified.".bright_red().bold()
-        );
+        log::info!("{}: ··· {}", MY_NAME, "\u{2717} Not all constraints were verified.".bright_red().bold());
     }
 }
