@@ -19,8 +19,7 @@ pub struct ZiskRequiredBinaryBasicTable {
     pub opcode: u8,
     pub a: u64,
     pub b: u64,
-    pub cin: u64,
-    pub last: u64,
+    pub row: u64,
 }
 
 #[derive(Clone, Default)]

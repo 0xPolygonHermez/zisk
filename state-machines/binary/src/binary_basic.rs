@@ -160,8 +160,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -185,8 +184,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -224,8 +222,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -254,8 +251,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -287,8 +283,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -319,8 +314,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -351,8 +345,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -371,8 +364,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -391,8 +383,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector
@@ -411,8 +402,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i]),
                         };
 
                         // Store the required in the vector

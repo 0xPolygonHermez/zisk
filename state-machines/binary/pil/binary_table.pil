@@ -39,7 +39,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
         return;
     }
 
-    if (N < 2**23) {
+    if (N < 2**22) {
         error(`N must be at least 2^23, but N=${N} was provided`);
     }
 

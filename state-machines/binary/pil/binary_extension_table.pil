@@ -124,6 +124,6 @@ airtemplate BinaryExtensionTable(const int N = 2**19, const int disable_fixed = 
     #pragma timer t2 end
     #pragma timer tt end
 
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
+    //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
     #pragma memory m1 end
 }

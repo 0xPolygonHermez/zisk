@@ -8,10 +8,10 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
+use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::*;
 
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 23;
+const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -99,28 +99,44 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for i in input {
-            // Calculate the different row offset contributors, according to the PIL
-            let offset_a: u64;
-            let offset_b: u64;
-            let offset_cin: u64;
-            let offset_last: u64;
-            let offset_operation: u64;
-            if i.opcode <= 12 {
-                offset_a = i.a;
-                offset_b = i.b * P2_8;
-                offset_cin = i.cin * P2_16;
-                offset_last = i.last * P2_17;
-                offset_operation = (i.opcode as u64 - 2) * P2_18;
-            } else {
-                offset_a = i.a;
-                offset_b = i.b * P2_8;
-                offset_cin = 0;
-                offset_last = i.last * P2_16;
-                offset_operation = (11 * P2_18) + (i.opcode as u64 - 32) * P2_17;
-            }
-            let row = offset_a + offset_b + offset_cin + offset_last + offset_operation;
-            assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
-            multiplicity[row as usize] += 1;
+            assert!(i.row < MULTIPLICITY_TABLE_SIZE as u64);
+            multiplicity[i.row as usize] += 1;
+        }
+    }
+
+    pub fn calculate_table_row(opcode: u8, a: u64, b: u64, cin: u64, last: u64) -> u64 {
+        // Calculate the different row offset contributors, according to the PIL
+        let offset_a: u64 = a;
+        let offset_b: u64 = b * P2_8;
+        let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_17 } else { 0 };
+        let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_18 } else { 0 };
+        let offset_result_is_a: u64 = if Self::opcode_result_is_a(opcode) { P2_19 } else { 0 }; // TODO: Should we add it only if c == a?
+        let row = offset_a + offset_b + offset_last + offset_cin + offset_result_is_a;
+        assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
+        row
+    }
+
+    fn opcode_has_last(opcode: u8) -> bool {
+        match opcode {
+            0x09 | 0x0a | 0x0b | 0x0c | 0x04 | 0x05 | 0x08 | 0x02 | 0x03 | 0x06 | 0x07 | 0x20 | 0x21 | 0x22 => true,
+            0x23 /* EXT_32 */ => false,
+            _ => panic!("BinaryBasicTableSM::opcode_has_last() got invalid opcode={}", opcode),
+        }
+    }
+
+    fn opcode_has_cin(opcode: u8) -> bool {
+        match opcode {
+            0x09 | 0x0a | 0x0b | 0x0c | 0x04 | 0x05 | 0x08 | 0x02 | 0x03 => true,
+            0x06 | 0x07 | 0x20 | 0x21 | 0x22 | 0x23 => false,
+            _ => panic!("BinaryBasicTableSM::opcode_has_cin() got invalid opcode={}", opcode),
+        }
+    }
+
+    fn opcode_result_is_a(opcode: u8) -> bool {
+        match opcode {
+            0x09 | 0x0a | 0x0b | 0x0c => true,
+            0x04 | 0x05 | 0x08 | 0x02 | 0x03 | 0x06 | 0x07 | 0x20 | 0x21 | 0x22 | 0x23 => false,
+            _ => panic!("BinaryBasicTableSM::opcode_result_is_a() got invalid opcode={}", opcode),
         }
     }
 }
