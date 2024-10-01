@@ -1,14 +1,14 @@
 use core::panic;
 use rayon::prelude::*;
 use std::{
-    collections::BTreeMap,
+    hash::Hash,
+    collections::{BTreeMap, HashMap},
     fmt::{Display, Debug},
     sync::{Arc, Mutex},
 };
 
 use num_traits::ToPrimitive;
 use p3_field::{Field, PrimeField};
-use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -20,15 +20,15 @@ use proofman_hints::{
 use crate::{Decider, StdMode, ModeName};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
-type BusVals<F> = Vec<(usize, F, Vec<HintFieldOutput<F>>)>;
+type BusVals<F> = HashMap<Vec<HintFieldOutput<F>>, (F, usize)>; // val -> (mul, row)
 
-pub struct StdSum<F: Copy + Display> {
+pub struct StdSum<F: Copy + Display + Hash> {
     mode: StdMode,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
     debug_data: Option<DebugData<F>>,
 }
 
-struct DebugData<F: Copy> {
+struct DebugData<F: Copy + Hash> {
     bus_vals_positive: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
     bus_vals_negative: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
 }
@@ -223,23 +223,44 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             (bus_vals, other_bus_vals)
         };
 
-        let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
+        let bus_vals_map = bus_vals.entry(opid).or_insert(HashMap::new());
 
-        if let Some((idx, (_, t, _))) = bus_vals_map.iter().enumerate().find(|(_, (_, _, v))| *v == val) {
-            let diff = times - *t;
-            if times > *t {
-                bus_vals_map[idx].1 = F::zero();
-                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val));
-            } else {
-                bus_vals_map[idx].1 -= times;
+        // val -> (mul, row)
+        let value_found = bus_vals_map.get(&val);
+        match value_found {
+            Some((mul_val, row_val)) => {
+                let diff = times - *mul_val;
+                if times > *mul_val {
+                    bus_vals_map.remove(&val);
+                    other_bus_vals.entry(opid).or_insert(HashMap::new()).insert(val, (diff, row));
+                } else if times == *mul_val {
+                    bus_vals_map.remove(&val);
+                } else {
+                    // update the multiplicity with diff
+                    bus_vals_map.insert(val, (diff, *row_val));
+                }
             }
-
-            if bus_vals_map[idx].1.is_zero() {
-                bus_vals_map.remove(idx);
+            None => {
+                other_bus_vals.entry(opid).or_insert(HashMap::new()).insert(val, (times, row));
             }
-        } else {
-            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val));
         }
+
+        // if let Some((mul, row)) = bus_vals_map.get(&val) {
+        //     let diff = times - *mul;
+        //     if times > *mul {
+        //         bus_vals_map
+        //         // bus_vals_map[idx].1 = F::zero();
+        //         // other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val));
+        //     } else {
+        //         bus_vals_map[idx].1 -= times;
+        //     }
+
+        //     if bus_vals_map[idx].1.is_zero() {
+        //         bus_vals_map.remove(idx);
+        //     }
+        // } else {
+        //     other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val));
+        // }
 
         if bus_vals_map.is_empty() {
             bus_vals.remove(&opid);
