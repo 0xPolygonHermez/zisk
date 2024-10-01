@@ -162,14 +162,18 @@ impl<F: Field> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                        let flags = cout;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
                         };
 
                         if (a_bytes[i] == 0) && (b_bytes[i] == 0) && (c_bytes[i] == 255) {
@@ -188,20 +192,24 @@ impl<F: Field> BinaryBasicSM<F> {
                     for i in 0..8 {
                         // Calculate carry
                         let previous_cin = cin;
-                        cout = if (a_bytes[i] as u64 - cin) >= b_bytes[i] as u64 { 0 } else { 1 };
+                        cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                         debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
                         cin = if i == carry_byte { 0 } else { cout };
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                        let flags = cout;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
                         };
 
                         // Store the required in the vector
@@ -236,7 +244,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                        let flags = cout + 8*plast[i];
+                        let flags = cin + 8*plast[i];
 
                         // Create a tablerequired
                         let tr = ZiskRequiredBinaryBasicTable {
@@ -277,7 +285,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                        let flags = cout + 8*plast[i];
+                        let flags = cin + 8*plast[i];
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
@@ -317,16 +325,12 @@ impl<F: Field> BinaryBasicSM<F> {
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                         let flags = cout + 8*plast[i];
 
-                        // Set a and b bytes
-                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
-                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
-
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], 
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], 
                             if i == 7 { c_bytes[0] as u64 } else { 0 },
                             flags, i as u64),
                         };
@@ -352,8 +356,11 @@ impl<F: Field> BinaryBasicSM<F> {
                         if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
+                        if i == 7 {
+                            cout = 0;
+                        }
                         cin = cout;
-                        t.carry[i] = if i == 7 { F::zero() } else { F::from_canonical_u64(cin) };
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                         let flags = cout + 2 + 4*result_is_a;
@@ -387,8 +394,11 @@ impl<F: Field> BinaryBasicSM<F> {
                         if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
+                        if i == 7 {
+                            cout = 0;
+                        }
                         cin = cout;
-                        t.carry[i] = if i == 7 { F::zero() } else { F::from_canonical_u64(cin) };
+                        t.carry[i] = F::from_canonical_u64(cin);
 
                         //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                         let flags = cout + 2 + 4*result_is_a;
