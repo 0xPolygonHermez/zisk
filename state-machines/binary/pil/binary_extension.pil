@@ -76,22 +76,18 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     col witness in1[bytes];
     col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
     col witness out[bytes][2];
+    col witness op_is_shift;   // 1 if op is shift, 0 otherwise
 
     // Constraints to check the correctness of each binary operation
     for (int j = 0; j < bytes; j++) {
-       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [m_op, j, in1[j], in2_low, out[j][0], out[j][1]]);
+       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, in1[j], in2_low, out[j][0], out[j][1], op_is_shift]);
     }
 
     // Constraints to make sure that this component is called from the main component
     col witness in2[2];
-    col witness op_is_shift;   // 1 if op is shift, 0 otherwise
 
     expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
     expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
-    op_is_shift * (in2[0] - in1_low) === 0;
-    op_is_shift * (in2[1] - in1_high) === 0;
-
-    (1 - op_is_shift) * in2_low === 0;
 
     col witness main_step;
     col witness multiplicity;
@@ -100,14 +96,16 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
         [
             main_step,
             op,
-            in2[0],
-            in2[1],
-            in2_low + (1-op_is_shift) * in1_low,
-            (1-op_is_shift) * in1_high,
+            op_is_shift * (in1_low - in2[0]) + in2[0],
+            op_is_shift * (in1_high - in2[1]) + in2[1],
+            op_is_shift * (in2_low + 64 * in2[0] - in1_low) + in1_low,
+            op_is_shift * (in2[1] - in1_high) + in1_high,
             out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
             out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
             0
         ],
         multiplicity
-    )
+    );
+
+    range_check(colu: in2[0], min: 0, max: 2**24-1, sel: op_is_shift);
 }

@@ -3,24 +3,35 @@ require "constants.pil"
 
 // Operations Table:
 //                                                                Running Total
-// SLL   *  (OP:0x0d)   2^8 (A) * 2^3 (OFFSET) * 2^6 (B)  = 2^17 |               2^17
-// SRL   *  (OP:0x0e)   2^8 (A) * 2^3 (OFFSET) * 2^6 (B)  = 2^17 |        2^18
-// SRA   *  (OP:0x0f)   2^8 (A) * 2^3 (OFFSET) * 2^6 (B)  = 2^17 |        2^18 + 2^17
-// SLL_W *  (OP:0x1d)   2^8 (A) * 2^3 (OFFSET) * 2^5 (B)  = 2^16 |        2^18 + 2^17 + 2^16
-// SRL_W *  (OP:0x1e)   2^8 (A) * 2^3 (OFFSET) * 2^5 (B)  = 2^16 | 2^19
-// SRA_W *  (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^5 (B)  = 2^16 | 2^19               + 2^16
-// SE_B     (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^19               + 2^16            + 2^11
-// SE_H     (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^19               + 2^16     + 2^12
-// SE_W     (OP:0x35)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^19               + 2^16     + 2^12 + 2^11 => 2^20
-// ------------------------------------------------------------------------------------------------------------------
-// (*) The W variant has the second operand as a 5-bit value instead of 6-bit, but this is controlled outside
+// SLL     (OP:0x0d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
+// SRL     (OP:0x0e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20                      
+// SRA     (OP:0x0f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
+// SLL_W   (OP:0x1d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21  
+// SRL_W   (OP:0x1e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19
+// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20  
+// SE_B    (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11      
+// SE_H    (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12    
+// SE_W    (OP:0x35)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22         
 
 const int EXT_OP = 0x26;
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
-airtemplate BinaryExtensionTable(const int N = 2**20, const int disable_fixed = 0) {
+airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 0) {
     
     #pragma memory m1 start
+
+    const int MASK_32 = 2**32 - 1;
+    const int MASK_64 = 2**64 - 1;
+
+    const int SE_MASK_32 = 0xFFFFFFFF00000000;
+    const int SE_MASK_16 = 0xFFFFFFFFFFFF0000;
+    const int SE_MASK_8 = 0xFFFFFFFFFFFFFF00;
+
+    const int SIGN_32_BIT = 0x80000000;
+    const int SIGN_BYTE = 0x80;
+
+    const int LS_5_BITS = 0x1F;
+    const int LS_6_BITS = 0x3F;
     
     col witness multiplicity;
 
@@ -33,7 +44,7 @@ airtemplate BinaryExtensionTable(const int N = 2**20, const int disable_fixed = 
         return;
     }
 
-    if (N < 2**20) {
+    if (N < 2**22) {
         error("N must be at least 2^20");
     }
 
@@ -46,12 +57,14 @@ airtemplate BinaryExtensionTable(const int N = 2**20, const int disable_fixed = 
 
     col fixed OFFSET = [0:P2_8..(bytes-1):P2_8]...;         // Offset     (3 bits)
 
-    col fixed B = [[0:P2_11..63:P2_11]:3,                   // Input B    (6 bits)
+    col fixed B = [[0:P2_11..255:P2_11]:6,                  // Input B    (8 bits)
                     0:(P2_11*4)]...;                    
 
-    col fixed OP = [0x0d:P2_17, 0x0e:P2_17, 0x0f:P2_17,     // SLL/SLL_W, SRL/SRL_W, SRA/SRA_W
-                    0x23:P2_11, 0x24:P2_11, 0x25:P2_11,     // SE_B, SE_H, SE_W
-                    0x26:P2_11]...;                         // EXT_32
+    col fixed OP = [0x0d:P2_19, 0x0e:P2_19, 0x0f:P2_19,     // SLL, SRL, SRA
+                    0x1d:P2_19, 0x1e:P2_19, 0x1f:P2_19,     // SLL_W, SRL_W, SRA_W
+                    0x23:P2_11, 0x24:P2_11, 0x25:P2_11]...; // SE_B, SE_H, SE_W
+
+    col fixed OP_IS_SHIFT = [1:(P2_19*6), 0:(P2_11*3)]...;
 
     #pragma timer t1 end
     #pragma timer t2 start
@@ -63,74 +76,110 @@ airtemplate BinaryExtensionTable(const int N = 2**20, const int disable_fixed = 
 
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
+        int [op, offset, a, b, op_is_shift] = [OP[i], OFFSET[i], A[i], B[i], OP_IS_SHIFT[i]];
         int _out = 0;
         switch (op) {
             case 0x0d: // SLL
-                _out = a << b;
-                _out = _out << 8*offset;
+                _out = a << ((b & LS_6_BITS) + 8 * offset); 
 
             case 0x0e: // SRL
-                _out = a << 8*offset;
-                _out = _out >> b;
+                _out = (a << 8*offset) >> (b & LS_6_BITS);
 
-            case 0x0f: // SRA
-                // Compute two's complement
-                _out = a & 0x80 ? a - 0x100 : a;
-
-                // Compute the shift
-                _out = _out << 8*offset;
-                _out = _out >> b;
-
-                // Convert back to two's complement
-                _out = _out < 0 ? ((_out & (P2_63 - 1)) + P2_63) : _out;
-
+            case 0x0f: { // SRA 
+                const int _b = b & LS_6_BITS;
+                _out = (a << 8*offset) >> _b;
+                if (offset == 7) {
+                    // most significant bit of most significant byte define if negative or not
+                    // if negative then add b bits one on the left
+                    if (a & SIGN_BYTE) {
+                        _out = _out | (MASK_64 << (64 - _b));
+                    }
+                }
+            }
             case 0x1d: // SLL_W
-                // TODO
-
+                if (offset >= 4) {
+                    // last most significant bytes are ignored because it's 32-bit operation
+                    _out = 0;
+                } else {
+                    _out = ((a << (b & LS_5_BITS)) + 8 * offset) & MASK_32;
+                    if (_out & SIGN_32_BIT) {
+                        _out = _out | SE_MASK_32;
+                    }
+                }
+                
             case 0x1e: // SRL_W
-                // TODO
+                if (offset >= 4) {
+                    // last most significant bytes are ignored because it's 32-bit operation
+                    _out = 0;
+                } else {
+                    _out = ((a << 8*offset) >> (b & LS_5_BITS)) & MASK_32;
+                    if (_out & SIGN_32_BIT) {
+                        _out = _out | SE_MASK_32;
+                    }
+                }
 
             case 0x1f: // SRA_W
-                // TODO
+                if (offset >= 4) {
+                    // last most significant bytes are ignored because it's 32-bit operation
+                    _out = 0;
+                } else {
+                    const int _b = b & LS_5_BITS;
+                    _out = (a << 8*offset) >> _b;
+                    if (offset == 3) {
+                        // most significant bit of most significant byte define if negative or not
+                        // if negative then add b bits one on the left
+                        if (a & SIGN_BYTE) {
+                            _out = _out | (MASK_64 << (32 - _b));
+                        }
+                    }
+                }
 
             case 0x23: // SE_B
                 if (offset == 0) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
+                    // the most significant bit of first byte determines the sign extend
+                    _out = (a & SIGN_BYTE) ? a | SE_MASK_8 : a
                 } else {
-                    _out = a & P2_7 ? 0xFF00 << (8*(offset - 1)) : 0;
+                    // the rest of the bytes are ignored
+                    _out = 0;
                 }
 
             case 0x24: // SE_H
-                if (offset == 0) {
-                    _out = a
+                if (offset == 0) {            
+                    // fist byte not define the sign extend, but participate of result
+                    _out = a;
                 } else if (offset == 1) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
-                    _out = _out << 8;
+                    // the most significant bit of second byte determines the sign extend
+                    _out = (a & SIGN_BYTE) ? a | SE_MASK_16 : a
                 } else {
-                    _out = a & P2_7 ? 0xFF0000 << (8*(offset - 2)) : 0;
+                    // the rest of the bytes are ignored
+                    _out = 0;
                 }
 
             case 0x25: // SE_W
                 if (offset < 3) {
-                    _out = a << (8*offset);
+                    // three firsts bytes not define the sign extend, but participate of result
+                    _out = a;
                 } else if (offset == 3) {
-                    _out = a & P2_7 ? (P2_7 | (a & (P2_7-1))) : (a & (P2_7-1));
-                    _out = _out << 24;
+                    // the most significant bit of fourth byte determines the sign extend
+                    _out = (a & SIGN_BYTE) ? a | SE_MASK_32 : a
                 } else {
-                    _out = a & P2_7 ? 0xFF00000000 << (8*(offset - 4)) : 0;
+                    // the rest of the bytes are ignored
+                    _out = 0;
                 }
 
             default:
                 error(`Invalid operation ${op}`);
         }
 
-        C0[i] = _out & (P2_32-1);
-        C1[i] = (_out >> 32) & (P2_32-1);
+        const int _c0 = _out & MASK_32;
+        const int _c1 = (_out >> 32) & MASK_32;
+        C0[i] = _c0;
+        C1[i] = _c1;
+        log(`T ${op},${offset},${a},${b},${_c0},${_c1},${op_is_shift},${i}`)
     }
     #pragma timer t2 end
     #pragma timer tt end
 
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, OP_IS_SHIFT], multiplicity);
     #pragma memory m1 end
 }

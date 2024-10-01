@@ -16,7 +16,7 @@ airgroup Binary {
 }
 
 airgroup BinaryTable {
-    BinaryTable();
+    BinaryTable(disable_fixed: 0);
 }
 
 airgroup BinaryExtension {
@@ -24,5 +24,5 @@ airgroup BinaryExtension {
 }
 
 airgroup BinaryExtensionTable {
-    BinaryExtensionTable(disable_fixed: 1);
+    BinaryExtensionTable(disable_fixed: 0);
 }
