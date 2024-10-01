@@ -8,6 +8,7 @@ use std::{
 
 use num_traits::ToPrimitive;
 use p3_field::{Field, PrimeField};
+use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -128,15 +129,15 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 "proves",
                 HintFieldOptions::default(),
             );
-            let is_positive = if let HintFieldValue::Field(proves) = proves {
-                if !proves.is_zero() && !proves.is_one() {
-                    log::error!("Proves hint must be either 0 or 1");
-                    panic!();
+            let is_positive = match proves {
+                HintFieldValue::Field(proves) => {
+                    assert!(proves.is_zero() || proves.is_one(), "Proves hint must be either 0 or 1");
+                    proves.is_one()
                 }
-                proves.is_one()
-            } else {
-                log::error!("Proves hint must be a field element");
-                panic!();
+                _ => {
+                    log::error!("Proves hint must be a field element");
+                    panic!("Proves hint must be a field element");
+                }
             };
 
             let mul = get_hint_field::<F>(
@@ -170,35 +171,57 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             );
 
             for j in 0..num_rows {
-                let mul = if let HintFieldOutput::Field(mul) = mul.get(j) {
-                    mul
-                } else {
-                    panic!("mul must be a field element");
+                if (j % 10000) == 0 {
+                    println!("Row {} / {}", j, num_rows);
+                }
+                let mul = match mul.get(j) {
+                    HintFieldOutput::Field(mul) => mul,
+                    _ => panic!("mul must be a field element"),
                 };
 
                 if !mul.is_zero() {
-                    let sumid = if let HintFieldOutput::Field(sumid) = sumid.get(j) {
-                        sumid
-                    } else {
-                        panic!("sumid must be a field element");
+                    let sumid = match sumid.get(j) {
+                        HintFieldOutput::Field(sumid) => sumid,
+                        _ => panic!("sumid must be a field element"),
                     };
 
                     self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
                 }
             }
+
+            // // TODO: Do it in parallel!
+            // (0..num_rows).into_par_iter().chunks(10000).for_each(|chunk| {
+            //     for j in chunk {
+            //         let mul = match mul.get(j) {
+            //             HintFieldOutput::Field(mul) => mul,
+            //             _ => panic!("mul must be a field element"),
+            //         };
+            
+            //         if !mul.is_zero() {
+            //             let sumid = match sumid.get(j) {
+            //                 HintFieldOutput::Field(sumid) => sumid,
+            //                 _ => panic!("sumid must be a field element"),
+            //             };
+
+            //             self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
+            //         }
+            //     }
+            // });
         }
     }
 
     fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
-        let mut bus_vals;
-        let mut other_bus_vals;
-        if is_positive {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
+        let debug_data = self.debug_data.as_ref().expect("Debug data should exist");
+
+        let (mut bus_vals, mut other_bus_vals) = if is_positive {
+            let bus_vals = debug_data.bus_vals_negative.lock().expect("Negative bus values should exist");
+            let other_bus_vals = debug_data.bus_vals_positive.lock().expect("Positive bus values should exist");
+            (bus_vals, other_bus_vals)
         } else {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
-        }
+            let bus_vals = debug_data.bus_vals_positive.lock().expect("Positive bus values should exist");
+            let other_bus_vals = debug_data.bus_vals_negative.lock().expect("Negative bus values should exist");
+            (bus_vals, other_bus_vals)
+        };
 
         let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
 
@@ -206,7 +229,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             let diff = times - *t;
             if times > *t {
                 bus_vals_map[idx].1 = F::zero();
-                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val.clone()));
+                other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val));
             } else {
                 bus_vals_map[idx].1 -= times;
             }
@@ -215,7 +238,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 bus_vals_map.remove(idx);
             }
         } else {
-            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val.clone()));
+            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val));
         }
 
         if bus_vals_map.is_empty() {
