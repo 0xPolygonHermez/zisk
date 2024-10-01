@@ -28,6 +28,7 @@ pub struct ZiskRequiredBinaryExtensionTable {
     pub a: u64,
     pub b: u64,
     pub offset: u64,
+    pub row: u64,
 }
 
 pub struct ZiskRequired {

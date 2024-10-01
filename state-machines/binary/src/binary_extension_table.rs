@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
+use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_11, P2_17, P2_8};
 use zisk_pil::{
     BinaryExtensionTable0Trace, BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS,
 };
@@ -118,14 +118,75 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for i in input {
-            // Calculate the different row offset contributors, according to the PIL
-            let offset_a = i.a;
-            let offset_b = i.b * P2_6;
-            let offset_offset = i.offset * P2_9;
-            let offset_operation = (i.opcode as u64 - 2) * P2_12;
-            let row = offset_a + offset_b + offset_offset + offset_operation;
-            assert!(row < self.num_rows as u64);
-            multiplicity[row as usize] += 1;
+            //assert!(i.row < self.num_rows as u64);
+            if i.row >= self.num_rows as u64 {
+                panic!(
+                    "BinaryExtensionTableSM::process_slice() found i.row={} >= self.num_rows={}",
+                    i.row, self.num_rows
+                );
+            }
+            multiplicity[i.row as usize] += 1;
+        }
+    }
+
+    //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
+    pub fn calculate_table_row(
+        opcode: u8,
+        offset: u64,
+        a: u64,
+        b: u64,
+        out0: u64,
+        out1: u64,
+        i: u64,
+    ) -> u64 {
+        // Calculate the different row offset contributors, according to the PIL
+        let offset_a: u64 = a;
+        assert!(offset < 0x08);
+        let offset_offset: u64 = offset * P2_8;
+        assert!(b <= 0x3f);
+        let offset_b: u64 = b * P2_11; //if Self::opcode_has_b(opcode) { b * P2_11 } else { 0 };
+        let offset_opcode: u64 = Self::offset_opcode(opcode);
+        let row = offset_a + offset_offset + offset_b + offset_opcode;
+        //assert!(row < self.num_rows as u64);
+
+        println!(
+            "BinaryExtensionTableSM::calculate_table_row() #={},{},{},{},{},{},{},{}",
+            opcode, offset, a, b, out0, out1, row, i
+        );
+        assert!(a <= 0xff);
+
+        // TODO: remove
+        let num_rows = 524288;
+        if row >= num_rows {
+            panic!(
+                "BinaryExtensionTableSM::process_slice() found i.row={} >= num_rows={}",
+                row, num_rows
+            );
+        }
+
+        row
+    }
+
+    fn opcode_has_b(opcode: u8) -> bool {
+        match opcode {
+            0x0d | 0x0e | 0x0f => true,
+            0x23 | 0x24 | 0x25 | 0x26 => false,
+            _ => {
+                panic!("BinaryExtensionTableSM::opcode_result_is_a() got invalid opcode={}", opcode)
+            }
+        }
+    }
+
+    fn offset_opcode(opcode: u8) -> u64 {
+        match opcode {
+            0x0d => 0,
+            0x0e => P2_17,
+            0x0f => 2 * P2_17,
+            0x23 => 3 * P2_17,
+            0x24 => 3 * P2_17 + P2_11,
+            0x25 => 3 * P2_17 + 2 * P2_11,
+            0x26 => 3 * P2_17 + 3 * P2_11,
+            _ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
     }
 }
