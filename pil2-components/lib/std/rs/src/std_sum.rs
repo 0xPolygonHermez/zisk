@@ -1,6 +1,5 @@
-use core::panic;
-use rayon::prelude::*;
 use std::{
+
     hash::Hash,
     collections::{BTreeMap, HashMap},
     fmt::{Display, Debug},
@@ -28,9 +27,17 @@ pub struct StdSum<F: Copy + Display + Hash> {
     debug_data: Option<DebugData<F>>,
 }
 
-struct DebugData<F: Copy + Hash> {
+pub struct BusValue<F: Copy> {
+    num_proves: F,
+    num_assumes: F,
+    row_proves: Vec<usize>,
+    row_assumes: Vec<usize>,
+}
+
+struct DebugData<F: Copy> {
     bus_vals_positive: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
     bus_vals_negative: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
+    bus_vals: Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>,
 }
 
 impl<F: Field> Decider<F> for StdSum<F> {
@@ -71,6 +78,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 Some(DebugData {
                     bus_vals_positive: Mutex::new(BTreeMap::new()),
                     bus_vals_negative: Mutex::new(BTreeMap::new()),
+                    bus_vals: Mutex::new(HashMap::new()),
                 })
             } else {
                 None
@@ -170,10 +178,27 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            for j in 0..num_rows {
-                if (j % 10000) == 0 {
-                    println!("Row {} / {}", j, num_rows);
-                }
+            // for j in 0..num_rows {
+            //     if (j % 10000) == 0 {
+            //         println!("Row {} / {}", j, num_rows);
+            //     }
+            //     let mul = match mul.get(j) {
+            //         HintFieldOutput::Field(mul) => mul,
+            //         _ => panic!("mul must be a field element"),
+            //     };
+
+            //     if !mul.is_zero() {
+            //         let sumid = match sumid.get(j) {
+            //             HintFieldOutput::Field(sumid) => sumid,
+            //             _ => panic!("sumid must be a field element"),
+            //         };
+
+            //         self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
+            //     }
+            // }
+
+            println!(">>>> In parallel {}", is_positive);
+            (0..num_rows).into_par_iter().for_each(|j| {
                 let mul = match mul.get(j) {
                     HintFieldOutput::Field(mul) => mul,
                     _ => panic!("mul must be a field element"),
@@ -185,29 +210,34 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         _ => panic!("sumid must be a field element"),
                     };
 
-                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
+                    self.update_bus_vals2(sumid, expressions.get(j), j, is_positive, mul);
                 }
-            }
+            });
 
-            // // TODO: Do it in parallel!
-            // (0..num_rows).into_par_iter().chunks(10000).for_each(|chunk| {
-            //     for j in chunk {
-            //         let mul = match mul.get(j) {
-            //             HintFieldOutput::Field(mul) => mul,
-            //             _ => panic!("mul must be a field element"),
-            //         };
-            
-            //         if !mul.is_zero() {
-            //             let sumid = match sumid.get(j) {
-            //                 HintFieldOutput::Field(sumid) => sumid,
-            //                 _ => panic!("sumid must be a field element"),
-            //             };
-
-            //             self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
-            //         }
-            //     }
-            // });
+            println!(">>>> Out parallel ");
         }
+    }
+
+    fn update_bus_vals2(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
+        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+        let mut bus = debug_data.bus_vals.lock().expect("Bus values missing");
+        let bus_opid = bus.entry(opid).or_default();
+
+
+            let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
+                num_proves: F::zero(),
+                num_assumes: F::zero(),
+                row_proves: Vec::new(),
+                row_assumes: Vec::new(),
+            });
+
+            if is_positive {
+                bus_val.num_proves += times;
+                bus_val.row_proves.push(row);
+            } else {
+                bus_val.num_assumes += times;
+                bus_val.row_assumes.push(row);
+            }
     }
 
     fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
