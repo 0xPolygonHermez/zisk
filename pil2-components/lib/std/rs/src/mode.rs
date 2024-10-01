@@ -6,11 +6,22 @@ use std::fmt::Display;
 pub struct StdMode {
     pub name: ModeName,
     pub opids: Option<Vec<u64>>,
+    pub vals_to_print: usize,
 }
 
 impl StdMode {
-    pub const fn new(name: ModeName) -> Self {
-        Self { name, opids: None }
+    pub const fn new(name: ModeName, opids: Option<Vec<u64>>, vals_to_print: usize) -> Self {
+        if vals_to_print == 0 {
+            panic!("vals_to_print must be greater than 0");
+        }
+
+        Self { name, opids, vals_to_print }
+    }
+}
+
+impl Default for StdMode {
+    fn default() -> Self {
+        StdMode::new(ModeName::Standard, None, 10)
     }
 }
 

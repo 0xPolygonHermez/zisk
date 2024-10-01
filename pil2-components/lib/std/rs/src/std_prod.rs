@@ -11,8 +11,8 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, GetValueV, HintFieldOptions, HintFieldOutput,
-    HintFieldValue,
+    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
+    HintFieldOutput, HintFieldValue,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -47,12 +47,7 @@ impl<F: PrimeField> Decider<F> for StdProd<F> {
                 let debug_hints = get_hint_ids_by_name(p_setup, "gprod_member");
                 if !gprod_hints.is_empty() {
                     // Save the air for latter witness computation
-                    self.prod_airs.lock().unwrap().push((
-                        airgroup_id,
-                        air_id,
-                        gprod_hints,
-                        debug_hints_data,
-                    ));
+                    self.prod_airs.lock().unwrap().push((airgroup_id, air_id, gprod_hints, debug_hints_data));
                 }
             }
         }
@@ -86,7 +81,7 @@ impl<F: PrimeField> StdProd<F> {
         num_rows: usize,
         debug_hints_data: Vec<u64>,
     ) {
-        for (i, hint) in debug_hints_data.iter().enumerate() {
+        for hint in debug_hints_data.iter() {
             let _name = get_hint_field::<F>(
                 sctx,
                 &pctx.public_inputs,
@@ -300,7 +295,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
     fn end_proof(&self) {
         if self.mode.name == ModeName::Debug {
-            let max_values_to_print = 5;
+            let max_values_to_print = self.mode.vals_to_print;
 
             let bus_vals_num = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
             let bus_vals_den = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
@@ -309,13 +304,15 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
                 for (opid, vals) in bus_vals_den.iter() {
-                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
+                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
+                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
                     print_rows(vals, max_values_to_print);
                 }
 
                 println!("\t ► Unmatching bus values thrown as 'prove':");
                 for (opid, vals) in bus_vals_num.iter() {
-                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
+                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
+                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
                     print_rows(vals, max_values_to_print);
                 }
             }
@@ -328,6 +325,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                 for (row, val) in vals {
                     println!("\t    • Row {}: {:?}", row, val);
                 }
+                println!();
                 return;
             }
 
@@ -339,7 +337,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
             println!("\t      ...");
 
             // Print the last max_values_to_print
-            for (row, val) in vals[num_values - max_values_to_print..].into_iter() {
+            let diff = num_values - max_values_to_print;
+            let rem_len = if diff < max_values_to_print { max_values_to_print } else { diff };
+            for (row, val) in vals[rem_len..].into_iter() {
                 println!("\t    • Row {}: {:?}", row, val);
             }
 

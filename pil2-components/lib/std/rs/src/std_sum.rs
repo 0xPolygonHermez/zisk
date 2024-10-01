@@ -12,7 +12,8 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput, HintFieldValue
+    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
+    HintFieldOutput, HintFieldValue,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -27,8 +28,8 @@ pub struct StdSum<F: Copy + Display> {
 }
 
 struct DebugData<F: Copy> {
-    bus_vals_left: Mutex<BTreeMap<F, BusVals<F>>>,  // opid -> (row, multiplicity, bus_val)
-    bus_vals_right: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
+    bus_vals_positive: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
+    bus_vals_negative: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
 }
 
 impl<F: Field> Decider<F> for StdSum<F> {
@@ -67,8 +68,8 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             sum_airs: Mutex::new(Vec::new()),
             debug_data: if mode.name == ModeName::Debug {
                 Some(DebugData {
-                    bus_vals_left: Mutex::new(BTreeMap::new()),
-                    bus_vals_right: Mutex::new(BTreeMap::new()),
+                    bus_vals_positive: Mutex::new(BTreeMap::new()),
+                    bus_vals_negative: Mutex::new(BTreeMap::new()),
                 })
             } else {
                 None
@@ -127,7 +128,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 "proves",
                 HintFieldOptions::default(),
             );
-            let proves = if let HintFieldValue::Field(proves) = proves {
+            let is_positive = if let HintFieldValue::Field(proves) = proves {
                 if !proves.is_zero() && !proves.is_one() {
                     log::error!("Proves hint must be either 0 or 1");
                     panic!();
@@ -158,15 +159,15 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            // let _names = get_hint_field::<F>(
-            //     sctx,
-            //     &pctx.public_inputs,
-            //     &pctx.challenges,
-            //     air_instance,
-            //     *hint as usize,
-            //     "names",
-            //     HintFieldOptions::default(),
-            // );
+            let _names = get_hint_field_a::<F>(
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
+                air_instance,
+                *hint as usize,
+                "names",
+                HintFieldOptions::default(),
+            );
 
             for j in 0..num_rows {
                 let mul = if let HintFieldOutput::Field(mul) = mul.get(j) {
@@ -175,7 +176,6 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                     panic!("mul must be a field element");
                 };
 
-                // TODO: bus_throws should be used as a counter of the value, not repeating the calls multiple times...
                 if !mul.is_zero() {
                     let sumid = if let HintFieldOutput::Field(sumid) = sumid.get(j) {
                         sumid
@@ -183,21 +183,21 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         panic!("sumid must be a field element");
                     };
 
-                    self.update_bus_vals(sumid, expressions.get(j), j, !proves, mul);
+                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
                 }
             }
         }
     }
 
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool, times: F) {
+    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
         let mut bus_vals;
         let mut other_bus_vals;
-        if is_num {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
+        if is_positive {
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
         } else {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
+            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
+            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
         }
 
         let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
@@ -347,22 +347,24 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
     fn end_proof(&self) {
         if self.mode.name == ModeName::Debug {
-            let max_values_to_print = 5;
+            let max_values_to_print = self.mode.vals_to_print;
 
-            let bus_vals_left = self.debug_data.as_ref().unwrap().bus_vals_left.lock().unwrap();
-            let bus_vals_right = self.debug_data.as_ref().unwrap().bus_vals_right.lock().unwrap();
-            if !bus_vals_left.is_empty() || !bus_vals_right.is_empty() {
+            let bus_vals_positive = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
+            let bus_vals_negative = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
+            if !bus_vals_positive.is_empty() || !bus_vals_negative.is_empty() {
                 log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
                 println!("\t ► Unmatching bus values thrown as 'assume':");
-                for (opid, vals) in bus_vals_right.iter() {
-                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
+                for (opid, vals) in bus_vals_negative.iter() {
+                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
+                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
                     print_rows(vals, max_values_to_print);
                 }
 
                 println!("\t ► Unmatching bus values thrown as 'prove':");
-                for (opid, vals) in bus_vals_left.iter() {
-                    println!("\t  ⁃ Opid {}: {} values", opid, vals.len());
+                for (opid, vals) in bus_vals_positive.iter() {
+                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
+                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
                     print_rows(vals, max_values_to_print);
                 }
             }
@@ -372,22 +374,28 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
             let num_values = vals.len();
 
             if max_values_to_print >= num_values {
-                for (row, mul,  val) in vals {
-                    println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
+                for (row, mul, val) in vals {
+                    let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
+                    println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
                 }
+                println!();
                 return;
             }
 
             // Print the first max_values_to_print
             for (row, mul, val) in vals[..max_values_to_print].into_iter() {
-                println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
+                let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
+                println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
             }
 
             println!("\t      ...");
 
             // Print the last max_values_to_print
-            for (row, mul, val) in vals[num_values - max_values_to_print..].into_iter() {
-                println!("\t    • Row {}, with {} repetitions: {:?}", row, mul, val);
+            let diff = num_values - max_values_to_print;
+            let rem_len = if diff < max_values_to_print { max_values_to_print } else { diff };
+            for (row, mul, val) in vals[rem_len..].into_iter() {
+                let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
+                println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
             }
 
             println!();
