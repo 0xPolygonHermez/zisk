@@ -14,7 +14,9 @@ use proofman_util::{timer_start, timer_stop_and_log};
 use proofman_starks_lib_c::*;
 use crate::stark_info::StarkInfo;
 use p3_goldilocks::Goldilocks;
+use p3_field::AbstractField;
 use p3_field::Field;
+use p3_field::PrimeField64;
 
 use std::os::raw::c_void;
 use std::marker::PhantomData;
@@ -413,6 +415,57 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         value
     }
 
+    fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64> {
+        let p_stark: *mut std::ffi::c_void = self.p_stark;
+
+        let mut value: Vec<Goldilocks> = vec![Goldilocks::zero(); self.n_field_elements];
+        if stage <= (Self::num_stages(self) + 1) as u64 {
+            let tree_index = if stage == 0 {
+                let stark_info: &StarkInfo = &self.stark_info;
+                stark_info.n_stages as u64 + 1
+            } else {
+                stage - 1
+            };
+
+            treesGL_get_root_c(p_stark, tree_index, value.as_mut_ptr() as *mut c_void);
+        } else if stage == (Self::num_stages(self) + 2) as u64 {
+            let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
+            let evals = air_instance.evals.as_ptr() as *mut c_void;
+            calculate_hash_c(
+                p_stark,
+                value.as_mut_ptr() as *mut c_void,
+                evals,
+                (self.stark_info.ev_map.len() * Self::FIELD_EXTENSION) as u64,
+            );
+        } else if stage > (Self::num_stages(self) + 3) as u64 {
+            let steps = &self.stark_info.stark_struct.steps;
+
+            let global_step_fri = self.global_steps_fri[(stage as u32 - (Self::num_stages(self) + 4)) as usize];
+            let step_index =
+                self.stark_info.stark_struct.steps.iter().position(|s| s.n_bits as usize == global_step_fri);
+
+            if let Some(step_index) = step_index {
+                let n_steps = steps.len() - 1;
+                if step_index < n_steps {
+                    let p_proof = self.p_proof.unwrap();
+                    fri_proof_get_tree_root_c(p_proof, value.as_mut_ptr() as *mut c_void, (step_index + 1) as u64);
+                } else {
+                    let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
+                    let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+
+                    let n_hash = (1 << (steps[n_steps].n_bits)) * Self::FIELD_EXTENSION as u64;
+                    let fri_pol = get_fri_pol_c(self.p_setup, buffer);
+                    calculate_hash_c(p_stark, value.as_mut_ptr() as *mut c_void, fri_pol, n_hash);
+                }
+            }
+        }
+        let mut value64: Vec<u64> = Vec::new();
+        for v in value {
+            value64.push(v.as_canonical_u64());
+        }
+        value64
+    }
+
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
         if stage_id == 1 {
             return;
@@ -444,8 +497,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void {
+        let segment_id: &usize = &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
         if save_json {
-            save_proof_c(self.prover_idx as u64, self.p_stark_info, self.p_proof.unwrap(), output_dir);
+            save_proof_c(*segment_id as u64, self.p_stark_info, self.p_proof.unwrap(), output_dir);
         }
 
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
@@ -460,7 +514,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let output_json_dir = if save_json { output_dir } else { "" };
 
         fri_proof_get_zkinproof_c(
-            self.prover_idx as u64,
+            *segment_id as u64,
             self.p_proof.unwrap(),
             public_inputs,
             challenges,

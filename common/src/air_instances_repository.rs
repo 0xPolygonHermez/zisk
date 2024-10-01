@@ -25,12 +25,15 @@ impl<F> AirInstancesRepository<F> {
         let air_instances = self.air_instances.read().unwrap();
 
         let mut indices = Vec::new();
+        let mut segment_ids = Vec::new();
         for (index, air_instance) in air_instances.iter().enumerate() {
             if air_instance.airgroup_id == airgroup_id {
                 indices.push(index);
+                segment_ids.push(air_instance.air_segment_id.unwrap_or(0)); //rick: when no main it will not have value
             }
         }
-
+        //I want to sort indeces acording to the values of segment_ids in the same components
+        indices.sort_by(|a, b| segment_ids[*a].cmp(&segment_ids[*b]));
         indices
     }
 
