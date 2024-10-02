@@ -116,6 +116,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
     //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(
         opcode: u8,
         a: u64,
