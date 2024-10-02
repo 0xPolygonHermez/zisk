@@ -1,4 +1,3 @@
-use log::trace;
 use pil_std_lib::Std;
 use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
@@ -10,7 +9,7 @@ use zisk_pil::*;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
 use sm_arith::{Arith3264SM, Arith32SM, Arith64SM, ArithSM};
 use sm_main::MainSM;
@@ -190,6 +189,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
     }
 
     fn debug(&mut self, _pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, _sctx: Arc<SetupCtx>) {}
+
     fn pilout(&self) -> WitnessPilout {
         Pilout::pilout()
     }
@@ -197,18 +197,13 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    rom_path: Option<PathBuf>,
-    public_inputs_path: PathBuf,
+    ectx: &ExecutionCtx,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_level(true)
-        .format_target(false)
-        .filter_level(log::LevelFilter::Trace)
-        .init();
+    let rom_path = ectx.rom_path.clone().ok_or("ROM path is required")?;
+    let public_inputs = ectx.public_inputs_path.clone().ok_or("Public inputs path is required")?;
 
-    let rom_path = rom_path.ok_or("ROM path is required")?;
+    initialize_logger(ectx.verbose_mode);
 
-    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path)?;
+    let zisk_witness = ZiskWitness::new(rom_path, public_inputs)?;
     Ok(Box::new(zisk_witness))
 }

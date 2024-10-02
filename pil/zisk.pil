@@ -1,6 +1,6 @@
 require "constants.pil"
 // require "std_permutation.pil"
-require "../../../state-machines/main/pil/main.pil"
+require "main/pil/main.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
