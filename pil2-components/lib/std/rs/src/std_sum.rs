@@ -26,7 +26,7 @@ pub struct StdSum<F: Copy + Display + Hash> {
     debug_data: Option<DebugData<F>>,
 }
 
-pub struct BusValue<F: Copy> {
+struct BusValue<F: Copy> {
     num_proves: F,
     num_assumes: F,
     // meta data
@@ -53,7 +53,6 @@ impl<F: Field> Decider<F> for StdSum<F> {
                 let im_hints = get_hint_ids_by_name(p_setup, "im_col");
                 let gsum_hints = get_hint_ids_by_name(p_setup, "gsum_col");
                 let debug_hints_data = get_hint_ids_by_name(p_setup, "gsum_member_data");
-                let debug_hints = get_hint_ids_by_name(p_setup, "gsum_member");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data));
@@ -156,15 +155,15 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            let _names = get_hint_field_a::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "names",
-                HintFieldOptions::default(),
-            );
+            // let _names = get_hint_field_a::<F>(
+            //     sctx,
+            //     &pctx.public_inputs,
+            //     &pctx.challenges,
+            //     air_instance,
+            //     *hint as usize,
+            //     "names",
+            //     HintFieldOptions::default(),
+            // );
 
             (0..num_rows).into_par_iter().for_each(|j| {
                 let mul = match mul.get(j) {
@@ -178,13 +177,13 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         _ => panic!("sumid must be a field element"),
                     };
 
-                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
+                    self.update_bus_vals(num_rows, sumid, expressions.get(j), j, is_positive, mul);
                 }
             });
         }
     }
 
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
+    fn update_bus_vals(&self, num_rows: usize, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
         let debug_data = self.debug_data.as_ref().expect("Debug data missing");
         let mut bus = debug_data.lock().expect("Bus values missing");
 
@@ -194,7 +193,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             num_proves: F::zero(),
             num_assumes: F::zero(),
             row_proves: 0,
-            row_assumes: Vec::new(),
+            row_assumes: Vec::with_capacity(num_rows),
         });
 
         if is_positive {
@@ -333,13 +332,16 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         if self.mode.name == ModeName::Debug {
             let max_values_to_print = self.mode.vals_to_print;
 
-            log::error!("{}: Some bus values do not match.", Self::MY_NAME);
-
+            let mut there_are_errors = false;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
             let mut bus_vals = debug_data.lock().expect("Bus values missing");
             for (opid, bus) in bus_vals.iter_mut() {
                 if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
-                    println!("\t► Unmatching bus values for opid {}:", opid);
+                    if !there_are_errors {
+                        there_are_errors = true;
+                        log::error!("{}: Some bus values do not match.", Self::MY_NAME);
+                    }
+                    println!("\t► Mismatched bus values for opid {}:", opid);
                 } else {
                     continue;
                 }
@@ -355,19 +357,32 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                 for (val, data) in unmatching_values2 {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
+                    let diff = num_assumes - num_proves;
+                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                     let row_assumes = &mut data.row_assumes;
+
                     row_assumes.sort();
-                    let row_assumes = row_assumes[..max_values_to_print]
-                        .to_vec()
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                    let row_assumes = if max_values_to_print < diff {
+                        row_assumes[..max_values_to_print].to_vec()
+                    } else {
+                        row_assumes[..diff].to_vec()
+                    };
+                    let row_assumes = row_assumes.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
 
                     let diff = num_assumes - num_proves;
+                    let name_str = if row_assumes.len() == 1 {
+                        format!("at row {}.", row_assumes)
+                    } else {
+                        if max_values_to_print < row_assumes.len() {
+                            format!("at rows {},...", row_assumes)
+                        } else {
+                            format!("at rows {}.", row_assumes)
+                        }
+                    };
+                    let diff_str = if diff.is_one() { "time" } else { "times" };
                     println!(
-                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
-                        val, diff, row_assumes
+                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} {}",
+                        val, diff, diff_str, name_str
                     );
                 }
 
@@ -388,8 +403,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     let diff = num_proves - num_assumes;
 
-                    let name_reps = if diff.is_one() { "repetition " } else { "repetitions" };
-                    println!("\t    • Row {}, with {} {name_reps}: {:?}", row_proves, diff, val);
+                    let diff_str = if diff.is_one() { "time" } else { "times" };
+                    println!(
+                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} at row {}.",
+                        val, diff, diff_str, row_proves
+                    );
 
                     if i == max_values_to_print {
                         println!("\t      ...");

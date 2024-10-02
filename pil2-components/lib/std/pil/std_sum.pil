@@ -107,7 +107,7 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         for (int i = 0; i < ncols; i++) {
             name_cols[i] = string(cols[i]);
         }
-        @gsum_member_data{name_piop: get_piop_name(name), sumid: sumid, proves: proves, selector: sel, references: cols, names: name_cols};
+        @gsum_member_data{name_piop: get_piop_name(name), sumid: sumid, proves: proves, selector: sel, references: cols}; // TODO: names: name_cols
     }
 
     init_challenges();

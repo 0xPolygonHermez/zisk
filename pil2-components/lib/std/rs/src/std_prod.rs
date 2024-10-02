@@ -6,7 +6,7 @@ use std::{
 };
 
 use num_traits::ToPrimitive;
-use p3_field::{Field,PrimeField};
+use p3_field::{Field, PrimeField};
 use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
@@ -26,7 +26,7 @@ pub struct StdProd<F: Copy + Display> {
     debug_data: Option<DebugData<F>>,
 }
 
-pub struct BusValue<F: Copy> {
+struct BusValue<F: Copy> {
     num_proves: F,
     num_assumes: F,
     // meta data
@@ -49,7 +49,6 @@ impl<F: Field> Decider<F> for StdProd<F> {
 
                 let gprod_hints = get_hint_ids_by_name(p_setup, "gprod_col");
                 let debug_hints_data = get_hint_ids_by_name(p_setup, "gprod_member_data");
-                let debug_hints = get_hint_ids_by_name(p_setup, "gprod_member");
                 if !gprod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs.lock().unwrap().push((airgroup_id, air_id, gprod_hints, debug_hints_data));
@@ -154,15 +153,15 @@ impl<F: PrimeField> StdProd<F> {
                 HintFieldOptions::default(),
             );
 
-            let _names = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "names",
-                HintFieldOptions::default(),
-            );
+            // let _names = get_hint_field::<F>(
+            //     sctx,
+            //     &pctx.public_inputs,
+            //     &pctx.challenges,
+            //     air_instance,
+            //     *hint as usize,
+            //     "names",
+            //     HintFieldOptions::default(),
+            // );
 
             (0..num_rows).into_par_iter().for_each(|j| {
                 let sel = if let HintFieldOutput::Field(selector) = selector.get(j) {
@@ -177,13 +176,13 @@ impl<F: PrimeField> StdProd<F> {
                 };
 
                 if sel {
-                    self.update_bus_vals(opid, expressions.get(j), j, proves);
+                    self.update_bus_vals(num_rows, opid, expressions.get(j), j, proves);
                 }
             });
         }
     }
 
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
+    fn update_bus_vals(&self, num_rows: usize, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
         let debug_data = self.debug_data.as_ref().expect("Debug data missing");
         let mut bus = debug_data.lock().expect("Bus values missing");
 
@@ -192,8 +191,8 @@ impl<F: PrimeField> StdProd<F> {
         let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
             num_proves: F::zero(),
             num_assumes: F::zero(),
-            row_proves: Vec::new(),
-            row_assumes: Vec::new(),
+            row_proves: Vec::with_capacity(num_rows),
+            row_assumes: Vec::with_capacity(num_rows),
         });
 
         if is_num {
@@ -296,13 +295,16 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         if self.mode.name == ModeName::Debug {
             let max_values_to_print = self.mode.vals_to_print;
 
-            log::error!("{}: Some bus values do not match.", Self::MY_NAME);
-
+            let mut there_are_errors = false;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
             let mut bus_vals = debug_data.lock().expect("Bus values missing");
             for (opid, bus) in bus_vals.iter_mut() {
                 if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
-                    println!("\t► Unmatching bus values for opid {}:", opid);
+                    if !there_are_errors {
+                        there_are_errors = true;
+                        log::error!("{}: Some bus values do not match.", Self::MY_NAME);
+                    }
+                    println!("\t► Mismatched bus values for opid {}:", opid);
                 } else {
                     continue;
                 }
@@ -318,19 +320,31 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                 for (val, data) in unmatching_values2 {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
-                    let row_assumes = &mut data.row_assumes;
-                    row_assumes.sort();
-                    let row_assumes = row_assumes[..max_values_to_print]
-                        .to_vec()
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-
                     let diff = num_assumes - num_proves;
+                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
+                    let row_assumes = &mut data.row_assumes;
+
+                    row_assumes.sort();
+                    let row_assumes = if max_values_to_print < diff {
+                        row_assumes[..max_values_to_print].to_vec()
+                    } else {
+                        row_assumes[..diff].to_vec()
+                    };
+                    let row_assumes = row_assumes.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+
+                    let name_str = if row_assumes.len() == 1 { 
+                        format!("at row {}.",row_assumes) 
+                    } else {
+                        if max_values_to_print < row_assumes.len() {
+                            format!("at rows {},...",row_assumes) 
+                        } else {
+                            format!("at rows {}.",row_assumes)
+                        }
+                    };
+                    let diff_str = if diff == 1 { "time" } else { "times" };
                     println!(
-                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
-                        val, diff, row_assumes
+                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} {}",
+                        val, diff, diff_str, name_str
                     );
                 }
 
@@ -347,19 +361,30 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                 for (val, data) in unmatching_values1 {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
-                    let row_proves = &mut data.row_proves;
-                    row_proves.sort();
-                    let row_proves = row_proves[..max_values_to_print]
-                        .to_vec()
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-
                     let diff = num_proves - num_assumes;
+                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
+                    let row_proves = &mut data.row_proves;
+
+                    row_proves.sort();
+                    let row_proves = if max_values_to_print < diff {
+                        row_proves[..max_values_to_print].to_vec()
+                    } else {
+                        row_proves[..diff].to_vec()
+                    };
+                    let row_proves = row_proves.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+
+                    let name_str = if row_proves.len() == 1 { 
+                        format!("at row {}.",row_proves) 
+                    } else {
+                        if max_values_to_print < row_proves.len() {
+                            format!("at rows {},...",row_proves) 
+                        } else {
+                            format!("at rows {}.",row_proves)
+                        }
+                    };
                     println!(
-                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
-                        val, diff, row_proves
+                        "\t    • Value\n\t        {:?}\n\t      Appears {} times {}",
+                        val, diff, name_str
                     );
                 }
 
