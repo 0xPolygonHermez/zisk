@@ -117,6 +117,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
     }
 
     //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(
         opcode: u8,
         a: u64,
@@ -163,7 +164,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
     fn opcode_result_is_a(opcode: u8) -> bool {
         match opcode {
-            0x09 | 0x0a | 0x0b | 0x0c => true,
+            0x09..=0x0c => true,
             0x04 | 0x05 | 0x08 | 0x02 | 0x03 | 0x06 | 0x07 | 0x20 | 0x21 | 0x22 | 0x23 => false,
             _ => panic!("BinaryBasicTableSM::opcode_result_is_a() got invalid opcode={}", opcode),
         }

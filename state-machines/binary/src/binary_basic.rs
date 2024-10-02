@@ -249,10 +249,10 @@ impl<F: Field> BinaryBasicSM<F> {
                             b: b_bytes[i] as u64,
                             row: BinaryBasicTableSM::<F>::calculate_table_row(
                                 if mode32 && (i >= 4) { EXT_32_OP } else { m_op },
-                                a_bytes[i] as u64, 
-                                b_bytes[i] as u64, 
-                                previous_cin, 
-                                plast[i], 
+                                a_bytes[i] as u64,
+                                b_bytes[i] as u64,
+                                previous_cin,
+                                plast[i],
                                 if i == 7 { c_bytes[0] as u64 } else { 0 },
                                 flags,
                                 i as u64),
@@ -326,7 +326,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], 
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
                             if i == 7 { c_bytes[0] as u64 } else { 0 },
                             flags, i as u64),
                         };
