@@ -16,9 +16,13 @@ trace!(BinaryTable0Row, BinaryTable0Trace<F> {
 });
 
 trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
- m_op: F, mode8: F, mode16: F, mode32: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], free_in2: [F; 4], multiplicity: F, main_step: F,
+ op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
 });
 
 trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 1],
 });

@@ -14,7 +14,18 @@ use zisk_pil::*;
 
 use crate::BinaryExtensionTableSM;
 
-const EXT_OP: u8 = 0x26;
+const MASK_32: u64 = 0xFFFFFFFF;
+const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
+
+const SE_MASK_32: u64 = 0xFFFFFFFF00000000;
+const SE_MASK_16: u64 = 0xFFFFFFFFFFFF0000;
+const SE_MASK_8: u64 = 0xFFFFFFFFFFFFFF00;
+
+const SIGN_32_BIT: u64 = 0x80000000;
+const SIGN_BYTE: u64 = 0x80;
+
+const LS_5_BITS: u64 = 0x1F;
+const LS_6_BITS: u64 = 0x3F;
 
 pub struct BinaryExtensionSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -95,32 +106,34 @@ impl<F: Field> BinaryExtensionSM<F> {
         let mut table_required: Vec<ZiskRequiredBinaryExtensionTable> = Vec::new();
 
         for i in input {
+            // Get the opcode
+            let op = i.opcode;
+
             // Create an empty trace
-            let mut t = BinaryExtension0Row::<F> {
-                m_op: F::from_canonical_u8(i.opcode),
-                ..Default::default()
-            };
+            let mut t =
+                BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
             // Execute the opcode
-            let c: u64;
-            let flag: bool;
-            (c, flag) = opcode_execute(i.opcode, i.a, i.b);
-            let _flag = flag;
+            //let c: u64;
+            //let flag: bool;
+            //(_, flag) = opcode_execute(i.opcode, i.a, i.b);
+            //let _flag = flag;
 
-            // Decompose the opcode into mode32 & op
-            let mode32 = (i.opcode & 0x10) != 0;
-            t.mode32 = F::from_bool(mode32);
-            let m_op = i.opcode & 0xEF;
-            t.m_op = F::from_canonical_u8(m_op);
-            let mode16 = i.opcode == 0x24;
-            t.mode16 = F::from_bool(mode16);
-            let mode8 = i.opcode == 0x23;
-            t.mode8 = F::from_bool(mode8);
+            // Set if the opcode is a shift operation
+            let op_is_shift = (op == 0x0d) ||
+                (op == 0x0e) ||
+                (op == 0x0f) ||
+                (op == 0x1d) ||
+                (op == 0x1e) ||
+                (op == 0x1f);
+            t.op_is_shift = F::from_bool(op_is_shift);
+
+            // Set if the opcode is a shift word operation
+            let op_is_shift_word = (op == 0x1d) || (op == 0x1e) || (op == 0x1f);
 
             // Detect if this is a sign extend operation
-            let sign_extend = (m_op == 0x23) || (m_op == 0x24) || (m_op == 0x25);
-            let a = if sign_extend { i.b } else { i.a };
-            let b = if sign_extend { i.a } else { i.b };
+            let a = if op_is_shift { i.a } else { i.b };
+            let b = if op_is_shift { i.b } else { i.a };
 
             // Split a in bytes and store them in in1
             let a_bytes: [u8; 8] = a.to_le_bytes();
@@ -130,213 +143,169 @@ impl<F: Field> BinaryExtensionSM<F> {
 
             // Split b in bytes
             //let b_bytes: [u8; 8] = b.to_le_bytes();
+            t.in2[0] = F::from_canonical_u64(b & MASK_32);
+            t.in2[1] = F::from_canonical_u64((b >> 32) & MASK_32);
 
             // Store b low part into in2_low
-            let b_low: u64 = b & if mode32 { 0x1F } else { 0x3F };
-            t.in2_low = F::from_canonical_u64(b_low);
+            let in2_low: u64 = if op_is_shift { b & 0xFF } else { 0 };
 
-            // Store b high part into free_in2
-            t.free_in2[0] = F::from_canonical_u64(
-                (b >> if mode32 { 5 } else { 6 }) & if mode32 { 0x7FF } else { 0x3FF },
-            );
-            t.free_in2[1] = F::from_canonical_u64((b >> 16) & 0xFFFF);
-            t.free_in2[2] = F::from_canonical_u64((b >> 32) & 0xFFFF);
-            t.free_in2[3] = F::from_canonical_u64(b >> 48);
+            // Store b lower bits when shifting, depending on operation size
+            let b_low = if op_is_shift_word { b & LS_5_BITS } else { b & LS_6_BITS };
+
+            // Store b into in2
+            let in2_0: u64 = if op_is_shift { (b >> 8) & 0xFFFFFF } else { b & 0xFFFFFFFF };
+            let in2_1: u64 = (b >> 32) & 0xFFFFFFFF;
+            t.in2[0] = F::from_canonical_u64(in2_0);
+            t.in2[1] = F::from_canonical_u64(in2_1);
 
             // Set main SM step
             t.main_step = F::from_canonical_u64(i.step);
 
+            // Calculate the trace output
             let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
 
-            // Calculate out based on opcode
+            // Calculate output based on opcode
             match i.opcode {
                 0x0d /* SLL */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position = j*8 + b_low;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position < 64 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
-                        }
-                        else {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
+                        let out = (a_bytes[j] as u64) << (b_low + 8*j as u64);
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x0e /* SRL */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position: i64 = j as i64*8 - b_low as i64;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position > 0 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
-                        }
-                        else if position > -8 {
-                            let out = c & (0xff_u64 >> -position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
-                        }
-                        else {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
+                        let out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x0f /* SRA */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position: i64 = j as i64*8 - b_low as i64;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position > 0 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        let mut out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
+                        if j == 7 {
+                            // most significant bit of most significant byte define if negative or not
+                            // if negative then add b bits one on the left
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = out | (MASK_64 << (64 - b_low));
+                            }
                         }
-                        else if position > -8 {
-                            let out = c & (0xff_u64 >> -position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
-                        }
-                        else {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x1d /* SLL_W */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position = j*8 + b_low;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position < 32 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
                         }
                         else {
-                            t_out[j as usize][0] = 0;
+                            out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
+                            if (out & SIGN_32_BIT) != 0 {
+                                out = out | SE_MASK_32;
+                            }
                         }
-                        t_out[j as usize][1] = 0;
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x1e /* SRL_W */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position: i64 = j as i64*8 - b_low as i64;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position > 0 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
+                        } else {
+                            out = (((a_bytes[j] as u64) << (8 * j as u64)) >> b_low) & MASK_32;
+                            if (out & SIGN_32_BIT) != 0 {
+                                out = out | SE_MASK_32;
+                            }
                         }
-                        else if position > -8 {
-                            let out = c & (0xff_u64 >> -position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                        }
-                        else {
-                            t_out[j as usize][0] = 0;
-                        }
-                        t_out[j as usize][1] = 0;
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x1f /* SRA_W */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position: i64 = j as i64*8 - b_low as i64;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position > 0 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
+                        } else {
+                            out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
+                            if j == 3 {
+                                if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                    out = out | (MASK_64 << (32 - b_low));
+                                }
+                            }
                         }
-                        else if position > -8 {
-                            let out = c & (0xff_u64 >> -position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                        }
-                        else {
-                            t_out[j as usize][0] = 0;
-                        }
-                        t_out[j as usize][1] = 0;
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x23 /* SE_B */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position = j*8 + b_low;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position < 8 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        let out: u64;
+                        if j == 0 {
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = (a_bytes[j] as u64) | SE_MASK_8;
+                            } else {
+                                out = a_bytes[j] as u64;
+                            }
+                        } else {
+                            out = 0;
                         }
-                        else {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x24 /* SE_H */ => {
                     for j in 0..8 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position = j*8 + b_low;
-
-                        // Calculate the 8-bits window of the result at this position
-                        if position < 16 {
-                            let out = c & (0xff_u64 << position);
-                            t_out[j as usize][0] = out & 0xffffffff;
-                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        let out: u64;
+                        if j == 0 {
+                            out = a_bytes[j] as u64;
+                        } else if j == 1 {
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = (a_bytes[j] as u64) | SE_MASK_16;
+                            } else {
+                                out = a_bytes[j] as u64;
+                            }
+                        } else {
+                            out = 0;
                         }
-                        else {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
-               // #=37,0,224,63,127,0,526560,0
 
                 0x25 /* SE_W */ => {
                     for j in 0..4 {
-                        // Calculate position as the number of shifted bits for this byte
-                        let position = j*8;
-
-                        // Calculate the 8-bits window of the result at this position
-                        let out = c & (0xff_u64 << position);
+                        let out: u64;
+                        if j < 3 {
+                            out = a_bytes[j] as u64;
+                        } else if j == 3 {
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = (a_bytes[j] as u64) | SE_MASK_32;
+                            } else {
+                                out = a_bytes[j] as u64;
+                            }
+                        } else {
+                            out = 0;
+                        }
                         t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = 0;
-                    }
-                    if (i.b & 0x80000000) == 0 {
-                        for j in 4..8 {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0;
-                        }
-                    }
-                    else {
-                        for j in 4..8 {
-                            t_out[j as usize][0] = 0;
-                            t_out[j as usize][1] = 0xff_u64 << (8*(j-4));
-                        }
+                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),
             }
 
-            // Convert to F
+            // Convert the trace output to field elements
             for j in 0..8 {
                 t.out[j as usize][0] = F::from_canonical_u64(t_out[j as usize][0]);
                 t.out[j as usize][1] = F::from_canonical_u64(t_out[j as usize][1]);
@@ -348,78 +317,21 @@ impl<F: Field> BinaryExtensionSM<F> {
             // Store the trace in the vector
             trace.push(t);
 
-            //lookup_assumes(BINARY_EXTENSION_TABLE_ID, [m_op, 0, in1[0], in2_low, out[0][0],
-            // out[0][1]]); for (int j = 1; j < bytes; j++) {
-            //    expr _m_op = m_op;
-            //    expr _in1 = 0;
-            //    expr _in2 = 0;
-            //    if (j == 1)
-            //    {
-            //        _in1 = (1-mode8) * (in1[j] - out[0][0]) + out[0][0];
-            //        _in2 = (1-mode8) * in2_low;
-            //    }
-            //    else if (j < bytes/2 - 1)
-            //    {
-            //        _in1 = mode8*out[0][0] + mode16*out[1][0] + (1-mode8)*(1-mode16)*in1[j];
-            //        _in2 = (1-mode8)*(1-mode16)*in2_low;
-            //    }
-            //    else
-            //    {
-            //        _m_op = (1-mode32) * (m_op - EXT_OP) + EXT_OP;
-            //        _in1 = mode8*out[0][0] + mode16*out[1][0] + mode32*(out[bytes/2-1][0]) +
-            // (1-mode8)*(1-mode16)*(1-mode32)*in1[j];        _in2 =
-            // (1-mode8)*(1-mode16)*(1-mode32)*in2_low;    }
-            //    lookup_assumes(BINARY_EXTENSION_TABLE_ID, [_m_op, j, _in1, _in2, out[j][0],
-            // out[j][1]]);
-            //}
-            //let offset = if mode32 { 5 } else { 6 };
-            //let in2_low = b_low;
             for i in 0..8 {
-                let m_op_ext = if mode32 && (i >= 4) { EXT_OP } else { m_op };
-                let in1: u64;
-                let in2: u64;
-                if i == 0 {
-                    in1 = a_bytes[i] as u64;
-                    in2 = b_low;
-                } else if i == 1 {
-                    in1 = if mode8 { a_bytes[0] as u64 } else { a_bytes[i] as u64 };
-                    in2 = if mode8 { 0 } else { b_low };
-                } else if i < 3 {
-                    in1 = if mode8 {
-                        a_bytes[0] as u64
-                    } else if mode16 {
-                        a_bytes[1] as u64
-                    } else {
-                        a_bytes[i] as u64
-                    };
-                    in2 = if mode8 || mode16 { 0 } else { b_low };
-                } else {
-                    in1 = if mode8 {
-                        a_bytes[0] as u64
-                    } else if mode16 {
-                        a_bytes[1] as u64
-                    } else if mode32 {
-                        t_out[3][0]
-                    } else {
-                        a_bytes[i] as u64
-                    };
-                    in2 = if mode8 || mode16 || mode32 { 0 } else { b_low };
-                }
-
                 // Create a table required
                 let tr = ZiskRequiredBinaryExtensionTable {
-                    opcode: m_op_ext,
-                    a: a_bytes[i] as u64,
-                    b: b_low,
+                    opcode: op,
+                    a,
+                    b,
                     offset: i as u64,
                     row: BinaryExtensionTableSM::<F>::calculate_table_row(
-                        m_op_ext,
+                        op,
                         i as u64,
-                        in1,
-                        if (m_op == 0x23) || (m_op == 0x24) || (m_op == 0x25) { 0 } else { in2 },
+                        a_bytes[i] as u64,
+                        in2_low,
                         t_out[i][0],
                         t_out[i][1],
-                        i as u64,
+                        op_is_shift,
                     ),
                 };
 
