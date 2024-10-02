@@ -185,6 +185,13 @@ pub fn generate_recursion_proof<F: Field>(
 
                                 proves_recursive2_airgroup[j] =
                                     gen_recursive_proof_c(p_setup, p_address, p_publics, &proof_file);
+                                proves_recursive2_airgroup[j] = publics2zkin_c(
+                                    proves_recursive2_airgroup[j],
+                                    p_publics,
+                                    global_info_file,
+                                    airgroup as u64,
+                                    false,
+                                );
                                 timer_stop_and_log!(GENERATE_PROOF);
                             }
                         }

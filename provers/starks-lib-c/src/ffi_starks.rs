@@ -56,8 +56,10 @@ pub fn fri_proof_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn fri_proof_get_tree_root_c(p_fri_proof: *mut c_void, tree_index: u64, root_index: u64) -> *mut c_void {
-    unsafe { fri_proof_get_tree_root(p_fri_proof, tree_index, root_index) }
+pub fn fri_proof_get_tree_root_c(p_fri_proof: *mut c_void, root: *mut c_void, tree_index: u64) {
+    unsafe {
+        fri_proof_get_tree_root(p_fri_proof, root, tree_index);
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -617,7 +619,7 @@ pub fn fri_proof_new_c(_p_setup_ctx: *mut c_void) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn fri_proof_get_tree_root_c(_p_fri_proof: *mut c_void, _tree_index: u64, _root_index: u64) -> *mut c_void {
+pub fn fri_proof_get_tree_root_c(_p_fri_proof: *mut c_void, _root: *mut c_void, _tree_index: u64) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_get_tree_root: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }

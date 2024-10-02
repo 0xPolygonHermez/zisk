@@ -106,7 +106,6 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut transcript = provers[0].new_transcript();
 
         Self::calculate_challenges(0, &mut provers, pctx.clone(), &mut transcript, 0);
-        provers[0].add_publics_to_transcript(pctx.clone(), &transcript);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -294,6 +293,27 @@ impl<F: Field + 'static> ProofMan<F> {
         }
     }
 
+    fn hash_b_tree(prover: &dyn Prover<F>, values: Vec<Vec<F>>) -> Vec<F> {
+        if values.len() == 1 {
+            return values[0].clone();
+        }
+
+        let mut result = Vec::new();
+
+        for i in (0..values.len() - 1).step_by(2) {
+            let mut buffer = values[i].clone();
+            buffer.extend(values[i + 1].clone());
+            let value = prover.calculate_hash(buffer);
+            result.push(value);
+        }
+
+        if values.len() % 2 != 0 {
+            result.push(values[values.len() - 1].clone());
+        }
+
+        Self::hash_b_tree(prover, result)
+    }
+
     fn calculate_challenges(
         stage: u32,
         provers: &mut [Box<dyn Prover<F>>],
@@ -304,15 +324,31 @@ impl<F: Field + 'static> ProofMan<F> {
         info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
         let airgroups = proof_ctx.global_info.subproofs.clone();
         for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
-            let airgroup_instances = proof_ctx.air_instance_repo.find_airgroup_instances(airgroup_id);
-            for prover_idx in airgroup_instances.iter() {
-                if debug_mode != 0 {
-                    let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
-                    transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
-                } else {
-                    provers[*prover_idx].add_challenges_to_transcript(stage as u64, proof_ctx.clone(), transcript);
+            if debug_mode != 0 {
+                let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
+                transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
+            } else {
+                let airgroup_instances = proof_ctx.air_instance_repo.find_airgroup_instances(airgroup_id);
+                let _transcript_airgroup = provers[airgroup_instances[0]].new_transcript();
+
+                let mut values = Vec::new();
+                for prover_idx in airgroup_instances.iter() {
+                    if let Some(value) = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone()) {
+                        values.push(value);
+                    }
+                }
+                if !values.is_empty() {
+                    let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values);
+                    transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
                 }
             }
+        }
+
+        if stage == 0 {
+            let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
+            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
+
+            transcript.add_elements(public_inputs, proof_ctx.global_info.n_publics);
         }
     }
 

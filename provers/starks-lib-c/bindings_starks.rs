@@ -28,12 +28,12 @@ extern "C" {
     pub fn fri_proof_new(pSetupCtx: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z23fri_proof_get_tree_rootPvmm"]
+    #[link_name = "\u{1}_Z23fri_proof_get_tree_rootPvS_m"]
     pub fn fri_proof_get_tree_root(
         pFriProof: *mut ::std::os::raw::c_void,
+        root: *mut ::std::os::raw::c_void,
         tree_index: u64,
-        root_index: u64,
-    ) -> *mut ::std::os::raw::c_void;
+    );
 }
 extern "C" {
     #[link_name = "\u{1}_Z28fri_proof_set_subproofvaluesPvS_"]

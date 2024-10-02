@@ -70,8 +70,7 @@ pub trait Prover<F> {
     fn get_prover_info(&self) -> ProverInfo;
     fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void;
 
-    fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
-    fn add_publics_to_transcript(&self, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
-
+    fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Option<Vec<F>>;
+    fn calculate_hash(&self, values: Vec<F>) -> Vec<F>;
     fn verify_constraints(&self, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo>;
 }

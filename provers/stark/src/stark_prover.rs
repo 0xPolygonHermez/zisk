@@ -355,12 +355,22 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         }
     }
 
-    fn add_challenges_to_transcript(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
+    fn calculate_hash(&self, values: Vec<F>) -> Vec<F> {
+        let hash = vec![F::zero(); self.n_field_elements];
+        calculate_hash_c(
+            self.p_stark,
+            hash.as_ptr() as *mut c_void,
+            values.as_ptr() as *mut c_void,
+            values.len() as u64,
+        );
+        hash
+    }
+
+    fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Option<Vec<F>> {
         let p_stark: *mut std::ffi::c_void = self.p_stark;
 
+        let mut value = vec![F::zero(); self.n_field_elements];
         if stage <= (Self::num_stages(self) + 1) as u64 {
-            let mut root = vec![F::zero(); self.n_field_elements];
-
             let tree_index = if stage == 0 {
                 let stark_info: &StarkInfo = &self.stark_info;
                 stark_info.n_stages as u64 + 1
@@ -368,20 +378,18 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 stage - 1
             };
 
-            treesGL_get_root_c(p_stark, tree_index, root.as_mut_ptr() as *mut c_void);
-
-            transcript.add_elements(root.as_ptr() as *mut c_void, self.n_field_elements);
+            treesGL_get_root_c(p_stark, tree_index, value.as_mut_ptr() as *mut c_void);
         } else if stage == (Self::num_stages(self) + 2) as u64 {
-            let mut hash: Vec<F> = vec![F::zero(); self.n_field_elements];
             let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
             let evals = air_instance.evals.as_ptr() as *mut c_void;
             calculate_hash_c(
                 p_stark,
-                hash.as_mut_ptr() as *mut c_void,
+                value.as_mut_ptr() as *mut c_void,
                 evals,
                 (self.stark_info.ev_map.len() * Self::FIELD_EXTENSION) as u64,
             );
-            transcript.add_elements(hash.as_mut_ptr() as *mut c_void, self.n_field_elements);
+        } else if stage == (Self::num_stages(self) + 3) as u64 {
+            return None;
         } else if stage > (Self::num_stages(self) + 3) as u64 {
             let steps = &self.stark_info.stark_struct.steps;
 
@@ -393,36 +401,18 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 let n_steps = steps.len() - 1;
                 if step_index < n_steps {
                     let p_proof = self.p_proof.unwrap();
-
-                    let root = fri_proof_get_tree_root_c(p_proof, (step_index + 1) as u64, 0);
-                    transcript.add_elements(root, self.n_field_elements);
+                    fri_proof_get_tree_root_c(p_proof, value.as_mut_ptr() as *mut c_void, (step_index + 1) as u64);
                 } else {
                     let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
                     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
 
-                    let mut hash: Vec<F> = vec![F::zero(); self.n_field_elements];
                     let n_hash = (1 << (steps[n_steps].n_bits)) * Self::FIELD_EXTENSION as u64;
                     let fri_pol = get_fri_pol_c(self.p_setup, buffer);
-                    calculate_hash_c(p_stark, hash.as_mut_ptr() as *mut c_void, fri_pol, n_hash);
-                    transcript.add_elements(hash.as_ptr() as *mut c_void, self.n_field_elements);
+                    calculate_hash_c(p_stark, value.as_mut_ptr() as *mut c_void, fri_pol, n_hash);
                 }
-            } else {
-                transcript.add_elements(
-                    [F::zero(), F::zero(), F::zero(), F::zero()].as_ptr() as *mut c_void,
-                    self.n_field_elements,
-                );
             }
         }
-    }
-
-    //TODO: This funciton could leave outside the prover trait, for now is confortable to get the hash and the configs
-    fn add_publics_to_transcript(&self, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
-        let stark_info: &StarkInfo = &self.stark_info;
-
-        let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
-        let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-
-        transcript.add_elements(public_inputs, stark_info.n_publics as usize);
+        Some(value)
     }
 
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {
