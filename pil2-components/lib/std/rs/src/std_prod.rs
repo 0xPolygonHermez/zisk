@@ -12,8 +12,8 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
-    HintFieldOutput, HintFieldValue,
+    format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val,
+    HintFieldOptions, HintFieldOutput, HintFieldValue,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -309,7 +309,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     continue;
                 }
 
-                let unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                // TODO: Sort unmatching values by the row
+                let mut unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
                     bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
                 let len2 = unmatching_values2.len();
 
@@ -317,7 +318,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
                 }
 
-                for (val, data) in unmatching_values2 {
+                for (i, (val, data)) in unmatching_values2.iter_mut().enumerate() {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
                     let diff = num_assumes - num_proves;
@@ -332,25 +333,34 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     };
                     let row_assumes = row_assumes.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
 
-                    let name_str = if row_assumes.len() == 1 { 
-                        format!("at row {}.",row_assumes) 
+                    let name_str = if row_assumes.len() == 1 {
+                        format!("at row {}.", row_assumes)
                     } else {
                         if max_values_to_print < row_assumes.len() {
-                            format!("at rows {},...",row_assumes) 
+                            format!("at rows {},...", row_assumes)
                         } else {
-                            format!("at rows {}.",row_assumes)
+                            format!("at rows {}.", row_assumes)
                         }
                     };
                     let diff_str = if diff == 1 { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} {}",
-                        val, diff, diff_str, name_str
+                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}",
+                        format_vec(val),
+                        diff,
+                        diff_str,
+                        name_str
                     );
+
+                    if i == max_values_to_print {
+                        println!("\t      ...");
+                        break;
+                    }
                 }
 
                 println!();
 
-                let unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                // TODO: Sort unmatching values by the row
+                let mut unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
                     bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
                 let len1 = unmatching_values1.len();
 
@@ -358,7 +368,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len1);
                 }
 
-                for (val, data) in unmatching_values1 {
+                for (i, (val, data)) in unmatching_values1.iter_mut().enumerate() {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
                     let diff = num_proves - num_assumes;
@@ -373,19 +383,26 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     };
                     let row_proves = row_proves.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
 
-                    let name_str = if row_proves.len() == 1 { 
-                        format!("at row {}.",row_proves) 
+                    let name_str = if row_proves.len() == 1 {
+                        format!("at row {}.", row_proves)
                     } else {
                         if max_values_to_print < row_proves.len() {
-                            format!("at rows {},...",row_proves) 
+                            format!("at rows {},...", row_proves)
                         } else {
-                            format!("at rows {}.",row_proves)
+                            format!("at rows {}.", row_proves)
                         }
                     };
                     println!(
-                        "\t    • Value\n\t        {:?}\n\t      Appears {} times {}",
-                        val, diff, name_str
+                        "\t    • Value\n\t        {}\n\t      Appears {} times {}",
+                        format_vec(val),
+                        diff,
+                        name_str
                     );
+
+                    if i == max_values_to_print {
+                        println!("\t      ...");
+                        break;
+                    }
                 }
 
                 println!();

@@ -12,8 +12,8 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val, HintFieldOptions,
-    HintFieldOutput, HintFieldValue,
+    format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val,
+    HintFieldOptions, HintFieldOutput, HintFieldValue,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -183,7 +183,15 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         }
     }
 
-    fn update_bus_vals(&self, num_rows: usize, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
+    fn update_bus_vals(
+        &self,
+        num_rows: usize,
+        opid: F,
+        val: Vec<HintFieldOutput<F>>,
+        row: usize,
+        is_positive: bool,
+        times: F,
+    ) {
         let debug_data = self.debug_data.as_ref().expect("Debug data missing");
         let mut bus = debug_data.lock().expect("Bus values missing");
 
@@ -346,7 +354,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     continue;
                 }
 
-                let unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                let mut unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
                     bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
                 let len2 = unmatching_values2.len();
 
@@ -354,7 +362,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
                 }
 
-                for (val, data) in unmatching_values2 {
+                for (i, (val, data)) in unmatching_values2.iter_mut().enumerate() {
                     let num_proves = data.num_proves;
                     let num_assumes = data.num_assumes;
                     let diff = num_assumes - num_proves;
@@ -381,12 +389,22 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     };
                     let diff_str = if diff.is_one() { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} {}",
-                        val, diff, diff_str, name_str
+                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}",
+                        format_vec(val),
+                        diff,
+                        diff_str,
+                        name_str
                     );
+
+                    if i == max_values_to_print {
+                        println!("\t      ...");
+                        break;
+                    }
                 }
 
-                println!();
+                if len2 > 0 {
+                    println!();
+                }
 
                 let unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
                     bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
@@ -405,8 +423,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     let diff_str = if diff.is_one() { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {:?}\n\t      Appears {} {} at row {}.",
-                        val, diff, diff_str, row_proves
+                        "\t    • Value:\n\t        {}\n\t      Appears {} {} at row {}.",
+                        format_vec(val),
+                        diff,
+                        diff_str,
+                        row_proves
                     );
 
                     if i == max_values_to_print {
