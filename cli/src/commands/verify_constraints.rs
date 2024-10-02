@@ -1,6 +1,6 @@
 // extern crate env_logger;
 use clap::Parser;
-use proofman_common::VerboseMode;
+use proofman_common::initialize_logger;
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -49,13 +49,7 @@ impl VerifyConstraintsCmd {
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        let verbose_mode: VerboseMode = self.verbose.into();
-        env_logger::builder()
-            .format_timestamp(None)
-            .format_level(true)
-            .format_target(false)
-            .filter_level(verbose_mode.into())
-            .init();
+        initialize_logger(self.verbose.into());
 
         let debug_mode = match self.debug {
             0 => 1, // Default to Error
@@ -71,7 +65,7 @@ impl VerifyConstraintsCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                ProofOptions::new(debug_mode, verbose_mode, false, false),
+                ProofOptions::new(debug_mode, self.verbose.into(), false, false),
             )?,
         };
 

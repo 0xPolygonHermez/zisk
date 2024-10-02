@@ -1,6 +1,6 @@
 // extern crate env_logger;
 use clap::Parser;
-use proofman_common::VerboseMode;
+use proofman_common::initialize_logger;
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -56,16 +56,11 @@ impl ProveCmd {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
+        initialize_logger(self.verbose.into());
+
         if !Path::new(&self.output_dir.join("proofs")).exists() {
             fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
         }
-        let verbose_mode: VerboseMode = self.verbose.into();
-        env_logger::builder()
-            .format_timestamp(None)
-            .format_level(true)
-            .format_target(false)
-            .filter_level(verbose_mode.into())
-            .init();
 
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
@@ -74,7 +69,7 @@ impl ProveCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                ProofOptions::new(0, verbose_mode, self.aggregation, self.debug),
+                ProofOptions::new(0, self.verbose.into(), self.aggregation, self.debug),
             )?,
         };
 

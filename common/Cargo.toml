@@ -12,6 +12,7 @@ log.workspace = true
 transcript = { path = "../transcript" }
 p3-field.workspace = true
 proofman-macros.workspace = true
+env_logger.workspace = true
 proofman-util = { path = "../util" }
 proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 

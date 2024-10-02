@@ -672,6 +672,7 @@ dependencies = [
 name = "proofman-common"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
  "log",
  "p3-field",
  "pilout",

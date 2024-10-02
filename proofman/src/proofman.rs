@@ -4,7 +4,6 @@ use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
 use std::fs;
-use proofman_starks_lib_c::*;
 
 use colored::*;
 
@@ -37,8 +36,6 @@ impl<F: Field + 'static> ProofMan<F> {
         output_dir_path: PathBuf,
         options: ProofOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        set_log_level_c(options.verbose_mode.into());
-
         // Check witness_lib path exists
         if !witness_lib_path.exists() {
             return Err(format!("Witness computation dynamic library not found at path: {:?}", witness_lib_path).into());
@@ -73,24 +70,25 @@ impl<F: Field + 'static> ProofMan<F> {
                 .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
         }
 
+        let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
+        let ectx = ExecutionCtx::builder()
+            .with_rom_path(rom_path)
+            .with_public_inputs_path(public_inputs_path)
+            .with_buffer_allocator(buffer_allocator)
+            .with_verbose_mode(options.verbose_mode)
+            .build();
+        let ectx = Arc::new(ectx);
+
         // Load the witness computation dynamic library
         let library = unsafe { Library::new(&witness_lib_path)? };
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(rom_path.clone(), public_inputs_path.clone())?;
+        let mut witness_lib = witness_lib(&ectx)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
         let sctx = Arc::new(SetupCtx::new(&pctx.global_info, &ProofType::Basic));
-
-        let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
-
-        let ectx = ExecutionCtx::builder()
-            .with_buffer_allocator(buffer_allocator)
-            .with_verbose_mode(options.verbose_mode)
-            .build();
-        let ectx = Arc::new(ectx);
 
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
 
