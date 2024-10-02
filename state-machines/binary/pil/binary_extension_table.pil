@@ -45,7 +45,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
     }
 
     if (N < 2**22) {
-        error("N must be at least 2^20");
+        error("N must be at least 2^22");
     }
 
     const int bits = 64;

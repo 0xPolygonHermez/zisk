@@ -65,12 +65,6 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                               0:(P2_17*5),
                               0:P2_16]...;
 
-    col fixed USE_CARRY = [ 0:(P2_19*4),                // USE_CARRY(MINU,MIN,MAXU,MAX) = False
-                           [0:P2_17, 1:P2_17]:3,        // USE_CARRY(LTU,LT,EQ) = True
-                            0:(P2_18*2),                // USE_CARRY(ADD,SUB) = False
-                           [0:P2_16, 1:P2_16]:2,        // USE_CARRY(LEU,LE) = True
-                            0:(P2_17*4)]...;            // USE_CARRY(AND,OR,XOR,EXT_32) = False
-
     col fixed OP = [0x09:P2_19, 0x0a:P2_19, 0x0b:P2_19, 0x0c:P2_19, // MINU,MIN,MAXU,MAX
                     0x04:P2_18, 0x05:P2_18, 0x08:P2_18,             // LTU,LT,EQ
                     0x02:P2_18, 0x03:P2_18,                         // ADD,SUB
@@ -92,6 +86,7 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
         int c = 0;
         int cout = 0;
         int op_is_min_max = 0;
+        int use_last_carry = 0;
         switch (op) {
             case 0x02: // ADD,ADD_W
                 c = (cin + a + b) & 0xFF;
@@ -117,6 +112,8 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                     cout = c;
                 }
 
+                use_last_carry = plast;
+
             case 0x06,0x07: // LEU,LEU_W,LE,LE_W
                 if (a <= b) {
                     cout = 1;
@@ -128,10 +125,14 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                     cout = c;
                 }
 
+                use_last_carry = plast;
+
             case 0x08: // EQ,EQ_W
                 if (a == b && !cin) c = plast;
                 else cout = 1;
                 if (plast) cout = 1 - cout;
+
+                use_last_carry = plast;
 
             case 0x09,0x0a: // MINU,MINU_W,MIN,MIN_W
                 // cout = 1 indicates that a is lower than b
@@ -191,7 +192,7 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
         C[i] = c;
         COUT[i] = cout;
         OP_IS_MIN_MAX[i] = op_is_min_max;
-        FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+        FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry;
     }
     #pragma timer t2 end
     #pragma timer tt end
