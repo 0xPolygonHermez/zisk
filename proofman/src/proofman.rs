@@ -333,10 +333,8 @@ impl<F: Field + 'static> ProofMan<F> {
                 if !airgroup_instances.is_empty() {
                     let mut values = Vec::new();
                     for prover_idx in airgroup_instances.iter() {
-                        if let Some(value) = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone())
-                        {
-                            values.push(value);
-                        }
+                        let value = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone());
+                        values.push(value);
                     }
                     if !values.is_empty() {
                         let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values);
@@ -407,7 +405,6 @@ impl<F: Field + 'static> ProofMan<F> {
                 }
             }
         }
-        Self::calculate_challenges(num_commit_stages + 3, provers, proof_ctx.clone(), transcript, 0);
 
         // FRI Steps
         for opening_id in 3..=provers[0].num_opening_stages() {
