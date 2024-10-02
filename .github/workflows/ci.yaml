@@ -176,7 +176,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-stark
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: fix/fri_tree_root
+          ref: develop
           path: pil2-stark
 
       - name: Install pil2-stark

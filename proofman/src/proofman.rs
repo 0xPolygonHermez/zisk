@@ -329,17 +329,19 @@ impl<F: Field + 'static> ProofMan<F> {
                 transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
             } else {
                 let airgroup_instances = proof_ctx.air_instance_repo.find_airgroup_instances(airgroup_id);
-                let _transcript_airgroup = provers[airgroup_instances[0]].new_transcript();
 
-                let mut values = Vec::new();
-                for prover_idx in airgroup_instances.iter() {
-                    if let Some(value) = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone()) {
-                        values.push(value);
+                if !airgroup_instances.is_empty() {
+                    let mut values = Vec::new();
+                    for prover_idx in airgroup_instances.iter() {
+                        if let Some(value) = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone())
+                        {
+                            values.push(value);
+                        }
                     }
-                }
-                if !values.is_empty() {
-                    let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values);
-                    transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
+                    if !values.is_empty() {
+                        let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values);
+                        transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
+                    }
                 }
             }
         }

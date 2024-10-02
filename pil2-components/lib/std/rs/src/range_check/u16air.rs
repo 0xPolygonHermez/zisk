@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
+use std::{
+    fmt::Display,
+    sync::{atomic::AtomicU64, Arc, Mutex},
+};
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
@@ -12,7 +15,7 @@ use std::sync::atomic::Ordering;
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 const NUM_ROWS: usize = 1 << 16;
 
-pub struct U16Air<F: Copy> {
+pub struct U16Air<F: Copy + Display> {
     wcm: Arc<WitnessManager<F>>,
 
     // Parameters

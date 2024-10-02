@@ -1,11 +1,19 @@
 use p3_field::Field;
 use core::array;
+use std::fmt::{Display, Formatter, Result};
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub struct ExtensionField<F> {
+pub struct ExtensionField<F: Display> {
     pub value: [F; 3],
+}
+
+impl<F: Display> Display for ExtensionField<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        // Format the elements in the array as [a, b, c]
+        write!(f, "[{}, {}, {}]", self.value[0], self.value[1], self.value[2])
+    }
 }
 
 impl<F: Field> ExtensionField<F> {

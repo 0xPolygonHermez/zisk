@@ -12,7 +12,7 @@ use std::os::raw::c_void;
 
 use std::ops::{Add, Div, Mul, Sub, AddAssign, DivAssign, MulAssign, SubAssign};
 
-use std::fmt::Debug;
+use std::fmt::{Display, Debug, Formatter, Result};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,7 +71,7 @@ impl HintFieldOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HintFieldValue<F: Clone + Copy> {
+pub enum HintFieldValue<F: Clone + Copy + Display> {
     Field(F),
     FieldExtended(ExtensionField<F>),
     Column(Vec<F>),
@@ -79,35 +79,79 @@ pub enum HintFieldValue<F: Clone + Copy> {
     String(String),
 }
 
-pub struct HintFieldValues<F: Clone + Copy> {
+impl<F: Clone + Copy + Display> Display for HintFieldValue<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            HintFieldValue::Field(value) => write!(f, "{}", value),
+            HintFieldValue::FieldExtended(ext_field) => write!(f, "{}", ext_field),
+            HintFieldValue::Column(column) => {
+                let formatted: Vec<String> = column.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", formatted.join(", "))
+            }
+            HintFieldValue::ColumnExtended(ext_column) => {
+                let formatted: Vec<String> = ext_column.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", formatted.join(", "))
+            }
+            HintFieldValue::String(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+pub struct HintFieldValues<F: Clone + Copy + Display> {
     values: HashMap<Vec<u64>, HintFieldValue<F>>,
 }
 
-impl<F: Clone + Copy + Debug> HintFieldValues<F> {
+impl<F: Clone + Copy + Debug + Display> HintFieldValues<F> {
     pub fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>> {
         self.values.iter().map(|(key, value)| (key.clone(), value.get(index))).collect()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct HintFieldValuesVec<F: Clone + Copy + Debug> {
+pub struct HintFieldValuesVec<F: Clone + Copy + Debug + Display> {
     values: Vec<HintFieldValue<F>>,
 }
 
-impl<F: Clone + Copy + Debug> HintFieldValuesVec<F> {
+impl<F: Clone + Copy + Debug + Display> HintFieldValuesVec<F> {
     pub fn get(&self, index: usize) -> Vec<HintFieldOutput<F>> {
         self.values.iter().map(|value| value.get(index)).collect()
     }
 }
 
+impl<F: Clone + Copy + Debug + Display> Display for HintFieldValuesVec<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "[")?;
+        for (i, value) in self.values.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", value)?;
+        }
+        write!(f, "]")
+    }
+}
+
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 // Define an enum to represent the possible return types
-pub enum HintFieldOutput<F: Clone + Copy> {
+pub enum HintFieldOutput<F: Clone + Copy + Display> {
     Field(F),
     FieldExtended(ExtensionField<F>),
 }
 
-impl<F: Clone + Copy> HintFieldValue<F> {
+impl<F: Clone + Copy + Display> Display for HintFieldOutput<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            HintFieldOutput::Field(value) => write!(f, "{}", value),
+            HintFieldOutput::FieldExtended(ext_field) => write!(f, "{}", ext_field),
+        }
+    }
+}
+
+pub fn format_vec<T: Copy + Clone + Debug + Display>(vec: &[T]) -> String {
+    format!("[{}]", vec.iter().map(|item| item.to_string()).collect::<Vec<String>>().join(", "))
+}
+
+impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {
     pub fn get(&self, index: usize) -> HintFieldOutput<F> {
         match self {
             HintFieldValue::Field(value) => HintFieldOutput::Field(*value),
@@ -563,7 +607,7 @@ impl<F: Field> HintFieldValue<F> {
 pub struct HintCol;
 
 impl HintCol {
-    pub fn from_hint_field<F: Clone + Copy>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
+    pub fn from_hint_field<F: Clone + Copy + Display>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
         let values_slice = match hint_field.field_type {
             HintFieldType::String => &[],
             _ => unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) },
@@ -608,7 +652,7 @@ pub fn get_hint_ids_by_name(p_setup: *mut c_void, name: &str) -> Vec<u64> {
     slice.to_vec()
 }
 
-pub fn get_hint_field<F: Clone + Copy + Debug>(
+pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     public_inputs: &PublicInputs,
     challenges: &Challenges<F>,
@@ -650,7 +694,7 @@ pub fn get_hint_field<F: Clone + Copy + Debug>(
     }
 }
 
-pub fn get_hint_field_constant<F: Clone + Copy + std::fmt::Debug>(
+pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -688,7 +732,7 @@ pub fn get_hint_field_constant<F: Clone + Copy + std::fmt::Debug>(
     }
 }
 
-pub fn get_hint_field_a<F: Clone + Copy + Debug>(
+pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     public_inputs: &PublicInputs,
     challenges: &Challenges<F>,
@@ -736,7 +780,7 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug>(
     }
 }
 
-pub fn get_hint_field_m<F: Clone + Copy + Debug>(
+pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     public_inputs: &PublicInputs,
     challenges: &Challenges<F>,
@@ -789,7 +833,7 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug>(
     }
 }
 
-pub fn get_hint_field_constant_a<F: Clone + Copy + std::fmt::Debug>(
+pub fn get_hint_field_constant_a<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -833,7 +877,7 @@ pub fn get_hint_field_constant_a<F: Clone + Copy + std::fmt::Debug>(
     }
 }
 
-pub fn get_hint_field_constant_m<F: Clone + Copy + std::fmt::Debug>(
+pub fn get_hint_field_constant_m<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -885,7 +929,7 @@ pub fn get_hint_field_constant_m<F: Clone + Copy + std::fmt::Debug>(
     }
 }
 
-pub fn set_hint_field<F: Copy + core::fmt::Debug>(
+pub fn set_hint_field<F: Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
@@ -908,7 +952,7 @@ pub fn set_hint_field<F: Copy + core::fmt::Debug>(
     air_instance.set_commit_calculated(id as usize);
 }
 
-pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
+pub fn set_hint_field_val<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
@@ -946,7 +990,7 @@ pub fn set_hint_field_val<F: Clone + Copy + std::fmt::Debug>(
     air_instance.set_subproofvalue_calculated(id as usize);
 }
 
-pub fn print_expression<F: Clone + Copy + Debug>(
+pub fn print_expression<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     expr: &HintFieldValue<F>,
@@ -984,7 +1028,12 @@ pub fn print_expression<F: Clone + Copy + Debug>(
     }
 }
 
-pub fn print_row<F: Clone + Copy + Debug>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
+pub fn print_row<F: Clone + Copy + Debug + Display>(
+    setup_ctx: &SetupCtx,
+    air_instance: &AirInstance<F>,
+    stage: u64,
+    row: u64,
+) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
@@ -992,7 +1041,7 @@ pub fn print_row<F: Clone + Copy + Debug>(setup_ctx: &SetupCtx, air_instance: &A
     print_row_c((&setup.p_setup).into(), buffer, stage, row);
 }
 
-pub fn print_by_name<F: Clone + Copy>(
+pub fn print_by_name<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
     proof_ctx: Arc<ProofCtx<F>>,
     air_instance: &AirInstance<F>,

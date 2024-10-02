@@ -2,6 +2,7 @@ use core::panic;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
+    fmt::Display,
 };
 
 use num_traits::ToPrimitive;
@@ -19,7 +20,7 @@ use crate::{Decider, StdMode};
 type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
 type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 
-pub struct StdProd<F: Copy> {
+pub struct StdProd<F: Copy + Display> {
     mode: StdMode,
     prod_airs: Mutex<Vec<ProdAirsItem>>, // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
     bus_vals_num: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)

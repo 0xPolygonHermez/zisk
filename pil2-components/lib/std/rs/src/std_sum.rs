@@ -2,7 +2,7 @@ use core::panic;
 use rayon::prelude::*;
 use std::{
     collections::BTreeMap,
-    fmt::Debug,
+    fmt::{Display, Debug},
     sync::{Arc, Mutex},
 };
 
@@ -21,7 +21,7 @@ use crate::{Decider, StdMode};
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>);
 type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 
-pub struct StdSum<F: Copy> {
+pub struct StdSum<F: Copy + Display> {
     mode: StdMode,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
     bus_vals_left: Option<Mutex<BTreeMap<F, BusVals<F>>>>, // opid -> (row, bus_val)
