@@ -94,7 +94,7 @@ public:
         uint64_t constTreeSizeBytes = getConstTreeSize();
 
         pConstTreeAddress = (Goldilocks::Element *)loadFileParallel(constTreeFile, constTreeSizeBytes);
-        zklog.info("Starks::Starks() successfully copied " + to_string(constTreeSizeBytes) + " bytes from constant file " + constTreeFile);
+        zklog.debug("     Starks::Starks() successfully copied " + to_string(constTreeSizeBytes) + " bytes from constant file " + constTreeFile);
         
         pConstPolsAddressExtended = &pConstTreeAddress[2];
         TimerStopAndLog(LOAD_CONST_TREE_TO_MEMORY);
@@ -114,7 +114,7 @@ public:
         uint64_t constPolsSize = starkInfo.nConstants * sizeof(Goldilocks::Element) * N;
         
         pConstPolsAddress = (Goldilocks::Element *)loadFileParallel(constPolsFile, constPolsSize);
-        zklog.info("Starks::Starks() successfully copied " + to_string(constPolsSize) + " bytes from constant file " + constPolsFile);
+        zklog.debug("     Starks::Starks() successfully copied " + to_string(constPolsSize) + " bytes from constant file " + constPolsFile);
         
         TimerStopAndLog(LOAD_CONST_POLS_TO_MEMORY);
     }

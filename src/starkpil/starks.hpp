@@ -93,7 +93,6 @@ public:
 
 
     // Following function are created to be used by the ffi interface
-    void ffi_extend_and_merkelize(uint64_t step,  Goldilocks::Element *buffer, FRIProof<ElementType> *proof, Goldilocks::Element *pBuffHelper = nullptr);
     void ffi_treesGL_get_root(uint64_t index, ElementType *dst);
 
     void evmap(Goldilocks::Element *buffer, Goldilocks::Element *evals, Goldilocks::Element *LEv);

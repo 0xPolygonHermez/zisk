@@ -59,7 +59,13 @@ ConstraintInfo verifyConstraint(SetupCtx& setupCtx, StepsParams& params, Goldilo
     constraintInfo.line = setupCtx.expressionsBin.constraintsInfoDebug[constraintId].line.c_str();
     constraintInfo.nrows = 0;
 
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
     ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
 
     expressionsCtx.calculateExpressions(params, dest, setupCtx.expressionsBin.expressionsBinArgsConstraints, setupCtx.expressionsBin.constraintsInfoDebug[constraintId], false, false, false);
 

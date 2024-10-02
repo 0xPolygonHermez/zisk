@@ -273,17 +273,19 @@ ordered_json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges) 
 
 void *publics2zkin(ordered_json &zkin, Goldilocks::Element* publics, json& globalInfo, uint64_t airgroupId, bool isAggregated) {
     uint64_t p = 0;
-    zkin["sv_aggregationTypes"] = ordered_json::array();
-    for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
-        zkin["sv_aggregationTypes"][i] = Goldilocks::toString(publics[p++]);
-    }
-
     zkin["sv_circuitType"] = Goldilocks::toString(publics[p++]);
-    zkin["sv_subproofValues"] = ordered_json::array();
-    for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
-        zkin["sv_subproofValues"][i] = ordered_json::array();
-        for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
-            zkin["sv_subproofValues"][i][k] = Goldilocks::toString(publics[p++]);
+    if(globalInfo["aggTypes"][airgroupId].size() > 0) {
+        zkin["sv_aggregationTypes"] = ordered_json::array();
+        for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
+            zkin["sv_aggregationTypes"][i] = Goldilocks::toString(publics[p++]);
+        }
+
+        zkin["sv_subproofValues"] = ordered_json::array();
+        for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
+            zkin["sv_subproofValues"][i] = ordered_json::array();
+            for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
+                zkin["sv_subproofValues"][i][k] = Goldilocks::toString(publics[p++]);
+            }
         }
     }
 
@@ -319,9 +321,11 @@ void *publics2zkin(ordered_json &zkin, Goldilocks::Element* publics, json& globa
     }
 
     if(!isAggregated) {
-        zkin["publics"] = ordered_json::array();
-        for(uint64_t i = 0; i < uint64_t(globalInfo["nPublics"]); ++i) {
-            zkin["publics"][i] = Goldilocks::toString(publics[p++]);
+        if(uint64_t(globalInfo["nPublics"]) > 0) {
+            zkin["publics"] = ordered_json::array();
+            for(uint64_t i = 0; i < uint64_t(globalInfo["nPublics"]); ++i) {
+                zkin["publics"][i] = Goldilocks::toString(publics[p++]);
+            }
         }
 
         zkin["challenges"] = ordered_json::array();
@@ -362,9 +366,11 @@ void *addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recursive2Ver
 ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* challenges, void **zkin_vec, void **starkInfo_vec) {
     ordered_json zkinFinal = ordered_json::object();
     
-    for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
-    {
-        zkinFinal["publics"][i] = Goldilocks::toString(publics[i]);
+    if(globalInfo["nPublics"] > 0) {
+        for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
+        {
+            zkinFinal["publics"][i] = Goldilocks::toString(publics[i]);
+        }
     }
 
     ordered_json challengesJson = challenges2zkin(globalInfo, challenges);
@@ -403,9 +409,10 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
 
         zkinFinal["s" + to_string(i) + "_sv_circuitType"] = zkin["sv_circuitType"];
 
-        zkinFinal["s" + to_string(i) + "_sv_aggregationTypes"] = zkin["sv_aggregationTypes"];
-
-        zkinFinal["s" + to_string(i) + "_sv_subproofValues"] = zkin["sv_subproofValues"];
+        if(globalInfo["aggTypes"][i].size() > 0) {
+            zkinFinal["s" + to_string(i) + "_sv_aggregationTypes"] = zkin["sv_aggregationTypes"];
+            zkinFinal["s" + to_string(i) + "_sv_subproofValues"] = zkin["sv_subproofValues"];
+        }
 
         zkinFinal["s" + to_string(i) + "_sv_rootC"] = zkin["sv_rootC"];
 
@@ -479,11 +486,13 @@ ordered_json joinzkinrecursive2(json& globalInfo, Goldilocks::Element* publics, 
     zkinRecursive2["a_sv_circuitType"] = zkin1["sv_circuitType"];
     zkinRecursive2["b_sv_circuitType"] = zkin2["sv_circuitType"];
 
-    zkinRecursive2["a_sv_aggregationTypes"] = zkin1["sv_aggregationTypes"];
-    zkinRecursive2["b_sv_aggregationTypes"] = zkin2["sv_aggregationTypes"];
+    if(starkInfo.subproofValuesMap.size() > 0) {
+        zkinRecursive2["a_sv_aggregationTypes"] = zkin1["sv_aggregationTypes"];
+        zkinRecursive2["b_sv_aggregationTypes"] = zkin2["sv_aggregationTypes"];
 
-    zkinRecursive2["a_sv_subproofValues"] = zkin1["sv_subproofValues"];
-    zkinRecursive2["b_sv_subproofValues"] = zkin2["sv_subproofValues"];
+        zkinRecursive2["a_sv_subproofValues"] = zkin1["sv_subproofValues"];
+        zkinRecursive2["b_sv_subproofValues"] = zkin2["sv_subproofValues"];
+    }
 
     zkinRecursive2["a_sv_rootC"] = zkin1["sv_rootC"];
     zkinRecursive2["b_sv_rootC"] = zkin2["sv_rootC"];

@@ -72,12 +72,14 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     treesGL[setupCtx.starkInfo.nStages + 1]->getRoot(verkey);
     starks.addTranscript(transcript, &verkey[0], nFieldElements);
 
-    if(!setupCtx.starkInfo.starkStruct.hashCommits) {
-        starks.addTranscriptGL(transcript, &publicInputs[0], setupCtx.starkInfo.nPublics);
-    } else {
-        ElementType hash[nFieldElements];
-        starks.calculateHash(hash, &publicInputs[0], setupCtx.starkInfo.nPublics);
-        starks.addTranscript(transcript, hash, nFieldElements);
+    if(setupCtx.starkInfo.nPublics > 0) {
+        if(!setupCtx.starkInfo.starkStruct.hashCommits) {
+            starks.addTranscriptGL(transcript, &publicInputs[0], setupCtx.starkInfo.nPublics);
+        } else {
+            ElementType hash[nFieldElements];
+            starks.calculateHash(hash, &publicInputs[0], setupCtx.starkInfo.nPublics);
+            starks.addTranscript(transcript, hash, nFieldElements);
+        }
     }
 
     TimerStopAndLog(STARK_STEP_0);
@@ -114,8 +116,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         return hintField.name == "reference";
     });
     
-    expressionsCtx.calculateExpression(params, den, denField->id, true);
-    expressionsCtx.calculateExpression(params, num, numField->id);
+    expressionsCtx.calculateExpression(params, den, denField->values[0].id, true);
+    expressionsCtx.calculateExpression(params, num, numField->values[0].id);
 
 
     Goldilocks3::copy((Goldilocks3::Element *)&gprod[0], &Goldilocks3::one());
@@ -126,7 +128,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     }
 
     Polinomial gprodTransposedPol;
-    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, pAddress, true, gprodField->id, false);
+    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, pAddress, true, gprodField->values[0].id, false);
 #pragma omp parallel for
     for(uint64_t j = 0; j < N; ++j) {
         std::memcpy(gprodTransposedPol[j], &gprod[j*FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
@@ -136,7 +138,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     delete den;
     delete gprod;
 
-    commitsCalculated[gprodField->id] = true;
+    commitsCalculated[gprodField->values[0].id] = true;
 
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].stage == 2 && !setupCtx.starkInfo.cmPolsMap[i].imPol && !commitsCalculated[i]) {

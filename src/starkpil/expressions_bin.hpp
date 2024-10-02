@@ -22,13 +22,18 @@ const int BINARY_EXPRESSIONS_SECTION = 3;
 const int BINARY_CONSTRAINTS_SECTION = 4;
 const int BINARY_HINTS_SECTION = 5;
 
-struct HintField {
-    string name;
+struct HintFieldValue {
     opType operand;
     uint64_t id;
     uint64_t dim;
     uint64_t value;
     string stringValue;
+    std::vector<uint64_t> pos;
+};
+
+struct HintField {
+    string name;
+    std::vector<HintFieldValue> values;
 };
 
 

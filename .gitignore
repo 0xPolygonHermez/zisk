@@ -2,3 +2,4 @@ build
 runtime/*
 !runtime/README.md
 MyLogFile.log
+lib/libstarks.a

@@ -41,11 +41,15 @@ Logger* Logger::m_Instance = 0;
 // Log file name. File name should be change from here only
 const string logFileName = "MyLogFile.log";
 
-Logger::Logger()
+Logger::Logger(int log_type)
 {
-   m_File.open(logFileName.c_str(), ios::out|ios::app);
-   m_LogLevel	= LOG_LEVEL_TRACE;
-   m_LogType	= FILE_LOG;
+   if (log_type == FILE_LOG)
+   {
+      m_File.open(logFileName.c_str(), ios::out | ios::app);
+   }
+
+   m_LogLevel = LOG_LEVEL_TRACE;
+   m_LogType = (LOG_TYPE)log_type;
 
    // Initialize mutex
 #ifdef WIN32
@@ -84,11 +88,11 @@ Logger::~Logger()
 #endif
 }
 
-Logger* Logger::getInstance() throw ()
+Logger *Logger::getInstance(int log_type) throw()
 {
-   if (m_Instance == 0) 
+   if (m_Instance == 0)
    {
-      m_Instance = new Logger();
+      m_Instance = new Logger(log_type);
    }
    return m_Instance;
 }
@@ -120,7 +124,7 @@ void Logger::logIntoFile(std::string& data)
 
 void Logger::logOnConsole(std::string& data)
 {
-   cout << getCurrentTime() << "  " << data << endl;
+   cout << data << endl;
 }
 
 string Logger::getCurrentTime()
@@ -255,7 +259,7 @@ void Logger::buffer(std::ostringstream& stream) throw()
 void Logger::info(const char* text) throw()
 {
    string data;
-   data.append("[INFO]: ");
+   data.append("[INFO] PilStark: ");
    data.append(text);
 
    if((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_INFO))
@@ -283,7 +287,7 @@ void Logger::info(std::ostringstream& stream) throw()
 void Logger::trace(const char* text) throw()
 {
    string data;
-   data.append("[TRACE]: ");
+   data.append("[TRACE] PilStark: ");
    data.append(text);
 
    if((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_TRACE))
@@ -311,7 +315,7 @@ void Logger::trace(std::ostringstream& stream) throw()
 void Logger::debug(const char* text) throw()
 {
    string data;
-   data.append("[DEBUG]: ");
+   data.append("[DEBUG] PilStark: ");
    data.append(text);
 
    if((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_DEBUG))
@@ -368,4 +372,3 @@ void Logger::enableFileLogging()
 {
    m_LogType = FILE_LOG ;
 }
-

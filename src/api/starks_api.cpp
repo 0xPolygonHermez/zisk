@@ -5,11 +5,14 @@
 #include "hints.hpp"
 #include "global_constraints.hpp"
 #include "gen_recursive_proof.hpp"
+#include "logger.hpp"
 #include <filesystem>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
+
+using namespace CPlusPlusLogging;
 
 void save_challenges(void *pChallenges, char* globalInfoFile, char *fileDir) {
 
@@ -210,8 +213,8 @@ void expressions_bin_free(void *pExpressionsBin)
 // ========================================================================================
 void *get_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldName, bool dest, bool inverse, bool printExpression) 
 {
-    HintFieldInfo hintFieldInfo = getHintField(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldName), dest, inverse, printExpression);
-    return new HintFieldInfo(hintFieldInfo);
+    HintFieldValues hintFieldValues = getHintField(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldName), dest, inverse, printExpression);
+    return new HintFieldValues(hintFieldValues);
 }
 
 uint64_t set_hint_field(void *pSetupCtx, void* buffer, void* subproofValues, void *values, uint64_t hintId, char * hintFieldName) 
@@ -231,12 +234,6 @@ void starks_free(void *pStarks)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
     delete starks;
-}
-
-void extend_and_merkelize(void *pStarks, uint64_t step, void *buffer, void *pProof, void *pBuffHelper)
-{
-    auto starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->ffi_extend_and_merkelize(step, (Goldilocks::Element *)buffer, (FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper);
 }
 
 void treesGL_get_root(void *pStarks, uint64_t index, void *dst)
@@ -468,4 +465,30 @@ void *join_zkin_final(void* pPublics, void* pChallenges, char* globalInfoFile, v
     ordered_json zkinFinal = joinzkinfinal(globalInfo, publics, challenges, zkinRecursive2, starkInfoRecursive2);
 
     return (void *) new nlohmann::ordered_json(zkinFinal);    
+}
+
+
+void setLogLevel(uint64_t level) {
+    LogLevel new_level;
+    switch(level) {
+        case 0:
+            new_level = DISABLE_LOG;
+            break;
+        case 1:
+        case 2:
+        case 3:
+            new_level = LOG_LEVEL_INFO;
+            break;
+        case 4:
+            new_level = LOG_LEVEL_DEBUG;
+            break;
+        case 5:
+            new_level = LOG_LEVEL_TRACE;
+            break;
+        default:
+            cerr << "Invalid log level: " << level << endl;
+            return;
+    }
+
+    Logger::getInstance(LOG_TYPE::CONSOLE)->updateLogLevel((LOG_LEVEL)new_level);
 }

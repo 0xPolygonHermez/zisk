@@ -303,19 +303,31 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
         for(uint64_t f = 0; f < nFields; f++) {
             HintField hintField;
             std::string name = expressionsBin->readString();
-            std::string operand = expressionsBin->readString();
             hintField.name = name;
-            hintField.operand = string2opType(operand);
-            if(hintField.operand == opType::number) {
-                hintField.value = expressionsBin->readU64LE();
-            } else if(hintField.operand == opType::string_) {
-                hintField.stringValue = expressionsBin->readString();
-            } else {
-                hintField.id = expressionsBin->readU32LE();
+
+            uint64_t nValues = expressionsBin->readU32LE();
+            for(uint64_t v = 0; v < nValues; v++) {
+                HintFieldValue hintFieldValue;
+                std::string operand = expressionsBin->readString();
+                hintFieldValue.operand = string2opType(operand);
+                if(hintFieldValue.operand == opType::number) {
+                    hintFieldValue.value = expressionsBin->readU64LE();
+                } else if(hintFieldValue.operand == opType::string_) {
+                    hintFieldValue.stringValue = expressionsBin->readString();
+                } else {
+                    hintFieldValue.id = expressionsBin->readU32LE();
+                }
+                if(hintFieldValue.operand == opType::tmp) {
+                    hintFieldValue.dim = expressionsBin->readU32LE();
+                }
+                uint64_t nPos = expressionsBin->readU32LE();
+                for(uint64_t p = 0; p < nPos; ++p) {
+                    uint32_t pos = expressionsBin->readU32LE();
+                    hintFieldValue.pos.push_back(pos);
+                }
+                hintField.values.push_back(hintFieldValue);
             }
-            if(hintField.operand == opType::tmp) {
-                hintField.dim = expressionsBin->readU32LE();
-            }
+            
             hint.fields.push_back(hintField);
         }
 

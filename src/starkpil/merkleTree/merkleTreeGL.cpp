@@ -72,7 +72,7 @@ uint64_t MerkleTreeGL::getNumNodes(uint64_t height)
 void MerkleTreeGL::getRoot(Goldilocks::Element *root)
 {
     std::memcpy(root, &nodes[numNodes - nFieldElements], nFieldElements * sizeof(Goldilocks::Element));
-    zklog.info("MerkleTree root: [ " + Goldilocks::toString(root[0]) + ", " + Goldilocks::toString(root[1]) + ", " + Goldilocks::toString(root[2]) + ", " + Goldilocks::toString(root[3]) + " ]");
+    zklog.debug("    MerkleTree root: [ " + Goldilocks::toString(root[0]) + ", " + Goldilocks::toString(root[1]) + ", " + Goldilocks::toString(root[2]) + ", " + Goldilocks::toString(root[3]) + " ]");
 }
 
 void MerkleTreeGL::copySource(Goldilocks::Element *_source)

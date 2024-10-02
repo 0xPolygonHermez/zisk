@@ -301,13 +301,6 @@ void Starks<ElementType>::addTranscript(TranscriptType &transcript, ElementType 
     transcript.put(buffer, nElements);
 };
 
-
-template <typename ElementType>
-void Starks<ElementType>::ffi_extend_and_merkelize(uint64_t step, Goldilocks::Element *buffer, FRIProof<ElementType> *proof, Goldilocks::Element *pBuffHelper)
-{
-    extendAndMerkelize(step, buffer, *proof, pBuffHelper);
-}
-
 template <typename ElementType>
 void Starks<ElementType>::ffi_treesGL_get_root(uint64_t index, ElementType *dst)
 {

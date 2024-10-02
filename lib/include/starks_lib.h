@@ -53,10 +53,9 @@
     void *starks_new(void *pSetupCtx);
     void starks_free(void *pStarks);
 
-    void extend_and_merkelize(void *pStarks, uint64_t step, void *buffer, void *proof, void *pBuffHelper);
     void treesGL_get_root(void *pStarks, uint64_t index, void *root);
 
-    void *calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub);
+    void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub);
     void *get_fri_pol(void *pSetupCtx, void *buffer);
 
     void calculate_fri_polynomial(void *pStarks, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, void *xDivXSub);
@@ -102,4 +101,6 @@
     void *join_zkin_recursive2(char* globalInfoFile, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2);
     void *join_zkin_final(void* pPublics, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);
 
+    // Util calls
+    void setLogLevel(uint64_t level);
 #endif

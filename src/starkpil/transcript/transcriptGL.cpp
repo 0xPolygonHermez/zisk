@@ -43,8 +43,7 @@ void TranscriptGL::getField(uint64_t* output)
         Goldilocks::Element val = getFields1();
         output[i] = val.fe;
     }
-    zklog.info("Challenge: [ " + std::to_string(output[0]) + " " + std::to_string(output[1]) + " " + std::to_string(output[2]) + " ]");
-
+    zklog.debug("    Challenge: [ " + std::to_string(output[0]) + " " + std::to_string(output[1]) + " " + std::to_string(output[2]) + " ]");
 }
 
 void TranscriptGL::getState(Goldilocks::Element* output) {
@@ -100,5 +99,5 @@ void TranscriptGL::getPermutations(uint64_t *res, uint64_t n, uint64_t nBits)
         permutation += std::to_string(a) + " ";
     }
 
-    zklog.info("Permutation: [ " + permutation + " ]");
+    zklog.debug("Permutation: [ " + permutation + " ]");
 }
