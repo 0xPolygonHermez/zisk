@@ -1,12 +1,13 @@
 use core::panic;
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     sync::{Arc, Mutex},
     fmt::Display,
 };
 
 use num_traits::ToPrimitive;
-use p3_field::{Field, PrimeField};
+use p3_field::{Field,PrimeField};
+use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -18,7 +19,6 @@ use proofman_hints::{
 use crate::{Decider, StdMode, ModeName};
 
 type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
-type BusVals<F> = Vec<(usize, Vec<HintFieldOutput<F>>)>;
 
 pub struct StdProd<F: Copy + Display> {
     mode: StdMode,
@@ -26,12 +26,17 @@ pub struct StdProd<F: Copy + Display> {
     debug_data: Option<DebugData<F>>,
 }
 
-struct DebugData<F: Copy> {
-    bus_vals_num: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
-    bus_vals_den: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, bus_val)
+pub struct BusValue<F: Copy> {
+    num_proves: F,
+    num_assumes: F,
+    // meta data
+    row_proves: Vec<usize>,
+    row_assumes: Vec<usize>,
 }
 
-impl<F: PrimeField> Decider<F> for StdProd<F> {
+type DebugData<F> = Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>; // opid -> val -> BusValue
+
+impl<F: Field> Decider<F> for StdProd<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         for airgroup in pctx.pilout.air_groups() {
@@ -61,11 +66,7 @@ impl<F: PrimeField> StdProd<F> {
         let std_prod = Arc::new(Self {
             mode: mode.clone(),
             prod_airs: Mutex::new(Vec::new()),
-            debug_data: if mode.name == ModeName::Debug {
-                Some(DebugData { bus_vals_num: Mutex::new(BTreeMap::new()), bus_vals_den: Mutex::new(BTreeMap::new()) })
-            } else {
-                None
-            },
+            debug_data: if mode.name == ModeName::Debug { Some(Mutex::new(HashMap::new())) } else { None },
         });
 
         wcm.register_component(std_prod.clone(), None, None);
@@ -153,17 +154,17 @@ impl<F: PrimeField> StdProd<F> {
                 HintFieldOptions::default(),
             );
 
-            // let _names = get_hint_field::<F>(
-            //     sctx,
-            //     &pctx.public_inputs,
-            //     &pctx.challenges,
-            //     air_instance,
-            //     *hint as usize,
-            //     "names",
-            //     HintFieldOptions::default(),
-            // );
+            let _names = get_hint_field::<F>(
+                sctx,
+                &pctx.public_inputs,
+                &pctx.challenges,
+                air_instance,
+                *hint as usize,
+                "names",
+                HintFieldOptions::default(),
+            );
 
-            for j in 0..num_rows {
+            (0..num_rows).into_par_iter().for_each(|j| {
                 let sel = if let HintFieldOutput::Field(selector) = selector.get(j) {
                     if !selector.is_zero() && !selector.is_one() {
                         log::error!("Selector must be either 0 or 1");
@@ -178,31 +179,29 @@ impl<F: PrimeField> StdProd<F> {
                 if sel {
                     self.update_bus_vals(opid, expressions.get(j), j, proves);
                 }
-            }
+            });
         }
     }
 
     fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
-        let mut bus_vals;
-        let mut other_bus_vals;
+        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+        let mut bus = debug_data.lock().expect("Bus values missing");
+
+        let bus_opid = bus.entry(opid).or_default();
+
+        let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
+            num_proves: F::zero(),
+            num_assumes: F::zero(),
+            row_proves: Vec::new(),
+            row_assumes: Vec::new(),
+        });
+
         if is_num {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
+            bus_val.num_proves += F::one();
+            bus_val.row_proves.push(row);
         } else {
-            bus_vals = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
-            other_bus_vals = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
-        }
-
-        let bus_vals_map = bus_vals.entry(opid).or_insert(Vec::new());
-
-        if let Some(idx) = bus_vals_map.iter().position(|(_, v)| *v == val) {
-            bus_vals_map.remove(idx);
-        } else {
-            other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, val));
-        }
-
-        if bus_vals_map.is_empty() {
-            bus_vals.remove(&opid);
+            bus_val.num_assumes += F::one();
+            bus_val.row_assumes.push(row);
         }
     }
 }
@@ -297,53 +296,75 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         if self.mode.name == ModeName::Debug {
             let max_values_to_print = self.mode.vals_to_print;
 
-            let bus_vals_num = self.debug_data.as_ref().unwrap().bus_vals_num.lock().unwrap();
-            let bus_vals_den = self.debug_data.as_ref().unwrap().bus_vals_den.lock().unwrap();
-            if !bus_vals_num.is_empty() || !bus_vals_den.is_empty() {
-                log::error!("{}: Some bus values do not match.", Self::MY_NAME);
+            log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
-                println!("\t ► Unmatching bus values thrown as 'assume':");
-                for (opid, vals) in bus_vals_den.iter() {
-                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
-                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
-                    print_rows(vals, max_values_to_print);
+            let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+            let mut bus_vals = debug_data.lock().expect("Bus values missing");
+            for (opid, bus) in bus_vals.iter_mut() {
+                if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
+                    println!("\t► Unmatching bus values for opid {}:", opid);
+                } else {
+                    continue;
                 }
 
-                println!("\t ► Unmatching bus values thrown as 'prove':");
-                for (opid, vals) in bus_vals_num.iter() {
-                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
-                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
-                    print_rows(vals, max_values_to_print);
-                }
-            }
-        }
+                let unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                    bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
+                let len2 = unmatching_values2.len();
 
-        fn print_rows<F: Field>(vals: &Vec<(usize, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
-            let num_values = vals.len();
-
-            if max_values_to_print >= num_values {
-                for (row, val) in vals {
-                    println!("\t    • Row {}: {:?}", row, val);
+                if len2 > 0 {
+                    println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
                 }
+
+                for (val, data) in unmatching_values2 {
+                    let num_proves = data.num_proves;
+                    let num_assumes = data.num_assumes;
+                    let row_assumes = &mut data.row_assumes;
+                    row_assumes.sort();
+                    let row_assumes = row_assumes[..max_values_to_print]
+                        .to_vec()
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    let diff = num_assumes - num_proves;
+                    println!(
+                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
+                        val, diff, row_assumes
+                    );
+                }
+
                 println!();
-                return;
+
+                let unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                    bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
+                let len1 = unmatching_values1.len();
+
+                if len1 > 0 {
+                    println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len1);
+                }
+
+                for (val, data) in unmatching_values1 {
+                    let num_proves = data.num_proves;
+                    let num_assumes = data.num_assumes;
+                    let row_proves = &mut data.row_proves;
+                    row_proves.sort();
+                    let row_proves = row_proves[..max_values_to_print]
+                        .to_vec()
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    let diff = num_proves - num_assumes;
+                    println!(
+                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
+                        val, diff, row_proves
+                    );
+                }
+
+                println!();
             }
-
-            // Print the first max_values_to_print
-            for (row, val) in vals[..max_values_to_print].into_iter() {
-                println!("\t    • Row {}: {:?}", row, val);
-            }
-
-            println!("\t      ...");
-
-            // Print the last max_values_to_print
-            let diff = num_values - max_values_to_print;
-            let rem_len = if diff < max_values_to_print { max_values_to_print } else { diff };
-            for (row, val) in vals[rem_len..].into_iter() {
-                println!("\t    • Row {}: {:?}", row, val);
-            }
-
-            println!();
         }
     }
 }

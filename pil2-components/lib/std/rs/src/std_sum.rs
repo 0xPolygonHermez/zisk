@@ -1,13 +1,13 @@
 use std::{
-
     hash::Hash,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::{Display, Debug},
     sync::{Arc, Mutex},
 };
 
 use num_traits::ToPrimitive;
 use p3_field::{Field, PrimeField};
+use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -19,7 +19,6 @@ use proofman_hints::{
 use crate::{Decider, StdMode, ModeName};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
-type BusVals<F> = HashMap<Vec<HintFieldOutput<F>>, (F, usize)>; // val -> (mul, row)
 
 pub struct StdSum<F: Copy + Display + Hash> {
     mode: StdMode,
@@ -30,15 +29,12 @@ pub struct StdSum<F: Copy + Display + Hash> {
 pub struct BusValue<F: Copy> {
     num_proves: F,
     num_assumes: F,
-    row_proves: Vec<usize>,
-    row_assumes: Vec<usize>,
+    // meta data
+    row_proves: usize,       // Note: For now, we assume that a value in proves is unique
+    row_assumes: Vec<usize>, //       Also, multiplicity in assumes can only be one or zero
 }
 
-struct DebugData<F: Copy> {
-    bus_vals_positive: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
-    bus_vals_negative: Mutex<BTreeMap<F, BusVals<F>>>, // opid -> (row, multiplicity, bus_val)
-    bus_vals: Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>,
-}
+type DebugData<F> = Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>; // opid -> val -> BusValue
 
 impl<F: Field> Decider<F> for StdSum<F> {
     fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
@@ -74,15 +70,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         let std_sum = Arc::new(Self {
             mode: mode.clone(),
             sum_airs: Mutex::new(Vec::new()),
-            debug_data: if mode.name == ModeName::Debug {
-                Some(DebugData {
-                    bus_vals_positive: Mutex::new(BTreeMap::new()),
-                    bus_vals_negative: Mutex::new(BTreeMap::new()),
-                    bus_vals: Mutex::new(HashMap::new()),
-                })
-            } else {
-                None
-            },
+            debug_data: if mode.name == ModeName::Debug { Some(Mutex::new(HashMap::new())) } else { None },
         });
 
         wcm.register_component(std_sum.clone(), None, None);
@@ -178,26 +166,6 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                 HintFieldOptions::default(),
             );
 
-            // for j in 0..num_rows {
-            //     if (j % 10000) == 0 {
-            //         println!("Row {} / {}", j, num_rows);
-            //     }
-            //     let mul = match mul.get(j) {
-            //         HintFieldOutput::Field(mul) => mul,
-            //         _ => panic!("mul must be a field element"),
-            //     };
-
-            //     if !mul.is_zero() {
-            //         let sumid = match sumid.get(j) {
-            //             HintFieldOutput::Field(sumid) => sumid,
-            //             _ => panic!("sumid must be a field element"),
-            //         };
-
-            //         self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
-            //     }
-            // }
-
-            println!(">>>> In parallel {}", is_positive);
             (0..num_rows).into_par_iter().for_each(|j| {
                 let mul = match mul.get(j) {
                     HintFieldOutput::Field(mul) => mul,
@@ -210,90 +178,32 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         _ => panic!("sumid must be a field element"),
                     };
 
-                    self.update_bus_vals2(sumid, expressions.get(j), j, is_positive, mul);
+                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
                 }
             });
-
-            println!(">>>> Out parallel ");
         }
-    }
-
-    fn update_bus_vals2(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
-        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-        let mut bus = debug_data.bus_vals.lock().expect("Bus values missing");
-        let bus_opid = bus.entry(opid).or_default();
-
-
-            let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
-                num_proves: F::zero(),
-                num_assumes: F::zero(),
-                row_proves: Vec::new(),
-                row_assumes: Vec::new(),
-            });
-
-            if is_positive {
-                bus_val.num_proves += times;
-                bus_val.row_proves.push(row);
-            } else {
-                bus_val.num_assumes += times;
-                bus_val.row_assumes.push(row);
-            }
     }
 
     fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
-        let debug_data = self.debug_data.as_ref().expect("Debug data should exist");
+        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+        let mut bus = debug_data.lock().expect("Bus values missing");
 
-        let (mut bus_vals, mut other_bus_vals) = if is_positive {
-            let bus_vals = debug_data.bus_vals_negative.lock().expect("Negative bus values should exist");
-            let other_bus_vals = debug_data.bus_vals_positive.lock().expect("Positive bus values should exist");
-            (bus_vals, other_bus_vals)
+        let bus_opid = bus.entry(opid).or_default();
+
+        let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
+            num_proves: F::zero(),
+            num_assumes: F::zero(),
+            row_proves: 0,
+            row_assumes: Vec::new(),
+        });
+
+        if is_positive {
+            bus_val.num_proves = times;
+            bus_val.row_proves = row;
         } else {
-            let bus_vals = debug_data.bus_vals_positive.lock().expect("Positive bus values should exist");
-            let other_bus_vals = debug_data.bus_vals_negative.lock().expect("Negative bus values should exist");
-            (bus_vals, other_bus_vals)
-        };
-
-        let bus_vals_map = bus_vals.entry(opid).or_insert(HashMap::new());
-
-        // val -> (mul, row)
-        let value_found = bus_vals_map.get(&val);
-        match value_found {
-            Some((mul_val, row_val)) => {
-                let diff = times - *mul_val;
-                if times > *mul_val {
-                    bus_vals_map.remove(&val);
-                    other_bus_vals.entry(opid).or_insert(HashMap::new()).insert(val, (diff, row));
-                } else if times == *mul_val {
-                    bus_vals_map.remove(&val);
-                } else {
-                    // update the multiplicity with diff
-                    bus_vals_map.insert(val, (diff, *row_val));
-                }
-            }
-            None => {
-                other_bus_vals.entry(opid).or_insert(HashMap::new()).insert(val, (times, row));
-            }
-        }
-
-        // if let Some((mul, row)) = bus_vals_map.get(&val) {
-        //     let diff = times - *mul;
-        //     if times > *mul {
-        //         bus_vals_map
-        //         // bus_vals_map[idx].1 = F::zero();
-        //         // other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, diff, val));
-        //     } else {
-        //         bus_vals_map[idx].1 -= times;
-        //     }
-
-        //     if bus_vals_map[idx].1.is_zero() {
-        //         bus_vals_map.remove(idx);
-        //     }
-        // } else {
-        //     other_bus_vals.entry(opid).or_insert(Vec::new()).push((row, times, val));
-        // }
-
-        if bus_vals_map.is_empty() {
-            bus_vals.remove(&opid);
+            assert!(times.is_one());
+            bus_val.num_assumes += times;
+            bus_val.row_assumes.push(row);
         }
     }
 }
@@ -423,56 +333,72 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         if self.mode.name == ModeName::Debug {
             let max_values_to_print = self.mode.vals_to_print;
 
-            let bus_vals_positive = self.debug_data.as_ref().unwrap().bus_vals_positive.lock().unwrap();
-            let bus_vals_negative = self.debug_data.as_ref().unwrap().bus_vals_negative.lock().unwrap();
-            if !bus_vals_positive.is_empty() || !bus_vals_negative.is_empty() {
-                log::error!("{}: Some bus values do not match.", Self::MY_NAME);
+            log::error!("{}: Some bus values do not match.", Self::MY_NAME);
 
-                println!("\t ► Unmatching bus values thrown as 'assume':");
-                for (opid, vals) in bus_vals_negative.iter() {
-                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
-                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
-                    print_rows(vals, max_values_to_print);
+            let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+            let mut bus_vals = debug_data.lock().expect("Bus values missing");
+            for (opid, bus) in bus_vals.iter_mut() {
+                if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
+                    println!("\t► Unmatching bus values for opid {}:", opid);
+                } else {
+                    continue;
                 }
 
-                println!("\t ► Unmatching bus values thrown as 'prove':");
-                for (opid, vals) in bus_vals_positive.iter() {
-                    let name_vals = if vals.len() == 1 { "value" } else { "values" };
-                    println!("\t  ⁃ Opid {}: {} {name_vals}", opid, vals.len());
-                    print_rows(vals, max_values_to_print);
-                }
-            }
-        }
+                let unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                    bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
+                let len2 = unmatching_values2.len();
 
-        fn print_rows<F: Field>(vals: &Vec<(usize, F, Vec<HintFieldOutput<F>>)>, max_values_to_print: usize) {
-            let num_values = vals.len();
-
-            if max_values_to_print >= num_values {
-                for (row, mul, val) in vals {
-                    let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
-                    println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
+                if len2 > 0 {
+                    println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
                 }
+
+                for (val, data) in unmatching_values2 {
+                    let num_proves = data.num_proves;
+                    let num_assumes = data.num_assumes;
+                    let row_assumes = &mut data.row_assumes;
+                    row_assumes.sort();
+                    let row_assumes = row_assumes[..max_values_to_print]
+                        .to_vec()
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    let diff = num_assumes - num_proves;
+                    println!(
+                        "\t    • Value\n\t        {:?}\n\t      has been thrown {} times at rows {},...",
+                        val, diff, row_assumes
+                    );
+                }
+
                 println!();
-                return;
+
+                let unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
+                    bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
+                let len1 = unmatching_values1.len();
+
+                if len1 > 0 {
+                    println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len1);
+                }
+
+                for (i, (val, data)) in unmatching_values1.iter().enumerate() {
+                    let num_proves = data.num_proves;
+                    let num_assumes = data.num_assumes;
+                    let row_proves = data.row_proves;
+
+                    let diff = num_proves - num_assumes;
+
+                    let name_reps = if diff.is_one() { "repetition " } else { "repetitions" };
+                    println!("\t    • Row {}, with {} {name_reps}: {:?}", row_proves, diff, val);
+
+                    if i == max_values_to_print {
+                        println!("\t      ...");
+                        break;
+                    }
+                }
+
+                println!();
             }
-
-            // Print the first max_values_to_print
-            for (row, mul, val) in vals[..max_values_to_print].into_iter() {
-                let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
-                println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
-            }
-
-            println!("\t      ...");
-
-            // Print the last max_values_to_print
-            let diff = num_values - max_values_to_print;
-            let rem_len = if diff < max_values_to_print { max_values_to_print } else { diff };
-            for (row, mul, val) in vals[rem_len..].into_iter() {
-                let name_reps = if mul.is_one() { "repetition" } else { "repetitions" };
-                println!("\t    • Row {}, with {} {name_reps}: {:?}", row, mul, val);
-            }
-
-            println!();
         }
     }
 }
