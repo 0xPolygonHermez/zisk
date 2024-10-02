@@ -176,10 +176,6 @@ impl<F: Field> BinaryBasicSM<F> {
                             row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
                         };
 
-                        if (a_bytes[i] == 0) && (b_bytes[i] == 0) && (c_bytes[i] == 255) {
-                            println!("ADD_W op={:x} a={:x} b={:x} c={:x} i={}", r.opcode, r.a, r.b, c, i);
-                        }
-
                         // Store the required in the vector
                         table_required.push(tr);
                     }

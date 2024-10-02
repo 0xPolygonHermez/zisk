@@ -14,6 +14,8 @@ use zisk_pil::*;
 
 use crate::BinaryExtensionTableSM;
 
+const EXT_OP: u8 = 0x26;
+
 pub struct BinaryExtensionSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
@@ -115,26 +117,36 @@ impl<F: Field> BinaryExtensionSM<F> {
             let mode8 = i.opcode == 0x23;
             t.mode8 = F::from_bool(mode8);
 
+            // Detect if this is a sign extend operation
+            let sign_extend = (m_op == 0x23) || (m_op == 0x24) || (m_op == 0x25);
+            let a = if sign_extend { i.b } else { i.a };
+            let b = if sign_extend { i.a } else { i.b };
+
             // Split a in bytes and store them in in1
-            let a_bytes: [u8; 8] = i.a.to_le_bytes();
+            let a_bytes: [u8; 8] = a.to_le_bytes();
             for (i, value) in a_bytes.iter().enumerate() {
                 t.in1[i] = F::from_canonical_u8(*value);
             }
 
+            // Split b in bytes
+            //let b_bytes: [u8; 8] = b.to_le_bytes();
+
             // Store b low part into in2_low
-            let b_low: u64 = i.b & if mode32 { 0x1F } else { 0x3F };
+            let b_low: u64 = b & if mode32 { 0x1F } else { 0x3F };
             t.in2_low = F::from_canonical_u64(b_low);
 
             // Store b high part into free_in2
             t.free_in2[0] = F::from_canonical_u64(
-                (i.b >> if mode32 { 5 } else { 6 }) & if mode32 { 0x7FF } else { 0x3FF },
+                (b >> if mode32 { 5 } else { 6 }) & if mode32 { 0x7FF } else { 0x3FF },
             );
-            t.free_in2[1] = F::from_canonical_u64((i.b >> 16) & 0xFFFF);
-            t.free_in2[2] = F::from_canonical_u64((i.b >> 32) & 0xFFFF);
-            t.free_in2[3] = F::from_canonical_u64(i.b >> 48);
+            t.free_in2[1] = F::from_canonical_u64((b >> 16) & 0xFFFF);
+            t.free_in2[2] = F::from_canonical_u64((b >> 32) & 0xFFFF);
+            t.free_in2[3] = F::from_canonical_u64(b >> 48);
 
             // Set main SM step
             t.main_step = F::from_canonical_u64(i.step);
+
+            let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
 
             // Calculate out based on opcode
             match i.opcode {
@@ -146,12 +158,12 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position < 64 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                 },
@@ -164,17 +176,17 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position > 0 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else if position > -8 {
                             let out = c & (0xff_u64 >> -position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                 },
@@ -187,17 +199,17 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position > 0 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else if position > -8 {
                             let out = c & (0xff_u64 >> -position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                 },
@@ -210,12 +222,12 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position < 32 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
+                            t_out[j as usize][0] = 0;
                         }
-                        t.out[j as usize][1] = F::zero();
+                        t_out[j as usize][1] = 0;
                     }
                 },
 
@@ -227,16 +239,16 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position > 0 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
                         }
                         else if position > -8 {
                             let out = c & (0xff_u64 >> -position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
+                            t_out[j as usize][0] = 0;
                         }
-                        t.out[j as usize][1] = F::zero();
+                        t_out[j as usize][1] = 0;
                     }
                 },
 
@@ -248,16 +260,16 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position > 0 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
                         }
                         else if position > -8 {
                             let out = c & (0xff_u64 >> -position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
+                            t_out[j as usize][0] = 0;
                         }
-                        t.out[j as usize][1] = F::zero();
+                        t_out[j as usize][1] = 0;
                     }
                 },
 
@@ -269,12 +281,12 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position < 8 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                 },
@@ -287,15 +299,16 @@ impl<F: Field> BinaryExtensionSM<F> {
                         // Calculate the 8-bits window of the result at this position
                         if position < 16 {
                             let out = c & (0xff_u64 << position);
-                            t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                            t.out[j as usize][1] = F::from_canonical_u64((out >> 32) & 0xffffffff);
+                            t_out[j as usize][0] = out & 0xffffffff;
+                            t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                         }
                         else {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                 },
+               // #=37,0,224,63,127,0,526560,0
 
                 0x25 /* SE_W */ => {
                     for j in 0..4 {
@@ -304,23 +317,29 @@ impl<F: Field> BinaryExtensionSM<F> {
 
                         // Calculate the 8-bits window of the result at this position
                         let out = c & (0xff_u64 << position);
-                        t.out[j as usize][0] = F::from_canonical_u64(out & 0xffffffff);
-                        t.out[j as usize][1] = F::zero();
+                        t_out[j as usize][0] = out & 0xffffffff;
+                        t_out[j as usize][1] = 0;
                     }
                     if (i.b & 0x80000000) == 0 {
                         for j in 4..8 {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::zero();
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0;
                         }
                     }
                     else {
                         for j in 4..8 {
-                            t.out[j as usize][0] = F::zero();
-                            t.out[j as usize][1] = F::from_canonical_u64(0xff_u64 << (8*(j-4)));
+                            t_out[j as usize][0] = 0;
+                            t_out[j as usize][1] = 0xff_u64 << (8*(j-4));
                         }
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),
+            }
+
+            // Convert to F
+            for j in 0..8 {
+                t.out[j as usize][0] = F::from_canonical_u64(t_out[j as usize][0]);
+                t.out[j as usize][1] = F::from_canonical_u64(t_out[j as usize][1]);
             }
 
             // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
@@ -329,13 +348,79 @@ impl<F: Field> BinaryExtensionSM<F> {
             // Store the trace in the vector
             trace.push(t);
 
-            for a_byte in &a_bytes {
+            //lookup_assumes(BINARY_EXTENSION_TABLE_ID, [m_op, 0, in1[0], in2_low, out[0][0],
+            // out[0][1]]); for (int j = 1; j < bytes; j++) {
+            //    expr _m_op = m_op;
+            //    expr _in1 = 0;
+            //    expr _in2 = 0;
+            //    if (j == 1)
+            //    {
+            //        _in1 = (1-mode8) * (in1[j] - out[0][0]) + out[0][0];
+            //        _in2 = (1-mode8) * in2_low;
+            //    }
+            //    else if (j < bytes/2 - 1)
+            //    {
+            //        _in1 = mode8*out[0][0] + mode16*out[1][0] + (1-mode8)*(1-mode16)*in1[j];
+            //        _in2 = (1-mode8)*(1-mode16)*in2_low;
+            //    }
+            //    else
+            //    {
+            //        _m_op = (1-mode32) * (m_op - EXT_OP) + EXT_OP;
+            //        _in1 = mode8*out[0][0] + mode16*out[1][0] + mode32*(out[bytes/2-1][0]) +
+            // (1-mode8)*(1-mode16)*(1-mode32)*in1[j];        _in2 =
+            // (1-mode8)*(1-mode16)*(1-mode32)*in2_low;    }
+            //    lookup_assumes(BINARY_EXTENSION_TABLE_ID, [_m_op, j, _in1, _in2, out[j][0],
+            // out[j][1]]);
+            //}
+            //let offset = if mode32 { 5 } else { 6 };
+            //let in2_low = b_low;
+            for i in 0..8 {
+                let m_op_ext = if mode32 && (i >= 4) { EXT_OP } else { m_op };
+                let in1: u64;
+                let in2: u64;
+                if i == 0 {
+                    in1 = a_bytes[i] as u64;
+                    in2 = b_low;
+                } else if i == 1 {
+                    in1 = if mode8 { a_bytes[0] as u64 } else { a_bytes[i] as u64 };
+                    in2 = if mode8 { 0 } else { b_low };
+                } else if i < 3 {
+                    in1 = if mode8 {
+                        a_bytes[0] as u64
+                    } else if mode16 {
+                        a_bytes[1] as u64
+                    } else {
+                        a_bytes[i] as u64
+                    };
+                    in2 = if mode8 || mode16 { 0 } else { b_low };
+                } else {
+                    in1 = if mode8 {
+                        a_bytes[0] as u64
+                    } else if mode16 {
+                        a_bytes[1] as u64
+                    } else if mode32 {
+                        t_out[3][0]
+                    } else {
+                        a_bytes[i] as u64
+                    };
+                    in2 = if mode8 || mode16 || mode32 { 0 } else { b_low };
+                }
+
                 // Create a table required
                 let tr = ZiskRequiredBinaryExtensionTable {
-                    opcode: m_op,
-                    a: *a_byte as u64,
+                    opcode: m_op_ext,
+                    a: a_bytes[i] as u64,
                     b: b_low,
-                    offset: if mode32 { 5 } else { 6 },
+                    offset: i as u64,
+                    row: BinaryExtensionTableSM::<F>::calculate_table_row(
+                        m_op_ext,
+                        i as u64,
+                        in1,
+                        if (m_op == 0x23) || (m_op == 0x24) || (m_op == 0x25) { 0 } else { in2 },
+                        t_out[i][0],
+                        t_out[i][1],
+                        i as u64,
+                    ),
                 };
 
                 // Store the required in the vector

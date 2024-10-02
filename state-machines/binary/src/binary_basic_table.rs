@@ -115,6 +115,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
             //);
         }
     }
+
     //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
     #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(
@@ -123,9 +124,9 @@ impl<F: Field> BinaryBasicTableSM<F> {
         b: u64,
         cin: u64,
         last: u64,
-        c: u64,
-        flags: u64,
-        i: u64,
+        _c: u64,
+        _flags: u64,
+        _i: u64,
     ) -> u64 {
         // Calculate the different row offset contributors, according to the PIL
         let offset_a: u64 = a;
@@ -138,10 +139,10 @@ impl<F: Field> BinaryBasicTableSM<F> {
             offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode;
         //assert!(row < self.num_rows as u64);
 
-        println!(
+        /* println!(
             "BinaryBasicTableSM::calculate_table_row() #={},{},{},{},{},{},{},{},{}",
             last, opcode, a, b, cin, c, flags, row, i
-        );
+        ); */
         row
     }
 
