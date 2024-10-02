@@ -147,7 +147,6 @@ impl<F: Clone + Copy + Display> Display for HintFieldOutput<F> {
     }
 }
 
-
 impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {
     pub fn get(&self, index: usize) -> HintFieldOutput<F> {
         match self {
@@ -1025,7 +1024,12 @@ pub fn print_expression<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn print_row<F: Clone + Copy + Debug + Display>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
+pub fn print_row<F: Clone + Copy + Debug + Display>(
+    setup_ctx: &SetupCtx,
+    air_instance: &AirInstance<F>,
+    stage: u64,
+    row: u64,
+) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
