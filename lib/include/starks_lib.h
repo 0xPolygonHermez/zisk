@@ -11,7 +11,7 @@
     // FRIProof
     // ========================================================================================
     void *fri_proof_new(void *pSetupCtx);
-    void *fri_proof_get_tree_root(void *pFriProof, uint64_t tree_index, uint64_t root_index);
+    void fri_proof_get_tree_root(void *pFriProof, void* root, uint64_t tree_index);
     void fri_proof_set_subproofvalues(void *pFriProof, void *subproofValues);
     void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* globalInfoFile, char *fileDir);
     void fri_proof_free_zkinproof(void *pZkinProof);

@@ -65,10 +65,13 @@ void *fri_proof_new(void *pSetupCtx)
 }
 
 
-void *fri_proof_get_tree_root(void *pFriProof, uint64_t tree_index, uint64_t root_index)
+void fri_proof_get_tree_root(void *pFriProof, void* root, uint64_t tree_index)
 {
+    Goldilocks::Element *rootGL = (Goldilocks::Element *)root;
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
-    return &friProof->proof.fri.trees[tree_index].root[root_index];
+    for(uint64_t i = 0; i < friProof->proof.fri.trees[tree_index].nFieldElements; ++i) {
+        rootGL[i] = friProof->proof.fri.trees[tree_index].root[i];
+    }
 }
 
 void fri_proof_set_subproofvalues(void *pFriProof, void *subproofValues)
