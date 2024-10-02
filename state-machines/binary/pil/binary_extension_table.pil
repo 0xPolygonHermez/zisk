@@ -58,7 +58,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
     col fixed OFFSET = [0:P2_8..(bytes-1):P2_8]...;         // Offset     (3 bits)
 
     col fixed B = [[0:P2_11..255:P2_11]:6,                  // Input B    (8 bits)
-                    0:(P2_11*4)]...;                    
+                    0:(P2_11*3)]...;                    
 
     col fixed OP = [0x0d:P2_19, 0x0e:P2_19, 0x0f:P2_19,     // SLL, SRL, SRA
                     0x1d:P2_19, 0x1e:P2_19, 0x1f:P2_19,     // SLL_W, SRL_W, SRA_W
