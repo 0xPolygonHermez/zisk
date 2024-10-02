@@ -8,12 +8,11 @@ use proofman_common::{
     BufferAllocator, ConstraintInfo, ConstraintsResults, ProofCtx, ProofType, Prover, ProverInfo, ProverStatus,
     SetupCtx,
 };
-use log::{debug, trace};
+use log::debug;
 use transcript::FFITranscript;
 use proofman_util::{timer_start, timer_stop_and_log};
 use proofman_starks_lib_c::*;
 use crate::stark_info::StarkInfo;
-use crate::stark_prover_settings::StarkProverSettings;
 use p3_goldilocks::Goldilocks;
 use p3_field::Field;
 
@@ -32,7 +31,6 @@ pub struct StarkProver<F: Field> {
     prover_idx: usize,
     air_id: usize,
     airgroup_id: usize,
-    config: StarkProverSettings,
     p_setup: *mut c_void,
     pub p_stark: *mut c_void,
     p_stark_info: *mut c_void,
@@ -59,34 +57,16 @@ impl<F: Field> StarkProver<F> {
         air_id: usize,
         prover_idx: usize,
     ) -> Self {
-        let air_setup_folder = pctx.global_info.get_air_setup_path(airgroup_id, air_id, &ProofType::Basic);
-        trace!("{}   : ··· Setup AIR folder: {:?}", Self::MY_NAME, air_setup_folder);
-
-        // Check path exists and is a folder
-        if !air_setup_folder.exists() {
-            panic!("Setup AIR folder not found at path: {:?}", air_setup_folder);
-        }
-        if !air_setup_folder.is_dir() {
-            panic!("Setup AIR path is not a folder: {:?}", air_setup_folder);
-        }
-
-        let base_filename_path =
-            air_setup_folder.join(pctx.global_info.get_air_name(airgroup_id, air_id)).display().to_string();
+        let air_setup_path = pctx.global_info.get_air_setup_path(airgroup_id, air_id, &ProofType::Basic);
 
         let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
 
-        let p_stark = starks_new_c(setup.p_setup);
+        let p_stark = starks_new_c((&setup.p_setup).into());
 
-        let stark_info_path = base_filename_path.clone() + ".starkinfo.json";
+        let stark_info_path = air_setup_path.display().to_string() + ".starkinfo.json";
         let stark_info_json = std::fs::read_to_string(&stark_info_path)
             .unwrap_or_else(|_| panic!("Failed to read file {}", &stark_info_path));
         let stark_info: StarkInfo = StarkInfo::from_json(&stark_info_json);
-
-        let config = StarkProverSettings {
-            current_path: air_setup_folder.to_str().unwrap().to_string(),
-            stark_info_filename: stark_info_path,
-            verkey_filename: base_filename_path.clone() + ".verkey.json",
-        };
 
         let (n_field_elements, merkle_tree_arity, merkle_tree_custom) =
             if stark_info.stark_struct.verification_hash_type == "BN128" {
@@ -103,9 +83,8 @@ impl<F: Field> StarkProver<F> {
             prover_idx,
             air_id,
             airgroup_id,
-            config,
-            p_setup: setup.p_setup,
-            p_stark_info: setup.p_stark_info,
+            p_setup: (&setup.p_setup).into(),
+            p_stark_info: setup.p_setup.p_stark_info,
             p_stark,
             p_proof: None,
             stark_info,
@@ -625,8 +604,8 @@ impl BufferAllocator for StarkBufferAllocator {
         airgroup_id: usize,
         air_id: usize,
     ) -> Result<(u64, Vec<u64>), Box<dyn Error>> {
-        let ps = sctx.get_setup(airgroup_id, air_id).expect("REASON");
+        let ps = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
 
-        Ok((get_map_totaln_c(ps.p_stark_info), vec![get_map_offsets_c(ps.p_stark_info, "cm1", false)]))
+        Ok((get_map_totaln_c(ps.p_setup.p_stark_info), vec![get_map_offsets_c(ps.p_setup.p_stark_info, "cm1", false)]))
     }
 }

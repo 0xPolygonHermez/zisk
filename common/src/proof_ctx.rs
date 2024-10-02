@@ -1,7 +1,7 @@
 use std::sync::RwLock;
 use std::path::PathBuf;
 
-use crate::{AirInstancesRepository, GlobalInfo, WitnessPilout};
+use crate::{AirInstancesRepository, GlobalInfo, VerboseMode, WitnessPilout};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
@@ -35,13 +35,14 @@ impl<F> Default for BuffHelper<F> {
 
 pub struct ProofOptions {
     pub debug_mode: u64,
+    pub verbose_mode: VerboseMode,
     pub aggregation: bool,
     pub save_proofs: bool,
 }
 
 impl ProofOptions {
-    pub fn new(debug_mode: u64, aggregation: bool, save_proofs: bool) -> Self {
-        Self { debug_mode, aggregation, save_proofs }
+    pub fn new(debug_mode: u64, verbose_mode: VerboseMode, aggregation: bool, save_proofs: bool) -> Self {
+        Self { debug_mode, verbose_mode, aggregation, save_proofs }
     }
 }
 

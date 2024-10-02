@@ -1,5 +1,6 @@
 // extern crate env_logger;
 use clap::Parser;
+use proofman_common::VerboseMode;
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -45,6 +46,9 @@ pub struct ProveCmd {
 
     #[clap(short = 'd', long, default_value_t = false)]
     pub debug: bool,
+    /// Verbosity (-v, -vv)
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
 impl ProveCmd {
@@ -55,6 +59,13 @@ impl ProveCmd {
         if !Path::new(&self.output_dir.join("proofs")).exists() {
             fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
         }
+        let verbose_mode: VerboseMode = self.verbose.into();
+        env_logger::builder()
+            .format_timestamp(None)
+            .format_level(true)
+            .format_target(false)
+            .filter_level(verbose_mode.into())
+            .init();
 
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
@@ -63,7 +74,7 @@ impl ProveCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                ProofOptions::new(0, self.aggregation, self.debug),
+                ProofOptions::new(0, verbose_mode, self.aggregation, self.debug),
             )?,
         };
 

@@ -6,7 +6,6 @@ use std::io::Read;
 use std::ops::Deref;
 
 use log::{debug, trace};
-use proofman_util::{timer_start, timer_stop_and_log};
 
 #[derive(Debug, Default)]
 pub struct PilOutProxy {
@@ -22,7 +21,6 @@ impl PilOutProxy {
     }
 
     fn load_pilout(pilout_filename: &str) -> Result<PilOut, DecodeError> {
-        timer_start!(LOADING_PILOUT);
         debug!("{}: ··· Loading pilout", Self::MY_NAME);
 
         // Open the file
@@ -38,7 +36,6 @@ impl PilOutProxy {
 
         // Parse the protobuf message
         let result = PilOut::decode(file_content.as_slice());
-        timer_stop_and_log!(LOADING_PILOUT);
 
         result
     }

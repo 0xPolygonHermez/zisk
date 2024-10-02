@@ -33,10 +33,13 @@ impl<F: PrimeField> Decider<F> for StdProd<F> {
             for air in airgroup.airs() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
-                let gprod_hints = get_hint_ids_by_name(setup.p_setup, "gprod_col");
-                let debug_hints_data = get_hint_ids_by_name(setup.p_setup, "gprod_member_data");
-                let debug_hints = get_hint_ids_by_name(setup.p_setup, "gprod_member");
+
+                let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+                let p_setup = (&setup.p_setup).into();
+
+                let gprod_hints = get_hint_ids_by_name(p_setup, "gprod_col");
+                let debug_hints_data = get_hint_ids_by_name(p_setup, "gprod_member_data");
+                let debug_hints = get_hint_ids_by_name(p_setup, "gprod_member");
                 if !gprod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs.lock().unwrap().push((

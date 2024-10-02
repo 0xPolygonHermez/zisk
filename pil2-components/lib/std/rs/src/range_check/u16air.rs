@@ -99,10 +99,10 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
             for air in airs.iter() {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
+                let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
 
                 // Obtain info from the mul hints
-                let u16air_hints = get_hint_ids_by_name(setup.p_setup, "u16air");
+                let u16air_hints = get_hint_ids_by_name((&setup.p_setup).into(), "u16air");
                 if !u16air_hints.is_empty() {
                     self.hint.store(u16air_hints[0], Ordering::Release);
                 }

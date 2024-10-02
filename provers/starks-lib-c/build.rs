@@ -1,4 +1,7 @@
-use std::{env, path::Path};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     if cfg!(target_os = "macos") {
@@ -6,13 +9,12 @@ fn main() {
         return;
     }
     // Check if the "NO_LIB_LINK" feature is enabled
-    if std::env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
+    if env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
         let library_short_name = "starks";
         let library_folder: String;
         let library_path = if let Ok(path) = env::var("STARKS_LIB_C") {
             // If STARKS_LIB_C is set, use its value
-            library_folder = std::path::absolute(Path::new(&path).parent().unwrap_or_else(|| Path::new(".")))
-                .unwrap()
+            library_folder = get_canonical_path(Path::new(&path).parent().unwrap_or_else(|| Path::new(".")))
                 .to_str()
                 .unwrap()
                 .to_string();
@@ -27,10 +29,11 @@ fn main() {
         println!("Library folder: {}  and library path: {}", library_folder, library_path);
 
         // Trigger a rebuild if the library path changes
-        println!("cargo:rerun-if-changed={}", env::current_dir().unwrap().join(&library_path).display());
+        let current_dir = env::current_dir().unwrap();
+        println!("cargo:rerun-if-changed={}", current_dir.join(&library_path).display());
 
         // Add the library folder to the linker search path
-        println!("cargo:rustc-link-search=native={}", env::current_dir().unwrap().join(&library_folder).display());
+        println!("cargo:rustc-link-search=native={}", current_dir.join(&library_folder).display());
 
         // Add additional common library search paths
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu/");
@@ -72,4 +75,11 @@ fn main() {
             println!("cargo:rustc-link-lib={}", lib);
         }
     }
+}
+
+/// Returns the canonical (absolute) path of the given `Path`.
+///
+/// If the path cannot be resolved (e.g., it doesn't exist), it returns the path as is.
+fn get_canonical_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }

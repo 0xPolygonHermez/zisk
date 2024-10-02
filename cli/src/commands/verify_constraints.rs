@@ -1,5 +1,6 @@
 // extern crate env_logger;
 use clap::Parser;
+use proofman_common::VerboseMode;
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -38,19 +39,25 @@ pub struct VerifyConstraintsCmd {
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-                     //// Debug mode (-d, -dd)
-                     // #[arg(short, long, action = clap::ArgAction::Count, help = "Increase debug level")]
-                     // pub debug: u8, // Using u8 to hold the number of `-d`
+    // Debug mode (-d, -dd)
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase debug level")]
+    pub debug: u8, // Using u8 to hold the number of `-d`
 }
 
 impl VerifyConstraintsCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // env_logger::builder().filter_level(VerboseMode::from_u8(self.verbose).into());
-
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        let debug_mode = match self.verbose {
+        let verbose_mode: VerboseMode = self.verbose.into();
+        env_logger::builder()
+            .format_timestamp(None)
+            .format_level(true)
+            .format_target(false)
+            .filter_level(verbose_mode.into())
+            .init();
+
+        let debug_mode = match self.debug {
             0 => 1, // Default to Error
             1 => 2, // -v
             2 => 3, // -vv _ => log::LevelFilter::Trace,
@@ -64,7 +71,7 @@ impl VerifyConstraintsCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                ProofOptions::new(debug_mode, false, false),
+                ProofOptions::new(debug_mode, verbose_mode, false, false),
             )?,
         };
 

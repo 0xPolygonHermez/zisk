@@ -276,19 +276,6 @@ pub fn starks_free_c(p_stark: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn extend_and_merkelize_c(
-    p_stark: *mut c_void,
-    step: u64,
-    buffer: *mut c_void,
-    proof: *mut c_void,
-    p_buff_helper: *mut c_void,
-) {
-    unsafe {
-        extend_and_merkelize(p_stark, step, buffer, proof, p_buff_helper);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
     unsafe {
         treesGL_get_root(pStark, index, root);
@@ -296,8 +283,10 @@ pub fn treesGL_get_root_c(pStark: *mut c_void, index: u64, root: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xi_challenge: *mut c_void, xdivxsub: *mut c_void) -> *mut c_void {
-    unsafe { calculate_xdivxsub(p_stark, xi_challenge, xdivxsub) }
+pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xi_challenge: *mut c_void, xdivxsub: *mut c_void) {
+    unsafe {
+        calculate_xdivxsub(p_stark, xi_challenge, xdivxsub);
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -596,6 +585,13 @@ pub fn join_zkin_recursive2_c(
     unsafe { join_zkin_recursive2(global_info_file_ptr, p_publics, p_challenges, zkin1, zkin2, stark_info_recursive2) }
 }
 
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_log_level_c(level: u64) {
+    unsafe {
+        setLogLevel(level);
+    }
+}
+
 // ------------------------
 // MOCK METHODS FOR TESTING
 // ------------------------
@@ -790,17 +786,6 @@ pub fn starks_free_c(_p_stark: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn extend_and_merkelize_c(
-    _p_stark: *mut c_void,
-    _step: u64,
-    _buffer: *mut c_void,
-    _proof: *mut c_void,
-    _p_buff_helper: *mut c_void,
-) {
-    trace!("{}: ··· {}", "ffi     ", "extend_and_merkelize: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn treesGL_get_root_c(_pStark: *mut c_void, _index: u64, _root: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "treesGL_get_root: This is a mock call because there is no linked library");
 }
@@ -876,9 +861,8 @@ pub fn compute_evals_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _buffer: *mut c_void) -> *mut c_void {
+pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _buffer: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "calculate_xdivxsub_c: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1058,4 +1042,9 @@ pub fn join_zkin_final_c(
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "join_zkin_final: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_log_level_c(_level: u64) {
+    trace!("{}: ··· {}", "ffi     ", "set_log_level_c: This is a mock call because there is no linked library");
 }

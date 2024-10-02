@@ -1,6 +1,7 @@
 // extern crate env_logger;
 use clap::Parser;
 use pilout::{pilout::SymbolType, pilout_proxy::PilOutProxy};
+use proofman_common::VerboseMode;
 use serde::Serialize;
 use tinytemplate::TinyTemplate;
 use std::{fs, path::PathBuf};
@@ -19,6 +20,10 @@ pub struct PilHelpersCmd {
 
     #[clap(short)]
     pub overide: bool,
+
+    /// Verbosity (-v, -vv)
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
 #[derive(Serialize)]
@@ -57,6 +62,14 @@ impl PilHelpersCmd {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} Pil-helpers", format!("{: >12}", "Command").bright_green().bold());
         println!();
+
+        let filter_level: VerboseMode = self.verbose.into();
+        env_logger::builder()
+            .format_timestamp(None)
+            .format_level(true)
+            .format_target(false)
+            .filter_level(filter_level.into())
+            .init();
 
         // Check if the pilout file exists
         if !self.pilout.exists() {

@@ -4,8 +4,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::fs;
 
-use log::{debug, trace};
-use proofman_util::{timer_start, timer_stop_and_log};
 use crate::ProofType;
 
 #[derive(Clone, Deserialize)]
@@ -51,13 +49,9 @@ pub struct GlobalInfoStepsFRI {
 
 impl GlobalInfo {
     pub fn new(proving_key_path: &Path) -> Self {
-        timer_start!(GLOBAL_INFO_LOAD);
-
-        debug!("glblinfo: ··· Loading GlobalInfo JSON {}", proving_key_path.display());
+        log::debug!("glblinfo: ··· Loading GlobalInfo JSON {}", proving_key_path.display());
 
         let global_info = Self::from_file(&proving_key_path.display().to_string());
-
-        timer_stop_and_log!(GLOBAL_INFO_LOAD);
 
         global_info
     }
@@ -92,7 +86,7 @@ impl GlobalInfo {
     }
 
     pub fn get_final_setup_path(&self) -> PathBuf {
-        let final_setup_folder = format!("{}/{}/final", self.folder_path, self.name);
+        let final_setup_folder = format!("{}/{}/final/final", self.folder_path, self.name);
         PathBuf::from(final_setup_folder)
     }
 
@@ -102,17 +96,36 @@ impl GlobalInfo {
             ProofType::Compressor => "compressor",
             ProofType::Recursive1 => "recursive1",
             ProofType::Recursive2 => "recursive2",
-            ProofType::Final => panic!(),
+            _ => panic!(),
         };
 
         let air_setup_folder = match proof_type {
             ProofType::Recursive2 => {
-                format!("{}/{}/{}/recursive2", self.folder_path, self.name, self.subproofs[airgroup_id])
+                format!("{}/{}/{}/recursive2/recursive2", self.folder_path, self.name, self.subproofs[airgroup_id])
             }
-            _ => format!(
-                "{}/{}/{}/airs/{}/{}",
-                self.folder_path, self.name, self.subproofs[airgroup_id], self.airs[airgroup_id][air_id].name, type_str
-            ),
+            ProofType::Compressor | ProofType::Recursive1 => {
+                format!(
+                    "{}/{}/{}/airs/{}/{}/{}",
+                    self.folder_path,
+                    self.name,
+                    self.subproofs[airgroup_id],
+                    self.airs[airgroup_id][air_id].name,
+                    type_str,
+                    type_str,
+                )
+            }
+            ProofType::Basic => {
+                format!(
+                    "{}/{}/{}/airs/{}/{}/{}",
+                    self.folder_path,
+                    self.name,
+                    self.subproofs[airgroup_id],
+                    self.airs[airgroup_id][air_id].name,
+                    type_str,
+                    self.get_air_name(airgroup_id, air_id),
+                )
+            }
+            _ => panic!(),
         };
 
         PathBuf::from(air_setup_folder)

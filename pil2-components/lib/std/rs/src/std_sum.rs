@@ -38,11 +38,14 @@ impl<F: Field> Decider<F> for StdSum<F> {
             airs.iter().for_each(|air| {
                 let airgroup_id = air.airgroup_id;
                 let air_id = air.air_id;
-                let setup = sctx.get_setup(airgroup_id, air_id).expect("REASON");
-                let im_hints = get_hint_ids_by_name(setup.p_setup, "im_col");
-                let gsum_hints = get_hint_ids_by_name(setup.p_setup, "gsum_col");
-                let debug_hints_data = get_hint_ids_by_name(setup.p_setup, "gsum_member_data");
-                let debug_hints = get_hint_ids_by_name(setup.p_setup, "gsum_member");
+
+                let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+                let p_setup = (&setup.p_setup).into();
+
+                let im_hints = get_hint_ids_by_name(p_setup, "im_col");
+                let gsum_hints = get_hint_ids_by_name(p_setup, "gsum_col");
+                let debug_hints_data = get_hint_ids_by_name(p_setup, "gsum_member_data");
+                let debug_hints = get_hint_ids_by_name(p_setup, "gsum_member");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data, debug_hints));

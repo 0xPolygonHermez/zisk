@@ -174,16 +174,6 @@ extern "C" {
     pub fn starks_free(pStarks: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z20extend_and_merkelizePvmS_S_S_"]
-    pub fn extend_and_merkelize(
-        pStarks: *mut ::std::os::raw::c_void,
-        step: u64,
-        buffer: *mut ::std::os::raw::c_void,
-        proof: *mut ::std::os::raw::c_void,
-        pBuffHelper: *mut ::std::os::raw::c_void,
-    );
-}
-extern "C" {
     #[link_name = "\u{1}_Z16treesGL_get_rootPvmS_"]
     pub fn treesGL_get_root(
         pStarks: *mut ::std::os::raw::c_void,
@@ -197,7 +187,7 @@ extern "C" {
         pStarks: *mut ::std::os::raw::c_void,
         xiChallenge: *mut ::std::os::raw::c_void,
         xDivXSub: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
+    );
 }
 extern "C" {
     #[link_name = "\u{1}_Z11get_fri_polPvS_"]
@@ -444,4 +434,8 @@ extern "C" {
         zkinRecursive2: *mut *mut ::std::os::raw::c_void,
         starkInfoRecursive2: *mut *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11setLogLevelm"]
+    pub fn setLogLevel(level: u64);
 }

@@ -3,9 +3,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use log::{trace, info};
-
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_starks_lib_c::set_log_level_c;
 use proofman_util::{timer_start, timer_stop_and_log};
 use crate::WitnessComponent;
 
@@ -60,6 +59,8 @@ impl<F> WitnessManager<F> {
     pub fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         log::info!("{}: ··· STARTING PROOF", Self::MY_NAME);
 
+        set_log_level_c(ectx.verbose_mode.into());
+
         for component in self.components.read().unwrap().iter() {
             component.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
         }
@@ -74,7 +75,12 @@ impl<F> WitnessManager<F> {
     }
 
     pub fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        info!("{}: ··· CALCULATING WITNESS stage {} / {}", Self::MY_NAME, stage, pctx.global_info.n_challenges.len());
+        log::info!(
+            "{}: ··· CALCULATING WITNESS stage {} / {}",
+            Self::MY_NAME,
+            stage,
+            pctx.global_info.n_challenges.len()
+        );
 
         timer_start!(CALCULATING_WITNESS);
 

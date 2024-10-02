@@ -4,18 +4,6 @@ This guide provides step-by-step instructions for setting up the necessary repos
 
 ## 1. Download and Set Up Required Repositories
 
-### 1.1 Install `pil2-components`
-
-Start by cloning the `pil2-components` repository and installing the dependencies:
-
-```bash
-git clone https://github.com/0xPolygonHermez/pil2-components.git
-cd pil2-components
-git checkout example
-npm install
-cd ..
-```
-
 ### 1.2 Install `pil2-compiler`
 
 Next, clone the `pil2-compiler` repository and install its dependencies:
@@ -88,7 +76,7 @@ To begin, compile the PIL files:
 
 ```bash
 node ../pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil \
-     -I ../pil2-components/lib/std/pil \
+     -I ./pil2-components/lib/std/pil \
      -o ./examples/fibonacci-square/pil/build.pilout
 ```
 

@@ -29,13 +29,6 @@ pub enum Commands {
 }
 
 fn main() {
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_level(true)
-        .format_target(false)
-        .filter_level(log::LevelFilter::Debug)
-        .init();
-
     print_banner(false);
 
     let cli = Cli::parse();
