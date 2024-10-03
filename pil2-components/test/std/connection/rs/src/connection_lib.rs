@@ -2,7 +2,7 @@ use std::{error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{initialize_logger, VerboseMode, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
@@ -82,9 +82,12 @@ where
 }
 
 #[no_mangle]
-pub extern "Rust" fn init_library(ectx: &ExecutionCtx) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    initialize_logger(VerboseMode::Trace);
-    
+pub extern "Rust" fn init_library(
+    ectx: Arc<ExecutionCtx>,
+    _: Option<PathBuf>,
+) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
+    initialize_logger(ectx.verbose_mode);
+
     let connection_witness = ConnectionWitness::new();
     Ok(Box::new(connection_witness))
 }

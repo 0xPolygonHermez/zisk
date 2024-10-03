@@ -73,7 +73,6 @@ impl<F: Field + 'static> ProofMan<F> {
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
         let ectx = ExecutionCtx::builder()
             .with_rom_path(rom_path)
-            .with_public_inputs_path(public_inputs_path)
             .with_buffer_allocator(buffer_allocator)
             .with_verbose_mode(options.verbose_mode)
             .build();
@@ -84,7 +83,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(&ectx)?;
+        let mut witness_lib = witness_lib(ectx.clone(), public_inputs_path)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
