@@ -147,11 +147,8 @@ impl<F: Clone + Copy + Display> Display for HintFieldOutput<F> {
     }
 }
 
-pub fn format_vec<T: Copy + Clone + Debug + Display>(vec: &Vec<T>) -> String {
-    format!("[{}]", vec.iter()
-       .map(|item| item.to_string())
-       .collect::<Vec<String>>()
-       .join(", "))
+pub fn format_vec<T: Copy + Clone + Debug + Display>(vec: &[T]) -> String {
+    format!("[{}]", vec.iter().map(|item| item.to_string()).collect::<Vec<String>>().join(", "))
 }
 
 impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {

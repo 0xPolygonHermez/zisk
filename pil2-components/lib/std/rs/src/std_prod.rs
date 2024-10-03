@@ -335,12 +335,10 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     let name_str = if row_assumes.len() == 1 {
                         format!("at row {}.", row_assumes)
+                    } else if max_values_to_print < row_assumes.len() {
+                        format!("at rows {},...", row_assumes)
                     } else {
-                        if max_values_to_print < row_assumes.len() {
-                            format!("at rows {},...", row_assumes)
-                        } else {
-                            format!("at rows {}.", row_assumes)
-                        }
+                        format!("at rows {}.", row_assumes)
                     };
                     let diff_str = if diff == 1 { "time" } else { "times" };
                     println!(
@@ -387,12 +385,10 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     let name_str = if row_proves.len() == 1 {
                         format!("at row {}.", row_proves)
+                    } else if max_values_to_print < row_proves.len() {
+                        format!("at rows {},...", row_proves)
                     } else {
-                        if max_values_to_print < row_proves.len() {
-                            format!("at rows {},...", row_proves)
-                        } else {
-                            format!("at rows {}.", row_proves)
-                        }
+                        format!("at rows {}.", row_proves)
                     };
                     println!(
                         "\t    • Value\n\t        {}\n\t      Appears {} [{}/{}] times {}",
