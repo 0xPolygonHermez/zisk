@@ -32,7 +32,7 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 1, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
 

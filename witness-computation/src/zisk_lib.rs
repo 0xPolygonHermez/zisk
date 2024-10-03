@@ -197,10 +197,11 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    ectx: &ExecutionCtx,
+    ectx: Arc<ExecutionCtx>,
+    public_inputs_path: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     let rom_path = ectx.rom_path.clone().ok_or("ROM path is required")?;
-    let public_inputs = ectx.public_inputs_path.clone().ok_or("Public inputs path is required")?;
+    let public_inputs = public_inputs_path.ok_or("Public inputs path is required")?;
 
     initialize_logger(ectx.verbose_mode);
 

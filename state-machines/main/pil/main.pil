@@ -153,7 +153,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // Operation.assume => how organize software
     col witness operation_bus_enabled;
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * operation_bus_enabled);
+    // lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * operation_bus_enabled);
 
     const expr a_src_c;
     const expr b_src_c;

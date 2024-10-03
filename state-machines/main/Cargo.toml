@@ -13,6 +13,7 @@ zisk-core = { path = "../../core" }
 zisk-pil = { path = "../../pil" }
 
 proofman-common = { workspace = true }
+proofman-util = { workspace = true }
 proofman = { workspace = true }
 p3-field = { workspace = true }
 log = { workspace = true }
