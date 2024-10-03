@@ -60,33 +60,33 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                       0:(P2_17*5),
                       0:P2_16]...;
 
-    col fixed RESULT_IS_A = [[0:P2_18, 1:P2_18]:4,      // If one, then the result of the operation
-                              0:(P2_18*5),              // is the value of A; otherwise, it is B (1 bit)
-                              0:(P2_17*5),
-                              0:P2_16]...;
-
     col fixed OP = [0x09:P2_19, 0x0a:P2_19, 0x0b:P2_19, 0x0c:P2_19, // MINU,MIN,MAXU,MAX
                     0x04:P2_18, 0x05:P2_18, 0x08:P2_18,             // LTU,LT,EQ
                     0x02:P2_18, 0x03:P2_18,                         // ADD,SUB
                     0x06:P2_17, 0x07:P2_17,                         // LEU,LE
                     0x20:P2_17, 0x21:P2_17, 0x22:P2_17,             // AND,OR,XOR
                     0x23:P2_16]...;                                 // EXT_32
+    
+    // NOTE: MINU/MINU_W, MIN/MIN_W, MAXU/MAXU_W, MAX/MAX_W has double size because
+    //       the result_is_a is 0 in the first half and 1 in the second half.
+
+    const int TABLE_SIZE = P2_19 * 4 + P2_18 * 5 + P2_17 * 5 + P2_16;
 
     #pragma timer t1 end
     #pragma timer t2 start
 
     col fixed C;             // Output C (8 bits)
-    col fixed COUT;          // Output carry (1 bit)
-    col fixed OP_IS_MIN_MAX; // Min,Max indicator (1 bit)
     col fixed FLAGS;
 
-    #pragma transpile
+    #pragma transpile logfile:tmp/binary_table_2.txt
     for (int i = 0; i < N; i++) {
-        const int [plast, op, a, b, cin, result_is_a] = [LAST[i], OP[i], A[i], B[i], CIN[i], RESULT_IS_A[i]];
+        const int [plast, op, a, b, cin] = [LAST[i], OP[i], A[i], B[i], CIN[i]];
         int c = 0;
         int cout = 0;
         int op_is_min_max = 0;
         int use_last_carry = 0;
+        int index = i % TABLE_SIZE;
+        int result_is_a = index < P2_21 ? ((index >> 18) & 0x01) : 0;
         switch (op) {
             case 0x02: // ADD,ADD_W
                 c = (cin + a + b) & 0xFF;
@@ -190,9 +190,9 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                 error(`Invalid operation opcode: ${op} in row ${i}`);
         }
         C[i] = c;
-        COUT[i] = cout;
-        OP_IS_MIN_MAX[i] = op_is_min_max;
-        FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry;
+        const int flags = cout + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry;
+        FLAGS[i] = flags;
+        log(`T ${plast},${op},${a},${b},${cin},${c},${flags},${i}`);
     }
     #pragma timer t2 end
     #pragma timer tt end

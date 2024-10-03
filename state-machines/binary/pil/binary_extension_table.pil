@@ -20,9 +20,6 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
     
     #pragma memory m1 start
 
-    const int MASK_32 = 2**32 - 1;
-    const int MASK_64 = 2**64 - 1;
-
     const int SE_MASK_32 = 0xFFFFFFFF00000000;
     const int SE_MASK_16 = 0xFFFFFFFFFFFF0000;
     const int SE_MASK_8 = 0xFFFFFFFFFFFFFF00;
