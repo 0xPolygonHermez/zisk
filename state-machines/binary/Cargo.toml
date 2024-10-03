@@ -11,6 +11,7 @@ sm-common = { path = "../common" }
 p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
 proofman = { workspace = true }
 
 log = { workspace = true }
