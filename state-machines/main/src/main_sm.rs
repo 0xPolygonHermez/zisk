@@ -64,7 +64,6 @@ impl<'a, F: Field> MainSM<F> {
     /// Default number of inputs of the main state machine that are accumulated before being
     /// processed
     const CALLBACK_SIZE: usize = 2usize.pow(16);
-    const MAX_ACCUMULATED: usize = 2usize.pow(21);
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -208,7 +207,9 @@ impl<'a, F: Field> MainSM<F> {
 
         // If `last_air_segment` is full, it means the air instance for the last segment is already
         // created. We need to mark this air instance as the last segment.
-        if last_air_segment.filled_inputs == Self::MAX_ACCUMULATED {
+        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+
+        if last_air_segment.filled_inputs == air.num_rows() {
             // Get the last segment
             let last_air_segment_idx =
                 pctx.air_instance_repo.find_last_segment(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).expect(
@@ -230,7 +231,7 @@ impl<'a, F: Field> MainSM<F> {
             // Map the F buffer to a Main0Trace
             let mut main_trace = Main0Trace::<F>::map_buffer(
                 &mut air_instance.buffer,
-                Self::MAX_ACCUMULATED,
+                air.num_rows(),
                 offsets[0] as usize,
             )
             .unwrap();
@@ -262,14 +263,14 @@ impl<'a, F: Field> MainSM<F> {
         sctx: Arc<SetupCtx>,
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
-        let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
+        let num_rows = pctx.clone().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
+        let air_step = emu_traces.start.step as f64 / num_rows as f64;
         let segment_id = air_step.floor() as usize;
-        let pos_id =
-            (air_step.fract() * Self::MAX_ACCUMULATED as f64 / Self::CALLBACK_SIZE as f64) as usize;
+        let pos_id = (air_step.fract() * num_rows as f64 / Self::CALLBACK_SIZE as f64) as usize;
 
         // As this calls are received sequentially, when pos_id is 0, a new segment is created
         if pos_id == 0 {
-            let buffer = MainAirSegment::new(segment_id as u32, Self::MAX_ACCUMULATED);
+            let buffer = MainAirSegment::new(segment_id as u32, num_rows);
             self.callback_inputs.lock().unwrap().push(buffer);
         }
 
@@ -294,13 +295,10 @@ impl<'a, F: Field> MainSM<F> {
                 source_iter,
             );
             air_segment.filled_inputs += len;
-            assert!(
-                air_segment.filled_inputs <= Self::MAX_ACCUMULATED,
-                "Too many inputs in a Main AIR segment"
-            );
+            assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
 
             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
-            if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
+            if air_segment.filled_inputs == num_rows {
                 let air_segment = mem::take(air_segment);
                 let cloned_ectx = ectx.clone();
                 scope.spawn(move |_| {
