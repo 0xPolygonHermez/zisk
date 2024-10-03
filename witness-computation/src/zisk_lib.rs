@@ -4,7 +4,11 @@ use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
 };
 use sm_quick_ops::QuickOpsSM;
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use zisk_pil::*;
 
 use p3_field::PrimeField;
@@ -197,8 +201,8 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWit
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    rom_path: Option<PathBuf>,
-    public_inputs_path: PathBuf,
+    ectx: Arc<ExecutionCtx>,
+    public_inputs_path: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     env_logger::builder()
         .format_timestamp(None)
@@ -207,8 +211,9 @@ pub extern "Rust" fn init_library(
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    let rom_path = rom_path.ok_or("ROM path is required")?;
+    let rom_path = ectx.rom_path.clone().ok_or("ROM path is required")?;
+    let public_inputs = public_inputs_path.ok_or("Public inputs path is required")?;
 
-    let zisk_witness = ZiskWitness::new(rom_path, public_inputs_path)?;
+    let zisk_witness = ZiskWitness::new(rom_path, public_inputs)?;
     Ok(Box::new(zisk_witness))
 }
