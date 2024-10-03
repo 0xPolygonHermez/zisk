@@ -342,13 +342,13 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     };
                     let diff_str = if diff == 1 { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} [{}/{}] {} {}",
+                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
                         format_vec(val),
                         diff,
-                        num_assumes,
-                        num_proves,
                         diff_str,
-                        name_str
+                        name_str,
+                        num_assumes,
+                        num_proves
                     );
 
                     if i == max_values_to_print {
@@ -391,12 +391,12 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                         format!("at rows {}.", row_proves)
                     };
                     println!(
-                        "\t    • Value\n\t        {}\n\t      Appears {} [{}/{}] times {}",
+                        "\t    • Value\n\t        {}\n\t      Appears {} times {}\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
                         format_vec(val),
                         diff,
+                        name_str,
                         num_assumes,
-                        num_proves,
-                        name_str
+                        num_proves
                     );
 
                     if i == max_values_to_print {
