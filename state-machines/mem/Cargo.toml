@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 sm-common = { path = "../common" }
 zisk-core = { path = "../../core" }
+zisk-pil = { path = "../../pil" }
 
 p3-field = { workspace=true }
 proofman-common = { workspace = true }

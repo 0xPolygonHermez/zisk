@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -32,12 +32,11 @@ pub struct ArithSM {
 }
 
 impl ArithSM {
-    pub fn new<F>(
-        wcm: Arc<WitnessManager<F>>,
-        arith32_sm: Arc<Arith32SM>,
-        arith64_sm: Arc<Arith64SM>,
-        arith3264_sm: Arc<Arith3264SM>,
-    ) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let arith32_sm = Arith32SM::new(wcm.clone());
+        let arith64_sm = Arith64SM::new(wcm.clone());
+        let arith3264_sm = Arith3264SM::new(wcm.clone());
+
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
@@ -92,7 +91,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

@@ -7,9 +7,10 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 
 use p3_field::Field;
+use zisk_pil::{ARITH3264_AIR_IDS, ARITH_AIRGROUP_ID};
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct Arith3264SM {
@@ -21,12 +22,16 @@ pub struct Arith3264SM {
 }
 
 impl Arith3264SM {
-    pub fn new<F>(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let arith3264_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);
 
-        wcm.register_component(arith3264_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(
+            arith3264_sm.clone(),
+            Some(ARITH_AIRGROUP_ID),
+            Some(ARITH3264_AIR_IDS),
+        );
 
         arith3264_sm
     }
@@ -64,7 +69,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for Arith3264SM {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

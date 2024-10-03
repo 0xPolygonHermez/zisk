@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, P2_12, P2_6, P2_9};
 use zisk_pil::*;
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
 const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
@@ -132,7 +132,7 @@ impl<F: Field> Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryEx
         &self,
         operation: ZiskRequiredBinaryExtensionTable,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

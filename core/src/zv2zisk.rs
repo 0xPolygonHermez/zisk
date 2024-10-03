@@ -191,7 +191,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
-                zib.op(loadf);
+                zib.op(loadf).unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
@@ -204,7 +204,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("lastc", 0, false);
                 //zib.ind_width(w);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op(op);
+                zib.op(op).unwrap();
                 zib.j(1, 1);
                 zib.build();
                 self.insts.insert(self.s, zib);
@@ -215,7 +215,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("lastc", 0, false);
-                zib.op(storef);
+                zib.op(storef).unwrap();
                 zib.store("ind", 0, false, false);
                 zib.j(2, 2);
                 zib.build();
@@ -228,7 +228,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
-                zib.op(loadf);
+                zib.op(loadf).unwrap();
                 zib.store("reg", 32, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
@@ -240,7 +240,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("lastc", 0, false);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op(op);
+                zib.op(op).unwrap();
                 zib.j(1, 1);
                 zib.build();
                 self.insts.insert(self.s, zib);
@@ -251,7 +251,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("lastc", 0, false);
-                zib.op(storef);
+                zib.op(storef).unwrap();
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
                 zib.build();
@@ -262,7 +262,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("reg", 32, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.j(1, 1);
                 zib.store("reg", i.rd as i64, false, false);
                 zib.build();
@@ -288,7 +288,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
-                zib.op(loadf);
+                zib.op(loadf).unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
@@ -300,7 +300,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op(storef);
+                zib.op(storef).unwrap();
                 zib.ind_width(w);
                 zib.store("ind", 0, false, false);
                 zib.j(3, 3);
@@ -314,7 +314,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
-                zib.op(loadf);
+                zib.op(loadf).unwrap();
                 zib.store("reg", 32, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
@@ -326,7 +326,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op(storef);
+                zib.op(storef).unwrap();
                 zib.ind_width(w);
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
@@ -338,7 +338,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("reg", 32, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(2, 2);
                 zib.build();
@@ -352,7 +352,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64, false);
-        zib.op(op);
+        zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
@@ -368,7 +368,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64, false);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rs1, i.rs2, i.imm));
-        zib.op(op);
+        zib.op(op).unwrap();
         if neg {
             zib.j(4, i.imm);
         } else {
@@ -383,7 +383,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
-        zib.op("flag");
+        zib.op("flag").unwrap();
         zib.j(4, 4);
         zib.verbose(&i.inst.to_string());
         zib.build();
@@ -398,7 +398,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_a("reg", i.rs1 as u64, false);
         zib.ind_width(w);
         zib.src_b("ind", i.imm as u64, false);
-        zib.op(op);
+        zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
@@ -413,7 +413,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64, false);
-        zib.op(op);
+        zib.op(op).unwrap();
         zib.ind_width(w);
         zib.store("ind", i.imm as i64, false, false);
         zib.j(4, 4);
@@ -429,7 +429,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("imm", i.imm as u64, false);
-        zib.op(op);
+        zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
@@ -445,7 +445,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
-        zib.op("flag");
+        zib.op("flag").unwrap();
         zib.store_ra("reg", i.rd as i64, false);
         zib.j(4, i.imm);
         zib.verbose(&format!("auipc r{}, 0x{:x}", i.rd, i.imm));
@@ -463,7 +463,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.ind_width(4);
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
@@ -476,7 +476,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.ind_width(4);
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(3, 3);
@@ -488,7 +488,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", i.rs2 as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.ind_width(4);
             zib.store("ind", 0, false, false);
             zib.j(4, 4);
@@ -507,7 +507,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.ind_width(8);
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
@@ -520,7 +520,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -531,7 +531,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", i.rs2 as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.ind_width(8);
             zib.store("ind", 0, false, false);
             zib.j(4, 4);
@@ -547,7 +547,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
         zib.src_b("imm", i.imm as u64, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("lui r{}, 0x{:x}", i.rd, i.imm));
@@ -563,7 +563,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0xfffffffffffffffc, false);
             zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("and");
+            zib.op("and").unwrap();
             zib.set_pc();
             zib.store_ra("reg", i.rd as i64, false);
             zib.j(i.imm, 4);
@@ -576,7 +576,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", i.imm as u64, false);
                 zib.src_b("reg", i.rs1 as u64, false);
-                zib.op("add");
+                zib.op("add").unwrap();
                 zib.j(1, 1);
                 zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 1/2", i.rd, i.rs1, i.imm));
                 zib.build();
@@ -587,7 +587,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0xfffffffffffffffc, false);
                 zib.src_b("lastc", 0, false);
-                zib.op("and");
+                zib.op("and").unwrap();
                 zib.set_pc();
                 zib.store_ra("reg", i.rd as i64, false);
                 zib.j(0, 3);
@@ -605,7 +605,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
-        zib.op("flag");
+        zib.op("flag").unwrap();
         zib.store_ra("reg", i.rd as i64, false);
         zib.j(i.imm, 4);
         zib.verbose(&format!("jal r{}, 0x{:x}", i.rd, i.imm));
@@ -618,7 +618,7 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
         zib.src_b("mem", MTVEC, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         //zib.store_ra("reg", 1, false);
         zib.set_pc();
         zib.j(0, 4);
@@ -654,7 +654,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd=rs1=0", i.inst, i.rd, i.csr, i.rs1));
@@ -666,7 +666,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", 33, false, false);
                     zib.j(1, 1);
                     zib.build();
@@ -677,7 +677,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("reg", i.rs1 as u64, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                     zib.j(1, 1);
                     zib.verbose(&format!(
@@ -692,7 +692,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("reg", 33, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(2, 2);
                     zib.build();
@@ -704,7 +704,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rs1!=rd=0", i.inst, i.rd, i.csr, i.rs1));
@@ -716,7 +716,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!(
@@ -731,7 +731,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("reg", i.rs1 as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -769,7 +769,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
                 zib.build();
@@ -780,7 +780,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", 33, false, false);
                     zib.j(1, 1);
                     zib.verbose(&format!(
@@ -795,7 +795,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("lastc", 0, false);
                     zib.src_b("reg", i.rs1 as u64, false);
-                    zib.op("or");
+                    zib.op("or").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                     zib.j(1, 1);
                     zib.build();
@@ -806,7 +806,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("reg", 33, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(2, 2);
                     zib.build();
@@ -818,7 +818,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
             zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("or");
+            zib.op("or").unwrap();
             zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
@@ -829,7 +829,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
@@ -841,7 +841,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
@@ -853,7 +853,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("lastc", 0, false);
                 zib.src_b("reg", i.rs1 as u64, false);
-                zib.op("or");
+                zib.op("or").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -894,7 +894,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
                 zib.build();
@@ -905,7 +905,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", 33, false, false);
                     zib.j(1, 1);
                     zib.verbose(&format!(
@@ -920,7 +920,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("imm", M64, false);
                     zib.src_b("reg", i.rs1 as u64, false);
-                    zib.op("xor");
+                    zib.op("xor").unwrap();
                     zib.j(1, 1);
                     zib.build();
                     self.insts.insert(self.s, zib);
@@ -930,7 +930,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("reg", 33, false);
                     zib.src_b("lastc", 0, false);
-                    zib.op("and");
+                    zib.op("and").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                     zib.j(1, 1);
                     zib.build();
@@ -941,7 +941,7 @@ impl Riscv2ZiskContext<'_> {
                     let mut zib = ZiskInstBuilder::new(self.s);
                     zib.src_a("mem", 0, false);
                     zib.src_b("reg", 33, false);
-                    zib.op("copyb");
+                    zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(1, 1);
                     zib.build();
@@ -954,7 +954,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", M64, false);
                 zib.src_b("reg", i.rs1 as u64, false);
-                zib.op("xor");
+                zib.op("xor").unwrap();
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
                 zib.build();
@@ -965,7 +965,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
                 zib.src_b("lastc", 0, false);
-                zib.op("and");
+                zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
@@ -977,7 +977,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
@@ -989,7 +989,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
@@ -1001,7 +1001,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", M64, false);
                 zib.src_b("reg", i.rs1 as u64, false);
-                zib.op("xor");
+                zib.op("xor").unwrap();
                 zib.j(1, 1);
                 zib.build();
                 self.insts.insert(self.s, zib);
@@ -1011,7 +1011,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("reg", i.rd as u64, false);
                 zib.src_b("lastc", 0, false);
-                zib.op("and");
+                zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(2, 2);
                 zib.build();
@@ -1037,7 +1037,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("imm", i.imme as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, 0x{:x} #rd = 0", i.inst, i.rd, i.csr, i.imme));
@@ -1049,7 +1049,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!(
@@ -1064,7 +1064,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -1097,7 +1097,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
@@ -1110,7 +1110,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
                 zib.src_b("imm", i.imme as u64, false);
-                zib.op("or");
+                zib.op("or").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(4, 4);
                 zib.verbose(&format!(
@@ -1125,7 +1125,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
@@ -1137,7 +1137,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!(
@@ -1152,7 +1152,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("lastc", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
-                zib.op("or");
+                zib.op("or").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -1185,7 +1185,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
@@ -1198,7 +1198,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
                 zib.src_b("imm", i.imme as u64 ^ M64, false);
-                zib.op("and");
+                zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm!=0",
@@ -1213,7 +1213,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-            zib.op("copyb");
+            zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
@@ -1225,7 +1225,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + i.csr as u64, false);
-                zib.op("copyb");
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!(
@@ -1240,7 +1240,7 @@ impl Riscv2ZiskContext<'_> {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("lastc", 0, false);
                 zib.src_b("imm", i.imme as u64 ^ M64, false);
-                zib.op("and");
+                zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(3, 3);
                 zib.build();
@@ -1286,7 +1286,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         zib.ind_width(8);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
@@ -1303,7 +1303,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         zib.ind_width(4);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
@@ -1320,7 +1320,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         zib.ind_width(2);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
@@ -1337,7 +1337,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
-        zib.op("copyb");
+        zib.op("copyb").unwrap();
         zib.ind_width(2);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
@@ -1363,7 +1363,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", ARCH_ID_ZISK, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.store("mem", CSR_ADDR as i64 + 0xF12, false, false);
     zib.j(4, 4);
     zib.verbose(&format!("Set marchid: {:x}", ARCH_ID_ZISK));
@@ -1375,7 +1375,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", trap_handler, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.store("mem", MTVEC as i64, false, false);
     zib.j(4, 4);
     zib.verbose(&format!("Set mtvec: {}", trap_handler));
@@ -1387,7 +1387,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", INPUT_ADDR, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.store("reg", 10, false, false);
     zib.j(0, 4);
     zib.verbose(&format!("Set 1st Param (pInput): 0x{:08x}", INPUT_ADDR));
@@ -1399,7 +1399,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", OUTPUT_ADDR, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.store("reg", 11, false, false);
     zib.j(0, 4);
     zib.verbose(&format!("Set 2nd Param (pOutput): 0x{:08x}", OUTPUT_ADDR));
@@ -1411,7 +1411,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", addr, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.set_pc();
     zib.store_ra("reg", 1, false);
     zib.j(0, 4);
@@ -1424,7 +1424,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.end();
     zib.j(0, 0);
     zib.verbose("end");
@@ -1437,7 +1437,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
-    zib.op("eq");
+    zib.op("eq").unwrap();
     zib.j(4, 8);
     zib.verbose(&format!("beq r17, {} # Check if is exit", CAUSE_EXIT));
     zib.build();
@@ -1448,7 +1448,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.end();
     zib.j(0, 0);
     zib.verbose("end");
@@ -1461,7 +1461,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_KECCAK, false);
-    zib.op("eq");
+    zib.op("eq").unwrap();
     zib.j(4, 8);
     zib.verbose(&format!("beq r17, {} # Check if is keccak", CAUSE_KECCAK));
     zib.build();
@@ -1472,7 +1472,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 11, false);
     zib.src_b("imm", 0, false);
-    zib.op("keccak");
+    zib.op("keccak").unwrap();
     zib.j(4, 4);
     zib.verbose("keccak");
     zib.build();
@@ -1483,7 +1483,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("reg", 1, false);
-    zib.op("copyb");
+    zib.op("copyb").unwrap();
     zib.set_pc();
     zib.j(0, 4);
     zib.verbose("ret");
