@@ -9,6 +9,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::ZiskRequiredOperation;
+use zisk_pil::{QUICKOPS_AIRGROUP_ID, QUICKOPS_AIR_IDS};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -21,12 +22,16 @@ pub struct QuickOpsSM {
 }
 
 impl QuickOpsSM {
-    pub fn new<F>(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let quickop_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let quickop_sm = Arc::new(quickop_sm);
 
-        wcm.register_component(quickop_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(
+            quickop_sm.clone(),
+            Some(QUICKOPS_AIRGROUP_ID),
+            Some(QUICKOPS_AIR_IDS),
+        );
 
         quickop_sm
     }

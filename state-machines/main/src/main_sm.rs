@@ -80,13 +80,11 @@ impl<'a, F: Field> MainSM<F> {
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(
-        rom_path: &Path,
-        wcm: &'a WitnessManager<F>,
+        rom_path: PathBuf,
+        wcm: Arc<WitnessManager<F>>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
-        airgroup_id: usize,
-        air_ids: &[usize],
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let zisk_rom = if rom_path.extension().unwrap() == "elf" {
@@ -124,7 +122,7 @@ impl<'a, F: Field> MainSM<F> {
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
-        wcm.register_component(main_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
