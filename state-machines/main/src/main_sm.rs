@@ -266,8 +266,7 @@ impl<'a, F: Field> MainSM<F> {
         let num_rows = pctx.clone().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
         let air_step = emu_traces.start.step as f64 / num_rows as f64;
         let segment_id = air_step.floor() as usize;
-        let pos_id =
-            (air_step.fract() * num_rows as f64 / Self::CALLBACK_SIZE as f64) as usize;
+        let pos_id = (air_step.fract() * num_rows as f64 / Self::CALLBACK_SIZE as f64) as usize;
 
         // As this calls are received sequentially, when pos_id is 0, a new segment is created
         if pos_id == 0 {
