@@ -5,7 +5,6 @@ use crate::{BufferAllocator, VerboseMode};
 /// Represents the context when executing a witness computer plugin
 pub struct ExecutionCtx {
     pub rom_path: Option<PathBuf>,
-    pub public_inputs_path: Option<PathBuf>,
     /// If true, the plugin must generate the public outputs
     pub public_output: bool,
     pub buffer_allocator: Arc<dyn BufferAllocator>,
@@ -20,7 +19,6 @@ impl ExecutionCtx {
 
 pub struct ExecutionCtxBuilder {
     rom_path: Option<PathBuf>,
-    public_inputs_path: Option<PathBuf>,
     public_output: bool,
     buffer_allocator: Option<Arc<dyn BufferAllocator>>,
     verbose_mode: VerboseMode,
@@ -36,7 +34,6 @@ impl ExecutionCtxBuilder {
     pub fn new() -> Self {
         ExecutionCtxBuilder {
             rom_path: None,
-            public_inputs_path: None,
             public_output: true,
             buffer_allocator: None,
             verbose_mode: VerboseMode::Info,
@@ -45,11 +42,6 @@ impl ExecutionCtxBuilder {
 
     pub fn with_rom_path(mut self, rom_path: Option<PathBuf>) -> Self {
         self.rom_path = rom_path;
-        self
-    }
-
-    pub fn with_public_inputs_path(mut self, public_inputs_path: Option<PathBuf>) -> Self {
-        self.public_inputs_path = public_inputs_path;
         self
     }
 
@@ -70,7 +62,6 @@ impl ExecutionCtxBuilder {
 
         ExecutionCtx {
             rom_path: self.rom_path,
-            public_inputs_path: self.public_inputs_path,
             public_output: self.public_output,
             buffer_allocator: self.buffer_allocator.unwrap(),
             verbose_mode: self.verbose_mode,
