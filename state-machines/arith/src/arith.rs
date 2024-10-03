@@ -32,12 +32,11 @@ pub struct ArithSM {
 }
 
 impl ArithSM {
-    pub fn new<F>(
-        wcm: Arc<WitnessManager<F>>,
-        arith32_sm: Arc<Arith32SM>,
-        arith64_sm: Arc<Arith64SM>,
-        arith3264_sm: Arc<Arith3264SM>,
-    ) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let arith32_sm = Arith32SM::new(wcm.clone());
+        let arith64_sm = Arith64SM::new(wcm.clone());
+        let arith3264_sm = Arith3264SM::new(wcm.clone());
+
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),

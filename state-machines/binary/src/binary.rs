@@ -3,13 +3,18 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{BinaryBasicSM, BinaryExtensionSM};
+use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_pil::{
+    BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
+    BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIRGROUP_ID,
+    BINARY_TABLE_AIR_IDS,
+};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
 
@@ -31,11 +36,28 @@ pub struct BinarySM<F> {
 }
 
 impl<F: Field> BinarySM<F> {
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        binary_basic_sm: Arc<BinaryBasicSM<F>>,
-        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
-    ) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let binary_basic_table_sm =
+            BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+        let binary_basic_sm = BinaryBasicSM::new(
+            wcm.clone(),
+            binary_basic_table_sm,
+            BINARY_AIRGROUP_ID,
+            BINARY_AIR_IDS,
+        );
+
+        let binary_extension_table_sm = BinaryExtensionTableSM::new(
+            wcm.clone(),
+            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+            BINARY_EXTENSION_TABLE_AIR_IDS,
+        );
+        let binary_extension_sm = BinaryExtensionSM::new(
+            wcm.clone(),
+            binary_extension_table_sm,
+            BINARY_EXTENSION_AIRGROUP_ID,
+            BINARY_EXTENSION_AIR_IDS,
+        );
+
         let binary_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
