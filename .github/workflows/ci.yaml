@@ -175,7 +175,6 @@ jobs:
         working-directory: pil2-stark
         run: |
           git submodule update --init --recursive
-          cd pil2-stark
           make clean
           make starks_lib -j
           make -j bctree
