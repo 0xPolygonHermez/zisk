@@ -1,7 +1,7 @@
 use crate::{SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE};
 
-#[cfg(feature = "sp")]
-use crate::SRC_SP;
+// #[cfg(feature = "sp")]
+// use crate::SRC_SP;
 
 /// Read a u64 value from the u8 vector at the specified position in little endian order
 #[inline(always)]
@@ -68,8 +68,8 @@ pub fn source_to_str(source: u64) -> &'static str {
         SRC_MEM => "SRC_MEM",
         SRC_IMM => "SRC_IMM",
         SRC_STEP => "SRC_STEP",
-        #[cfg(feature = "sp")]
-        SRC_SP => "SRC_SP",
+        // #[cfg(feature = "sp")]
+        // SRC_SP => "SRC_SP",
         SRC_IND => "SRC_IND",
         _ => panic!("source_to_str() unknown source({})", source),
     }

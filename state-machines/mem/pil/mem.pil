@@ -73,20 +73,21 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     // if addr_changes == 0 means that addr and previous address are the same
     (1 - addr_changes) * ('addr - addr) === 0;
 
-    col witness value_changes;
-    value_changes === rd * (1 - addr_changes);
+    col witness value_equal;
+    (1 - value_equal) * (1 - wr) * (1 - addr_change) === 0;
 
     col witness first_addr_access_is_read;
-    first_addr_access_is_read ===  rd * addr_changes;
+    (1 - first_addr_access_is_read) * rd * (1 - addr_changes) === 0;
 
     for (int index = 0; index < length(value); index = index + 1) {
-        value_changes * (value[index] - 'value[index])  ===  0;
+        value_equal * (value[index] - 'value[index])  ===  0;
         first_addr_access_is_read * value[index]  ===  0;
     }
 
     // continuations
-    // permutation_proves(MEMORY_CONT_ID, INNER_LAST, [(mem_segment + 1)* (1 - mem_last_segment), 0, 1, 0, (1 - mem_last_segment) * addr, (1 - mem_last_segment) * step, ...value]);
-    // permutation_assumes(MEMORY_CONT_ID, INNER_L1, [mem_segment, 0, 1, 0, addr, step, ...value]);
+    permutation_proves(MEMORY_CONT_ID, SEGMENT_LAST, [(mem_segment + 1), addr, step, ...value], sel: SEGMENT_L1); // last row
+    permutation_assumes(MEMORY_CONT_ID, SEGMENT_L1, [mem_segment, addr, step, ...value], sel: end ); // first row
+    // first row
 
     // bus
     permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel); 
@@ -94,9 +95,9 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
 
 // TODO: detect non default value but not called, mandatory parameter.
 function mem_load(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr bytes = 8, expr value[]) {
-    permutation_assumes(id, [MEMORY_LOAD_OP, addr, step, bytes, ...value], sel:sel);
+    permutation_assumes(id, [MEMORY_LOAD_OP, addr, 1 + step, bytes, ...value], sel:sel);
 }
 
 function mem_store(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr bytes = 8, expr value[]) {
-    permutation_assumes(id, [MEMORY_STORE_OP, addr, step, bytes, ...value], sel:sel);
+    permutation_assumes(id, [MEMORY_STORE_OP, addr, 1 + st  ep, bytes, ...value], sel:sel);
 }
