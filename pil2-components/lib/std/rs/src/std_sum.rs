@@ -1,3 +1,4 @@
+use core::num;
 use std::{
     hash::Hash,
     collections::HashMap,
@@ -389,9 +390,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     };
                     let diff_str = if diff.is_one() { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}",
+                        "\t    • Value:\n\t        {}\n\t      Appears {} [{}/{}] {} {}",
                         format_vec(val),
                         diff,
+                        num_assumes,
+                        num_proves,
                         diff_str,
                         name_str
                     );
@@ -423,9 +426,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     let diff_str = if diff.is_one() { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} at row {}.",
+                        "\t    • Value:\n\t        {}\n\t      Appears {} [{}/{}] {} at row {}.",
                         format_vec(val),
                         diff,
+                        num_assumes,
+                        num_proves,
                         diff_str,
                         row_proves
                     );

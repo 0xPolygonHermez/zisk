@@ -344,9 +344,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     };
                     let diff_str = if diff == 1 { "time" } else { "times" };
                     println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}",
+                        "\t    • Value:\n\t        {}\n\t      Appears {} [{}/{}] {} {}",
                         format_vec(val),
                         diff,
+                        num_assumes,
+                        num_proves,
                         diff_str,
                         name_str
                     );
@@ -393,9 +395,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                         }
                     };
                     println!(
-                        "\t    • Value\n\t        {}\n\t      Appears {} times {}",
+                        "\t    • Value\n\t        {}\n\t      Appears {} [{}/{}] times {}",
                         format_vec(val),
                         diff,
+                        num_assumes,
+                        num_proves,
                         name_str
                     );
 
