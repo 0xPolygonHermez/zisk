@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, WitnessPilout, SetupCtx};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout};
 use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::{RCAirData, RangeCheckAir, Std};
 use p3_field::PrimeField;
@@ -88,16 +88,9 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 }
 
 #[no_mangle]
-pub extern "Rust" fn init_library(
-    _rom_path: Option<PathBuf>,
-    public_inputs_path: Option<PathBuf>,
-) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_level(true)
-        .format_target(false)
-        .filter_level(log::LevelFilter::Debug)
-        .init();
-    let fibonacci_witness = FibonacciWitness::new(public_inputs_path);
+pub extern "Rust" fn init_library(ectx: &ExecutionCtx) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
+    initialize_logger(VerboseMode::Debug);
+
+    let fibonacci_witness = FibonacciWitness::new(ectx.public_inputs_path.clone());
     Ok(Box::new(fibonacci_witness))
 }

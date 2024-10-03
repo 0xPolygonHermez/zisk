@@ -4,7 +4,6 @@ use std::{
 };
 
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_starks_lib_c::set_log_level_c;
 use proofman_util::{timer_start, timer_stop_and_log};
 use crate::WitnessComponent;
 
@@ -58,8 +57,6 @@ impl<F> WitnessManager<F> {
 
     pub fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         log::info!("{}: ··· STARTING PROOF", Self::MY_NAME);
-
-        set_log_level_c(ectx.verbose_mode.into());
 
         for component in self.components.read().unwrap().iter() {
             component.start_proof(pctx.clone(), ectx.clone(), sctx.clone());

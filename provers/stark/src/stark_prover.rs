@@ -366,7 +366,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         hash
     }
 
-    fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Option<Vec<F>> {
+    fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<F> {
         let p_stark: *mut std::ffi::c_void = self.p_stark;
 
         let mut value = vec![F::zero(); self.n_field_elements];
@@ -388,8 +388,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 evals,
                 (self.stark_info.ev_map.len() * Self::FIELD_EXTENSION) as u64,
             );
-        } else if stage == (Self::num_stages(self) + 3) as u64 {
-            return None;
         } else if stage > (Self::num_stages(self) + 3) as u64 {
             let steps = &self.stark_info.stark_struct.steps;
 
@@ -412,7 +410,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 }
             }
         }
-        Some(value)
+        value
     }
 
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript) {

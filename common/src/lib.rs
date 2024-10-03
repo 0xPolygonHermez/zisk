@@ -15,6 +15,7 @@ pub mod global_info;
 pub use air_instance::*;
 pub use air_instances_repository::*;
 pub use buffer_allocator::*;
+use proofman_starks_lib_c::set_log_level_c;
 pub use verbose_mode::*;
 pub use execution_ctx::*;
 pub use lib_pilout::*;
@@ -24,3 +25,13 @@ pub use extended_field::*;
 pub use global_info::*;
 pub use setup::*;
 pub use setup_ctx::*;
+
+pub fn initialize_logger(verbose_mode: VerboseMode) {
+    env_logger::builder()
+        .format_timestamp(None)
+        .format_level(true)
+        .format_target(false)
+        .filter_level(verbose_mode.into())
+        .init();
+    set_log_level_c(verbose_mode.into());
+}

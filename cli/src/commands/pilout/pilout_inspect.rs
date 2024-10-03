@@ -1,6 +1,6 @@
 use clap::Args;
 use pilout::pilout_proxy::PilOutProxy;
-use proofman_common::VerboseMode;
+use proofman_common::initialize_logger;
 use std::path::PathBuf;
 use colored::Colorize;
 
@@ -20,13 +20,7 @@ impl PiloutInspectCmd {
         println!("{} Pilout inspect subcommand", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        let filter_level: VerboseMode = self.verbose.into();
-        env_logger::builder()
-            .format_timestamp(None)
-            .format_level(true)
-            .format_target(false)
-            .filter_level(filter_level.into())
-            .init();
+        initialize_logger(self.verbose.into());
 
         let pilout = PilOutProxy::new(&self.pilout.display().to_string())?;
 
