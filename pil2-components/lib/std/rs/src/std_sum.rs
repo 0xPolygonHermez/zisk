@@ -1,5 +1,4 @@
 use std::{
-
     hash::Hash,
     collections::HashMap,
     fmt::{Display, Debug},
