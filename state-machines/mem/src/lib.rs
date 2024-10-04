@@ -1,9 +1,9 @@
-mod mem;
-mod mem_aligned;
-mod mem_traces;
-mod mem_unaligned;
+mod mem_align_sm;
+mod mem_proxy_sm;
+mod mem_sm;
+mod mem_witness;
 
-pub use mem::*;
-pub use mem_aligned::*;
-pub use mem_traces::*;
-pub use mem_unaligned::*;
+pub use mem_align_sm::*;
+pub use mem_proxy_sm::*;
+pub use mem_sm::*;
+pub use mem_witness::*;

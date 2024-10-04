@@ -8,7 +8,7 @@ trace!(Main0Row, Main0Trace<F> {
 });
 
 trace!(Mem0Row, Mem0Trace<F> {
- mem_segment: F, mem_last_segment: F, addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, value_changes: F, first_addr_access_is_read: F,
+ mem_segment: F, mem_last_segment: F, addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, same_value: F, first_addr_access_is_read: F,
 });
 
 trace!(Binary0Row, Binary0Trace<F> {
@@ -25,4 +25,8 @@ trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
 
 trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 1],
 });

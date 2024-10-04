@@ -6,12 +6,25 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
+#[derive(Clone)]
 pub struct ZiskRequiredMemory {
     pub step: u64,
     pub is_write: bool,
     pub address: u64,
     pub width: u64,
     pub value: u64,
+}
+
+impl ZiskRequiredMemory {
+    pub fn new(step: u64, is_write: bool, address: u64, width: u64, value: u64) -> Self {
+        Self {
+            step,
+            is_write,
+            address,
+            width,
+            value,
+        }
+    }
 }
 
 #[derive(Clone, Default)]

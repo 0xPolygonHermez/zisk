@@ -53,9 +53,11 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     (1 - addr_changes) * ('addr - addr) === 0;
 
     col witness same_value;
+    same_value * (1 - same_value) === 0;
     (1 - same_value) * (1 - wr) * (1 - addr_changes) === 0;
 
     col witness first_addr_access_is_read;
+    first_addr_access_is_read * (1 - first_addr_access_is_read) === 0;
     (1 - first_addr_access_is_read) * rd * (1 - addr_changes) === 0;
 
     for (int index = 0; index < length(value); index = index + 1) {

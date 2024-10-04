@@ -20,7 +20,7 @@ use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_common::{create_buffer_fast, Provable, ThreadController};
-use sm_mem::MemSM;
+use sm_mem::MemProxySM;
 
 #[derive(Default)]
 pub struct MainAirSegment<F> {
@@ -53,7 +53,7 @@ pub struct MainSM<F> {
     // Inputs accumulator from the emulator
     callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
     // State machines
-    mem_sm: Arc<MemSM>,
+    mem_sm: Arc<MemProxySM<F>>,
     binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 }
@@ -81,7 +81,7 @@ impl<'a, F: Field> MainSM<F> {
     pub fn new(
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
-        mem_sm: Arc<MemSM>,
+        mem_sm: Arc<MemProxySM<F>>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
     ) -> Arc<Self> {
@@ -190,7 +190,7 @@ impl<'a, F: Field> MainSM<F> {
 
             // Unregister main state machine as a predecessor for all the secondary state machines
             timer_start!(UNREGISTER_PREDECESSORS);
-            self.mem_sm.unregister_predecessor::<F>(scope);
+            self.mem_sm.unregister_predecessor(scope);
             self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor::<F>(scope);
             timer_stop_and_log!(UNREGISTER_PREDECESSORS);
