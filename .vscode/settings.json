@@ -4,6 +4,8 @@
         "./cli/Cargo.toml",
         "./common/Cargo.toml",
         "./hints/Cargo.toml",
+        "./macros/Cargo.toml",
+        "./pil2-components/lib/std/rs/Cargo.toml",
         "./pilout/Cargo.toml",
         "./proofman/Cargo.toml",
         "./provers/stark/Cargo.toml",
