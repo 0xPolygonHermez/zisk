@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::{BinaryBasicSM, BinaryExtensionSM};
-use p3_field::Field;
+use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
@@ -14,7 +14,7 @@ use zisk_core::{opcode_execute, ZiskRequiredOperation};
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
 
 #[allow(dead_code)]
-pub struct BinarySM<F> {
+pub struct BinarySM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -30,7 +30,7 @@ pub struct BinarySM<F> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 }
 
-impl<F: Field> BinarySM<F> {
+impl<F: PrimeField> BinarySM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         binary_basic_sm: Arc<BinaryBasicSM<F>>,
@@ -74,7 +74,7 @@ impl<F: Field> BinarySM<F> {
     }
 }
 
-impl<F: Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
+impl<F: PrimeField + Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -86,7 +86,7 @@ impl<F: Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
     }
 }
 
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
+impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,

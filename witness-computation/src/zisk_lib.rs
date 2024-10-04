@@ -1,14 +1,9 @@
-use log::trace;
-use pil_std_lib::Std;
+use pil_std_lib::{RCAirData, RangeCheckAir, Std};
 use sm_binary::{
     BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinarySM,
 };
 use sm_quick_ops::QuickOpsSM;
-use std::{
-    error::Error,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
 use p3_field::PrimeField;
@@ -90,6 +85,15 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         pub const QUICKOPS_AIRGROUP_ID: usize = 102;
         pub const QUICKOPS_AIR_IDS: &[usize] = &[10];
 
+        // Create STD instance
+        let rc_air_data = vec![RCAirData {
+            air_name: RangeCheckAir::SpecifiedRanges,
+            airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
+            air_id: SPECIFIED_RANGES_AIR_IDS[0],
+        }];
+
+        let std = Std::new(wcm.clone(), Some(rc_air_data));
+
         let mem_aligned_sm = MemAlignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS);
         let mem_unaligned_sm =
             MemUnalignedSM::new(wcm.clone(), MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS);
@@ -111,6 +115,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
         );
         let binary_extension_sm = BinaryExtensionSM::new(
             wcm.clone(),
+            std.clone(),
             binary_extension_table_sm,
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
@@ -139,8 +144,6 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
             MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS,
         );
-
-        _ = Std::new(wcm.clone(), None);
 
         self.wcm = Some(wcm);
         self.arith_sm = Some(arith_sm);

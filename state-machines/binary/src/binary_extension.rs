@@ -3,16 +3,19 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::BinaryExtensionTableSM;
 use log::info;
-use p3_field::Field;
+use num_bigint::BigInt;
+use p3_field::PrimeField;
+use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation};
+use zisk_core::{
+    opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck,
+};
 use zisk_pil::*;
-
-use crate::BinaryExtensionTableSM;
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -27,8 +30,12 @@ const SIGN_BYTE: u64 = 0x80;
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
 
-pub struct BinaryExtensionSM<F> {
+pub struct BinaryExtensionSM<F: PrimeField> {
+    // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
+
+    // STD
+    std: Arc<Std<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -48,17 +55,19 @@ pub enum BinaryExtensionSMErr {
     InvalidOpcode,
 }
 
-impl<F: Field> BinaryExtensionSM<F> {
+impl<F: PrimeField> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
+        std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_extension_sm = Self {
             wcm: wcm.clone(),
+            std: std.clone(),
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -67,6 +76,8 @@ impl<F: Field> BinaryExtensionSM<F> {
         let binary_extension_sm = Arc::new(binary_extension_sm);
 
         wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
+
+        std.register_predecessor();
 
         binary_extension_sm.binary_extension_table_sm.register_predecessor();
 
@@ -89,6 +100,8 @@ impl<F: Field> BinaryExtensionSM<F> {
             self.threads_controller.wait_for_threads();
 
             self.binary_extension_table_sm.unregister_predecessor(scope);
+
+            self.std.unregister_predecessor(self.wcm.get_arc_pctx(), None);
         }
     }
 
@@ -98,12 +111,19 @@ impl<F: Field> BinaryExtensionSM<F> {
 
     pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
-    ) -> (Vec<BinaryExtension0Row<F>>, Vec<ZiskRequiredBinaryExtensionTable>) {
+    ) -> (
+        Vec<BinaryExtension0Row<F>>,
+        Vec<ZiskRequiredBinaryExtensionTable>,
+        Vec<ZiskRequiredRangeCheck>,
+    ) {
         // Create the trace vector
         let mut trace = Vec::new();
 
         // Create the table required vector
         let mut table_required: Vec<ZiskRequiredBinaryExtensionTable> = Vec::new();
+
+        // Create the range check vector
+        let mut range_check: Vec<ZiskRequiredRangeCheck> = Vec::new();
 
         for i in input {
             // Get the opcode
@@ -112,12 +132,6 @@ impl<F: Field> BinaryExtensionSM<F> {
             // Create an empty trace
             let mut t =
                 BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
-
-            // Execute the opcode
-            //let c: u64;
-            //let flag: bool;
-            //(_, flag) = opcode_execute(i.opcode, i.a, i.b);
-            //let _flag = flag;
 
             // Set if the opcode is a shift operation
             let op_is_shift = (op == 0x0d) ||
@@ -141,13 +155,9 @@ impl<F: Field> BinaryExtensionSM<F> {
                 t.in1[i] = F::from_canonical_u8(*value);
             }
 
-            // Split b in bytes
-            //let b_bytes: [u8; 8] = b.to_le_bytes();
-            t.in2[0] = F::from_canonical_u64(b & MASK_32);
-            t.in2[1] = F::from_canonical_u64((b >> 32) & MASK_32);
-
             // Store b low part into in2_low
             let in2_low: u64 = if op_is_shift { b & 0xFF } else { 0 };
+            t.in2_low = F::from_canonical_u64(in2_low);
 
             // Store b lower bits when shifting, depending on operation size
             let b_low = if op_is_shift_word { b & LS_5_BITS } else { b & LS_6_BITS };
@@ -168,7 +178,8 @@ impl<F: Field> BinaryExtensionSM<F> {
             match i.opcode {
                 0x0d /* SLL */ => {
                     for j in 0..8 {
-                        let out = (a_bytes[j] as u64) << (b_low + 8*j as u64);
+                        let bits_to_shift = b_low + 8*j as u64;
+                        let out = if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
                         t_out[j as usize][0] = out & 0xffffffff;
                         t_out[j as usize][1] = (out >> 32) & 0xffffffff;
                     }
@@ -286,17 +297,11 @@ impl<F: Field> BinaryExtensionSM<F> {
 
                 0x25 /* SE_W */ => {
                     for j in 0..4 {
-                        let out: u64;
-                        if j < 3 {
-                            out = a_bytes[j] as u64;
-                        } else if j == 3 {
+                        let mut out = (a_bytes[j] as u64) << (8 * j as u64);
+                        if j == 3 {
                             if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out = (a_bytes[j] as u64) | SE_MASK_32;
-                            } else {
-                                out = a_bytes[j] as u64;
+                                out = out | SE_MASK_32;
                             }
-                        } else {
-                            out = 0;
                         }
                         t_out[j as usize][0] = out & 0xffffffff;
                         t_out[j as usize][1] = (out >> 32) & 0xffffffff;
@@ -329,23 +334,27 @@ impl<F: Field> BinaryExtensionSM<F> {
                         i as u64,
                         a_bytes[i] as u64,
                         in2_low,
-                        t_out[i][0],
-                        t_out[i][1],
-                        op_is_shift,
                     ),
+                    multiplicity: 1,
                 };
 
                 // Store the required in the vector
                 table_required.push(tr);
             }
+
+            // Store the range check
+            if op_is_shift {
+                let rc = ZiskRequiredRangeCheck { rc: in2_0 };
+                range_check.push(rc);
+            }
         }
 
         // Return successfully
-        (trace, table_required)
+        (trace, table_required, range_check)
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
+impl<F: PrimeField + Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -357,7 +366,7 @@ impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
     }
 }
 
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
+impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
     fn calculate(
         &self,
         operation: ZiskRequiredOperation,
@@ -386,9 +395,11 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
+                let std_cloned = self.std.clone();
+
                 scope.spawn(move |scope| {
-                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
-                    binary_extension_table_sm.prove(&table_required, false, scope);
+                    let (mut trace_row, mut table_required, range_check) =
+                        Self::process_slice(&drained_inputs);
 
                     let air = wcm
                         .get_pctx()
@@ -403,6 +414,44 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F
                         (drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0) as u32
                     );
 
+                    let mut trace_row_len = trace_row.len();
+
+                    if drain && (air.num_rows() > trace_row_len) {
+                        let padding_size = air.num_rows() - trace_row_len;
+
+                        let mut padding_row = BinaryExtension0Row::default();
+                        padding_row.op = F::from_canonical_u64(0x25);
+
+                        for _ in trace_row_len..air.num_rows() {
+                            trace_row.push(padding_row);
+                        }
+
+                        for i in 0..8 {
+                            table_required.push(ZiskRequiredBinaryExtensionTable {
+                                opcode: 0,
+                                a: 0,
+                                b: 0,
+                                offset: i,
+                                row: BinaryExtensionTableSM::<F>::calculate_table_row(
+                                    0x25, i, 0, 0,
+                                ),
+                                multiplicity: padding_size as u64,
+                            });
+                        }
+
+                        trace_row_len = trace_row.len();
+                    }
+
+                    binary_extension_table_sm.prove(&table_required, false, scope);
+
+                    for rc in range_check {
+                        std_cloned.range_check(
+                            F::from_canonical_u64(rc.rc),
+                            BigInt::from(0),
+                            BigInt::from(0xFFFFFF),
+                        );
+                    }
+
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
                         .get_buffer_info(
@@ -412,7 +461,6 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F
                         )
                         .expect("Binary extension buffer not found");
 
-                    let trace_row_len = trace_row.len();
                     let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
                         .unwrap()
                         .buffer

@@ -108,11 +108,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
         for i in input {
             assert!(i.row < self.num_rows as u64);
-            multiplicity[i.row as usize] += 1;
-            //println!(
-            //    "BinaryBasicTableSM::process_slice() i.row={} multiplicity[i.row]={}",
-            //    i.row, multiplicity[i.row as usize]
-            //);
+            multiplicity[i.row as usize] += i.multiplicity;
         }
     }
 
@@ -139,10 +135,6 @@ impl<F: Field> BinaryBasicTableSM<F> {
             offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode;
         //assert!(row < self.num_rows as u64);
 
-        /* println!(
-            "BinaryBasicTableSM::calculate_table_row() #={},{},{},{},{},{},{},{},{}",
-            last, opcode, a, b, cin, c, flags, row, i
-        ); */
         row
     }
 

@@ -75,16 +75,17 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
     for (int i = 0; i < N; i++) {
         int [op, offset, a, b, op_is_shift] = [OP[i], OFFSET[i], A[i], B[i], OP_IS_SHIFT[i]];
         int _out = 0;
+        const int _a = a << (8*offset);
         switch (op) {
             case 0x0d: // SLL
-                _out = a << ((b & LS_6_BITS) + 8 * offset); 
+                _out = _a << (b & LS_6_BITS); 
 
             case 0x0e: // SRL
-                _out = (a << 8*offset) >> (b & LS_6_BITS);
+                _out = _a >> (b & LS_6_BITS);
 
             case 0x0f: { // SRA 
                 const int _b = b & LS_6_BITS;
-                _out = (a << 8*offset) >> _b;
+                _out = _a >> _b;
                 if (offset == 7) {
                     // most significant bit of most significant byte define if negative or not
                     // if negative then add b bits one on the left
@@ -98,7 +99,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     // last most significant bytes are ignored because it's 32-bit operation
                     _out = 0;
                 } else {
-                    _out = ((a << (b & LS_5_BITS)) + 8 * offset) & MASK_32;
+                    _out = (_a << (b & LS_5_BITS)) & MASK_32;
                     if (_out & SIGN_32_BIT) {
                         _out = _out | SE_MASK_32;
                     }
@@ -109,7 +110,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     // last most significant bytes are ignored because it's 32-bit operation
                     _out = 0;
                 } else {
-                    _out = ((a << 8*offset) >> (b & LS_5_BITS)) & MASK_32;
+                    _out = (_a >> (b & LS_5_BITS)) & MASK_32;
                     if (_out & SIGN_32_BIT) {
                         _out = _out | SE_MASK_32;
                     }
@@ -121,7 +122,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     _out = 0;
                 } else {
                     const int _b = b & LS_5_BITS;
-                    _out = (a << 8*offset) >> _b;
+                    _out = _a >> _b;
                     if (offset == 3) {
                         // most significant bit of most significant byte define if negative or not
                         // if negative then add b bits one on the left
@@ -146,24 +147,22 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     _out = a;
                 } else if (offset == 1) {
                     // the most significant bit of second byte determines the sign extend
-                    _out = (a & SIGN_BYTE) ? a | SE_MASK_16 : a
+                    _out = (a & SIGN_BYTE) ? _a | SE_MASK_16 : _a
                 } else {
                     // the rest of the bytes are ignored
                     _out = 0;
                 }
 
             case 0x25: // SE_W
-                if (offset < 3) {
-                    // three firsts bytes not define the sign extend, but participate of result
-                    _out = a;
-                } else if (offset == 3) {
-                    // the most significant bit of fourth byte determines the sign extend
-                    _out = (a & SIGN_BYTE) ? a | SE_MASK_32 : a
-                } else {
-                    // the rest of the bytes are ignored
-                    _out = 0;
+                if (offset <= 3) {
+                    _out = _a;
+                    if (offset == 3) {
+                        if (a & SIGN_BYTE) {
+                            // the most significant bit of fourth byte determines the sign extend
+                            _out = _out | SE_MASK_32
+                        }
+                    }
                 }
-
             default:
                 error(`Invalid operation ${op}`);
         }
@@ -172,7 +171,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
         const int _c1 = (_out >> 32) & MASK_32;
         C0[i] = _c0;
         C1[i] = _c1;
-        log(`T ${op},${offset},${a},${b},${_c0},${_c1},${op_is_shift},${i}`)
+        log(`T ${op},${offset},${a},${b},${_c0},${_c1},${op_is_shift},${i},${_out}`)
     }
     #pragma timer t2 end
     #pragma timer tt end

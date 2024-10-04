@@ -125,21 +125,14 @@ impl<F: Field> BinaryExtensionTableSM<F> {
                     i.row, self.num_rows
                 );
             }
-            multiplicity[i.row as usize] += 1;
+            multiplicity[i.row as usize] += i.multiplicity;
         }
     }
 
     //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
-    pub fn calculate_table_row(
-        opcode: u8,
-        offset: u64,
-        a: u64,
-        b: u64,
-        out0: u64,         // Ouput, for debugging purposes only
-        out1: u64,         // Ouput, for debugging purposes only
-        op_is_shift: bool, // Ouput, for debugging purposes only
-    ) -> u64 {
+    pub fn calculate_table_row(opcode: u8, offset: u64, a: u64, b: u64) -> u64 {
         // Calculate the different row offset contributors, according to the PIL
+        assert!(a <= 0xff);
         let offset_a: u64 = a;
         assert!(offset < 0x08);
         let offset_offset: u64 = offset * P2_8;
@@ -148,21 +141,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let offset_opcode: u64 = Self::offset_opcode(opcode);
         let row = offset_a + offset_offset + offset_b + offset_opcode;
         //assert!(row < self.num_rows as u64);
-
-        println!(
-            "BinaryExtensionTableSM::calculate_table_row() #={},{},{},{},{},{},{},{}",
-            opcode, offset, a, b, out0, out1, row, op_is_shift
-        );
-        assert!(a <= 0xff);
-
-        // TODO: remove
-        let num_rows = 8 * 524288;
-        if row >= num_rows {
-            panic!(
-                "BinaryExtensionTableSM::process_slice() found i.row={} >= num_rows={}",
-                row, num_rows
-            );
-        }
 
         row
     }
