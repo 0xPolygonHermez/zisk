@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryExtensionTable, P2_11, P2_19, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, P2_11, P2_19, P2_8};
 use zisk_pil::{
     BinaryExtensionTable0Trace, BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS,
 };
@@ -179,7 +179,7 @@ impl<F: Field> Provable<ZiskRequiredBinaryExtensionTable, OpResult> for BinaryEx
         &self,
         operation: ZiskRequiredBinaryExtensionTable,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

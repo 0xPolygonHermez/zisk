@@ -4,16 +4,16 @@ on:
   push:
     branches: [develop]
     paths:
-      - 'emulator/**'
-      - 'riscv/**'
-      - 'core/**'
+      - "emulator/**"
+      - "riscv/**"
+      - "core/**"
   pull_request:
     branches:
-      - '**'
+      - "**"
     paths:
-      - 'emulator/**'
-      - 'riscv/**'
-      - 'core/**'
+      - "emulator/**"
+      - "riscv/**"
+      - "core/**"
 
 jobs:
   docker-ziskof-check:
@@ -25,14 +25,12 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - uses: actions/checkout@v2
-      - name: Install nightly
+      - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly-2024-07-21
-            override: true
-            components: rustfmt, clippy
-      
+          components: rustfmt, clippy
+          toolchain: stable
+
       - name: Set up git private repo access
         run: |
           git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com
@@ -51,7 +49,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          toolchain: nightly-2024-07-21
           args: --release --all-features -p ziskemu
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native

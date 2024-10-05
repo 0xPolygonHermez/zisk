@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::{BinaryTable0Trace, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
@@ -201,7 +201,7 @@ impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicT
         &self,
         operation: ZiskRequiredBinaryBasicTable,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

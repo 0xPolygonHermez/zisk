@@ -1,4 +1,3 @@
-#![feature(asm_const)]
 #![allow(unexpected_cfgs)]
 
 pub mod ziskos_definitions;
@@ -105,12 +104,15 @@ mod ziskos {
           // "tail-call" to {entry}
           "call {_zisk_main}",
           "csrr t0, marchid",
-          "li   t1, {_ARCH_ID_ZISK}",
+          //"li   t1, {_ARCH_ID_ZISK}",
+          "li   t1, 0xFFFEEEE",
           "beq t0, t1, 1f",
 
           // QEmuu exit
-          "li t0, {_QEMU_EXIT_ADDR}",
-          "li t1, {_QEMU_EXIT_CODE}",
+          //"li t0, {_QEMU_EXIT_ADDR}",
+          //"li t1, {_QEMU_EXIT_CODE}",
+          "li t0, 0x100000",
+          "li t1, 0x5555",
           "sw t1, 0(t0)",
           "j 2f",
 
@@ -121,9 +123,6 @@ mod ziskos {
           "2: j 2b",
 
           _zisk_main = sym _zisk_main, // {entry} refers to the function [entry] below
-          _QEMU_EXIT_ADDR = const QEMU_EXIT_ADDR,
-          _QEMU_EXIT_CODE = const QEMU_EXIT_CODE,
-          _ARCH_ID_ZISK = const ARCH_ID_ZISK,
           options(noreturn) // we must handle "returning" from assembly
         );
 

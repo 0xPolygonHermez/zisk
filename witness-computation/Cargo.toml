@@ -14,7 +14,7 @@ sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-quick-ops = { path = "../state-machines/quick-ops" }
-zisk-pil = { path = "../pil/v0.1" }
+zisk-pil = { path = "../pil" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }

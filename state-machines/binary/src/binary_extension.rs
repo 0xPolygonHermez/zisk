@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{
-    opcode_execute, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck,
+    zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck,
 };
 use zisk_pil::*;
 
@@ -371,7 +371,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

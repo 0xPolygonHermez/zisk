@@ -1,6 +1,7 @@
 use log::info;
 use p3_field::PrimeField;
 
+use proofman_util::{timer_start, timer_stop_and_log};
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -13,12 +14,12 @@ use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
-use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
+use zisk_pil::{Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_common::{Provable, ThreadController};
+use sm_common::{create_buffer_fast, Provable, ThreadController};
 use sm_mem::MemSM;
 
 #[derive(Default)]
@@ -33,7 +34,7 @@ impl<F: Default + Clone> MainAirSegment<F> {
         Self {
             air_segment_id: segment_id,
             filled_inputs: 0,
-            inputs: vec![Main0Row::<F>::default(); inputs_size],
+            inputs: create_buffer_fast(inputs_size),
         }
     }
 }
@@ -63,7 +64,6 @@ impl<'a, F: PrimeField> MainSM<F> {
     /// Default number of inputs of the main state machine that are accumulated before being
     /// processed
     const CALLBACK_SIZE: usize = 2usize.pow(16);
-    const MAX_ACCUMULATED: usize = 2usize.pow(21);
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -79,13 +79,11 @@ impl<'a, F: PrimeField> MainSM<F> {
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(
-        rom_path: &Path,
-        wcm: &'a WitnessManager<F>,
+        rom_path: PathBuf,
+        wcm: Arc<WitnessManager<F>>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
-        airgroup_id: usize,
-        air_ids: &[usize],
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let zisk_rom = if rom_path.extension().unwrap() == "elf" {
@@ -123,7 +121,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
-        wcm.register_component(main_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
@@ -191,9 +189,11 @@ impl<'a, F: PrimeField> MainSM<F> {
             self.threads_controller.wait_for_threads();
 
             // Unregister main state machine as a predecessor for all the secondary state machines
+            timer_start!(UNREGISTER_PREDECESSORS);
             self.mem_sm.unregister_predecessor::<F>(scope);
             self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor::<F>(scope);
+            timer_stop_and_log!(UNREGISTER_PREDECESSORS);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {
@@ -204,7 +204,12 @@ impl<'a, F: PrimeField> MainSM<F> {
         // Terminate the state machines with the remaining inputs
         let mut callback_inputs = self.callback_inputs.lock().unwrap();
         let last_air_segment = callback_inputs.last_mut().unwrap();
-        if last_air_segment.inputs.is_empty() {
+
+        // If `last_air_segment` is full, it means the air instance for the last segment is already
+        // created. We need to mark this air instance as the last segment.
+        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+
+        if last_air_segment.filled_inputs == air.num_rows() {
             // Get the last segment
             let last_air_segment_idx =
                 pctx.air_instance_repo.find_last_segment(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).expect(
@@ -226,7 +231,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             // Map the F buffer to a Main0Trace
             let mut main_trace = Main0Trace::<F>::map_buffer(
                 &mut air_instance.buffer,
-                Self::MAX_ACCUMULATED,
+                air.num_rows(),
                 offsets[0] as usize,
             )
             .unwrap();
@@ -258,17 +263,15 @@ impl<'a, F: PrimeField> MainSM<F> {
         sctx: Arc<SetupCtx>,
     ) {
         // Compute the AIR segment and the position where the current EmuTrace should be placed
-        let air_step = emu_traces.start.step as f64 / Self::MAX_ACCUMULATED as f64;
+        let num_rows = pctx.clone().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
+        let air_step = emu_traces.start.step as f64 / num_rows as f64;
         let segment_id = air_step.floor() as usize;
-        let pos_id =
-            (air_step.fract() * Self::MAX_ACCUMULATED as f64 / Self::CALLBACK_SIZE as f64) as usize;
+        let pos_id = (air_step.fract() * num_rows as f64 / Self::CALLBACK_SIZE as f64) as usize;
 
         // As this calls are received sequentially, when pos_id is 0, a new segment is created
         if pos_id == 0 {
-            self.callback_inputs
-                .lock()
-                .unwrap()
-                .push(MainAirSegment::new(segment_id as u32, Self::MAX_ACCUMULATED));
+            let buffer = MainAirSegment::new(segment_id as u32, num_rows);
+            self.callback_inputs.lock().unwrap().push(buffer);
         }
 
         self.threads_controller.add_working_thread();
@@ -292,20 +295,19 @@ impl<'a, F: PrimeField> MainSM<F> {
                 source_iter,
             );
             air_segment.filled_inputs += len;
-            assert!(
-                air_segment.filled_inputs <= Self::MAX_ACCUMULATED,
-                "Too many inputs in a Main AIR segment"
-            );
-
-            self.prove(emu_slice.required, ectx.clone(), scope);
+            assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
 
             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
-            if air_segment.filled_inputs == Self::MAX_ACCUMULATED {
+            if air_segment.filled_inputs == num_rows {
                 let air_segment = mem::take(air_segment);
+                let cloned_ectx = ectx.clone();
                 scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, sctx, false);
+                    Self::create_air_instance(air_segment, pctx, cloned_ectx, sctx, false);
                 });
             }
+            drop(inputs);
+
+            self.prove(emu_slice.required, ectx.clone(), scope);
         });
     }
 
@@ -333,6 +335,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             air.num_rows(),
             (air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0) as u32
         );
+        timer_start!(CREATE_AIR_INSTANCE);
 
         // Compute buffer size using the BufferAllocator
         let (buffer_size, offsets) = ectx
@@ -359,10 +362,20 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         let main_trace_buffer = main_trace.buffer.unwrap();
 
-        let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+        let mut buffer = create_buffer_fast(buffer_size as usize);
 
-        buffer[offsets[0] as usize..offsets[0] as usize + main_trace_buffer.len()]
-            .copy_from_slice(&main_trace_buffer);
+        let start = offsets[0] as usize;
+        let end = start + main_trace_buffer.len();
+        use rayon::prelude::*;
+        buffer[start..end]
+            .par_chunks_mut(main_trace_buffer.len() / rayon::current_num_threads())
+            .zip(
+                main_trace_buffer
+                    .par_chunks(main_trace_buffer.len() / rayon::current_num_threads()),
+            )
+            .for_each(|(buffer_chunk, main_chunk)| {
+                buffer_chunk.copy_from_slice(main_chunk);
+            });
 
         let air_instance = AirInstance::new(
             MAIN_AIRGROUP_ID,
@@ -372,6 +385,8 @@ impl<'a, F: PrimeField> MainSM<F> {
         );
 
         pctx.air_instance_repo.add_air_instance(air_instance);
+
+        timer_stop_and_log!(CREATE_AIR_INSTANCE);
     }
 
     /// Proves a batch of inputs
@@ -383,19 +398,19 @@ impl<'a, F: PrimeField> MainSM<F> {
     #[inline(always)]
     fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
-        let binary = mem::take(&mut emu_required.binary);
-        let arith = mem::take(&mut emu_required.arith);
+        let _binary = mem::take(&mut emu_required.binary);
+        let _arith = mem::take(&mut emu_required.arith);
 
         let mem_sm = self.mem_sm.clone();
-        let binary_sm = self.binary_sm.clone();
-        let arith_sm = self.arith_sm.clone();
+        let _binary_sm = self.binary_sm.clone();
+        let _arith_sm = self.arith_sm.clone();
 
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
             mem_sm.prove(&memory, false, scope);
-            binary_sm.prove(&binary, false, scope);
-            arith_sm.prove(&arith, false, scope);
+            // binary_sm.prove(&binary, false, scope);
+            //arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
         });

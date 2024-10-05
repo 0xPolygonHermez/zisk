@@ -1,4 +1,4 @@
-use zisk_core::{ZiskInst, ZiskOperations, REG_FIRST, REG_LAST};
+use zisk_core::{zisk_ops::ZiskOp, ZiskInst, REG_FIRST, REG_LAST};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -125,7 +125,6 @@ impl Stats {
             self.mops.mwrite_na1 as f64 * COST_MEMA_W1 +
             self.mops.mwrite_na2 as f64 * COST_MEMA_W2;
 
-        let operations = ZiskOperations::new();
         let mut total_opcodes: u64 = 0;
         let mut opcode_steps: [u64; 256] = [0; 256];
         let mut total_opcode_steps: u64 = 0;
@@ -141,18 +140,16 @@ impl Stats {
             total_opcodes += self.ops[opcode];
 
             // Get the Zisk instruction corresponding to this opcode
-            let op8 = opcode as u8;
-            let inst =
-                operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
+            let inst = ZiskOp::try_from_code(opcode as u8).unwrap();
 
             // Increase steps
-            opcode_steps[opcode] += inst.s;
-            total_opcode_steps += inst.s;
+            opcode_steps[opcode] += inst.steps();
+            total_opcode_steps += inst.steps();
 
             // Increse cost
             let value = self.ops[opcode] as f64;
-            opcode_cost[opcode] += value * inst.s as f64 / AREA_PER_SEC;
-            total_opcode_cost += value * inst.s as f64 / AREA_PER_SEC;
+            opcode_cost[opcode] += value * inst.steps() as f64 / AREA_PER_SEC;
+            total_opcode_cost += value * inst.steps() as f64 / AREA_PER_SEC;
         }
 
         let cost_usual = self.usual as f64 * COST_USUAL;
@@ -199,14 +196,15 @@ impl Stats {
             }
 
             // Get the Zisk instruction corresponding to this opcode
-            let op8 = opcode as u8;
-            let inst =
-                operations.op_from_code.get(&op8).expect("Opcode not found in ZiskOperations");
+            let inst = ZiskOp::try_from_code(opcode as u8).unwrap();
 
             // Log opcode cost
             output += &format!(
                 "    {}: {:.2} sec ({} steps/op) ({} ops)\n",
-                inst.n, opcode_cost[opcode], opcode_steps[opcode], self.ops[opcode]
+                inst.name(),
+                opcode_cost[opcode],
+                opcode_steps[opcode],
+                self.ops[opcode]
             );
         }
 
