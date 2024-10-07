@@ -230,7 +230,7 @@ impl<F: Field + 'static> ProofMan<F> {
     }
 
     fn initialize_provers(sctx: Arc<SetupCtx>, provers: &mut Vec<Box<dyn Prover<F>>>, pctx: Arc<ProofCtx<F>>) {
-        info!("{}: Initializing prover and creating buffers", Self::MY_NAME);
+        info!("{}: ··· INITIALIZING PROVER CLIENTS", Self::MY_NAME);
 
         timer_start!(INITIALIZING_PROVERS);
         for (prover_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate() {
@@ -318,7 +318,7 @@ impl<F: Field + 'static> ProofMan<F> {
         transcript: &mut FFITranscript,
         debug_mode: u64,
     ) {
-        info!("{}: Calculating challenges for stage {}", Self::MY_NAME, stage);
+        info!("{}: ··· CALCULATING CHALLENGES FOR STAGE {}", Self::MY_NAME, stage);
         let airgroups = proof_ctx.global_info.subproofs.clone();
         for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
             if debug_mode != 0 {
@@ -468,7 +468,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut air_groups: Vec<_> = air_instances.keys().collect();
         air_groups.sort();
 
-        info!("{}: >>> PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
+        info!("{}: --- PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
         info!("{}:     ► {} Air instances found:", Self::MY_NAME, air_instances_repo.len());
         for air_group in air_groups {
             let air_group_instances = air_instances.get(air_group).unwrap();
@@ -485,6 +485,6 @@ impl<F: Field + 'static> ProofMan<F> {
                 );
             }
         }
-        info!("{}: <<< PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
+        info!("{}: --- PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
     }
 }

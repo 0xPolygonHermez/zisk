@@ -18,12 +18,12 @@ pub struct Std<F: PrimeField> {
 }
 
 impl<F: PrimeField> Std<F> {
-    const _MY_NAME: &'static str = "STD";
+    const MY_NAME: &'static str = "STD     ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, rc_air_data: Option<Vec<RCAirData>>) -> Arc<Self> {
         let mode = StdMode::new(ModeName::Standard, None, 10);
 
-        log::info!("The STD has been initialized on mode {}", mode.name);
+        log::info!("{}: ··· The PIL2 STD library has been initialized on mode {}", Self::MY_NAME, mode.name);
 
         // Instantiate the STD components
         StdProd::new(mode.clone(), wcm.clone());

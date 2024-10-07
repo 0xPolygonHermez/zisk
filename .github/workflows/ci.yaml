@@ -159,7 +159,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-compiler
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: develop
+          ref: 5e4185c07b717f27d627a4249e7665881593f32d
           path: pil2-compiler
 
       - name: Install pil2-compiler dependencies
