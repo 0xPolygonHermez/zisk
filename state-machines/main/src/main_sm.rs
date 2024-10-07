@@ -408,7 +408,7 @@ impl<'a, F: PrimeField> MainSM<F> {
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
-            mem_sm.prove(&memory, false, scope);
+            // mem_sm.prove(&memory, false, scope);
             binary_sm.prove(&binary, false, scope);
             //arith_sm.prove(&arith, false, scope);
 
