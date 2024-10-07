@@ -6,7 +6,8 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::AirInstance;
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
@@ -93,10 +94,11 @@ impl<F: Field> BinaryBasicSM<F> {
         required: &Vec<ZiskRequiredOperation>,
     ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasicTable>) {
         // Create the trace vector
-        let mut trace: Vec<Binary0Row<F>> = Vec::new();
+        let mut trace: Vec<Binary0Row<F>> = Vec::with_capacity(required.len());
 
         // Create the table required vector
-        let mut table_required: Vec<ZiskRequiredBinaryBasicTable> = Vec::new();
+        let mut table_required: Vec<ZiskRequiredBinaryBasicTable> =
+            Vec::with_capacity(required.len() * 8);
 
         for r in required {
             // Create an empty trace
@@ -508,27 +510,9 @@ impl<F: Field> BinaryBasicSM<F> {
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
@@ -607,10 +591,9 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                     let trace_buffer = Binary0Trace::<F>::map_row_vec(trace_row, false).unwrap();
 
-                    let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
-
-                    buffer[offsets[0] as usize..
-                        offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
+                    let mut buffer = create_buffer_fast(buffer_size as usize);
+                    buffer[offsets[0] as usize
+                        ..offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer.buffer.unwrap());
 
                     let air_instance =
@@ -622,18 +605,5 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 });
             }
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-
-        result
     }
 }

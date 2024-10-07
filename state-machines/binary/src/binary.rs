@@ -7,10 +7,9 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
     BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIRGROUP_ID,
@@ -98,27 +97,9 @@ impl<F: PrimeField> BinarySM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}
 
 impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         let mut _inputs_basic = Vec::new();
         let mut _inputs_extension = Vec::new();
@@ -177,18 +158,8 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
             });
         }
         drop(inputs_extension);
-    }
 
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
 
-        self.prove(&[operation], drain, scope);
-
-        result
+        
     }
 }

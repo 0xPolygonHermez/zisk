@@ -7,6 +7,7 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
@@ -75,7 +76,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 )
                 .expect("BinaryTable buffer not found");
 
-            let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+            let mut buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
             let mut trace_accessor =
                 BinaryTable0Trace::map_buffer(&mut buffer, self.num_rows, offsets[0] as usize)
                     .unwrap();

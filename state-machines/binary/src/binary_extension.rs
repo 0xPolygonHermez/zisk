@@ -9,13 +9,11 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::AirInstance;
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{
-    zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation,
-    ZiskRequiredRangeCheck,
-};
+use zisk_core::{ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck};
 use zisk_pil::*;
 
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -118,10 +116,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         Vec<ZiskRequiredRangeCheck>,
     ) {
         // Create the trace vector
-        let mut trace = Vec::new();
+        let mut trace = Vec::with_capacity(input.len());
 
         // Create the table required vector
-        let mut table_required: Vec<ZiskRequiredBinaryExtensionTable> = Vec::new();
+        let mut table_required: Vec<ZiskRequiredBinaryExtensionTable> =
+            Vec::with_capacity(input.len() * 8);
 
         // Create the range check vector
         let mut range_check: Vec<ZiskRequiredRangeCheck> = Vec::new();
@@ -135,12 +134,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
             // Set if the opcode is a shift operation
-            let op_is_shift = (op == 0x0d) ||
-                (op == 0x0e) ||
-                (op == 0x0f) ||
-                (op == 0x1d) ||
-                (op == 0x1e) ||
-                (op == 0x1f);
+            let op_is_shift = (op == 0x0d)
+                || (op == 0x0e)
+                || (op == 0x0f)
+                || (op == 0x1d)
+                || (op == 0x1e)
+                || (op == 0x1f);
             t.op_is_shift = F::from_bool(op_is_shift);
 
             // Set if the opcode is a shift word operation
@@ -353,27 +352,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
 
 impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
@@ -466,10 +447,11 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         .unwrap()
                         .buffer
                         .unwrap();
-                    let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
 
-                    buffer[offsets[0] as usize..
-                        offsets[0] as usize + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
+                    let mut buffer = create_buffer_fast(buffer_size as usize);
+                    buffer[offsets[0] as usize
+                        ..offsets[0] as usize
+                            + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer);
 
                     let air_instance = AirInstance::new(
@@ -485,18 +467,5 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                 });
             }
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-
-        result
     }
 }

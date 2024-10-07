@@ -7,6 +7,7 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, P2_11, P2_19, P2_8};
@@ -80,7 +81,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
                 )
                 .expect("Binary extension Table buffer not found");
 
-            let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+            let mut buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
             let mut trace_accessor = BinaryExtensionTable0Trace::map_buffer(
                 &mut buffer,
                 self.num_rows,
