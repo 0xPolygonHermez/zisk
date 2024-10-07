@@ -9,12 +9,20 @@ pub struct NewCmd {
     name: String,
 }
 
-const TEMPLATE_REPOSITORY_URL: &str = "https://github.com/0xPolygonHermez/zisk_template";
-
 impl NewCmd {
     pub fn run(&self) -> Result<()> {
         let root = Path::new(&self.name);
-
+        let zisk_token = std::env::var("ZISK_TOKEN");
+        let repo_url = match zisk_token {
+            Ok(zisk_token) => {
+                println!("Detected ZISK_TOKEN, using it to clone zisk_template");
+                format!("https://{}@github.com/0xPolygonHermez/zisk_template", zisk_token)
+            }
+            Err(_) => {
+                println!("No ZISK_TOKEN detected. If you get throttled by Github, set it to bypass the rate limit.");
+                "ssh://git@github.com/0xPolygonHermez/zisk_template".to_string()
+            }
+        };
         // Create the root directory if it doesn't exist.
         if !root.exists() {
             fs::create_dir(&self.name)?;
@@ -23,7 +31,7 @@ impl NewCmd {
         // Clone the repository.
         let output = Command::new("git")
             .arg("clone")
-            .arg(TEMPLATE_REPOSITORY_URL)
+            .arg(repo_url)
             .arg(root.as_os_str())
             .arg("--recurse-submodules")
             .arg("--depth=1")
