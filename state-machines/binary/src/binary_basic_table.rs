@@ -131,11 +131,9 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
         let offset_result_is_a: u64 = if Self::opcode_result_is_a(opcode) { P2_18 } else { 0 }; // TODO: Should we add it only if c == a?
         let offset_opcode: u64 = Self::offset_opcode(opcode);
-        let row =
-            offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode;
-        //assert!(row < self.num_rows as u64);
 
-        row
+        offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
+        //assert!(row < self.num_rows as u64);
     }
 
     fn opcode_has_last(opcode: u8) -> bool {

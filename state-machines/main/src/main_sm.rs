@@ -13,13 +13,14 @@ use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_util::create_buffer_fast;
 
 use zisk_pil::{Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_common::{create_buffer_fast, Provable, ThreadController};
+use sm_common::{Provable, ThreadController};
 use sm_mem::MemSM;
 
 #[derive(Default)]

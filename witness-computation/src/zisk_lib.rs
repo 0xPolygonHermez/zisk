@@ -7,10 +7,10 @@ use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman_util::{timer_start, timer_stop_and_log};
-use sm_main::MainSM;
-use sm_binary::BinarySM;
-use sm_mem::MemSM;
 use sm_arith::ArithSM;
+use sm_binary::BinarySM;
+use sm_main::MainSM;
+use sm_mem::MemSM;
 
 pub struct ZiskWitness<F: PrimeField> {
     pub public_inputs_path: PathBuf,

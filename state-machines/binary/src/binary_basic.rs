@@ -563,10 +563,13 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     if drain && (air.num_rows() > trace_row_len) {
                         let padding_size = air.num_rows() - trace_row_len;
 
-                        let mut padding_row = Binary0Row::default();
-                        padding_row.m_op = F::from_canonical_u8(0x20); // AND
-                        padding_row.multiplicity = F::zero();
-                        padding_row.main_step = F::zero(); // TODO: remove, since main_step is just for debugging
+                        let padding_row = Binary0Row::<F> {
+                            m_op: F::from_canonical_u8(0x20),
+                            multiplicity: F::zero(),
+                            main_step: F::zero(), /* TODO: remove, since main_step is just for
+                                                   * debugging */
+                            ..Default::default()
+                        };
 
                         for _i in trace_row_len..air.num_rows() {
                             trace_row.push(padding_row);

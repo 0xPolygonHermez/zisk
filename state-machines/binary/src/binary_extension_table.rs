@@ -139,10 +139,9 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         assert!(b <= 0x3f);
         let offset_b: u64 = b * P2_11;
         let offset_opcode: u64 = Self::offset_opcode(opcode);
-        let row = offset_a + offset_offset + offset_b + offset_opcode;
-        //assert!(row < self.num_rows as u64);
 
-        row
+        offset_a + offset_offset + offset_b + offset_opcode
+        //assert!(row < self.num_rows as u64);
     }
 
     fn offset_opcode(opcode: u8) -> u64 {

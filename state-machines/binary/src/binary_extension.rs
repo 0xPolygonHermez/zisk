@@ -181,16 +181,16 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     for j in 0..8 {
                         let bits_to_shift = b_low + 8*j as u64;
                         let out = if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x0e /* SRL */ => {
                     for j in 0..8 {
                         let out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -201,11 +201,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                             // most significant bit of most significant byte define if negative or not
                             // if negative then add b bits one on the left
                             if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out = out | (MASK_64 << (64 - b_low));
+                                out |= MASK_64 << (64 - b_low);
                             }
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -218,11 +218,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         else {
                             out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
                             if (out & SIGN_32_BIT) != 0 {
-                                out = out | SE_MASK_32;
+                                out |= SE_MASK_32;
                             }
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -234,11 +234,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         } else {
                             out = (((a_bytes[j] as u64) << (8 * j as u64)) >> b_low) & MASK_32;
                             if (out & SIGN_32_BIT) != 0 {
-                                out = out | SE_MASK_32;
+                                out |= SE_MASK_32;
                             }
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -249,14 +249,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                             out = 0;
                         } else {
                             out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
-                            if j == 3 {
-                                if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                    out = out | (MASK_64 << (32 - b_low));
-                                }
+                            if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                    out |= MASK_64 << (32 - b_low);
                             }
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -272,8 +270,8 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         } else {
                             out = 0;
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
@@ -291,21 +289,21 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         } else {
                             out = 0;
                         }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
 
                 0x25 /* SE_W */ => {
                     for j in 0..4 {
                         let mut out = (a_bytes[j] as u64) << (8 * j as u64);
-                        if j == 3 {
-                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out = out | SE_MASK_32;
+                        if j == 3 &&
+                             ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out |= SE_MASK_32;
                             }
-                        }
-                        t_out[j as usize][0] = out & 0xffffffff;
-                        t_out[j as usize][1] = (out >> 32) & 0xffffffff;
+
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
                     }
                 },
                 _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", i.opcode),
@@ -323,7 +321,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             // Store the trace in the vector
             trace.push(t);
 
-            for i in 0..8 {
+            for (i, a_byte) in a_bytes.iter().enumerate() {
                 // Create a table required
                 let tr = ZiskRequiredBinaryExtensionTable {
                     opcode: op,
@@ -333,7 +331,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     row: BinaryExtensionTableSM::<F>::calculate_table_row(
                         op,
                         i as u64,
-                        a_bytes[i] as u64,
+                        *a_byte as u64,
                         in2_low,
                     ),
                     multiplicity: 1,
@@ -420,8 +418,10 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                     if drain && (air.num_rows() > trace_row_len) {
                         let padding_size = air.num_rows() - trace_row_len;
 
-                        let mut padding_row = BinaryExtension0Row::default();
-                        padding_row.op = F::from_canonical_u64(0x25);
+                        let padding_row = BinaryExtension0Row::<F> {
+                            op: F::from_canonical_u64(0x25),
+                            ..Default::default()
+                        };
 
                         for _ in trace_row_len..air.num_rows() {
                             trace_row.push(padding_row);
