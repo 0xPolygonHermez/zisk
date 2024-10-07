@@ -23,7 +23,7 @@ pub struct ZiskWitness<F: PrimeField> {
     pub main_sm: Option<Arc<MainSM<F>>>,
 }
 
-impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
+impl<F: PrimeField> ZiskWitness<F> {
     pub fn new(rom_path: PathBuf, public_inputs_path: PathBuf) -> Result<Self, Box<dyn Error>> {
         // Check rom_path path exists
         if !rom_path.exists() {
@@ -66,7 +66,7 @@ impl<F: PrimeField + Copy + Send + Sync + 'static> ZiskWitness<F> {
     }
 }
 
-impl<F: PrimeField + Copy + Send + Sync + 'static> WitnessLibrary<F> for ZiskWitness<F> {
+impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(
         &mut self,
         pctx: Arc<ProofCtx<F>>,

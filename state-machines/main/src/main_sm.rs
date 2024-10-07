@@ -398,18 +398,18 @@ impl<'a, F: PrimeField> MainSM<F> {
     #[inline(always)]
     fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
-        let _binary = mem::take(&mut emu_required.binary);
+        let binary = mem::take(&mut emu_required.binary);
         let _arith = mem::take(&mut emu_required.arith);
 
         let mem_sm = self.mem_sm.clone();
-        let _binary_sm = self.binary_sm.clone();
+        let binary_sm = self.binary_sm.clone();
         let _arith_sm = self.arith_sm.clone();
 
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
             mem_sm.prove(&memory, false, scope);
-            // binary_sm.prove(&binary, false, scope);
+            binary_sm.prove(&binary, false, scope);
             //arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
@@ -417,7 +417,7 @@ impl<'a, F: PrimeField> MainSM<F> {
     }
 }
 
-impl<F: PrimeField + Send + Sync> WitnessComponent<F> for MainSM<F> {
+impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,

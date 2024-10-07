@@ -98,7 +98,7 @@ impl<F: PrimeField> BinarySM<F> {
     }
 }
 
-impl<F: PrimeField + Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
+impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,

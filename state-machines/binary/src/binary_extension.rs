@@ -354,7 +354,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     }
 }
 
-impl<F: PrimeField + Send + Sync> WitnessComponent<F> for BinaryExtensionSM<F> {
+impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {
     fn calculate_witness(
         &self,
         _stage: u32,
