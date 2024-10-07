@@ -3,15 +3,15 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_8};
-use zisk_pil::*;
-
-const MULTIPLICITY_TABLE_SIZE: usize = 1 << 22;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_pil::{BinaryTable0Trace, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -23,7 +23,8 @@ pub struct BinaryBasicTableSM<F> {
     inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
 
     // Row multiplicity table
-    multiplicity: Mutex<Vec<u32>>,
+    num_rows: usize,
+    multiplicity: Mutex<Vec<u64>>,
 
     _phantom: std::marker::PhantomData<F>,
 }
@@ -34,12 +35,17 @@ pub enum BasicTableSMErr {
 }
 
 impl<F: Field> BinaryBasicTableSM<F> {
+    const MY_NAME: &'static str = "BinaryT ";
+
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let air = wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+
         let binary_basic_table = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
-            multiplicity: Mutex::new(vec![0; MULTIPLICITY_TABLE_SIZE]),
+            num_rows: air.num_rows(),
+            multiplicity: Mutex::new(vec![0; air.num_rows()]),
             _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
@@ -63,25 +69,32 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
             let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
             let (buffer_size, offsets) = buffer_allocator
-                .get_buffer_info(self.wcm.get_sctx(), BINARY_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0])
+                .get_buffer_info(
+                    self.wcm.get_sctx(),
+                    BINARY_TABLE_AIRGROUP_ID,
+                    BINARY_TABLE_AIR_IDS[0],
+                )
                 .expect("BinaryTable buffer not found");
 
-            let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
-            let mut trace_accessor = BinaryTable0Trace::map_buffer(
-                &mut buffer,
-                MULTIPLICITY_TABLE_SIZE,
-                offsets[0] as usize,
-            )
-            .unwrap();
+            let mut buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
+            let mut trace_accessor =
+                BinaryTable0Trace::map_buffer(&mut buffer, self.num_rows, offsets[0] as usize)
+                    .unwrap();
 
             let multiplicity = self.multiplicity.lock().unwrap();
-            for i in 0..MULTIPLICITY_TABLE_SIZE {
-                trace_accessor[i].multiplicity = F::from_canonical_u32(multiplicity[i]);
+            for i in 0..self.num_rows {
+                trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
             }
 
-            let _air_instance =
+            info!(
+                "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
+                Self::MY_NAME,
+                self.num_rows,
+            );
+
+            let air_instance =
                 AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
-            // self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }
 
@@ -95,28 +108,77 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for i in input {
-            // Calculate the different row offset contributors, according to the PIL
-            let offset_a: u64;
-            let offset_b: u64;
-            let offset_cin: u64;
-            let offset_last: u64;
-            let offset_operation: u64;
-            if i.opcode <= 12 {
-                offset_a = i.a;
-                offset_b = i.b * P2_8;
-                offset_cin = i.cin * P2_16;
-                offset_last = i.last * P2_17;
-                offset_operation = (i.opcode as u64 - 2) * P2_18;
-            } else {
-                offset_a = i.a;
-                offset_b = i.b * P2_8;
-                offset_cin = 0;
-                offset_last = i.last * P2_16;
-                offset_operation = (11 * P2_18) + (i.opcode as u64 - 32) * P2_17;
-            }
-            let row = offset_a + offset_b + offset_cin + offset_last + offset_operation;
-            assert!(row < MULTIPLICITY_TABLE_SIZE as u64);
-            multiplicity[row as usize] += 1;
+            assert!(i.row < self.num_rows as u64);
+            multiplicity[i.row as usize] += i.multiplicity;
+        }
+    }
+
+    //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    #[allow(clippy::too_many_arguments)]
+    pub fn calculate_table_row(
+        opcode: u8,
+        a: u64,
+        b: u64,
+        cin: u64,
+        last: u64,
+        _c: u64,
+        _flags: u64,
+        _i: u64,
+    ) -> u64 {
+        // Calculate the different row offset contributors, according to the PIL
+        let offset_a: u64 = a;
+        let offset_b: u64 = b * P2_8;
+        let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
+        let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
+        let offset_result_is_a: u64 = if Self::opcode_result_is_a(opcode) { P2_18 } else { 0 }; // TODO: Should we add it only if c == a?
+        let offset_opcode: u64 = Self::offset_opcode(opcode);
+
+        offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
+        //assert!(row < self.num_rows as u64);
+    }
+
+    fn opcode_has_last(opcode: u8) -> bool {
+        match opcode {
+            0x09 | 0x0a | 0x0b | 0x0c | 0x04 | 0x05 | 0x08 | 0x02 | 0x03 | 0x06 | 0x07 | 0x20 | 0x21 | 0x22 => true,
+            0x23 /* EXT_32 */ => false,
+            _ => panic!("BinaryBasicTableSM::opcode_has_last() got invalid opcode={}", opcode),
+        }
+    }
+
+    fn opcode_has_cin(opcode: u8) -> bool {
+        match opcode {
+            0x09 | 0x0a | 0x0b | 0x0c | 0x04 | 0x05 | 0x08 | 0x02 | 0x03 => true,
+            0x06 | 0x07 | 0x20 | 0x21 | 0x22 | 0x23 => false,
+            _ => panic!("BinaryBasicTableSM::opcode_has_cin() got invalid opcode={}", opcode),
+        }
+    }
+
+    fn opcode_result_is_a(opcode: u8) -> bool {
+        match opcode {
+            0x09..=0x0c => true,
+            0x04 | 0x05 | 0x08 | 0x02 | 0x03 | 0x06 | 0x07 | 0x20 | 0x21 | 0x22 | 0x23 => false,
+            _ => panic!("BinaryBasicTableSM::opcode_result_is_a() got invalid opcode={}", opcode),
+        }
+    }
+
+    fn offset_opcode(opcode: u8) -> u64 {
+        match opcode {
+            0x09 => 0,
+            0x0a => P2_19,
+            0x0b => 2 * P2_19,
+            0x0c => 3 * P2_19,
+            0x04 => 4 * P2_19,
+            0x05 => 4 * P2_19 + P2_18,
+            0x08 => 4 * P2_19 + 2 * P2_18,
+            0x02 => 4 * P2_19 + 3 * P2_18,
+            0x03 => 4 * P2_19 + 4 * P2_18,
+            0x06 => 4 * P2_19 + 5 * P2_18,
+            0x07 => 4 * P2_19 + 5 * P2_18 + P2_17,
+            0x20 => 4 * P2_19 + 5 * P2_18 + 2 * P2_17,
+            0x21 => 4 * P2_19 + 5 * P2_18 + 3 * P2_17,
+            0x22 => 4 * P2_19 + 5 * P2_18 + 4 * P2_17,
+            0x23 => 4 * P2_19 + 5 * P2_18 + 5 * P2_17,
+            _ => panic!("BinaryBasicTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
     }
 }
@@ -146,15 +208,8 @@ impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicT
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self
-                .wcm
-                .get_pctx()
-                .pilout
-                .get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-            let num_rows = air.num_rows();
-
-            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(num_rows, inputs.len());
+            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(self.num_rows, inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 self.process_slice(&drained_inputs);

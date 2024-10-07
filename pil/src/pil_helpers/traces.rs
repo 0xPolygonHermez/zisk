@@ -7,10 +7,6 @@ trace!(Main0Row, Main0Trace<F> {
  main_first_segment: F, main_last_segment: F, main_segment: F, a: [F; 2], b: [F; 2], c: [F; 2], last_c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, end: F, m32: F, operation_bus_enabled: F,
 });
 
-trace!(Mem0Row, Mem0Trace<F> {
- mem_segment: F, mem_last_segment: F, addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, value_changes: F, first_addr_access_is_read: F,
-});
-
 trace!(Binary0Row, Binary0Trace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
@@ -20,9 +16,13 @@ trace!(BinaryTable0Row, BinaryTable0Trace<F> {
 });
 
 trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
- m_op: F, mode8: F, mode16: F, mode32: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], free_in2: [F; 4], multiplicity: F, main_step: F,
+ op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
 });
 
 trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
+});
+
+trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+ mul: [F; 1],
 });

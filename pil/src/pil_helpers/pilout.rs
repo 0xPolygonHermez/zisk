@@ -8,21 +8,19 @@ pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 pub const MAIN_AIRGROUP_ID: usize = 0;
 
-pub const MEM_AIRGROUP_ID: usize = 1;
+pub const BINARY_AIRGROUP_ID: usize = 1;
 
-pub const BINARY_AIRGROUP_ID: usize = 2;
+pub const BINARY_TABLE_AIRGROUP_ID: usize = 2;
 
-pub const BINARY_TABLE_AIRGROUP_ID: usize = 3;
+pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 3;
 
-pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 4;
+pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 4;
 
-pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 5;
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 5;
 
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
-
-pub const MEM_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_AIR_IDS: &[usize] = &[0];
 
@@ -32,18 +30,17 @@ pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
 
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
+
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Zisk", 1, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
 
         air_group.add_air(Some("Main"), 2097152);
-
-        let air_group = pilout.add_air_group(Some("Mem"));
-        air_group.add_air(Some("Mem"), 2097152);
 
         let air_group = pilout.add_air_group(Some("Binary"));
 
@@ -51,7 +48,7 @@ impl Pilout {
 
         let air_group = pilout.add_air_group(Some("BinaryTable"));
 
-        air_group.add_air(Some("BinaryTable"), 8388608);
+        air_group.add_air(Some("BinaryTable"), 4194304);
 
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
 
@@ -59,7 +56,11 @@ impl Pilout {
 
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
 
-        air_group.add_air(Some("BinaryExtensionTable"), 524288);
+        air_group.add_air(Some("BinaryExtensionTable"), 4194304);
+
+        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
+
+        air_group.add_air(Some("SpecifiedRanges"), 16777216);
 
         pilout
     }

@@ -13,9 +13,11 @@ proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 proofman = { workspace = true }
+pil-std-lib = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }
+num-bigint = { workspace = true }
 
 [features]
 default = []

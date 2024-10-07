@@ -4,12 +4,12 @@ use std::sync::{
 };
 
 use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
-use p3_field::Field;
+use p3_field::PrimeField;
+use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
     BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIRGROUP_ID,
@@ -19,7 +19,7 @@ use zisk_pil::{
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
 
 #[allow(dead_code)]
-pub struct BinarySM<F> {
+pub struct BinarySM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -35,8 +35,8 @@ pub struct BinarySM<F> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 }
 
-impl<F: Field> BinarySM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+impl<F: PrimeField> BinarySM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm =
             BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
         let binary_basic_sm = BinaryBasicSM::new(
@@ -53,6 +53,7 @@ impl<F: Field> BinarySM<F> {
         );
         let binary_extension_sm = BinaryExtensionSM::new(
             wcm.clone(),
+            std,
             binary_extension_table_sm,
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
@@ -96,27 +97,9 @@ impl<F: Field> BinarySM<F> {
     }
 }
 
-impl<F: Copy + Send + Sync> WitnessComponent<F> for BinarySM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}
 
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
+impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         let mut _inputs_basic = Vec::new();
         let mut _inputs_extension = Vec::new();
@@ -175,18 +158,5 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
             });
         }
         drop(inputs_extension);
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-
-        result
     }
 }
