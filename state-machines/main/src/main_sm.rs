@@ -328,12 +328,12 @@ impl<'a, F: PrimeField> MainSM<F> {
     ) {
         let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         info!(
-            "{}: ··· Creating Main segment #{} [{} / {} rows filled {}%]",
+            "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             air_segment.air_segment_id,
             air_segment.filled_inputs,
             air.num_rows(),
-            (air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0) as u32
+            air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0
         );
         timer_start!(CREATE_AIR_INSTANCE);
 
@@ -399,18 +399,18 @@ impl<'a, F: PrimeField> MainSM<F> {
     fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
         let memory = mem::take(&mut emu_required.memory);
         let binary = mem::take(&mut emu_required.binary);
-        let _arith = mem::take(&mut emu_required.arith);
+        let arith = mem::take(&mut emu_required.arith);
 
         let mem_sm = self.mem_sm.clone();
         let binary_sm = self.binary_sm.clone();
-        let _arith_sm = self.arith_sm.clone();
+        let arith_sm = self.arith_sm.clone();
 
         let threads_controller = self.threads_controller.clone();
 
         scope.spawn(move |scope| {
-            // mem_sm.prove(&memory, false, scope);
+            mem_sm.prove(&memory, false, scope);
             binary_sm.prove(&binary, false, scope);
-            //arith_sm.prove(&arith, false, scope);
+            arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
         });

@@ -94,7 +94,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             }
 
             info!(
-                "{}: ··· Creating Binary extension table instance [{} rows]",
+                "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
                 Self::MY_NAME,
                 self.num_rows,
             );
@@ -156,7 +156,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             0x23 => 6 * P2_19,
             0x24 => 6 * P2_19 + P2_11,
             0x25 => 6 * P2_19 + 2 * P2_11,
-            0x26 => 6 * P2_19 + 3 * P2_11,
             _ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
     }

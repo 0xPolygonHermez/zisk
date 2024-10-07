@@ -13,7 +13,8 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{
-    zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck,
+    zisk_ops::ZiskOp, ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation,
+    ZiskRequiredRangeCheck,
 };
 use zisk_pil::*;
 
@@ -407,11 +408,11 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
                     info!(
-                        "{}: ··· Creating Binary extension instance [{} / {} rows filled {}%]",
+                        "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
                         Self::MY_NAME,
                         drained_inputs.len(),
                         air.num_rows(),
-                        (drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0) as u32
+                        drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0
                     );
 
                     let mut trace_row_len = trace_row.len();

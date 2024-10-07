@@ -551,11 +551,11 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     let air = wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
                     info!(
-                        "{}: ··· Creating Binary basic instance [{} / {} rows filled {}%]",
+                        "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
                         Self::MY_NAME,
                         drained_inputs.len(),
                         air.num_rows(),
-                        (drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0) as u32
+                        drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0
                     );
 
                     let mut trace_row_len = trace_row.len();

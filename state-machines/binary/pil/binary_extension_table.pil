@@ -8,12 +8,11 @@ require "constants.pil"
 // SRA     (OP:0x0f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
 // SLL_W   (OP:0x1d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21  
 // SRL_W   (OP:0x1e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19
-// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20  
-// SE_B    (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11      
-// SE_H    (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12    
-// SE_W    (OP:0x35)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22         
+// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20
+// SE_B    (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11
+// SE_H    (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12
+// SE_W    (OP:0x25)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22
 
-const int EXT_OP = 0x26;
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
 airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 0) {

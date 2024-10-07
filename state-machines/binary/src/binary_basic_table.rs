@@ -86,7 +86,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
             }
 
             info!(
-                "{}: ··· Creating Binary basic table instance [{} rows]",
+                "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
                 Self::MY_NAME,
                 self.num_rows,
             );
