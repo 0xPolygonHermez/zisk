@@ -158,8 +158,5 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
             });
         }
         drop(inputs_extension);
-
-
-        
     }
 }

@@ -592,8 +592,8 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     let trace_buffer = Binary0Trace::<F>::map_row_vec(trace_row, false).unwrap();
 
                     let mut buffer = create_buffer_fast(buffer_size as usize);
-                    buffer[offsets[0] as usize
-                        ..offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
+                    buffer[offsets[0] as usize..
+                        offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
                         .copy_from_slice(&trace_buffer.buffer.unwrap());
 
                     let air_instance =
