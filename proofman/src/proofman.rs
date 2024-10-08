@@ -77,8 +77,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let n_provers: usize = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
 
         if provers.is_empty() {
-            panic!("No provers found for rank {}", ectx.dctx.rank);
-            //TODO: the process should be retired from the comunicator...
+            return Err("No instances found".into());
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
@@ -230,7 +229,6 @@ impl<F: Field + 'static> ProofMan<F> {
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx>,
     ) -> usize {
-        timer_start!(INITIALIZING_PROVERS);
         info!("{}: ··· INITIALIZING PROVER CLIENTS", Self::MY_NAME);
         let mut cont = 0;
         for (air_instance_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate()
