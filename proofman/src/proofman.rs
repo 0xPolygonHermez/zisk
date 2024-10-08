@@ -5,14 +5,9 @@ use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
 use std::fs;
 use proofman_starks_lib_c::*;
-use mpi::traits::Communicator;
-use mpi::collective::CommunicatorCollectives;
 use std::error::Error;
-
 use std::time::Instant;
 use std::process;
-use std::sync::Barrier;
-
 use colored::*;
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -23,7 +18,7 @@ use crate::{WitnessLibrary, WitnessLibInitFn};
 use crate::verify_constraints_proof;
 use crate::generate_recursion_proof;
 
-use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx, DistributionCtx};
 
 use std::os::raw::c_void;
 
@@ -44,15 +39,8 @@ impl<F: Field + 'static> ProofMan<F> {
         output_dir_path: PathBuf,
         options: ProofOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        set_log_level_c(options.verbose_mode.into());
 
-        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple).unwrap();
-        let world: mpi::topology::SimpleCommunicator = universe.world();
-        let rank = world.rank();
-        let size = world.size();
-        let master_rank = 0;
-        world.barrier();
-        let time_setup1 = Instant::now();
+        set_log_level_c(options.verbose_mode.into());
         Self::check_paths(
             &witness_lib_path,
             &rom_path,
@@ -63,13 +51,11 @@ impl<F: Field + 'static> ProofMan<F> {
         )?;
 
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
-        let mut ectx = ExecutionCtx::builder()
+        let ectx = ExecutionCtx::builder()
             .with_rom_path(rom_path)
             .with_buffer_allocator(buffer_allocator)
             .with_verbose_mode(options.verbose_mode)
             .build();
-        ectx.rank = rank;
-        ectx.n_processes = size;
         let ectx = Arc::new(ectx);
 
         // Load the witness computation dynamic library
@@ -77,40 +63,32 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
+        println!("public inputs path {:?}", public_inputs_path);
+
         let mut witness_lib = witness_lib(ectx.clone(), public_inputs_path)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
         let sctx: Arc<SetupCtx> = Arc::new(SetupCtx::new(&pctx.global_info, &ProofType::Basic));
 
-        world.barrier();
-        let elapsed_setup1 = time_setup1.elapsed();
-        world.barrier();
-        let time_wit = Instant::now();
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
-        world.barrier();
-        let elapsed_wit = time_wit.elapsed();
-        println!("Elapsed WC:    {:?}", elapsed_wit);
-        world.barrier();
-        process::exit(0);
         
-        let time_prove: Instant = Instant::now();
 
-        if master_rank == rank {
+        if ectx.dctx.is_master() {
             Self::print_summary(pctx.clone());
         }
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
-        let n_provers = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), rank, size);
+        let n_provers = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
 
         if provers.is_empty() {
-            panic!("No provers found for rank {}", rank);
+            panic!("No provers found for rank {}", ectx.dctx.rank);
             //TODO: the process should be retired from the comunicator...
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
-        Self::calculate_challenges(0, &mut provers, pctx.clone(), &mut transcript, 0, n_provers, &world);
+        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, 0, n_provers);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -132,11 +110,10 @@ impl<F: Field + 'static> ProofMan<F> {
                     stage,
                     &mut provers,
                     pctx.clone(),
+                    ectx.clone(),
                     &mut transcript,
                     options.debug_mode,
-                    n_provers,
-                    &world,
-                );
+                    n_provers,                );
             }
         }
 
@@ -155,23 +132,15 @@ impl<F: Field + 'static> ProofMan<F> {
             num_commit_stages + 1,
             &mut provers,
             pctx.clone(),
+            ectx.clone(),
             &mut transcript,
             0,
             n_provers,
-            &world,
         );
 
         // Compute openings
-        Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), &mut transcript, n_provers, &world);
+        Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), ectx.clone(), &mut transcript, n_provers);
 
-        world.barrier();
-        let elapsed_prove = time_prove.elapsed();
-        if rank == master_rank {
-            println!("Elapsed setup: {:?}", elapsed_setup1);
-            println!("Elapsed WC:    {:?}", elapsed_wit);
-            println!("Elapsed prove: {:?}", elapsed_prove);
-            println!("Elapsed total: {:?}", elapsed_setup1 + elapsed_wit + elapsed_prove);
-        }
         //Generate proves_out
         let proves_out = Self::finalize_proof(
             &mut provers,
@@ -180,7 +149,6 @@ impl<F: Field + 'static> ProofMan<F> {
             options.aggregation,
             options.save_proofs,
         );
-        world.barrier();
         if !options.aggregation {
             return Ok(());
         }
@@ -265,17 +233,18 @@ impl<F: Field + 'static> ProofMan<F> {
         sctx: Arc<SetupCtx>,
         provers: &mut Vec<Box<dyn Prover<F>>>,
         pctx: Arc<ProofCtx<F>>,
-        rank: i32,
-        size: i32,
+        _ectx: Arc<ExecutionCtx>,
     ) -> usize {
         timer_start!(INITIALIZING_PROVERS);
         info!("{}: ··· INITIALIZING PROVER CLIENTS", Self::MY_NAME);
         let mut cont = 0;
         for (air_instance_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate()
         {
-            let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
             cont += 1;
-            if segment_idx as i32 % size != rank {
+            #[cfg(feature = "distributed")]
+            let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
+            #[cfg(feature = "distributed")]
+            if segment_idx as i32 % _ectx.dctx.size != _ectx.dctx.rank {
                 continue;
             }
             log::debug!(
@@ -355,28 +324,27 @@ impl<F: Field + 'static> ProofMan<F> {
     fn calculate_challenges(
         stage: u32,
         provers: &mut [Box<dyn Prover<F>>],
-        proof_ctx: Arc<ProofCtx<F>>,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
         debug_mode: u64,
         n_provers: usize,
-        world: &mpi::topology::SimpleCommunicator,
     ) {
         info!("{}: ··· CALCULATING CHALLENGES FOR STAGE {}", Self::MY_NAME, stage);
 
-        let size = world.size();
-        if size == 1 {
-            let airgroups = proof_ctx.global_info.subproofs.clone();
+        if ectx.dctx.is_distributed() {
+            let airgroups = pctx.global_info.subproofs.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
                 if debug_mode != 0 {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                     transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
                 } else {
-                    let airgroup_instances = proof_ctx.air_instance_repo.find_airgroup_instances(airgroup_id);
+                    let airgroup_instances = pctx.air_instance_repo.find_airgroup_instances(airgroup_id);
 
                     if !airgroup_instances.is_empty() {
                         let mut values = Vec::new();
                         for prover_idx in airgroup_instances.iter() {
-                            let value = provers[*prover_idx].get_transcript_values(stage as u64, proof_ctx.clone());
+                            let value = provers[*prover_idx].get_transcript_values(stage as u64, pctx.clone());
                             values.push(value);
                         }
                         if !values.is_empty() {
@@ -387,14 +355,15 @@ impl<F: Field + 'static> ProofMan<F> {
                 }
             }
         } else {
+            let size = ectx.dctx.n_processes;
             // max number of roots
             let max_roots = (n_provers as i32 + size - 1) / size;
 
             // calculate my roots
             let mut roots: Vec<u64> = vec![0; 4 * max_roots as usize];
             for (i, prover) in provers.iter_mut().enumerate() {
-                //prover.get_root(stage as u64, proof_ctx.clone(), &mut roots[i * 4..(i + 1) * 4]);
-                let values = prover.get_transcript_values_u64(stage as u64, proof_ctx.clone());
+                //prover.get_root(stage as u64, pctx.clone(), &mut roots[i * 4..(i + 1) * 4]);
+                let values = prover.get_transcript_values_u64(stage as u64, pctx.clone());
                 if values.is_empty() {
                     panic!("No transcript values found for prover {}", i);
                 }
@@ -403,21 +372,22 @@ impl<F: Field + 'static> ProofMan<F> {
 
             // Use all ghater
             let mut all_roots: Vec<u64> = vec![0; 4 * max_roots as usize * size as usize];
+            #[cfg(feature = "distributed")]
             world.all_gather_into(&roots, &mut all_roots);
 
             // add challenges to transcript
-            let airgroups = proof_ctx.global_info.subproofs.clone();
+            let airgroups = pctx.global_info.subproofs.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
                 if debug_mode != 0 {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                     transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
                 } else {
-                    let airgroup_instances = proof_ctx.air_instance_repo.find_airgroup_instances(airgroup_id);
+                    let airgroup_instances = pctx.air_instance_repo.find_airgroup_instances(airgroup_id);
                     if !airgroup_instances.is_empty() {
                         let mut values: Vec<Vec<F>> = Vec::new();
                         for air_idx in airgroup_instances.iter() {
                             let mut value = Vec::new();
-                            let air_instance = &proof_ctx.air_instance_repo.air_instances.read().unwrap()[*air_idx];
+                            let air_instance = &pctx.air_instance_repo.air_instances.read().unwrap()[*air_idx];
                             let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
                             let root_rank = segment_idx % size as usize;
                             let root_idx = segment_idx / size as usize;
@@ -441,10 +411,10 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         if stage == 0 {
-            let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
+            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
             let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
-            transcript.add_elements(public_inputs, proof_ctx.global_info.n_publics);
+            transcript.add_elements(public_inputs, pctx.global_info.n_publics);
         }
     }
 
@@ -459,63 +429,63 @@ impl<F: Field + 'static> ProofMan<F> {
 
     pub fn opening_stages(
         provers: &mut [Box<dyn Prover<F>>],
-        proof_ctx: Arc<ProofCtx<F>>,
-        setup_ctx: Arc<SetupCtx>,
+        pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
         n_provers: usize,
-        world: &mpi::topology::SimpleCommunicator,
     ) {
-        let setup_airs = setup_ctx.get_setup_airs();
-        let num_commit_stages = proof_ctx.global_info.n_challenges.len() as u32;
-        let size = world.size();
-        let rank = world.rank();
+        let setup_airs = sctx.get_setup_airs();
+        let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
+        let size = ectx.dctx.n_processes;
+        let rank = ectx.dctx.rank;
 
         // Calculate evals
-        Self::get_challenges(num_commit_stages + 2, provers, proof_ctx.clone(), transcript);
+        Self::get_challenges(num_commit_stages + 2, provers, pctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> =
-                    proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                    pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
                     let mut is_first = true;
                     for idx in air_instances_idx {
                         let segment_idx =
-                            &proof_ctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
+                            &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
                         if *segment_idx as i32 % size == rank {
                             let loc_idx = segment_idx / size as usize;
                             if is_first {
-                                provers[loc_idx].calculate_lev(proof_ctx.clone());
+                                provers[loc_idx].calculate_lev(pctx.clone());
                                 is_first = false;
                             }
                             info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
-                            provers[loc_idx].opening_stage(1, proof_ctx.clone());
+                            provers[loc_idx].opening_stage(1, pctx.clone());
                         }
                     }
                 }
             }
         }
 
-        Self::calculate_challenges(num_commit_stages + 2, provers, proof_ctx.clone(), transcript, 0, n_provers, world);
+        Self::calculate_challenges(num_commit_stages + 2, provers, pctx.clone(), ectx.clone(), transcript, 0, n_provers);
 
         // Calculate fri polynomial
-        Self::get_challenges(num_commit_stages + 3, provers, proof_ctx.clone(), transcript);
+        Self::get_challenges(num_commit_stages + 3, provers, pctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> =
-                    proof_ctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                    pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
                     let mut is_first = true;
                     for idx in air_instances_idx {
                         let segment_idx =
-                            &proof_ctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
+                            &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
                         if *segment_idx as i32 % size == rank {
                             let loc_idx = segment_idx / size as usize;
                             if is_first {
-                                provers[loc_idx].calculate_xdivxsub(proof_ctx.clone());
+                                provers[loc_idx].calculate_xdivxsub(pctx.clone());
                                 is_first = false;
                             }
                             info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
-                            provers[loc_idx].opening_stage(2, proof_ctx.clone());
+                            provers[loc_idx].opening_stage(2, pctx.clone());
                         }
                     }
                 }
@@ -524,21 +494,20 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // FRI Steps
         for opening_id in 3..=provers[0].num_opening_stages() {
-            Self::get_challenges(num_commit_stages + 1 + opening_id, provers, proof_ctx.clone(), transcript);
+            Self::get_challenges(num_commit_stages + 1 + opening_id, provers, pctx.clone(), transcript);
             for (idx, prover) in provers.iter_mut().enumerate() {
                 info!("{}: Computing FRI step {} for prover {}", Self::MY_NAME, opening_id - 3, idx);
-                prover.opening_stage(opening_id, proof_ctx.clone());
+                prover.opening_stage(opening_id, pctx.clone());
             }
             if opening_id < provers[0].num_opening_stages() {
                 Self::calculate_challenges(
                     num_commit_stages + 1 + opening_id,
                     provers,
-                    proof_ctx.clone(),
+                    pctx.clone(),
+                    ectx.clone(),
                     transcript,
                     0,
-                    n_provers,
-                    world,
-                );
+                    n_provers,                );
             }
         }
     }
