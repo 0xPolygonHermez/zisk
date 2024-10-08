@@ -2,7 +2,7 @@ use log::info;
 use p3_field::PrimeField;
 
 use proofman_util::{timer_start, timer_stop_and_log};
-use rayon::{Scope, ThreadPoolBuilder};
+use rayon::{prelude::*, Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
     fs, mem,
@@ -20,7 +20,7 @@ use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_common::{Provable, ThreadController};
+use sm_common::{create_prover_buffer, Provable, ThreadController};
 use sm_mem::MemSM;
 
 #[derive(Default)]
@@ -271,8 +271,8 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         // As this calls are received sequentially, when pos_id is 0, a new segment is created
         if pos_id == 0 {
-            let buffer = MainAirSegment::new(segment_id as u32, num_rows);
-            self.callback_inputs.lock().unwrap().push(buffer);
+            let main_air_segment = MainAirSegment::new(segment_id as u32, num_rows);
+            self.callback_inputs.lock().unwrap().push(main_air_segment);
         }
 
         self.threads_controller.add_working_thread();
@@ -291,10 +291,12 @@ impl<'a, F: PrimeField> MainSM<F> {
 
             let mut inputs = self.callback_inputs.lock().unwrap();
             let air_segment = &mut inputs[segment_id];
+
             air_segment.inputs.splice(
-                pos_id * Self::CALLBACK_SIZE..(pos_id + 1) * Self::CALLBACK_SIZE,
+                pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE + source_iter.len(),
                 source_iter,
             );
+
             air_segment.filled_inputs += len;
             assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
 
@@ -321,7 +323,7 @@ impl<'a, F: PrimeField> MainSM<F> {
     /// * `ectx` - Execution context to interact with the execution environment
     #[inline(always)]
     fn create_air_instance(
-        air_segment: MainAirSegment<F>,
+        mut air_segment: MainAirSegment<F>,
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
@@ -338,51 +340,42 @@ impl<'a, F: PrimeField> MainSM<F> {
         );
         timer_start!(CREATE_AIR_INSTANCE);
 
-        // Compute buffer size using the BufferAllocator
-        let (buffer_size, offsets) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
-            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        // Set remaining rows equals to the last filled row
+        let copied_value = air_segment.inputs[air_segment.filled_inputs - 1];
+        air_segment.inputs[air_segment.filled_inputs..]
+            .par_iter_mut()
+            .for_each(|input| *input = copied_value);
 
-        let mut main_trace = Main0Trace::<F>::map_row_vec(air_segment.inputs, false).unwrap();
-
-        for i in air_segment.filled_inputs..main_trace.num_rows() {
-            main_trace[i] = main_trace[i - 1];
-        }
-
-        // TODO: Do it in parallel
+        // Set segment information in the inputs
         let main_first_segment = F::from_bool(air_segment.air_segment_id == 0);
         let main_last_segment = F::from_bool(last_segment);
         let main_segment = F::from_canonical_usize(air_segment.air_segment_id as usize);
-        for i in 0..main_trace.num_rows() {
-            main_trace[i].main_first_segment = main_first_segment;
-            main_trace[i].main_last_segment = main_last_segment;
-            main_trace[i].main_segment = main_segment;
-        }
+        air_segment.inputs[..].par_iter_mut().for_each(|input| {
+            input.main_first_segment = main_first_segment;
+            input.main_last_segment = main_last_segment;
+            input.main_segment = main_segment;
+        });
 
-        let main_trace_buffer = main_trace.buffer.unwrap();
+        // Create the prover buffer
+        let (mut prover_buffer, offset) =
+            create_prover_buffer(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
-        let mut buffer = create_buffer_fast(buffer_size as usize);
-
-        let start = offsets[0] as usize;
-        let end = start + main_trace_buffer.len();
-        use rayon::prelude::*;
-        buffer[start..end]
-            .par_chunks_mut(main_trace_buffer.len() / rayon::current_num_threads())
-            .zip(
-                main_trace_buffer
-                    .par_chunks(main_trace_buffer.len() / rayon::current_num_threads()),
-            )
-            .for_each(|(buffer_chunk, main_chunk)| {
-                buffer_chunk.copy_from_slice(main_chunk);
+        // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values into the
+        // prover buffer
+        let main_trace_buffer =
+            Main0Trace::<F>::from_row_vec(air_segment.inputs).unwrap().buffer.unwrap();
+        prover_buffer[offset as usize..offset as usize + main_trace_buffer.len()]
+            .par_iter_mut()
+            .zip(main_trace_buffer.par_iter())
+            .for_each(|(buffer_elem, main_elem)| {
+                *buffer_elem = *main_elem;
             });
 
         let air_instance = AirInstance::new(
             MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
             Some(air_segment.air_segment_id as usize),
-            buffer,
+            prover_buffer,
         );
 
         pctx.air_instance_repo.add_air_instance(air_instance);

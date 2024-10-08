@@ -7,11 +7,10 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_util::create_buffer_fast;
-use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use rayon::{prelude::*, Scope};
+use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
-use zisk_pil::{BinaryTable0Trace, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
+use zisk_pil::{BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -67,24 +66,20 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 scope,
             );
 
-            let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
-            let (buffer_size, offsets) = buffer_allocator
-                .get_buffer_info(
-                    self.wcm.get_sctx(),
-                    BINARY_TABLE_AIRGROUP_ID,
-                    BINARY_TABLE_AIR_IDS[0],
-                )
-                .expect("BinaryTable buffer not found");
-
-            let mut buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
-            let mut trace_accessor =
-                BinaryTable0Trace::map_buffer(&mut buffer, self.num_rows, offsets[0] as usize)
-                    .unwrap();
+            // Create the prover buffer
+            let (mut prover_buffer, offset) = create_prover_buffer(
+                self.wcm.get_ectx(),
+                self.wcm.get_sctx(),
+                BINARY_TABLE_AIRGROUP_ID,
+                BINARY_TABLE_AIR_IDS[0],
+            );
 
             let multiplicity = self.multiplicity.lock().unwrap();
-            for i in 0..self.num_rows {
-                trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
-            }
+
+            prover_buffer[offset as usize..offset as usize + self.num_rows]
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
 
             info!(
                 "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
@@ -92,8 +87,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 self.num_rows,
             );
 
-            let air_instance =
-                AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
+            let air_instance = AirInstance::new(
+                BINARY_TABLE_AIRGROUP_ID,
+                BINARY_TABLE_AIR_IDS[0],
+                None,
+                prover_buffer,
+            );
             self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }

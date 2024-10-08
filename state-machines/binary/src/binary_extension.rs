@@ -10,9 +10,8 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use proofman_util::create_buffer_fast;
-use rayon::Scope;
-use sm_common::{OpResult, Provable, ThreadController};
+use rayon::{prelude::*, Scope};
+use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
 use zisk_core::{ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck};
 use zisk_pil::*;
 
@@ -394,7 +393,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0
                     );
 
-                    let mut trace_row_len = trace_row.len();
+                    let trace_row_len = trace_row.len();
 
                     if drain && (air.num_rows() > trace_row_len) {
                         let padding_size = air.num_rows() - trace_row_len;
@@ -404,9 +403,10 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                             ..Default::default()
                         };
 
-                        for _ in trace_row_len..air.num_rows() {
-                            trace_row.push(padding_row);
-                        }
+                        trace_row.resize(air.num_rows(), unsafe { std::mem::zeroed() });
+                        trace_row[trace_row_len..air.num_rows()]
+                            .par_iter_mut()
+                            .for_each(|input| *input = padding_row);
 
                         for i in 0..8 {
                             table_required.push(ZiskRequiredBinaryExtensionTable {
@@ -420,8 +420,6 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                                 multiplicity: padding_size as u64,
                             });
                         }
-
-                        trace_row_len = trace_row.len();
                     }
 
                     binary_extension_table_sm.prove(&table_required, false, scope);
@@ -434,30 +432,31 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         );
                     }
 
-                    let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
-                    let (buffer_size, offsets) = buffer_allocator
-                        .get_buffer_info(
-                            wcm.get_sctx(),
-                            BINARY_EXTENSION_AIRGROUP_ID,
-                            BINARY_EXTENSION_AIR_IDS[0],
-                        )
-                        .expect("Binary extension buffer not found");
+                    // Create the prover buffer
+                    let (mut prover_buffer, offset) = create_prover_buffer(
+                        wcm.get_ectx(),
+                        wcm.get_sctx(),
+                        BINARY_EXTENSION_AIRGROUP_ID,
+                        BINARY_EXTENSION_AIR_IDS[0],
+                    );
 
-                    let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
+                    let trace_buffer = BinaryExtension0Trace::<F>::from_row_vec(trace_row)
                         .unwrap()
                         .buffer
                         .unwrap();
 
-                    let mut buffer = create_buffer_fast(buffer_size as usize);
-                    buffer[offsets[0] as usize..
-                        offsets[0] as usize + (trace_row_len * BinaryExtension0Row::<F>::ROW_SIZE)]
-                        .copy_from_slice(&trace_buffer);
+                    prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
+                        .par_iter_mut()
+                        .zip(trace_buffer.par_iter())
+                        .for_each(|(buffer_elem, main_elem)| {
+                            *buffer_elem = *main_elem;
+                        });
 
                     let air_instance = AirInstance::new(
                         BINARY_EXTENSION_AIRGROUP_ID,
                         BINARY_EXTENSION_AIR_IDS[0],
                         None,
-                        buffer,
+                        prover_buffer,
                     );
 
                     wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
