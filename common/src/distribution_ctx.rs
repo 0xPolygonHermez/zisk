@@ -12,7 +12,6 @@ pub struct DistributionCtx {
 
     #[cfg(not(feature = "distributed"))]
     pub world: i32,
-
 }
 
 impl DistributionCtx {
@@ -22,7 +21,7 @@ impl DistributionCtx {
             n_processes: 1,
             #[cfg(feature = "distributed")]
             world: mpi::topology::SimpleCommunicator::null(),
-            
+
             #[cfg(not(feature = "distributed"))]
             world: -1,
         };
@@ -55,11 +54,9 @@ impl DistributionCtx {
 
     pub fn is_master(&self) -> bool {
         self.rank == 0
-    }   
+    }
 
     pub fn is_distributed(&self) -> bool {
         self.n_processes > 1
     }
-    
 }
-

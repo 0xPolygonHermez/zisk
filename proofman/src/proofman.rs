@@ -6,8 +6,6 @@ use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
 use std::fs;
 use proofman_starks_lib_c::*;
 use std::error::Error;
-use std::time::Instant;
-use std::process;
 use colored::*;
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -18,7 +16,7 @@ use crate::{WitnessLibrary, WitnessLibInitFn};
 use crate::verify_constraints_proof;
 use crate::generate_recursion_proof;
 
-use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx, DistributionCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx};
 
 use std::os::raw::c_void;
 
@@ -39,7 +37,6 @@ impl<F: Field + 'static> ProofMan<F> {
         output_dir_path: PathBuf,
         options: ProofOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
-
         set_log_level_c(options.verbose_mode.into());
         Self::check_paths(
             &witness_lib_path,
@@ -63,8 +60,6 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        println!("public inputs path {:?}", public_inputs_path);
-
         let mut witness_lib = witness_lib(ectx.clone(), public_inputs_path)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
@@ -73,14 +68,13 @@ impl<F: Field + 'static> ProofMan<F> {
 
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
-        
 
         if ectx.dctx.is_master() {
             Self::print_summary(pctx.clone());
         }
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
-        let n_provers = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
+        let n_provers: usize = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
 
         if provers.is_empty() {
             panic!("No provers found for rank {}", ectx.dctx.rank);
@@ -113,7 +107,8 @@ impl<F: Field + 'static> ProofMan<F> {
                     ectx.clone(),
                     &mut transcript,
                     options.debug_mode,
-                    n_provers,                );
+                    n_provers,
+                );
             }
         }
 
@@ -332,7 +327,7 @@ impl<F: Field + 'static> ProofMan<F> {
     ) {
         info!("{}: ··· CALCULATING CHALLENGES FOR STAGE {}", Self::MY_NAME, stage);
 
-        if ectx.dctx.is_distributed() {
+        if !ectx.dctx.is_distributed() {
             let airgroups = pctx.global_info.subproofs.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
                 if debug_mode != 0 {
@@ -371,7 +366,7 @@ impl<F: Field + 'static> ProofMan<F> {
             }
 
             // Use all ghater
-            let mut all_roots: Vec<u64> = vec![0; 4 * max_roots as usize * size as usize];
+            let all_roots: Vec<u64> = vec![0; 4 * max_roots as usize * size as usize];
             #[cfg(feature = "distributed")]
             world.all_gather_into(&roots, &mut all_roots);
 
@@ -444,48 +439,71 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(num_commit_stages + 2, provers, pctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> =
-                    pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
-                    let mut is_first = true;
-                    for idx in air_instances_idx {
-                        let segment_idx =
-                            &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
-                        if *segment_idx as i32 % size == rank {
-                            let loc_idx = segment_idx / size as usize;
-                            if is_first {
-                                provers[loc_idx].calculate_lev(pctx.clone());
-                                is_first = false;
+                    if ectx.dctx.is_distributed() {
+                        let mut is_first = true;
+                        for idx in air_instances_idx {
+                            let segment_idx =
+                                &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
+                            if *segment_idx as i32 % size == rank {
+                                let loc_idx = segment_idx / size as usize;
+                                if is_first {
+                                    provers[loc_idx].calculate_lev(pctx.clone());
+                                    is_first = false;
+                                }
+                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
+                                provers[loc_idx].opening_stage(1, pctx.clone());
                             }
+                        }
+                    } else {
+                        provers[air_instances_idx[0]].calculate_lev(pctx.clone());
+                        for idx in air_instances_idx {
                             info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
-                            provers[loc_idx].opening_stage(1, pctx.clone());
+                            provers[idx].opening_stage(1, pctx.clone());
                         }
                     }
                 }
             }
         }
 
-        Self::calculate_challenges(num_commit_stages + 2, provers, pctx.clone(), ectx.clone(), transcript, 0, n_provers);
+        Self::calculate_challenges(
+            num_commit_stages + 2,
+            provers,
+            pctx.clone(),
+            ectx.clone(),
+            transcript,
+            0,
+            n_provers,
+        );
 
         // Calculate fri polynomial
         Self::get_challenges(num_commit_stages + 3, provers, pctx.clone(), transcript);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> =
-                    pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
+                let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
-                    let mut is_first = true;
-                    for idx in air_instances_idx {
-                        let segment_idx =
-                            &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
-                        if *segment_idx as i32 % size == rank {
-                            let loc_idx = segment_idx / size as usize;
-                            if is_first {
-                                provers[loc_idx].calculate_xdivxsub(pctx.clone());
-                                is_first = false;
+                    if ectx.dctx.is_distributed() {
+                        let mut is_first = true;
+                        for idx in air_instances_idx {
+                            let segment_idx =
+                                &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
+                            if *segment_idx as i32 % size == rank {
+                                let loc_idx = segment_idx / size as usize;
+                                if is_first {
+                                    provers[loc_idx].calculate_xdivxsub(pctx.clone());
+                                    is_first = false;
+                                }
+                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
+                                provers[loc_idx].opening_stage(2, pctx.clone());
                             }
+                        }
+                    } else {
+                        provers[air_instances_idx[0]].calculate_xdivxsub(pctx.clone());
+
+                        for idx in air_instances_idx {
                             info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
-                            provers[loc_idx].opening_stage(2, pctx.clone());
+                            provers[idx].opening_stage(2, pctx.clone());
                         }
                     }
                 }
@@ -507,7 +525,8 @@ impl<F: Field + 'static> ProofMan<F> {
                     ectx.clone(),
                     transcript,
                     0,
-                    n_provers,                );
+                    n_provers,
+                );
             }
         }
     }

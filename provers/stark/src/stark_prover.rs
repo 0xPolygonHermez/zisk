@@ -497,11 +497,11 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void {
-
         let idx = self.prover_idx;
         #[cfg(feature = "proofman/distributed")]
         {
-            let segment_id: &usize = &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
+            let segment_id: &usize =
+                &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
             idx = *segment_id;
         }
         if save_json {

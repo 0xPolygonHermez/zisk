@@ -24,7 +24,6 @@ pub struct ExecutionCtxBuilder {
     buffer_allocator: Option<Arc<dyn BufferAllocator>>,
     verbose_mode: VerboseMode,
     dctx: DistributionCtx,
-
 }
 
 impl Default for ExecutionCtxBuilder {

@@ -31,7 +31,7 @@ impl<F> AirInstancesRepository<F> {
             if air_instance.airgroup_id == airgroup_id {
                 indices.push(index);
                 #[cfg(feature = "proofman/distributed")]
-                segment_ids.push(air_instance.air_segment_id.unwrap_or(0)); 
+                segment_ids.push(air_instance.air_segment_id.unwrap_or(0));
             }
         }
         #[cfg(feature = "proofman/distributed")]
