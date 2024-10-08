@@ -4,7 +4,6 @@ use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
 use std::fs;
-use proofman_starks_lib_c::*;
 use std::error::Error;
 use colored::*;
 
@@ -37,7 +36,6 @@ impl<F: Field + 'static> ProofMan<F> {
         output_dir_path: PathBuf,
         options: ProofOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        set_log_level_c(options.verbose_mode.into());
         Self::check_paths(
             &witness_lib_path,
             &rom_path,
@@ -229,6 +227,7 @@ impl<F: Field + 'static> ProofMan<F> {
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx>,
     ) -> usize {
+        timer_start!(INITIALIZING_PROVERS);
         info!("{}: ··· INITIALIZING PROVER CLIENTS", Self::MY_NAME);
         let mut cont = 0;
         for (air_instance_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate()
