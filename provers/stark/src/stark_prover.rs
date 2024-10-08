@@ -497,9 +497,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void {
-        let segment_id: &usize = &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
+
+        let idx = self.prover_idx;
+        #[cfg(feature = "proofman/distributed")]
+        {
+            let segment_id: &usize = &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
+            idx = *segment_id;
+        }
         if save_json {
-            save_proof_c(*segment_id as u64, self.p_stark_info, self.p_proof.unwrap(), output_dir);
+            save_proof_c(idx as u64, self.p_stark_info, self.p_proof.unwrap(), output_dir);
         }
 
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
@@ -514,7 +520,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let output_json_dir = if save_json { output_dir } else { "" };
 
         fri_proof_get_zkinproof_c(
-            *segment_id as u64,
+            idx as u64,
             self.p_proof.unwrap(),
             public_inputs,
             challenges,

@@ -41,11 +41,9 @@ Here's an example configuration file demonstrating the mandatory and optional fi
     "only_check": false
 }
 
-// parallel execution
+## Distributed Execution
+
+Here's an example of distributes execution
+
 mpirun --bind-to none -np 2 -x OMP_NUM_THREADS=128 target/release/proofman-cli  prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey -d -o ./tmp
 
-//sequencial execution
-cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey -d -o ./tmp
-
-//verification
-node ../pil2-proofman-js/src/main_verify -k ../zisk/build/provingKey -p ./tmp
