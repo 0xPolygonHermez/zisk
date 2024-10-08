@@ -7,7 +7,15 @@
 
 ### Ubuntu prerequisites
 ```bash
-sudo apt-get install -y xz-utils jq curl git
+sudo apt-get install -y xz-utils jq curl git build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
+```
+
+#### nodejs
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source $HOME/.bashrc
+nvm install 19
+nvm use 19
 ```
 
 ## Option 1: Prebuilt Binaries (Recommended)
@@ -23,9 +31,6 @@ curl -H "Authorization: token ${ZISK_TOKEN}" \
 https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
 </div>
-
-
-
 
 
 This will enable the ziskup command in your CLI. You need to restart your terminal to use it or run this command:
