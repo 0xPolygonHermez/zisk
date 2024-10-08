@@ -4,6 +4,7 @@ use mpi::traits::Communicator;
 use mpi::collective::CommunicatorCollectives;
 
 /// Represents the context of distributed computing
+#[derive(Clone, Default)]
 pub struct DistributionCtx {
     pub rank: i32,
     pub n_processes: i32,
