@@ -5,20 +5,34 @@
 * [xz]()
 * [jq]()
 
-## Option 1: Prebuilt Binaries (Recommended)
-
-this is temporary until we make the repositories publics
+### Ubuntu prerequisites
 ```bash
-export GITHUB_ACCESS_TOKEN=...
-export ZISK_TOKEN=...
+sudo apt-get install -y xz-utils jq curl git
 ```
 
+## Option 1: Prebuilt Binaries (Recommended)
+
+<div class="warning">
+
+this is temporary until we make the repositories publics, if you need an installation token, write to the Zisk team
+```bash
+export ZISK_TOKEN=...
+```
 ```bash
 curl -H "Authorization: token ${ZISK_TOKEN}" \
 https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
+</div>
 
-This will enable the ziskup command in your CLI.
+
+
+
+
+This will enable the ziskup command in your CLI. You need to restart your terminal to use it or run this command:
+
+```bash
+source $HOME/.bashrc
+```
 
 After completing these steps, you can execute ziskup to install the toolchain:
 

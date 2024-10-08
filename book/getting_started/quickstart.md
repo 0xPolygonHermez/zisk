@@ -4,6 +4,18 @@ In this section, we will show you how to create a simple program using ZisK.
 
 ## Create Project
 
+<div class="warning">
+
+this is temporary until we make the repositories publics, if you need an installation token, write to the Zisk team
+```bash
+export ZISK_TOKEN=...
+```
+```bash
+git clone https://${ZISK_TOKEN}@github.com/0xPolygonHermez/zisk
+```
+</div>
+
+
 The first step is to create a new project using the `cargo-zisk sdk new <name>` command. This command will create a new folder in your current directory.
 
 ```bash
@@ -18,13 +30,9 @@ This will create a new project with the following structure:
 ├── build.rs
 ├── Cargo.lock
 ├── Cargo.toml
-├── README.md
-├── rust-toolchain
+├── .gitignore
 └── src
-    ├── bin
-    │   └── hello_zisk.rs
-    ├── lib.rs
-    └── script.ld
+    └── main.rs
 
 2 directories, 8 files
 ```
@@ -32,103 +40,69 @@ This will create a new project with the following structure:
 For running the program in the native architecture:
 ```
 $ cargo run --target x86_64-unknown-linux-gnu
-   Compiling crunchy v0.2.2
-   Compiling tiny-keccak v2.0.2
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hello_world)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.58s
-     Running `target/x86_64-unknown-linux-gnu/debug/hello_zisk`
-Hello, Zisk!
-keccak("Hello, Zisk!"): [147, 41, 209, 243, 3, 171, 124, 49, 98, 118, 203, 166, 56, 28, 45, 41, 53, 159, 129, 193, 208, 229, 15, 201, 63, 11, 158, 3, 183, 26, 50, 124]
+     Running `target/x86_64-unknown-linux-gnu/debug/sha_hasher`
+n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
 ```
-
-For running the program in the ZisK architecture, this will run the program on a qemu emulating a riscv-64 architecture.
-```
-cargo run --target riscv64ima-polygon-ziskos-elf
-   Compiling crunchy v0.2.2
-   Compiling tiny-keccak v2.0.2
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hello_world)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.56s
-     Running `qemu-system-riscv64 -cpu rv64 -machine virt -m 1G -s -nographic -serial 'mon:stdio' -bios target/riscv64ima-polygon-ziskos-elf/debug/hello_zisk`
-Hello, Zisk!
-keccak("Hello, Zisk!"): [147, 41, 209, 243, 3, 171, 124, 49, 98, 118, 203, 166, 56, 28, 45, 41, 53, 159, 129, 193, 208, 229, 15, 201, 63, 11, 158, 3, 183, 26, 50, 124]
-```
-
-## build inputs
-
-To generate the input data for the program in this case, we use Protocol Buffers (it is also possible to do this manually in raw mode).
-The input parameters are defined in the file src/bin/input.proto:
-```
-syntax = "proto3";
-package inputs;
-
-message Input {
-  string msg = 1;
-  uint64 n = 2;
-  uint64 a = 3;
-  uint64 b = 4;
-}
-```
-Here, we have a message msg and three numbers: n, a, and b.
-
-On the other hand, the gen_input.rs script is responsible for generating a .bin file with the parameters defined in the proto file.
-
-```rust
-fn main() -> io::Result<()> {
-    let input = Input {
-        msg: "Hello, Zisk!! by edu".to_string(),
-        n: 0,
-        a: 0,
-        b: 1,
-    };
-
-    // Serialize the `Input` object to a binary file with fixed size
-    serialize_input(&input)?;
-
-    // Deserialize the `Input` object from the binary file
-    let input_read = deserialize_input()?;
-
-    // Print the deserialized data
-    println!("Input: {:?}", input_read);
-
-    Ok(())
-}
-```
-
-To generate it, it is only necessary to execute:
-
-```bash
-$ cargo run --bin inputs --target x86_64-unknown-linux-gnu
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hellozisk_rust)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
-     Running `target/x86_64-unknown-linux-gnu/debug/inputs`
-Input { msg: "Hello, Zisk!!", n: 0, a: 0, b: 1 }
-```
-
-this creates the `input.bin` file inside the `output` folder
 
 ## Run on ZisK simulator
 
-You will need to have ziskjs installed in the upper path. Running it in release mode is recommended if you want to reduce the number of cycles, but debug mode helps to find problems that may be hidden in release mode.
-
 ```bash
-SIM=true cargo run --release --target riscv64ima-polygon-ziskos-elf
+cargo-zisk run --release
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+```
+### metrics
+```bash
+cargo-zisk run --release -m
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -m -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+process_rom() steps=42454508 duration=0.7520 tp=56.4588 Msteps/s freq=2874.0000 50.9043 clocks/step
 ```
 
-## Compile and run in qemu with gdb
+### stats
 ```bash
-GDB=true cargo run --release --target riscv64ima-polygon-ziskos-elf
-```
+cargo-zisk run --release --stats
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+Cost definitions:
+    AREA_PER_SEC: 1000000 steps
+    COST_MEMA_R1: 0.00002 sec
+    COST_MEMA_R2: 0.00004 sec
+    COST_MEMA_W1: 0.00004 sec
+    COST_MEMA_W2: 0.00008 sec
+    COST_USUAL: 0.000008 sec
+    COST_STEP: 0.00005 sec
 
-then in another terminal
-```bash
-riscv64-unknown-elf-gdb
-    file target/riscv64ima-polygon-ziskos-elf/release/hello_zisk
-    target remote :1234
-    si
-    x/10i $pc-16
-```
-or for tracing purposes:
-```bash
-riscv64-unknown-elf-gdb --command ../ziskjs/test/zisk_trace_gdb.py
-```
+Total Cost: 6392.55 sec
+    Main Cost: 2122.73 sec 42454507 steps
+    Mem Cost: 1107.83 sec 110782774 steps
+    Mem Align: 21.22 sec 1061034 steps
+    Opcodes: 3125.94 sec 1432 steps (40600544 ops)
+    Usual: 14.83 sec 1853964 steps
 
+Opcodes:
+    flag: 0.00 sec (0 steps/op) (40583 ops)
+    copyb: 0.00 sec (0 steps/op) (5266028 ops)
+    add: 553.92 sec (77 steps/op) (7193707 ops)
+    sub: 0.00 sec (77 steps/op) (11 ops)
+    ltu: 6.95 sec (77 steps/op) (90237 ops)
+    eq: 1.54 sec (77 steps/op) (19953 ops)
+    sll: 620.18 sec (109 steps/op) (5689699 ops)
+    srl: 8.73 sec (109 steps/op) (80061 ops)
+    add_w: 0.00 sec (77 steps/op) (55 ops)
+    sub_w: 0.77 sec (77 steps/op) (10005 ops)
+    srl_w: 718.31 sec (109 steps/op) (6589961 ops)
+    and: 168.70 sec (77 steps/op) (2190887 ops)
+    or: 471.96 sec (77 steps/op) (6129357 ops)
+    xor: 531.30 sec (77 steps/op) (6899979 ops)
+    signextend_b: 17.44 sec (109 steps/op) (160000 ops)
+    signextend_w: 26.16 sec (109 steps/op) (240000 ops)
+    mul: 0.00 sec (97 steps/op) (20 ops)
+    muluh: 0.00 sec (97 steps/op) (1 ops)
+```
