@@ -24,4 +24,4 @@ mpi = { version = "0.8.0", optional = true }
 [features]
 default = []
 no_lib_link = ["proofman-starks-lib-c/no_lib_link"]
-distributed = ["mpi"]
+distributed = ["proofman-common/distributed", "dep:mpi"]
