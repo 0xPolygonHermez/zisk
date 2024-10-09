@@ -1,7 +1,7 @@
 use log::info;
 use p3_field::PrimeField;
 
-use proofman_util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::{Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -190,11 +190,11 @@ impl<'a, F: PrimeField> MainSM<F> {
             self.threads_controller.wait_for_threads();
 
             // Unregister main state machine as a predecessor for all the secondary state machines
-            timer_start!(UNREGISTER_PREDECESSORS);
+            timer_start_info!(UNREGISTER_PREDECESSORS);
             self.mem_sm.unregister_predecessor::<F>(scope);
             self.binary_sm.unregister_predecessor(scope);
             self.arith_sm.unregister_predecessor::<F>(scope);
-            timer_stop_and_log!(UNREGISTER_PREDECESSORS);
+            timer_stop_and_log_info!(UNREGISTER_PREDECESSORS);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {
@@ -336,7 +336,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             air.num_rows(),
             air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0
         );
-        timer_start!(CREATE_AIR_INSTANCE);
+        timer_start_info!(CREATE_AIR_INSTANCE);
 
         // Compute buffer size using the BufferAllocator
         let (buffer_size, offsets) = ectx
@@ -387,7 +387,7 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         pctx.air_instance_repo.add_air_instance(air_instance);
 
-        timer_stop_and_log!(CREATE_AIR_INSTANCE);
+        timer_stop_and_log_info!(CREATE_AIR_INSTANCE);
     }
 
     /// Proves a batch of inputs
