@@ -69,7 +69,7 @@ impl ProveCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                ProofOptions::new(0, self.verbose.into(), self.aggregation, self.debug),
+                ProofOptions::new(false, self.verbose.into(), self.aggregation, self.debug),
             )?,
         };
 

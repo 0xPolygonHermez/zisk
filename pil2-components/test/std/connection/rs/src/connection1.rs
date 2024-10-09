@@ -16,7 +16,7 @@ impl<F: PrimeField + Copy> Connection1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Connection1";
+    const MY_NAME: &'static str = "Connct_1";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let connection1 = Arc::new(Self { _phantom: std::marker::PhantomData });
@@ -59,7 +59,7 @@ where
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
-        log::info!(
+        log::debug!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),

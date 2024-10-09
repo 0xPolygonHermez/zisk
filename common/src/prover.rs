@@ -25,6 +25,7 @@ pub struct ProverInfo {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub prover_idx: usize,
+    pub instance_id: usize,
 }
 
 #[derive(Debug, Clone, Copy)]

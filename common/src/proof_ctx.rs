@@ -34,15 +34,15 @@ impl<F> Default for BuffHelper<F> {
 }
 
 pub struct ProofOptions {
-    pub debug_mode: u64,
+    pub verify_constraints: bool,
     pub verbose_mode: VerboseMode,
     pub aggregation: bool,
     pub save_proofs: bool,
 }
 
 impl ProofOptions {
-    pub fn new(debug_mode: u64, verbose_mode: VerboseMode, aggregation: bool, save_proofs: bool) -> Self {
-        Self { debug_mode, verbose_mode, aggregation, save_proofs }
+    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, aggregation: bool, save_proofs: bool) -> Self {
+        Self { verify_constraints, verbose_mode, aggregation, save_proofs }
     }
 }
 
@@ -60,7 +60,7 @@ impl<F> ProofCtx<F> {
     const MY_NAME: &'static str = "ProofCtx";
 
     pub fn create_ctx(pilout: WitnessPilout, proving_key_path: PathBuf) -> Self {
-        log::info!("{}: ··· Creating proof context", Self::MY_NAME);
+        log::info!("{}: Creating proof context", Self::MY_NAME);
 
         let global_info: GlobalInfo = GlobalInfo::new(&proving_key_path);
 

@@ -12,7 +12,7 @@ pub struct FibonacciSquare<F: PrimeField> {
 }
 
 impl<F: PrimeField + Copy> FibonacciSquare<F> {
-    const MY_NAME: &'static str = "FibonacciSquare";
+    const MY_NAME: &'static str = "FiboSqre";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, module: Arc<Module<F>>) -> Arc<Self> {
         let fibonacci = Arc::new(Self { module });
@@ -39,7 +39,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
-        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
+        log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let public_inputs: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let (module, mut a, mut b, _out) = public_inputs.inner();

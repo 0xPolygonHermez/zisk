@@ -1,7 +1,19 @@
 #[macro_export]
-macro_rules! timer_start {
+macro_rules! timer_start_info {
     ($name:ident) => {
-        timer_start!($name, "");
+        timer_start_info!($name, "");
+    };
+    ($name:ident, $arg:expr) => {
+        #[allow(non_snake_case)]
+        let $name = std::time::Instant::now();
+        log::info!("{}    start >>> {}{}{}", "\x1b[2m", stringify!($name), $arg, "\x1b[37;0m");
+    };
+}
+
+#[macro_export]
+macro_rules! timer_start_debug {
+    ($name:ident) => {
+        timer_start_debug!($name, "");
     };
     ($name:ident, $arg:expr) => {
         #[allow(non_snake_case)]
@@ -11,38 +23,49 @@ macro_rules! timer_start {
 }
 
 #[macro_export]
-macro_rules! timer_stop {
+macro_rules! timer_start_trace {
     ($name:ident) => {
+        timer_start_trace!($name, "");
+    };
+    ($name:ident, $arg:expr) => {
+        #[allow(non_snake_case)]
+        let $name = std::time::Instant::now();
+        log::trace!("{}    start >>> {}{}{}", "\x1b[2m", stringify!($name), $arg, "\x1b[37;0m");
+    };
+}
+
+#[macro_export]
+macro_rules! timer_stop_and_log_info {
+    ($name:ident) => {
+        timer_stop_and_log_info!($name, "");
+    };
+    ($name:ident, $arg:expr) => {
         #[allow(non_snake_case)]
         let $name = std::time::Instant::now() - $name;
-        log::debug!("{}     stop <<< {}{}", "\x1b[2m", stringify!($name), "\x1b[37;0m");
+        log::info!("{}     stop <<< {}{} {}ms{}", "\x1b[2m", stringify!($name), $arg, $name.as_millis(), "\x1b[37;0m");
     };
 }
 
 #[macro_export]
-macro_rules! timer_stop_step {
-    ($name:ident, $step:expr) => {
-        #[allow(non_snake_case)]
-        let $name = std::time::Instant::now() - $name;
-        log::debug!("{}     stop <<< {}{}{}", "\x1b[2m", stringify!($name), $step, "\x1b[37;0m");
-    };
-}
-
-#[macro_export]
-macro_rules! timer_log {
+macro_rules! timer_stop_and_log_debug {
     ($name:ident) => {
-        log::debug!("{} duration --- {} {}ms{}", "\x1b[2m", stringify!($name), $name.as_millis(), "\x1b[37;0m");
-    };
-}
-
-#[macro_export]
-macro_rules! timer_stop_and_log {
-    ($name:ident) => {
-        timer_stop_and_log!($name, "");
+        timer_stop_and_log_debug!($name, "");
     };
     ($name:ident, $arg:expr) => {
         #[allow(non_snake_case)]
         let $name = std::time::Instant::now() - $name;
         log::debug!("{}     stop <<< {}{} {}ms{}", "\x1b[2m", stringify!($name), $arg, $name.as_millis(), "\x1b[37;0m");
+    };
+}
+
+#[macro_export]
+macro_rules! timer_stop_and_log_trace {
+    ($name:ident) => {
+        timer_stop_and_log_trace!($name, "");
+    };
+    ($name:ident, $arg:expr) => {
+        #[allow(non_snake_case)]
+        let $name = std::time::Instant::now() - $name;
+        log::trace!("{}     stop <<< {}{} {}ms{}", "\x1b[2m", stringify!($name), $arg, $name.as_millis(), "\x1b[37;0m");
     };
 }

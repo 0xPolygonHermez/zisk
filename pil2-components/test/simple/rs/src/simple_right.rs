@@ -16,7 +16,7 @@ impl<F: PrimeField + Copy> SimpleRight<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "SimpleRight";
+    const MY_NAME: &'static str = "SimRight";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let simple_right = Arc::new(Self { _phantom: std::marker::PhantomData });
@@ -56,8 +56,8 @@ where
         let air_id = air_instance.air_id;
         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
-        log::info!(
-            "{}: ··· Computing witness for AIR '{}' at stage {}",
+        log::debug!(
+            "{}: ··· Computing witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),
             stage

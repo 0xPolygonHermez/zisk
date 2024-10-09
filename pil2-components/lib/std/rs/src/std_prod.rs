@@ -234,7 +234,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    log::info!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
+                    log::debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 

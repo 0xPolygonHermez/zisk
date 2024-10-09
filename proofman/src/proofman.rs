@@ -19,7 +19,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, S
 
 use std::os::raw::c_void;
 
-use proofman_util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start_info, timer_start_debug, timer_stop_and_log_info, timer_stop_and_log_debug};
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -36,13 +36,17 @@ impl<F: Field + 'static> ProofMan<F> {
         output_dir_path: PathBuf,
         options: ProofOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        timer_start_info!(GENERATING_VADCOP_PROOF);
+
+        timer_start_info!(GENERATING_PROOF);
+
         Self::check_paths(
             &witness_lib_path,
             &rom_path,
             &public_inputs_path,
             &proving_key_path,
             &output_dir_path,
-            options.debug_mode,
+            options.verify_constraints,
         )?;
 
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
@@ -79,7 +83,7 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
-        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, 0, n_provers);
+        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, false, n_provers);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -92,18 +96,18 @@ impl<F: Field + 'static> ProofMan<F> {
 
             Self::calculate_stage(stage, &mut provers, pctx.clone());
 
-            if options.debug_mode == 0 {
+            if !options.verify_constraints {
                 Self::commit_stage(stage, &mut provers, pctx.clone());
             }
 
-            if options.debug_mode == 0 || stage < num_commit_stages {
+            if !options.verify_constraints || stage < num_commit_stages {
                 Self::calculate_challenges(
                     stage,
                     &mut provers,
                     pctx.clone(),
                     ectx.clone(),
                     &mut transcript,
-                    options.debug_mode,
+                    options.verify_constraints,
                     n_provers,
                 );
             }
@@ -111,8 +115,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
         witness_lib.end_proof();
 
-        if options.debug_mode != 0 {
-            verify_constraints_proof(pctx, ectx, sctx, provers, witness_lib, options);
+        if options.verify_constraints {
+            verify_constraints_proof(pctx, ectx, sctx, provers, witness_lib);
             return Ok(());
         }
 
@@ -126,7 +130,7 @@ impl<F: Field + 'static> ProofMan<F> {
             pctx.clone(),
             ectx.clone(),
             &mut transcript,
-            0,
+            false,
             n_provers,
         );
 
@@ -141,10 +145,14 @@ impl<F: Field + 'static> ProofMan<F> {
             options.aggregation,
             options.save_proofs,
         );
+
+        timer_stop_and_log_info!(GENERATING_PROOF);
+
         if !options.aggregation {
             return Ok(());
         }
 
+        timer_start_info!(GENERATING_AGGREGATION_PROOFS);
         let comp_proofs = generate_recursion_proof(
             &pctx,
             &proves_out,
@@ -175,7 +183,8 @@ impl<F: Field + 'static> ProofMan<F> {
         let _final_proof =
             generate_recursion_proof(&pctx, &recursive2_proofs, &ProofType::Final, output_dir_path.clone(), true)?;
         println!("Final proof generated successfully");
-
+        timer_stop_and_log_info!(GENERATING_AGGREGATION_PROOFS);
+        timer_stop_and_log_info!(GENERATING_VADCOP_PROOF);
         Ok(())
     }
 
@@ -185,9 +194,9 @@ impl<F: Field + 'static> ProofMan<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
+        timer_start_debug!(INITIALIZE_WITNESS);
         witness_lib.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
 
-        log::info!("{}: ··· EXECUTING PROOF", Self::MY_NAME);
         witness_lib.execute(pctx.clone(), ectx, sctx);
 
         // After the execution print the planned instances
@@ -219,6 +228,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 }
             }
         }
+        timer_stop_and_log_debug!(INITIALIZE_WITNESS);
     }
 
     fn initialize_provers(
@@ -227,11 +237,8 @@ impl<F: Field + 'static> ProofMan<F> {
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx>,
     ) -> usize {
-        timer_start!(INITIALIZING_PROVERS);
-        info!("{}: ··· INITIALIZING PROVER CLIENTS", Self::MY_NAME);
         let mut cont = 0;
-        for (air_instance_idx, air_instance) in pctx.air_instance_repo.air_instances.read().unwrap().iter().enumerate()
-        {
+        for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
             cont += 1;
             #[cfg(feature = "distributed")]
             let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
@@ -239,18 +246,15 @@ impl<F: Field + 'static> ProofMan<F> {
             if segment_idx as i32 % _ectx.dctx.size != _ectx.dctx.rank {
                 continue;
             }
-            log::debug!(
-                "{}: Initializing prover for air instance ({}, {})",
-                Self::MY_NAME,
-                air_instance.airgroup_id,
-                air_instance.air_id
-            );
+            let air_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
+            log::debug!("{}: Initializing prover for air instance {}", Self::MY_NAME, air_name);
             let prover = Box::new(StarkProver::new(
                 sctx.clone(),
                 pctx.clone(),
                 air_instance.airgroup_id,
                 air_instance.air_id,
-                air_instance_idx,
+                air_instance.air_instance_id.unwrap(),
+                air_instance.idx.unwrap(),
             ));
 
             provers.push(prover);
@@ -268,28 +272,39 @@ impl<F: Field + 'static> ProofMan<F> {
         }
         let buff_helper: Vec<F> = vec![F::zero(); buff_helper_size];
         *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
-
-        timer_stop_and_log!(INITIALIZING_PROVERS);
         cont
     }
 
     pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], proof_ctx: Arc<ProofCtx<F>>) {
-        info!("{}: ··· PROVER STAGE {}", Self::MY_NAME, stage);
-        timer_start!(PROVER_STAGE_, stage);
-
-        for prover in provers.iter_mut() {
-            prover.calculate_stage(stage, proof_ctx.clone());
+        if stage as usize == proof_ctx.global_info.n_challenges.len() + 1 {
+            info!("{}: Calculating Quotient Polynomials", Self::MY_NAME);
+            timer_start_debug!(CALCULATING_QUOTIENT_POLYNOMIAL);
+            for prover in provers.iter_mut() {
+                prover.calculate_stage(stage, proof_ctx.clone());
+            }
+            timer_stop_and_log_debug!(CALCULATING_QUOTIENT_POLYNOMIAL);
+        } else {
+            info!("{}: Calculating stage {}", Self::MY_NAME, stage);
+            timer_start_debug!(CALCULATING_STAGE);
+            for prover in provers.iter_mut() {
+                prover.calculate_stage(stage, proof_ctx.clone());
+            }
+            timer_stop_and_log_debug!(CALCULATING_STAGE);
         }
-        timer_stop_and_log!(PROVER_STAGE_, stage);
     }
 
     pub fn commit_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], proof_ctx: Arc<ProofCtx<F>>) {
-        info!("{}: Committing stage {}", Self::MY_NAME, stage);
+        if stage as usize == proof_ctx.global_info.n_challenges.len() + 1 {
+            info!("{}: Committing stage Q", Self::MY_NAME);
+        } else {
+            info!("{}: Committing stage {}", Self::MY_NAME, stage);
+        }
 
-        for (idx, prover) in provers.iter_mut().enumerate() {
-            info!("{}: Committing stage {}, for prover {}", Self::MY_NAME, stage, idx);
+        timer_start_debug!(COMMITING_STAGE);
+        for prover in provers.iter_mut() {
             prover.commit_stage(stage, proof_ctx.clone());
         }
+        timer_stop_and_log_debug!(COMMITING_STAGE);
     }
 
     fn hash_b_tree(prover: &dyn Prover<F>, values: Vec<Vec<F>>) -> Vec<F> {
@@ -319,15 +334,16 @@ impl<F: Field + 'static> ProofMan<F> {
         pctx: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
-        debug_mode: u64,
+        verify_constraints: bool,
         n_provers: usize,
     ) {
-        info!("{}: ··· CALCULATING CHALLENGES FOR STAGE {}", Self::MY_NAME, stage);
-
         if !ectx.dctx.is_distributed() {
+            if stage != 0 {
+                info!("{}: Calculating challenges", Self::MY_NAME);
+            }
             let airgroups = pctx.global_info.subproofs.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
-                if debug_mode != 0 {
+                if verify_constraints {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                     transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
                 } else {
@@ -370,7 +386,7 @@ impl<F: Field + 'static> ProofMan<F> {
             // add challenges to transcript
             let airgroups = pctx.global_info.subproofs.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
-                if debug_mode != 0 {
+                if verify_constraints {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
                     transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
                 } else {
@@ -434,6 +450,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Calculate evals
         Self::get_challenges(num_commit_stages + 2, provers, pctx.clone(), transcript);
+        timer_start_debug!(CALCULATING_EVALS);
+        info!("{}: Calculating evals", Self::MY_NAME);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
@@ -449,33 +467,33 @@ impl<F: Field + 'static> ProofMan<F> {
                                     provers[loc_idx].calculate_lev(pctx.clone());
                                     is_first = false;
                                 }
-                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
                                 provers[loc_idx].opening_stage(1, pctx.clone());
                             }
                         }
                     } else {
                         provers[air_instances_idx[0]].calculate_lev(pctx.clone());
                         for idx in air_instances_idx {
-                            info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 1, idx);
                             provers[idx].opening_stage(1, pctx.clone());
                         }
                     }
                 }
             }
         }
-
+        timer_stop_and_log_debug!(CALCULATING_EVALS);
         Self::calculate_challenges(
             num_commit_stages + 2,
             provers,
             pctx.clone(),
             ectx.clone(),
             transcript,
-            0,
+            false,
             n_provers,
         );
 
         // Calculate fri polynomial
         Self::get_challenges(num_commit_stages + 3, provers, pctx.clone(), transcript);
+        info!("{}: Calculating FRI Polynomials", Self::MY_NAME);
+        timer_start_debug!(CALCULATING_FRI_POLINOMIAL);
         for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
@@ -491,7 +509,6 @@ impl<F: Field + 'static> ProofMan<F> {
                                     provers[loc_idx].calculate_xdivxsub(pctx.clone());
                                     is_first = false;
                                 }
-                                info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
                                 provers[loc_idx].opening_stage(2, pctx.clone());
                             }
                         }
@@ -499,19 +516,38 @@ impl<F: Field + 'static> ProofMan<F> {
                         provers[air_instances_idx[0]].calculate_xdivxsub(pctx.clone());
 
                         for idx in air_instances_idx {
-                            info!("{}: Opening stage {}, for prover {}", Self::MY_NAME, 2, idx);
                             provers[idx].opening_stage(2, pctx.clone());
                         }
                     }
                 }
             }
         }
+        timer_stop_and_log_debug!(CALCULATING_FRI_POLINOMIAL);
 
         // FRI Steps
-        for opening_id in 3..=provers[0].num_opening_stages() {
+        let global_steps_fri: Vec<usize> = pctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
+        let num_opening_stages = global_steps_fri.len() as u32 + 3;
+        timer_start_debug!(CALCULATING_FRI);
+        for opening_id in 3..=num_opening_stages {
+            timer_start_debug!(CALCULATING_FRI_STEP);
             Self::get_challenges(num_commit_stages + 1 + opening_id, provers, pctx.clone(), transcript);
-            for (idx, prover) in provers.iter_mut().enumerate() {
-                info!("{}: Computing FRI step {} for prover {}", Self::MY_NAME, opening_id - 3, idx);
+            if opening_id == num_opening_stages - 1 {
+                info!(
+                    "{}: Calculating final FRI polynomial at {}",
+                    Self::MY_NAME,
+                    global_steps_fri[opening_id as usize - 3]
+                );
+            } else if opening_id == num_opening_stages {
+                info!("{}: Calculating FRI queries", Self::MY_NAME);
+            } else {
+                info!(
+                    "{}: Calculating FRI folding from {} to {}",
+                    Self::MY_NAME,
+                    global_steps_fri[opening_id as usize - 3],
+                    global_steps_fri[opening_id as usize - 2]
+                );
+            }
+            for prover in provers.iter_mut() {
                 prover.opening_stage(opening_id, pctx.clone());
             }
             if opening_id < provers[0].num_opening_stages() {
@@ -521,11 +557,13 @@ impl<F: Field + 'static> ProofMan<F> {
                     pctx.clone(),
                     ectx.clone(),
                     transcript,
-                    0,
+                    false,
                     n_provers,
                 );
             }
+            timer_stop_and_log_debug!(CALCULATING_FRI_STEP);
         }
+        timer_stop_and_log_debug!(CALCULATING_FRI);
     }
 
     fn finalize_proof(
@@ -535,6 +573,7 @@ impl<F: Field + 'static> ProofMan<F> {
         aggregation: bool,
         save_proofs: bool,
     ) -> Vec<*mut c_void> {
+        timer_start_debug!(SAVING_PROOF);
         let mut proves = Vec::new();
         for prover in provers.iter_mut() {
             proves.push(prover.save_proof(proof_ctx.clone(), output_dir, save_proofs));
@@ -554,6 +593,7 @@ impl<F: Field + 'static> ProofMan<F> {
             save_challenges_c(challenges, global_info_file, output_dir);
         }
 
+        timer_stop_and_log_debug!(SAVING_PROOF);
         proves
     }
 
@@ -583,11 +623,7 @@ impl<F: Field + 'static> ProofMan<F> {
             info!("{}:       Air Group [{}]", Self::MY_NAME, air_group);
             for air_name in air_names {
                 let count = air_group_instances.get(air_name).unwrap();
-                log::info!(
-                    "{}:       {}",
-                    Self::MY_NAME,
-                    format!("· {} x Air [{}]", count, air_name).bright_white().bold()
-                );
+                info!("{}:       {}", Self::MY_NAME, format!("· {} x Air [{}]", count, air_name).bright_white().bold());
             }
         }
         info!("{}: --- PROOF INSTANCES SUMMARY ------------------------", Self::MY_NAME);
@@ -599,7 +635,7 @@ impl<F: Field + 'static> ProofMan<F> {
         public_inputs_path: &Option<PathBuf>,
         proving_key_path: &PathBuf,
         output_dir_path: &PathBuf,
-        debug_mode: u64,
+        verify_constraints: bool,
     ) -> Result<(), Box<dyn Error>> {
         // Check witness_lib path exists
         if !witness_lib_path.exists() {
@@ -630,7 +666,7 @@ impl<F: Field + 'static> ProofMan<F> {
             return Err(format!("Proving key parameter must be a folder: {:?}", proving_key_path).into());
         }
 
-        if debug_mode == 0 && !output_dir_path.exists() {
+        if !verify_constraints && !output_dir_path.exists() {
             fs::create_dir_all(output_dir_path)
                 .map_err(|err| format!("Failed to create output directory: {:?}", err))?;
         }

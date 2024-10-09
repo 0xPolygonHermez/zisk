@@ -16,7 +16,7 @@ impl<F: PrimeField + Copy> Permutation1_8<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "Permutation1_8";
+    const MY_NAME: &'static str = "Perm1_8 ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let permutation1_8 = Arc::new(Self { _phantom: std::marker::PhantomData });
@@ -62,7 +62,7 @@ where
         let air_id = air_instance.air_id;
         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
-        log::info!(
+        log::debug!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),

@@ -6,3 +6,4 @@ build*/
 run.sh
 vendor
 .cargo
+MyLogFile.log

@@ -9,6 +9,8 @@ use num_traits::ToPrimitive;
 use p3_field::{Field, PrimeField};
 use rayon::prelude::*;
 
+use log::debug;
+
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
@@ -245,7 +247,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    log::info!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
+                    debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 

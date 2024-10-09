@@ -18,7 +18,7 @@ impl<F: PrimeField> RangeCheck1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "RangeCheck1";
+    const MY_NAME: &'static str = "RngChck1";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let range_check1 = Arc::new(Self { std_lib });
@@ -60,7 +60,7 @@ where
     ) {
         let mut rng = rand::thread_rng();
 
-        log::info!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheck1", stage);
+        log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheck1", stage);
 
         if stage == 1 {
             let (buffer_size, offsets) = ectx

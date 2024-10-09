@@ -12,7 +12,7 @@ pub struct Permutation2<F> {
 }
 
 impl<F: PrimeField + Copy> Permutation2<F> {
-    const MY_NAME: &'static str = "Permutation2";
+    const MY_NAME: &'static str = "Perm2   ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let permutation2 = Arc::new(Self { _phantom: std::marker::PhantomData });
@@ -53,7 +53,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         let air_id = air_instance.air_id;
         let air = pctx.pilout.get_air(airgroup_id, air_id);
 
-        log::info!(
+        log::debug!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),
