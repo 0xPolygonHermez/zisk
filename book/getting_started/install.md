@@ -10,6 +10,18 @@
 sudo apt-get install -y xz-utils jq curl git build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
 ```
 
+### OSX prerequisites
+```bash
+# Install brew first.
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# A dependency for `cargo build`.
+brew install protobuf
+
+# A dependency of `ziskup`.
+brew install libusb jq
+```
+
 #### nodejs
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
