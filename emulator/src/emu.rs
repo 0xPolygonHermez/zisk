@@ -1,7 +1,10 @@
-use std::mem;
+use std::{mem, time::Instant};
 
-use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep};
-use p3_field::AbstractField;
+use crate::{
+    emu_full_trace, EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep,
+    ParEmuOptions,
+};
+use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
@@ -388,9 +391,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -446,6 +449,50 @@ impl<'a> Emu<'a> {
         }
     }
 
+    /// Run the whole program
+    pub fn par_run<F: PrimeField>(
+        &mut self,
+        inputs: Vec<u8>,
+        options: &EmuOptions,
+        par_options: &ParEmuOptions,
+    ) -> Vec<Vec<EmuFullTraceStep<F>>> {
+        // Context, where the state of the execution is stored and modified at every execution step
+        self.ctx = self.create_emu_context(inputs);
+
+        // Init pc to the rom entry address
+        self.ctx.trace.start.pc = ROM_ENTRY;
+
+        // Store the stats option into the emulator context
+        self.ctx.do_stats = options.stats;
+
+        let mut main_row_vec = Vec::new();
+        
+        // While not done
+        while !self.ctx.inst_ctx.end {
+            // self.ctx.inst_ctx.step
+            let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
+            let pos = self.ctx.inst_ctx.step % par_options.num_steps as u64;
+
+            let is_my_block =
+                block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
+
+            let emu_full_trace = if is_my_block {
+                if pos == 0 {
+                    main_row_vec.push(Vec::<EmuFullTraceStep<F>>::with_capacity(par_options.num_steps));
+                }
+                let n = main_row_vec.len();
+                Some(&mut main_row_vec[n - 1])
+            } else {
+                None
+            };
+
+            // Execute the current step
+            self.par_step(options, par_options, emu_full_trace);
+        }
+
+        main_row_vec
+    }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     #[allow(unused_variables)]
@@ -465,9 +512,9 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
 
         // Retrieve statistics data
-        if self.ctx.do_stats {
-            self.ctx.stats.on_op(instruction, self.ctx.inst_ctx.a, self.ctx.inst_ctx.b);
-        }
+        // if self.ctx.do_stats {
+        //     self.ctx.stats.on_op(instruction, self.ctx.inst_ctx.a, self.ctx.inst_ctx.b);
+        // }
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
@@ -515,9 +562,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -544,6 +591,83 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
         }
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    #[allow(unused_variables)]
+    pub fn par_step<F: PrimeField>(
+        &mut self,
+        options: &EmuOptions,
+        par_options: &ParEmuOptions,
+        emu_full_trace_vec: Option<&mut Vec<EmuFullTraceStep<F>>>,
+    ) {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a(instruction);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b(instruction);
+
+        // Call the operation
+        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c(instruction);
+
+        // Set SP, if specified by the current instruction
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+
+        // Set PC, based on current PC, current flag and current instruction
+        self.set_pc(instruction);
+
+        // If this is the last instruction, stop executing
+        self.ctx.inst_ctx.end = instruction.end;
+
+        // TODO!!!!!
+        // let trace_step = EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b };
+
+        // self.ctx.trace.steps.push(trace_step);
+
+        // Increment step counter
+        self.ctx.inst_ctx.step += 1;
+
+        if emu_full_trace_vec.is_none() {
+            return;
+        }
+
+        // Create an EmuFullTraceStep instance
+        // let emu_full_trace = [F::default(); Main0Row::<F>::ROW_SIZE];
+        let row = EmuFullTraceStep::<F>::default();
+        emu_full_trace_vec.unwrap().push(row);
+
+        // if self.ctx.inst_ctx.end ||
+        //     ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+        //         self.ctx.callback_steps)
+        // {
+        //     // In run() we have checked the callback consistency with ctx.do_callback
+        //     let callback = callback.as_ref().unwrap();
+
+        //     // Set the end-of-trace data
+        //     self.ctx.trace.end.end = self.ctx.inst_ctx.end;
+
+        //     // Swap the emulator trace to avoid memory copies
+        //     let mut trace = EmuTrace::default();
+        //     trace.steps.reserve(self.ctx.callback_steps as usize);
+        //     mem::swap(&mut self.ctx.trace, &mut trace);
+        //     (callback)(trace);
+
+        //     // Set the start-of-trace data
+        //     self.ctx.trace.start.pc = self.ctx.inst_ctx.pc;
+        //     self.ctx.trace.start.sp = self.ctx.inst_ctx.sp;
+        //     self.ctx.trace.start.c = self.ctx.inst_ctx.c;
+        //     self.ctx.trace.start.step = self.ctx.inst_ctx.step;
+
+        //     // Increment the last callback step counter
+        //     self.ctx.last_callback_step += self.ctx.callback_steps;
+        // }
     }
 
     /// Run a slice of the program to generate full traces

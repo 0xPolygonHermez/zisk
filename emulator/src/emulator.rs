@@ -1,5 +1,8 @@
-use crate::{Emu, EmuOptions, EmuSlice, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
-use p3_field::AbstractField;
+use crate::{
+    Emu, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, ErrWrongArguments, ParEmuOptions,
+    ZiskEmulatorErr,
+};
+use p3_field::{AbstractField, PrimeField};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -153,6 +156,71 @@ impl ZiskEmulator {
         }
 
         Ok(output)
+    }
+
+    pub fn par_process_rom<F: PrimeField>(
+        rom: &ZiskRom,
+        inputs: &[u8],
+        options: &EmuOptions,
+        par_options: &ParEmuOptions,
+    ) -> Result<Vec<Vec<EmuFullTraceStep<F>>>, ZiskEmulatorErr> {
+        if options.verbose {
+            println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
+        }
+
+        // Create a emulator instance with this rom and inputs
+        let mut emu = Emu::new(rom);
+        let start = Instant::now();
+
+        // Run the emulation
+        let result = emu.par_run::<F>(inputs.to_owned(), options, par_options);
+
+        if !emu.terminated() {
+            return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
+
+        let duration = start.elapsed();
+        println!("process_rom() duration={:?}", duration);
+
+        // Log performance metrics
+        if options.log_metrics {
+            let secs = duration.as_secs_f64();
+            let steps = emu.number_of_steps();
+            let tp = steps as f64 / secs / 1_000_000.0;
+
+            let system = System::new_all();
+            let cpu = &system.cpus()[0];
+            let cpu_frequency = cpu.frequency() as f64;
+
+            let clocks_per_step = cpu_frequency / tp;
+            println!(
+                "process_rom() steps={} duration={:.4} tp={:.4} Msteps/s freq={:.4} {:.4} clocks/step",
+                steps, secs, tp, cpu_frequency, clocks_per_step
+            );
+        }
+
+        // Get the emulation output
+        let output = emu.get_output_8();
+
+        // OUTPUT:
+        // Save output to a file if requested
+        if options.output.is_some() {
+            fs::write(options.output.as_ref().unwrap(), &output)
+                .map_err(|e| ZiskEmulatorErr::Unknown(e.to_string()))?
+        }
+
+        // Log output to console if requested
+        if options.log_output {
+            // Get the emulation output as a u32 vector
+            let output = emu.get_output_32();
+
+            // Log the output to console
+            for o in &output {
+                println!("{:08x}", o);
+            }
+        }
+
+        Ok(result)
     }
 
     pub fn process_slice<F: AbstractField>(

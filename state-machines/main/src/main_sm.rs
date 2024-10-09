@@ -1,8 +1,9 @@
 use log::info;
 use p3_field::PrimeField;
 
+use core::num;
 use proofman_util::{timer_start, timer_stop_and_log};
-use rayon::{prelude::*, Scope, ThreadPoolBuilder};
+use rayon::{prelude::*, Scope};
 use sm_binary::BinarySM;
 use std::{
     fs, mem,
@@ -13,10 +14,9 @@ use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_util::create_buffer_fast;
 
-use zisk_pil::{Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
-use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ZiskEmulator};
+use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
+use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ParEmuOptions, ZiskEmulator};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
@@ -31,12 +31,8 @@ pub struct MainAirSegment<F> {
 }
 
 impl<F: Default + Clone> MainAirSegment<F> {
-    pub fn new(segment_id: u32, inputs_size: usize) -> Self {
-        Self {
-            air_segment_id: segment_id,
-            filled_inputs: 0,
-            inputs: create_buffer_fast(inputs_size),
-        }
+    pub fn new(segment_id: u32) -> Self {
+        Self { air_segment_id: segment_id, filled_inputs: 0, inputs: Vec::new() }
     }
 }
 
@@ -51,8 +47,7 @@ pub struct MainSM<F: PrimeField> {
     // Zisk ROM
     zisk_rom: ZiskRom,
     zisk_rom_path: PathBuf,
-    // Inputs accumulator from the emulator
-    callback_inputs: Arc<Mutex<Vec<MainAirSegment<F>>>>,
+
     // State machines
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM<F>>,
@@ -64,7 +59,8 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     /// Default number of inputs of the main state machine that are accumulated before being
     /// processed
-    const CALLBACK_SIZE: usize = 2usize.pow(16);
+    const BLOCK_SIZE: usize = 2usize.pow(18);
+    const NUM_THREADS: usize = 8;
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -119,7 +115,6 @@ impl<'a, F: PrimeField> MainSM<F> {
             mem_sm: mem_sm.clone(),
             binary_sm: binary_sm.clone(),
             arith_sm: arith_sm.clone(),
-            callback_inputs: Arc::new(Mutex::new(Vec::new())),
         });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
@@ -149,13 +144,13 @@ impl<'a, F: PrimeField> MainSM<F> {
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
-        let pool = ThreadPoolBuilder::new().build().unwrap();
-
+        // let pool = ThreadPoolBuilder::new().num_threads(Self::NUM_THREADS).build().unwrap();
+        timer_start!(PREPARE_EMULATOR);
         // Prepare the settings for the emulator
         let emulator_options = EmuOptions {
             elf: Some(self.zisk_rom_path.clone().display().to_string()),
             inputs: Some(public_inputs_path.display().to_string()),
-            trace_steps: Some(Self::CALLBACK_SIZE as u64),
+            trace_steps: Some(Self::BLOCK_SIZE as u64),
             ..EmuOptions::default()
         };
 
@@ -167,89 +162,132 @@ impl<'a, F: PrimeField> MainSM<F> {
         };
 
         // Execute the emulator inside a thread
-        pool.scope(|scope| {
-            // Wrap the callback to capture the scope variable
-            let callback = |emu_traces: EmuTrace| {
-                self.emulator_callback(
-                    &self.zisk_rom,
-                    emu_traces,
-                    scope,
-                    pctx.clone(),
-                    ectx.clone(),
-                    sctx.clone(),
-                )
-            };
+        let vec_full_trace = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
+        timer_stop_and_log!(PREPARE_EMULATOR);
 
-            let result = ZiskEmulator::process_rom(
+        timer_start!(PAR_PROCESS_ROM);
+        (0..Self::NUM_THREADS).into_par_iter().for_each(|i| {
+            let par_emu_options = ParEmuOptions::new(Self::NUM_THREADS, i, Self::BLOCK_SIZE);
+
+            let result = ZiskEmulator::par_process_rom::<F>(
                 &self.zisk_rom,
                 &public_inputs,
                 &emulator_options,
-                Some(Box::new(callback)),
+                &par_emu_options,
             );
-
-            self.threads_controller.wait_for_threads();
-
-            // Unregister main state machine as a predecessor for all the secondary state machines
-            timer_start!(UNREGISTER_PREDECESSORS);
-            self.mem_sm.unregister_predecessor::<F>(scope);
-            self.binary_sm.unregister_predecessor(scope);
-            self.arith_sm.unregister_predecessor::<F>(scope);
-            timer_stop_and_log!(UNREGISTER_PREDECESSORS);
 
             // Eval the return value of the emulator to launch a panic if an error occurred
             if let Err(e) = result {
                 panic!("Error during emulator execution: {:?}", e);
             }
+
+            vec_full_trace.lock().unwrap()[i] = result.unwrap();
         });
+        timer_stop_and_log!(PAR_PROCESS_ROM);
 
-        // Terminate the state machines with the remaining inputs
-        let mut callback_inputs = self.callback_inputs.lock().unwrap();
-        let last_air_segment = callback_inputs.last_mut().unwrap();
+        timer_start!(CREATE_INSTANCES);
+        let vec_full_trace = vec_full_trace.into_inner().unwrap();
+        let mut num_steps: usize = vec_full_trace
+            .iter()
+            .map(|full_trace_thread| {
+                full_trace_thread.iter().map(|full_trace| full_trace.len()).sum::<usize>()
+            })
+            .sum();
 
-        // If `last_air_segment` is full, it means the air instance for the last segment is already
-        // created. We need to mark this air instance as the last segment.
         let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
-        if last_air_segment.filled_inputs == air.num_rows() {
-            // Get the last segment
-            let last_air_segment_idx =
-                pctx.air_instance_repo.find_last_segment(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).expect(
-                    "MainSM: No last segment found. This should not happen as the last segment is created in the previous block",
-                );
+        let num_main_sm_instances = (num_steps as f64 / air.num_rows() as f64).ceil() as usize;
+        let num_blocks_in_instance = air.num_rows() / Self::BLOCK_SIZE;
 
-            // Look for the last segment and set the last_segment flag to true
-            let mut air_instances = pctx.air_instance_repo.air_instances.write().unwrap();
+        println!("Num main instances: {}", num_main_sm_instances);
+        println!("Num blocks in instance: {}", num_blocks_in_instance);
 
-            let air_instance = &mut air_instances[last_air_segment_idx];
+        (0..num_main_sm_instances).into_par_iter().for_each(|instance_id| {
+            let main_first_segment = F::from_bool(instance_id == 0);
+            let main_last_segment = F::from_bool(instance_id == num_main_sm_instances - 1);
+            let main_segment = F::from_canonical_usize(instance_id);
 
-            // Get the buffer size and offsets to be able to access the trace
-            let (_, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
-                .expect("Error getting buffer info");
-
-            // Map the F buffer to a Main0Trace
-            let mut main_trace = Main0Trace::<F>::map_buffer(
-                &mut air_instance.buffer,
+            let filled_rows = if instance_id == num_main_sm_instances - 1 {
+                num_steps % air.num_rows()
+            } else {
+                air.num_rows()
+            };
+            info!(
+                "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+                Self::MY_NAME,
+                instance_id,
+                filled_rows,
                 air.num_rows(),
-                offsets[0] as usize,
-            )
-            .unwrap();
+                filled_rows as f64 / air.num_rows() as f64 * 100.0
+            );
 
-            // Set the last segment flag to true
-            let main_last_segment = F::from_bool(true);
-            for i in 0..main_trace.num_rows() {
-                main_trace[i].main_last_segment = main_last_segment;
+            // Create the prover buffer
+            let (mut prover_buffer, offset) =
+                create_prover_buffer(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+
+            let mut last_row = Main0Row::<F>::default();
+            let mut rng;
+            for k in 0..num_blocks_in_instance {
+                let block_id = instance_id * num_blocks_in_instance + k;
+                let box_id = block_id % Self::NUM_THREADS;
+                let box_level = block_id / Self::NUM_THREADS;
+
+                // Check if [box_id][box_level] exists
+                if box_level < vec_full_trace[box_id].len() {
+                    let block = &vec_full_trace[box_id][box_level];
+
+                    for l in 0..block.len() {
+                        let offset_block =
+                            offset as usize + (k * Self::BLOCK_SIZE + l) * Main0Row::<F>::ROW_SIZE;
+
+                        last_row = block[l];
+                        // Set segment information in the inputs
+                        last_row.main_first_segment = main_first_segment;
+                        last_row.main_last_segment = main_last_segment;
+                        last_row.main_segment = main_segment;
+
+                        prover_buffer[offset_block..offset_block + Main0Row::<F>::ROW_SIZE]
+                            .copy_from_slice(last_row.as_slice());
+                    }
+
+                    rng = block.len()..Self::BLOCK_SIZE;
+                } else {
+                    rng = 0..Self::BLOCK_SIZE;
+                }
+
+                for l in rng {
+                    let offset_block =
+                        offset as usize + (k * Self::BLOCK_SIZE + l) * Main0Row::<F>::ROW_SIZE;
+
+                    prover_buffer[offset_block..offset_block + Main0Row::<F>::ROW_SIZE]
+                        .copy_from_slice(last_row.as_slice());
+                }
             }
-        } else {
-            let air_segment = mem::take(last_air_segment);
-            pool.scope(|scope| {
-                scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, ectx, sctx, true);
-                });
-            });
-        }
+
+            let air_instance = AirInstance::new(
+                MAIN_AIRGROUP_ID,
+                MAIN_AIR_IDS[0],
+                Some(instance_id),
+                prover_buffer,
+            );
+
+            pctx.air_instance_repo.add_air_instance(air_instance);
+        });
+        timer_stop_and_log!(CREATE_INSTANCES);
+
+        // self.threads_controller.wait_for_threads();
+
+        // Unregister main state machine as a predecessor for all the secondary state machines
+        // timer_start!(UNREGISTER_PREDECESSORS);
+        // self.mem_sm.unregister_predecessor::<F>(scope);
+        // self.binary_sm.unregister_predecessor(scope);
+        // self.arith_sm.unregister_predecessor::<F>(scope);
+        // timer_stop_and_log!(UNREGISTER_PREDECESSORS);
+        // });
+
+        std::thread::spawn(move || {
+            drop(vec_full_trace);
+        });
     }
 
     // Callback method to process the inputs generated by the emulator
@@ -263,55 +301,96 @@ impl<'a, F: PrimeField> MainSM<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
-        // Compute the AIR segment and the position where the current EmuTrace should be placed
-        let num_rows = pctx.clone().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
-        let air_step = emu_traces.start.step as f64 / num_rows as f64;
-        let segment_id = air_step.floor() as usize;
-        let pos_id = (air_step.fract() * num_rows as f64 / Self::CALLBACK_SIZE as f64) as usize;
+        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
-        // As this calls are received sequentially, when pos_id is 0, a new segment is created
-        if pos_id == 0 {
-            let main_air_segment = MainAirSegment::new(segment_id as u32, num_rows);
-            self.callback_inputs.lock().unwrap().push(main_air_segment);
+        // To go faster, we receive from the simulator callback a tiny trace that we are going
+        // to process to get the full trace. This is done to avoid the overhead of processing
+        // the full trace in the simulator callback and now can be parallelized.
+        timer_start!(EXPANDING);
+        let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
+            Ok(slice) => slice,
+            Err(e) => panic!("Error processing slice: {:?}", e),
+        };
+        timer_stop_and_log!(EXPANDING);
+
+        timer_start!(PROCESS_MAIN);
+        let num_segments =
+            (emu_slice.full_trace.len() as f64 / air.num_rows() as f64).ceil() as usize;
+        let mut total_drained = 0;
+
+        // self.prove(emu_slice.required, ectx.clone(), scope);
+
+        for segment_id in 0..num_segments {
+            let num_drained =
+                std::cmp::min(air.num_rows(), &emu_slice.full_trace.len() - total_drained);
+            let drained_inputs = &emu_slice.full_trace
+                [segment_id * air.num_rows()..segment_id * air.num_rows() + num_drained];
+
+            total_drained += num_drained;
+
+            let pctx_cloned = pctx.clone();
+            let ectx_cloned = ectx.clone();
+            let sctx_cloned = sctx.clone();
+
+            let threads_controller = self.threads_controller.clone();
+            threads_controller.add_working_thread();
+
+            timer_start!(TO_VEC);
+            let mut air_segment = MainAirSegment::new(segment_id as u32);
+            air_segment.inputs = drained_inputs.to_vec();
+            air_segment.filled_inputs += num_drained;
+            timer_stop_and_log!(TO_VEC);
+
+            scope.spawn(move |_| {
+                // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
+                let air_segment = mem::take(&mut air_segment);
+                Self::create_air_instance(
+                    air_segment,
+                    pctx_cloned,
+                    ectx_cloned,
+                    sctx_cloned,
+                    false,
+                );
+
+                threads_controller.remove_working_thread();
+            });
         }
+        timer_stop_and_log!(PROCESS_MAIN);
 
-        self.threads_controller.add_working_thread();
+        // scope.spawn(move |scope| {
+        //     // To go faster, we receive from the simulator callback a tiny trace that we are going
+        //     // to process to get the full trace. This is done to avoid the overhead of processing
+        //     // the full trace in the simulator callback and now can be parallelized.
+        //     let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
+        //         Ok(slice) => slice,
+        //         Err(e) => panic!("Error processing slice: {:?}", e),
+        //     };
 
-        scope.spawn(move |scope| {
-            // To go faster, we receive from the simulator callback a tiny trace that we are going
-            // to process to get the full trace. This is done to avoid the overhead of processing
-            // the full trace in the simulator callback and now can be parallelized.
-            let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
-                Ok(slice) => slice,
-                Err(e) => panic!("Error processing slice: {:?}", e),
-            };
+        //     let len = emu_slice.full_trace.len();
+        //     let source_iter = emu_slice.full_trace.into_iter();
 
-            let len = emu_slice.full_trace.len();
-            let source_iter = emu_slice.full_trace.into_iter();
+        //     let mut inputs = self.callback_inputs.lock().unwrap();
+        //     let air_segment = &mut inputs[segment_id];
 
-            let mut inputs = self.callback_inputs.lock().unwrap();
-            let air_segment = &mut inputs[segment_id];
+        //     air_segment.inputs.splice(
+        //         pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE + source_iter.len(),
+        //         source_iter,
+        //     );
 
-            air_segment.inputs.splice(
-                pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE + source_iter.len(),
-                source_iter,
-            );
+        //     air_segment.filled_inputs += len;
+        //     assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
 
-            air_segment.filled_inputs += len;
-            assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
+        //     self.prove(emu_slice.required, ectx.clone(), scope);
 
-            // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
-            if air_segment.filled_inputs == num_rows {
-                let air_segment = mem::take(air_segment);
-                let cloned_ectx = ectx.clone();
-                scope.spawn(move |_| {
-                    Self::create_air_instance(air_segment, pctx, cloned_ectx, sctx, false);
-                });
-            }
-            drop(inputs);
+        //     // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
+        //     if air_segment.filled_inputs == num_rows {
+        //         let air_segment = mem::take(air_segment);
+        //         let cloned_ectx = ectx.clone();
+        //         Self::create_air_instance(air_segment, pctx, cloned_ectx, sctx, false);
+        //     }
 
-            self.prove(emu_slice.required, ectx.clone(), scope);
-        });
+        //     threads_controller.remove_working_thread();
+        // });
     }
 
     /// Proves a batch of inputs
@@ -338,7 +417,6 @@ impl<'a, F: PrimeField> MainSM<F> {
             air.num_rows(),
             air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0
         );
-        timer_start!(CREATE_AIR_INSTANCE);
 
         // Set remaining rows equals to the last filled row
         let copied_value = air_segment.inputs[air_segment.filled_inputs - 1];
@@ -379,8 +457,6 @@ impl<'a, F: PrimeField> MainSM<F> {
         );
 
         pctx.air_instance_repo.add_air_instance(air_instance);
-
-        timer_stop_and_log!(CREATE_AIR_INSTANCE);
     }
 
     /// Proves a batch of inputs
@@ -400,10 +476,24 @@ impl<'a, F: PrimeField> MainSM<F> {
         let arith_sm = self.arith_sm.clone();
 
         let threads_controller = self.threads_controller.clone();
-
+        threads_controller.add_working_thread();
         scope.spawn(move |scope| {
             mem_sm.prove(&memory, false, scope);
+
+            threads_controller.remove_working_thread();
+        });
+
+        let threads_controller = self.threads_controller.clone();
+        threads_controller.add_working_thread();
+        scope.spawn(move |scope| {
             binary_sm.prove(&binary, false, scope);
+
+            threads_controller.remove_working_thread();
+        });
+
+        let threads_controller = self.threads_controller.clone();
+        threads_controller.add_working_thread();
+        scope.spawn(move |scope| {
             arith_sm.prove(&arith, false, scope);
 
             threads_controller.remove_working_thread();
@@ -411,14 +501,4 @@ impl<'a, F: PrimeField> MainSM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {}
