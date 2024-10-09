@@ -47,7 +47,7 @@ impl Setup {
         let const_pols_tree_path = setup_path.display().to_string() + ".consttree";
 
         let p_stark_info = stark_info_new_c(stark_info_path.as_str());
-        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
+        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str(), false);
 
         let p_const_pols = match PathBuf::from(&const_pols_tree_path).exists() {
             true => const_pols_with_tree_new_c(const_pols_path.as_str(), const_pols_tree_path.as_str(), p_stark_info),
@@ -66,7 +66,7 @@ impl Setup {
         let stark_info_path = setup_path.display().to_string() + ".starkinfo.json";
         let expressions_bin_path = setup_path.display().to_string() + ".bin";
         let p_stark_info = stark_info_new_c(stark_info_path.as_str());
-        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
+        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str(), false);
 
         Self {
             air_id,

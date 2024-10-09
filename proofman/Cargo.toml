@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 proofman-common = { path = "../common" }
+proofman-hints = { path = "../hints" }
 proofman-util = { path = "../util" }
 pilout = { path = "../pilout" }
 stark = { path = "../provers/stark" }

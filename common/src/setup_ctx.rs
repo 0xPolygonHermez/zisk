@@ -1,5 +1,8 @@
 use std::cell::OnceCell;
 use std::collections::HashMap;
+use std::ffi::c_void;
+
+use proofman_starks_lib_c::expressions_bin_new_c;
 
 use crate::GlobalInfo;
 use crate::Setup;
@@ -14,6 +17,7 @@ pub struct SetupRepository {
     // Since the setup is referenced immutably in the repository, we use OnceCell for both the partial and full setups.
     setups: HashMap<(usize, usize), (OnceCell<Setup>, OnceCell<Setup>)>, // (partial setup, full setup)
     setup_airs: Vec<Vec<usize>>,
+    global_bin: Option<*mut c_void>,
 }
 
 unsafe impl Send for SetupRepository {}
@@ -22,6 +26,15 @@ unsafe impl Sync for SetupRepository {}
 impl SetupRepository {
     pub fn new(global_info: &GlobalInfo, setup_type: &ProofType) -> Self {
         let mut setups = HashMap::new();
+
+        let global_bin = match setup_type == &ProofType::Basic {
+            true => {
+                let global_bin_path =
+                    &global_info.get_proving_key_path().join("pilout.globalConstraints.bin").display().to_string();
+                Some(expressions_bin_new_c(global_bin_path.as_str(), true))
+            }
+            false => None,
+        };
 
         // Initialize Hashmao for each airgroup_id, air_id
         let setup_airs = match setup_type != &ProofType::Final {
@@ -46,7 +59,7 @@ impl SetupRepository {
             }
         };
 
-        Self { setups, setup_airs }
+        Self { setups, setup_airs, global_bin }
     }
 }
 /// Air instance context for managing air instances (traces)
@@ -110,5 +123,9 @@ impl SetupCtx {
 
     pub fn get_setup_airs(&self) -> Vec<Vec<usize>> {
         self.setup_repository.setup_airs.clone()
+    }
+
+    pub fn get_global_bin(&self) -> *mut c_void {
+        self.setup_repository.global_bin.unwrap()
     }
 }

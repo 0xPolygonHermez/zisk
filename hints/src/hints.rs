@@ -33,14 +33,14 @@ pub struct HintFieldInfo<F> {
     field_type: HintFieldType,
     values: *mut F,
     string_value: *mut u8,
-    matrix_size: u64,
-    pos: *mut u64,
+    pub matrix_size: u64,
+    pub pos: *mut u64,
 }
 
 #[repr(C)]
 pub struct HintFieldInfoValues<F> {
-    n_values: u64,
-    hint_field_values: *mut HintFieldInfo<F>,
+    pub n_values: u64,
+    pub hint_field_values: *mut HintFieldInfo<F>,
 }
 
 #[repr(C)]
@@ -98,7 +98,7 @@ impl<F: Clone + Copy + Display> Display for HintFieldValue<F> {
 }
 
 pub struct HintFieldValues<F: Clone + Copy + Display> {
-    values: HashMap<Vec<u64>, HintFieldValue<F>>,
+    pub values: HashMap<Vec<u64>, HintFieldValue<F>>,
 }
 
 impl<F: Clone + Copy + Debug + Display> HintFieldValues<F> {
@@ -109,7 +109,7 @@ impl<F: Clone + Copy + Debug + Display> HintFieldValues<F> {
 
 #[derive(Clone, Debug)]
 pub struct HintFieldValuesVec<F: Clone + Copy + Debug + Display> {
-    values: Vec<HintFieldValue<F>>,
+    pub values: Vec<HintFieldValue<F>>,
 }
 
 impl<F: Clone + Copy + Debug + Display> HintFieldValuesVec<F> {
@@ -640,8 +640,8 @@ impl HintCol {
     }
 }
 
-pub fn get_hint_ids_by_name(p_setup: *mut c_void, name: &str) -> Vec<u64> {
-    let raw_ptr = get_hint_ids_by_name_c(p_setup, name);
+pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u64> {
+    let raw_ptr = get_hint_ids_by_name_c(p_expressions_bin, name);
 
     let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
 
@@ -672,44 +672,6 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
         challenges: challenges_ptr,
         subproof_values: air_instance.evals.as_ptr() as *mut c_void,
         evals: air_instance.subproof_values.as_ptr() as *mut c_void,
-    };
-
-    let raw_ptr = get_hint_field_c(
-        (&setup.p_setup).into(),
-        steps_params,
-        hint_id as u64,
-        hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-    );
-
-    unsafe {
-        let hint_field_values = &*(raw_ptr as *mut HintFieldInfoValues<F>);
-        let value = &*(hint_field_values.hint_field_values.add(0));
-        if value.matrix_size != 0 {
-            panic!("get_hint_field can only be called with single expressions, but {} is an array", hint_field_name);
-        }
-        HintCol::from_hint_field(value)
-    }
-}
-
-pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
-    setup_ctx: &SetupCtx,
-    airgroup_id: usize,
-    air_id: usize,
-    hint_id: usize,
-    hint_field_name: &str,
-    options: HintFieldOptions,
-) -> HintFieldValue<F> {
-    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
-
-    let steps_params = StepsParams {
-        buffer: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        subproof_values: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
@@ -830,6 +792,44 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
         }
 
         HintFieldValues { values: hint_field_values }
+    }
+}
+
+pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
+    setup_ctx: &SetupCtx,
+    airgroup_id: usize,
+    air_id: usize,
+    hint_id: usize,
+    hint_field_name: &str,
+    options: HintFieldOptions,
+) -> HintFieldValue<F> {
+    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+
+    let steps_params = StepsParams {
+        buffer: std::ptr::null_mut(),
+        public_inputs: std::ptr::null_mut(),
+        challenges: std::ptr::null_mut(),
+        subproof_values: std::ptr::null_mut(),
+        evals: std::ptr::null_mut(),
+    };
+
+    let raw_ptr = get_hint_field_c(
+        (&setup.p_setup).into(),
+        steps_params,
+        hint_id as u64,
+        hint_field_name,
+        options.dest,
+        options.inverse,
+        options.print_expression,
+    );
+
+    unsafe {
+        let hint_field_values = &*(raw_ptr as *mut HintFieldInfoValues<F>);
+        let value = &*(hint_field_values.hint_field_values.add(0));
+        if value.matrix_size != 0 {
+            panic!("get_hint_field can only be called with single expressions, but {} is an array", hint_field_name);
+        }
+        HintCol::from_hint_field(value)
     }
 }
 

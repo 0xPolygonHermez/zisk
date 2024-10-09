@@ -73,7 +73,7 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
     pub fn get_hint_ids_by_name(
-        pSetupCtx: *mut ::std::os::raw::c_void,
+        p_expression_bin: *mut ::std::os::raw::c_void,
         hintName: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -129,9 +129,10 @@ extern "C" {
     pub fn const_pols_free(pConstPols: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19expressions_bin_newPc"]
+    #[link_name = "\u{1}_Z19expressions_bin_newPcb"]
     pub fn expressions_bin_new(
         filename: *mut ::std::os::raw::c_char,
+        global: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -343,12 +344,23 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25verify_global_constraintsPcPvPS0_"]
+    #[link_name = "\u{1}_Z25verify_global_constraintsPvS_PS_"]
     pub fn verify_global_constraints(
-        globalConstraintsBinFile: *mut ::std::os::raw::c_char,
+        globalBin: *mut ::std::os::raw::c_void,
         publics: *mut ::std::os::raw::c_void,
         airgroupValues: *mut *mut ::std::os::raw::c_void,
     ) -> bool;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z33get_hint_field_global_constraintsPvS_PS_mPcb"]
+    pub fn get_hint_field_global_constraints(
+        globalBin: *mut ::std::os::raw::c_void,
+        publics: *mut ::std::os::raw::c_void,
+        airgroupValues: *mut *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldName: *mut ::std::os::raw::c_char,
+        print_expression: bool,
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z13print_by_namePvS_S_S_S_PcPmmmb"]

@@ -194,11 +194,11 @@ pub fn const_pols_free_c(p_const_pols: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn expressions_bin_new_c(filename: &str) -> *mut c_void {
+pub fn expressions_bin_new_c(filename: &str, global: bool) -> *mut c_void {
     unsafe {
         let filename = CString::new(filename).unwrap();
 
-        expressions_bin_new(filename.as_ptr() as *mut std::os::raw::c_char)
+        expressions_bin_new(filename.as_ptr() as *mut std::os::raw::c_char, global)
     }
 }
 
@@ -210,9 +210,9 @@ pub fn expressions_bin_free_c(p_expressions_bin: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_hint_ids_by_name_c(p_setup: *mut c_void, hint_name: &str) -> *mut c_void {
+pub fn get_hint_ids_by_name_c(p_expressions_bin: *mut c_void, hint_name: &str) -> *mut c_void {
     let name = CString::new(hint_name).unwrap();
-    unsafe { get_hint_ids_by_name(p_setup, name.as_ptr() as *mut std::os::raw::c_char) }
+    unsafe { get_hint_ids_by_name(p_expressions_bin, name.as_ptr() as *mut std::os::raw::c_char) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -455,15 +455,32 @@ pub fn verify_constraints_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn verify_global_constraints_c(
-    global_constraints_bin_file: &str,
+    p_global_constraints_bin: *mut c_void,
     publics: *mut c_void,
     airgroupvalues: *mut *mut c_void,
 ) -> bool {
-    unsafe {
-        let global_constraints_bin_file_name = CString::new(global_constraints_bin_file).unwrap();
-        let global_constraints_bin_file_ptr = global_constraints_bin_file_name.as_ptr() as *mut std::os::raw::c_char;
+    unsafe { verify_global_constraints(p_global_constraints_bin, publics, airgroupvalues) }
+}
 
-        verify_global_constraints(global_constraints_bin_file_ptr, publics, airgroupvalues)
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_hint_field_global_constraints_c(
+    p_global_constraints_bin: *mut c_void,
+    publics: *mut c_void,
+    airgroupvalues: *mut *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+    print_expression: bool,
+) -> *mut c_void {
+    let field_name = CString::new(hint_field_name).unwrap();
+    unsafe {
+        get_hint_field_global_constraints(
+            p_global_constraints_bin,
+            publics,
+            airgroupvalues,
+            hint_id,
+            field_name.as_ptr() as *mut std::os::raw::c_char,
+            print_expression,
+        )
     }
 }
 
@@ -736,7 +753,7 @@ pub fn const_pols_with_tree_new_c(_filename: &str, _tree_filename: &str, _p_star
 pub fn const_pols_free_c(_p_const_pols: *mut c_void) {}
 
 #[cfg(feature = "no_lib_link")]
-pub fn expressions_bin_new_c(_filename: &str) -> *mut c_void {
+pub fn expressions_bin_new_c(_filename: &str, _global: bool) -> *mut c_void {
     std::ptr::null_mut()
 }
 
@@ -744,7 +761,7 @@ pub fn expressions_bin_new_c(_filename: &str) -> *mut c_void {
 pub fn expressions_bin_free_c(_p_expressions_bin: *mut c_void) {}
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_hint_ids_by_name_c(_p_setup_ctx: *mut c_void, _hint_name: &str) -> *mut c_void {
+pub fn get_hint_ids_by_name_c(_p_expressions_bin: *mut c_void, _hint_name: &str) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_ids_by_name: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -944,7 +961,7 @@ pub fn verify_constraints_c(
 
 #[cfg(feature = "no_lib_link")]
 pub fn verify_global_constraints_c(
-    _global_constraints_bin_file: &str,
+    _p_global_constraints_bin: *mut c_void,
     _publics: *mut c_void,
     _airgroupvalues: *mut *mut c_void,
 ) -> bool {
@@ -954,6 +971,23 @@ pub fn verify_global_constraints_c(
         "verify_global_constraints_c: This is a mock call because there is no linked library"
     );
     true
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_hint_field_global_constraints_c(
+    _p_global_constraints_bin: *mut c_void,
+    _publics: *mut c_void,
+    _airgroupvalues: *mut *mut c_void,
+    _hint_id: u64,
+    _hint_field_name: &str,
+    _print_expression: bool,
+) -> *mut c_void {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "get_hint_field_global_constraints_c: This is a mock call because there is no linked library"
+    );
+    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
