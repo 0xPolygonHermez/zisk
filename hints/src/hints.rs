@@ -131,7 +131,7 @@ impl<F: Clone + Copy + Debug + Display> Display for HintFieldValuesVec<F> {
     }
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 // Define an enum to represent the possible return types
 pub enum HintFieldOutput<F: Clone + Copy + Display> {
     Field(F),

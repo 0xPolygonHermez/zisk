@@ -7,12 +7,13 @@ pub trait WitnessComponent<F>: Send + Sync {
 
     fn calculate_witness(
         &self,
-        stage: u32,
-        air_instance: Option<usize>,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    );
+        _stage: u32,
+        _air_instance: Option<usize>,
+        _pctx: Arc<ProofCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
+    ) {
+    }
 
     fn end_proof(&self) {}
 }

@@ -12,7 +12,7 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue};
 use rayon::Scope;
 
-use crate::{Decider, Range, SpecifiedRanges, StdMode, U16Air, U8Air};
+use crate::{Decider, Range, SpecifiedRanges, StdMode, ModeName, U16Air, U8Air};
 
 const BYTE: u8 = 255;
 const TWOBYTES: u16 = 65535;
@@ -238,7 +238,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range_item = range_item.unwrap();
         let range = range_item.range;
 
-        if self.mode == StdMode::Debug && !range.contains(value) {
+        if self.mode.name == ModeName::Debug && !range.contains(value) {
             log::error!("Value {} is not in the range [min,max] = {:?}", value, range,);
             panic!();
         }

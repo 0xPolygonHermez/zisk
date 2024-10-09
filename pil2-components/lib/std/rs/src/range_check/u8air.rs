@@ -6,6 +6,7 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{get_hint_field, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue};
+use proofman_util::create_buffer_fast;
 use std::sync::atomic::Ordering;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
@@ -52,8 +53,6 @@ impl<F: PrimeField> U8Air<F> {
 
             // Update the multiplicity column
             self.update_multiplicity(drained_inputs);
-
-            log::info!("{}: Updated inputs for AIR '{}'", Self::MY_NAME, "U8Air");
         }
     }
 
@@ -73,7 +72,7 @@ impl<F: PrimeField> U8Air<F> {
         let mul = &*self.mul.lock().unwrap();
         set_hint_field(self.wcm.get_sctx(), air_instance, self.hint.load(Ordering::Acquire), "reference", mul);
 
-        log::info!("{}: Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
+        log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<F>) {
@@ -113,7 +112,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
 
         let (buffer_size, _) =
             ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
-        let buffer = vec![F::zero(); buffer_size as usize];
+        let buffer = create_buffer_fast(buffer_size as usize);
 
         // Add a new air instance. Since U8Air is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);

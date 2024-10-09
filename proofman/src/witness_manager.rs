@@ -127,4 +127,16 @@ impl<F> WitnessManager<F> {
     pub fn get_sctx(&self) -> &SetupCtx {
         self.sctx.as_ref()
     }
+
+    pub fn get_arc_pctx(&self) -> Arc<ProofCtx<F>> {
+        self.pctx.clone()
+    }
+
+    pub fn get_arc_ectx(&self) -> Arc<ExecutionCtx> {
+        self.ectx.clone()
+    }
+
+    pub fn get_arc_sctx(&self) -> Arc<SetupCtx> {
+        self.sctx.clone()
+    }
 }

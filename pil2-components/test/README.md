@@ -25,55 +25,6 @@ mkdir -p ./pil2-components/test/simple/build/ \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/simple/build/provingKey -p ./pil2-components/test/simple/build
 
 ------------------------------------
-RANGE CHECKS
-
-mkdir -p ./pil2-components/test/std/range_check/build/ \
-&& rm -rf pil2-components/test/range_check/build/proofs/ \
-&& node ../pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/build.pil \
-     -I ./pil2-components/lib/std/pil \
-     -o ./pil2-components/test/std/range_check/build/build.pilout \
-&& node ../pil2-proofman-js/src/main_setup.js \
-     -a ./pil2-components/test/std/range_check/build/build.pilout \
-     -b ./pil2-components/test/std/range_check/build \
-&& cargo run --bin proofman-cli pil-helpers \
-     --pilout ./pil2-components/test/std/range_check/build/build.pilout \
-     --path ./pil2-components/test/std/range_check/rs/src -o \
-&& cargo build \
-&& cargo run --bin proofman-cli verify-constraints \
-     --witness-lib ./target/debug/librange_check.so \
-     --proving-key ./pil2-components/test/std/range_check/build/provingKey \
-&& cargo run --bin proofman-cli prove \
-     --witness-lib ./target/debug/librange_check.so \
-     --proving-key ./pil2-components/test/std/range_check/build/provingKey \
-     --output-dir ./pil2-components/test/std/range_check/build -d \
-&& node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range_check/build/provingKey -p ./pil2-components/test/std/range_check/build
-
-------------------------------------
-PERMUTATION
-
-mkdir -p ./pil2-components/test/std/permutation/build/ \
-&& rm -rf pil2-components/test/permutation/build/proofs/ \
-&& node ../pil2-compiler/src/pil.js ./pil2-components/test/std/permutation/permutation.pil \
-     -I ./pil2-components/lib/std/pil \
-     -o ./pil2-components/test/std/permutation/build/build.pilout \
-&& node ../pil2-proofman-js/src/main_setup.js \
-     -a ./pil2-components/test/std/permutation/build/build.pilout \
-     -b ./pil2-components/test/std/permutation/build \
-&& cargo run --bin proofman-cli pil-helpers \
-     --pilout ./pil2-components/test/std/permutation/build/build.pilout \
-     --path ./pil2-components/test/std/permutation/rs/src -o \
-&& cargo build \
-&& cargo run --bin proofman-cli verify-constraints \
-     --witness-lib ./target/debug/libpermutation.so \
-     --proving-key ./pil2-components/test/std/permutation/build/provingKey \
-&& cargo run --bin proofman-cli prove \
-     --witness-lib ./target/debug/libpermutation.so \
-     --proving-key ./pil2-components/test/std/permutation/build/provingKey \
-     --output-dir ./pil2-components/test/std/permutation/build -d \
-&& node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/permutation/build/provingKey -p ./pil2-components/test/std/permutation/build
-
-
-------------------------------------
 CONNECTION
 
 mkdir -p ./pil2-components/test/std/connection/build/ \
@@ -120,3 +71,51 @@ mkdir -p ./pil2-components/test/std/lookup/build/ \
      --proving-key ./pil2-components/test/std/lookup/build/provingKey \
      --output-dir ./pil2-components/test/std/lookup/build -d \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build
+
+------------------------------------
+PERMUTATION
+
+mkdir -p ./pil2-components/test/std/permutation/build/ \
+&& rm -rf pil2-components/test/permutation/build/proofs/ \
+&& node ../pil2-compiler/src/pil.js ./pil2-components/test/std/permutation/permutation.pil \
+     -I ./pil2-components/lib/std/pil \
+     -o ./pil2-components/test/std/permutation/build/build.pilout \
+&& node ../pil2-proofman-js/src/main_setup.js \
+     -a ./pil2-components/test/std/permutation/build/build.pilout \
+     -b ./pil2-components/test/std/permutation/build \
+&& cargo run --bin proofman-cli pil-helpers \
+     --pilout ./pil2-components/test/std/permutation/build/build.pilout \
+     --path ./pil2-components/test/std/permutation/rs/src -o \
+&& cargo build \
+&& cargo run --bin proofman-cli verify-constraints \
+     --witness-lib ./target/debug/libpermutation.so \
+     --proving-key ./pil2-components/test/std/permutation/build/provingKey \
+&& cargo run --bin proofman-cli prove \
+     --witness-lib ./target/debug/libpermutation.so \
+     --proving-key ./pil2-components/test/std/permutation/build/provingKey \
+     --output-dir ./pil2-components/test/std/permutation/build -d \
+&& node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/permutation/build/provingKey -p ./pil2-components/test/std/permutation/build
+
+------------------------------------
+RANGE CHECKS
+
+mkdir -p ./pil2-components/test/std/range_check/build/ \
+&& rm -rf pil2-components/test/range_check/build/proofs/ \
+&& node ../pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/build.pil \
+     -I ./pil2-components/lib/std/pil \
+     -o ./pil2-components/test/std/range_check/build/build.pilout \
+&& node ../pil2-proofman-js/src/main_setup.js \
+     -a ./pil2-components/test/std/range_check/build/build.pilout \
+     -b ./pil2-components/test/std/range_check/build \
+&& cargo run --bin proofman-cli pil-helpers \
+     --pilout ./pil2-components/test/std/range_check/build/build.pilout \
+     --path ./pil2-components/test/std/range_check/rs/src -o \
+&& cargo build \
+&& cargo run --bin proofman-cli verify-constraints \
+     --witness-lib ./target/debug/librange_check.so \
+     --proving-key ./pil2-components/test/std/range_check/build/provingKey \
+&& cargo run --bin proofman-cli prove \
+     --witness-lib ./target/debug/librange_check.so \
+     --proving-key ./pil2-components/test/std/range_check/build/provingKey \
+     --output-dir ./pil2-components/test/std/range_check/build -d \
+&& node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range_check/build/provingKey -p ./pil2-components/test/std/range_check/build
