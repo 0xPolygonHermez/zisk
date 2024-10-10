@@ -1,14 +1,15 @@
 use log::info;
 use p3_field::PrimeField;
 
-use core::num;
 use proofman_util::{timer_start, timer_stop_and_log};
-use rayon::{prelude::*, Scope};
+use rayon::{prelude::*, vec, Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
     fs, mem,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    thread::sleep,
+    time::Duration,
 };
 use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
@@ -16,7 +17,9 @@ use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
-use ziskemu::{EmuFullTraceStep, EmuOptions, EmuTrace, ParEmuOptions, ZiskEmulator};
+use ziskemu::{
+    EmuFullTraceStep, EmuOptions, EmuTrace, ParEmuExecutionType, ParEmuOptions, ZiskEmulator,
+};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
@@ -61,6 +64,7 @@ impl<'a, F: PrimeField> MainSM<F> {
     /// processed
     const BLOCK_SIZE: usize = 2usize.pow(18);
     const NUM_THREADS: usize = 8;
+    const NUM_THREADS_REQUIRED: usize = 8;
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -144,7 +148,8 @@ impl<'a, F: PrimeField> MainSM<F> {
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
-        // let pool = ThreadPoolBuilder::new().num_threads(Self::NUM_THREADS).build().unwrap();
+        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
+
         timer_start!(PREPARE_EMULATOR);
         // Prepare the settings for the emulator
         let emulator_options = EmuOptions {
@@ -163,31 +168,63 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         // Execute the emulator inside a thread
         let vec_full_trace = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
+        let vec_requireds = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
         timer_stop_and_log!(PREPARE_EMULATOR);
 
         timer_start!(PAR_PROCESS_ROM);
-        (0..Self::NUM_THREADS).into_par_iter().for_each(|i| {
-            let par_emu_options = ParEmuOptions::new(Self::NUM_THREADS, i, Self::BLOCK_SIZE);
+        pool.scope(|scope| {
+            (0..(Self::NUM_THREADS + Self::NUM_THREADS_REQUIRED)).into_par_iter().for_each(|i| {
+                let par_emu_options = ParEmuOptions::new(
+                    Self::NUM_THREADS,
+                    i,
+                    Self::BLOCK_SIZE,
+                    if i < Self::NUM_THREADS {
+                        ParEmuExecutionType::MainTrace
+                    } else {
+                        ParEmuExecutionType::RequiredInputs
+                    },
+                );
 
-            let result = ZiskEmulator::par_process_rom::<F>(
-                &self.zisk_rom,
-                &public_inputs,
-                &emulator_options,
-                &par_emu_options,
-            );
+                let result = ZiskEmulator::par_process_rom::<F>(
+                    &self.zisk_rom,
+                    &public_inputs,
+                    &emulator_options,
+                    &par_emu_options,
+                );
 
-            // Eval the return value of the emulator to launch a panic if an error occurred
-            if let Err(e) = result {
-                panic!("Error during emulator execution: {:?}", e);
-            }
+                // Eval the return value of the emulator to launch a panic if an error occurred
+                let (_vec_full_trace, _vec_requireds) = match result {
+                    Ok((a, b)) => (a, b),
+                    Err(e) => panic!("Error during emulator execution: {:?}", e),
+                };
 
-            vec_full_trace.lock().unwrap()[i] = result.unwrap();
+                if par_emu_options.execution_type == ParEmuExecutionType::MainTrace {
+                    vec_full_trace.lock().unwrap()[i] = _vec_full_trace;
+                } else {
+                    vec_requireds.lock().unwrap()[i - 8] = _vec_requireds;
+                }
+            });
+            timer_stop_and_log!(PAR_PROCESS_ROM);
+
+            scope.spawn(|_| {
+                let vec_full_trace = vec_full_trace.into_inner().unwrap();
+                Self::prove_main(vec_full_trace, &pctx, &ectx, &sctx);
+            });
+
+            let vec_requireds = vec_requireds.into_inner().unwrap();
+            self.binary_sm.prove_basic(&vec_requireds, scope);
+            // self.prove_inputs(vec_requireds, scope);
         });
-        timer_stop_and_log!(PAR_PROCESS_ROM);
+    }
 
+    fn prove_main(
+        vec_full_trace: Vec<Vec<Vec<Main0Row<F>>>>,
+        pctx: &ProofCtx<F>,
+        ectx: &ExecutionCtx,
+        sctx: &SetupCtx,
+    ) {
         timer_start!(CREATE_INSTANCES);
-        let vec_full_trace = vec_full_trace.into_inner().unwrap();
-        let mut num_steps: usize = vec_full_trace
+        let num_steps: usize = vec_full_trace
             .iter()
             .map(|full_trace_thread| {
                 full_trace_thread.iter().map(|full_trace| full_trace.len()).sum::<usize>()
@@ -287,6 +324,38 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         std::thread::spawn(move || {
             drop(vec_full_trace);
+        });
+    }
+
+    fn prove_inputs(&self, mut vec_required: Vec<Vec<ZiskRequired>>, scope: &Scope<'a>) {
+        let mut current_box = 0;
+        let mut level = 0;
+        loop {
+            if vec_required[current_box].len() <= level {
+                break;
+            }
+
+            let required = &mut vec_required[current_box][level];
+
+            // self.arith_sm.prove(&required.arith, false, scope);
+
+            let req_binary = std::mem::take(&mut required.binary);
+            self.binary_sm.prove_xxx(req_binary, false, false, scope);
+
+            let req_extension = std::mem::take(&mut required.binary_extension);
+            self.binary_sm.prove_xxx(req_extension, true, false, scope);
+
+            // self.mem_sm.prove(&required.memory, false);
+
+            current_box += 1;
+            if current_box == Self::NUM_THREADS {
+                current_box = 0;
+                level += 1;
+            }
+        }
+
+        std::thread::spawn(move || {
+            drop(vec_required);
         });
     }
 

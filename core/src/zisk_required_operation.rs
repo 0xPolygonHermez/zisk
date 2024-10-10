@@ -6,6 +6,7 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
+#[derive(Clone)]
 pub struct ZiskRequiredMemory {
     pub step: u64,
     pub is_write: bool,
@@ -38,8 +39,10 @@ pub struct ZiskRequiredRangeCheck {
     pub rc: u64,
 }
 
+#[derive(Clone, Default)]
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,
     pub binary: Vec<ZiskRequiredOperation>,
+    pub binary_extension: Vec<ZiskRequiredOperation>,
     pub memory: Vec<ZiskRequiredMemory>,
 }

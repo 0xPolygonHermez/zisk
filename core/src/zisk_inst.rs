@@ -6,6 +6,7 @@ pub enum ZiskOperationType {
     Internal,
     Arith,
     Binary,
+    BinaryE,
     Keccak,
 }
 

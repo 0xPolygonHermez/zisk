@@ -10,7 +10,9 @@ use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
+use zisk_core::{
+    zisk_ops::ZiskOp, ZiskRequired, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation,
+};
 use zisk_pil::*;
 
 use crate::BinaryBasicTableSM;
@@ -506,6 +508,50 @@ impl<F: Field> BinaryBasicSM<F> {
 
         // Return
         (trace, table_required)
+    }
+
+    pub fn prove_basic(&self, operations: &Vec<Vec<ZiskRequired>>, scope: &Scope) {
+        println!("prove_basic operations.len()={}", operations.len());
+        let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+
+        let mut splits = Vec::new();
+        splits.push((0, 0, 0, 0));
+
+        let mut x = 0;
+        let mut y = 0;
+        let mut count = 0;
+
+        let num_boxes = operations.iter().map(|x| x.len()).sum::<usize>();
+        println!("num_boxes: {}", num_boxes);
+
+        for _ in 0..num_boxes {
+            let last_count = count;
+            count += operations[x][y].binary.len();
+
+            if count >= air.num_rows() {
+                let taken = air.num_rows() - last_count;
+                
+                splits.push((x, y, count, taken));
+                println!("split: x={} y={} taken={} count={}", x, y, taken, count- operations[x][y].binary.len() + taken);
+                count = operations[x][y].binary.len() - taken;
+            }
+
+            x = (x + 1) % operations.len();
+            if x == 0 {
+                y += 1;
+            }
+        }
+        
+        (0..splits.len()).into_par_iter().for_each(|i| {
+            let (x, y, count, taken) = splits[i];
+            
+            let mut slice = Vec::new();
+            slice.extend_from_slice(&operations[x][y].binary[..taken]);
+            let (trace_row, table
+            
+        });
+
+        println!("num_boxes: {}", num_boxes);
     }
 }
 

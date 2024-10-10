@@ -180,6 +180,19 @@ impl<F: Field> BinaryBasicTableSM<F> {
             _ => panic!("BinaryBasicTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
     }
+
+    pub fn par_prove(&self, operations: &[ZiskRequiredBinaryBasicTable], drain: bool) {
+        if let Ok(mut inputs) = self.inputs.lock() {
+            inputs.extend_from_slice(operations);
+
+            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(self.num_rows, inputs.len());
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                self.process_slice(&drained_inputs);
+            }
+        }
+    }
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {

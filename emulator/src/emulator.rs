@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -163,7 +163,7 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> Result<Vec<Vec<EmuFullTraceStep<F>>>, ZiskEmulatorErr> {
+    ) -> Result<(Vec<Vec<EmuFullTraceStep<F>>>, Vec<ZiskRequired>), ZiskEmulatorErr> {
         if options.verbose {
             println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
         }
@@ -180,7 +180,7 @@ impl ZiskEmulator {
         }
 
         let duration = start.elapsed();
-        println!("process_rom() duration={:?}", duration);
+        println!("thread: {} process_rom() duration={:?}", par_options.thread_id, duration);
 
         // Log performance metrics
         if options.log_metrics {
