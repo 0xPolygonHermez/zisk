@@ -548,8 +548,8 @@ impl<F: Field> BinaryBasicSM<F> {
             slice.extend_from_slice(&operations[x][y].binary[row0..]);
             if !is_last_instance {
                 let (x1, y1, row1) = splits[i + 1];
-                let mut x = x0;
-                let mut y = y0;
+                let mut x = (x0 + 1) % operations.len();
+                let mut y = if x == 0 { y0 + 1 } else { y0 };
                 loop {
                     if x == x1 && y == y1 {
                         slice.extend_from_slice(&operations[x][y].binary[0..row1]);
@@ -564,7 +564,7 @@ impl<F: Field> BinaryBasicSM<F> {
                 }
             }
             if is_last_instance {
-                //check if passing is necessary
+                //check if padding is necessary
             }
         });
 
