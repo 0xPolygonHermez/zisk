@@ -7,6 +7,8 @@ pub struct AirInstance<F> {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub air_segment_id: Option<usize>,
+    pub air_instance_id: Option<usize>,
+    pub idx: Option<usize>,
     pub buffer: Vec<F>,
     pub subproof_values: Vec<F>,
     pub evals: Vec<F>,
@@ -20,6 +22,8 @@ impl<F> AirInstance<F> {
             airgroup_id,
             air_id,
             air_segment_id,
+            air_instance_id: None,
+            idx: None,
             buffer,
             subproof_values: Vec::new(),
             evals: Vec::new(),
@@ -39,6 +43,11 @@ impl<F> AirInstance<F> {
 
     pub fn set_commit_calculated(&mut self, id: usize) {
         self.commits_calculated.insert(id, true);
+    }
+
+    pub fn set_air_instance_id(&mut self, air_instance_id: usize, idx: usize) {
+        self.air_instance_id = Some(air_instance_id);
+        self.idx = Some(idx);
     }
 
     pub fn set_subproofvalue_calculated(&mut self, id: usize) {

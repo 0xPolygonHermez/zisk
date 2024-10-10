@@ -4,7 +4,7 @@ use std::{
 };
 
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use crate::WitnessComponent;
 
 type AirGroupId = usize;
@@ -56,16 +56,12 @@ impl<F> WitnessManager<F> {
     }
 
     pub fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        log::info!("{}: ··· STARTING PROOF", Self::MY_NAME);
-
         for component in self.components.read().unwrap().iter() {
             component.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
         }
     }
 
     pub fn end_proof(&self) {
-        log::info!("{}: <-- Finalizing proof", Self::MY_NAME);
-
         for component in self.components.read().unwrap().iter() {
             component.end_proof();
         }
@@ -73,13 +69,13 @@ impl<F> WitnessManager<F> {
 
     pub fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         log::info!(
-            "{}: ··· CALCULATING WITNESS stage {} / {}",
+            "{}: Calculating witness for stage {} / {}",
             Self::MY_NAME,
             stage,
             pctx.global_info.n_challenges.len()
         );
 
-        timer_start!(CALCULATING_WITNESS);
+        timer_start_debug!(CALCULATING_WITNESS);
 
         let air_instances = pctx.air_instance_repo.air_instances.read().unwrap();
 
@@ -113,7 +109,7 @@ impl<F> WitnessManager<F> {
             }
         }
 
-        timer_stop_and_log!(CALCULATING_WITNESS);
+        timer_stop_and_log_debug!(CALCULATING_WITNESS);
     }
 
     pub fn get_pctx(&self) -> &ProofCtx<F> {

@@ -26,3 +26,5 @@ serde_derive = "1.0.196"
 [features]
 default = []
 no_lib_link = ["proofman-starks-lib-c/no_lib_link"]
+distributed = ["proofman-common/distributed"]
+

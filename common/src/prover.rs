@@ -25,6 +25,7 @@ pub struct ProverInfo {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub prover_idx: usize,
+    pub instance_id: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,6 +72,7 @@ pub trait Prover<F> {
     fn save_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str, save_json: bool) -> *mut c_void;
 
     fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<F>;
+    fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64>;
     fn calculate_hash(&self, values: Vec<F>) -> Vec<F>;
     fn verify_constraints(&self, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo>;
 }

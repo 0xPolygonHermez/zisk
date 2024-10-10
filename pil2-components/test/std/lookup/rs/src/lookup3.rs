@@ -12,7 +12,7 @@ pub struct Lookup3<F> {
 }
 
 impl<F: PrimeField + Copy> Lookup3<F> {
-    const MY_NAME: &'static str = "Lookup3";
+    const MY_NAME: &'static str = "Lookup_3";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let lookup3 = Arc::new(Self { _phantom: std::marker::PhantomData });
@@ -48,7 +48,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
         let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
 
-        log::info!(
+        log::debug!(
             "{}: ··· Witness computation for AIR '{}' at stage {}",
             Self::MY_NAME,
             air.name().unwrap_or("unknown"),

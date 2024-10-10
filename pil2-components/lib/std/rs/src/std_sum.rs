@@ -9,6 +9,8 @@ use num_traits::ToPrimitive;
 use p3_field::{Field, PrimeField};
 use rayon::prelude::*;
 
+use log::debug;
+
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
@@ -48,11 +50,11 @@ impl<F: Field> Decider<F> for StdSum<F> {
                 let air_id = air.air_id;
 
                 let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
-                let p_setup = (&setup.p_setup).into();
+                let p_expressions_bin = setup.p_setup.p_expressions_bin;
 
-                let im_hints = get_hint_ids_by_name(p_setup, "im_col");
-                let gsum_hints = get_hint_ids_by_name(p_setup, "gsum_col");
-                let debug_hints_data = get_hint_ids_by_name(p_setup, "gsum_member_data");
+                let im_hints = get_hint_ids_by_name(p_expressions_bin, "im_col");
+                let gsum_hints = get_hint_ids_by_name(p_expressions_bin, "gsum_col");
+                let debug_hints_data = get_hint_ids_by_name(p_expressions_bin, "gsum_member_data");
                 if !gsum_hints.is_empty() {
                     // Save the air for latter witness computation
                     sum_airs_guard.push((airgroup_id, air_id, im_hints, gsum_hints, debug_hints_data));
@@ -245,7 +247,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    log::info!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
+                    debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 

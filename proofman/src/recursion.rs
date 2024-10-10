@@ -9,7 +9,7 @@ use proofman_common::{ProofCtx, ProofType, SetupCtx};
 
 use std::os::raw::{c_void, c_char};
 
-use proofman_util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start_debug, timer_start_trace, timer_stop_and_log_debug, timer_stop_and_log_trace};
 
 type GetCommitedPolsFunc = unsafe extern "C" fn(
     p_address: *mut c_void,
@@ -33,7 +33,6 @@ pub fn generate_recursion_proof<F: Field>(
 ) -> Result<Vec<*mut c_void>, Box<dyn std::error::Error>> {
     const _MY_NAME: &str = "AggProof";
 
-    timer_start!(GENERATE_RECURSIVE_PROOF);
     //Create setup contexts
     let mut proves_out: Vec<*mut c_void> = Vec::new();
 
@@ -45,6 +44,7 @@ pub fn generate_recursion_proof<F: Field>(
     // Run proves
     match *proof_type {
         ProofType::Compressor | ProofType::Recursive1 => {
+            timer_start_debug!(GENERATE_COMPRESSOR_PROOFS); // TODO: FIX
             for (prover_idx, air_instance) in
                 pctx.air_instance_repo.air_instances.write().unwrap().iter_mut().enumerate()
             {
@@ -53,11 +53,11 @@ pub fn generate_recursion_proof<F: Field>(
                 {
                     proves_out.push(proves[prover_idx]);
                 } else {
-                    timer_start!(GET_SETUP);
+                    timer_start_trace!(GET_SETUP);
                     let setup = sctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("Setup not found");
                     let p_setup: *mut c_void = (&setup.p_setup).into();
                     let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
-                    timer_stop_and_log!(GET_SETUP);
+                    timer_stop_and_log_trace!(GET_SETUP);
 
                     let mut zkin = proves[prover_idx];
                     if *proof_type == ProofType::Recursive1 {
@@ -81,7 +81,7 @@ pub fn generate_recursion_proof<F: Field>(
                     let p_publics = publics.as_ptr() as *mut c_void;
                     let p_address = buffer.as_ptr() as *mut c_void;
 
-                    timer_start!(GENERATE_PROOF);
+                    timer_start_trace!(GENERATE_PROOF);
 
                     let air_instance_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
 
@@ -104,11 +104,13 @@ pub fn generate_recursion_proof<F: Field>(
                         publics2zkin_c(p_prove, p_publics, global_info_file, air_instance.airgroup_id as u64, false);
                     proves_out.push(p_prove);
 
-                    timer_stop_and_log!(GENERATE_PROOF);
+                    timer_stop_and_log_trace!(GENERATE_PROOF);
                 }
             }
+            timer_stop_and_log_debug!(GENERATE_COMPRESSOR_PROOFS);
         }
         ProofType::Recursive2 => {
+            timer_start_debug!(GENERATE_RECURSIVE2_PROOFS);
             let n_airgroups = pctx.global_info.subproofs.len();
             let mut proves_recursive2: Vec<*mut c_void> = Vec::with_capacity(n_airgroups);
 
@@ -135,11 +137,11 @@ pub fn generate_recursion_proof<F: Field>(
                         for i in 0..alive / 2 {
                             let j = i * 2;
                             if j + 1 < alive {
-                                timer_start!(GET_RECURSIVE2_SETUP);
+                                timer_start_trace!(GET_RECURSIVE2_SETUP);
                                 let setup = sctx.get_setup(airgroup, 0).expect("Setup not found");
                                 let p_setup: *mut c_void = (&setup.p_setup).into();
                                 let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
-                                timer_stop_and_log!(GET_RECURSIVE2_SETUP);
+                                timer_stop_and_log_trace!(GET_RECURSIVE2_SETUP);
 
                                 let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
                                 let challenges_guard = pctx.challenges.challenges.read().unwrap();
@@ -169,7 +171,7 @@ pub fn generate_recursion_proof<F: Field>(
                                 let p_publics = publics.as_ptr() as *mut c_void;
                                 let p_address = buffer.as_ptr() as *mut c_void;
 
-                                timer_start!(GENERATE_PROOF);
+                                timer_start_trace!(GENERATE_PROOF);
                                 let proof_file = match save_proof {
                                     true => output_dir_path
                                         .join(format!(
@@ -192,7 +194,7 @@ pub fn generate_recursion_proof<F: Field>(
                                     airgroup as u64,
                                     false,
                                 );
-                                timer_stop_and_log!(GENERATE_PROOF);
+                                timer_stop_and_log_trace!(GENERATE_PROOF);
                             }
                         }
                         alive = (alive + 1) / 2;
@@ -229,19 +231,21 @@ pub fn generate_recursion_proof<F: Field>(
             );
 
             proves_out.push(zkin_final);
+            timer_stop_and_log_debug!(GENERATE_RECURSIVE2_PROOFS);
         }
         ProofType::Final => {
-            timer_start!(GET_FINAL_SETUP);
+            timer_start_debug!(GENERATE_FINAL_PROOF);
+            timer_start_trace!(GET_FINAL_SETUP);
             let setup = sctx.get_setup(0, 0).expect("Setup not found");
             let p_setup: *mut c_void = (&setup.p_setup).into();
             let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
-            timer_stop_and_log!(GET_FINAL_SETUP);
+            timer_stop_and_log_trace!(GET_FINAL_SETUP);
 
             let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proves[0], proof_type)?;
             let p_address = buffer.as_ptr() as *mut c_void;
             let p_publics = publics.as_ptr() as *mut c_void;
 
-            timer_start!(GENERATE_FINAL_PROOF);
+            timer_start_trace!(GENERATE_PROOF);
             // prove
             let _p_prove = gen_recursive_proof_c(
                 p_setup,
@@ -249,13 +253,13 @@ pub fn generate_recursion_proof<F: Field>(
                 p_publics,
                 output_dir_path.join("proofs/final_proof.json").to_string_lossy().as_ref(),
             );
-            timer_stop_and_log!(GENERATE_FINAL_PROOF);
+            timer_stop_and_log_trace!(GENERATE_PROOF);
+            timer_stop_and_log_debug!(GENERATE_FINAL_PROOF);
         }
         ProofType::Basic => {
             panic!("Recursion proof whould not be calles for ProofType::Basic ");
         }
     }
-    timer_stop_and_log!(GENERATE_RECURSIVE_PROOF);
 
     Ok(proves_out)
 }
@@ -269,7 +273,7 @@ fn generate_witness<F: Field>(
     proof_type: &ProofType,
 ) -> GenWitnessResult<F> {
     // Load the symbol (function) from the library
-    timer_start!(CALCULATE_WITNESS);
+    timer_start_trace!(CALCULATE_WITNESS);
 
     let total_n = get_map_totaln_c(p_stark_info) as usize;
     let buffer: Vec<MaybeUninit<F>> = Vec::with_capacity(total_n);
@@ -307,7 +311,6 @@ fn generate_witness<F: Field>(
         let exec_filename_str = CString::new(exec_filename.as_str()).unwrap();
         let exec_filename_ptr = exec_filename_str.as_ptr() as *mut std::os::raw::c_char;
 
-        timer_start!(GET_COMMITTED_POLS);
         get_commited_pols(
             p_address,
             p_publics,
@@ -318,9 +321,8 @@ fn generate_witness<F: Field>(
             dat_filename_ptr,
             exec_filename_ptr,
         );
-        timer_stop_and_log!(GET_COMMITTED_POLS);
     }
-    timer_stop_and_log!(CALCULATE_WITNESS);
+    timer_stop_and_log_trace!(CALCULATE_WITNESS);
 
     Ok((buffer, publics))
 }

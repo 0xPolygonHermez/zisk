@@ -14,7 +14,7 @@ pub struct Module<F: PrimeField> {
 }
 
 impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F> {
-    const MY_NAME: &'static str = "Module";
+    const MY_NAME: &'static str = "ModuleSM";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: Mutex::new(Vec::new()), std_lib });
@@ -42,7 +42,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
     }
 
     fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        log::info!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
+        log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let pi: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let module = pi.module;

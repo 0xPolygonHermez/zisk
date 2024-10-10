@@ -47,7 +47,7 @@ impl Setup {
         let const_pols_tree_path = setup_path.display().to_string() + ".consttree";
 
         let p_stark_info = stark_info_new_c(stark_info_path.as_str());
-        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
+        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str(), false);
 
         let p_const_pols = match PathBuf::from(&const_pols_tree_path).exists() {
             true => const_pols_with_tree_new_c(const_pols_path.as_str(), const_pols_tree_path.as_str(), p_stark_info),
@@ -60,12 +60,13 @@ impl Setup {
     pub fn new_partial(global_info: &GlobalInfo, airgroup_id: usize, air_id: usize, setup_type: &ProofType) -> Self {
         let setup_path = global_info.get_air_setup_path(airgroup_id, air_id, setup_type);
 
-        log::info!("{}   : ··· Loading setup for AIR [{}:{}]", Self::MY_NAME, airgroup_id, air_id,);
+        let air_name = &global_info.airs[airgroup_id][air_id].name;
+        log::debug!("{}   : ··· Loading setup for AIR {}", Self::MY_NAME, air_name);
 
         let stark_info_path = setup_path.display().to_string() + ".starkinfo.json";
         let expressions_bin_path = setup_path.display().to_string() + ".bin";
         let p_stark_info = stark_info_new_c(stark_info_path.as_str());
-        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str());
+        let p_expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str(), false);
 
         Self {
             air_id,
@@ -83,7 +84,8 @@ impl Setup {
 
         let setup_path = global_info.get_air_setup_path(self.airgroup_id, self.air_id, setup_type);
 
-        log::info!("{}   : ··· Loading const pols for AIR [{}:{}]", Self::MY_NAME, self.airgroup_id, self.air_id,);
+        let air_name = &global_info.airs[self.airgroup_id][self.air_id].name;
+        log::debug!("{}   : ··· Loading const pols for AIR {}", Self::MY_NAME, air_name);
 
         let const_pols_path = setup_path.display().to_string() + ".const";
         let const_pols_tree_path = setup_path.display().to_string() + ".consttree";

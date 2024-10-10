@@ -124,7 +124,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                 let air_id = air.air_id;
 
                 let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
-                let hints = get_hint_ids_by_name((&setup.p_setup).into(), "specified_ranges");
+                let hints = get_hint_ids_by_name(setup.p_setup.p_expressions_bin, "specified_ranges");
 
                 for (index, hint) in hints.iter().enumerate() {
                     if index > 0 {

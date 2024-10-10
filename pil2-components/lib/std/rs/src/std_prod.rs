@@ -45,10 +45,10 @@ impl<F: Field> Decider<F> for StdProd<F> {
                 let air_id = air.air_id;
 
                 let setup = sctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
-                let p_setup = (&setup.p_setup).into();
+                let p_expressions_bin = setup.p_setup.p_expressions_bin;
 
-                let gprod_hints = get_hint_ids_by_name(p_setup, "gprod_col");
-                let debug_hints_data = get_hint_ids_by_name(p_setup, "gprod_member_data");
+                let gprod_hints = get_hint_ids_by_name(p_expressions_bin, "gprod_col");
+                let debug_hints_data = get_hint_ids_by_name(p_expressions_bin, "gprod_member_data");
                 if !gprod_hints.is_empty() {
                     // Save the air for latter witness computation
                     self.prod_airs.lock().unwrap().push((airgroup_id, air_id, gprod_hints, debug_hints_data));
@@ -234,7 +234,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    log::info!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
+                    log::debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 

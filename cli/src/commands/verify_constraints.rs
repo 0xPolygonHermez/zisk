@@ -38,10 +38,6 @@ pub struct VerifyConstraintsCmd {
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    // Debug mode (-d, -dd)
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase debug level")]
-    pub debug: u8, // Using u8 to hold the number of `-d`
 }
 
 impl VerifyConstraintsCmd {
@@ -51,13 +47,6 @@ impl VerifyConstraintsCmd {
 
         initialize_logger(self.verbose.into());
 
-        let debug_mode = match self.debug {
-            0 => 1, // Default to Error
-            1 => 2, // -v
-            2 => 3, // -vv _ => log::LevelFilter::Trace,
-            _ => 1,
-        };
-
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
                 self.witness_lib.clone(),
@@ -65,7 +54,7 @@ impl VerifyConstraintsCmd {
                 self.public_inputs.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                ProofOptions::new(debug_mode, self.verbose.into(), false, false),
+                ProofOptions::new(true, self.verbose.into(), false, false),
             )?,
         };
 
