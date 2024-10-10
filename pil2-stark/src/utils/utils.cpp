@@ -2,17 +2,12 @@
 #include <iostream>
 #include <iomanip>
 #include <filesystem>
-#include <uuid/uuid.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <openssl/md5.h>
 #include <execinfo.h>
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-#include <openssl/crypto.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <arpa/inet.h>

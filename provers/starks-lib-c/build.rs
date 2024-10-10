@@ -54,24 +54,7 @@ fn main() {
         println!("cargo:rustc-link-lib=static={}", library_short_name);
 
         // Link other required libraries
-        for lib in &[
-            "protobuf",
-            "sodium",
-            "grpc++",
-            "grpc",
-            "gpr",
-            "grpc++_reflection",
-            "pthread",
-            "pqxx",
-            "pq",
-            "gmp",
-            "stdc++",
-            "gmpxx",
-            "secp256k1",
-            "crypto",
-            "uuid",
-            "iomp5",
-        ] {
+        for lib in &["sodium", "pthread", "gmp", "stdc++", "gmpxx", "crypto", "iomp5"] {
             println!("cargo:rustc-link-lib={}", lib);
         }
     }

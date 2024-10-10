@@ -4,3 +4,4 @@ pil_helpers
 build*/
 *.pilout
 run.sh
+MyLogFile.log

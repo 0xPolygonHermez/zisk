@@ -13,7 +13,7 @@ WITNESS_LIB := ./witness_lib
 CXX := g++
 AS := nasm
 CXXFLAGS := -std=c++17 -Wall -pthread -flarge-source-files -Wno-unused-label -rdynamic #-Wfatal-errors
-LDFLAGS := -lprotobuf -lsodium -lgpr -lpthread -lpqxx -lpq -lgmp -lstdc++ -lgmpxx -lsecp256k1 -lcrypto -luuid -fopenmp -liomp5 
+LDFLAGS := -lsodium -lpthread -lgmp -lstdc++ -fopenmp 
 CFLAGS := -fopenmp
 ASFLAGS := -felf64
 

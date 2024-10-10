@@ -3,7 +3,6 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
 jobs:
   cargo-test:
     name: cargo test
@@ -13,27 +12,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y protobuf-compiler build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev postgresql libpqxx-dev libpqxx-doc nasm libsecp256k1-dev libprotoc-dev libsodium-dev libprotobuf-dev libssl-dev cmake libgrpc++-dev uuid-dev
-
-      - name: Check out pil2-stark
-        uses: actions/checkout@v4
-        with:
-          repository: 0xPolygonHermez/pil2-stark
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: develop
-          path: pil2-stark
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
 
       - name: Install pil2-stark
         working-directory: pil2-stark
         run: |
-          git submodule init
+          git submodule update --init --recursive
           git submodule update
           make clean
           make starks_lib -j
@@ -102,6 +92,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: install cargo-audit
@@ -169,7 +161,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y protobuf-compiler build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev postgresql libpqxx-dev libpqxx-doc nasm libsecp256k1-dev libprotoc-dev libsodium-dev libprotobuf-dev libssl-dev cmake libgrpc++-dev uuid-dev
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
 
       - name: Install pil2-stark
         working-directory: pil2-stark
