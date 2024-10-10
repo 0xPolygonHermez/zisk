@@ -515,7 +515,7 @@ impl<F: Field> BinaryBasicSM<F> {
         let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
         let mut splits = Vec::new();
-        splits.push((0, 0, 0, 0));
+        splits.push((0, 0, 0));
 
         let mut x = 0;
         let mut y = 0;
@@ -530,9 +530,8 @@ impl<F: Field> BinaryBasicSM<F> {
 
             if count >= air.num_rows() {
                 let taken = air.num_rows() - last_count;
-                
-                splits.push((x, y, count, taken));
-                println!("split: x={} y={} taken={} count={}", x, y, taken, count- operations[x][y].binary.len() + taken);
+
+                splits.push((x, y, taken));
                 count = operations[x][y].binary.len() - taken;
             }
 
@@ -541,14 +540,32 @@ impl<F: Field> BinaryBasicSM<F> {
                 y += 1;
             }
         }
-        
+        //note: this algorihtm assumes righ now that air.num_rows() > block_size!!! (assert needed)
         (0..splits.len()).into_par_iter().for_each(|i| {
-            let (x, y, count, taken) = splits[i];
-            
+            let (x0, y0, row0) = splits[i];
             let mut slice = Vec::new();
-            slice.extend_from_slice(&operations[x][y].binary[..taken]);
-            let (trace_row, table
-            
+            let is_last_instance = i == splits.len() - 1;
+            slice.extend_from_slice(&operations[x][y].binary[row0..]);
+            if !is_last_instance {
+                let (x1, y1, row1) = splits[i + 1];
+                let mut x = x0;
+                let mut y = y0;
+                loop {
+                    if x == x1 && y == y1 {
+                        slice.extend_from_slice(&operations[x][y].binary[0..row1]);
+                        break;
+                    } else {
+                        slice.extend_from_slice(&operations[x][y].binary);
+                    }
+                    x = (x + 1) % operations.len();
+                    if x == 0 {
+                        y += 1;
+                    }
+                }
+            }
+            if is_last_instance {
+                //check if passing is necessary
+            }
         });
 
         println!("num_boxes: {}", num_boxes);
