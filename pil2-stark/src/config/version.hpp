@@ -1,0 +1,6 @@
+#ifndef PIL2_STARK_VERSION_HPP
+#define PIL2_STARK_VERSION_HPP
+
+#define PIL2_STARK_VERSION "1.0.0"
+
+#endif

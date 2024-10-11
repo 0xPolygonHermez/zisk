@@ -3,37 +3,25 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
 jobs:
   cargo-test:
     name: cargo test
-    env:
-      STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y protobuf-compiler build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev postgresql libpqxx-dev libpqxx-doc nasm libsecp256k1-dev libprotoc-dev libsodium-dev libprotobuf-dev libssl-dev cmake libgrpc++-dev uuid-dev
-
-      - name: Check out pil2-stark
-        uses: actions/checkout@v4
-        with:
-          repository: 0xPolygonHermez/pil2-stark
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: develop
-          path: pil2-stark
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
 
       - name: Install pil2-stark
         working-directory: pil2-stark
         run: |
-          git submodule init
+          git submodule update --init --recursive
           git submodule update
           make clean
           make starks_lib -j
@@ -102,6 +90,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Rust Toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: install cargo-audit
@@ -111,8 +101,6 @@ jobs:
   tests:
     name: Test fibonacci square && std
     runs-on: ubuntu-latest
-    env:
-      STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -120,14 +108,14 @@ jobs:
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: stable
-            override: true
-            components: rustfmt, clippy
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
 
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '18'
+          node-version: "18"
       - name: Install npm
         run: npm install -g npm
       - name: Check npm version
@@ -136,10 +124,10 @@ jobs:
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install z3-solver
-        run: | 
+        run: |
           python -m pip install z3-solver
 
       - name: Check out pil2-proofman-js
@@ -169,21 +157,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y protobuf-compiler build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev postgresql libpqxx-dev libpqxx-doc nasm libsecp256k1-dev libprotoc-dev libsodium-dev libprotobuf-dev libssl-dev cmake libgrpc++-dev uuid-dev
-
-      - name: Check out pil2-stark
-        uses: actions/checkout@v4
-        with:
-          repository: 0xPolygonHermez/pil2-stark
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: develop
-          path: pil2-stark
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
 
       - name: Install pil2-stark
         working-directory: pil2-stark
         run: |
-          git submodule init
-          git submodule update
+          git submodule update --init --recursive
           make clean
           make starks_lib -j
           make -j bctree
@@ -287,7 +267,7 @@ jobs:
       - name: Generate PIL Helpers simple
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/simple/build/build.pilout --path ./pil2-components/test/simple/rs/src -o
-          
+
       - name: Cargo build
         run: RUST_BACKTRACE=1 cargo build -v
 
