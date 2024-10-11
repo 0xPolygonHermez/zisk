@@ -33,11 +33,10 @@ pub struct MemSM {
 }
 
 impl MemSM {
-    pub fn new<F>(
-        wcm: Arc<WitnessManager<F>>,
-        mem_aligned_sm: Arc<MemAlignedSM>,
-        mem_unaligned_sm: Arc<MemUnalignedSM>,
-    ) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let mem_aligned_sm = MemAlignedSM::new(wcm.clone());
+        let mem_unaligned_sm = MemUnalignedSM::new(wcm.clone());
+
         let mem_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),

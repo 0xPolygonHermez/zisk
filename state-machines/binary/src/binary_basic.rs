@@ -6,14 +6,17 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::AirInstance;
+use proofman_util::create_buffer_fast;
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{opcode_execute, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, ZiskRequiredOperation};
 use zisk_pil::*;
 
 use crate::BinaryBasicTableSM;
+
+const EXT_32_OP: u8 = 0x23;
 
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -37,7 +40,7 @@ pub enum BinaryBasicSMErr {
 }
 
 impl<F: Field> BinaryBasicSM<F> {
-    const MY_NAME: &'static str = "BinarySM";
+    const MY_NAME: &'static str = "Binary  ";
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
@@ -91,10 +94,11 @@ impl<F: Field> BinaryBasicSM<F> {
         required: &Vec<ZiskRequiredOperation>,
     ) -> (Vec<Binary0Row<F>>, Vec<ZiskRequiredBinaryBasicTable>) {
         // Create the trace vector
-        let mut trace: Vec<Binary0Row<F>> = Vec::new();
+        let mut trace: Vec<Binary0Row<F>> = Vec::with_capacity(required.len());
 
         // Create the table required vector
-        let mut table_required: Vec<ZiskRequiredBinaryBasicTable> = Vec::new();
+        let mut table_required: Vec<ZiskRequiredBinaryBasicTable> =
+            Vec::with_capacity(required.len() * 8);
 
         for r in required {
             // Create an empty trace
@@ -103,8 +107,11 @@ impl<F: Field> BinaryBasicSM<F> {
             // Execute the opcode
             let c: u64;
             let flag: bool;
-            (c, flag) = opcode_execute(r.opcode, r.a, r.b);
+            (c, flag) = ZiskOp::execute(r.opcode, r.a, r.b);
             let _flag = flag;
+
+            // Calculate result_is_a
+            let result_is_a: u64 = if r.b == c { 0 } else { 1 };
 
             // Decompose the opcode into mode32 & op
             let mode32 = (r.opcode & 0x10) != 0;
@@ -149,19 +156,27 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
-                        let r = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
-                        debug_assert!((r & 0xff) == c_bytes[i] as u64);
-                        cout = r >> 8;
+                        let previous_cin = cin;
+                        let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
+                        debug_assert!((result & 0xff) == c_bytes[i] as u64);
+                        cout = result >> 8;
                         cin = if i == carry_byte { 0 } else { cout };
                         t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -175,18 +190,26 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
-                        cout = if (a_bytes[i] as u64 - cin) >= b_bytes[i] as u64 { 0 } else { 1 };
+                        let previous_cin = cin;
+                        cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                         debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
                         cin = if i == carry_byte { 0 } else { cout };
                         t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -200,6 +223,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
+                        let previous_cin = cin;
                         match a_bytes[i].cmp(&b_bytes[i]) {
                             CmpOrdering::Greater => {
                                 cout = 0;
@@ -219,14 +243,25 @@ impl<F: Field> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin + 8*plast[i];
+
                         // Create a tablerequired
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
-                        };
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(
+                                if mode32 && (i >= 4) { EXT_32_OP } else { m_op },
+                                a_bytes[i] as u64,
+                                b_bytes[i] as u64,
+                                previous_cin,
+                                plast[i],
+                                if i == 7 { c_bytes[0] as u64 } else { 0 },
+                                flags,
+                                i as u64),
+                            multiplicity: 1,
+                            };
 
                         // Store the required in the vector
                         table_required.push(tr);
@@ -239,6 +274,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
+                        let previous_cin = cin;
                         cout = 0;
                         if a_bytes[i] <= b_bytes[i] {
                             cout = 1;
@@ -249,13 +285,18 @@ impl<F: Field> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin + 8*plast[i];
+
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
+                            if i == 7 { c_bytes[0] as u64 } else { 0 },
+                            flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -269,6 +310,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
+                        let previous_cin = cin;
                         if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
                             cout = 0;
                             debug_assert!(plast[i] == c_bytes[i] as u64);
@@ -282,13 +324,18 @@ impl<F: Field> BinaryBasicSM<F> {
                         cin = cout;
                         t.carry[i] = F::from_canonical_u64(cin);
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 8*plast[i];
+
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
+                            if i == 7 { c_bytes[0] as u64 } else { 0 },
+                            flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -297,11 +344,12 @@ impl<F: Field> BinaryBasicSM<F> {
                 }
                 0x09 | 0x0a /* MINU, MINU_W, MIN, MIN_W */ => {
                     // Set use last carry to one
-                    t.use_last_carry = F::one();
+                    t.use_last_carry = F::zero();
 
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
+                        let previous_cin = cin;
                         cout = 0;
                         if a_bytes[i] <= b_bytes[i] {
                             cout = 1;
@@ -311,16 +359,22 @@ impl<F: Field> BinaryBasicSM<F> {
                         if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
+                        if i == 7 {
+                            cout = 0;
+                        }
                         cin = cout;
-                        t.carry[i] = if i == 7 { F::zero() } else { F::from_canonical_u64(cin) };
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 2 + 4*result_is_a;
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -329,11 +383,12 @@ impl<F: Field> BinaryBasicSM<F> {
                 }
                 0x0b | 0x0c /* MAXU, MAXU_W, MAX, MAX_W */ => {
                     // Set use last carry to one
-                    t.use_last_carry = F::one();
+                    t.use_last_carry = F::zero();
 
                     // Apply the logic to every byte
                     for i in 0..8 {
                         // Calculate carry
+                        let previous_cin = cin;
                         cout = 0;
                         if a_bytes[i] >= b_bytes[i] {
                             cout = 1;
@@ -343,16 +398,22 @@ impl<F: Field> BinaryBasicSM<F> {
                         if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                             cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                         }
+                        if i == 7 {
+                            cout = 0;
+                        }
                         cin = cout;
-                        t.carry[i] = if i == 7 { F::zero() } else { F::from_canonical_u64(cin) };
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 2 + 4*result_is_a;
 
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -366,13 +427,16 @@ impl<F: Field> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::zero();
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -386,13 +450,16 @@ impl<F: Field> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::zero();
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -406,13 +473,16 @@ impl<F: Field> BinaryBasicSM<F> {
                     for i in 0..8 {
                         t.carry[i] = F::zero();
 
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
                         // Create a table required
                         let tr = ZiskRequiredBinaryBasicTable {
                             opcode: m_op,
                             a: a_bytes[i] as u64,
                             b: b_bytes[i] as u64,
-                            cin: 0,
-                            last: plast[i],
+                            row: BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64),
+                            multiplicity: 1,
                         };
 
                         // Store the required in the vector
@@ -440,27 +510,9 @@ impl<F: Field> BinaryBasicSM<F> {
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
@@ -478,27 +530,71 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 let thread_controller = self.threads_controller.clone();
 
                 scope.spawn(move |scope| {
-                    let (trace_row, table_required) = Self::process_slice(&drained_inputs);
-                    binary_basic_table_sm.prove(&table_required, false, scope);
+                    let (mut trace_row, mut table_required) = Self::process_slice(&drained_inputs);
+
+                    let air = wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
                     info!(
-                        "{}: ··· Creating Binary basic instance [{} rows]",
+                        "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
                         Self::MY_NAME,
-                        drained_inputs.len()
+                        drained_inputs.len(),
+                        air.num_rows(),
+                        drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0
                     );
+
+                    let mut trace_row_len = trace_row.len();
+
+                    if drain && (air.num_rows() > trace_row_len) {
+                        let padding_size = air.num_rows() - trace_row_len;
+
+                        let padding_row = Binary0Row::<F> {
+                            m_op: F::from_canonical_u8(0x20),
+                            multiplicity: F::zero(),
+                            main_step: F::zero(), /* TODO: remove, since main_step is just for
+                                                   * debugging */
+                            ..Default::default()
+                        };
+
+                        for _i in trace_row_len..air.num_rows() {
+                            trace_row.push(padding_row);
+                        }
+
+                        for last in 0..2 {
+                            let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
+                            table_required.push(ZiskRequiredBinaryBasicTable {
+                                opcode: 0,
+                                a: 0,
+                                b: 0,
+                                row: BinaryBasicTableSM::<F>::calculate_table_row(
+                                    0x20,
+                                    0,
+                                    0,
+                                    0,
+                                    last as u64,
+                                    0,
+                                    0,
+                                    0,
+                                ),
+                                multiplicity,
+                            });
+                        }
+
+                        trace_row_len = trace_row.len();
+                    }
+
+                    binary_basic_table_sm.prove(&table_required, false, scope);
+
                     let buffer_allocator = wcm.get_ectx().buffer_allocator.as_ref();
                     let (buffer_size, offsets) = buffer_allocator
                         .get_buffer_info(wcm.get_sctx(), BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0])
                         .expect("Binary basic buffer not found");
 
-                    let trace_row_len = trace_row.len();
-                    let trace_buffer =
-                        Binary0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
-                    let mut buffer: Vec<F> = vec![F::zero(); buffer_size as usize];
+                    let trace_buffer = Binary0Trace::<F>::map_row_vec(trace_row, false).unwrap();
 
+                    let mut buffer = create_buffer_fast(buffer_size as usize);
                     buffer[offsets[0] as usize
                         ..offsets[0] as usize + (trace_row_len * Binary0Row::<F>::ROW_SIZE)]
-                        .copy_from_slice(&trace_buffer);
+                        .copy_from_slice(&trace_buffer.buffer.unwrap());
 
                     let air_instance =
                         AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], None, buffer);
@@ -509,18 +605,5 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 });
             }
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-
-        result
     }
 }

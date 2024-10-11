@@ -70,7 +70,7 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
     // and use it to construct the download URL.
     let url = format!(
         "https://{}@api.github.com/repos/0xPolygonHermez/rust/releases/latest",
-        std::env::var("GITHUB_ACCESS_TOKEN").unwrap()
+        std::env::var("ZISK_TOKEN").unwrap()
     );
     let json = client.get(url).send().await.unwrap().json::<serde_json::Value>().await.unwrap();
 
@@ -99,10 +99,8 @@ pub async fn download_file(
 
     headers.insert(
         "Authorization",
-        HeaderValue::from_str(
-            format!("Bearer {}", std::env::var("GITHUB_ACCESS_TOKEN").unwrap()).as_str(),
-        )
-        .unwrap(),
+        HeaderValue::from_str(format!("Bearer {}", std::env::var("ZISK_TOKEN").unwrap()).as_str())
+            .unwrap(),
     );
     headers.insert("Accept", HeaderValue::from_static("application/octet-stream"));
     let res = client

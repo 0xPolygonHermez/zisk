@@ -11,7 +11,7 @@ impl BuildToolchainCmd {
     pub fn run(&self) -> Result<()> {
         println!("Building toolchain...");
         // Get enviroment variables.
-        let github_access_token = std::env::var("GITHUB_ACCESS_TOKEN");
+        let zisk_token = std::env::var("ZISK_TOKEN");
         let build_dir = std::env::var("ZISK_BUILD_DIR");
         let rust_dir = match build_dir {
             Ok(build_dir) => {
@@ -26,14 +26,14 @@ impl BuildToolchainCmd {
                 }
 
                 println!("No ZISK_BUILD_DIR detected, cloning rust.");
-                let repo_url = match github_access_token {
-                    Ok(github_access_token) => {
-                        println!("Detected GITHUB_ACCESS_TOKEN, using it to clone rust.");
-                        format!("https://{}@github.com/eduadiez/rust", github_access_token)
+                let repo_url = match zisk_token {
+                    Ok(zisk_token) => {
+                        println!("Detected ZISK_TOKEN, using it to clone rust.");
+                        format!("https://{}@github.com/0xPolygonHermez/rust", zisk_token)
                     }
                     Err(_) => {
-                        println!("No GITHUB_ACCESS_TOKEN detected. If you get throttled by Github, set it to bypass the rate limit.");
-                        "ssh://git@github.com/eduadiez/rust".to_string()
+                        println!("No ZISK_TOKEN detected. If you get throttled by Github, set it to bypass the rate limit.");
+                        "ssh://git@github.com/0xPolygonHermez/rust".to_string()
                     }
                 };
                 Command::new("git")

@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 
 use crate::{Arith32SM, ArithFullSM, ArithMul32SM, ArithMul64SM, ArithRangeTableSM, ArithTableSM};
 
@@ -144,7 +144,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 
