@@ -655,7 +655,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values
                     // into the prover buffer
                     let trace_buffer =
-                        Binary0Trace::<F>::from_row_vec(trace_row).unwrap().buffer.unwrap();
+                        Binary0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
                     prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
                         .par_iter_mut()
                         .zip(trace_buffer.par_iter())

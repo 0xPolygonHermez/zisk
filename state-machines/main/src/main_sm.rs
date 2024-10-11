@@ -1,7 +1,7 @@
 use log::info;
 use p3_field::PrimeField;
 
-use proofman_util::{timer_start, timer_stop_and_log};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::{prelude::*, vec, Scope, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -62,9 +62,8 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     /// Default number of inputs of the main state machine that are accumulated before being
     /// processed
-    const BLOCK_SIZE: usize = 2usize.pow(18);
+    const BLOCK_SIZE: usize = 2usize.pow(21);
     const NUM_THREADS: usize = 8;
-    const NUM_THREADS_REQUIRED: usize = 8;
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -148,9 +147,9 @@ impl<'a, F: PrimeField> MainSM<F> {
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
-        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
+        let pool = ThreadPoolBuilder::new().build().unwrap();
 
-        timer_start!(PREPARE_EMULATOR);
+        timer_start_info!(PREPARE_EMULATOR);
         // Prepare the settings for the emulator
         let emulator_options = EmuOptions {
             elf: Some(self.zisk_rom_path.clone().display().to_string()),
@@ -167,23 +166,13 @@ impl<'a, F: PrimeField> MainSM<F> {
         };
 
         // Execute the emulator inside a thread
-        let vec_full_trace = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
-        let vec_requireds = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
-        timer_stop_and_log!(PREPARE_EMULATOR);
+        let min_trace = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
+        timer_stop_and_log_info!(PREPARE_EMULATOR);
 
-        timer_start!(PAR_PROCESS_ROM);
         pool.scope(|scope| {
-            (0..(Self::NUM_THREADS + Self::NUM_THREADS_REQUIRED)).into_par_iter().for_each(|i| {
-                let par_emu_options = ParEmuOptions::new(
-                    Self::NUM_THREADS,
-                    i,
-                    Self::BLOCK_SIZE,
-                    if i < Self::NUM_THREADS {
-                        ParEmuExecutionType::MainTrace
-                    } else {
-                        ParEmuExecutionType::RequiredInputs
-                    },
-                );
+            timer_start_info!(PAR_PROCESS_ROM);
+            (0..Self::NUM_THREADS).into_par_iter().for_each(|i| {
+                let par_emu_options = ParEmuOptions::new(Self::NUM_THREADS, i, Self::BLOCK_SIZE);
 
                 let result = ZiskEmulator::par_process_rom::<F>(
                     &self.zisk_rom,
@@ -192,28 +181,65 @@ impl<'a, F: PrimeField> MainSM<F> {
                     &par_emu_options,
                 );
 
-                // Eval the return value of the emulator to launch a panic if an error occurred
-                let (_vec_full_trace, _vec_requireds) = match result {
-                    Ok((a, b)) => (a, b),
-                    Err(e) => panic!("Error during emulator execution: {:?}", e),
-                };
-
-                if par_emu_options.execution_type == ParEmuExecutionType::MainTrace {
-                    vec_full_trace.lock().unwrap()[i] = _vec_full_trace;
-                } else {
-                    vec_requireds.lock().unwrap()[i - 8] = _vec_requireds;
+                if let Err(e) = result {
+                    panic!("Error during emulator execution: {:?}", e);
                 }
-            });
-            timer_stop_and_log!(PAR_PROCESS_ROM);
 
-            scope.spawn(|_| {
-                let vec_full_trace = vec_full_trace.into_inner().unwrap();
-                Self::prove_main(vec_full_trace, &pctx, &ectx, &sctx);
+                min_trace.lock().unwrap()[i] = result.unwrap();
             });
+            timer_stop_and_log_info!(PAR_PROCESS_ROM);
 
-            let vec_requireds = vec_requireds.into_inner().unwrap();
-            self.binary_sm.prove_basic(&vec_requireds, scope);
-            // self.prove_inputs(vec_requireds, scope);
+            let min_trace = min_trace.into_inner().unwrap();
+
+            let num_min_trace = min_trace.iter().map(|thread| thread.len()).sum::<usize>();
+
+            timer_start_info!(PAR_EXPANSION);
+            (0..num_min_trace).into_par_iter().for_each(|instance_id| {
+                let x = instance_id % Self::NUM_THREADS;
+                let y = instance_id / Self::NUM_THREADS;
+
+            timer_start_info!(PAR_EXPANSION_1);
+                let emu_slice = match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &min_trace[x][y])
+                {
+                    Ok(slice) => slice,
+                    Err(e) => panic!("Error processing slice: {:?}", e),
+                };
+            timer_stop_and_log_info!(PAR_EXPANSION_1);
+            });
+            timer_stop_and_log_info!(PAR_EXPANSION);
+
+            // let mut x = 0;
+            // let mut y = 0;
+            // loop {
+            //     if min_trace[x].len() <= y {
+            //         break;
+            //     }
+            //     println!(
+            //         "Processing thread {} level {}",
+            //         x + y * Self::NUM_THREADS + 1,
+            //         min_trace[x][y].start.step
+            //     );
+            //     let cloned_min_trace = std::mem::take(&mut min_trace[x][y]);
+            //     scope.spawn(|_| {
+            //         let x = cloned_min_trace;
+            //         let emu_slice = match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &x) {
+            //             Ok(slice) => slice,
+            //             Err(e) => panic!("Error processing slice: {:?}", e),
+            //         };
+            //     });
+            //     x += 1;
+            //     if x == Self::NUM_THREADS {
+            //         x = 0;
+            //         y += 1;
+            //     }
+            // }
+            //             scope.spawn(|_| {
+            //     let vec_full_trace = vec_full_trace.into_inner().unwrap();
+            //     Self::prove_main(vec_full_trace, &pctx, &ectx, &sctx);
+            // });
+            std::thread::spawn(move || {
+                drop(min_trace);
+            });
         });
     }
 
@@ -223,7 +249,7 @@ impl<'a, F: PrimeField> MainSM<F> {
         ectx: &ExecutionCtx,
         sctx: &SetupCtx,
     ) {
-        timer_start!(CREATE_INSTANCES);
+        timer_start_info!(CREATE_INSTANCES);
         let num_steps: usize = vec_full_trace
             .iter()
             .map(|full_trace_thread| {
@@ -310,16 +336,16 @@ impl<'a, F: PrimeField> MainSM<F> {
 
             pctx.air_instance_repo.add_air_instance(air_instance);
         });
-        timer_stop_and_log!(CREATE_INSTANCES);
+        timer_stop_and_log_info!(CREATE_INSTANCES);
 
         // self.threads_controller.wait_for_threads();
 
         // Unregister main state machine as a predecessor for all the secondary state machines
-        // timer_start!(UNREGISTER_PREDECESSORS);
+        // timer_start_info!(UNREGISTER_PREDECESSORS);
         // self.mem_sm.unregister_predecessor::<F>(scope);
         // self.binary_sm.unregister_predecessor(scope);
         // self.arith_sm.unregister_predecessor::<F>(scope);
-        // timer_stop_and_log!(UNREGISTER_PREDECESSORS);
+        // timer_stop_and_log_info!(UNREGISTER_PREDECESSORS);
         // });
 
         std::thread::spawn(move || {
@@ -375,14 +401,14 @@ impl<'a, F: PrimeField> MainSM<F> {
         // To go faster, we receive from the simulator callback a tiny trace that we are going
         // to process to get the full trace. This is done to avoid the overhead of processing
         // the full trace in the simulator callback and now can be parallelized.
-        timer_start!(EXPANDING);
+        timer_start_info!(EXPANDING);
         let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
             Ok(slice) => slice,
             Err(e) => panic!("Error processing slice: {:?}", e),
         };
-        timer_stop_and_log!(EXPANDING);
+        timer_stop_and_log_info!(EXPANDING);
 
-        timer_start!(PROCESS_MAIN);
+        timer_start_info!(PROCESS_MAIN);
         let num_segments =
             (emu_slice.full_trace.len() as f64 / air.num_rows() as f64).ceil() as usize;
         let mut total_drained = 0;
@@ -404,11 +430,11 @@ impl<'a, F: PrimeField> MainSM<F> {
             let threads_controller = self.threads_controller.clone();
             threads_controller.add_working_thread();
 
-            timer_start!(TO_VEC);
+            timer_start_info!(TO_VEC);
             let mut air_segment = MainAirSegment::new(segment_id as u32);
             air_segment.inputs = drained_inputs.to_vec();
             air_segment.filled_inputs += num_drained;
-            timer_stop_and_log!(TO_VEC);
+            timer_stop_and_log_info!(TO_VEC);
 
             scope.spawn(move |_| {
                 // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
@@ -424,7 +450,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                 threads_controller.remove_working_thread();
             });
         }
-        timer_stop_and_log!(PROCESS_MAIN);
+        timer_stop_and_log_info!(PROCESS_MAIN);
 
         // scope.spawn(move |scope| {
         //     // To go faster, we receive from the simulator callback a tiny trace that we are going
@@ -510,7 +536,7 @@ impl<'a, F: PrimeField> MainSM<F> {
         // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values into the
         // prover buffer
         let main_trace_buffer =
-            Main0Trace::<F>::from_row_vec(air_segment.inputs).unwrap().buffer.unwrap();
+            Main0Trace::<F>::map_row_vec(air_segment.inputs, true).unwrap().buffer.unwrap();
         prover_buffer[offset as usize..offset as usize + main_trace_buffer.len()]
             .par_iter_mut()
             .zip(main_trace_buffer.par_iter())

@@ -1,8 +1,8 @@
-use std::mem;
+use std::{mem, time::Instant};
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep,
-    ParEmuExecutionType, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, EmuTraceEnd, EmuTraceStart,
+    EmuTraceStep, ParEmuExecutionType, ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
@@ -89,18 +89,18 @@ impl<'a> Emu<'a> {
         match instruction.a_src {
             SRC_C => (),
             SRC_MEM => {
-                let mut addr = instruction.a_offset_imm0;
-                if instruction.a_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
-                }
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: a,
-                };
-                required.memory.push(required_memory);
+                // let mut addr = instruction.a_offset_imm0;
+                // if instruction.a_use_sp_imm1 != 0 {
+                //     addr += self.ctx.inst_ctx.sp;
+                // }
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: 8,
+                //     value: a,
+                // };
+                // required.memory.push(required_memory);
             }
             SRC_IMM => (),
             SRC_STEP => (),
@@ -131,7 +131,7 @@ impl<'a> Emu<'a> {
                     width: 8,
                     value: self.ctx.inst_ctx.a,
                 };
-                required.memory.push(required_memory);
+                // required.memory.push(required_memory);
             }
             SRC_IMM => {
                 self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
@@ -200,7 +200,7 @@ impl<'a> Emu<'a> {
                     width: 8,
                     value: b,
                 };
-                required.memory.push(required_memory);
+                // required.memory.push(required_memory);
             }
             SRC_IMM => (),
             SRC_IND => {
@@ -216,7 +216,7 @@ impl<'a> Emu<'a> {
                     width: instruction.ind_width,
                     value: b,
                 };
-                required.memory.push(required_memory);
+                // required.memory.push(required_memory);
             }
             _ => panic!(
                 "Emu::source_b_slice() Invalid b_src={} pc={}",
@@ -243,7 +243,7 @@ impl<'a> Emu<'a> {
                     width: 8,
                     value: self.ctx.inst_ctx.b,
                 };
-                required.memory.push(required_memory);
+                // required.memory.push(required_memory);
             }
             SRC_IMM => {
                 self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
@@ -262,7 +262,7 @@ impl<'a> Emu<'a> {
                     width: instruction.ind_width,
                     value: self.ctx.inst_ctx.b,
                 };
-                required.memory.push(required_memory);
+                // required.memory.push(required_memory);
             }
             _ => panic!(
                 "Emu::source_b() Invalid b_src={} pc={}",
@@ -331,14 +331,14 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, 8);
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: true,
-                    address: addr as u64,
-                    width: 8,
-                    value: val as u64,
-                };
-                required.memory.push(required_memory);
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: true,
+                //     address: addr as u64,
+                //     width: 8,
+                //     value: val as u64,
+                // };
+                // required.memory.push(required_memory);
             }
             STORE_IND => {
                 let val: i64 = if instruction.store_ra {
@@ -352,14 +352,14 @@ impl<'a> Emu<'a> {
                 }
                 addr += self.ctx.inst_ctx.a as i64;
                 self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: true,
-                    address: addr as u64,
-                    width: instruction.ind_width,
-                    value: val as u64,
-                };
-                required.memory.push(required_memory);
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: true,
+                //     address: addr as u64,
+                //     width: instruction.ind_width,
+                //     value: val as u64,
+                // };
+                // required.memory.push(required_memory);
             }
             _ => panic!(
                 "Emu::store_c_slice() Invalid store={} pc={}",
@@ -587,7 +587,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<Vec<EmuFullTraceStep<F>>>, Vec<ZiskRequired>) {
+    ) -> Vec<EmuTrace> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -597,10 +597,9 @@ impl<'a> Emu<'a> {
         // Store the stats option into the emulator context
         self.ctx.do_stats = options.stats;
 
-        let mut main_row_vec = Vec::new();
-        let mut required_vec = Vec::new();
+        let mut emu_traces = Vec::new();
 
-        println!("thread_id={} {:?}", par_options.thread_id, par_options.execution_type);
+        println!("thread_id={}", par_options.thread_id);
 
         while !self.ctx.inst_ctx.end {
             let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
@@ -613,35 +612,24 @@ impl<'a> Emu<'a> {
             if !is_my_block && !is_my_block_required {
                 self.step(options, &None::<fn(EmuTrace)>);
             } else {
-                match par_options.execution_type {
-                    ParEmuExecutionType::MainTrace => {
-                        // Check if is the first step of a new block
-                        if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
-                            main_row_vec.push(Vec::with_capacity(par_options.num_steps));
-                        }
-                        self.par_step(options, par_options, main_row_vec.last_mut().unwrap());
-                    }
-                    ParEmuExecutionType::RequiredInputs => {
-                        // Check if is the first step of a new block
-                        if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
-                            required_vec.push(ZiskRequired {
-                                arith: Vec::new(),
-                                binary: Vec::new(),
-                                binary_extension: Vec::new(),
-                                memory: Vec::new(),
-                            });
-                        }
-                        self.par_step_required::<F>(
-                            options,
-                            par_options,
-                            required_vec.last_mut().unwrap(),
-                        );
-                    }
+                // Check if is the first step of a new block
+                if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                    emu_traces.push(EmuTrace {
+                        start: EmuTraceStart {
+                            pc: self.ctx.inst_ctx.pc,
+                            sp: self.ctx.inst_ctx.sp,
+                            c: self.ctx.inst_ctx.c,
+                            step: self.ctx.inst_ctx.step,
+                        },
+                        steps: Vec::with_capacity(par_options.num_steps),
+                        end: EmuTraceEnd { end: false },
+                    });
                 }
+                self.par_step::<F>(options, par_options, emu_traces.last_mut().unwrap());
             }
         }
 
-        (main_row_vec, required_vec)
+        emu_traces
     }
 
     /// Performs one single step of the emulation
@@ -751,7 +739,7 @@ impl<'a> Emu<'a> {
         &mut self,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-        emu_full_trace_vec: &mut Vec<EmuFullTraceStep<F>>,
+        emu_full_trace_vec: &mut EmuTrace,
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -780,18 +768,21 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
 
-        let full_trace_step = Self::par_step_slice::<F>(
-            self.ctx.inst_ctx.a,
-            self.ctx.inst_ctx.b,
-            self.ctx.inst_ctx.c,
-            self.ctx.inst_ctx.flag,
-            last_c,
-            last_pc,
-            instruction,
-            self.ctx.inst_ctx.end,
-        );
+        emu_full_trace_vec
+            .steps
+            .push(EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b });
+        // let full_trace_step = Self::par_step_slice::<F>(
+        //     self.ctx.inst_ctx.a,
+        //     self.ctx.inst_ctx.b,
+        //     self.ctx.inst_ctx.c,
+        //     self.ctx.inst_ctx.flag,
+        //     last_c,
+        //     last_pc,
+        //     instruction,
+        //     self.ctx.inst_ctx.end,
+        // );
 
-        emu_full_trace_vec.push(full_trace_step);
+        // emu_full_trace_vec.push(full_trace_step);
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
@@ -834,61 +825,61 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the operation required data
-        match instruction.op_type {
-            ZiskOperationType::Internal => (),
-            ZiskOperationType::Arith => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.arith.push(required_operation);
-            }
-            ZiskOperationType::Binary => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.binary.push(required_operation);
-            }
-            ZiskOperationType::BinaryE => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.binary_extension.push(required_operation);
-            }
-            _ => panic!("Emu::step_slice() found invalid op_type"),
-        }
+        // match instruction.op_type {
+        //     ZiskOperationType::Internal => (),
+        //     ZiskOperationType::Arith => {
+        //         let required_operation = ZiskRequiredOperation {
+        //             step: self.ctx.inst_ctx.step,
+        //             opcode: instruction.op,
+        //             a: if instruction.m32 {
+        //                 self.ctx.inst_ctx.a & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.a
+        //             },
+        //             b: if instruction.m32 {
+        //                 self.ctx.inst_ctx.b & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.b
+        //             },
+        //         };
+        //         required.arith.push(required_operation);
+        //     }
+        //     ZiskOperationType::Binary => {
+        //         let required_operation = ZiskRequiredOperation {
+        //             step: self.ctx.inst_ctx.step,
+        //             opcode: instruction.op,
+        //             a: if instruction.m32 {
+        //                 self.ctx.inst_ctx.a & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.a
+        //             },
+        //             b: if instruction.m32 {
+        //                 self.ctx.inst_ctx.b & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.b
+        //             },
+        //         };
+        //         required.binary.push(required_operation);
+        //     }
+        //     ZiskOperationType::BinaryE => {
+        //         let required_operation = ZiskRequiredOperation {
+        //             step: self.ctx.inst_ctx.step,
+        //             opcode: instruction.op,
+        //             a: if instruction.m32 {
+        //                 self.ctx.inst_ctx.a & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.a
+        //             },
+        //             b: if instruction.m32 {
+        //                 self.ctx.inst_ctx.b & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.b
+        //             },
+        //         };
+        //         required.binary_extension.push(required_operation);
+        //     }
+        //     _ => panic!("Emu::step_slice() found invalid op_type"),
+        // }
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
@@ -915,9 +906,11 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.c = trace.start.c;
 
         // Loop for every trace to get its corresponding full_trace
+        let start = Instant::now();
         for step in &trace.steps {
             self.step_slice(step, &mut emu_slice.full_trace, &mut emu_slice.required);
         }
+        println!("run_slice() duration={:.4}", start.elapsed().as_secs_f64());
 
         // Return emulator slice
         emu_slice
@@ -934,8 +927,10 @@ impl<'a> Emu<'a> {
         let previous_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_slice(instruction, trace_step.a, required);
-        self.source_b_slice(instruction, trace_step.b, required);
+        // self.source_a_slice(instruction, trace_step.a, required);
+        self.ctx.inst_ctx.a = trace_step.a;
+        self.ctx.inst_ctx.b = trace_step.b;
+        // self.source_b_slice(instruction, trace_step.b, required);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction, required);
         // #[cfg(feature = "sp")]
@@ -1009,44 +1004,44 @@ impl<'a> Emu<'a> {
         full_trace.push(full_trace_step);
 
         // Build and store the operation required data
-        match instruction.op_type {
-            ZiskOperationType::Internal => (),
-            ZiskOperationType::Arith => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.arith.push(required_operation);
-            }
-            ZiskOperationType::Binary => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.binary.push(required_operation);
-            }
-            _ => panic!("Emu::step_slice() found invalid op_type"),
-        }
+        // match instruction.op_type {
+        //     ZiskOperationType::Internal => (),
+        //     ZiskOperationType::Arith => {
+        //         let required_operation = ZiskRequiredOperation {
+        //             step: self.ctx.inst_ctx.step,
+        //             opcode: instruction.op,
+        //             a: if instruction.m32 {
+        //                 self.ctx.inst_ctx.a & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.a
+        //             },
+        //             b: if instruction.m32 {
+        //                 self.ctx.inst_ctx.b & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.b
+        //             },
+        //         };
+        //         required.arith.push(required_operation);
+        //     }
+        //     ZiskOperationType::Binary | ZiskOperationType::BinaryE => {
+        //         let required_operation = ZiskRequiredOperation {
+        //             step: self.ctx.inst_ctx.step,
+        //             opcode: instruction.op,
+        //             a: if instruction.m32 {
+        //                 self.ctx.inst_ctx.a & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.a
+        //             },
+        //             b: if instruction.m32 {
+        //                 self.ctx.inst_ctx.b & 0xffffffff
+        //             } else {
+        //                 self.ctx.inst_ctx.b
+        //             },
+        //         };
+        //         required.binary.push(required_operation);
+        //     }
+        //     _ => panic!("Emu::step_slice() found invalid op_type"),
+        // }
 
         self.ctx.inst_ctx.step += 1;
     }

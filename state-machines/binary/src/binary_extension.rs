@@ -435,7 +435,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         BINARY_EXTENSION_AIR_IDS[0],
                     );
 
-                    let trace_buffer = BinaryExtension0Trace::<F>::from_row_vec(trace_row)
+                    let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
                         .unwrap()
                         .buffer
                         .unwrap();
@@ -551,7 +551,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         BINARY_EXTENSION_AIR_IDS[0],
                     );
 
-                    let trace_buffer = BinaryExtension0Trace::<F>::from_row_vec(trace_row)
+                    let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
                         .unwrap()
                         .buffer
                         .unwrap();

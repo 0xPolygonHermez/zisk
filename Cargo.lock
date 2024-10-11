@@ -1467,6 +1467,7 @@ dependencies = [
  "p3-goldilocks",
  "pilout",
  "proofman-common",
+ "proofman-hints",
  "proofman-starks-lib-c",
  "proofman-util",
  "stark",

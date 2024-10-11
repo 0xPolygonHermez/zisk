@@ -7,7 +7,6 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_util::{timer_start, timer_stop_and_log};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{ZiskRequired, ZiskRequiredOperation};
