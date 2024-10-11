@@ -70,7 +70,7 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
     // and use it to construct the download URL.
     let url = format!(
         "https://{}@api.github.com/repos/0xPolygonHermez/rust/releases/latest",
-        std::env::var("ZISK_TOKEN").unwrap()
+        std::env::var("ZISK_TOKEN").expect("ZISK_TOKEN environment variable not set")
     );
     let json = client.get(url).send().await.unwrap().json::<serde_json::Value>().await.unwrap();
 
