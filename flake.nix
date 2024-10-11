@@ -15,6 +15,7 @@
           config.allowUnfreePredicate = pkg:
             builtins.elem (nixpkgs.lib.getName pkg) [ "mkl" ];
         };
+        riscv64-pkgs = pkgs.pkgsCross.riscv64;
       in {
         devShells.default = pkgs.mkShell {
           packages = [
@@ -31,8 +32,10 @@
             pkgs.nlohmann_json
             pkgs.nasm
             pkgs.libgit2
-            pkgs.cargo
-            pkgs.rustc
+            # Packages for cross-compiling and running on RISC-V.
+            riscv64-pkgs.buildPackages.buildPackages.qemu
+            riscv64-pkgs.buildPackages.gcc
+            riscv64-pkgs.buildPackages.gdb
           ] ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.mkl ])
             ++ (pkgs.lib.optionals pkgs.stdenv.isDarwin
               [ pkgs.darwin.apple_sdk.frameworks.Security ]);
