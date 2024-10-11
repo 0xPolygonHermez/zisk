@@ -33,8 +33,9 @@
             pkgs.libgit2
             pkgs.cargo
             pkgs.rustc
-            pkgs.darwin.apple_sdk.frameworks.Security
-          ] ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.mkl ]);
+          ] ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.mkl ])
+            ++ (pkgs.lib.optionals pkgs.stdenv.isDarwin
+              [ pkgs.darwin.apple_sdk.frameworks.Security ]);
 
           # Add precompiled library to rustc search path.
           RUSTFLAGS = (builtins.map (a: "-L ${a}/lib") [ pkgs.libgit2 ]
