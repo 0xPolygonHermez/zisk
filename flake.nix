@@ -24,7 +24,6 @@
             pkgs.libsodium
             pkgs.libpqxx
             pkgs.libuuid
-            pkgs.mkl
             pkgs.openssl
             pkgs.postgresql
             pkgs.protobuf
@@ -34,12 +33,13 @@
             pkgs.libgit2
             pkgs.cargo
             pkgs.rustc
-          ];
+            pkgs.darwin.apple_sdk.frameworks.Security
+          ] ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.mkl ]);
+
           # Add precompiled library to rustc search path.
-          RUSTFLAGS = (builtins.map (a: "-L ${a}/lib") [
-            pkgs.libgit2
-            "native=${self}/pil2-stark"
-          ]);
+          RUSTFLAGS = (builtins.map (a: "-L ${a}/lib") [ pkgs.libgit2 ]
+            ++ (pkgs.lib.optionals pkgs.stdenv.isLinux
+              [ "native=${self}/pil2-stark" ]));
         };
       });
 }
