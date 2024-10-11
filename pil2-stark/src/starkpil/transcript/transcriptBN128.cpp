@@ -46,7 +46,6 @@ void TranscriptBN128::getField(uint64_t *output)
     {
         output[i] = getFields1();
     }
-    zklog.debug("    Challenge: [ " + std::to_string(output[0]) + " " + std::to_string(output[1]) + " " + std::to_string(output[2]) + " ]");
 }
 
 RawFr::Element TranscriptBN128::getFields253()
@@ -113,8 +112,6 @@ void TranscriptBN128::getPermutations(uint64_t *res, uint64_t n, uint64_t nBits)
     {
         fields[i] = getFields253();
     }
-
-    zklog.debug("fields[0]: " + RawFr::field.toString(fields[0], 10));
 
     uint64_t curField = 0;
     uint64_t curBit = 0;

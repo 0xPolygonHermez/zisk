@@ -84,16 +84,20 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
 
     TimerStopAndLog(STARK_STEP_0);
 
-    // STAGE 1
+    TimerStart(STARK_STEP_1);
     for (uint64_t i = 0; i < setupCtx.starkInfo.challengesMap.size(); i++) {
         if(setupCtx.starkInfo.challengesMap[i].stage == 1) {
             starks.getChallenge(transcript, challenges[i * FIELD_EXTENSION]);
         }
     }
+    TimerStart(STARK_COMMIT_STAGE_1);
     starks.commitStage(1, pAddress, proof);
+    TimerStopAndLog(STARK_COMMIT_STAGE_1);
     starks.addTranscript(transcript, &proof.proof.roots[0][0], nFieldElements);
     
-    // STAGE 2
+    TimerStopAndLog(STARK_STEP_1);
+
+    TimerStart(STARK_STEP_2);
     for (uint64_t i = 0; i < setupCtx.starkInfo.challengesMap.size(); i++) {
         if(setupCtx.starkInfo.challengesMap[i].stage == 2) {
             starks.getChallenge(transcript, challenges[i * FIELD_EXTENSION]);
@@ -115,7 +119,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     auto gprodField = std::find_if(gprod_hint.fields.begin(), gprod_hint.fields.end(), [](const HintField& hintField) {
         return hintField.name == "reference";
     });
-    
+
     expressionsCtx.calculateExpression(params, den, denField->values[0].id, true);
     expressionsCtx.calculateExpression(params, num, numField->values[0].id);
 
@@ -147,7 +151,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
             exit(-1);
         }
     }
+    TimerStart(CALCULATE_IM_POLS);
     starks.calculateImPolsExpressions(2, pAddress, publicInputs, challenges, subproofValues, evals);
+    TimerStopAndLog(CALCULATE_IM_POLS);
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].imPol && setupCtx.starkInfo.cmPolsMap[i].stage == 2) {
             commitsCalculated[i] = true;
@@ -162,8 +168,13 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         }
     }
 
+
+    TimerStart(STARK_COMMIT_STAGE_2);
     starks.commitStage(2, pAddress, proof);
+    TimerStopAndLog(STARK_COMMIT_STAGE_2);
     starks.addTranscript(transcript, &proof.proof.roots[1][0], nFieldElements);
+
+    TimerStopAndLog(STARK_STEP_2);
 
     TimerStart(STARK_STEP_Q);
 
@@ -181,7 +192,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
             commitsCalculated[i] = true;
         }
     }
+    TimerStart(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
     starks.commitStage(setupCtx.starkInfo.nStages + 1, pAddress, proof);
+    TimerStopAndLog(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
     starks.addTranscript(transcript, &proof.proof.roots[setupCtx.starkInfo.nStages][0], nFieldElements);
     TimerStopAndLog(STARK_STEP_Q);
 
@@ -232,8 +245,10 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     Goldilocks::Element challenge[FIELD_EXTENSION];
     Goldilocks::Element *friPol = &pAddress[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]];
     
+    TimerStart(STARK_FRI_FOLDING);
     for (uint64_t step = 0; step < setupCtx.starkInfo.starkStruct.steps.size(); step++)
     {
+            
         starks.computeFRIFolding(step, proof, pAddress, challenge);
         if (step < setupCtx.starkInfo.starkStruct.steps.size() - 1)
         {
@@ -252,6 +267,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         }
         starks.getChallenge(transcript, *challenge);
     }
+    TimerStopAndLog(STARK_FRI_FOLDING);
 
     uint64_t friQueries[setupCtx.starkInfo.starkStruct.nQueries];
 
@@ -279,14 +295,16 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     }
     delete[] treesFRI;
         
-    TimerStopAndLog(STARK_PROOF);
-
+    TimerStart(PROOF_2_ZKIN);
     nlohmann::ordered_json jProof = proof.proof.proof2json();
     nlohmann::ordered_json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);
 
     if(!proofFile.empty()) {
         json2file(jProof, proofFile);
     }
+    TimerStopAndLog(PROOF_2_ZKIN);
+
+    TimerStopAndLog(STARK_PROOF);
 
     return (void *) new nlohmann::ordered_json(zkin);
 }

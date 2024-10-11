@@ -110,11 +110,12 @@ ConstraintsResults *verifyConstraints(SetupCtx& setupCtx, Goldilocks::Element *b
     ConstraintsResults *constraintsInfo = new ConstraintsResults();
     constraintsInfo->nConstraints = setupCtx.expressionsBin.constraintsInfoDebug.size();
     constraintsInfo->constraintInfo = new ConstraintInfo[constraintsInfo->nConstraints];
+    Goldilocks::Element* pBuffer = new Goldilocks::Element[(1 << setupCtx.starkInfo.starkStruct.nBits) * FIELD_EXTENSION];
     for (uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); i++) {
-        Goldilocks::Element* pBuffer = &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("constraints", false)]];
         auto constraintInfo = verifyConstraint(setupCtx, params, pBuffer, i);
         constraintsInfo->constraintInfo[i] = constraintInfo;
     }
     
+    delete pBuffer;
     return constraintsInfo;
 }

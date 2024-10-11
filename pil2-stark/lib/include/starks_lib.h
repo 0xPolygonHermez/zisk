@@ -20,7 +20,7 @@
     // SetupCtx
     // ========================================================================================
     void *setup_ctx_new(void* p_stark_info, void* p_expression_bin, void* p_const_pols);
-    void *get_hint_ids_by_name(void *pSetupCtx, char* hintName);
+    void *get_hint_ids_by_name(void *p_expression_bin, char* hintName);
     void setup_ctx_free(void *pSetupCtx);
 
     // Stark Info
@@ -40,7 +40,7 @@
 
     // Expressions Bin
     // ========================================================================================
-    void *expressions_bin_new(char* filename);
+    void *expressions_bin_new(char* filename, bool global);
     void expressions_bin_free(void *pExpressionsBin);
 
     // Hints
@@ -81,10 +81,14 @@
     void get_challenge(void *pStarks, void *pTranscript, void *pElement);
     void get_permutations(void *pTranscript, uint64_t *res, uint64_t n, uint64_t nBits);
 
-    // Verify constraints
+    // Constraints
     // =================================================================================
     void *verify_constraints(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals);
-    bool verify_global_constraints(char *globalConstraintsBinFile, void *publics, void **airgroupValues);
+
+    // Global constraints
+    // =================================================================================
+    bool verify_global_constraints(void *globalBin, void *publics, void **airgroupValues);
+    void *get_hint_field_global_constraints(void *globalBin, void *publics, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression);
 
     // Debug functions
     // =================================================================================

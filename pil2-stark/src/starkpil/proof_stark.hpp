@@ -89,7 +89,7 @@ public:
 
     uint64_t nFieldElements;
 
-    ProofTree(uint64_t nFieldElements_) : root(nFieldElements_), nFieldElements(nFieldElements_) {}
+    ProofTree(uint64_t nFieldElements_, uint64_t nQueries) : root(nFieldElements_), polQueries(nQueries), nFieldElements(nFieldElements_) {}
 
     void setRoot(ElementType *_root)
     {
@@ -142,8 +142,16 @@ public:
     std::vector<std::vector<Goldilocks::Element>> pol;
     std::vector<ProofTree<ElementType>> trees;
 
-    Fri(StarkInfo &starkInfo) : pol(1 << starkInfo.starkStruct.steps[starkInfo.starkStruct.steps.size() - 1].nBits, std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-                                                             trees(starkInfo.starkStruct.steps.size(), starkInfo.starkStruct.verificationHashType == "GL" ? HASH_SIZE : 1) {}
+    Fri(StarkInfo &starkInfo) : pol(1 << starkInfo.starkStruct.steps[starkInfo.starkStruct.steps.size() - 1].nBits, std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())), trees() {
+        uint64_t nQueries = starkInfo.starkStruct.nQueries;
+        
+        // Initialize each ProofTree with nFieldElements and nQueries
+        for (size_t i = 0; i < starkInfo.starkStruct.steps.size(); i++)
+        {
+            uint64_t nFieldElements = (starkInfo.starkStruct.verificationHashType == "GL") ? HASH_SIZE : 1;
+            trees.emplace_back(nFieldElements, nQueries);
+        }
+    }
 
     void setPol(Goldilocks::Element *pPol, uint64_t degree)
     {

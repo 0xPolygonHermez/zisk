@@ -95,61 +95,67 @@ void FRI<ElementType>::fold(uint64_t step, FRIProof<ElementType> &proof, Goldilo
 template <typename ElementType>
 void FRI<ElementType>::proveQueries(uint64_t* friQueries, FRIProof<ElementType> &fproof, MerkleTreeType **trees, MerkleTreeType **treesFRI, StarkInfo starkInfo) {
 
-    for (uint64_t step = 0; step < starkInfo.starkStruct.steps.size(); step++)
+    uint64_t maxBuffSize = 0;
+    for(uint64_t i = 0; i < starkInfo.nStages + 2; ++i) {
+        uint64_t buffSize = trees[i]->getMerkleTreeWidth() + trees[i]->getMerkleProofSize();
+        if(buffSize > maxBuffSize) {
+            maxBuffSize = buffSize;
+        }
+    }
+    for (uint64_t i = 0; i < starkInfo.starkStruct.steps.size() - 1; i++) {
+        uint64_t buffSize = treesFRI[i]->getMerkleTreeWidth() + treesFRI[i]->getMerkleProofSize();
+        if(buffSize > maxBuffSize) {
+            maxBuffSize = buffSize;
+        }
+    }
+
+    ElementType *buff = new ElementType[maxBuffSize];
+    for (uint64_t i = 0; i < starkInfo.starkStruct.nQueries; i++)
     {
-        for (uint64_t i = 0; i < starkInfo.starkStruct.nQueries; i++)
+        for (uint64_t step = 0; step < starkInfo.starkStruct.steps.size(); step++)
         {
             if (step == 0) {
-                queryPol(fproof, trees, starkInfo.nStages + 2, friQueries[i], step);
+                fproof.proof.fri.trees[step].polQueries[i] = queryPol(trees, starkInfo.nStages + 2, friQueries[i], buff);
             } else {
-                queryPol(fproof, treesFRI[step - 1], friQueries[i], step);
+                fproof.proof.fri.trees[step].polQueries[i] = queryPol(treesFRI[step - 1], friQueries[i], buff);
             }
-        }
-        if (step < starkInfo.starkStruct.steps.size() - 1)
-        {
-            for (uint64_t i = 0; i < starkInfo.starkStruct.nQueries; i++)
-            {
-                friQueries[i] = friQueries[i] % (1 << starkInfo.starkStruct.steps[step + 1].nBits);
+            if (step < starkInfo.starkStruct.steps.size() - 1) {
+                 friQueries[i] = friQueries[i] % (1 << starkInfo.starkStruct.steps[step + 1].nBits);
             }
         }
     }
+
+    delete[] buff;
 
     return;
 }
 
 template <typename ElementType>
-void FRI<ElementType>::queryPol(FRIProof<ElementType> &fproof, MerkleTreeType *trees[], uint64_t nTrees, uint64_t idx, uint64_t treeIdx)
+vector<MerkleProof<ElementType>> FRI<ElementType>::queryPol(MerkleTreeType *trees[], uint64_t nTrees, uint64_t idx, ElementType* buff)
 {
     vector<MerkleProof<ElementType>> vMkProof;
     for (uint i = 0; i < nTrees; i++)
     {
-        ElementType buff[trees[i]->getMerkleTreeWidth() + trees[i]->getMerkleProofSize()];
-
         trees[i]->getGroupProof(&buff[0], idx);
 
         MerkleProof<ElementType> mkProof(trees[i]->getMerkleTreeWidth(), trees[i]->getMerkleProofLength(), trees[i]->getNumSiblings(), &buff[0]);
         vMkProof.push_back(mkProof);
     }
-    fproof.proof.fri.trees[treeIdx].polQueries.push_back(vMkProof);
-
-    return;
+    return vMkProof;
 }
 
 
 template <typename ElementType>
-void FRI<ElementType>::queryPol(FRIProof<ElementType> &fproof, MerkleTreeType *tree, uint64_t idx, uint64_t treeIdx)
+vector<MerkleProof<ElementType>> FRI<ElementType>::queryPol(MerkleTreeType *tree, uint64_t idx, ElementType *buff)
 {
     vector<MerkleProof<ElementType>> vMkProof;
 
-    ElementType buff[tree->getMerkleTreeWidth() + tree->getMerkleProofSize()];
     tree->getGroupProof(&buff[0], idx);
 
     MerkleProof<ElementType> mkProof(tree->getMerkleTreeWidth(), tree->getMerkleProofLength(), tree->getNumSiblings(), &buff[0]);
     vMkProof.push_back(mkProof);
 
-    fproof.proof.fri.trees[treeIdx].polQueries.push_back(vMkProof);
-
-    return;
+    return vMkProof;
 }
 
 template <typename ElementType>

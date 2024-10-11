@@ -48,7 +48,6 @@ public:
 
         loadConstPols(starkInfo, constPolsFile);
 
-        TimerStart(CALCULATE_CONST_TREE_TO_MEMORY);
         pConstTreeAddress = (Goldilocks::Element *)malloc(getConstTreeSize());
         if(pConstTreeAddress == NULL)
         {
@@ -65,8 +64,6 @@ public:
         pConstTreeAddress[0] = Goldilocks::fromU64(starkInfo.nConstants);  
         pConstTreeAddress[1] = Goldilocks::fromU64(NExtended);
         memcpy(&pConstTreeAddress[2 + starkInfo.nConstants * NExtended], mt.nodes, mt.numNodes * sizeof(Goldilocks::Element));
-
-        TimerStopAndLog(CALCULATE_CONST_TREE_TO_MEMORY);
 
         computeZerofier();
 
@@ -88,16 +85,12 @@ public:
         }
 
         loadConstPols(starkInfo, constPolsFile);
-
-        TimerStart(LOAD_CONST_TREE_TO_MEMORY);
             
         uint64_t constTreeSizeBytes = getConstTreeSize();
 
         pConstTreeAddress = (Goldilocks::Element *)loadFileParallel(constTreeFile, constTreeSizeBytes);
-        zklog.debug("     Starks::Starks() successfully copied " + to_string(constTreeSizeBytes) + " bytes from constant file " + constTreeFile);
         
         pConstPolsAddressExtended = &pConstTreeAddress[2];
-        TimerStopAndLog(LOAD_CONST_TREE_TO_MEMORY);
 
         computeZerofier();
 
@@ -109,14 +102,10 @@ public:
     void loadConstPols(StarkInfo& starkInfo, std::string constPolsFile) {
         // Allocate an area of memory, mapped to file, to read all the constant polynomials,
         // and create them using the allocated address
-        TimerStart(LOAD_CONST_POLS_TO_MEMORY);
 
         uint64_t constPolsSize = starkInfo.nConstants * sizeof(Goldilocks::Element) * N;
         
         pConstPolsAddress = (Goldilocks::Element *)loadFileParallel(constPolsFile, constPolsSize);
-        zklog.debug("     Starks::Starks() successfully copied " + to_string(constPolsSize) + " bytes from constant file " + constPolsFile);
-        
-        TimerStopAndLog(LOAD_CONST_POLS_TO_MEMORY);
     }
 
     uint64_t getConstTreeSize()
@@ -288,4 +277,3 @@ public:
 };
 
 #endif // CONST_POLS_STARKS_HPP
-

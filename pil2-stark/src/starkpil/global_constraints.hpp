@@ -6,9 +6,7 @@
 
 using json = nlohmann::json;
 
-const int GLOBAL_CONSTRAINTS_SECTION = 2;
-
-bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element** subproofValues, ParserArgs &parserArgs, ParserParams &parserParams) {
+void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* publics, Goldilocks::Element** subproofValues, ParserArgs &parserArgs, ParserParams &parserParams) {
 
     uint8_t* ops = &parserArgs.ops[parserParams.opsOffset];
     uint16_t* args = &parserArgs.args[parserParams.argsOffset];
@@ -126,16 +124,30 @@ bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element** 
     if (i_args != parserParams.nArgs) std::cout << " " << i_args << " - " << parserParams.nArgs << std::endl;
     assert(i_args == parserParams.nArgs);
 
+    if(parserParams.destDim == 1) {
+        std::memcpy(dest, &tmp1[parserParams.destId], sizeof(Goldilocks::Element));
+    } else if(parserParams.destDim == 3) {
+        std::memcpy(dest, &tmp3[parserParams.destId * FIELD_EXTENSION], parserParams.destDim * sizeof(Goldilocks::Element));
+    }
+}
+
+
+bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element** subproofValues, ParserArgs &parserArgs, ParserParams &parserParams) {
+
+    Goldilocks::Element dest[parserParams.destDim];
+
+    calculateGlobalExpression(dest, publics, subproofValues, parserArgs, parserParams);
+
     bool isValidConstraint = true;
     if(parserParams.destDim == 1) {
-        if(!Goldilocks::isZero(tmp1[parserParams.destId])) {
-            cout << "Global constraint check failed with value: " << Goldilocks::toString(tmp1[parserParams.destId]) << endl;
+        if(!Goldilocks::isZero(dest[0])) {
+            cout << "Global constraint check failed with value: " << Goldilocks::toString(dest[0]) << endl;
             isValidConstraint = false;
         }
     } else {
         for(uint64_t i = 0; i < FIELD_EXTENSION; ++i) {
-            if(!Goldilocks::isZero(tmp3[parserParams.destId*FIELD_EXTENSION + i])) {
-                cout << "Global constraint check failed with value: [" << Goldilocks::toString(tmp3[parserParams.destId*FIELD_EXTENSION]) << ", " << Goldilocks::toString(tmp3[parserParams.destId*FIELD_EXTENSION + 1]) << ", " << Goldilocks::toString(tmp3[parserParams.destId*FIELD_EXTENSION + 2]) << "]" << endl;
+            if(!Goldilocks::isZero(dest[i])) {
+                cout << "Global constraint check failed with value: [" << Goldilocks::toString(dest[0]) << ", " << Goldilocks::toString(dest[1]) << ", " << Goldilocks::toString(dest[2]) << "]" << endl;
                 isValidConstraint = false;
                 break;
             }
@@ -152,75 +164,115 @@ bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element** 
 }
 
   
-bool verifyGlobalConstraints(string globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element** airgroupValues)
+bool verifyGlobalConstraints(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element** airgroupValues)
 {
-    std::unique_ptr<BinFileUtils::BinFile> globalConstraintsBinFile = BinFileUtils::openExisting(globalConstraintsBin, "chps", 1);
-    BinFileUtils::BinFile *binFile = globalConstraintsBinFile.get();
 
-    binFile->startReadSection(GLOBAL_CONSTRAINTS_SECTION);
-
-    uint32_t nOpsDebug = binFile->readU32LE();
-    uint32_t nArgsDebug = binFile->readU32LE();
-    uint32_t nNumbersDebug = binFile->readU32LE();
-
-    ParserArgs globalConstraintsArgs;
-
-    std::vector<ParserParams> globalConstraintsInfo;
-
-    globalConstraintsArgs.ops = new uint8_t[nOpsDebug];
-    globalConstraintsArgs.args = new uint16_t[nArgsDebug];
-    globalConstraintsArgs.numbers = new uint64_t[nNumbersDebug];
-
-    uint32_t nGlobalConstraints = binFile->readU32LE();
-
-    for(uint64_t i = 0; i < nGlobalConstraints; ++i) {
-        ParserParams parserParamsConstraint;
-
-        parserParamsConstraint.destDim = binFile->readU32LE();
-        parserParamsConstraint.destId = binFile->readU32LE();
-
-        parserParamsConstraint.nTemp1 = binFile->readU32LE();
-        parserParamsConstraint.nTemp3 = binFile->readU32LE();
-
-        parserParamsConstraint.nOps = binFile->readU32LE();
-        parserParamsConstraint.opsOffset = binFile->readU32LE();
-
-        parserParamsConstraint.nArgs = binFile->readU32LE();
-        parserParamsConstraint.argsOffset = binFile->readU32LE();
-
-        parserParamsConstraint.nNumbers = binFile->readU32LE();
-        parserParamsConstraint.numbersOffset = binFile->readU32LE();
-
-        parserParamsConstraint.line = binFile->readString();
-
-        globalConstraintsInfo.push_back(parserParamsConstraint);
-    }
-
-
-    for(uint64_t j = 0; j < nOpsDebug; ++j) {
-        globalConstraintsArgs.ops[j] = binFile->readU8LE();
-    }
-    for(uint64_t j = 0; j < nArgsDebug; ++j) {
-        globalConstraintsArgs.args[j] = binFile->readU16LE();
-    }
-    for(uint64_t j = 0; j < nNumbersDebug; ++j) {
-        globalConstraintsArgs.numbers[j] = binFile->readU64LE();
-    }
-
-    binFile->endReadSection();
+    std::vector<ParserParams> globalConstraintsInfo = globalConstraintsBin.constraintsInfoDebug;
 
     bool validGlobalConstraints = true;
-    for(uint64_t i = 0; i < nGlobalConstraints; ++i) {
+    for(uint64_t i = 0; i < globalConstraintsInfo.size(); ++i) {
         TimerLog(CHECKING_CONSTRAINT);
         cout << "--------------------------------------------------------" << endl;
         cout << globalConstraintsInfo[i].line << endl;
         cout << "--------------------------------------------------------" << endl;
-        if(!verifyGlobalConstraint(publicInputs, airgroupValues, globalConstraintsArgs, globalConstraintsInfo[i])) {
+        if(!verifyGlobalConstraint(publicInputs, airgroupValues, globalConstraintsBin.expressionsBinArgsConstraints, globalConstraintsInfo[i])) {
             validGlobalConstraints = false;
         };
     }
 
     return validGlobalConstraints;
+}
+
+
+HintFieldValues getHintFieldGlobalConstraint(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element** airgroupValues, uint64_t hintId, std::string hintFieldName, bool print_expression) {
+   
+
+    if(globalConstraintsBin.hints.size() == 0) {
+        zklog.error("No hints were found.");
+        exitProcess();
+        exit(-1);
+    }
+
+    Hint hint = globalConstraintsBin.hints[hintId];
+    
+    auto hintField = std::find_if(hint.fields.begin(), hint.fields.end(), [hintFieldName](const HintField& hintField) {
+        return hintField.name == hintFieldName;
+    });
+
+    if(hintField == hint.fields.end()) {
+        zklog.error("Hint field " + hintFieldName + " not found in hint " + hint.name + ".");
+        exitProcess();
+        exit(-1);
+    }
+
+    HintFieldValues hintFieldValues;
+    hintFieldValues.nValues = hintField->values.size();
+    hintFieldValues.values = new HintFieldInfo[hintField->values.size()];
+
+    for(uint64_t i = 0; i < hintField->values.size(); ++i) {
+        HintFieldValue hintFieldVal = hintField->values[i];
+       
+        HintFieldInfo hintFieldInfo;
+
+        if(print_expression) {
+            cout << "--------------------------------------------------------" << endl;
+            cout << "Hint name " << hintFieldName << " for hint id " << hintId << " is ";
+        }
+        if (hintFieldVal.operand == opType::tmp) {
+            uint64_t dim = globalConstraintsBin.expressionsInfo[hintFieldVal.id].destDim;
+            hintFieldInfo.size = dim;
+            hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+            hintFieldInfo.fieldType = dim == 1 ? HintFieldType::Column : HintFieldType::ColumnExtended;
+            hintFieldInfo.offset = dim;
+            if(print_expression && globalConstraintsBin.expressionsInfo[hintFieldVal.id].line != "") {
+                cout << "the expression with id: " << hintFieldVal.id << " " << globalConstraintsBin.expressionsInfo[hintFieldVal.id].line << endl;
+            }
+           
+            calculateGlobalExpression(hintFieldInfo.values, publicInputs, airgroupValues, globalConstraintsBin.expressionsBinArgsExpressions, globalConstraintsBin.expressionsInfo[hintFieldVal.id]);
+        } else if (hintFieldVal.operand == opType::public_) {
+            hintFieldInfo.size = 1;
+            hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+            hintFieldInfo.values[0] = publicInputs[hintFieldVal.id];
+            hintFieldInfo.fieldType = HintFieldType::Field;
+            hintFieldInfo.offset = 1;
+        } else if (hintFieldVal.operand == opType::number) {
+            hintFieldInfo.size = 1;
+            hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+            hintFieldInfo.values[0] = Goldilocks::fromU64(hintFieldVal.value);
+            hintFieldInfo.fieldType = HintFieldType::Field;
+            hintFieldInfo.offset = 1;
+            if(print_expression) cout << "number " << hintFieldVal.value << endl;
+        } else if (hintFieldVal.operand == opType::subproofvalue) {
+            hintFieldInfo.size = FIELD_EXTENSION;
+            hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+            hintFieldInfo.fieldType = HintFieldType::FieldExtended;
+            hintFieldInfo.offset = FIELD_EXTENSION;
+            std::memcpy(hintFieldInfo.values, &airgroupValues[hintFieldVal.dim][FIELD_EXTENSION*hintFieldVal.id], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+        } else if (hintFieldVal.operand == opType::string_) {
+            hintFieldInfo.values = nullptr;
+            hintFieldInfo.fieldType = HintFieldType::String;
+            hintFieldInfo.size = hintFieldVal.stringValue.size();
+            hintFieldInfo.stringValue = new uint8_t[hintFieldVal.stringValue.size()];
+            std::memcpy(hintFieldInfo.stringValue, hintFieldVal.stringValue.data(), hintFieldVal.stringValue.size());
+            hintFieldInfo.offset = 0;
+            if(print_expression) cout << "string " << hintFieldVal.stringValue << endl;
+        } else {
+            zklog.error("Unknown HintFieldType");
+            exitProcess();
+            exit(-1);
+        }
+
+        if(print_expression) cout << "--------------------------------------------------------" << endl;
+
+        hintFieldInfo.matrix_size = hintFieldVal.pos.size();
+        hintFieldInfo.pos = new uint64_t[hintFieldInfo.matrix_size];
+        for(uint64_t i = 0; i < hintFieldInfo.matrix_size; ++i) {
+            hintFieldInfo.pos[i] =  hintFieldVal.pos[i];
+        }
+        hintFieldValues.values[i] = hintFieldInfo;
+    }
+    
+    return hintFieldValues;
 }
 
 #endif

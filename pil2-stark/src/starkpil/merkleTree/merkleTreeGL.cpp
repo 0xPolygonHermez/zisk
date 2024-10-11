@@ -72,7 +72,6 @@ uint64_t MerkleTreeGL::getNumNodes(uint64_t height)
 void MerkleTreeGL::getRoot(Goldilocks::Element *root)
 {
     std::memcpy(root, &nodes[numNodes - nFieldElements], nFieldElements * sizeof(Goldilocks::Element));
-    zklog.debug("    MerkleTree root: [ " + Goldilocks::toString(root[0]) + ", " + Goldilocks::toString(root[1]) + ", " + Goldilocks::toString(root[2]) + ", " + Goldilocks::toString(root[3]) + " ]");
 }
 
 void MerkleTreeGL::copySource(Goldilocks::Element *_source)
@@ -94,7 +93,6 @@ Goldilocks::Element MerkleTreeGL::getElement(uint64_t idx, uint64_t subIdx)
 void MerkleTreeGL::getGroupProof(Goldilocks::Element *proof, uint64_t idx) {
     assert(idx < height);
 
-#pragma omp parallel for
     for (uint64_t i = 0; i < width; i++)
     {
         proof[i] = getElement(idx, i);

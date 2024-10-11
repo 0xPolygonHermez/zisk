@@ -6,8 +6,6 @@ on:
 jobs:
   cargo-test:
     name: cargo test
-    env:
-      STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -103,8 +101,6 @@ jobs:
   tests:
     name: Test fibonacci square && std
     runs-on: ubuntu-latest
-    env:
-      STARKS_LIB_C: ${{ github.workspace }}/pil2-stark/lib/libstarks.a
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -1,8 +1,13 @@
 #include "expressions_bin.hpp"
 
-ExpressionsBin::ExpressionsBin(string file) {
-    std::unique_ptr<BinFileUtils::BinFile> expressionsBinFile = BinFileUtils::openExisting(file, "chps", 1);
-    loadExpressionsBin(expressionsBinFile.get());
+ExpressionsBin::ExpressionsBin(string file, bool globalBin) {
+    if(!globalBin) {
+        std::unique_ptr<BinFileUtils::BinFile> expressionsBinFile = BinFileUtils::openExisting(file, "chps", 1);
+        loadExpressionsBin(expressionsBinFile.get());
+    } else {
+        std::unique_ptr<BinFileUtils::BinFile> globalBinFile = BinFileUtils::openExisting(file, "chps", 1);
+        loadGlobalBin(globalBinFile.get());
+    }
 }
 
 void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
@@ -336,6 +341,109 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
 
     expressionsBin->endReadSection();
 }
+
+
+void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
+    
+    globalBin->startReadSection(GLOBAL_CONSTRAINTS_SECTION);
+
+    uint32_t nOpsDebug = globalBin->readU32LE();
+    uint32_t nArgsDebug = globalBin->readU32LE();
+    uint32_t nNumbersDebug = globalBin->readU32LE();
+
+    expressionsBinArgsConstraints.ops = new uint8_t[nOpsDebug];
+    expressionsBinArgsConstraints.args = new uint16_t[nArgsDebug];
+    expressionsBinArgsConstraints.numbers = new uint64_t[nNumbersDebug];
+
+    uint32_t nGlobalConstraints = globalBin->readU32LE();
+
+    for(uint64_t i = 0; i < nGlobalConstraints; ++i) {
+        ParserParams parserParamsConstraint;
+
+        parserParamsConstraint.destDim = globalBin->readU32LE();
+        parserParamsConstraint.destId = globalBin->readU32LE();
+
+        parserParamsConstraint.nTemp1 = globalBin->readU32LE();
+        parserParamsConstraint.nTemp3 = globalBin->readU32LE();
+
+        parserParamsConstraint.nOps = globalBin->readU32LE();
+        parserParamsConstraint.opsOffset = globalBin->readU32LE();
+
+        parserParamsConstraint.nArgs = globalBin->readU32LE();
+        parserParamsConstraint.argsOffset = globalBin->readU32LE();
+
+        parserParamsConstraint.nNumbers = globalBin->readU32LE();
+        parserParamsConstraint.numbersOffset = globalBin->readU32LE();
+
+        parserParamsConstraint.line = globalBin->readString();
+
+        constraintsInfoDebug.push_back(parserParamsConstraint);
+    }
+
+
+    for(uint64_t j = 0; j < nOpsDebug; ++j) {
+        expressionsBinArgsConstraints.ops[j] = globalBin->readU8LE();
+    }
+    for(uint64_t j = 0; j < nArgsDebug; ++j) {
+        expressionsBinArgsConstraints.args[j] = globalBin->readU16LE();
+    }
+    for(uint64_t j = 0; j < nNumbersDebug; ++j) {
+        expressionsBinArgsConstraints.numbers[j] = globalBin->readU64LE();
+    }
+
+    globalBin->endReadSection();
+
+    globalBin->startReadSection(GLOBAL_HINTS_SECTION);
+
+    uint32_t nHints = globalBin->readU32LE();
+
+    for(uint64_t h = 0; h < nHints; h++) {
+        Hint hint;
+        hint.name = globalBin->readString();
+
+        uint32_t nFields = globalBin->readU32LE();
+
+        for(uint64_t f = 0; f < nFields; f++) {
+            HintField hintField;
+            std::string name = globalBin->readString();
+            hintField.name = name;
+
+            uint64_t nValues = globalBin->readU32LE();
+            for(uint64_t v = 0; v < nValues; v++) {
+                HintFieldValue hintFieldValue;
+                std::string operand = globalBin->readString();
+                hintFieldValue.operand = string2opType(operand);
+                if(hintFieldValue.operand == opType::number) {
+                    hintFieldValue.value = globalBin->readU64LE();
+                } else if(hintFieldValue.operand == opType::string_) {
+                    hintFieldValue.stringValue = globalBin->readString();
+                } else if(hintFieldValue.operand == opType::subproofvalue) {
+                    hintFieldValue.dim = globalBin->readU32LE();
+                    hintFieldValue.id = globalBin->readU32LE();
+                } else if(hintFieldValue.operand == opType::tmp || hintFieldValue.operand == opType::public_) {
+                    hintFieldValue.id = globalBin->readU32LE();
+                } else {
+                    throw new std::invalid_argument("Invalid file type");
+                }
+      
+                uint64_t nPos = globalBin->readU32LE();
+                for(uint64_t p = 0; p < nPos; ++p) {
+                    uint32_t pos = globalBin->readU32LE();
+                    hintFieldValue.pos.push_back(pos);
+                }
+                hintField.values.push_back(hintFieldValue);
+            }
+            
+            hint.fields.push_back(hintField);
+        }
+
+        hints.push_back(hint);
+    }
+
+    globalBin->endReadSection();
+
+}
+
 
 VecU64Result ExpressionsBin::getHintIdsByName(std::string name) {
     VecU64Result hintIds;

@@ -91,8 +91,6 @@ uint64_t MerkleTreeBN128::getNumNodes(uint64_t n)
 void MerkleTreeBN128::getRoot(RawFr::Element *root)
 {
     std::memcpy(root, &nodes[numNodes - 1], sizeof(RawFr::Element));
-    zklog.debug("    MerkleTree root: " + RawFr::field.toString(root[0], 10));
-
 }
 
 void MerkleTreeBN128::copySource(Goldilocks::Element *_source)

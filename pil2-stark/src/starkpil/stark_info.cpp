@@ -7,11 +7,9 @@
 StarkInfo::StarkInfo(string file)
 {
     // Load contents from json file
-    TimerStart(STARK_INFO_LOAD);
     json starkInfoJson;
     file2json(file, starkInfoJson);
     load(starkInfoJson);
-    TimerStopAndLog(STARK_INFO_LOAD);
 }
 
 void StarkInfo::load(json j)
@@ -207,12 +205,6 @@ void StarkInfo::setMapOffsets() {
         offsetPolsBasefield += N * mapSectionsN[section];
     }    
     if(offsetPolsBasefield > mapTotalN) mapTotalN = offsetPolsBasefield;
-
-    // Verify constraints
-    mapOffsets[std::make_pair("constraints", false)] = offsetPolsBasefield;
-    if(offsetPolsBasefield + N * FIELD_EXTENSION > mapTotalN) {
-        mapTotalN = offsetPolsBasefield + N * FIELD_EXTENSION;
-    }
 
     // Stage FRIPolynomial
     uint64_t offsetPolsFRI = mapOffsets[std::make_pair("q", true)];

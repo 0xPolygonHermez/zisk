@@ -1,7 +1,4 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::env;
 
 fn main() {
     if cfg!(target_os = "macos") {
@@ -11,20 +8,8 @@ fn main() {
     // Check if the "NO_LIB_LINK" feature is enabled
     if env::var("CARGO_FEATURE_NO_LIB_LINK").is_err() {
         let library_short_name = "starks";
-        let library_folder: String;
-        let library_path = if let Ok(path) = env::var("STARKS_LIB_C") {
-            // If STARKS_LIB_C is set, use its value
-            library_folder = get_canonical_path(Path::new(&path).parent().unwrap_or_else(|| Path::new(".")))
-                .to_str()
-                .unwrap()
-                .to_string();
-            println!("Library folder: {}  and library path: {}", library_folder, path);
-            path
-        } else {
-            // Fallback if STARKS_LIB_C is not set
-            library_folder = "../../pil2-stark/lib".to_string();
-            format!("{}/lib{}.a", library_folder, library_short_name)
-        };
+        let library_folder: String = "../../pil2-stark/lib".to_string();
+        let library_path = format!("{}/lib{}.a", library_folder, library_short_name);
 
         println!("Library folder: {}  and library path: {}", library_folder, library_path);
 
@@ -58,11 +43,4 @@ fn main() {
             println!("cargo:rustc-link-lib={}", lib);
         }
     }
-}
-
-/// Returns the canonical (absolute) path of the given `Path`.
-///
-/// If the path cannot be resolved (e.g., it doesn't exist), it returns the path as is.
-fn get_canonical_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }

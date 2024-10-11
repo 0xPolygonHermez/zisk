@@ -22,6 +22,9 @@ const int BINARY_EXPRESSIONS_SECTION = 3;
 const int BINARY_CONSTRAINTS_SECTION = 4;
 const int BINARY_HINTS_SECTION = 5;
 
+const int GLOBAL_CONSTRAINTS_SECTION = 2;
+const int GLOBAL_HINTS_SECTION = 3;
+
 struct HintFieldValue {
     opType operand;
     uint64_t id;
@@ -137,9 +140,11 @@ public:
     };
 
     /* Constructor */
-    ExpressionsBin(string file);
+    ExpressionsBin(string file, bool globalBin = false);
 
     void loadExpressionsBin(BinFileUtils::BinFile *expressionsBin);
+
+    void loadGlobalBin(BinFileUtils::BinFile *globalBin);
 
     VecU64Result getHintIdsByName(std::string name);
 };
