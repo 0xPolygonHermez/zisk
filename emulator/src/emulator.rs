@@ -1,5 +1,5 @@
 use crate::{
-    Emu, EmuTraceStep, EmuOptions, EmuSlice, EmuTrace, ErrWrongArguments, ParEmuOptions,
+    Emu, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep, ErrWrongArguments, ParEmuOptions,
     ZiskEmulatorErr,
 };
 use p3_field::{AbstractField, PrimeField};
@@ -190,6 +190,19 @@ impl ZiskEmulator {
         println!("process_slice() duration={:.4}", start.elapsed().as_secs_f64());
 
         Ok(emu_slice)
+    }
+
+    pub fn process_slice_2<F: AbstractField>(
+        rom: &ZiskRom,
+        trace: &EmuTrace,
+        emu_slice: &mut EmuSlice<F>,
+    ) {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+        // Run the emulation
+        //let start = Instant::now();
+        emu.run_slice_2(trace, emu_slice);
+        //println!("process_slice() duration={:.4}", start.elapsed().as_secs_f64());
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {

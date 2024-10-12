@@ -7,6 +7,7 @@ use sm_binary::BinarySM;
 use std::{
     fs, mem,
     path::{Path, PathBuf},
+    process,
     sync::{Arc, Mutex},
     thread::sleep,
     time::Duration,
@@ -18,9 +19,11 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{
-    EmuFullTraceStep, EmuOptions, EmuTrace, ParEmuExecutionType, ParEmuOptions, ZiskEmulator,
+    EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, ParEmuExecutionType, ParEmuOptions,
+    ZiskEmulator,
 };
 
+//use process::Command;
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_common::{create_prover_buffer, Provable, ThreadController};
@@ -63,7 +66,7 @@ impl<'a, F: PrimeField> MainSM<F> {
     /// Default number of inputs of the main state machine that are accumulated before being
     /// processed
     const BLOCK_SIZE: usize = 2usize.pow(21);
-    const NUM_THREADS: usize = 8;
+    const NUM_THREADS: usize = 21;
 
     /// Constructor for the MainSM state machine
     /// Registers the state machine at the WCManager and stores references to the secondary state
@@ -193,19 +196,44 @@ impl<'a, F: PrimeField> MainSM<F> {
 
             let num_min_trace = min_trace.iter().map(|thread| thread.len()).sum::<usize>();
 
+            timer_start_info!(ALLOCATE_EXTENDED_TRACES);
+            let mut main_extended_traces: Vec<EmuSlice<F>> =
+                (0..num_min_trace).map(|_| EmuSlice::<F>::new(2_usize.pow(21))).collect();
+            timer_stop_and_log_info!(ALLOCATE_EXTENDED_TRACES);
+
             timer_start_info!(PAR_EXPANSION);
-            (0..num_min_trace).into_par_iter().for_each(|instance_id| {
+
+            timer_start_info!(PAR_EXPANSION_1);
+            main_extended_traces.par_iter_mut().enumerate().for_each(|(instance_id, trace)| {
+                // Get iteration index of the par_iter_mut
+                let x = instance_id % Self::NUM_THREADS;
+                let y = instance_id / Self::NUM_THREADS;
+                ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y], trace);
+            });
+            timer_stop_and_log_info!(PAR_EXPANSION_1);
+
+            /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
                 let x = instance_id % Self::NUM_THREADS;
                 let y = instance_id / Self::NUM_THREADS;
 
-            timer_start_info!(PAR_EXPANSION_1);
-                let emu_slice = match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &min_trace[x][y])
-                {
-                    Ok(slice) => slice,
-                    Err(e) => panic!("Error processing slice: {:?}", e),
-                };
-            timer_stop_and_log_info!(PAR_EXPANSION_1);
-            });
+                let emu_slice =
+                    match ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y]) {
+                        Ok(slice) => slice,
+                        Err(e) => panic!("Error processing slice: {:?}", e),
+                    };
+            });*/
+            /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
+                let x = instance_id % Self::NUM_THREADS;
+                let y = instance_id / Self::NUM_THREADS;
+
+                timer_start_info!(PAR_EXPANSION_1);
+                let emu_slice =
+                    match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &min_trace[x][y]) {
+                        Ok(slice) => slice,
+                        Err(e) => panic!("Error processing slice: {:?}", e),
+                    };
+                timer_stop_and_log_info!(PAR_EXPANSION_1);
+            });*/
             timer_stop_and_log_info!(PAR_EXPANSION);
 
             // let mut x = 0;
@@ -239,6 +267,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             // });
             std::thread::spawn(move || {
                 drop(min_trace);
+                drop(main_extended_traces);
             });
         });
     }
@@ -453,12 +482,12 @@ impl<'a, F: PrimeField> MainSM<F> {
         timer_stop_and_log_info!(PROCESS_MAIN);
 
         // scope.spawn(move |scope| {
-        //     // To go faster, we receive from the simulator callback a tiny trace that we are going
-        //     // to process to get the full trace. This is done to avoid the overhead of processing
-        //     // the full trace in the simulator callback and now can be parallelized.
-        //     let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
-        //         Ok(slice) => slice,
-        //         Err(e) => panic!("Error processing slice: {:?}", e),
+        //     // To go faster, we receive from the simulator callback a tiny trace that we are
+        // going     // to process to get the full trace. This is done to avoid the overhead
+        // of processing     // the full trace in the simulator callback and now can be
+        // parallelized.     let emu_slice = match
+        // ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {         Ok(slice) =>
+        // slice,         Err(e) => panic!("Error processing slice: {:?}", e),
         //     };
 
         //     let len = emu_slice.full_trace.len();
@@ -473,7 +502,8 @@ impl<'a, F: PrimeField> MainSM<F> {
         //     );
 
         //     air_segment.filled_inputs += len;
-        //     assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR segment");
+        //     assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR
+        // segment");
 
         //     self.prove(emu_slice.required, ectx.clone(), scope);
 
