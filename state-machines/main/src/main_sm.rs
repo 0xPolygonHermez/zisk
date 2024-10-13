@@ -19,7 +19,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
 use ziskemu::{
-    EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, ParEmuExecutionType, ParEmuOptions,
+    Emu, EmuFullTraceStep, EmuOptions, EmuSlice, EmuTrace, ParEmuExecutionType, ParEmuOptions,
     ZiskEmulator,
 };
 
@@ -172,104 +172,130 @@ impl<'a, F: PrimeField> MainSM<F> {
         let min_trace = Mutex::new(vec![Vec::new(); Self::NUM_THREADS]);
         timer_stop_and_log_info!(PREPARE_EMULATOR);
 
-        pool.scope(|scope| {
-            timer_start_info!(PAR_PROCESS_ROM);
-            (0..Self::NUM_THREADS).into_par_iter().for_each(|i| {
-                let par_emu_options = ParEmuOptions::new(Self::NUM_THREADS, i, Self::BLOCK_SIZE);
+        //pool.scope(|scope| {
+        timer_start_info!(PAR_PROCESS_ROM);
+        (0..Self::NUM_THREADS).into_par_iter().for_each(|i| {
+            let par_emu_options = ParEmuOptions::new(Self::NUM_THREADS, i, Self::BLOCK_SIZE);
 
-                let result = ZiskEmulator::par_process_rom::<F>(
-                    &self.zisk_rom,
-                    &public_inputs,
-                    &emulator_options,
-                    &par_emu_options,
-                );
+            let result = ZiskEmulator::par_process_rom::<F>(
+                &self.zisk_rom,
+                &public_inputs,
+                &emulator_options,
+                &par_emu_options,
+            );
 
-                if let Err(e) = result {
-                    panic!("Error during emulator execution: {:?}", e);
-                }
+            if let Err(e) = result {
+                panic!("Error during emulator execution: {:?}", e);
+            }
 
-                min_trace.lock().unwrap()[i] = result.unwrap();
-            });
-            timer_stop_and_log_info!(PAR_PROCESS_ROM);
+            min_trace.lock().unwrap()[i] = result.unwrap();
+        });
+        timer_stop_and_log_info!(PAR_PROCESS_ROM);
 
-            let min_trace = min_trace.into_inner().unwrap();
+        let min_trace = min_trace.into_inner().unwrap();
 
-            let num_min_trace = min_trace.iter().map(|thread| thread.len()).sum::<usize>();
+        let num_min_trace = min_trace.iter().map(|thread| thread.len()).sum::<usize>();
 
-            timer_start_info!(ALLOCATE_EXTENDED_TRACES);
-            let mut main_extended_traces: Vec<EmuSlice<F>> =
-                (0..num_min_trace).map(|_| EmuSlice::<F>::new(2_usize.pow(21))).collect();
-            timer_stop_and_log_info!(ALLOCATE_EXTENDED_TRACES);
+        timer_start_info!(ALLOCATE_EXTENDED_TRACES);
+        /*let mut main_extended_traces: Vec<EmuSlice<F>> =
+        (0..num_min_trace).map(|_| EmuSlice::<F>::new(2_usize.pow(21))).collect();*/
 
-            timer_start_info!(PAR_EXPANSION);
+        let mut prover_buffers: Vec<(Vec<F>, u64)> = Vec::with_capacity(num_min_trace);
+        for _ in 0..num_min_trace {
+            let prover_buffer: (Vec<F>, u64) =
+                create_prover_buffer::<F>(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+            prover_buffers.push(prover_buffer);
+        }
+        timer_stop_and_log_info!(ALLOCATE_EXTENDED_TRACES);
 
-            timer_start_info!(PAR_EXPANSION_1);
-            main_extended_traces.par_iter_mut().enumerate().for_each(|(instance_id, trace)| {
+        timer_start_info!(PAR_EXPANSION);
+
+        timer_start_info!(PAR_EXPANSION_1);
+        /*main_extended_traces.par_iter_mut().enumerate().for_each(|(instance_id, trace)| {
+            // Get iteration index of the par_iter_mut
+            let x = instance_id % Self::NUM_THREADS;
+            let y = instance_id / Self::NUM_THREADS;
+            ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y], trace);
+        });*/
+        prover_buffers.par_iter_mut().enumerate().for_each(
+            |(instance_id, (prover_buffer, offset))| {
                 // Get iteration index of the par_iter_mut
                 let x = instance_id % Self::NUM_THREADS;
                 let y = instance_id / Self::NUM_THREADS;
-                ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y], trace);
-            });
+                let min_trace = &min_trace[x][y];
+                let mut emu: Emu<'_> = Emu::new(&self.zisk_rom);
+                //emu.run_slice_3(min_trace, prover_buffer, offset);
+                emu.ctx.inst_ctx.pc = min_trace.start.pc;
+                emu.ctx.inst_ctx.sp = min_trace.start.sp;
+                emu.ctx.inst_ctx.step = min_trace.start.step;
+                emu.ctx.inst_ctx.c = min_trace.start.c;
+
+                for step in &min_trace.steps {
+                    emu.step_slice_buff(step, prover_buffer, offset);
+                    *offset += Main0Row::<F>::ROW_SIZE as u64;
+                }
+            },
+        );
+        timer_stop_and_log_info!(PAR_EXPANSION_1);
+
+        /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
+            let x = instance_id % Self::NUM_THREADS;
+            let y = instance_id / Self::NUM_THREADS;
+
+            let emu_slice =
+                match ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y]) {
+                    Ok(slice) => slice,
+                    Err(e) => panic!("Error processing slice: {:?}", e),
+                };
+        });*/
+        /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
+            let x = instance_id % Self::NUM_THREADS;
+            let y = instance_id / Self::NUM_THREADS;
+
+            timer_start_info!(PAR_EXPANSION_1);
+            let emu_slice =
+                match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &min_trace[x][y]) {
+                    Ok(slice) => slice,
+                    Err(e) => panic!("Error processing slice: {:?}", e),
+                };
             timer_stop_and_log_info!(PAR_EXPANSION_1);
+        });*/
+        timer_stop_and_log_info!(PAR_EXPANSION);
 
-            /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
-                let x = instance_id % Self::NUM_THREADS;
-                let y = instance_id / Self::NUM_THREADS;
-
-                let emu_slice =
-                    match ZiskEmulator::process_slice_2::<F>(&self.zisk_rom, &min_trace[x][y]) {
-                        Ok(slice) => slice,
-                        Err(e) => panic!("Error processing slice: {:?}", e),
-                    };
-            });*/
-            /*(0..num_min_trace).into_par_iter().for_each(|instance_id| {
-                let x = instance_id % Self::NUM_THREADS;
-                let y = instance_id / Self::NUM_THREADS;
-
-                timer_start_info!(PAR_EXPANSION_1);
-                let emu_slice =
-                    match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &min_trace[x][y]) {
-                        Ok(slice) => slice,
-                        Err(e) => panic!("Error processing slice: {:?}", e),
-                    };
-                timer_stop_and_log_info!(PAR_EXPANSION_1);
-            });*/
-            timer_stop_and_log_info!(PAR_EXPANSION);
-
-            // let mut x = 0;
-            // let mut y = 0;
-            // loop {
-            //     if min_trace[x].len() <= y {
-            //         break;
-            //     }
-            //     println!(
-            //         "Processing thread {} level {}",
-            //         x + y * Self::NUM_THREADS + 1,
-            //         min_trace[x][y].start.step
-            //     );
-            //     let cloned_min_trace = std::mem::take(&mut min_trace[x][y]);
-            //     scope.spawn(|_| {
-            //         let x = cloned_min_trace;
-            //         let emu_slice = match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &x) {
-            //             Ok(slice) => slice,
-            //             Err(e) => panic!("Error processing slice: {:?}", e),
-            //         };
-            //     });
-            //     x += 1;
-            //     if x == Self::NUM_THREADS {
-            //         x = 0;
-            //         y += 1;
-            //     }
-            // }
-            //             scope.spawn(|_| {
-            //     let vec_full_trace = vec_full_trace.into_inner().unwrap();
-            //     Self::prove_main(vec_full_trace, &pctx, &ectx, &sctx);
-            // });
-            std::thread::spawn(move || {
-                drop(min_trace);
-                drop(main_extended_traces);
-            });
+        // let mut x = 0;
+        // let mut y = 0;
+        // loop {
+        //     if min_trace[x].len() <= y {
+        //         break;
+        //     }
+        //     println!(
+        //         "Processing thread {} level {}",
+        //         x + y * Self::NUM_THREADS + 1,
+        //         min_trace[x][y].start.step
+        //     );
+        //     let cloned_min_trace = std::mem::take(&mut min_trace[x][y]);
+        //     scope.spawn(|_| {
+        //         let x = cloned_min_trace;
+        //         let emu_slice = match ZiskEmulator::process_slice::<F>(&self.zisk_rom, &x) {
+        //             Ok(slice) => slice,
+        //             Err(e) => panic!("Error processing slice: {:?}", e),
+        //         };
+        //     });
+        //     x += 1;
+        //     if x == Self::NUM_THREADS {
+        //         x = 0;
+        //         y += 1;
+        //     }
+        // }
+        //             scope.spawn(|_| {
+        //     let vec_full_trace = vec_full_trace.into_inner().unwrap();
+        //     Self::prove_main(vec_full_trace, &pctx, &ectx, &sctx);
+        // });
+        std::thread::spawn(move || {
+            drop(min_trace);
+            drop(prover_buffers);
         });
+        //});
     }
 
     fn prove_main(

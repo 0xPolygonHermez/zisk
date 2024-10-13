@@ -13,6 +13,7 @@ use zisk_core::{
     OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
     STORE_NONE, SYS_ADDR,
 };
+use zisk_pil::Main0Row;
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -21,7 +22,7 @@ pub struct Emu<'a> {
     /// the input data
     pub rom: &'a ZiskRom,
     /// Context, where the state of the execution is stored and modified at every execution step
-    ctx: EmuContext,
+    pub ctx: EmuContext,
 }
 
 /// ZisK emulator structure implementation
@@ -371,7 +372,7 @@ impl<'a> Emu<'a> {
     /// Store the 'c' register value based on the storage specified by the current instruction and
     /// log memory access if required
     #[inline(always)]
-    pub fn store_c_slice_2(&mut self, instruction: &ZiskInst, required: &mut ZiskRequired) {
+    pub fn store_c_slice_buff(&mut self, instruction: &ZiskInst) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
@@ -982,7 +983,7 @@ impl<'a> Emu<'a> {
         // Loop for every trace to get its corresponding full_trace
         //let start = Instant::now();
         for step in &trace.steps {
-            self.step_slice_2(step, &mut emu_slice.full_trace, &mut emu_slice.required);
+            self.step_slice(step, &mut emu_slice.full_trace, &mut emu_slice.required);
         }
         //println!("run_slice() duration={:.4}", start.elapsed().as_secs_f64());
     }
@@ -1119,11 +1120,11 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_2<F: AbstractField>(
+    pub fn step_slice_buff<F: PrimeField>(
         &mut self,
         trace_step: &EmuTraceStep,
-        full_trace: &mut Vec<EmuFullTraceStep<F>>,
-        required: &mut ZiskRequired,
+        buffer: &mut Vec<F>,
+        offset: &u64,
     ) {
         let previous_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -1133,7 +1134,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.b = trace_step.b;
         // self.source_b_slice(instruction, trace_step.b, required);
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice_2(instruction, required);
+        self.store_c_slice_buff(instruction);
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1202,8 +1203,8 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(instruction.m32),
             operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
         };
-        full_trace.push(full_trace_step);
-
+        buffer[*offset as usize..*offset as usize + Main0Row::<F>::ROW_SIZE]
+            .copy_from_slice(full_trace_step.as_slice());
         // Build and store the operation required data
         // match instruction.op_type {
         //     ZiskOperationType::Internal => (),

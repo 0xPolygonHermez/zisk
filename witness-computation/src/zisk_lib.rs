@@ -1,6 +1,6 @@
 use pil_std_lib::{RCAirData, RangeCheckAir, Std};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{error::Error, path::PathBuf, process, sync::Arc};
 use zisk_pil::*;
 
 use p3_field::PrimeField;
@@ -83,6 +83,7 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         timer_start_info!(EXECUTE);
         self.main_sm.as_ref().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
         timer_stop_and_log_info!(EXECUTE);
+        process::exit(0);
     }
 
     fn calculate_witness(
