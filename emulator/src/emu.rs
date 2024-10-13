@@ -578,9 +578,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -758,9 +758,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -1123,9 +1123,7 @@ impl<'a> Emu<'a> {
     pub fn step_slice_buff<F: PrimeField>(
         &mut self,
         trace_step: &EmuTraceStep,
-        buffer: &mut Vec<F>,
-        offset: &u64,
-    ) {
+    ) -> EmuFullTraceStep<F> {
         let previous_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
@@ -1203,8 +1201,10 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(instruction.m32),
             operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
         };
-        buffer[*offset as usize..*offset as usize + Main0Row::<F>::ROW_SIZE]
-            .copy_from_slice(full_trace_step.as_slice());
+
+        self.ctx.inst_ctx.step += 1;
+
+        full_trace_step
         // Build and store the operation required data
         // match instruction.op_type {
         //     ZiskOperationType::Internal => (),
@@ -1244,8 +1244,6 @@ impl<'a> Emu<'a> {
         //     }
         //     _ => panic!("Emu::step_slice() found invalid op_type"),
         // }
-
-        self.ctx.inst_ctx.step += 1;
     }
 
     /// Performs one single step of the emulation
