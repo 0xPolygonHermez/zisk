@@ -192,6 +192,7 @@ impl ZiskEmulator {
         Ok(emu_slice)
     }
 
+    #[inline]
     pub fn process_slice_2<F: AbstractField>(
         rom: &ZiskRom,
         trace: &EmuTrace,

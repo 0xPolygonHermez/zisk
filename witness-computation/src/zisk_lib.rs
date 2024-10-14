@@ -83,7 +83,6 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         timer_start_info!(EXECUTE);
         self.main_sm.as_ref().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
         timer_stop_and_log_info!(EXECUTE);
-        process::exit(0);
     }
 
     fn calculate_witness(
