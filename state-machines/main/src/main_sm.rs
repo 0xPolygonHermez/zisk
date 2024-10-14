@@ -251,7 +251,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                 let filled = segment_trace.steps.len();
                 let buffer = std::mem::take(buffer);
                 timer_start_info!(PROVE_MAIN);
-                Self::prove_main(buffer, offset, segment_id, filled, &pctx);
+                Self::prove_main(buffer, segment_id, filled, &pctx);
                 timer_stop_and_log_info!(PROVE_MAIN);
             });
             timer_stop_and_log_info!(PAR_EXPANSION);
@@ -263,20 +263,14 @@ impl<'a, F: PrimeField> MainSM<F> {
     }
 
     #[inline(always)]
-    fn prove_main(
-        mut buffer: Vec<F>,
-        offset: u64,
-        segment_id: usize,
-        filled_rows: usize,
-        pctx: &ProofCtx<F>,
-    ) {
+    fn prove_main(buffer: Vec<F>, segment_id: usize, filled_rows: usize, pctx: &ProofCtx<F>) {
         timer_start_info!(CREATE_INSTANCES);
 
         let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-        let mut main_trace =
-            Main0Trace::<F>::map_buffer(&mut buffer, air.num_rows(), offset as usize).unwrap();
+        // let main_trace =
+        //     Main0Trace::<F>::map_buffer(&mut buffer, air.num_rows(), offset as usize).unwrap();
 
-        println!("First row: {:?}", main_trace[0]);
+        // println!("First row: {:?}", main_trace[0]);
         // let main_first_segment = F::from_bool(segment_id == 0);
         // let main_last_segment = F::from_bool(segment_id == num_segments - 1);
         // let main_segment = F::from_canonical_usize(segment_id);
