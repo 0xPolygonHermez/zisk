@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 zisk-core = { path = "../../core" }
-zisk-pil = { path="../../pil/v0.1" }
 sm-common = { path = "../common" }
 zisk-pil = { path = "../../pil" }
 
