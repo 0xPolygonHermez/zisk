@@ -1,6 +1,7 @@
 use crate::{source_to_str, store_to_str, InstContext};
 
 #[derive(Clone, Debug, PartialEq)]
+#[repr(u32)]
 pub enum ZiskOperationType {
     None,
     Internal,
@@ -9,6 +10,8 @@ pub enum ZiskOperationType {
     BinaryE,
     Keccak,
 }
+
+pub const ZiskOperationTypeVariants: usize = 6;
 
 /// ZisK instruction definition
 ///

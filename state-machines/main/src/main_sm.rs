@@ -164,16 +164,23 @@ impl<'a, F: PrimeField> MainSM<F> {
         pool.scope(|_| {
             timer_start_info!(PAR_PROCESS_ROM);
             exe_traces.par_iter_mut().enumerate().for_each(|(thread_id, exe_trace)| {
-                let par_emu_options =
-                    ParEmuOptions::new(Self::NUM_THREADS, thread_id, Self::BLOCK_SIZE);
+                let par_emu_options = ParEmuOptions::new(
+                    Self::NUM_THREADS,
+                    thread_id,
+                    Self::BLOCK_SIZE,
+                    [2u64.pow(21), 0, 2u64.pow(21), 2u64.pow(21), 2u64.pow(21), 2u64.pow(21)],
+                );
 
-                *exe_trace = ZiskEmulator::par_process_rom::<F>(
+                let result = ZiskEmulator::par_process_rom::<F>(
                     &self.zisk_rom,
                     &public_inputs,
                     &emulator_options,
                     &par_emu_options,
                 )
                 .unwrap_or_else(|e| panic!("Error during emulator execution: {:?}", e));
+
+                *exe_trace = result.0;
+                println!("emu segment {:?}", result.1);
             });
             timer_stop_and_log_info!(PAR_PROCESS_ROM);
 

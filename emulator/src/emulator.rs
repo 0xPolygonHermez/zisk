@@ -1,6 +1,6 @@
 use crate::{
-    Emu, EmuOptions, EmuSlice, EmuTrace, EmuTraceStep, ErrWrongArguments, ParEmuOptions,
-    ZiskEmulatorErr,
+    Emu, EmuOptions, EmuSegment, EmuSlice, EmuTrace, EmuTraceStep, ErrWrongArguments,
+    ParEmuOptions, ZiskEmulatorErr,
 };
 use p3_field::{AbstractField, PrimeField};
 use std::{
@@ -163,7 +163,7 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
+    ) -> Result<(Vec<EmuTrace>, Vec<EmuSegment>), ZiskEmulatorErr> {
         // Create a emulator instance with this rom and inputs
         let mut emu = Emu::new(rom);
 
