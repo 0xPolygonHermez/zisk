@@ -5,6 +5,7 @@ require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
+require "arith/pil/arith.pil"
 // require "mem/pil/mem.pil"
 
 const int OPERATION_BUS_ID = 5000;
@@ -15,6 +16,18 @@ airgroup Main {
 // airgroup Mem {
 //     Mem(N: 2**21, RC: 2);
 // }
+
+airgroup Arith {
+    Arith(operation_bus_id: OPERATION_BUS_ID);
+}
+
+airgroup ArithTable {
+    ArithTable();
+}
+
+airgroup ArithRangeTable {
+    ArithRangeTable();
+}
 
 airgroup Binary {
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);

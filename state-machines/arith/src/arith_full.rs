@@ -12,7 +12,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{opcode_execute, ZiskRequiredOperation};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::Arith0Row;
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -88,7 +88,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
         &self,
         operation: ZiskRequiredOperation,
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = opcode_execute(operation.opcode, operation.a, operation.b);
+        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         Ok(result)
     }
 

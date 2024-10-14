@@ -7,6 +7,18 @@ trace!(Main0Row, Main0Trace<F> {
  main_first_segment: F, main_last_segment: F, main_segment: F, a: [F; 2], b: [F; 2], c: [F; 2], last_c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, end: F, m32: F, operation_bus_enabled: F,
 });
 
+trace!(Arith0Row, Arith0Trace<F> {
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, na32: F, nd32: F, m32: F, div: F, fab: F, debug_main_step: F, secondary_res: F, op: F, bus_a_low: F, bus_a_high: F, bus_b_high: F, res1_low: F, div64: F, res1_high: F, multiplicity: F, range_a1: F, range_b1: F, range_c1: F, range_d1: F, range_a3: F, range_b3: F, range_c3: F, range_d3: F,
+});
+
+trace!(ArithTable0Row, ArithTable0Trace<F> {
+ multiplicity: F,
+});
+
+trace!(ArithRangeTable0Row, ArithRangeTable0Trace<F> {
+ multiplicity: F,
+});
+
 trace!(Binary0Row, Binary0Trace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
@@ -23,6 +35,10 @@ trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
 });
 
+trace!(U16Air0Row, U16Air0Trace<F> {
+ mul: F,
+});
+
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 1],
+ mul: [F; 2],
 });

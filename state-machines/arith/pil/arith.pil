@@ -5,9 +5,9 @@ require "arith_table.pil"
 require "arith_range_table.pil"
 
 //                generic   64     u64   mul_u64   32   *u32
-//      witness     45      41      30     26      27     13 
-//      lookups      3       3       3      2       3      3 
-// range_checks   16+7    16+7    16+7   16+7     8+3    7+2 
+//      witness     45      41      30     26      27     13
+//      lookups      3       3       3      2       3      3
+// range_checks   16+7    16+7    16+7   16+7     8+3    7+2
 // ----------------------------------------------------------
 // TOTAL           123     119     108    101      69     61
 //
@@ -38,13 +38,15 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness m32;    // 32 bits operation
     col witness div;    // division operation (div,rem)
 
-    col witness fab;    // fab, to decrease degree of intermediate products a * b 
+    col witness fab;    // fab, to decrease degree of intermediate products a * b
                         // fab = 1  if sign of a,b are the same
                         // fab = -1 if sign of a,b are different
 
+    col witness debug_main_step; // only for debug
+
     if (!dual_result) {
         col witness air.secondary_res;       // op_index: 0 => first result, 1 => second result;
-        secondary_res * (secondary_res - 1) === 0;        
+        secondary_res * (secondary_res - 1) === 0;
     } else {
         const expr air.secondary_res = 0;
     }
@@ -52,44 +54,44 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     // factor ab € {-1, 1}
     fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
 
-    const expr eq[CHUNKS_OP]; 
+    const expr eq[CHUNKS_OP];
 
-    eq[0] = fab * a[0] * b[0] 
+    eq[0] = fab * a[0] * b[0]
             - c[0]
             + 2 * np * c[0]
-            + div * d[0] 
+            + div * d[0]
             - 2 * nr * d[0];
 
-    eq[1] = fab * a[1] * b[0] 
+    eq[1] = fab * a[1] * b[0]
             + fab * a[0] * b[1]
-            - c[1] 
+            - c[1]
             + 2 * np * c[1]
-            + div * d[1] 
+            + div * d[1]
             - 2 * nr * d[1];
 
     eq[2] = fab * a[2] * b[0]
-            + fab * a[1] * b[1] 
+            + fab * a[1] * b[1]
             + fab * a[0] * b[2]
-            - c[2] 
+            - c[2]
             + 2 * np * c[2]
-            + div * d[2] 
+            + div * d[2]
             - 2 * nr * d[2]
             - np * div * m32
             + nr * m32;
-                            
+
     eq[3] = fab * a[3] * b[0]
             + fab * a[2] * b[1]
             + fab * a[1] * b[2]
             + fab * a[0] * b[3]
-            - c[3] 
+            - c[3]
             + 2 * np * c[3]
-            + div * d[3] 
+            + div * d[3]
             - 2 * nr * d[3];
-                            
+
     eq[4] = fab * a[3] * b[1]
             + fab * a[2] * b[2]
             + fab * a[1] * b[3]
-            + na * b[0] * (1 - 2 * nb) 
+            + na * b[0] * (1 - 2 * nb)
             + nb * a[0] * (1 - 2 * na)
             - np * div                    // \
             + np * m32                    //  np * (div ^ m32)
@@ -102,26 +104,26 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
             + fab * a[2] * b[3]
             + nb * a[1] * (1 - 2 * na)
             + na * b[1] * (1 - 2 * nb)
-            - d[1] * (1 - div) 
+            - d[1] * (1 - div)
             + 2 * np * d[1] * (1 - div);
-                            
+
     eq[6] = fab * a[3] * b[3]
             + nb * a[2] * (1 - 2 * na)
             + na * b[2] * (1 - 2 * nb)
-            - d[2] * (1 - div) 
+            - d[2] * (1 - div)
             + 2 * np * d[2] * (1 - div);
-    
+
     eq[7] = CHUNK_SIZE * na * nb
             + na * b[3] * (1 - 2 * nb)
             + nb * a[3] * (1 - 2 * na)
             - CHUNK_SIZE * np * (1 - div) * (1 - m32)
-            - d[3] * (1 - div) 
+            - d[3] * (1 - div)
             + 2 * np * d[3] * (1 - div);
 
     eq[0] - carry[0] * CHUNK_SIZE === 0;
     for (int index = 1; index < (CHUNKS_OP - 1); ++index) {
         eq[index] + carry[index-1] - carry[index] * CHUNK_SIZE === 0;
-    }   
+    }
     eq[CHUNKS_OP-1] + carry[CHUNKS_OP-2] === 0;
 
     // binary contraint
@@ -134,34 +136,34 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     na32 * (1 - na32) === 0;
     nd32 * (1 - nd32) === 0;
 
-    col witness op;    
+    col witness op;
 
-    // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32 
+    // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32
     // ----------------------------------------------------------------------------------
-    //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0   
+    //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
     //  0   0   1   0       *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   =0   d3   =0   =0  a3,      d3
-    //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3  
+    //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3
     //  0   1   1   1    x  mul_w    *n/a*      (0xb6,0xb7)   a1   b1   =0   d3   c1   =0           d3, a1,b1,c1
-    //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0   
-    //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3  
+    //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
+    //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3
     //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
     //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
 
-    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb 
+    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb
     // see 5 previous constraints.
     // =0 means forced to zero by previous constraints
     // comm = commutative (trivial: commutative operations)
 
-    col witness bus_a_low; 
-    bus_a_low === div * (c[0] - a[0]) 
-                  + a[0] 
-                  + CHUNK_SIZE * div * (c[1] - a[1]) 
+    col witness bus_a_low;
+    bus_a_low === div * (c[0] - a[0])
+                  + a[0]
+                  + CHUNK_SIZE * div * (c[1] - a[1])
                   + CHUNK_SIZE * a[1];
 
     col witness bus_a_high;
-    bus_a_high === (1 - m32) * (div * (c[2] - a[2]) 
-                    + a[2] 
-                    + CHUNK_SIZE * div * (c[3] - a[3]) 
+    bus_a_high === (1 - m32) * (div * (c[2] - a[2])
+                    + a[2]
+                    + CHUNK_SIZE * div * (c[3] - a[3])
                     + CHUNK_SIZE * a[3]);
 
 
@@ -172,13 +174,13 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness bus_b_high;
     bus_b_high === (1 - m32) * b[2] + (1 - m32) * CHUNK_SIZE * b[3];
 
-    const expr res2_low  = d[0] + CHUNK_SIZE * d[1]; 
+    const expr res2_low  = d[0] + CHUNK_SIZE * d[1];
     const expr res2_high = d[2] + CHUNK_SIZE * d[3] + nd32 * 0xFFFFFFFF;
 
     if (dual_result) {
         // theorical cost: 4 columns
         col witness multiplicity_2;
-        lookup_proves(operation_bus_id, [op+1, bus_a_low, bus_a_high, bus_b_low, bus_b_high, res2_low, res2_high, 0], mul: multiplicity_2);
+        lookup_proves(operation_bus_id, [debug_main_step, op+1, bus_a_low, bus_a_high, bus_b_low, bus_b_high, res2_low, res2_high, 0], mul: multiplicity_2);
     }
 
     if (dual_result) {
@@ -188,7 +190,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     } else {
         col witness air.res1_low;
         res1_low === secondary_res * res2_low - (1 - secondary_res)  * (a[0] + c[0] + CHUNK_SIZE * a[1] + CHUNK_SIZE * c[1] - bus_a_low);
-        
+
         col witness air.div64;
         div64 === (1 - m32) * div;
 
@@ -196,21 +198,22 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
         // res1_high === secondary_res * res2_high + (1 - secondary_res) * ((1 - m32) * (div * (a[2] - c[2]) + c[2] + 2**16 * div * (a[3] - c[3]) + 2**16 * c[3]) + div * na32 * 0xFFFFFFFF + (1 - div) * nd32 * 0xFFFFFFFF);
         res1_high === secondary_res * res2_high + (1 - secondary_res) * (div64 * (a[2] - c[2]) + (1 - m32) * c[2] + CHUNK_SIZE * div64 * (a[3] - c[3]) + (1 - m32) * 2**16 * c[3] + div * na32 * 0xFFFFFFFF + (1 - div) * nd32 * 0xFFFFFFFF);
     }
-    
+
 
     col witness multiplicity;
 
-    lookup_proves(operation_bus_id, [op + secondary_res,
-                                     bus_a_low, bus_a_high, 
-                                     bus_b_low, bus_b_high, 
+    lookup_proves(operation_bus_id, [debug_main_step,
+                                     op + secondary_res,
+                                     bus_a_low, bus_a_high,
+                                     bus_b_low, bus_b_high,
                                      res1_low, res1_high,
-//                                     secondary_res * (res2_low - res1_low) + res1_low, 
+//                                     secondary_res * (res2_low - res1_low) + res1_low,
 //                                     secondary_res * (res2_high - res1_high) + res1_high,
                                      0], mul: multiplicity);
 
 
     // TODO: review
-    lookup_assumes(operation_bus_id, [OP_LT, res2_low, res2_high, bus_b_low, bus_b_high, 0, 1, 1], sel: div);
+    lookup_assumes(operation_bus_id, [debug_main_step, OP_LT, res2_low, res2_high, bus_b_low, bus_b_high, 0, 1, 1], sel: div);
 
     for (int index = 0; index < length(carry); ++index) {
          range_check(colu: carry[index], min:-2**20, max: 2**20-1);     // TODO: review carry range
@@ -222,7 +225,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
         range_check(colu: b[2 * index], min:0, max: CHUNK_SIZE - 1);
         range_check(colu: c[2 * index], min:0, max: CHUNK_SIZE - 1);
         range_check(colu: d[2 * index], min:0, max: CHUNK_SIZE - 1);
-    }  
+    }
 
     col witness range_a1;
     col witness range_b1;

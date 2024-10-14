@@ -8,19 +8,33 @@ pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 pub const MAIN_AIRGROUP_ID: usize = 0;
 
-pub const BINARY_AIRGROUP_ID: usize = 1;
+pub const ARITH_AIRGROUP_ID: usize = 1;
 
-pub const BINARY_TABLE_AIRGROUP_ID: usize = 2;
+pub const ARITH_TABLE_AIRGROUP_ID: usize = 2;
 
-pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 3;
+pub const ARITH_RANGE_TABLE_AIRGROUP_ID: usize = 3;
 
-pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 4;
+pub const BINARY_AIRGROUP_ID: usize = 4;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 5;
+pub const BINARY_TABLE_AIRGROUP_ID: usize = 5;
+
+pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 6;
+
+pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 7;
+
+pub const U_16_AIR_AIRGROUP_ID: usize = 8;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 9;
 
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
+
+pub const ARITH_AIR_IDS: &[usize] = &[0];
+
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[0];
+
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_AIR_IDS: &[usize] = &[0];
 
@@ -29,6 +43,8 @@ pub const BINARY_TABLE_AIR_IDS: &[usize] = &[0];
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[0];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
 
@@ -41,6 +57,18 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("Main"));
 
         air_group.add_air(Some("Main"), 2097152);
+
+        let air_group = pilout.add_air_group(Some("Arith"));
+
+        air_group.add_air(Some("Arith"), 262144);
+
+        let air_group = pilout.add_air_group(Some("ArithTable"));
+
+        air_group.add_air(Some("ArithTable"), 64);
+
+        let air_group = pilout.add_air_group(Some("ArithRangeTable"));
+
+        air_group.add_air(Some("ArithRangeTable"), 131072);
 
         let air_group = pilout.add_air_group(Some("Binary"));
 
@@ -57,6 +85,10 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
 
         air_group.add_air(Some("BinaryExtensionTable"), 4194304);
+
+        let air_group = pilout.add_air_group(Some("U16Air"));
+
+        air_group.add_air(Some("U16Air"), 65536);
 
         let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
 
