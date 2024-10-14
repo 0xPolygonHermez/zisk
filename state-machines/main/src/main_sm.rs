@@ -178,7 +178,15 @@ impl<'a, F: PrimeField> MainSM<F> {
             timer_stop_and_log_info!(PAR_PROCESS_ROM);
 
             timer_start_info!(FLAT);
-            let vec_traces = exe_traces.iter().flatten().collect::<Vec<_>>();
+            let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
+            let mut vec_traces = Vec::with_capacity(num_boxes);
+            for i in 0..num_boxes {
+                let x = i % Self::NUM_THREADS;
+                let y = i / Self::NUM_THREADS;
+
+                let exe_trace = std::mem::take(&mut exe_traces[x][y]);
+                vec_traces.push(exe_trace);
+            }
             timer_stop_and_log_info!(FLAT);
 
             timer_start_info!(ALLOCATE_EXTENDED_TRACES);
@@ -194,7 +202,7 @@ impl<'a, F: PrimeField> MainSM<F> {
             let num_segments = vec_traces.len();
             let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
             prover_buffers.par_iter_mut().enumerate().for_each(|(segment_id, (buffer, offset))| {
-                let segment_trace = vec_traces[segment_id];
+                let segment_trace = &vec_traces[segment_id];
                 let offset = *offset;
 
                 timer_start_info!(COPY_ROWS);
