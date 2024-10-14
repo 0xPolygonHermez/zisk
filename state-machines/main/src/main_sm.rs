@@ -205,47 +205,44 @@ impl<'a, F: PrimeField> MainSM<F> {
                 emu.ctx.inst_ctx.c = segment_trace.start.c;
 
                 let total_steps = segment_trace.steps.len();
-                const BLOCK_SIZE: usize = 4096;
-                let mut tmp_trace = Main0Trace::<F>::new(BLOCK_SIZE);
+                const CHUNK_SIZE: usize = 4096;
+                let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
 
                 let main_first_segment = F::from_bool(segment_id == 0);
                 let main_last_segment = F::from_bool(segment_id == num_segments - 1);
                 let main_segment = F::from_canonical_usize(segment_id);
 
                 let mut last_row = Main0Row::<F>::default();
-                for chunk_start in (0..air.num_rows()).step_by(BLOCK_SIZE) {
-                    let chunk_start_ = std::cmp::min(chunk_start, total_steps);
-                    let chunk_end = (chunk_start + BLOCK_SIZE).min(total_steps);
-
-                    for (i, step) in segment_trace.steps[chunk_start_..chunk_end].iter().enumerate()
+                for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
+                    // process the steps of the chunk
+                    let start_pos_abs = std::cmp::min(chunk_start, total_steps);
+                    let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
+                    for (i, step) in
+                        segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate()
                     {
                         tmp_trace[i] = emu.step_slice_buff(step);
                         tmp_trace[i].main_first_segment = main_first_segment;
                         tmp_trace[i].main_last_segment = main_last_segment;
                         tmp_trace[i].main_segment = main_segment;
                     }
-                    if chunk_end - chunk_start_ > 0 {
-                        last_row = tmp_trace[chunk_end - chunk_start - 1];
+
+                    // if there are steps in the chunk update last row
+                    if end_pos_abs - start_pos_abs > 0 {
+                        last_row = tmp_trace[end_pos_abs - start_pos_abs - 1];
                     }
 
-                    for i in chunk_end - chunk_start..BLOCK_SIZE {
+                    // if there are less steps than the chunk size, fill the rest with the last row
+                    for i in (end_pos_abs - start_pos_abs)..CHUNK_SIZE {
                         tmp_trace[i] = last_row;
                     }
 
-                    let start_off = offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
-                    //print copy size
-                    // println!("Size to copy {} Mb", temp_buffer.len() * 8 / 1024 / 1024);
+                    //copy the chunk to the prover buffer
                     let tmp_buffer = tmp_trace.buffer.as_mut().unwrap();
-                    if chunk_end - chunk_start < BLOCK_SIZE {
-                        tmp_buffer.resize(
-                            (chunk_end - chunk_start) * Main0Row::<F>::ROW_SIZE,
-                            F::default(),
-                        );
-                    }
-                    buffer[start_off..start_off + tmp_buffer.len()]
-                        .copy_from_slice(tmp_trace.buffer.as_ref().unwrap().as_slice());
+                    let buffer_offset_chunk =
+                        offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
+                    buffer[buffer_offset_chunk..buffer_offset_chunk + tmp_buffer.len()]
+                        .copy_from_slice(tmp_buffer);
                 }
-
                 timer_stop_and_log_info!(COPY_ROWS);
 
                 let filled = segment_trace.steps.len();
