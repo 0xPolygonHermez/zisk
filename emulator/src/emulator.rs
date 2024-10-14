@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskOperationTypeVariants, ZiskRequired, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -163,7 +163,8 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> Result<(Vec<EmuTrace>, Vec<EmuSegment>), ZiskEmulatorErr> {
+    ) -> Result<(Vec<EmuTrace>, Vec<EmuSegment>, [u64; ZiskOperationTypeVariants]), ZiskEmulatorErr>
+    {
         // Create a emulator instance with this rom and inputs
         let mut emu = Emu::new(rom);
 

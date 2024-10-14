@@ -578,9 +578,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some()
-                && (options.print_step.unwrap() != 0)
-                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some() &&
+                (options.print_step.unwrap() != 0) &&
+                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -642,7 +642,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<EmuTrace>, Vec<EmuSegment>) {
+    ) -> (Vec<EmuTrace>, Vec<EmuSegment>, [u64; ZiskOperationTypeVariants]) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -716,7 +716,7 @@ impl<'a> Emu<'a> {
         }
 
         println!("Segment total count: {:?}", segment_total_count);
-        (emu_traces, emu_segments)
+        (emu_traces, emu_segments, segment_total_count)
     }
 
     /// Performs one single step of the emulation
@@ -788,9 +788,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end
-                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
-                    == self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end ||
+                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+                    self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();

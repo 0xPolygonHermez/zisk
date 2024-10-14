@@ -7,15 +7,18 @@ use sm_binary::BinarySM;
 use std::{
     fs, mem,
     path::{Path, PathBuf},
-    sync::Arc,
+    process,
+    sync::{Arc, Mutex},
 };
-use zisk_core::{Riscv2zisk, ZiskRequired, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRequired, ZiskRom};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
-use ziskemu::{Emu, EmuFullTraceStep, EmuOptions, EmuTrace, ParEmuOptions, ZiskEmulator};
+use ziskemu::{
+    Emu, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStart, ParEmuOptions, ZiskEmulator,
+};
 
 //use process::Command;
 use proofman::WitnessComponent;
@@ -36,6 +39,23 @@ impl<F: Default + Clone> MainAirSegment<F> {
     }
 }
 
+pub struct InstanceExtensionInputs<F> {
+    pub prover_buffer: Vec<F>,
+    pub offset: u64,
+    pub segment_type: Option<ZiskOperationType>,
+    pub emu_trace_start: Option<EmuTraceStart>,
+}
+
+impl<F: Default + Clone> InstanceExtensionInputs<F> {
+    pub fn new(
+        prover_buffer: Vec<F>,
+        offset: u64,
+        segment_type: Option<ZiskOperationType>,
+        emu_trace_start: Option<EmuTraceStart>,
+    ) -> Self {
+        Self { prover_buffer, offset, segment_type, emu_trace_start }
+    }
+}
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
 ///
 /// The MainSM state machine is responsible for orchestrating the execution of the program and
@@ -163,6 +183,7 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         pool.scope(|_| {
             timer_start_info!(PAR_PROCESS_ROM);
+            let operation_counts = Arc::new(Mutex::new(Vec::new()));
             exe_traces.par_iter_mut().enumerate().for_each(|(thread_id, exe_trace)| {
                 let par_emu_options = ParEmuOptions::new(
                     Self::NUM_THREADS,
@@ -181,8 +202,14 @@ impl<'a, F: PrimeField> MainSM<F> {
 
                 *exe_trace = result.0;
                 println!("emu segment {:?}", result.1);
+                if thread_id == 0 {
+                    let mut op_counts = operation_counts.lock().unwrap();
+                    *op_counts = result.2.to_vec();
+                }
             });
             timer_stop_and_log_info!(PAR_PROCESS_ROM);
+            println!("operation counts: {:?}", operation_counts);
+            process::exit(0);
 
             timer_start_info!(FLAT);
             let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
@@ -198,10 +225,18 @@ impl<'a, F: PrimeField> MainSM<F> {
 
             timer_start_info!(ALLOCATE_EXTENDED_TRACES);
             let mut prover_buffers: Vec<(Vec<F>, u64)> = Vec::with_capacity(vec_traces.len());
+            let mut instance_extension_inputs: Vec<InstanceExtensionInputs<F>> =
+                Vec::with_capacity(vec_traces.len());
             for _ in 0..vec_traces.len() {
                 let prover_buffer: (Vec<F>, u64) =
                     create_prover_buffer::<F>(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
                 prover_buffers.push(prover_buffer);
+                instance_extension_inputs.push(InstanceExtensionInputs::new(
+                    prover_buffer.0,
+                    prover_buffer.1,
+                    None,
+                    None,
+                ));
             }
             timer_stop_and_log_info!(ALLOCATE_EXTENDED_TRACES);
 
