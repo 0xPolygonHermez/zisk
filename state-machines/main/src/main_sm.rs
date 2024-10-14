@@ -204,7 +204,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                 println!("emu segment {:?}", result.1);
                 if thread_id == 0 {
                     let mut op_counts = operation_counts.lock().unwrap();
-                    *op_counts = result.2.to_vec();
+                    *op_counts = result.1.segments.to_vec();
                 }
             });
             timer_stop_and_log_info!(PAR_PROCESS_ROM);

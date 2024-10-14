@@ -1,8 +1,8 @@
 use std::{mem, time::Instant};
 
 use crate::{
-    emu_segment, EmuContext, EmuFullTraceStep, EmuOptions, EmuSegment, EmuSlice, EmuTrace,
-    EmuTraceEnd, EmuTraceStart, EmuTraceStep, ParEmuExecutionType, ParEmuOptions,
+    emu_segment, EmuContext, EmuFullTraceStep, EmuOptions, EmuSegment, EmuSegments, EmuSlice,
+    EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceStep, ParEmuExecutionType, ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
@@ -578,9 +578,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -642,7 +642,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<EmuTrace>, Vec<EmuSegment>, [u64; ZiskOperationTypeVariants]) {
+    ) -> (Vec<EmuTrace>, EmuSegments) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -653,26 +653,27 @@ impl<'a> Emu<'a> {
         self.ctx.do_stats = options.stats;
 
         let mut emu_traces = Vec::new();
-        let mut emu_segments = Vec::new();
-        emu_segments.push(EmuSegment::new(
+        let mut emu_segments = EmuSegments::default();
+
+        emu_segments.segments.push(EmuSegment::new(
             ZiskOperationType::Binary,
             self.ctx.inst_ctx.pc,
             self.ctx.inst_ctx.sp,
             self.ctx.inst_ctx.c,
             self.ctx.inst_ctx.step,
         ));
-        emu_segments.push(EmuSegment::new(
+        emu_segments.num_segments[ZiskOperationType::Binary as usize] += 1;
+
+        emu_segments.segments.push(EmuSegment::new(
             ZiskOperationType::BinaryE,
             self.ctx.inst_ctx.pc,
             self.ctx.inst_ctx.sp,
             self.ctx.inst_ctx.c,
             self.ctx.inst_ctx.step,
         ));
+        emu_segments.num_segments[ZiskOperationType::BinaryE as usize] += 1;
 
         let mut segment_count = [0u64; ZiskOperationTypeVariants];
-        let mut segment_total_count = [0u64; ZiskOperationTypeVariants];
-
-        //println!("thread_id={}", par_options.thread_id);
 
         while !self.ctx.inst_ctx.end {
             let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
@@ -683,13 +684,7 @@ impl<'a> Emu<'a> {
             block_idx % par_options.num_threads as u64 == par_options.thread_id as u64 - 8u64;*/
 
             if !is_my_block {
-                self.par_step_2::<F>(
-                    options,
-                    par_options,
-                    &mut emu_segments,
-                    &mut segment_count,
-                    &mut segment_total_count,
-                );
+                self.par_step_2::<F>(options, par_options, &mut emu_segments, &mut segment_count);
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
@@ -710,13 +705,11 @@ impl<'a> Emu<'a> {
                     emu_traces.last_mut().unwrap(),
                     &mut emu_segments,
                     &mut segment_count,
-                    &mut segment_total_count,
                 );
             }
         }
 
-        println!("Segment total count: {:?}", segment_total_count);
-        (emu_traces, emu_segments, segment_total_count)
+        (emu_traces, emu_segments)
     }
 
     /// Performs one single step of the emulation
@@ -788,9 +781,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -827,9 +820,8 @@ impl<'a> Emu<'a> {
         options: &EmuOptions,
         par_options: &ParEmuOptions,
         emu_full_trace_vec: &mut EmuTrace,
-        emu_segments: &mut Vec<EmuSegment>,
+        emu_segments: &mut EmuSegments,
         segment_count: &mut [u64; ZiskOperationTypeVariants],
-        segment_total_count: &mut [u64; ZiskOperationTypeVariants],
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -864,16 +856,16 @@ impl<'a> Emu<'a> {
 
         let op_type = instruction.op_type.clone() as usize;
         segment_count[op_type] += 1;
-        segment_total_count[op_type] += 1;
+        emu_segments.total_steps[op_type] += 1;
 
         if segment_count[op_type] == par_options.segment_sizes[op_type] {
-            emu_segments.push(EmuSegment::new(
+            emu_segments.add(
                 instruction.op_type.clone(),
                 last_pc,
                 self.ctx.inst_ctx.sp,
                 last_c,
                 self.ctx.inst_ctx.step,
-            ));
+            );
             segment_count[op_type] = 0;
         }
 
@@ -888,9 +880,8 @@ impl<'a> Emu<'a> {
         &mut self,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-        emu_segments: &mut Vec<EmuSegment>,
+        emu_segments: &mut EmuSegments,
         segment_count: &mut [u64; ZiskOperationTypeVariants],
-        segment_total_count: &mut [u64; ZiskOperationTypeVariants],
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -921,16 +912,16 @@ impl<'a> Emu<'a> {
 
         let op_type = instruction.op_type.clone() as usize;
         segment_count[op_type] += 1;
-        segment_total_count[op_type] += 1;
+        emu_segments.total_steps[op_type] += 1;
 
         if segment_count[op_type] == par_options.segment_sizes[op_type] {
-            emu_segments.push(EmuSegment::new(
+            emu_segments.add(
                 instruction.op_type.clone(),
                 last_pc,
                 self.ctx.inst_ctx.sp,
                 last_c,
                 self.ctx.inst_ctx.step,
-            ));
+            );
             segment_count[op_type] = 0;
         }
 
