@@ -426,11 +426,12 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
+                    let range = std_cloned.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
                     for rc in range_check {
                         std_cloned.range_check(
                             F::from_canonical_u64(rc.rc),
-                            BigInt::from(0),
-                            BigInt::from(0xFFFFFF),
+                            F::one(),
+                            range,
                         );
                     }
 
