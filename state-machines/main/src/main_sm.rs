@@ -15,9 +15,13 @@ use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRequired, ZiskRom};
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
-use zisk_pil::{Main0Row, Main0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS};
+use zisk_pil::{
+    Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
+    BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
+};
 use ziskemu::{
-    Emu, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStart, ParEmuOptions, ZiskEmulator,
+    Emu, EmuFullTraceStep, EmuOptions, EmuSegments, EmuTrace, EmuTraceStart, ParEmuOptions,
+    ZiskEmulator,
 };
 
 //use process::Command;
@@ -182,16 +186,18 @@ impl<'a, F: PrimeField> MainSM<F> {
 
         // Execute the emulator inside a thread
         let mut exe_traces = vec![Vec::new(); Self::NUM_THREADS];
+        let segment_sizes =
+            [2u64.pow(21), 0, 2u64.pow(21), 2u64.pow(21), 2u64.pow(21), 2u64.pow(21)];
 
         pool.scope(|_| {
             timer_start_info!(PAR_PROCESS_ROM);
-            let operation_counts = Arc::new(Mutex::new(Vec::new()));
+            let operation_segments = Arc::new(Mutex::new(EmuSegments::default()));
             exe_traces.par_iter_mut().enumerate().for_each(|(thread_id, exe_trace)| {
                 let par_emu_options = ParEmuOptions::new(
                     Self::NUM_THREADS,
                     thread_id,
                     Self::BLOCK_SIZE,
-                    [2u64.pow(21), 0, 2u64.pow(21), 2u64.pow(21), 2u64.pow(21), 2u64.pow(21)],
+                    segment_sizes,
                 );
 
                 let result = ZiskEmulator::par_process_rom::<F>(
@@ -203,13 +209,18 @@ impl<'a, F: PrimeField> MainSM<F> {
                 .unwrap_or_else(|e| panic!("Error during emulator execution: {:?}", e));
 
                 *exe_trace = result.0;
-                println!("emu segment {:?}", result.1);
                 if thread_id == 0 {
-                    let mut op_counts = operation_counts.lock().unwrap();
-                    *op_counts = result.1.segments.to_vec();
+                    let mut op_counts = operation_segments.lock().unwrap();
+                    *op_counts = result.1;
                 }
             });
+
             timer_stop_and_log_info!(PAR_PROCESS_ROM);
+
+            //Copy of  data of EmuSegments to avoid dealing with the lock
+            let emu_segments = operation_segments.lock().unwrap().segments.clone();
+            let num_segments = operation_segments.lock().unwrap().num_segments.clone();
+            let total_steps = operation_segments.lock().unwrap().total_steps;
 
             timer_start_info!(FLATTEN_MINIMUM_TRACES);
             let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
@@ -224,11 +235,49 @@ impl<'a, F: PrimeField> MainSM<F> {
             timer_stop_and_log_info!(FLATTEN_MINIMUM_TRACES);
 
             timer_start_info!(ALLOCATE_INSTANCES_EXTENSION_CTX);
+
+            let num_main_instances = vec_traces.len() as u64;
+            let num_binary_instances = (total_steps[3] + segment_sizes[3] - 1) / segment_sizes[3];
+            let num_binary_extended_instances =
+                (total_steps[4] + segment_sizes[4] - 1) / segment_sizes[4];
+            let num_instances =
+                num_main_instances + num_binary_instances + num_binary_extended_instances;
+
             let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
-                Vec::with_capacity(vec_traces.len());
-            for _ in 0..vec_traces.len() {
+                Vec::with_capacity(num_instances as usize);
+
+            // Add the main instances
+            for _ in 0..num_main_instances {
                 let prover_buffer: (Vec<F>, u64) =
                     create_prover_buffer::<F>(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    prover_buffer.0,
+                    prover_buffer.1,
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            // Add the binary instances
+            for _ in 0..num_binary_instances {
+                let prover_buffer: (Vec<F>, u64) =
+                    create_prover_buffer::<F>(&ectx, &sctx, BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    prover_buffer.0,
+                    prover_buffer.1,
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            // Add the binary extension instances
+            for _ in 0..num_binary_extended_instances {
+                let prover_buffer: (Vec<F>, u64) = create_prover_buffer::<F>(
+                    &ectx,
+                    &sctx,
+                    BINARY_EXTENSION_AIRGROUP_ID,
+                    BINARY_EXTENSION_AIR_IDS[0],
+                );
                 instances_extension_ctx.push(InstanceExtensionCtx::new(
                     prover_buffer.0,
                     prover_buffer.1,
@@ -244,64 +293,66 @@ impl<'a, F: PrimeField> MainSM<F> {
             let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
             instances_extension_ctx.par_iter_mut().enumerate().for_each(
                 |(segment_id, mut iectx)| {
-                    let segment_trace = &vec_traces[segment_id];
-                    let offset = iectx.offset;
+                    if segment_id < num_main_instances as usize {
+                        let segment_trace = &vec_traces[segment_id];
+                        let offset = iectx.offset;
 
-                    timer_start_info!(COPY_ROWS);
-                    let mut emu: Emu<'_> = Emu::new(&self.zisk_rom);
-                    emu.ctx.inst_ctx.pc = segment_trace.start.pc;
-                    emu.ctx.inst_ctx.sp = segment_trace.start.sp;
-                    emu.ctx.inst_ctx.step = segment_trace.start.step;
-                    emu.ctx.inst_ctx.c = segment_trace.start.c;
+                        timer_start_info!(COPY_ROWS);
+                        let mut emu: Emu<'_> = Emu::new(&self.zisk_rom);
+                        emu.ctx.inst_ctx.pc = segment_trace.start.pc;
+                        emu.ctx.inst_ctx.sp = segment_trace.start.sp;
+                        emu.ctx.inst_ctx.step = segment_trace.start.step;
+                        emu.ctx.inst_ctx.c = segment_trace.start.c;
 
-                    let total_steps = segment_trace.steps.len();
-                    const CHUNK_SIZE: usize = 4096;
-                    let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
+                        let total_steps = segment_trace.steps.len();
+                        const CHUNK_SIZE: usize = 4096;
+                        let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
 
-                    let main_first_segment = F::from_bool(segment_id == 0);
-                    let main_last_segment = F::from_bool(segment_id == num_segments - 1);
-                    let main_segment = F::from_canonical_usize(segment_id);
+                        let main_first_segment = F::from_bool(segment_id == 0);
+                        let main_last_segment = F::from_bool(segment_id == num_segments - 1);
+                        let main_segment = F::from_canonical_usize(segment_id);
 
-                    let mut last_row = Main0Row::<F>::default();
-                    for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
-                        // process the steps of the chunk
-                        let start_pos_abs = std::cmp::min(chunk_start, total_steps);
-                        let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
-                        for (i, step) in
-                            segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate()
-                        {
-                            tmp_trace[i] = emu.step_slice_buff(step);
-                            tmp_trace[i].main_first_segment = main_first_segment;
-                            tmp_trace[i].main_last_segment = main_last_segment;
-                            tmp_trace[i].main_segment = main_segment;
+                        let mut last_row = Main0Row::<F>::default();
+                        for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
+                            // process the steps of the chunk
+                            let start_pos_abs = std::cmp::min(chunk_start, total_steps);
+                            let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
+                            for (i, step) in
+                                segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate()
+                            {
+                                tmp_trace[i] = emu.step_slice_buff(step);
+                                tmp_trace[i].main_first_segment = main_first_segment;
+                                tmp_trace[i].main_last_segment = main_last_segment;
+                                tmp_trace[i].main_segment = main_segment;
+                            }
+
+                            // if there are steps in the chunk update last row
+                            if end_pos_abs - start_pos_abs > 0 {
+                                last_row = tmp_trace[end_pos_abs - start_pos_abs - 1];
+                            }
+
+                            // if there are less steps than the chunk size, fill the rest with the
+                            // last row
+                            for i in (end_pos_abs - start_pos_abs)..CHUNK_SIZE {
+                                tmp_trace[i] = last_row;
+                            }
+
+                            //copy the chunk to the prover buffer
+                            let tmp_buffer = tmp_trace.buffer.as_mut().unwrap();
+                            let buffer_offset_chunk =
+                                offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
+                            iectx.prover_buffer
+                                [buffer_offset_chunk..buffer_offset_chunk + tmp_buffer.len()]
+                                .copy_from_slice(tmp_buffer);
                         }
+                        timer_stop_and_log_info!(COPY_ROWS);
 
-                        // if there are steps in the chunk update last row
-                        if end_pos_abs - start_pos_abs > 0 {
-                            last_row = tmp_trace[end_pos_abs - start_pos_abs - 1];
-                        }
-
-                        // if there are less steps than the chunk size, fill the rest with the last
-                        // row
-                        for i in (end_pos_abs - start_pos_abs)..CHUNK_SIZE {
-                            tmp_trace[i] = last_row;
-                        }
-
-                        //copy the chunk to the prover buffer
-                        let tmp_buffer = tmp_trace.buffer.as_mut().unwrap();
-                        let buffer_offset_chunk =
-                            offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
-                        iectx.prover_buffer
-                            [buffer_offset_chunk..buffer_offset_chunk + tmp_buffer.len()]
-                            .copy_from_slice(tmp_buffer);
+                        let filled = segment_trace.steps.len();
+                        let buffer = std::mem::take(&mut iectx.prover_buffer);
+                        timer_start_info!(PROVE_MAIN);
+                        Self::prove_main(buffer, segment_id, filled, &pctx, &mut iectx);
+                        timer_stop_and_log_info!(PROVE_MAIN);
                     }
-                    timer_stop_and_log_info!(COPY_ROWS);
-
-                    let filled = segment_trace.steps.len();
-                    let buffer = std::mem::take(&mut iectx.prover_buffer);
-                    timer_start_info!(PROVE_MAIN);
-                    Self::prove_main(buffer, segment_id, filled, &pctx, &mut iectx);
-                    timer_stop_and_log_info!(PROVE_MAIN);
                 },
             );
             timer_stop_and_log_info!(PAR_EXPANSION);
