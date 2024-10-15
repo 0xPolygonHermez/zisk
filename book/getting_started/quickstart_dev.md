@@ -17,7 +17,7 @@ Run the following commands to clone the necessary repositories:
 
 ```bash
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b develop https://${ZISK_TOKEN}@github.com/0xPolygonHermez/zisk.git
+git clone -b develop https://github.com/0xPolygonHermez/zisk.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
 git clone --recursive -b develop  https://github.com/0xPolygonHermez/pil2-stark.git
 git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
@@ -28,14 +28,6 @@ git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
 ### Setup
 Install qemu:
 `sudo apt-get install qemu-system`
-
-
-Set up tokens to access repositories:
-
-```
-export GITHUB_ACCESS_TOKEN=....
-export ZISK_TOKEN=....
-```
 
 ### Create New Hello World Project
 Create a new project using the Zisk toolchain:
