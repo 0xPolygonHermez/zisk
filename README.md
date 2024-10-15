@@ -2,7 +2,7 @@
 
 # Polygon ZisK
 
-You can find the documentation here: [docs](https://silver-guide-wgvmnpk.pages.github.io/)
+You can find the documentation here: [docs](https://0xpolygonhermez.github.io/zisk/)
 
 # Licenses
 All crates of this monorepo are licensed under either of

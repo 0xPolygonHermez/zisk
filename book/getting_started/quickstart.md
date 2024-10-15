@@ -4,20 +4,13 @@ In this section, we will show you how to create a simple program using ZisK.
 
 ## Create Project
 
-<div class="warning">
-
-this is temporary until we make the repositories publics, if you need an installation token, write to the Zisk team
 ```bash
-export ZISK_TOKEN=...
-```
-```bash
-git clone https://${ZISK_TOKEN}@github.com/0xPolygonHermez/zisk
+git clone https://github.com/0xPolygonHermez/zisk
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
 git clone --recursive -b develop  https://github.com/0xPolygonHermez/pil2-stark.git
 git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
-</div>
 
 The first step is to create a new project using the `cargo-zisk sdk new <name>` command. This command will create a new folder in your current directory.
 

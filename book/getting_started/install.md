@@ -1,6 +1,10 @@
 # Install
 
+
+
 ## Requirements
+⚠️ Currently, macOS is not supported for proof generation. A Linux x86_64 machine is required at this time. ⚠️
+
 * [Rust (Nightly)](https://www.rust-lang.org/tools/install)
 * [xz]()
 * [jq]()
@@ -32,18 +36,10 @@ nvm use 19
 
 ## Option 1: Prebuilt Binaries (Recommended)
 
-<div class="warning">
 
-this is temporary until we make the repositories publics, if you need an installation token, write to the Zisk team
 ```bash
-export ZISK_TOKEN=...
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
-```bash
-curl -H "Authorization: token ${ZISK_TOKEN}" \
-https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
-```
-</div>
-
 
 This will enable the ziskup command in your CLI. You need to restart your terminal to use it or run this command:
 
