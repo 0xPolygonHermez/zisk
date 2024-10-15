@@ -329,6 +329,11 @@ impl<'a, F: PrimeField> MainSM<F> {
             std::thread::spawn(move || {
                 drop(exe_traces);
             });
+
+            // self.mem_sm.unregister_predecessor(scope);
+            self.binary_sm.unregister_predecessor(scope);
+            // self.arith_sm.register_predecessor(scope);
+
         });
     }
 
