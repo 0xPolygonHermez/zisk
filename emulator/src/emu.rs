@@ -654,24 +654,6 @@ impl<'a> Emu<'a> {
         let mut emu_traces = Vec::new();
         let mut emu_segments = EmuStartingPoints::default();
 
-        emu_segments.points.push(EmuStartingPoint::new(
-            ZiskOperationType::Binary,
-            self.ctx.inst_ctx.pc,
-            self.ctx.inst_ctx.sp,
-            self.ctx.inst_ctx.c,
-            self.ctx.inst_ctx.step,
-        ));
-        emu_segments.num_points[ZiskOperationType::Binary as usize] += 1;
-
-        emu_segments.points.push(EmuStartingPoint::new(
-            ZiskOperationType::BinaryE,
-            self.ctx.inst_ctx.pc,
-            self.ctx.inst_ctx.sp,
-            self.ctx.inst_ctx.c,
-            self.ctx.inst_ctx.step,
-        ));
-        emu_segments.num_points[ZiskOperationType::BinaryE as usize] += 1;
-
         let mut segment_count = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
 
         while !self.ctx.inst_ctx.end {
@@ -854,15 +836,18 @@ impl<'a> Emu<'a> {
         segment_count[op_type] += 1;
         emu_segments.total_steps[op_type] += 1;
 
-        if segment_count[op_type] == par_options.segment_sizes[op_type] {
-            emu_segments.add(
-                instruction.op_type.clone(),
-                last_pc,
-                self.ctx.inst_ctx.sp,
-                last_c,
-                self.ctx.inst_ctx.step,
-            );
-            segment_count[op_type] = 0;
+        if par_options.segment_sizes[op_type] != 0 {
+            if segment_count[op_type] == 1 {
+                emu_segments.add(
+                    instruction.op_type.clone(),
+                    last_pc,
+                    self.ctx.inst_ctx.sp,
+                    last_c,
+                    self.ctx.inst_ctx.step,
+                );
+            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
+                segment_count[op_type] = 0;
+            }
         }
 
         // Increment step counter
@@ -910,17 +895,19 @@ impl<'a> Emu<'a> {
         segment_count[op_type] += 1;
         emu_segments.total_steps[op_type] += 1;
 
-        if segment_count[op_type] == par_options.segment_sizes[op_type] {
-            emu_segments.add(
-                instruction.op_type.clone(),
-                last_pc,
-                self.ctx.inst_ctx.sp,
-                last_c,
-                self.ctx.inst_ctx.step,
-            );
-            segment_count[op_type] = 0;
+        if par_options.segment_sizes[op_type] != 0 {
+            if segment_count[op_type] == 1 {
+                emu_segments.add(
+                    instruction.op_type.clone(),
+                    last_pc,
+                    self.ctx.inst_ctx.sp,
+                    last_c,
+                    self.ctx.inst_ctx.step,
+                );
+            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
+                segment_count[op_type] = 0;
+            }
         }
-
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
     }
