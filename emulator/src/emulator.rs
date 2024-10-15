@@ -1,5 +1,5 @@
 use crate::{
-    Emu, EmuOptions, EmuSlice, EmuStartingPoints, EmuTrace, ErrWrongArguments,
+    Emu, EmuOptions, EmuSlice, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments,
     ParEmuOptions, ZiskEmulatorErr,
 };
 use p3_field::{AbstractField, PrimeField};
@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRequired, ZiskRequiredOperation, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -190,6 +190,20 @@ impl ZiskEmulator {
         println!("process_slice() duration={:.4}", start.elapsed().as_secs_f64());
 
         Ok(emu_slice)
+    }
+
+    #[inline]
+    pub fn process_slice_by_op_type<F: PrimeField>(
+        rom: &ZiskRom,
+        vec_traces: &Vec<EmuTrace>,
+        op_type: ZiskOperationType,
+        emu_trace_start: &EmuTraceStart,
+        num_rows: usize,
+    ) -> Vec<ZiskRequiredOperation> {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+        // Run the emulation
+        emu.run_slice_by_op_type::<F>(vec_traces, op_type, emu_trace_start, num_rows)
     }
 
     #[inline]

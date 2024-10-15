@@ -9,9 +9,9 @@ use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    ZiskInst, ZiskOperationType, ZiskRequired, ZiskRequiredMemory, ZiskRom, OUTPUT_ADDR, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
-    ZISK_OPERATION_TYPE_VARIANTS,
+    ZiskInst, ZiskOperationType, ZiskRequired, ZiskRequiredMemory, ZiskRequiredOperation, ZiskRom,
+    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1053,6 +1053,56 @@ impl<'a> Emu<'a> {
         emu_slice
     }
 
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn run_slice_by_op_type<F: PrimeField>(
+        &mut self,
+        vec_traces: &Vec<EmuTrace>,
+        op_type: ZiskOperationType,
+        emu_trace_start: &EmuTraceStart,
+        num_rows: usize,
+    ) -> Vec<ZiskRequiredOperation> {
+        let mut result = Vec::new();
+
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace_start.pc;
+        self.ctx.inst_ctx.sp = emu_trace_start.sp;
+        self.ctx.inst_ctx.step = emu_trace_start.step;
+        self.ctx.inst_ctx.c = emu_trace_start.c;
+
+        let mut current_box_id = 0;
+        let mut current_step_idx = loop {
+            if current_box_id == vec_traces.len() - 1
+                || vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
+            {
+                break emu_trace_start.step as usize
+                    - vec_traces[current_box_id].start.step as usize;
+            }
+            current_box_id += 1;
+        };
+
+        let last_trace = vec_traces.last().unwrap();
+        let last_step = last_trace.start.step + last_trace.steps.len() as u64;
+        let mut current_step = emu_trace_start.step;
+
+        while current_step < last_step && result.len() < num_rows {
+            let step = &vec_traces[current_box_id].steps[current_step_idx as usize];
+
+            self.step_slice_by_op_type::<F>(step, &op_type, &mut result);
+
+            current_step_idx += 1;
+            if current_step_idx == vec_traces[current_box_id].steps.len() {
+                current_box_id += 1;
+                current_step_idx = 0;
+            }
+
+            current_step += 1;
+        }
+
+        // Return emulator slice
+        result
+    }
+
     pub fn run_slice_2<F: AbstractField>(&mut self, trace: &EmuTrace, emu_slice: &mut EmuSlice<F>) {
         // Set initial state
         self.ctx.inst_ctx.pc = trace.start.pc;
@@ -1324,6 +1374,54 @@ impl<'a> Emu<'a> {
         //     }
         //     _ => panic!("Emu::step_slice() found invalid op_type"),
         // }
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_slice_by_op_type<F: PrimeField>(
+        &mut self,
+        trace_step: &EmuTraceStep,
+        op_type: &ZiskOperationType,
+        required: &mut Vec<ZiskRequiredOperation>,
+    ) {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        // self.source_a_slice(instruction, trace_step.a, required);
+        self.ctx.inst_ctx.a = trace_step.a;
+        self.ctx.inst_ctx.b = trace_step.b;
+        // self.source_b_slice(instruction, trace_step.b, required);
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_slice_buff(instruction);
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        self.ctx.inst_ctx.step += 1;
+
+        // Build and store the operation required data
+        if op_type != &instruction.op_type {
+            return;
+        }
+        match instruction.op_type {
+            ZiskOperationType::Arith | ZiskOperationType::Binary | ZiskOperationType::BinaryE => {
+                let required_operation = ZiskRequiredOperation {
+                    step: self.ctx.inst_ctx.step,
+                    opcode: instruction.op,
+                    a: if instruction.m32 {
+                        self.ctx.inst_ctx.a & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.a
+                    },
+                    b: if instruction.m32 {
+                        self.ctx.inst_ctx.b & 0xffffffff
+                    } else {
+                        self.ctx.inst_ctx.b
+                    },
+                };
+                required.push(required_operation);
+            }
+            _ => panic!("Emu::step_slice() found invalid op_type"),
+        }
     }
 
     /// Performs one single step of the emulation
