@@ -1,0 +1,69 @@
+require "std_permutation.pil";
+require "std_lookup.pil";
+require "std_common.pil";
+
+public input1[10];
+
+airtemplate DirectUpdatePermutation(const int N = 2**4) {
+
+    const int OP_BUS_ID = 100;
+    const int OPID = 333;
+
+    col witness a[2],b[2],c[2];
+    col witness flag;
+    col witness perform_operation;
+    permutation_proves(OP_BUS_ID, [OPID, ...a, ...b, ...c, flag], sel: perform_operation);
+
+    for (int i = 0; i < length(input1)/2; i++) {
+        direct_update(OP_BUS_ID, [OPID, 0, 0, i, 0, input1[2*i], input1[2*i+1], 0], proves: 0, bus_type: PIOP_BUS_PROD);
+    }
+}
+
+public input2[20];
+
+airtemplate DirectUpdateLookup(const int N = 2**5) {
+
+    const int OP_BUS_ID = 200;
+    const int OPID = 444;
+
+    col witness a[2],b[2],c[2];
+    col witness flag;
+    col witness perform_operation;
+    lookup_assumes(OP_BUS_ID, [OPID, ...a, ...b, ...c, flag], sel: perform_operation);
+
+    for (int i = 0; i < length(input2)/2; i++) {
+        direct_update(OP_BUS_ID, [OPID, 0, 0, i, 0, input2[2*i], input2[2*i+1], 0])
+    }
+}
+
+airtemplate DirectUpdateExhaustive(const int N = 2**4) {
+
+    const int OPID = 19;
+    const int VALUE1 = 256;
+    const int VALUE2 = 111;
+    const int VALUE3 = 222;
+    const int SEL = 1;
+
+    col witness a;
+
+    permutation_assumes(OPID, [a]);
+
+    direct_update(OPID, [VALUE1], SEL, bus_type: PIOP_BUS_PROD);
+    direct_update(OPID, [VALUE2], 1-SEL, bus_type: PIOP_BUS_PROD);
+    direct_update(OPID, [VALUE3], SEL, bus_type: PIOP_BUS_PROD);
+    direct_update(OPID, [VALUE2], 1-SEL, bus_type: PIOP_BUS_PROD);
+}
+
+// TODO: Do an example with multiple elements in the direct_update
+
+airgroup Permutation {
+    DirectUpdatePermutation();
+}
+
+airgroup Lookup {
+    DirectUpdateLookup();
+}
+
+// airgroup TestAll {
+//     DirectUpdateExhaustive();
+// }
