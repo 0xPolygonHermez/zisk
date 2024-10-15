@@ -1,5 +1,6 @@
 use crate::{
-    Emu, EmuOptions, EmuSegment, EmuSegments, EmuSlice, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr
+    Emu, EmuOptions, EmuSlice, EmuStartingPoints, EmuTrace, ErrWrongArguments,
+    ParEmuOptions, ZiskEmulatorErr,
 };
 use p3_field::{AbstractField, PrimeField};
 use std::{
@@ -8,7 +9,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskOperationTypeVariants, ZiskRequired, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -162,8 +163,7 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> Result<(Vec<EmuTrace>, EmuSegments), ZiskEmulatorErr>
-    {
+    ) -> Result<(Vec<EmuTrace>, EmuStartingPoints), ZiskEmulatorErr> {
         // Create a emulator instance with this rom and inputs
         let mut emu = Emu::new(rom);
 

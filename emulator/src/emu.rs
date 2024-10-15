@@ -1,19 +1,18 @@
 use std::{mem, time::Instant};
 
 use crate::{
-    emu_segment, EmuContext, EmuFullTraceStep, EmuOptions, EmuSegment, EmuSegments, EmuSlice,
-    EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceStep, ParEmuExecutionType, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuStartingPoint, EmuStartingPoints,
+    EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceStep, ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    ZiskInst, ZiskOperationType, ZiskOperationTypeVariants, ZiskRequired, ZiskRequiredMemory,
-    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    ZiskInst, ZiskOperationType, ZiskRequired, ZiskRequiredMemory, ZiskRom, OUTPUT_ADDR, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    ZISK_OPERATION_TYPE_VARIANTS,
 };
-use zisk_pil::Main0Row;
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -125,13 +124,13 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp;
                 }
                 self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(addr, 8);
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: self.ctx.inst_ctx.a,
-                };
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: 8,
+                //     value: self.ctx.inst_ctx.a,
+                // };
                 // required.memory.push(required_memory);
             }
             SRC_IMM => {
@@ -194,13 +193,13 @@ impl<'a> Emu<'a> {
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.inst_ctx.sp;
                 }
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: b,
-                };
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: 8,
+                //     value: b,
+                // };
                 // required.memory.push(required_memory);
             }
             SRC_IMM => (),
@@ -210,13 +209,13 @@ impl<'a> Emu<'a> {
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.inst_ctx.sp;
                 }
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: instruction.ind_width,
-                    value: b,
-                };
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: instruction.ind_width,
+                //     value: b,
+                // };
                 // required.memory.push(required_memory);
             }
             _ => panic!(
@@ -237,13 +236,13 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp;
                 }
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: self.ctx.inst_ctx.b,
-                };
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: 8,
+                //     value: self.ctx.inst_ctx.b,
+                // };
                 // required.memory.push(required_memory);
             }
             SRC_IMM => {
@@ -256,13 +255,13 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp;
                 }
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
-                let required_memory = ZiskRequiredMemory {
-                    step: self.ctx.inst_ctx.step,
-                    is_write: false,
-                    address: addr,
-                    width: instruction.ind_width,
-                    value: self.ctx.inst_ctx.b,
-                };
+                // let required_memory = ZiskRequiredMemory {
+                //     step: self.ctx.inst_ctx.step,
+                //     is_write: false,
+                //     address: addr,
+                //     width: instruction.ind_width,
+                //     value: self.ctx.inst_ctx.b,
+                // };
                 // required.memory.push(required_memory);
             }
             _ => panic!(
@@ -642,7 +641,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<EmuTrace>, EmuSegments) {
+    ) -> (Vec<EmuTrace>, EmuStartingPoints) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -653,35 +652,32 @@ impl<'a> Emu<'a> {
         self.ctx.do_stats = options.stats;
 
         let mut emu_traces = Vec::new();
-        let mut emu_segments = EmuSegments::default();
+        let mut emu_segments = EmuStartingPoints::default();
 
-        emu_segments.segments.push(EmuSegment::new(
+        emu_segments.points.push(EmuStartingPoint::new(
             ZiskOperationType::Binary,
             self.ctx.inst_ctx.pc,
             self.ctx.inst_ctx.sp,
             self.ctx.inst_ctx.c,
             self.ctx.inst_ctx.step,
         ));
-        emu_segments.num_segments[ZiskOperationType::Binary as usize] += 1;
+        emu_segments.num_points[ZiskOperationType::Binary as usize] += 1;
 
-        emu_segments.segments.push(EmuSegment::new(
+        emu_segments.points.push(EmuStartingPoint::new(
             ZiskOperationType::BinaryE,
             self.ctx.inst_ctx.pc,
             self.ctx.inst_ctx.sp,
             self.ctx.inst_ctx.c,
             self.ctx.inst_ctx.step,
         ));
-        emu_segments.num_segments[ZiskOperationType::BinaryE as usize] += 1;
+        emu_segments.num_points[ZiskOperationType::BinaryE as usize] += 1;
 
-        let mut segment_count = [0u64; ZiskOperationTypeVariants];
+        let mut segment_count = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
 
         while !self.ctx.inst_ctx.end {
             let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
             let is_my_block =
                 block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
-
-            /*let is_my_block_required =
-            block_idx % par_options.num_threads as u64 == par_options.thread_id as u64 - 8u64;*/
 
             if !is_my_block {
                 self.par_step_2::<F>(options, par_options, &mut emu_segments, &mut segment_count);
@@ -820,8 +816,8 @@ impl<'a> Emu<'a> {
         options: &EmuOptions,
         par_options: &ParEmuOptions,
         emu_full_trace_vec: &mut EmuTrace,
-        emu_segments: &mut EmuSegments,
-        segment_count: &mut [u64; ZiskOperationTypeVariants],
+        emu_segments: &mut EmuStartingPoints,
+        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -880,8 +876,8 @@ impl<'a> Emu<'a> {
         &mut self,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-        emu_segments: &mut EmuSegments,
-        segment_count: &mut [u64; ZiskOperationTypeVariants],
+        emu_segments: &mut EmuStartingPoints,
+        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;

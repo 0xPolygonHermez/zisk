@@ -162,7 +162,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             }
         }
     }
-
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionTableSM<F> {

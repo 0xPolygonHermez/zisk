@@ -119,7 +119,8 @@ impl<F: PrimeField> BinarySM<F> {
 
     //     while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
     //         let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
-    //         let drained_inputs_basic = inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
+    //         let drained_inputs_basic =
+    // inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
 
     //         let binary_basic_sm_cloned = self.binary_basic_sm.clone();
 
@@ -135,8 +136,8 @@ impl<F: PrimeField> BinarySM<F> {
     //     let mut inputs_extension = self.inputs_extension.lock().unwrap();
     //     inputs_extension.extend(_inputs_extension);
 
-    //     while inputs_extension.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_extension.is_empty())
-    //     {
+    //     while inputs_extension.len() >= PROVE_CHUNK_SIZE || (drain &&
+    // !inputs_extension.is_empty())     {
     //         let num_drained_extension = std::cmp::min(PROVE_CHUNK_SIZE, inputs_extension.len());
     //         let drained_inputs_extension =
     //             inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
