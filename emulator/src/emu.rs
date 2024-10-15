@@ -577,9 +577,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some()
-                && (options.print_step.unwrap() != 0)
-                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some() &&
+                (options.print_step.unwrap() != 0) &&
+                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -759,9 +759,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end
-                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
-                    == self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end ||
+                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+                    self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -1047,7 +1047,7 @@ impl<'a> Emu<'a> {
         vec_traces: &Vec<EmuTrace>,
         op_type: ZiskOperationType,
         emu_trace_start: &EmuTraceStart,
-        num_rows: usize,
+        _num_rows: usize,
     ) -> Vec<ZiskRequiredOperation> {
         let mut result = Vec::new();
 
@@ -1057,22 +1057,19 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
 
-        let mut current_box_id = 0;
-        let mut current_step_idx = loop {
-            if current_box_id == vec_traces.len() - 1
-                || vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
-            {
-                break emu_trace_start.step as usize
-                    - vec_traces[current_box_id].start.step as usize;
-            }
-            current_box_id += 1;
-        };
+        let mut current_box_id =
+            (emu_trace_start.step as usize / vec_traces[0].steps.len()) as usize;
+        if current_box_id >= vec_traces.len() {
+            panic!(
+                "Emu::run_slice_by_op_type() current_box_id={} vec_traces.len()={}",
+                current_box_id,
+                vec_traces.len()
+            );
+        }
+        let mut current_step_idx =
+            (emu_trace_start.step as usize % vec_traces[0].steps.len()) as usize;
 
-        let last_trace = vec_traces.last().unwrap();
-        let last_step = last_trace.start.step + last_trace.steps.len() as u64;
-        let mut current_step = emu_trace_start.step;
-
-        while current_step < last_step && result.len() < num_rows {
+        while current_box_id < vec_traces.len() {
             let step = &vec_traces[current_box_id].steps[current_step_idx as usize];
 
             self.step_slice_by_op_type::<F>(step, &op_type, &mut result);
@@ -1082,8 +1079,6 @@ impl<'a> Emu<'a> {
                 current_box_id += 1;
                 current_step_idx = 0;
             }
-
-            current_step += 1;
         }
 
         // Return emulator slice
