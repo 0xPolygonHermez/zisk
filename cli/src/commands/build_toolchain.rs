@@ -30,7 +30,7 @@ impl BuildToolchainCmd {
                 Command::new("git")
                     .args([
                         "clone",
-                        &repo_url,
+                        repo_url,
                         "--depth=1",
                         "--single-branch",
                         "--branch=zisk",
