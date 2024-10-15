@@ -112,6 +112,15 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
+    pub fn process_slice_buff(&self, input: &Vec<u64>) {
+        // Create the trace vector
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        for (i, value) in input.iter().enumerate() {
+            multiplicity[i] += *value;
+        }
+    }
+
     //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
     #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(

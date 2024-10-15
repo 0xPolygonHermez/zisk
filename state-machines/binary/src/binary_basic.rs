@@ -512,6 +512,341 @@ impl<F: Field> BinaryBasicSM<F> {
         (trace, table_required)
     }
 
+    pub fn process_slice_buff(
+        required: &ZiskRequiredOperation,
+        multiplicity: &mut Vec<u64>,
+    ) -> Binary0Row<F> {
+        // Create an empty trace
+        let mut t: Binary0Row<F> = Default::default();
+
+        // Execute the opcode
+        let c: u64;
+        let flag: bool;
+        (c, flag) = ZiskOp::execute(required.opcode, required.a, required.b);
+        let _flag = flag;
+
+        // Calculate result_is_a
+        let result_is_a: u64 = if required.b == c { 0 } else { 1 };
+
+        // Decompose the opcode into mode32 & op
+        let mode32 = (required.opcode & 0x10) != 0;
+        t.mode32 = F::from_bool(mode32);
+        let m_op = required.opcode & 0xEF;
+        t.m_op = F::from_canonical_u8(m_op);
+
+        // Split a in bytes and store them in free_in_a
+        let a_bytes: [u8; 8] = required.a.to_le_bytes();
+        for (i, value) in a_bytes.iter().enumerate() {
+            t.free_in_a[i] = F::from_canonical_u8(*value);
+        }
+
+        // Split b in bytes and store them in free_in_b
+        let b_bytes: [u8; 8] = required.b.to_le_bytes();
+        for (i, value) in b_bytes.iter().enumerate() {
+            t.free_in_b[i] = F::from_canonical_u8(*value);
+        }
+
+        // Split c in bytes and store them in free_in_c
+        let c_bytes: [u8; 8] = c.to_le_bytes();
+        for (i, value) in c_bytes.iter().enumerate() {
+            t.free_in_c[i] = F::from_canonical_u8(*value);
+        }
+
+        // Set main SM step
+        t.main_step = F::from_canonical_u64(required.step);
+
+        // Set use last carry and carry[], based on operation
+        let mut cout: u64;
+        let mut cin: u64 = 0;
+        let plast: [u64; 8] =
+            if mode32 { [0, 0, 0, 1, 0, 0, 0, 0] } else { [0, 0, 0, 0, 0, 0, 0, 1] };
+        // Calculate the byte that sets the carry
+        let carry_byte = if mode32 { 3 } else { 7 };
+
+        match m_op {
+                0x02 /* ADD, ADD_W */ => {
+                    // Set use last carry to zero
+                    t.use_last_carry = F::zero();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
+                        debug_assert!((result & 0xff) == c_bytes[i] as u64);
+                        cout = result >> 8;
+                        cin = if i == carry_byte { 0 } else { cout };
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+                    }
+                }
+                0x03 /* SUB, SUB_W */ => {
+                    // Set use last carry to zero
+                    t.use_last_carry = F::zero();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
+                        debug_assert!((256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) == c_bytes[i] as u64);
+                        cin = if i == carry_byte { 0 } else { cout };
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin;
+
+                        // Set a and b bytes
+                        let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                        let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x04 | 0x05 /*LTU,LTU_W,LT,LT_W*/ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::one();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        match a_bytes[i].cmp(&b_bytes[i]) {
+                            CmpOrdering::Greater => {
+                                cout = 0;
+                            },
+                            CmpOrdering::Less => {
+                                cout = 1;
+                            },
+                            CmpOrdering::Equal => {
+                                cout = cin;
+                            },
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (m_op == 0x05) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin + 8*plast[i];
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                                if mode32 && (i >= 4) { EXT_32_OP } else { m_op },
+                                a_bytes[i] as u64,
+                                b_bytes[i] as u64,
+                                previous_cin,
+                                plast[i],
+                                if i == 7 { c_bytes[0] as u64 } else { 0 },
+                                flags,
+                                i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x06 | 0x07 /* LEU, LEU_W, LE, LE_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::one();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        cout = 0;
+                        if a_bytes[i] <= b_bytes[i] {
+                            cout = 1;
+                        }
+                        if (m_op == 0x07) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            cout = c;
+                        }
+                        cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cin + 8*plast[i];
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
+                            if i == 7 { c_bytes[0] as u64 } else { 0 },
+                            flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x08 /* EQ, EQ_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::one();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
+                            cout = 0;
+                            debug_assert!(plast[i] == c_bytes[i] as u64);
+                        } else {
+                            cout = 1;
+                            debug_assert!(0 == c_bytes[i] as u64);
+                        }
+                        if plast[i] == 1 {
+                            cout = 1 - cout;
+                        }
+                        cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 8*plast[i];
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
+                            if i == 7 { c_bytes[0] as u64 } else { 0 },
+                            flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x09 | 0x0a /* MINU, MINU_W, MIN, MIN_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::zero();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        cout = 0;
+                        if a_bytes[i] <= b_bytes[i] {
+                            cout = 1;
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (m_op == 0x0a) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        if i == 7 {
+                            cout = 0;
+                        }
+                        cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 2 + 4*result_is_a;
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x0b | 0x0c /* MAXU, MAXU_W, MAX, MAX_W */ => {
+                    // Set use last carry to one
+                    t.use_last_carry = F::zero();
+
+                    // Apply the logic to every byte
+                    for i in 0..8 {
+                        // Calculate carry
+                        let previous_cin = cin;
+                        cout = 0;
+                        if a_bytes[i] >= b_bytes[i] {
+                            cout = 1;
+                        }
+
+                        // If the chunk is signed, then the result is the sign of a
+                        if (m_op == 0x0c) && (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                        }
+                        if i == 7 {
+                            cout = 0;
+                        }
+                        cin = cout;
+                        t.carry[i] = F::from_canonical_u64(cin);
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = cout + 2 + 4*result_is_a;
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x20 /*AND*/ => {
+                    t.use_last_carry = F::zero();
+
+                    // No carry
+                    for i in 0..8 {
+                        t.carry[i] = F::zero();
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x21 /*OR*/ => {
+                    t.use_last_carry = F::zero();
+
+                    // No carry
+                    for i in 0..8 {
+                        t.carry[i] = F::zero();
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+
+                    }
+                }
+                0x22 /*XOR*/ => {
+                    t.use_last_carry = F::zero();
+
+                    // No carry
+                    for i in 0..8 {
+                        t.carry[i] = F::zero();
+
+                        //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                        let flags = 0;
+
+                        // Store the required in the vector
+                        let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
+                        multiplicity[row as usize] += 1;
+                    }
+                }
+                _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={} m_op={}", required.opcode, m_op),
+            }
+
+        if t.use_last_carry == F::one() {
+            // Set first and last elements
+            t.free_in_c[7] = t.free_in_c[0];
+            t.free_in_c[0] = F::zero();
+        }
+
+        // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
+        t.multiplicity = F::one();
+
+        t
+    }
+
     pub fn prove_instance(
         &self,
         operations: Vec<ZiskRequiredOperation>,
@@ -519,7 +854,14 @@ impl<F: Field> BinaryBasicSM<F> {
         offset: u64,
     ) {
         timer_start_info!(STEP1);
-        let (mut trace_row, mut table_required) = Self::process_slice(&operations);
+        let air_binary_table =
+            self.wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+        let mut multiplicity = vec![0u64; air_binary_table.num_rows() as usize];
+        let mut trace_row = Vec::with_capacity(operations.len());
+        for operation in &operations {
+            trace_row.push(Self::process_slice_buff(operation, &mut multiplicity));
+        }
+
         let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         timer_stop_and_log_info!(STEP1);
 
@@ -550,12 +892,8 @@ impl<F: Field> BinaryBasicSM<F> {
         }
 
         for last in 0..2 {
-            let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
-            table_required.push(ZiskRequiredBinaryBasicTable {
-                opcode: 0,
-                a: 0,
-                b: 0,
-                row: BinaryBasicTableSM::<F>::calculate_table_row(
+            let multiplicity_val = (7 - 6 * last as u64) * padding_size as u64;
+            let row = BinaryBasicTableSM::<F>::calculate_table_row(
                     0x20,
                     0,
                     0,
@@ -564,14 +902,13 @@ impl<F: Field> BinaryBasicSM<F> {
                     0,
                     0,
                     0,
-                ),
-                multiplicity,
-            });
+                );
+            multiplicity[row as usize] = multiplicity_val;
         }
         timer_stop_and_log_info!(STEP3);
 
         timer_start_info!(STEP4);
-        self.binary_basic_table_sm.process_slice(&table_required);
+        self.binary_basic_table_sm.process_slice_buff(&multiplicity);
         timer_stop_and_log_info!(STEP4);
 
         timer_start_info!(STEP5);
@@ -584,7 +921,7 @@ impl<F: Field> BinaryBasicSM<F> {
             .for_each(|(buffer_elem, main_elem)| {
                 *buffer_elem = *main_elem;
             });
-            timer_stop_and_log_info!(STEP5);
+        timer_stop_and_log_info!(STEP5);
     }
 }
 

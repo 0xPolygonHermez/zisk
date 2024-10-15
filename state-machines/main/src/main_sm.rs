@@ -305,7 +305,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                         self.prove_binary(&vec_traces, segment_id, iectx, &pctx);
                     }
                     ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx);
+                        // self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx);
                     }
                     _ => {}
                 }
