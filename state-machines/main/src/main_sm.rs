@@ -236,7 +236,6 @@ impl<'a, F: PrimeField> MainSM<F> {
             });
             timer_stop_and_log_info!(PAR_PROCESS_ROM);
 
-            timer_start_info!(FLAT_EXECUTION_TRACES);
             let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
             let mut vec_traces = Vec::with_capacity(num_boxes);
             for i in 0..num_boxes {
@@ -246,9 +245,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                 let exe_trace = std::mem::take(&mut exe_traces[x][y]);
                 vec_traces.push(exe_trace);
             }
-            timer_stop_and_log_info!(FLAT_EXECUTION_TRACES);
 
-            timer_start_info!(ALLOCATE_INSTANCES_EXTENSION_CTX);
             // For performance reasons we didn't collect main operation starting points because we
             // can generate them from the execution trace.
             let emu_starting_points = &mut *emu_starting_points.lock().unwrap();
@@ -263,7 +260,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                     vec_trace.start.step,
                 );
             }
-            println!("{:?}", emu_starting_points.total_steps);
+
             let starting_points = &mut emu_starting_points.points;
             starting_points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
@@ -298,9 +295,6 @@ impl<'a, F: PrimeField> MainSM<F> {
                     None,
                 ));
             }
-            timer_stop_and_log_info!(ALLOCATE_INSTANCES_EXTENSION_CTX);
-
-            timer_start_info!(PAR_EXPANSION);
 
             instances_ctx.par_iter_mut().enumerate().for_each(|(segment_id, iectx)| {
                 match iectx.op_type {
@@ -308,15 +302,14 @@ impl<'a, F: PrimeField> MainSM<F> {
                         self.prove_main(&vec_traces, segment_id, iectx, &pctx);
                     }
                     ZiskOperationType::Binary => {
-                        self.prove_binary(&vec_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary(&vec_traces, segment_id, iectx, &pctx);
                     }
                     ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx);
                     }
                     _ => {}
                 }
             });
-            timer_stop_and_log_info!(PAR_EXPANSION);
 
             timer_start_info!(ADD_INSTANCES_TO_THE_REPO);
             for iectx in instances_ctx {
@@ -333,7 +326,6 @@ impl<'a, F: PrimeField> MainSM<F> {
             // self.mem_sm.unregister_predecessor(scope);
             self.binary_sm.unregister_predecessor(scope);
             // self.arith_sm.register_predecessor(scope);
-
         });
     }
 
@@ -344,7 +336,6 @@ impl<'a, F: PrimeField> MainSM<F> {
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
-        timer_start_info!(PROVE_MAIN);
         let segment_trace = &vec_traces[segment_id];
         let offset = iectx.offset;
 
@@ -393,8 +384,6 @@ impl<'a, F: PrimeField> MainSM<F> {
                 .copy_from_slice(tmp_buffer);
         }
 
-        timer_start_info!(CREATE_INSTANCES);
-
         let filled = segment_trace.steps.len();
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
@@ -408,9 +397,6 @@ impl<'a, F: PrimeField> MainSM<F> {
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
             Some(AirInstance::new(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0], Some(segment_id), buffer));
-
-        timer_stop_and_log_info!(CREATE_INSTANCES);
-        timer_stop_and_log_info!(PROVE_MAIN);
     }
 
     fn prove_binary(
@@ -419,10 +405,10 @@ impl<'a, F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &Scope<'a>,
     ) {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
+        timer_start_info!(PROCESS_BINARY);
         let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
             &self.zisk_rom,
             vec_traces,
@@ -430,9 +416,17 @@ impl<'a, F: PrimeField> MainSM<F> {
             &iectx.emu_trace_start,
             air.num_rows(),
         );
-        println!("binary.len()={}", inputs.len());
+        timer_stop_and_log_info!(PROCESS_BINARY);
 
-        self.binary_sm.prove(&inputs, false, scope);
+        timer_start_info!(PROVE_BINARY);
+        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
+        timer_stop_and_log_info!(PROVE_BINARY);
+
+        timer_start_info!(CREATE_AIR_INSTANCE);
+        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        iectx.air_instance =
+            Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
+        timer_stop_and_log_info!(CREATE_AIR_INSTANCE);
     }
 
     fn prove_binary_extension(
@@ -441,9 +435,8 @@ impl<'a, F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &Scope<'a>,
     ) {
-        let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
         let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
             &self.zisk_rom,
@@ -452,9 +445,12 @@ impl<'a, F: PrimeField> MainSM<F> {
             &iectx.emu_trace_start,
             air.num_rows(),
         );
-        println!("binary extension.len()={}", inputs.len());
 
-        self.binary_sm.prove(&inputs, false, scope);
+        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
+
+        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        iectx.air_instance =
+            Some(AirInstance::new(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0], Some(segment_id), buffer));
     }
 
     // fn prove_inputs(&self, mut vec_required: Vec<Vec<ZiskRequired>>, scope: &Scope<'a>) {

@@ -1,3 +1,4 @@
+use core::time;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
@@ -7,6 +8,7 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::{prelude::*, Scope};
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
@@ -510,65 +512,79 @@ impl<F: Field> BinaryBasicSM<F> {
         (trace, table_required)
     }
 
-    pub fn prove_basic(&self, operations: &Vec<Vec<ZiskRequired>>, scope: &Scope) {
-        println!("prove_basic operations.len()={}", operations.len());
+    pub fn prove_instance(
+        &self,
+        operations: Vec<ZiskRequiredOperation>,
+        prover_buffer: &mut [F],
+        offset: u64,
+    ) {
+        timer_start_info!(STEP1);
+        let (mut trace_row, mut table_required) = Self::process_slice(&operations);
         let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+        timer_stop_and_log_info!(STEP1);
 
-        let mut splits = Vec::new();
-        splits.push((0, 0, 0));
+        timer_start_info!(STEP2);
+        info!(
+            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            operations.len(),
+            air.num_rows(),
+            operations.len() as f64 / air.num_rows() as f64 * 100.0
+        );
 
-        let mut x = 0;
-        let mut y = 0;
-        let mut count = 0;
+        let padding_size = air.num_rows() - trace_row.len();
 
-        let num_boxes = operations.iter().map(|x| x.len()).sum::<usize>();
-        println!("num_boxes: {}", num_boxes);
+        let padding_row = Binary0Row::<F> {
+            m_op: F::from_canonical_u8(0x20),
+            multiplicity: F::zero(),
+            main_step: F::zero(), /* TODO: remove, since main_step is just for
+                                   * debugging */
+            ..Default::default()
+        };
 
-        for _ in 0..num_boxes {
-            let last_count = count;
-            count += operations[x][y].binary.len();
+        timer_stop_and_log_info!(STEP2);
 
-            if count >= air.num_rows() {
-                let taken = air.num_rows() - last_count;
-
-                splits.push((x, y, taken));
-                count = operations[x][y].binary.len() - taken;
-            }
-
-            x = (x + 1) % operations.len();
-            if x == 0 {
-                y += 1;
-            }
+        timer_start_info!(STEP3);
+        for _i in trace_row.len()..air.num_rows() {
+            trace_row.push(padding_row);
         }
-        //note: this algorihtm assumes righ now that air.num_rows() > block_size!!! (assert needed)
-        (0..splits.len()).into_par_iter().for_each(|i| {
-            let (x0, y0, row0) = splits[i];
-            let mut slice = Vec::new();
-            let is_last_instance = i == splits.len() - 1;
-            slice.extend_from_slice(&operations[x][y].binary[row0..]);
-            if !is_last_instance {
-                let (x1, y1, row1) = splits[i + 1];
-                let mut x = (x0 + 1) % operations.len();
-                let mut y = if x == 0 { y0 + 1 } else { y0 };
-                loop {
-                    if x == x1 && y == y1 {
-                        slice.extend_from_slice(&operations[x][y].binary[0..row1]);
-                        break;
-                    } else {
-                        slice.extend_from_slice(&operations[x][y].binary);
-                    }
-                    x = (x + 1) % operations.len();
-                    if x == 0 {
-                        y += 1;
-                    }
-                }
-            }
-            if is_last_instance {
-                //check if padding is necessary
-            }
-        });
 
-        println!("num_boxes: {}", num_boxes);
+        for last in 0..2 {
+            let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
+            table_required.push(ZiskRequiredBinaryBasicTable {
+                opcode: 0,
+                a: 0,
+                b: 0,
+                row: BinaryBasicTableSM::<F>::calculate_table_row(
+                    0x20,
+                    0,
+                    0,
+                    0,
+                    last as u64,
+                    0,
+                    0,
+                    0,
+                ),
+                multiplicity,
+            });
+        }
+        timer_stop_and_log_info!(STEP3);
+
+        timer_start_info!(STEP4);
+        self.binary_basic_table_sm.process_slice(&table_required);
+        timer_stop_and_log_info!(STEP4);
+
+        timer_start_info!(STEP5);
+        // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values
+        // into the prover buffer
+        let trace_buffer = Binary0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
+        prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
+            .par_iter_mut()
+            .zip(trace_buffer.par_iter())
+            .for_each(|(buffer_elem, main_elem)| {
+                *buffer_elem = *main_elem;
+            });
+            timer_stop_and_log_info!(STEP5);
     }
 }
 

@@ -102,7 +102,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
     }
 
-    pub fn process_slice(&self, input: &Vec<ZiskRequiredBinaryBasicTable>) {
+    pub fn process_slice(&self, input: &[ZiskRequiredBinaryBasicTable]) {
         // Create the trace vector
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
@@ -180,42 +180,11 @@ impl<F: Field> BinaryBasicTableSM<F> {
             _ => panic!("BinaryBasicTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
     }
-
-    pub fn par_prove(&self, operations: &[ZiskRequiredBinaryBasicTable], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(self.num_rows, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.process_slice(&drained_inputs);
-            }
-        }
-    }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredBinaryBasicTable,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredBinaryBasicTable], drain: bool, _scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
@@ -227,17 +196,5 @@ impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicT
                 self.process_slice(&drained_inputs);
             }
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredBinaryBasicTable,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-        result
     }
 }

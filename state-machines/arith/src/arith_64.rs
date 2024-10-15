@@ -45,17 +45,6 @@ impl Arith64SM {
     pub fn operations() -> Vec<u8> {
         vec![0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb8, 0xb9, 0xba, 0xbb]
     }
-
-    pub fn par_prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-            }
-        }
-    }
 }
 
 impl<F> WitnessComponent<F> for Arith64SM {

@@ -1040,14 +1040,59 @@ impl<'a> Emu<'a> {
         emu_slice
     }
 
-    /// Run a slice of the program to generate full traces
+    // /// Run a slice of the program to generate full traces
+    // #[inline(always)]
+    // pub fn run_slice_by_op_type<F: PrimeField>(
+    //     &mut self,
+    //     vec_traces: &Vec<EmuTrace>,
+    //     op_type: ZiskOperationType,
+    //     emu_trace_start: &EmuTraceStart,
+    //     _num_rows: usize,
+    // ) -> Vec<ZiskRequiredOperation> {
+    //     let mut result = Vec::new();
+
+    //     // Set initial state
+    //     self.ctx.inst_ctx.pc = emu_trace_start.pc;
+    //     self.ctx.inst_ctx.sp = emu_trace_start.sp;
+    //     self.ctx.inst_ctx.step = emu_trace_start.step;
+    //     self.ctx.inst_ctx.c = emu_trace_start.c;
+
+    //     let mut current_box_id =
+    //         (emu_trace_start.step as usize / vec_traces[0].steps.len()) as usize;
+    //     if current_box_id >= vec_traces.len() {
+    //         panic!(
+    //             "Emu::run_slice_by_op_type() current_box_id={} vec_traces.len()={}",
+    //             current_box_id,
+    //             vec_traces.len()
+    //         );
+    //     }
+    //     let mut current_step_idx =
+    //         (emu_trace_start.step as usize % vec_traces[0].steps.len()) as usize;
+
+    //     while current_box_id < vec_traces.len() {
+    //         let step = &vec_traces[current_box_id].steps[current_step_idx as usize];
+
+    //         self.step_slice_by_op_type::<F>(step, &op_type, &mut result);
+
+    //         current_step_idx += 1;
+    //         if current_step_idx == vec_traces[current_box_id].steps.len() {
+    //             current_box_id += 1;
+    //             current_step_idx = 0;
+    //         }
+    //     }
+
+    //     // Return emulator slice
+    //     result
+    // }
+
+        /// Run a slice of the program to generate full traces
     #[inline(always)]
     pub fn run_slice_by_op_type<F: PrimeField>(
         &mut self,
         vec_traces: &Vec<EmuTrace>,
         op_type: ZiskOperationType,
         emu_trace_start: &EmuTraceStart,
-        _num_rows: usize,
+        num_rows: usize,
     ) -> Vec<ZiskRequiredOperation> {
         let mut result = Vec::new();
 
@@ -1057,19 +1102,22 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
 
-        let mut current_box_id =
-            (emu_trace_start.step as usize / vec_traces[0].steps.len()) as usize;
-        if current_box_id >= vec_traces.len() {
-            panic!(
-                "Emu::run_slice_by_op_type() current_box_id={} vec_traces.len()={}",
-                current_box_id,
-                vec_traces.len()
-            );
-        }
-        let mut current_step_idx =
-            (emu_trace_start.step as usize % vec_traces[0].steps.len()) as usize;
+        let mut current_box_id = 0;
+        let mut current_step_idx = loop {
+            if current_box_id == vec_traces.len() - 1
+                || vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
+            {
+                break emu_trace_start.step as usize
+                    - vec_traces[current_box_id].start.step as usize;
+            }
+            current_box_id += 1;
+        };
 
-        while current_box_id < vec_traces.len() {
+        let last_trace = vec_traces.last().unwrap();
+        let last_step = last_trace.start.step + last_trace.steps.len() as u64;
+        let mut current_step = emu_trace_start.step;
+
+        while current_step < last_step && result.len() < num_rows {
             let step = &vec_traces[current_box_id].steps[current_step_idx as usize];
 
             self.step_slice_by_op_type::<F>(step, &op_type, &mut result);
@@ -1079,12 +1127,14 @@ impl<'a> Emu<'a> {
                 current_box_id += 1;
                 current_step_idx = 0;
             }
+
+            current_step += 1;
         }
 
         // Return emulator slice
         result
     }
-
+    
     pub fn run_slice_2<F: AbstractField>(&mut self, trace: &EmuTrace, emu_slice: &mut EmuSlice<F>) {
         // Set initial state
         self.ctx.inst_ctx.pc = trace.start.pc;
@@ -1183,7 +1233,7 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.inst_ctx.end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
+            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
         };
         full_trace.push(full_trace_step);
 
@@ -1311,7 +1361,7 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.inst_ctx.end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
+            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
         };
 
         self.ctx.inst_ctx.step += 1;
@@ -1387,7 +1437,7 @@ impl<'a> Emu<'a> {
         match instruction.op_type {
             ZiskOperationType::Arith | ZiskOperationType::Binary | ZiskOperationType::BinaryE => {
                 let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step,
+                    step: self.ctx.inst_ctx.step - 1,
                     opcode: instruction.op,
                     a: if instruction.m32 {
                         self.ctx.inst_ctx.a & 0xffffffff
@@ -1478,7 +1528,7 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary),
+            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
         }
     }
 

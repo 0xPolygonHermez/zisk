@@ -105,7 +105,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         vec![0x0d, 0x0e, 0x0f, 0x24, 0x25, 0x26]
     }
 
-    pub fn process_slice(&self, input: &Vec<ZiskRequiredBinaryExtensionTable>) {
+    pub fn process_slice(&self, input: &[ZiskRequiredBinaryExtensionTable]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for i in input {
@@ -147,19 +147,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             0x24 => 6 * P2_19 + P2_11,
             0x25 => 6 * P2_19 + 2 * P2_11,
             _ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={}", opcode),
-        }
-    }
-
-    pub fn par_prove(&self, operations: &[ZiskRequiredBinaryExtensionTable], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(self.num_rows, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.process_slice(&drained_inputs);
-            }
         }
     }
 }

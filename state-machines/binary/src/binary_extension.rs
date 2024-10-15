@@ -133,12 +133,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
             // Set if the opcode is a shift operation
-            let op_is_shift = (op == 0x0d) ||
-                (op == 0x0e) ||
-                (op == 0x0f) ||
-                (op == 0x1d) ||
-                (op == 0x1e) ||
-                (op == 0x1f);
+            let op_is_shift = (op == 0x0d)
+                || (op == 0x0e)
+                || (op == 0x0f)
+                || (op == 0x1d)
+                || (op == 0x1e)
+                || (op == 0x1f);
             t.op_is_shift = F::from_bool(op_is_shift);
 
             // Set if the opcode is a shift word operation
@@ -350,113 +350,68 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         (trace, table_required, range_check)
     }
 
-    pub fn par_prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
+    pub fn prove_instance(
+        &self,
+        operations: Vec<ZiskRequiredOperation>,
+        prover_buffer: &mut [F],
+        offset: u64,
+    ) {
+        let std_cloned = self.std.clone();
 
-            let air = self
-                .wcm
-                .get_pctx()
-                .pilout
-                .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let (mut trace_row, mut table_required, range_check) = Self::process_slice(&operations);
 
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+        let air = self
+            .wcm
+            .get_pctx()
+            .pilout
+            .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
-                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
-                let wcm = self.wcm.clone();
+        info!(
+            "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            operations.len(),
+            air.num_rows(),
+            operations.len() as f64 / air.num_rows() as f64 * 100.0
+        );
 
-                self.threads_controller.add_working_thread();
-                let thread_controller = self.threads_controller.clone();
+        let padding_size = air.num_rows() - trace_row.len();
 
-                let std_cloned = self.std.clone();
+        let padding_row =
+            BinaryExtension0Row::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
-                let (mut trace_row, mut table_required, range_check) =
-                    Self::process_slice(&drained_inputs);
-
-                let air = wcm
-                    .get_pctx()
-                    .pilout
-                    .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-
-                info!(
-                    "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
-                    Self::MY_NAME,
-                    drained_inputs.len(),
-                    air.num_rows(),
-                    drained_inputs.len() as f64 / air.num_rows() as f64 * 100.0
-                );
-
-                let trace_row_len = trace_row.len();
-
-                if drain && (air.num_rows() > trace_row_len) {
-                    let padding_size = air.num_rows() - trace_row_len;
-
-                    let padding_row = BinaryExtension0Row::<F> {
-                        op: F::from_canonical_u64(0x25),
-                        ..Default::default()
-                    };
-
-                    trace_row.resize(air.num_rows(), unsafe { std::mem::zeroed() });
-                    trace_row[trace_row_len..air.num_rows()]
-                        .par_iter_mut()
-                        .for_each(|input| *input = padding_row);
-
-                    for i in 0..8 {
-                        table_required.push(ZiskRequiredBinaryExtensionTable {
-                            opcode: 0,
-                            a: 0,
-                            b: 0,
-                            offset: i,
-                            row: BinaryExtensionTableSM::<F>::calculate_table_row(0x25, i, 0, 0),
-                            multiplicity: padding_size as u64,
-                        });
-                    }
-                }
-
-                binary_extension_table_sm.par_prove(&table_required, false);
-
-                for rc in range_check {
-                    std_cloned.range_check(
-                        F::from_canonical_u64(rc.rc),
-                        BigInt::from(0),
-                        BigInt::from(0xFFFFFF),
-                    );
-                }
-
-                // Create the prover buffer
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    wcm.get_ectx(),
-                    wcm.get_sctx(),
-                    BINARY_EXTENSION_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                );
-
-                let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
-                    .unwrap()
-                    .buffer
-                    .unwrap();
-
-                prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
-                    .par_iter_mut()
-                    .zip(trace_buffer.par_iter())
-                    .for_each(|(buffer_elem, main_elem)| {
-                        *buffer_elem = *main_elem;
-                    });
-
-                let air_instance = AirInstance::new(
-                    BINARY_EXTENSION_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                    None,
-                    prover_buffer,
-                );
-
-                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
-
-                thread_controller.remove_working_thread();
-            }
+        for _ in trace_row.len()..air.num_rows() {
+            trace_row.push(padding_row);
         }
+
+        for i in 0..8 {
+            table_required.push(ZiskRequiredBinaryExtensionTable {
+                opcode: 0,
+                a: 0,
+                b: 0,
+                offset: i,
+                row: BinaryExtensionTableSM::<F>::calculate_table_row(0x25, i, 0, 0),
+                multiplicity: padding_size as u64,
+            });
+        }
+
+        self.binary_extension_table_sm.process_slice(&table_required);
+
+        for rc in range_check {
+            std_cloned.range_check(
+                F::from_canonical_u64(rc.rc),
+                BigInt::from(0),
+                BigInt::from(0xFFFFFF),
+            );
+        }
+
+        let trace_buffer =
+            BinaryExtension0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
+        prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
+            .par_iter_mut()
+            .zip(trace_buffer.par_iter())
+            .for_each(|(buffer_elem, main_elem)| {
+                *buffer_elem = *main_elem;
+            });
     }
 }
 

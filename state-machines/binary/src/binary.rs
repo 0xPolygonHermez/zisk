@@ -153,39 +153,21 @@ impl<F: PrimeField> BinarySM<F> {
     //     drop(inputs_extension);
     // }
 
-    pub fn prove_basic(&self, operations: &Vec<Vec<ZiskRequired>>, scope: &Scope) {
-        self.binary_basic_sm.prove_basic(operations, scope);
-    }
+    // pub fn prove_basic(&self, operations: &Vec<Vec<ZiskRequired>>, scope: &Scope) {
+    //     self.binary_basic_sm.prove_basic(operations, scope);
+    // }
 
-    pub fn prove_xxx(
+    pub fn prove_instance(
         &self,
         operations: Vec<ZiskRequiredOperation>,
         is_extension: bool,
-        drain: bool,
-        scope: &Scope,
+        prover_buffer: &mut [F],
+        offset: u64,
     ) {
-        let mut inputs = if !is_extension {
-            self.inputs_basic.lock().unwrap()
+        if !is_extension {
+            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset);
         } else {
-            self.inputs_extension.lock().unwrap()
-        };
-        inputs.extend(operations);
-
-        while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-            let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-            let drained_inputs_basic = inputs.drain(..num_drained_basic).collect::<Vec<_>>();
-
-            if !is_extension {
-                let binary_basic_sm_cloned = self.binary_basic_sm.clone();
-                scope.spawn(move |scope| {
-                    binary_basic_sm_cloned.prove(&drained_inputs_basic, false, scope);
-                });
-            } else {
-                let binary_extension_sm_cloned = self.binary_extension_sm.clone();
-                scope.spawn(move |scope| {
-                    binary_extension_sm_cloned.prove(&drained_inputs_basic, false, scope);
-                });
-            }
+            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset);
         }
     }
 }

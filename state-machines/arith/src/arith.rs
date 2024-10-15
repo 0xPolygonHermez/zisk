@@ -72,67 +72,6 @@ impl ArithSM {
             self.arith32_sm.unregister_predecessor::<F>(scope);
         }
     }
-
-    pub fn par_prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        let mut _inputs32 = Vec::new();
-        let mut _inputs64 = Vec::new();
-
-        let operations32 = Arith32SM::operations();
-        let operations64 = Arith64SM::operations();
-
-        // TODO Split the operations into 32 and 64 bit operations in parallel
-        for operation in operations {
-            if operations32.contains(&operation.opcode) {
-                _inputs32.push(operation.clone());
-            } else if operations64.contains(&operation.opcode) {
-                _inputs64.push(operation.clone());
-            } else {
-                panic!("ArithSM: Operator {:x} not found", operation.opcode);
-            }
-        }
-
-        // TODO When drain is true, drain remaining inputs to the 3264 bits state machine
-
-        let mut inputs32 = self.inputs32.lock().unwrap();
-        inputs32.extend(_inputs32);
-
-        while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
-            if drain && !inputs32.is_empty() {
-                // println!("ArithSM: Draining inputs32");
-            }
-
-            let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
-            let drained_inputs32 = inputs32.drain(..num_drained32).collect::<Vec<_>>();
-            let arith32_sm_cloned = self.arith32_sm.clone();
-
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            arith32_sm_cloned.par_prove(&drained_inputs32, drain);
-        }
-        drop(inputs32);
-
-        let mut inputs64 = self.inputs64.lock().unwrap();
-        inputs64.extend(_inputs64);
-
-        while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
-            if drain && !inputs64.is_empty() {
-                // println!("ArithSM: Draining inputs64");
-            }
-
-            let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
-            let drained_inputs64 = inputs64.drain(..num_drained64).collect::<Vec<_>>();
-            let arith64_sm_cloned = self.arith64_sm.clone();
-
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            arith64_sm_cloned.par_prove(&drained_inputs64, drain);
-
-            thread_controller.remove_working_thread();
-        }
-        drop(inputs64);
-    }
 }
 
 impl<F> WitnessComponent<F> for ArithSM {
