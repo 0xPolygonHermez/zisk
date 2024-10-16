@@ -72,8 +72,8 @@ airtemplate ArithTable(int N = 2**6) {
             for (int icase = 0; icase < cases; ++icase) {
                 int na = 0;     // a is negative
                 int nb = 0;     // b is negative
-                int nr = 0;     // rem is negative
                 int np = 0;     // prod is negative
+                int nr = 0;     // rem is negative
                 int na32 = 0;   // a is 32-bit negative, 31th bit is 1.
                 int nd32 = 0;   // d is 32-bit negative, 31th bit is 1.
                 switch (icase) {
@@ -146,7 +146,7 @@ airtemplate ArithTable(int N = 2**6) {
                 int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
 
                 OP[index] = opcode;
-                FLAGS_AND_RANGES[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * nr + 32 * np + 64 * na32 + 128 * nd32 +
+                FLAGS_AND_RANGES[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * na32 + 128 * nd32 +
                                           2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 +
                                           2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3;
 
@@ -170,11 +170,11 @@ airtemplate ArithTable(int N = 2**6) {
 }
 
 function arith_table_assumes( const expr op, const expr m32, const expr div, const expr na, const expr nb,
-                              const expr nr, const expr np, const expr na32, const expr nd32,
+                              const expr np, const expr nr, const expr na32, const expr nd32,
                               const expr range_a1, const expr range_b1, const expr range_c1, const expr range_d1,
                               const expr range_a3, const expr range_b3, const expr range_c3, const expr range_d3) {
     // TODO: define rule for empty rows
-    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * nr + 32 * np + 64 * na32 + 128 * nd32 +
+    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * na32 + 128 * nd32 +
                                                2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 +
                                                2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3]);
 }

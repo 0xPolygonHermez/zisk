@@ -22,21 +22,29 @@ pub struct ArithFullSM<F> {
     registered_predecessors: AtomicU32,
 
     // Thread controller to manage the execution of the state machines
-    // threads_controller: Arc<ThreadController>,
+    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
-
-    _phantom: std::marker::PhantomData<F>,
+    arith_table_sm: Arc<ArithTableSM<F>>,
+    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
 }
 
 impl<F: Field> ArithFullSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    const MY_NAME: &'static str = "Arith   ";
+    pub fn new(
+        wcm: Arc<WitnessManager<F>>,
+        arith_table_sm: Arc<ArithTableSM<F>>,
+        arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
         let arith_full_sm = Self {
             registered_predecessors: AtomicU32::new(0),
+            threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
-            _phantom: std::marker::PhantomData,
-            //threads_controller: Arc::new(ThreadController::new()),
+            arith_table_sm,
+            arith_range_table_sm,
         };
         let arith_full_sm = Arc::new(arith_full_sm);
 
@@ -57,6 +65,10 @@ impl<F: Field> ArithFullSM<F> {
                 true,
                 scope,
             );
+            self.threads_controller.wait_for_threads();
+
+            self.arith_table_sm.unregister_predecessor(scope);
+            self.arith_range_table_sm.unregister_predecessor(scope);
         }
     }
     pub fn process_slice(
@@ -84,14 +96,6 @@ impl<F: Field> WitnessComponent<F> for ArithFullSM<F> {
 }
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
@@ -120,16 +124,5 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
                 });
             }
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        self.prove(&[operation], drain, scope);
-        result
     }
 }

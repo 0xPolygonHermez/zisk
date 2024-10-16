@@ -10,6 +10,7 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{ARITH3264_AIR_IDS, ARITH_AIRGROUP_ID};
+
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct ArithMul32SM<F> {

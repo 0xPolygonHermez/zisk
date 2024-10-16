@@ -1,6 +1,7 @@
 mod arith;
 mod arith_32;
 mod arith_full;
+mod arith_helpers;
 mod arith_mul_32;
 mod arith_mul_64;
 mod arith_range_table;

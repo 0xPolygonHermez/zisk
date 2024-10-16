@@ -249,7 +249,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     range_d3 * (1 - range_d3) * (2 - range_d3) === 0;
 
 
-    arith_table_assumes(op, m32, div, na, nb, nr, np, na32, nd32, range_a1, range_b1, range_c1, range_d1, range_a3, range_b3, range_c3, range_d3);
+    arith_table_assumes(op, m32, div, na, nb, np, nr, na32, nd32, range_a1, range_b1, range_c1, range_d1, range_a3, range_b3, range_c3, range_d3);
 
     arith_range_table_assumes(range_a1, a[1]);
     arith_range_table_assumes(range_b1, b[1]);

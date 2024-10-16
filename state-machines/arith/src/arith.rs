@@ -38,27 +38,33 @@ pub struct ArithSM<F> {
     // arith_mul_32_sm: Arc<ArithMul32SM<F>>,
     // arith_mul_64_sm: Arc<ArithMul64SM<F>>,
     arith_full_sm: Arc<ArithFullSM<F>>,
-    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
+    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
 }
 
 impl<F: Field> ArithSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let arith_table_sm =
+            ArithTableSM::new(wcm.clone(), ARITH_TABLE_AIRGROUP_ID, ARITH_TABLE_AIR_IDS);
+        let arith_range_table_sm = ArithRangeTableSM::new(
+            wcm.clone(),
+            ARITH_RANGE_TABLE_AIRGROUP_ID,
+            ARITH_RANGE_TABLE_AIR_IDS,
+        );
+
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
-            arith_full_sm: ArithFullSM::new(wcm.clone(), ARITH_AIRGROUP_ID, ARITH_AIR_IDS),
-            arith_range_table_sm: ArithRangeTableSM::new(
+            arith_full_sm: ArithFullSM::new(
                 wcm.clone(),
-                ARITH_RANGE_TABLE_AIRGROUP_ID,
-                ARITH_RANGE_TABLE_AIR_IDS,
+                arith_table_sm.clone(),
+                arith_range_table_sm.clone(),
+                ARITH_AIRGROUP_ID,
+                ARITH_AIR_IDS,
             ),
-            arith_table_sm: ArithTableSM::new(
-                wcm.clone(),
-                ARITH_TABLE_AIRGROUP_ID,
-                ARITH_TABLE_AIR_IDS,
-            ),
+            arith_table_sm,
+            arith_range_table_sm,
         };
         let arith_sm = Arc::new(arith_sm);
 
