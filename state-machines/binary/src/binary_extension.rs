@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use crate::BinaryExtensionTableSM;
@@ -354,7 +357,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     pub fn process_slice_buff(
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
-        range_check: &mut Vec<ZiskRequiredRangeCheck>,
+        range_check: &mut HashMap<u64, u64>,
     ) -> BinaryExtension0Row<F> {
         // Get the opcode
         let op = operation.opcode;
@@ -559,8 +562,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         // Store the range check
         if op_is_shift {
-            let rc = ZiskRequiredRangeCheck { rc: in2_0 };
-            range_check.push(rc);
+            *range_check.entry(in2_0).or_insert(0) += 1;
         }
 
         // Return successfully
@@ -572,6 +574,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
+        scope: &Scope,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let air = self
@@ -595,10 +598,10 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         );
 
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
+        let mut range_check: HashMap<u64, u64> = HashMap::new();
         let mut trace_buffer =
             BinaryExtension0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
-        let mut range_check = Vec::new();
 
         for (i, operation) in operations.iter().enumerate() {
             let row =
@@ -627,13 +630,21 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         self.binary_extension_table_sm.process_slice_buff(&multiplicity_table);
         timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
-        for rc in range_check {
+        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+        timer_start_debug!(BINARY_EXTENSION_RANGE);
+        for (value, multiplicity) in &range_check {
             self.std.range_check(
-                F::from_canonical_u64(rc.rc),
-                BigInt::from(0),
-                BigInt::from(0xFFFFFF),
+                F::from_canonical_u64(*value),
+                F::from_canonical_u64(*multiplicity),
+                range_id,
             );
         }
+        timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
+
+        scope.spawn(|_| {
+            drop(multiplicity_table);
+            drop(range_check);
+        });
     }
 }
 
@@ -710,12 +721,10 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                     binary_extension_table_sm.prove(&table_required, false, scope);
 
+                    let range_id =
+                        std_cloned.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
                     for rc in range_check {
-                        std_cloned.range_check(
-                            F::from_canonical_u64(rc.rc),
-                            BigInt::from(0),
-                            BigInt::from(0xFFFFFF),
-                        );
+                        std_cloned.range_check(F::from_canonical_u64(rc.rc), F::one(), range_id);
                     }
 
                     // Create the prover buffer
@@ -726,7 +735,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         BINARY_EXTENSION_AIR_IDS[0],
                     );
 
-                    let trace_buffer = BinaryExtension0Trace::<F>::map_row_vec(trace_row, true)
+                    let trace_buffer = BinaryExtension0Trace::<F>::from_row_vec(trace_row)
                         .unwrap()
                         .buffer
                         .unwrap();

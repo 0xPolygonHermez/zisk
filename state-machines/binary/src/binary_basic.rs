@@ -843,6 +843,7 @@ impl<F: Field> BinaryBasicSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
+        scope: &Scope,
     ) {
         timer_start_trace!(BINARY_TRACE);
         let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
@@ -893,6 +894,10 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_start_trace!(BINARY_TABLE);
         self.binary_basic_table_sm.process_slice_buff(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
+
+        scope.spawn(|_| {
+            drop(multiplicity_table);
+        });
     }
 }
 
@@ -979,7 +984,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values
                     // into the prover buffer
                     let trace_buffer =
-                        Binary0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
+                        Binary0Trace::<F>::from_row_vec(trace_row).unwrap().buffer.unwrap();
                     prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
                         .par_iter_mut()
                         .zip(trace_buffer.par_iter())

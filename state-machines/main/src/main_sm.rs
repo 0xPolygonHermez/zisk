@@ -300,10 +300,10 @@ impl<F: PrimeField> MainSM<F> {
                         self.prove_main(&vec_traces, segment_id, iectx, &pctx);
                     }
                     ZiskOperationType::Binary => {
-                        self.prove_binary(&vec_traces, segment_id, iectx, &pctx);
+                        self.prove_binary(&vec_traces, segment_id, iectx, &pctx, scope);
                     }
                     ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx);
+                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx, scope);
                     }
                     _ => {}
                 }
@@ -335,7 +335,18 @@ impl<F: PrimeField> MainSM<F> {
         pctx: &ProofCtx<F>,
     ) {
         let segment_trace = &vec_traces[segment_id];
+
         let offset = iectx.offset;
+        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+        let filled = segment_trace.steps.len();
+        info!(
+            "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            segment_id,
+            filled,
+            air.num_rows(),
+            filled as f64 / air.num_rows() as f64 * 100.0
+        );
 
         let mut emu: Emu<'_> = Emu::new(&self.zisk_rom);
         emu.ctx.inst_ctx.pc = segment_trace.start.pc;
@@ -352,7 +363,6 @@ impl<F: PrimeField> MainSM<F> {
         let main_segment = F::from_canonical_usize(segment_id);
 
         let mut last_row = Main0Row::<F>::default();
-        let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
             // process the steps of the chunk
             let start_pos_abs = std::cmp::min(chunk_start, total_steps);
@@ -382,16 +392,6 @@ impl<F: PrimeField> MainSM<F> {
                 .copy_from_slice(tmp_buffer);
         }
 
-        let filled = segment_trace.steps.len();
-        info!(
-            "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            segment_id,
-            filled,
-            air.num_rows(),
-            filled as f64 / air.num_rows() as f64 * 100.0
-        );
-
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
             Some(AirInstance::new(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0], Some(segment_id), buffer));
@@ -403,6 +403,7 @@ impl<F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
+        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
@@ -417,7 +418,7 @@ impl<F: PrimeField> MainSM<F> {
         timer_stop_and_log_debug!(PROCESS_BINARY);
 
         timer_start_debug!(PROVE_BINARY);
-        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
+        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset, scope);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
@@ -433,6 +434,7 @@ impl<F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
+        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
@@ -444,7 +446,7 @@ impl<F: PrimeField> MainSM<F> {
             air.num_rows(),
         );
 
-        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
+        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset, scope);
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
