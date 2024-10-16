@@ -34,6 +34,11 @@ nvm install 19
 nvm use 19
 ```
 
+#### Circom
+```bash
+https://docs.circom.io/getting-started/installation/
+```
+
 ## Option 1: Prebuilt Binaries (Recommended)
 
 
