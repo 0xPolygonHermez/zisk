@@ -254,8 +254,6 @@ private function check_opids_were_completed_prod() {
             error(`${name_str} #${opid} defined without assume`);
         } else if (proves == 0) {
             error(`${name_str} #${opid} defined without proves`);
-        }else if (assumes != proves) {
-            error(`${name_str} #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }
