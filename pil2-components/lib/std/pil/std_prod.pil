@@ -57,7 +57,7 @@ private function init_containers_prod(int name, int opid) {
 private function initial_checks_prod(int proves, int opid, expr cols[], int is_direct) {
     const int cols_count = length(cols);
 
-    // Assumes and proves of the same opid must have the same number of columns
+    // Assumes and proves of the same opid must have the same number of columns (except for the is_direct case)
     if (proof.std.gprod.`id${opid}`.cols == 0) {
         // first time called
         proof.std.gprod.`id${opid}`.cols = cols_count;
@@ -70,11 +70,13 @@ private function initial_checks_prod(int proves, int opid, expr cols[], int is_d
     }
 
     // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
-    // proves and assumes to verify at the end that all of them match
-    if (proves) {
-        proof.std.gprod.`id${opid}`.proves++;
+    // proves and assumes to verify at the end that all of them match (except for the is_direct case)
+    const string name_str = proves ? "proves" : "assumes";
+    const string other_name_str = proves ? "assumes" : "proves";
+    if (!is_direct) {
+        proof.std.gprod.`id${opid}`.`${name_str}`++;
     } else {
-        proof.std.gprod.`id${opid}`.assumes++;
+        proof.std.gprod.`id${opid}`.`${name_str}` = proof.std.gprod.`id${opid}`.`${other_name_str}`;
     }
 }
 
@@ -240,8 +242,8 @@ private function piop_gprod_proof() {
  * @param name name of the PIOP
  */
 private function check_opids_were_completed_prod() {
-    for (int index = 0; index < proof.std.gprod.opids_count; index++) {
-        int opid = proof.std.gprod.opids[index];
+    for (int i = 0; i < proof.std.gprod.opids_count; i++) {
+        int opid = proof.std.gprod.opids[i];
         use proof.std.gprod.`id${opid}`;
 
         if (name == PIOP_NAME_ISOLATED) continue;
@@ -252,6 +254,8 @@ private function check_opids_were_completed_prod() {
             error(`${name_str} #${opid} defined without assume`);
         } else if (proves == 0) {
             error(`${name_str} #${opid} defined without proves`);
+        }else if (assumes != proves) {
+            error(`${name_str} #${opid} defined with #${assumes} assumes and #${proves} proves`);
         }
     }
 }
