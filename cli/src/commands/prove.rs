@@ -73,8 +73,6 @@ impl ProveCmd {
             )?,
         };
 
-        println!("Proofs generated successfully");
-
         Ok(())
     }
 }

@@ -9,7 +9,7 @@ use proofman_common::{ProofCtx, ProofType, SetupCtx};
 
 use std::os::raw::{c_void, c_char};
 
-use proofman_util::{timer_start_debug, timer_start_trace, timer_stop_and_log_debug, timer_stop_and_log_trace};
+use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 type GetCommitedPolsFunc = unsafe extern "C" fn(
     p_address: *mut c_void,
@@ -31,7 +31,7 @@ pub fn generate_recursion_proof<F: Field>(
     output_dir_path: PathBuf,
     save_proof: bool,
 ) -> Result<Vec<*mut c_void>, Box<dyn std::error::Error>> {
-    const _MY_NAME: &str = "AggProof";
+    const MY_NAME: &str = "AggProof";
 
     //Create setup contexts
     let mut proves_out: Vec<*mut c_void> = Vec::new();
@@ -44,7 +44,6 @@ pub fn generate_recursion_proof<F: Field>(
     // Run proves
     match *proof_type {
         ProofType::Compressor | ProofType::Recursive1 => {
-            timer_start_debug!(GENERATE_COMPRESSOR_PROOFS); // TODO: FIX
             for (prover_idx, air_instance) in
                 pctx.air_instance_repo.air_instances.write().unwrap().iter_mut().enumerate()
             {
@@ -91,6 +90,17 @@ pub fn generate_recursion_proof<F: Field>(
                         _ => panic!(),
                     };
 
+                    log::info!(
+                        "{}: {}",
+                        MY_NAME,
+                        format!(
+                            "··· Generating {} proof for instance {} of {}",
+                            proof_type_str,
+                            air_instance.air_instance_id.unwrap(),
+                            air_instance_name
+                        )
+                    );
+
                     let output_file_path = output_dir_path
                         .join(format!("proofs/{}_{}_{}.json", proof_type_str, air_instance_name, prover_idx));
 
@@ -104,13 +114,13 @@ pub fn generate_recursion_proof<F: Field>(
                         publics2zkin_c(p_prove, p_publics, global_info_file, air_instance.airgroup_id as u64, false);
                     proves_out.push(p_prove);
 
+                    log::info!("{}: ··· Proof generated.", MY_NAME);
+
                     timer_stop_and_log_trace!(GENERATE_PROOF);
                 }
             }
-            timer_stop_and_log_debug!(GENERATE_COMPRESSOR_PROOFS);
         }
         ProofType::Recursive2 => {
-            timer_start_debug!(GENERATE_RECURSIVE2_PROOFS);
             let n_airgroups = pctx.global_info.subproofs.len();
             let mut proves_recursive2: Vec<*mut c_void> = Vec::with_capacity(n_airgroups);
 
@@ -172,7 +182,7 @@ pub fn generate_recursion_proof<F: Field>(
                                 let p_publics = publics.as_ptr() as *mut c_void;
                                 let p_address = buffer.as_ptr() as *mut c_void;
 
-                                timer_start_trace!(GENERATE_PROOF);
+                                timer_start_trace!(GENERATE_RECURSIVE2_PROOF);
                                 let proof_file = match save_proof {
                                     true => output_dir_path
                                         .join(format!(
@@ -186,6 +196,14 @@ pub fn generate_recursion_proof<F: Field>(
                                     false => String::from(""),
                                 };
 
+                                let air_instance_name = &pctx.global_info.airs[airgroup][0].name;
+
+                                log::info!(
+                                    "{}: {}",
+                                    MY_NAME,
+                                    format!("··· Generating recursive2 proof for instances of {}", air_instance_name)
+                                );
+
                                 proves_recursive2_airgroup[j] =
                                     gen_recursive_proof_c(p_setup, p_address, p_publics, &proof_file);
                                 proves_recursive2_airgroup[j] = publics2zkin_c(
@@ -195,7 +213,8 @@ pub fn generate_recursion_proof<F: Field>(
                                     airgroup as u64,
                                     false,
                                 );
-                                timer_stop_and_log_trace!(GENERATE_PROOF);
+                                timer_stop_and_log_trace!(GENERATE_RECURSIVE2_PROOF);
+                                log::info!("{}: ··· Proof generated.", MY_NAME);
                             }
                         }
                         alive = (alive + 1) / 2;
@@ -232,10 +251,8 @@ pub fn generate_recursion_proof<F: Field>(
             );
 
             proves_out.push(zkin_final);
-            timer_stop_and_log_debug!(GENERATE_RECURSIVE2_PROOFS);
         }
         ProofType::Final => {
-            timer_start_debug!(GENERATE_FINAL_PROOF);
             timer_start_trace!(GET_FINAL_SETUP);
             let setup = sctx.get_setup(0, 0).expect("Setup not found");
             let p_setup: *mut c_void = (&setup.p_setup).into();
@@ -246,6 +263,7 @@ pub fn generate_recursion_proof<F: Field>(
             let p_address = buffer.as_ptr() as *mut c_void;
             let p_publics = publics.as_ptr() as *mut c_void;
 
+            log::info!("{}: ··· Generating final proof", MY_NAME);
             timer_start_trace!(GENERATE_PROOF);
             // prove
             let _p_prove = gen_recursive_proof_c(
@@ -254,8 +272,8 @@ pub fn generate_recursion_proof<F: Field>(
                 p_publics,
                 output_dir_path.join("proofs/final_proof.json").to_string_lossy().as_ref(),
             );
+            log::info!("{}: ··· Proof generated.", MY_NAME);
             timer_stop_and_log_trace!(GENERATE_PROOF);
-            timer_stop_and_log_debug!(GENERATE_FINAL_PROOF);
         }
         ProofType::Basic => {
             panic!("Recursion proof whould not be calles for ProofType::Basic ");
