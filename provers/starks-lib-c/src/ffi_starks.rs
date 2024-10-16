@@ -591,6 +591,7 @@ pub fn join_zkin_final_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn join_zkin_recursive2_c(
+    airgroup_id: u64,
     p_publics: *mut c_void,
     p_challenges: *mut c_void,
     global_info_file: &str,
@@ -601,7 +602,17 @@ pub fn join_zkin_recursive2_c(
     let global_info_file_name = CString::new(global_info_file).unwrap();
     let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-    unsafe { join_zkin_recursive2(global_info_file_ptr, p_publics, p_challenges, zkin1, zkin2, stark_info_recursive2) }
+    unsafe {
+        join_zkin_recursive2(
+            global_info_file_ptr,
+            airgroup_id,
+            p_publics,
+            p_challenges,
+            zkin1,
+            zkin2,
+            stark_info_recursive2,
+        )
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -1057,6 +1068,7 @@ pub fn add_recursive2_verkey_c(_p_zkin: *mut c_void, _recursive2_verkey: &str) -
 
 #[cfg(feature = "no_lib_link")]
 pub fn join_zkin_recursive2_c(
+    _airgroup_id: u64,
     _p_publics: *mut c_void,
     _p_challenges: *mut c_void,
     _global_info_file: &str,

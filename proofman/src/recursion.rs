@@ -150,6 +150,7 @@ pub fn generate_recursion_proof<F: Field>(
                                 let challenges = (*challenges_guard).as_ptr() as *mut c_void;
 
                                 let mut zkin_recursive2 = join_zkin_recursive2_c(
+                                    airgroup as u64,
                                     public_inputs,
                                     challenges,
                                     global_info_file,

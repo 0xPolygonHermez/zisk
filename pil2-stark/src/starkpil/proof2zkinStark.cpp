@@ -432,7 +432,7 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
     return zkinFinal;
 }
 
-ordered_json joinzkinrecursive2(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* challenges, ordered_json &zkin1, ordered_json &zkin2, StarkInfo &starkInfo) {
+ordered_json joinzkinrecursive2(json& globalInfo, uint64_t airgroupId, Goldilocks::Element* publics, Goldilocks::Element* challenges, ordered_json &zkin1, ordered_json &zkin2, StarkInfo &starkInfo) {
     ordered_json zkinRecursive2 = ordered_json::object();
 
     uint64_t nStages = starkInfo.nStages + 1;
@@ -485,10 +485,12 @@ ordered_json joinzkinrecursive2(json& globalInfo, Goldilocks::Element* publics, 
 
     zkinRecursive2["a_sv_circuitType"] = zkin1["sv_circuitType"];
     zkinRecursive2["b_sv_circuitType"] = zkin2["sv_circuitType"];
-
-    if(starkInfo.subproofValuesMap.size() > 0) {
-        zkinRecursive2["a_sv_aggregationTypes"] = zkin1["sv_aggregationTypes"];
-        zkinRecursive2["b_sv_aggregationTypes"] = zkin2["sv_aggregationTypes"];
+    
+    if(globalInfo["aggTypes"][airgroupId].size() > 0) {
+        zkinRecursive2["aggregationTypes"] = zkin2["sv_aggregationTypes"];
+        for(uint64_t a = 0; a < globalInfo["aggTypes"][airgroupId].size(); ++a) {
+            assert(zkin2["sv_aggregationTypes"][a] == zkin1["sv_aggregationTypes"][a]);
+        }
 
         zkinRecursive2["a_sv_subproofValues"] = zkin1["sv_subproofValues"];
         zkinRecursive2["b_sv_subproofValues"] = zkin2["sv_subproofValues"];
