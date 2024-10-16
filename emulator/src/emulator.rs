@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRequired, ZiskRequiredOperation, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRequiredOperation, ZiskRom};
 
 pub trait Emulator {
     fn emulate(

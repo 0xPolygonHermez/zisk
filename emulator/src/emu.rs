@@ -1,8 +1,8 @@
 use std::{mem, time::Instant};
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuStartingPoint, EmuStartingPoints,
-    EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceStep, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuSlice, EmuStartingPoints, EmuTrace, EmuTraceEnd,
+    EmuTraceStart, EmuTraceStep, ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
@@ -84,7 +84,7 @@ impl<'a> Emu<'a> {
 
     /// Copy the 'a' register and log memory access if specified by the current instruction
     #[inline(always)]
-    pub fn source_a_slice(&mut self, instruction: &ZiskInst, a: u64, required: &mut ZiskRequired) {
+    pub fn source_a_slice(&mut self, instruction: &ZiskInst, a: u64, _required: &mut ZiskRequired) {
         self.ctx.inst_ctx.a = a;
         match instruction.a_src {
             SRC_C => (),
@@ -115,7 +115,7 @@ impl<'a> Emu<'a> {
 
     /// Calculate the 'a' register value based on the source specified by the current instruction
     #[inline(always)]
-    pub fn par_source_a(&mut self, instruction: &ZiskInst, required: &mut ZiskRequired) {
+    pub fn par_source_a(&mut self, instruction: &ZiskInst, _required: &mut ZiskRequired) {
         match instruction.a_src {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_MEM => {
@@ -184,14 +184,14 @@ impl<'a> Emu<'a> {
 
     /// Copy the 'b' register and log memory access if specified by the current instruction
     #[inline(always)]
-    pub fn source_b_slice(&mut self, instruction: &ZiskInst, b: u64, required: &mut ZiskRequired) {
+    pub fn source_b_slice(&mut self, instruction: &ZiskInst, b: u64, _required: &mut ZiskRequired) {
         self.ctx.inst_ctx.b = b;
         match instruction.b_src {
             SRC_C => (),
             SRC_MEM => {
-                let mut addr = instruction.b_offset_imm0;
+                let mut _addr = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    _addr += self.ctx.inst_ctx.sp;
                 }
                 // let required_memory = ZiskRequiredMemory {
                 //     step: self.ctx.inst_ctx.step,
@@ -204,10 +204,10 @@ impl<'a> Emu<'a> {
             }
             SRC_IMM => (),
             SRC_IND => {
-                let mut addr =
+                let mut _addr =
                     (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    _addr += self.ctx.inst_ctx.sp;
                 }
                 // let required_memory = ZiskRequiredMemory {
                 //     step: self.ctx.inst_ctx.step,
@@ -227,7 +227,7 @@ impl<'a> Emu<'a> {
 
     /// Calculate the 'b' register value based on the source specified by the current instruction
     #[inline(always)]
-    pub fn par_source_b(&mut self, instruction: &ZiskInst, required: &mut ZiskRequired) {
+    pub fn par_source_b(&mut self, instruction: &ZiskInst, _required: &mut ZiskRequired) {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_MEM => {
@@ -317,7 +317,7 @@ impl<'a> Emu<'a> {
     /// Store the 'c' register value based on the storage specified by the current instruction and
     /// log memory access if required
     #[inline(always)]
-    pub fn store_c_slice(&mut self, instruction: &ZiskInst, required: &mut ZiskRequired) {
+    pub fn store_c_slice(&mut self, instruction: &ZiskInst, _required: &mut ZiskRequired) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
@@ -1085,7 +1085,7 @@ impl<'a> Emu<'a> {
     //     result
     // }
 
-        /// Run a slice of the program to generate full traces
+    /// Run a slice of the program to generate full traces
     #[inline(always)]
     pub fn run_slice_by_op_type<F: PrimeField>(
         &mut self,
@@ -1104,11 +1104,11 @@ impl<'a> Emu<'a> {
 
         let mut current_box_id = 0;
         let mut current_step_idx = loop {
-            if current_box_id == vec_traces.len() - 1
-                || vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
+            if current_box_id == vec_traces.len() - 1 ||
+                vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
             {
-                break emu_trace_start.step as usize
-                    - vec_traces[current_box_id].start.step as usize;
+                break emu_trace_start.step as usize -
+                    vec_traces[current_box_id].start.step as usize;
             }
             current_box_id += 1;
         };
@@ -1134,7 +1134,7 @@ impl<'a> Emu<'a> {
         // Return emulator slice
         result
     }
-    
+
     pub fn run_slice_2<F: AbstractField>(&mut self, trace: &EmuTrace, emu_slice: &mut EmuSlice<F>) {
         // Set initial state
         self.ctx.inst_ctx.pc = trace.start.pc;
@@ -1233,7 +1233,10 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.inst_ctx.end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
+            operation_bus_enabled: F::from_bool(
+                instruction.op_type == ZiskOperationType::Binary ||
+                    instruction.op_type == ZiskOperationType::BinaryE,
+            ),
         };
         full_trace.push(full_trace_step);
 
@@ -1361,7 +1364,10 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(self.ctx.inst_ctx.end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
+            operation_bus_enabled: F::from_bool(
+                instruction.op_type == ZiskOperationType::Binary ||
+                    instruction.op_type == ZiskOperationType::BinaryE,
+            ),
         };
 
         self.ctx.inst_ctx.step += 1;
@@ -1528,7 +1534,10 @@ impl<'a> Emu<'a> {
             main_last_segment: F::from_bool(false),
             end: F::from_bool(end),
             m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(instruction.op_type == ZiskOperationType::Binary || instruction.op_type == ZiskOperationType::BinaryE),
+            operation_bus_enabled: F::from_bool(
+                instruction.op_type == ZiskOperationType::Binary ||
+                    instruction.op_type == ZiskOperationType::BinaryE,
+            ),
         }
     }
 

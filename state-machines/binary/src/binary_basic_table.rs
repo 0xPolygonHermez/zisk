@@ -6,10 +6,10 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
 use sm_common::{create_prover_buffer, OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_core::{ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::{BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
@@ -100,6 +100,15 @@ impl<F: Field> BinaryBasicTableSM<F> {
     pub fn operations() -> Vec<u8> {
         // TODO! Review this codes
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
+    }
+
+    pub fn process_slice_buff(&self, input: &[u64]) {
+        // Create the trace vector
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        for (i, val) in input.iter().enumerate() {
+            multiplicity[i as usize] += *val;
+        }
     }
 
     pub fn process_slice(&self, input: &[ZiskRequiredBinaryBasicTable]) {

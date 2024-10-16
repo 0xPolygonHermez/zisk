@@ -3,16 +3,14 @@ use p3_field::PrimeField;
 
 use core::panic;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rayon::{prelude::*, Scope, ThreadPoolBuilder};
+use rayon::{prelude::*, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
-    fs, mem,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskRequired, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
-};
+use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -29,7 +27,7 @@ use ziskemu::{
 //use process::Command;
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_common::{create_prover_buffer, Provable};
+use sm_common::create_prover_buffer;
 use sm_mem::MemSM;
 
 #[derive(Default)]
@@ -449,8 +447,12 @@ impl<'a, F: PrimeField> MainSM<F> {
         self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
-        iectx.air_instance =
-            Some(AirInstance::new(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0], Some(segment_id), buffer));
+        iectx.air_instance = Some(AirInstance::new(
+            BINARY_EXTENSION_AIRGROUP_ID,
+            BINARY_EXTENSION_AIR_IDS[0],
+            Some(segment_id),
+            buffer,
+        ));
     }
 
     // fn prove_inputs(&self, mut vec_required: Vec<Vec<ZiskRequired>>, scope: &Scope<'a>) {
@@ -534,8 +536,8 @@ impl<'a, F: PrimeField> MainSM<F> {
     //         timer_stop_and_log_info!(TO_VEC);
 
     //         scope.spawn(move |_| {
-    //             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
-    //             let air_segment = mem::take(&mut air_segment);
+    //             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by
+    // checking             let air_segment = mem::take(&mut air_segment);
     //             Self::create_air_instance(
     //                 air_segment,
     //                 pctx_cloned,
@@ -563,8 +565,8 @@ impl<'a, F: PrimeField> MainSM<F> {
     //     //     let air_segment = &mut inputs[segment_id];
 
     //     //     air_segment.inputs.splice(
-    //     //         pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE + source_iter.len(),
-    //     //         source_iter,
+    //     //         pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE +
+    // source_iter.len(),     //         source_iter,
     //     //     );
 
     //     //     air_segment.filled_inputs += len;
@@ -573,8 +575,8 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     //     //     self.prove(emu_slice.required, ectx.clone(), scope);
 
-    //     //     // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by checking
-    //     //     if air_segment.filled_inputs == num_rows {
+    //     //     // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by
+    // checking     //     if air_segment.filled_inputs == num_rows {
     //     //         let air_segment = mem::take(air_segment);
     //     //         let cloned_ectx = ectx.clone();
     //     //         Self::create_air_instance(air_segment, pctx, cloned_ectx, sctx, false);
@@ -585,9 +587,9 @@ impl<'a, F: PrimeField> MainSM<F> {
     // }
 
     // /// Proves a batch of inputs
-    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine processes
-    // /// the inputs in batches. The inputs are processed in parallel using the thread pool
-    // /// # Arguments
+    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine
+    // processes /// the inputs in batches. The inputs are processed in parallel using the
+    // thread pool /// # Arguments
     // /// * `inputs` - Vector of EmuTrace inputs to prove
     // /// * `pctx` - Proof context to interact with the proof system
     // /// * `ectx` - Execution context to interact with the execution environment
@@ -651,14 +653,14 @@ impl<'a, F: PrimeField> MainSM<F> {
     // }
 
     // /// Proves a batch of inputs
-    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine processes
-    // /// the inputs in batches. The inputs are processed in parallel using the thread pool
-    // /// # Arguments
+    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine
+    // processes /// the inputs in batches. The inputs are processed in parallel using the
+    // thread pool /// # Arguments
     // /// * `emu_required` - Inputs to be proved
     // /// * `ectx` - Execution context to interact with the execution environment
     // #[inline(always)]
-    // fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>) {
-    //     let memory = mem::take(&mut emu_required.memory);
+    // fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>)
+    // {     let memory = mem::take(&mut emu_required.memory);
     //     let binary = mem::take(&mut emu_required.binary);
     //     let arith = mem::take(&mut emu_required.arith);
 

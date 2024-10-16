@@ -133,12 +133,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
             // Set if the opcode is a shift operation
-            let op_is_shift = (op == 0x0d)
-                || (op == 0x0e)
-                || (op == 0x0f)
-                || (op == 0x1d)
-                || (op == 0x1e)
-                || (op == 0x1f);
+            let op_is_shift = (op == 0x0d) ||
+                (op == 0x0e) ||
+                (op == 0x0f) ||
+                (op == 0x1d) ||
+                (op == 0x1e) ||
+                (op == 0x1f);
             t.op_is_shift = F::from_bool(op_is_shift);
 
             // Set if the opcode is a shift word operation

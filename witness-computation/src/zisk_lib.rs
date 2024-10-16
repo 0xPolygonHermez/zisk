@@ -1,6 +1,6 @@
 use pil_std_lib::{RCAirData, RangeCheckAir, Std};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use std::{error::Error, path::PathBuf, process, sync::Arc};
+use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
 use p3_field::PrimeField;

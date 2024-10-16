@@ -9,7 +9,7 @@ use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
-use zisk_core::{ZiskRequired, ZiskRequiredOperation};
+use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
     BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIRGROUP_ID,
