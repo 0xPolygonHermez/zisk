@@ -114,9 +114,13 @@ git clone https://github.com/0xPolygonHermez/zisk
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
 git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b develop https://github.com/0xPolygonHermez/pil2-stark-js
 ```
 
 All following commands should be executed in the `zisk` folder.
+```bash
+cd zisk
+```
 
 ### Compile Zisk PIL
 
@@ -153,10 +157,11 @@ cargo build --release
 To generate the proof, the following command needs to be run.
 
 ```bash
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v -a)
+(cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v -a)
 ```
 
 ### Verify the Proof
 ```bash
-(node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs)
+(cd ../pil2-stark-js && npm i) 
+node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
 ```
