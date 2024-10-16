@@ -147,14 +147,34 @@ Run this whenever the `.pilout` file changes:
 node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-stark/build/bctree
 ```
 
+To also generate the aggregation setup, `-r` needs to be added.
+
+```bash
+(cd ../pil2-proofman-js && npm i)
+node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-stark/build/bctree -r
+```
+
 ### Compile Witness Computation library (`libzisk_witness.so`)
 ```bash
 RUSTFLAGS="-L native=/home/{path to your pil2-stark folder}/lib" cargo build --release
 ```
 
+### Verify Constraints Only
+```bash
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey)
+```
+
 ### Generate a Proof
+To generate the proof, the following command needs to be run.
+
 ```bash
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v)
+```
+
+To also generate the aggregated proofs, `-a` needs to be added
+
+```bash
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v -a)
 ```
 
 ### Verify the Proof
@@ -162,7 +182,9 @@ RUSTFLAGS="-L native=/home/{path to your pil2-stark folder}/lib" cargo build --r
 (node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs)
 ```
 
-### Verify Constraints Only
+### Verify the aggregated Proof
+If the aggregation proofs are being generated, can be verified with the following command:
+
 ```bash
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey)
+node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
 ```
