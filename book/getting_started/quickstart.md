@@ -141,14 +141,7 @@ Run this whenever the `.pilout` file changes:
 
 ```bash
 (cd ../pil2-proofman-js && npm i)
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-stark/build/bctree
-```
-
-To also generate the aggregation setup, `-r` needs to be added.
-
-```bash
-(cd ../pil2-proofman-js && npm i)
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-stark/build/bctree -r
+node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -r
 ```
 
 ### Compile Witness Computation library (`libzisk_witness.so`)
@@ -160,21 +153,10 @@ cargo build --release
 To generate the proof, the following command needs to be run.
 
 ```bash
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v)
-```
-
-To also generate the aggregated proofs, `-a` needs to be added
-
-```bash
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v -a)
 ```
 
 ### Verify the Proof
 ```bash
 (node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs)
-```
-
-### Verify Constraints Only
-```bash
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey)
 ```
