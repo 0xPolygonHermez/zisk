@@ -7,7 +7,7 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::{prelude::*, Scope};
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
 use std::cmp::Ordering as CmpOrdering;
@@ -512,7 +512,7 @@ impl<F: Field> BinaryBasicSM<F> {
     #[inline(always)]
     pub fn process_slice_buff(
         operation: &ZiskRequiredOperation,
-        required: &mut Vec<u64>,
+        multiplicity: &mut Vec<u64>,
     ) -> Binary0Row<F> {
         // Create an empty trace
         let mut row: Binary0Row<F> = Default::default();
@@ -585,7 +585,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x03 /* SUB, SUB_W */ => {
@@ -610,7 +610,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_byte as u64, b_byte as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x04 | 0x05 /*LTU,LTU_W,LT,LT_W*/ => {
@@ -653,7 +653,7 @@ impl<F: Field> BinaryBasicSM<F> {
                                 if i == 7 { c_bytes[0] as u64 } else { 0 },
                                 flags,
                                 i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x06 | 0x07 /* LEU, LEU_W, LE, LE_W */ => {
@@ -681,7 +681,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
                             if i == 7 { c_bytes[0] as u64 } else { 0 },
                             flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x08 /* EQ, EQ_W */ => {
@@ -712,7 +712,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i],
                             if i == 7 { c_bytes[0] as u64 } else { 0 },
                             flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x09 | 0x0a /* MINU, MINU_W, MIN, MIN_W */ => {
@@ -743,7 +743,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x0b | 0x0c /* MAXU, MAXU_W, MAX, MAX_W */ => {
@@ -774,7 +774,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(if mode32 && (i >= 4) { EXT_32_OP } else { m_op }, a_bytes[i] as u64, b_bytes[i] as u64, previous_cin, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x20 /*AND*/ => {
@@ -789,7 +789,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x21 /*OR*/ => {
@@ -804,7 +804,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 0x22 /*XOR*/ => {
@@ -819,7 +819,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                         // Store the required in the vector
                         let row = BinaryBasicTableSM::<F>::calculate_table_row(m_op, a_bytes[i] as u64, b_bytes[i] as u64, 0, plast[i], c_bytes[i] as u64, flags, i as u64);
-                        required[row as usize] += 1;
+                        multiplicity[row as usize] += 1;
                     }
                 }
                 _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={} m_op={}", operation.opcode, m_op),
@@ -844,7 +844,7 @@ impl<F: Field> BinaryBasicSM<F> {
         prover_buffer: &mut [F],
         offset: u64,
     ) {
-        timer_start_info!(BINARY_TRACE);
+        timer_start_trace!(BINARY_TRACE);
         let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_table =
             self.wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
@@ -866,9 +866,9 @@ impl<F: Field> BinaryBasicSM<F> {
             let row = Self::process_slice_buff(&operation, &mut multiplicity_table);
             trace_buffer[i] = row;
         }
-        timer_stop_and_log_info!(BINARY_TRACE);
+        timer_stop_and_log_trace!(BINARY_TRACE);
 
-        timer_start_info!(BINARY_PADDING);
+        timer_start_trace!(BINARY_PADDING);
         let padding_row = Binary0Row::<F> {
             m_op: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
@@ -888,11 +888,11 @@ impl<F: Field> BinaryBasicSM<F> {
                 BinaryBasicTableSM::<F>::calculate_table_row(0x20, 0, 0, 0, last as u64, 0, 0, 0);
             multiplicity_table[row as usize] += multiplicity;
         }
-        timer_stop_and_log_info!(BINARY_PADDING);
+        timer_stop_and_log_trace!(BINARY_PADDING);
 
-        timer_start_info!(BINARY_TABLE);
+        timer_start_trace!(BINARY_TABLE);
         self.binary_basic_table_sm.process_slice_buff(&multiplicity_table);
-        timer_stop_and_log_info!(BINARY_TABLE);
+        timer_stop_and_log_trace!(BINARY_TABLE);
     }
 }
 

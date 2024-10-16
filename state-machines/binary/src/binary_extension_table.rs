@@ -105,6 +105,14 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         vec![0x0d, 0x0e, 0x0f, 0x24, 0x25, 0x26]
     }
 
+    pub fn process_slice_buff(&self, input: &[u64]) {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        for (i, val) in input.iter().enumerate() {
+            multiplicity[i as usize] += *val;
+        }
+    }
+
     pub fn process_slice(&self, input: &[ZiskRequiredBinaryExtensionTable]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 

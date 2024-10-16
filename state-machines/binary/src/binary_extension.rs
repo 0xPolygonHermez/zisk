@@ -10,6 +10,7 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::{prelude::*, Scope};
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
 use zisk_core::{ZiskRequiredBinaryExtensionTable, ZiskRequiredOperation, ZiskRequiredRangeCheck};
@@ -350,21 +351,240 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         (trace, table_required, range_check)
     }
 
+    pub fn process_slice_buff(
+        operation: &ZiskRequiredOperation,
+        multiplicity: &mut Vec<u64>,
+        range_check: &mut Vec<ZiskRequiredRangeCheck>,
+    ) -> BinaryExtension0Row<F> {
+        // Get the opcode
+        let op = operation.opcode;
+
+        // Create an empty trace
+        let mut row =
+            BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
+
+        // Set if the opcode is a shift operation
+        let op_is_shift = (op == 0x0d) ||
+            (op == 0x0e) ||
+            (op == 0x0f) ||
+            (op == 0x1d) ||
+            (op == 0x1e) ||
+            (op == 0x1f);
+        row.op_is_shift = F::from_bool(op_is_shift);
+
+        // Set if the opcode is a shift word operation
+        let op_is_shift_word = (op == 0x1d) || (op == 0x1e) || (op == 0x1f);
+
+        // Detect if this is a sign extend operation
+        let a = if op_is_shift { operation.a } else { operation.b };
+        let b = if op_is_shift { operation.b } else { operation.a };
+
+        // Split a in bytes and store them in in1
+        let a_bytes: [u8; 8] = a.to_le_bytes();
+        for (i, value) in a_bytes.iter().enumerate() {
+            row.in1[i] = F::from_canonical_u8(*value);
+        }
+
+        // Store b low part into in2_low
+        let in2_low: u64 = if op_is_shift { b & 0xFF } else { 0 };
+        row.in2_low = F::from_canonical_u64(in2_low);
+
+        // Store b lower bits when shifting, depending on operation size
+        let b_low = if op_is_shift_word { b & LS_5_BITS } else { b & LS_6_BITS };
+
+        // Store b into in2
+        let in2_0: u64 = if op_is_shift { (b >> 8) & 0xFFFFFF } else { b & 0xFFFFFFFF };
+        let in2_1: u64 = (b >> 32) & 0xFFFFFFFF;
+        row.in2[0] = F::from_canonical_u64(in2_0);
+        row.in2[1] = F::from_canonical_u64(in2_1);
+
+        // Set main SM step
+        row.main_step = F::from_canonical_u64(operation.step);
+
+        // Calculate the trace output
+        let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
+
+        // Calculate output based on opcode
+        match operation.opcode {
+                0x0d /* SLL */ => {
+                    for j in 0..8 {
+                        let bits_to_shift = b_low + 8*j as u64;
+                        let out = if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x0e /* SRL */ => {
+                    for j in 0..8 {
+                        let out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x0f /* SRA */ => {
+                    for j in 0..8 {
+                        let mut out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
+                        if j == 7 {
+                            // most significant bit of most significant byte define if negative or not
+                            // if negative then add b bits one on the left
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out |= MASK_64 << (64 - b_low);
+                            }
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x1d /* SLL_W */ => {
+                    for j in 0..8 {
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
+                        }
+                        else {
+                            out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
+                            if (out & SIGN_32_BIT) != 0 {
+                                out |= SE_MASK_32;
+                            }
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x1e /* SRL_W */ => {
+                    for j in 0..8 {
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
+                        } else {
+                            out = (((a_bytes[j] as u64) << (8 * j as u64)) >> b_low) & MASK_32;
+                            if (out & SIGN_32_BIT) != 0 {
+                                out |= SE_MASK_32;
+                            }
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x1f /* SRA_W */ => {
+                    for j in 0..8 {
+                        let mut out: u64;
+                        if j >= 4 {
+                            out = 0;
+                        } else {
+                            out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
+                            if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                    out |= MASK_64 << (32 - b_low);
+                            }
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x23 /* SE_B */ => {
+                    for j in 0..8 {
+                        let out: u64;
+                        if j == 0 {
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = (a_bytes[j] as u64) | SE_MASK_8;
+                            } else {
+                                out = a_bytes[j] as u64;
+                            }
+                        } else {
+                            out = 0;
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x24 /* SE_H */ => {
+                    for j in 0..8 {
+                        let out: u64;
+                        if j == 0 {
+                            out = a_bytes[j] as u64;
+                        } else if j == 1 {
+                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out = (a_bytes[j] as u64) | SE_MASK_16;
+                            } else {
+                                out = a_bytes[j] as u64;
+                            }
+                        } else {
+                            out = 0;
+                        }
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+
+                0x25 /* SE_W */ => {
+                    for j in 0..4 {
+                        let mut out = (a_bytes[j] as u64) << (8 * j as u64);
+                        if j == 3 &&
+                             ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                                out |= SE_MASK_32;
+                            }
+
+                        t_out[j][0] = out & 0xffffffff;
+                        t_out[j][1] = (out >> 32) & 0xffffffff;
+                    }
+                },
+                _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", operation.opcode),
+            }
+
+        // Convert the trace output to field elements
+        for j in 0..8 {
+            row.out[j as usize][0] = F::from_canonical_u64(t_out[j as usize][0]);
+            row.out[j as usize][1] = F::from_canonical_u64(t_out[j as usize][1]);
+        }
+
+        // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
+        row.multiplicity = F::one();
+
+        for (i, a_byte) in a_bytes.iter().enumerate() {
+            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+                op,
+                i as u64,
+                *a_byte as u64,
+                in2_low,
+            );
+            multiplicity[row as usize] += 1;
+        }
+
+        // Store the range check
+        if op_is_shift {
+            let rc = ZiskRequiredRangeCheck { rc: in2_0 };
+            range_check.push(rc);
+        }
+
+        // Return successfully
+        row
+    }
+
     pub fn prove_instance(
         &self,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
     ) {
-        let std_cloned = self.std.clone();
-
-        let (mut trace_row, mut table_required, range_check) = Self::process_slice(&operations);
-
+        timer_start_debug!(BINARY_EXTENSION_TRACE);
         let air = self
             .wcm
             .get_pctx()
             .pilout
             .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary_extension_table = self
+            .wcm
+            .get_pctx()
+            .pilout
+            .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
+        assert!(operations.len() <= air.num_rows());
 
         info!(
             "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
@@ -374,44 +594,46 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             operations.len() as f64 / air.num_rows() as f64 * 100.0
         );
 
-        let padding_size = air.num_rows() - trace_row.len();
+        let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
+        let mut trace_buffer =
+            BinaryExtension0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
+                .unwrap();
+        let mut range_check = Vec::new();
 
+        for (i, operation) in operations.iter().enumerate() {
+            let row =
+                Self::process_slice_buff(&operation, &mut multiplicity_table, &mut range_check);
+            trace_buffer[i] = row;
+        }
+        timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
+
+        timer_start_debug!(BINARY_EXTENSION_PADDING);
         let padding_row =
             BinaryExtension0Row::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
-        for _ in trace_row.len()..air.num_rows() {
-            trace_row.push(padding_row);
+        for i in operations.len()..air.num_rows() {
+            trace_buffer[i] = padding_row;
         }
 
+        let padding_size = air.num_rows() - operations.len();
         for i in 0..8 {
-            table_required.push(ZiskRequiredBinaryExtensionTable {
-                opcode: 0,
-                a: 0,
-                b: 0,
-                offset: i,
-                row: BinaryExtensionTableSM::<F>::calculate_table_row(0x25, i, 0, 0),
-                multiplicity: padding_size as u64,
-            });
+            let multiplicity = padding_size as u64;
+            let row = BinaryExtensionTableSM::<F>::calculate_table_row(0x25, i, 0, 0);
+            multiplicity_table[row as usize] += multiplicity;
         }
+        timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
 
-        self.binary_extension_table_sm.process_slice(&table_required);
+        timer_start_debug!(BINARY_EXTENSION_TABLE);
+        self.binary_extension_table_sm.process_slice_buff(&multiplicity_table);
+        timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
         for rc in range_check {
-            std_cloned.range_check(
+            self.std.range_check(
                 F::from_canonical_u64(rc.rc),
                 BigInt::from(0),
                 BigInt::from(0xFFFFFF),
             );
         }
-
-        let trace_buffer =
-            BinaryExtension0Trace::<F>::map_row_vec(trace_row, true).unwrap().buffer.unwrap();
-        prover_buffer[offset as usize..offset as usize + trace_buffer.len()]
-            .par_iter_mut()
-            .zip(trace_buffer.par_iter())
-            .for_each(|(buffer_elem, main_elem)| {
-                *buffer_elem = *main_elem;
-            });
     }
 }
 

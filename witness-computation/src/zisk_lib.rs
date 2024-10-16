@@ -1,5 +1,5 @@
 use pil_std_lib::{RCAirData, RangeCheckAir, Std};
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
@@ -80,9 +80,9 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         self.wcm.as_ref().unwrap().end_proof();
     }
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        timer_start_info!(EXECUTE);
+        timer_start_debug!(EXECUTE);
         self.main_sm.as_ref().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
-        timer_stop_and_log_info!(EXECUTE);
+        timer_stop_and_log_debug!(EXECUTE);
     }
 
     fn calculate_witness(

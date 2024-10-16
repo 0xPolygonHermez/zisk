@@ -2,7 +2,7 @@ use log::info;
 use p3_field::PrimeField;
 
 use core::panic;
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
@@ -209,7 +209,7 @@ impl<'a, F: PrimeField> MainSM<F> {
         pool.scope(|scope| {
             // Run the emulator in parallel n times to collect execution traces
             // and record the execution starting points for each AIR instance
-            timer_start_info!(PAR_PROCESS_ROM);
+            timer_start_debug!(PAR_PROCESS_ROM);
             exe_traces.par_iter_mut().enumerate().for_each(|(thread_id, exe_trace)| {
                 let par_emu_options = ParEmuOptions::new(
                     Self::NUM_THREADS,
@@ -232,7 +232,7 @@ impl<'a, F: PrimeField> MainSM<F> {
                     *emu_starting_points.lock().unwrap() = result.1;
                 }
             });
-            timer_stop_and_log_info!(PAR_PROCESS_ROM);
+            timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
             let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
             let mut vec_traces = Vec::with_capacity(num_boxes);
@@ -309,13 +309,13 @@ impl<'a, F: PrimeField> MainSM<F> {
                 }
             });
 
-            timer_start_info!(ADD_INSTANCES_TO_THE_REPO);
+            timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
             for iectx in instances_ctx {
                 if let Some(air_instance) = iectx.air_instance {
                     pctx.air_instance_repo.add_air_instance(air_instance);
                 }
             }
-            timer_stop_and_log_info!(ADD_INSTANCES_TO_THE_REPO);
+            timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
             std::thread::spawn(move || {
                 drop(exe_traces);
@@ -406,7 +406,7 @@ impl<'a, F: PrimeField> MainSM<F> {
     ) {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
-        timer_start_info!(PROCESS_BINARY);
+        timer_start_debug!(PROCESS_BINARY);
         let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
             &self.zisk_rom,
             vec_traces,
@@ -414,17 +414,17 @@ impl<'a, F: PrimeField> MainSM<F> {
             &iectx.emu_trace_start,
             air.num_rows(),
         );
-        timer_stop_and_log_info!(PROCESS_BINARY);
+        timer_stop_and_log_debug!(PROCESS_BINARY);
 
-        timer_start_info!(PROVE_BINARY);
+        timer_start_debug!(PROVE_BINARY);
         self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
-        timer_stop_and_log_info!(PROVE_BINARY);
+        timer_stop_and_log_debug!(PROVE_BINARY);
 
-        timer_start_info!(CREATE_AIR_INSTANCE);
+        timer_start_debug!(CREATE_AIR_INSTANCE);
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
             Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
-        timer_stop_and_log_info!(CREATE_AIR_INSTANCE);
+        timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
     }
 
     fn prove_binary_extension(
