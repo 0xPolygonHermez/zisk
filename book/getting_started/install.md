@@ -5,7 +5,7 @@
 ## Requirements
 ⚠️ Currently, macOS is not supported for proof generation. A Linux x86_64 machine is required at this time. ⚠️
 
-* [Rust (Nightly)](https://www.rust-lang.org/tools/install)
+* [Rust](https://www.rust-lang.org/tools/install)
 * [xz]()
 * [jq]()
 

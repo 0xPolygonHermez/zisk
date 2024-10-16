@@ -4,14 +4,6 @@ In this section, we will show you how to create a simple program using ZisK.
 
 ## Create Project
 
-```bash
-git clone https://github.com/0xPolygonHermez/zisk
-git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone --recursive -b develop  https://github.com/0xPolygonHermez/pil2-stark.git
-git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
-```
-
 The first step is to create a new project using the `cargo-zisk sdk new <name>` command. This command will create a new folder in your current directory.
 
 ```bash
@@ -37,7 +29,7 @@ For running the program in the native architecture:
 ```
 $ cargo run --target x86_64-unknown-linux-gnu
      Running `target/x86_64-unknown-linux-gnu/debug/sha_hasher`
-n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
 ```
 
 ## Run on ZisK emulator
@@ -47,7 +39,7 @@ cargo-zisk run --release
    Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
     Finished `release` profile [optimized] target(s) in 0.20s
      Running `ziskemu -i build/input.bin -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
 ```
 or  
 ```bash
@@ -60,8 +52,8 @@ cargo-zisk run --release -m
    Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
     Finished `release` profile [optimized] target(s) in 0.20s
      Running `ziskemu -i build/input.bin -m -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
-process_rom() steps=42454508 duration=0.7520 tp=56.4588 Msteps/s freq=2874.0000 50.9043 clocks/step
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
+process_rom() steps=99288 duration=0.0024 tp=40.9284 Msteps/s freq=2892.0000 70.6600 clocks/step
 ```
 
 ### stats
@@ -70,7 +62,7 @@ cargo-zisk run --release --stats
    Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
     Finished `release` profile [optimized] target(s) in 0.20s
      Running `ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:10000 [82, 229, 228, 9, 207, 11, 252, 118, 235, 27, 13, 44, 75, 164, 54, 106, 253, 126, 193, 14, 54, 32, 188, 119, 81, 120, 47, 45, 222, 206, 161, 159]
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
 Cost definitions:
     AREA_PER_SEC: 1000000 steps
     COST_MEMA_R1: 0.00002 sec
@@ -80,32 +72,33 @@ Cost definitions:
     COST_USUAL: 0.000008 sec
     COST_STEP: 0.00005 sec
 
-Total Cost: 6392.55 sec
-    Main Cost: 2122.73 sec 42454507 steps
-    Mem Cost: 1107.83 sec 110782774 steps
-    Mem Align: 21.22 sec 1061034 steps
-    Opcodes: 3125.94 sec 1432 steps (40600544 ops)
-    Usual: 14.83 sec 1853964 steps
+Total Cost: 14.25 sec
+    Main Cost: 4.96 sec 99287 steps
+    Mem Cost: 2.54 sec 254054 steps
+    Mem Align: 0.06 sec 3130 steps
+    Opcodes: 6.63 sec 1335 steps (92652 ops)
+    Usual: 0.05 sec 6636 steps
+    Memory: 155262 a reads + 1846 na1 reads + 0 na2 reads + 96304 a writes + 642 na1 writes + 0 na2 writes = 157108 reads + 96946 writes = 254054 r/w
+    Registy: 147515 reads + 90588 writes = 238103 r/w
 
 Opcodes:
-    flag: 0.00 sec (0 steps/op) (40583 ops)
-    copyb: 0.00 sec (0 steps/op) (5266028 ops)
-    add: 553.92 sec (77 steps/op) (7193707 ops)
-    sub: 0.00 sec (77 steps/op) (11 ops)
-    ltu: 6.95 sec (77 steps/op) (90237 ops)
-    eq: 1.54 sec (77 steps/op) (19953 ops)
-    sll: 620.18 sec (109 steps/op) (5689699 ops)
-    srl: 8.73 sec (109 steps/op) (80061 ops)
-    add_w: 0.00 sec (77 steps/op) (55 ops)
-    sub_w: 0.77 sec (77 steps/op) (10005 ops)
-    srl_w: 718.31 sec (109 steps/op) (6589961 ops)
-    and: 168.70 sec (77 steps/op) (2190887 ops)
-    or: 471.96 sec (77 steps/op) (6129357 ops)
-    xor: 531.30 sec (77 steps/op) (6899979 ops)
-    signextend_b: 17.44 sec (109 steps/op) (160000 ops)
-    signextend_w: 26.16 sec (109 steps/op) (240000 ops)
-    mul: 0.00 sec (97 steps/op) (20 ops)
-    muluh: 0.00 sec (97 steps/op) (1 ops)
+    flag: 0.00 sec (0 steps/op) (660 ops)
+    copyb: 0.00 sec (0 steps/op) (16521 ops)
+    add: 1.39 sec (77 steps/op) (18059 ops)
+    sub: 0.00 sec (77 steps/op) (10 ops)
+    ltu: 0.03 sec (77 steps/op) (412 ops)
+    eq: 0.02 sec (77 steps/op) (224 ops)
+    sll: 1.24 sec (109 steps/op) (11360 ops)
+    srl: 0.02 sec (109 steps/op) (216 ops)
+    add_w: 0.00 sec (77 steps/op) (52 ops)
+    sub_w: 0.00 sec (77 steps/op) (24 ops)
+    srl_w: 1.43 sec (109 steps/op) (13141 ops)
+    and: 0.40 sec (77 steps/op) (5168 ops)
+    or: 0.94 sec (77 steps/op) (12209 ops)
+    xor: 1.06 sec (77 steps/op) (13779 ops)
+    signextend_b: 0.03 sec (109 steps/op) (320 ops)
+    signextend_w: 0.05 sec (109 steps/op) (480 ops)
+    mul: 0.00 sec (97 steps/op) (17 ops)
 ```
 
 ## Update zisk toolchain to latest version
@@ -116,20 +109,24 @@ ziskup
 
 ## Prepare Your Setup
 
+```bash
+git clone https://github.com/0xPolygonHermez/zisk
+git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
+```
+
 All following commands should be executed in the `zisk` folder.
 
 ### Compile Zisk PIL
 
 ```bash
-cd ../pil2-compiler
-npm i
-cd ../zisk
-node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout
+(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout)
 ```
 
 ### Compile the PIl2 Stark C++ Library (run only once):
 ```bash
-(cd ../pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
+(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS="-L native=$PWD/../pil2-proofman/pil2-stark/lib"
 ```
 
 ### Generate PIL-Helpers Rust Code
@@ -156,12 +153,7 @@ node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zis
 
 ### Compile Witness Computation library (`libzisk_witness.so`)
 ```bash
-RUSTFLAGS="-L native=/home/{path to your pil2-stark folder}/lib" cargo build --release
-```
-
-### Verify Constraints Only
-```bash
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey)
+cargo build --release
 ```
 
 ### Generate a Proof
@@ -182,9 +174,7 @@ To also generate the aggregated proofs, `-a` needs to be added
 (node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs)
 ```
 
-### Verify the aggregated Proof
-If the aggregation proofs are being generated, can be verified with the following command:
-
+### Verify Constraints Only
 ```bash
-node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher.elf -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey)
 ```
