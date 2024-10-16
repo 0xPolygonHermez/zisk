@@ -109,7 +109,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     }
 
     pub fn process_slice(
-        input: &Vec<ZiskRequiredOperation>,
+        input: &[ZiskRequiredOperation],
     ) -> (
         Vec<BinaryExtension0Row<F>>,
         Vec<ZiskRequiredBinaryExtensionTable>,
@@ -353,7 +353,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
     pub fn process_slice_buff(
         operation: &ZiskRequiredOperation,
-        multiplicity: &mut Vec<u64>,
+        multiplicity: &mut [u64],
         range_check: &mut Vec<ZiskRequiredRangeCheck>,
     ) -> BinaryExtension0Row<F> {
         // Get the opcode
@@ -602,7 +602,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         for (i, operation) in operations.iter().enumerate() {
             let row =
-                Self::process_slice_buff(&operation, &mut multiplicity_table, &mut range_check);
+                Self::process_slice_buff(operation, &mut multiplicity_table, &mut range_check);
             trace_buffer[i] = row;
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);

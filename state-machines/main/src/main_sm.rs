@@ -78,7 +78,7 @@ pub struct MainSM<F: PrimeField> {
     arith_sm: Arc<ArithSM>,
 }
 
-impl<'a, F: PrimeField> MainSM<F> {
+impl<F: PrimeField> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
 
     /// Default number of inputs of the main state machine that are accumulated before being
@@ -329,7 +329,7 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     fn prove_main(
         &self,
-        vec_traces: &Vec<EmuTrace>,
+        vec_traces: &[EmuTrace],
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
@@ -399,7 +399,7 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     fn prove_binary(
         &self,
-        vec_traces: &Vec<EmuTrace>,
+        vec_traces: &[EmuTrace],
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
@@ -429,7 +429,7 @@ impl<'a, F: PrimeField> MainSM<F> {
 
     fn prove_binary_extension(
         &self,
-        vec_traces: &Vec<EmuTrace>,
+        vec_traces: &[EmuTrace],
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,

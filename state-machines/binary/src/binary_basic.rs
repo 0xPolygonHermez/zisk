@@ -512,7 +512,7 @@ impl<F: Field> BinaryBasicSM<F> {
     #[inline(always)]
     pub fn process_slice_buff(
         operation: &ZiskRequiredOperation,
-        multiplicity: &mut Vec<u64>,
+        multiplicity: &mut [u64],
     ) -> Binary0Row<F> {
         // Create an empty trace
         let mut row: Binary0Row<F> = Default::default();
@@ -863,7 +863,7 @@ impl<F: Field> BinaryBasicSM<F> {
             Binary0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
-            let row = Self::process_slice_buff(&operation, &mut multiplicity_table);
+            let row = Self::process_slice_buff(operation, &mut multiplicity_table);
             trace_buffer[i] = row;
         }
         timer_stop_and_log_trace!(BINARY_TRACE);

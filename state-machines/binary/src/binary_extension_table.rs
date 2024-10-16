@@ -109,7 +109,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for (i, val) in input.iter().enumerate() {
-            multiplicity[i as usize] += *val;
+            multiplicity[i] += *val;
         }
     }
 

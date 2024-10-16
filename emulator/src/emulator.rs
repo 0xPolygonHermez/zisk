@@ -195,7 +195,7 @@ impl ZiskEmulator {
     #[inline]
     pub fn process_slice_by_op_type<F: PrimeField>(
         rom: &ZiskRom,
-        vec_traces: &Vec<EmuTrace>,
+        vec_traces: &[EmuTrace],
         op_type: ZiskOperationType,
         emu_trace_start: &EmuTraceStart,
         num_rows: usize,

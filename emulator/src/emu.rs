@@ -1089,7 +1089,7 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn run_slice_by_op_type<F: PrimeField>(
         &mut self,
-        vec_traces: &Vec<EmuTrace>,
+        vec_traces: &[EmuTrace],
         op_type: ZiskOperationType,
         emu_trace_start: &EmuTraceStart,
         num_rows: usize,
@@ -1118,7 +1118,7 @@ impl<'a> Emu<'a> {
         let mut current_step = emu_trace_start.step;
 
         while current_step < last_step && result.len() < num_rows {
-            let step = &vec_traces[current_box_id].steps[current_step_idx as usize];
+            let step = &vec_traces[current_box_id].steps[current_step_idx];
 
             self.step_slice_by_op_type::<F>(step, &op_type, &mut result);
 
@@ -1459,85 +1459,6 @@ impl<'a> Emu<'a> {
                 required.push(required_operation);
             }
             _ => panic!("Emu::step_slice() found invalid op_type"),
-        }
-    }
-
-    /// Performs one single step of the emulation
-    #[inline(always)]
-    pub fn par_step_slice<F: AbstractField>(
-        a: u64,
-        b: u64,
-        c: u64,
-        flag: bool,
-        last_c: u64,
-        previous_pc: u64,
-        instruction: &ZiskInst,
-        end: bool,
-    ) -> EmuFullTraceStep<F> {
-        EmuFullTraceStep {
-            a: [
-                F::from_canonical_u64(a & 0xFFFFFFFF),
-                F::from_canonical_u64((a >> 32) & 0xFFFFFFFF),
-            ],
-            b: [
-                F::from_canonical_u64(b & 0xFFFFFFFF),
-                F::from_canonical_u64((b >> 32) & 0xFFFFFFFF),
-            ],
-            c: [
-                F::from_canonical_u64(c & 0xFFFFFFFF),
-                F::from_canonical_u64((c >> 32) & 0xFFFFFFFF),
-            ],
-            last_c: [
-                F::from_canonical_u64(last_c & 0xFFFFFFFF),
-                F::from_canonical_u64((last_c >> 32) & 0xFFFFFFFF),
-            ],
-            flag: F::from_bool(flag),
-            pc: F::from_canonical_u64(previous_pc),
-            a_src_imm: F::from_bool(instruction.a_src == SRC_IMM),
-            a_src_mem: F::from_bool(instruction.a_src == SRC_MEM),
-            a_offset_imm0: F::from_canonical_u64(instruction.a_offset_imm0),
-            // #[cfg(not(feature = "sp"))]
-            a_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // sp: F::from_canonical_u64(self.ctx.inst_ctx.sp),
-            // #[cfg(feature = "sp")]
-            // a_src_sp: F::from_bool(instruction.a_src == SRC_SP),
-            // #[cfg(feature = "sp")]
-            // a_use_sp_imm1: F::from_canonical_u64(instruction.a_use_sp_imm1),
-            a_src_step: F::from_bool(instruction.a_src == SRC_STEP),
-            b_src_imm: F::from_bool(instruction.b_src == SRC_IMM),
-            b_src_mem: F::from_bool(instruction.b_src == SRC_MEM),
-            b_offset_imm0: F::from_canonical_u64(instruction.b_offset_imm0),
-            // #[cfg(not(feature = "sp"))]
-            b_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // b_use_sp_imm1: F::from_canonical_u64(instruction.b_use_sp_imm1),
-            b_src_ind: F::from_bool(instruction.b_src == SRC_IND),
-            ind_width: F::from_canonical_u64(instruction.ind_width),
-            is_external_op: F::from_bool(instruction.is_external_op),
-            op: F::from_canonical_u8(instruction.op),
-            store_ra: F::from_bool(instruction.store_ra),
-            store_mem: F::from_bool(instruction.store == STORE_MEM),
-            store_ind: F::from_bool(instruction.store == STORE_IND),
-            store_offset: F::from_canonical_u64(instruction.store_offset as u64),
-            set_pc: F::from_bool(instruction.set_pc),
-            // #[cfg(feature = "sp")]
-            // store_use_sp: F::from_bool(instruction.store_use_sp),
-            // #[cfg(feature = "sp")]
-            // set_sp: F::from_bool(instruction.set_sp),
-            // #[cfg(feature = "sp")]
-            // inc_sp: F::from_canonical_u64(instruction.inc_sp),
-            jmp_offset1: F::from_canonical_u64(instruction.jmp_offset1 as u64),
-            jmp_offset2: F::from_canonical_u64(instruction.jmp_offset2 as u64),
-            main_segment: F::from_canonical_u64(0),
-            main_first_segment: F::from_bool(false),
-            main_last_segment: F::from_bool(false),
-            end: F::from_bool(end),
-            m32: F::from_bool(instruction.m32),
-            operation_bus_enabled: F::from_bool(
-                instruction.op_type == ZiskOperationType::Binary ||
-                    instruction.op_type == ZiskOperationType::BinaryE,
-            ),
         }
     }
 
