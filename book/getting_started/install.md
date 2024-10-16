@@ -5,7 +5,7 @@
 ## Requirements
 ⚠️ Currently, macOS is not supported for proof generation. A Linux x86_64 machine is required at this time. ⚠️
 
-* [Rust (Nightly)](https://www.rust-lang.org/tools/install)
+* [Rust](https://www.rust-lang.org/tools/install)
 * [xz]()
 * [jq]()
 
@@ -32,6 +32,11 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source $HOME/.bashrc
 nvm install 19
 nvm use 19
+```
+
+#### Circom
+```bash
+https://docs.circom.io/getting-started/installation/
 ```
 
 ## Option 1: Prebuilt Binaries (Recommended)
