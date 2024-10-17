@@ -227,21 +227,36 @@ impl<F: PrimeField> MainSM<F> {
                     }
                     _ => panic!("Invalid operation type"),
                 };
+                ectx.dctx.write().unwrap().add_instance(idx, 1);
 
-                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                instances_ctx.push(InstanceExtensionCtx::new(
-                    buffer,
-                    offset,
-                    emu_slice.op_type.clone(),
-                    emu_slice.emu_trace_start,
-                    None,
-                ));
+                if ectx.dctx.write().unwrap().is_my_instance(idx) {
+                    let (buffer, offset) =
+                        create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+                    instances_ctx.push(InstanceExtensionCtx::new(
+                        buffer,
+                        offset,
+                        emu_slice.op_type.clone(),
+                        emu_slice.emu_trace_start,
+                        None,
+                    ));
+                } else {
+                    let buffer = Vec::default();
+                    //generate mock instance
+                    instances_ctx.push(InstanceExtensionCtx::new(
+                        buffer,
+                        0,
+                        starting_point.op_type.clone(),
+                        starting_point.emu_trace_start.clone(),
+                        Some(AirInstance::new(AIRGROUP_ID, AIR_ID, Some(idx), buffer),
+                    );
+                }
             }
 
-            instances_ctx.par_iter_mut().enumerate().for_each(|(segment_id, iectx)| {
+            ectx.dctx.read().unwrap().my_instances.iter().for_each(|&idx| {
+                let iectx = &mut instances_ctx[idx];
                 match iectx.op_type {
                     ZiskOperationType::None => {
-                        self.prove_main(&emu_traces, segment_id, iectx, &pctx);
+                        self.prove_main(&vec_traces, idx, iectx, &pctx);
                     }
                     ZiskOperationType::Binary => {
                         self.prove_binary(&emu_traces, segment_id, iectx, &pctx, scope);
