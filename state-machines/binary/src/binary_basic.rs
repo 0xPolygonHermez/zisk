@@ -896,6 +896,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_TABLE);
 
         scope.spawn(|_| {
+            drop(operations);
             drop(multiplicity_table);
         });
     }

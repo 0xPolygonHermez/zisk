@@ -642,6 +642,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
 
         scope.spawn(|_| {
+            drop(operations);
             drop(multiplicity_table);
             drop(range_check);
         });
