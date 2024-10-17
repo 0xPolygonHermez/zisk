@@ -28,7 +28,7 @@ pub struct EmuOptions {
     #[clap(short, long, value_name = "OUTPUT_FILE")]
     pub output: Option<String>,
     /// Sets the maximum number of steps to execute
-    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "100000000")]
+    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "1000000000")]
     pub max_steps: u64,
     /// Sets the print step period in number of steps
     #[clap(short, long, value_name = "PRINT_STEP", default_value = "0")]
