@@ -8,8 +8,8 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
-use sm_common::{create_prover_buffer, OpResult, Provable};
-use zisk_core::{ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
+use sm_common::create_prover_buffer;
+use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::{BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
@@ -18,14 +18,9 @@ pub struct BinaryBasicTableSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
-
     // Row multiplicity table
     num_rows: usize,
     multiplicity: Mutex<Vec<u64>>,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -42,10 +37,8 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let binary_basic_table = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
-            _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
         wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
@@ -57,15 +50,8 @@ impl<F: Field> BinaryBasicTableSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, _: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicTableSM<F> as Provable<ZiskRequiredBinaryBasicTable, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-
             // Create the prover buffer
             let (mut prover_buffer, offset) = create_prover_buffer(
                 self.wcm.get_ectx(),
@@ -102,22 +88,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
     }
 
-    pub fn process_slice_buff(&self, input: &[u64]) {
+    pub fn process_slice(&self, input: &[u64]) {
         // Create the trace vector
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for (i, val) in input.iter().enumerate() {
             multiplicity[i] += *val;
-        }
-    }
-
-    pub fn process_slice(&self, input: &[ZiskRequiredBinaryBasicTable]) {
-        // Create the trace vector
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
-        for i in input {
-            assert!(i.row < self.num_rows as u64);
-            multiplicity[i.row as usize] += i.multiplicity;
         }
     }
 
@@ -192,18 +168,3 @@ impl<F: Field> BinaryBasicTableSM<F> {
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {}
-
-impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredBinaryBasicTable], drain: bool, _scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(self.num_rows, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.process_slice(&drained_inputs);
-            }
-        }
-    }
-}
