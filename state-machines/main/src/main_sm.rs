@@ -87,7 +87,7 @@ impl<'a, F: PrimeField> MainSM<F> {
         arith_sm: Arc<ArithSM>,
     ) -> Arc<Self> {
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
-        let zisk_rom = if rom_path.extension().unwrap() == "elf" {
+        let zisk_rom = {
             // Create an instance of the RISCV -> ZisK program converter
             let rv2zk = Riscv2zisk::new(
                 rom_path.display().to_string(),
@@ -103,9 +103,6 @@ impl<'a, F: PrimeField> MainSM<F> {
                     panic!("Application error: {}", e);
                 }
             }
-        } else {
-            // TODO - Remove this when the ZisK ROM is able to be loaded from a file
-            panic!("ROM file must be an ELF file");
         };
 
         // TODO - Compute MAX_ACCUMULATED having the num_rows of the Main AIR

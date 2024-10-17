@@ -17,8 +17,10 @@ Run the following commands to clone the necessary repositories:
 
 ```bash
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b develop https://${ZISK_TOKEN}@github.com/0xPolygonHermez/zisk.git
+git clone -b develop https://github.com/0xPolygonHermez/zisk.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b develop  https://github.com/0xPolygonHermez/pil2-stark-js.git
+
 git clone --recursive -b develop  https://github.com/0xPolygonHermez/pil2-stark.git
 git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
@@ -28,14 +30,6 @@ git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
 ### Setup
 Install qemu:
 `sudo apt-get install qemu-system`
-
-
-Set up tokens to access repositories:
-
-```
-export GITHUB_ACCESS_TOKEN=....
-export ZISK_TOKEN=....
-```
 
 ### Create New Hello World Project
 Create a new project using the Zisk toolchain:
@@ -156,24 +150,6 @@ Sample inputs are located in `zisk/emulator/benches/data`:
 - `input_two_segments.bin`: 512 SHA
 - `input.bin`: large number of SHA
 
-### Generate a Proof
-
-```bash
-// Using input_one_segment.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d)
-
-// Using input_two_segments.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d)`
-
-// Using input.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d)`
-```
-
-### Verify the Proof
-```bash
-node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs
-```
-
 ### Verify Constraints Only
 ```bash
 // Using input_one_segment.bin
@@ -184,4 +160,31 @@ node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs
 
 // Using input.bin
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
+```
+
+### Generate a Proof
+
+To generate the aggregated proofs, add `-a`
+
+```bash
+// Using input_one_segment.bin
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+
+// Using input_two_segments.bin
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+
+// Using input.bin
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+```
+
+### Verify the Proof
+```bash
+node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs
+```
+
+### Verify the aggregated Proof
+If the aggregation proofs are being generated, can be verified with the following command:
+
+```bash
+node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
 ```

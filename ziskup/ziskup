@@ -296,9 +296,9 @@ download() {
 
     # Fetch the URL from the GitHub API
     if check_cmd curl; then
-      API_RESPONSE=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+      API_RESPONSE=$(curl https://api.github.com/repos/0xPolygonHermez/zisk/releases)
     else
-      API_RESPONSE=$(wget -qO- --header="Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+      API_RESPONSE=$(wget -qO- https://api.github.com/repos/0xPolygonHermez/zisk/releases)
     fi
 
     # Extract the browser_download_url for the given file name ($1)
@@ -311,16 +311,16 @@ download() {
 
     # output into $2
     if check_cmd curl; then
-      curl -H "Accept: application/octet-stream" -H "Authorization: Bearer ${ZISK_TOKEN}" -#o "$2" -L "$URL"
+      curl -H "Accept: application/octet-stream" -#o "$2" -L "$URL"
     else
-      wget --header="Accept: application/octet-stream" --header="Authorization: Bearer ${ZISK_TOKEN}" --show-progress -qO "$2" "$URL"
+      wget --header="Accept: application/octet-stream" --show-progress -qO "$2" "$URL"
     fi
   else
     # Fetch the URL from the GitHub API
     if check_cmd curl; then
-      API_RESPONSE=$(curl -H "Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+      API_RESPONSE=$(curl https://api.github.com/repos/0xPolygonHermez/zisk/releases)
     else
-      API_RESPONSE=$(wget -qO- --header="Authorization: token ${ZISK_TOKEN}" https://api.github.com/repos/0xPolygonHermez/zisk/releases)
+      API_RESPONSE=$(wget -qO- https://api.github.com/repos/0xPolygonHermez/zisk/releases)
     fi
     # Extract the browser_download_url for the given file name ($1)
     URL=$(echo "$API_RESPONSE" | jq -r --arg FILENAME "$1" '.[] | .assets[] | select(.browser_download_url == $FILENAME) | .url')
@@ -332,9 +332,9 @@ download() {
 
     # output into $2
     if check_cmd curl; then
-      curl -H "Accept: application/octet-stream" -H "Authorization: Bearer ${ZISK_TOKEN}" -L "$URL"
+      curl -H "Accept: application/octet-stream" -L "$URL"
     else
-      wget --header="Accept: application/octet-stream" --header="Authorization: Bearer ${ZISK_TOKEN}" --show-progress -qO- "$URL"
+      wget --header="Accept: application/octet-stream" --show-progress -qO- "$URL"
     fi
   fi
 }
