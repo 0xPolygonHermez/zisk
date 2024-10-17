@@ -8,7 +8,7 @@ use sm_binary::BinarySM;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 
@@ -19,10 +19,7 @@ use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
     BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
 };
-use ziskemu::{
-    Emu, EmuFullTraceStep, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ParEmuOptions,
-    ZiskEmulator,
-};
+use ziskemu::{Emu, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStart, ZiskEmulator};
 
 //use process::Command;
 use proofman::WitnessComponent;
@@ -170,7 +167,7 @@ impl<F: PrimeField> MainSM<F> {
         let pool = ThreadPoolBuilder::new().build().unwrap();
 
         // Prepare the settings for the emulator
-        let emulator_options = EmuOptions {
+        let emu_options = EmuOptions {
             elf: Some(self.zisk_rom_path.clone().display().to_string()),
             inputs: Some(public_inputs_path.display().to_string()),
             trace_steps: Some(Self::BLOCK_SIZE as u64),
@@ -196,76 +193,32 @@ impl<F: PrimeField> MainSM<F> {
         let air_binary_e =
             pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
-        let mut segment_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
+        let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
-        segment_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
-        segment_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
-        segment_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
-
-        let emu_starting_points = Mutex::new(EmuStartingPoints::default());
-
-        let mut exe_traces = vec![Vec::new(); Self::NUM_THREADS];
+        op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
+        op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
+        op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
         pool.scope(|scope| {
             // Run the emulator in parallel n times to collect execution traces
             // and record the execution starting points for each AIR instance
             timer_start_debug!(PAR_PROCESS_ROM);
-            exe_traces.par_iter_mut().enumerate().for_each(|(thread_id, exe_trace)| {
-                let par_emu_options = ParEmuOptions::new(
-                    Self::NUM_THREADS,
-                    thread_id,
-                    Self::BLOCK_SIZE,
-                    segment_sizes,
-                );
-
-                let result = ZiskEmulator::par_process_rom::<F>(
-                    &self.zisk_rom,
-                    &public_inputs,
-                    &emulator_options,
-                    &par_emu_options,
-                )
-                .unwrap_or_else(|e| panic!("Error during emulator execution: {:?}", e));
-
-                *exe_trace = result.0;
-
-                if thread_id == 0 {
-                    *emu_starting_points.lock().unwrap() = result.1;
-                }
-            });
+            let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+                &self.zisk_rom,
+                &public_inputs,
+                &emu_options,
+                Self::NUM_THREADS,
+                op_sizes,
+            )
+            .expect("Error during emulator execution");
             timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
-            let num_boxes = exe_traces.iter().map(|trace| trace.len()).sum::<usize>();
-            let mut vec_traces = Vec::with_capacity(num_boxes);
-            for i in 0..num_boxes {
-                let x = i % Self::NUM_THREADS;
-                let y = i / Self::NUM_THREADS;
-
-                let exe_trace = std::mem::take(&mut exe_traces[x][y]);
-                vec_traces.push(exe_trace);
-            }
-
-            // For performance reasons we didn't collect main operation starting points because we
-            // can generate them from the execution trace.
-            let emu_starting_points = &mut *emu_starting_points.lock().unwrap();
-            emu_starting_points.total_steps[ZiskOperationType::None as usize] =
-                vec_traces.iter().map(|trace| trace.steps.len()).sum::<usize>() as u64;
-            for vec_trace in &vec_traces {
-                emu_starting_points.add(
-                    ZiskOperationType::None,
-                    vec_trace.start.pc,
-                    vec_trace.start.sp,
-                    vec_trace.start.c,
-                    vec_trace.start.step,
-                );
-            }
-
-            let starting_points = &mut emu_starting_points.points;
-            starting_points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+            emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
-                Vec::with_capacity(starting_points.len());
+                Vec::with_capacity(emu_slices.points.len());
 
-            for starting_point in starting_points {
+            for starting_point in emu_slices.points {
                 let prover_buffer = match starting_point.op_type {
                     ZiskOperationType::None => {
                         create_prover_buffer::<F>(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
@@ -297,13 +250,13 @@ impl<F: PrimeField> MainSM<F> {
             instances_ctx.par_iter_mut().enumerate().for_each(|(segment_id, iectx)| {
                 match iectx.op_type {
                     ZiskOperationType::None => {
-                        self.prove_main(&vec_traces, segment_id, iectx, &pctx);
+                        self.prove_main(&emu_traces, segment_id, iectx, &pctx);
                     }
                     ZiskOperationType::Binary => {
-                        self.prove_binary(&vec_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary(&emu_traces, segment_id, iectx, &pctx, scope);
                     }
                     ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&vec_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary_extension(&emu_traces, segment_id, iectx, &pctx, scope);
                     }
                     _ => {}
                 }
@@ -318,7 +271,7 @@ impl<F: PrimeField> MainSM<F> {
             timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
             std::thread::spawn(move || {
-                drop(exe_traces);
+                drop(emu_traces);
             });
 
             // self.mem_sm.unregister_predecessor(scope);

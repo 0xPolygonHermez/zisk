@@ -2981,6 +2981,7 @@ dependencies = [
  "criterion",
  "p3-field",
  "pprof",
+ "rayon",
  "riscv",
  "sysinfo",
  "vergen",
