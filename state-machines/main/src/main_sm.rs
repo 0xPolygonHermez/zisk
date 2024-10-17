@@ -218,31 +218,22 @@ impl<F: PrimeField> MainSM<F> {
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
                 Vec::with_capacity(emu_slices.points.len());
 
-            for starting_point in emu_slices.points {
-                let prover_buffer = match starting_point.op_type {
-                    ZiskOperationType::None => {
-                        create_prover_buffer::<F>(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0])
+            for emu_slice in emu_slices.points {
+                let (airgroup_id, air_id) = match emu_slice.op_type {
+                    ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                    ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+                    ZiskOperationType::BinaryE => {
+                        (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
                     }
-                    ZiskOperationType::Binary => create_prover_buffer::<F>(
-                        &ectx,
-                        &sctx,
-                        BINARY_AIRGROUP_ID,
-                        BINARY_AIR_IDS[0],
-                    ),
-                    ZiskOperationType::BinaryE => create_prover_buffer::<F>(
-                        &ectx,
-                        &sctx,
-                        BINARY_EXTENSION_AIRGROUP_ID,
-                        BINARY_EXTENSION_AIR_IDS[0],
-                    ),
                     _ => panic!("Invalid operation type"),
                 };
 
+                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                 instances_ctx.push(InstanceExtensionCtx::new(
-                    prover_buffer.0,
-                    prover_buffer.1,
-                    starting_point.op_type.clone(),
-                    starting_point.emu_trace_start.clone(),
+                    buffer,
+                    offset,
+                    emu_slice.op_type.clone(),
+                    emu_slice.emu_trace_start,
                     None,
                 ));
             }
@@ -258,7 +249,7 @@ impl<F: PrimeField> MainSM<F> {
                     ZiskOperationType::BinaryE => {
                         self.prove_binary_extension(&emu_traces, segment_id, iectx, &pctx, scope);
                     }
-                    _ => {}
+                    _ => panic!("Invalid operation type"),
                 }
             });
 
