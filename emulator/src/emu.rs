@@ -832,14 +832,14 @@ impl<'a> Emu<'a> {
             .steps
             .push(EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b });
 
-        let op_type = instruction.op_type.clone() as usize;
+        let op_type = instruction.op_type as usize;
         segment_count[op_type] += 1;
         emu_segments.total_steps[op_type] += 1;
 
         if par_options.segment_sizes[op_type] != 0 {
             if segment_count[op_type] == 1 {
                 emu_segments.add(
-                    instruction.op_type.clone(),
+                    instruction.op_type,
                     last_pc,
                     self.ctx.inst_ctx.sp,
                     last_c,
@@ -891,14 +891,14 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
 
-        let op_type = instruction.op_type.clone() as usize;
+        let op_type = instruction.op_type as usize;
         segment_count[op_type] += 1;
         emu_segments.total_steps[op_type] += 1;
 
         if par_options.segment_sizes[op_type] != 0 {
             if segment_count[op_type] == 1 {
                 emu_segments.add(
-                    instruction.op_type.clone(),
+                    instruction.op_type,
                     last_pc,
                     self.ctx.inst_ctx.sp,
                     last_c,

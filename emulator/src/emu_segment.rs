@@ -11,8 +11,8 @@ pub struct EmuStartingPoints {
 
 impl EmuStartingPoints {
     pub fn add(&mut self, op_type: ZiskOperationType, pc: u64, sp: u64, c: u64, step: u64) {
-        self.points.push(EmuStartingPoint::new(op_type.clone(), pc, sp, c, step));
-        self.num_points[op_type.clone() as usize] += 1;
+        self.points.push(EmuStartingPoint::new(op_type, pc, sp, c, step));
+        self.num_points[op_type as usize] += 1;
     }
 }
 

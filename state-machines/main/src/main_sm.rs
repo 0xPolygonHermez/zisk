@@ -3,7 +3,7 @@ use p3_field::PrimeField;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::{iter::IntoParallelRefMutIterator, prelude::*, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
     fs,
@@ -19,26 +19,13 @@ use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
     BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
 };
-use ziskemu::{Emu, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceStart, ZiskEmulator};
+use ziskemu::{Emu, EmuOptions, EmuTrace, EmuTraceStart, ZiskEmulator};
 
 //use process::Command;
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_common::create_prover_buffer;
 use sm_mem::MemSM;
-
-#[derive(Default)]
-pub struct MainAirSegment<F> {
-    pub air_segment_id: u32,
-    pub filled_inputs: usize,
-    pub inputs: Vec<EmuFullTraceStep<F>>,
-}
-
-impl<F: Default + Clone> MainAirSegment<F> {
-    pub fn new(segment_id: u32) -> Self {
-        Self { air_segment_id: segment_id, filled_inputs: 0, inputs: Vec::new() }
-    }
-}
 
 pub struct InstanceExtensionCtx<F> {
     pub prover_buffer: Vec<F>,
@@ -218,6 +205,7 @@ impl<F: PrimeField> MainSM<F> {
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
                 Vec::with_capacity(emu_slices.points.len());
 
+            let mut dctx = ectx.dctx.write().unwrap();
             for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
                 let (airgroup_id, air_id) = match emu_slice.op_type {
                     ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
@@ -227,44 +215,33 @@ impl<F: PrimeField> MainSM<F> {
                     }
                     _ => panic!("Invalid operation type"),
                 };
-                ectx.dctx.write().unwrap().add_instance(idx, 1);
+                dctx.add_instance(airgroup_id, air_id, idx, 1);
 
-                if ectx.dctx.write().unwrap().is_my_instance(idx) {
+                if dctx.is_my_instance(idx) {
                     let (buffer, offset) =
                         create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                     instances_ctx.push(InstanceExtensionCtx::new(
                         buffer,
                         offset,
-                        emu_slice.op_type.clone(),
+                        emu_slice.op_type,
                         emu_slice.emu_trace_start.clone(),
                         None,
                     ));
-                } else {
-                    //generate mock instance
-                    instances_ctx.push(InstanceExtensionCtx::new(
-                        Vec::default(),
-                        0,
-                        emu_slice.op_type.clone(),
-                        emu_slice.emu_trace_start.clone(),
-                        Some(AirInstance::new(airgroup_id, air_id, Some(idx), Vec::default())),
-                    ));
                 }
             }
+            drop(dctx);
 
-            ectx.dctx.read().unwrap().my_instances.iter().for_each(|&idx| {
-                let iectx = &mut instances_ctx[idx];
-                match iectx.op_type {
-                    ZiskOperationType::None => {
-                        self.prove_main(&emu_traces, idx, iectx, &pctx);
-                    }
-                    ZiskOperationType::Binary => {
-                        self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
-                    }
-                    ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
-                    }
-                    _ => panic!("Invalid operation type"),
+            instances_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| match iectx.op_type {
+                ZiskOperationType::None => {
+                    self.prove_main(&emu_traces, idx, iectx, &pctx);
                 }
+                ZiskOperationType::Binary => {
+                    self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
+                }
+                ZiskOperationType::BinaryE => {
+                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
+                }
+                _ => panic!("Invalid operation type"),
             });
 
             timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
@@ -369,7 +346,7 @@ impl<F: PrimeField> MainSM<F> {
         let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
             &self.zisk_rom,
             vec_traces,
-            iectx.op_type.clone(),
+            iectx.op_type,
             &iectx.emu_trace_start,
             air.num_rows(),
         );
@@ -399,7 +376,7 @@ impl<F: PrimeField> MainSM<F> {
         let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
             &self.zisk_rom,
             vec_traces,
-            iectx.op_type.clone(),
+            iectx.op_type,
             &iectx.emu_trace_start,
             air.num_rows(),
         );
@@ -414,232 +391,6 @@ impl<F: PrimeField> MainSM<F> {
             buffer,
         ));
     }
-
-    // fn prove_inputs(&self, mut vec_required: Vec<Vec<ZiskRequired>>, scope: &Scope<'a>) {
-    //     let mut current_box = 0;
-    //     let mut level = 0;
-    //     loop {
-    //         if vec_required[current_box].len() <= level {
-    //             break;
-    //         }
-
-    //         let required = &mut vec_required[current_box][level];
-
-    //         // self.arith_sm.prove(&required.arith, false, scope);
-
-    //         let req_binary = std::mem::take(&mut required.binary);
-    //         self.binary_sm.prove_xxx(req_binary, false, false, scope);
-
-    //         let req_extension = std::mem::take(&mut required.binary_extension);
-    //         self.binary_sm.prove_xxx(req_extension, true, false, scope);
-
-    //         // self.mem_sm.prove(&required.memory, false);
-
-    //         current_box += 1;
-    //         if current_box == Self::NUM_THREADS {
-    //             current_box = 0;
-    //             level += 1;
-    //         }
-    //     }
-
-    //     std::thread::spawn(move || {
-    //         drop(vec_required);
-    //     });
-    // }
-
-    // // Callback method to process the inputs generated by the emulator
-    // #[inline(always)]
-    // fn emulator_callback(
-    //     &'a self,
-    //     zisk_rom: &'a ZiskRom,
-    //     emu_traces: EmuTrace,
-    //     scope: &Scope<'a>,
-    //     pctx: Arc<ProofCtx<F>>,
-    //     ectx: Arc<ExecutionCtx>,
-    //     sctx: Arc<SetupCtx>,
-    // ) {
-    //     let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-
-    //     // To go faster, we receive from the simulator callback a tiny trace that we are going
-    //     // to process to get the full trace. This is done to avoid the overhead of processing
-    //     // the full trace in the simulator callback and now can be parallelized.
-    //     timer_start_info!(EXPANDING);
-    //     let emu_slice = match ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {
-    //         Ok(slice) => slice,
-    //         Err(e) => panic!("Error processing slice: {:?}", e),
-    //     };
-    //     timer_stop_and_log_info!(EXPANDING);
-
-    //     timer_start_info!(PROCESS_MAIN);
-    //     let num_segments =
-    //         (emu_slice.full_trace.len() as f64 / air.num_rows() as f64).ceil() as usize;
-    //     let mut total_drained = 0;
-
-    //     // self.prove(emu_slice.required, ectx.clone(), scope);
-
-    //     for segment_id in 0..num_segments {
-    //         let num_drained =
-    //             std::cmp::min(air.num_rows(), &emu_slice.full_trace.len() - total_drained);
-    //         let drained_inputs = &emu_slice.full_trace
-    //             [segment_id * air.num_rows()..segment_id * air.num_rows() + num_drained];
-
-    //         total_drained += num_drained;
-
-    //         let pctx_cloned = pctx.clone();
-    //         let ectx_cloned = ectx.clone();
-    //         let sctx_cloned = sctx.clone();
-
-    //         timer_start_info!(TO_VEC);
-    //         let mut air_segment = MainAirSegment::new(segment_id as u32);
-    //         air_segment.inputs = drained_inputs.to_vec();
-    //         air_segment.filled_inputs += num_drained;
-    //         timer_stop_and_log_info!(TO_VEC);
-
-    //         scope.spawn(move |_| {
-    //             // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by
-    // checking             let air_segment = mem::take(&mut air_segment);
-    //             Self::create_air_instance(
-    //                 air_segment,
-    //                 pctx_cloned,
-    //                 ectx_cloned,
-    //                 sctx_cloned,
-    //                 false,
-    //             );
-    //         });
-    //     }
-    //     timer_stop_and_log_info!(PROCESS_MAIN);
-
-    //     // scope.spawn(move |scope| {
-    //     //     // To go faster, we receive from the simulator callback a tiny trace that we are
-    //     // going     // to process to get the full trace. This is done to avoid the overhead
-    //     // of processing     // the full trace in the simulator callback and now can be
-    //     // parallelized.     let emu_slice = match
-    //     // ZiskEmulator::process_slice::<F>(zisk_rom, &emu_traces) {         Ok(slice) =>
-    //     // slice,         Err(e) => panic!("Error processing slice: {:?}", e),
-    //     //     };
-
-    //     //     let len = emu_slice.full_trace.len();
-    //     //     let source_iter = emu_slice.full_trace.into_iter();
-
-    //     //     let mut inputs = self.callback_inputs.lock().unwrap();
-    //     //     let air_segment = &mut inputs[segment_id];
-
-    //     //     air_segment.inputs.splice(
-    //     //         pos_id * Self::CALLBACK_SIZE..pos_id * Self::CALLBACK_SIZE +
-    // source_iter.len(),     //         source_iter,
-    //     //     );
-
-    //     //     air_segment.filled_inputs += len;
-    //     //     assert!(air_segment.filled_inputs <= num_rows, "Too many inputs in a Main AIR
-    //     // segment");
-
-    //     //     self.prove(emu_slice.required, ectx.clone(), scope);
-
-    //     //     // As CALLBACK_SIZE is a power of 2, we can check if the segment is full by
-    // checking     //     if air_segment.filled_inputs == num_rows {
-    //     //         let air_segment = mem::take(air_segment);
-    //     //         let cloned_ectx = ectx.clone();
-    //     //         Self::create_air_instance(air_segment, pctx, cloned_ectx, sctx, false);
-    //     //     }
-
-    //     //     threads_controller.remove_working_thread();
-    //     // });
-    // }
-
-    // /// Proves a batch of inputs
-    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine
-    // processes /// the inputs in batches. The inputs are processed in parallel using the
-    // thread pool /// # Arguments
-    // /// * `inputs` - Vector of EmuTrace inputs to prove
-    // /// * `pctx` - Proof context to interact with the proof system
-    // /// * `ectx` - Execution context to interact with the execution environment
-    // #[inline(always)]
-    // fn create_air_instance(
-    //     mut air_segment: MainAirSegment<F>,
-    //     pctx: Arc<ProofCtx<F>>,
-    //     ectx: Arc<ExecutionCtx>,
-    //     sctx: Arc<SetupCtx>,
-    //     last_segment: bool,
-    // ) {
-    //     let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-    //     info!(
-    //         "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
-    //         Self::MY_NAME,
-    //         air_segment.air_segment_id,
-    //         air_segment.filled_inputs,
-    //         air.num_rows(),
-    //         air_segment.filled_inputs as f64 / air.num_rows() as f64 * 100.0
-    //     );
-
-    //     // Set remaining rows equals to the last filled row
-    //     let copied_value = air_segment.inputs[air_segment.filled_inputs - 1];
-    //     air_segment.inputs[air_segment.filled_inputs..]
-    //         .par_iter_mut()
-    //         .for_each(|input| *input = copied_value);
-
-    //     // Set segment information in the inputs
-    //     let main_first_segment = F::from_bool(air_segment.air_segment_id == 0);
-    //     let main_last_segment = F::from_bool(last_segment);
-    //     let main_segment = F::from_canonical_usize(air_segment.air_segment_id as usize);
-    //     air_segment.inputs[..].par_iter_mut().for_each(|input| {
-    //         input.main_first_segment = main_first_segment;
-    //         input.main_last_segment = main_last_segment;
-    //         input.main_segment = main_segment;
-    //     });
-
-    //     // Create the prover buffer
-    //     let (mut prover_buffer, offset) =
-    //         create_prover_buffer(&ectx, &sctx, MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-
-    //     // Convert the Vec<Main0Row<F>> to a flat Vec<F> and copy the resulting values into the
-    //     // prover buffer
-    //     let main_trace_buffer =
-    //         Main0Trace::<F>::map_row_vec(air_segment.inputs, true).unwrap().buffer.unwrap();
-    //     prover_buffer[offset as usize..offset as usize + main_trace_buffer.len()]
-    //         .par_iter_mut()
-    //         .zip(main_trace_buffer.par_iter())
-    //         .for_each(|(buffer_elem, main_elem)| {
-    //             *buffer_elem = *main_elem;
-    //         });
-
-    //     let air_instance = AirInstance::new(
-    //         MAIN_AIRGROUP_ID,
-    //         MAIN_AIR_IDS[0],
-    //         Some(air_segment.air_segment_id as usize),
-    //         prover_buffer,
-    //     );
-
-    //     pctx.air_instance_repo.add_air_instance(air_instance);
-    // }
-
-    // /// Proves a batch of inputs
-    // /// When the maximum number of accumulated inputs is reached, the MainSM state machine
-    // processes /// the inputs in batches. The inputs are processed in parallel using the
-    // thread pool /// # Arguments
-    // /// * `emu_required` - Inputs to be proved
-    // /// * `ectx` - Execution context to interact with the execution environment
-    // #[inline(always)]
-    // fn prove(&self, mut emu_required: ZiskRequired, _ectx: Arc<ExecutionCtx>, scope: &Scope<'a>)
-    // {     let memory = mem::take(&mut emu_required.memory);
-    //     let binary = mem::take(&mut emu_required.binary);
-    //     let arith = mem::take(&mut emu_required.arith);
-
-    //     let mem_sm = self.mem_sm.clone();
-    //     let binary_sm = self.binary_sm.clone();
-    //     let arith_sm = self.arith_sm.clone();
-
-    //     scope.spawn(move |scope| {
-    //         mem_sm.prove(&memory, false, scope);
-    //     });
-
-    //     scope.spawn(move |scope| {
-    //         binary_sm.prove(&binary, false, scope);
-    //     });
-
-    //     scope.spawn(move |scope| {
-    //         arith_sm.prove(&arith, false, scope);
-    //     });
-    // }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {}
