@@ -3,7 +3,7 @@ use p3_field::PrimeField;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::ThreadPoolBuilder;
 use sm_binary::BinarySM;
 use std::{
     fs,
@@ -13,7 +13,7 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 
 use proofman::WitnessManager;
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, DistributionCtx, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
@@ -217,6 +217,7 @@ impl<F: PrimeField> MainSM<F> {
 
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
                 Vec::with_capacity(emu_slices.points.len());
+            let mut dctx = DistributionCtx::new();
 
             for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
                 let (airgroup_id, air_id) = match emu_slice.op_type {
@@ -227,9 +228,9 @@ impl<F: PrimeField> MainSM<F> {
                     }
                     _ => panic!("Invalid operation type"),
                 };
-                ectx.dctx.write().unwrap().add_instance(idx, 1);
+                dctx.add_instance(idx, 1);
 
-                if ectx.dctx.write().unwrap().is_my_instance(idx) {
+                if dctx.is_my_instance(idx) {
                     let (buffer, offset) =
                         create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                     instances_ctx.push(InstanceExtensionCtx::new(
@@ -251,7 +252,11 @@ impl<F: PrimeField> MainSM<F> {
                 }
             }
 
-            ectx.dctx.read().unwrap().my_instances.iter().for_each(|&idx| {
+            if ectx.dctx.set(dctx).is_err() {
+                panic!("Execution context dctx field was already initialized.");
+            }
+
+            ectx.dctx.get().unwrap().my_instances.iter().for_each(|&idx| {
                 let iectx = &mut instances_ctx[idx];
                 match iectx.op_type {
                     ZiskOperationType::None => {
