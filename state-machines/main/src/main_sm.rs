@@ -218,7 +218,7 @@ impl<F: PrimeField> MainSM<F> {
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
                 Vec::with_capacity(emu_slices.points.len());
 
-            for emu_slice in emu_slices.points {
+            for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
                 let (airgroup_id, air_id) = match emu_slice.op_type {
                     ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
                     ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
@@ -236,19 +236,18 @@ impl<F: PrimeField> MainSM<F> {
                         buffer,
                         offset,
                         emu_slice.op_type.clone(),
-                        emu_slice.emu_trace_start,
+                        emu_slice.emu_trace_start.clone(),
                         None,
                     ));
                 } else {
-                    let buffer = Vec::default();
                     //generate mock instance
                     instances_ctx.push(InstanceExtensionCtx::new(
-                        buffer,
+                        Vec::default(),
                         0,
-                        starting_point.op_type.clone(),
-                        starting_point.emu_trace_start.clone(),
-                        Some(AirInstance::new(AIRGROUP_ID, AIR_ID, Some(idx), buffer),
-                    );
+                        emu_slice.op_type.clone(),
+                        emu_slice.emu_trace_start.clone(),
+                        Some(AirInstance::new(airgroup_id, air_id, Some(idx), Vec::default())),
+                    ));
                 }
             }
 
@@ -256,13 +255,13 @@ impl<F: PrimeField> MainSM<F> {
                 let iectx = &mut instances_ctx[idx];
                 match iectx.op_type {
                     ZiskOperationType::None => {
-                        self.prove_main(&vec_traces, idx, iectx, &pctx);
+                        self.prove_main(&emu_traces, idx, iectx, &pctx);
                     }
                     ZiskOperationType::Binary => {
-                        self.prove_binary(&emu_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
                     }
                     ZiskOperationType::BinaryE => {
-                        self.prove_binary_extension(&emu_traces, segment_id, iectx, &pctx, scope);
+                        self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
                     }
                     _ => panic!("Invalid operation type"),
                 }
