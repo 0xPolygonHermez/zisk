@@ -46,7 +46,7 @@ where
     pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
-        let std_lib = Std::new(wcm.clone(), None);
+        let std_lib = Std::new(wcm.clone());
         let permutation1_6 = Permutation1_6::new(wcm.clone());
         let permutation1_7 = Permutation1_7::new(wcm.clone());
         let permutation1_8 = Permutation1_8::new(wcm.clone());

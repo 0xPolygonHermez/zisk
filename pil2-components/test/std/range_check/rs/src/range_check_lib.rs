@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 
-use pil_std_lib::{RCAirData, RangeCheckAir, Std};
+use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
@@ -8,11 +8,7 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{
-    MultiRangeCheck1, MultiRangeCheck2, Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4,
-    SPECIFIED_RANGES_AIRGROUP_ID, SPECIFIED_RANGES_AIR_IDS, U_16_AIR_AIRGROUP_ID, U_16_AIR_AIR_IDS,
-    U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS,
-};
+use crate::{MultiRangeCheck1, MultiRangeCheck2, Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4};
 
 pub struct RangeCheckWitness<F: PrimeField> {
     pub wcm: OnceCell<Arc<WitnessManager<F>>>,
@@ -54,24 +50,7 @@ where
     fn initialize(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
-        // TODO: Ad macro data into RCAIRData: SpecifiedRanges0Trace.
-        // In fact, I only need to pass the length of mul of Specified...
-        // Anyways, this solution would be very very specific
-        let rc_air_data = vec![
-            RCAirData { air_name: RangeCheckAir::U8Air, airgroup_id: U_8_AIR_AIRGROUP_ID, air_id: U_8_AIR_AIR_IDS[0] },
-            RCAirData {
-                air_name: RangeCheckAir::U16Air,
-                airgroup_id: U_16_AIR_AIRGROUP_ID,
-                air_id: U_16_AIR_AIR_IDS[0],
-            },
-            RCAirData {
-                air_name: RangeCheckAir::SpecifiedRanges,
-                airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
-                air_id: SPECIFIED_RANGES_AIR_IDS[0],
-            },
-        ];
-
-        let std_lib = Std::new(wcm.clone(), Some(rc_air_data));
+        let std_lib = Std::new(wcm.clone());
         let range_check1 = RangeCheck1::new(wcm.clone(), std_lib.clone());
         let range_check2 = RangeCheck2::new(wcm.clone(), std_lib.clone());
         let range_check3 = RangeCheck3::new(wcm.clone(), std_lib.clone());

@@ -33,21 +33,23 @@ pub fn aggregate_airgroupvals<F: Field>(pctx: Arc<ProofCtx<F>>) -> Vec<Vec<F>> {
                     airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION + 2],
                 ],
             };
-            let instance_airgroup_val = ExtensionField {
-                value: [
-                    air_instance.subproof_values[idx * FIELD_EXTENSION],
-                    air_instance.subproof_values[idx * FIELD_EXTENSION + 1],
-                    air_instance.subproof_values[idx * FIELD_EXTENSION + 2],
-                ],
-            };
-            if agg_type.agg_type == 0 {
-                acc += instance_airgroup_val;
-            } else {
-                acc *= instance_airgroup_val;
+            if !air_instance.subproof_values.is_empty() {
+                let instance_airgroup_val = ExtensionField {
+                    value: [
+                        air_instance.subproof_values[idx * FIELD_EXTENSION],
+                        air_instance.subproof_values[idx * FIELD_EXTENSION + 1],
+                        air_instance.subproof_values[idx * FIELD_EXTENSION + 2],
+                    ],
+                };
+                if agg_type.agg_type == 0 {
+                    acc += instance_airgroup_val;
+                } else {
+                    acc *= instance_airgroup_val;
+                }
+                airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION] = acc.value[0];
+                airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION + 1] = acc.value[1];
+                airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION + 2] = acc.value[2];
             }
-            airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION] = acc.value[0];
-            airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION + 1] = acc.value[1];
-            airgroupvalues[air_instance.airgroup_id][idx * FIELD_EXTENSION + 2] = acc.value[2];
         }
     }
 

@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
-
 use crate::{BufferAllocator, VerboseMode, DistributionCtx};
+use std::sync::RwLock;
 #[allow(dead_code)]
 /// Represents the context when executing a witness computer plugin
 pub struct ExecutionCtx {
@@ -9,7 +9,7 @@ pub struct ExecutionCtx {
     pub public_output: bool,
     pub buffer_allocator: Arc<dyn BufferAllocator>,
     pub verbose_mode: VerboseMode,
-    pub dctx: DistributionCtx,
+    pub dctx: RwLock<DistributionCtx>,
 }
 
 impl ExecutionCtx {
@@ -23,7 +23,6 @@ pub struct ExecutionCtxBuilder {
     public_output: bool,
     buffer_allocator: Option<Arc<dyn BufferAllocator>>,
     verbose_mode: VerboseMode,
-    dctx: DistributionCtx,
 }
 
 impl Default for ExecutionCtxBuilder {
@@ -39,7 +38,6 @@ impl ExecutionCtxBuilder {
             public_output: true,
             buffer_allocator: None,
             verbose_mode: VerboseMode::Info,
-            dctx: DistributionCtx::new(),
         }
     }
 
@@ -68,7 +66,7 @@ impl ExecutionCtxBuilder {
             public_output: self.public_output,
             buffer_allocator: self.buffer_allocator.unwrap(),
             verbose_mode: self.verbose_mode,
-            dctx: self.dctx,
+            dctx: RwLock::new(DistributionCtx::new()),
         }
     }
 }

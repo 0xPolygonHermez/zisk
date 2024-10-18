@@ -3,7 +3,7 @@ use std::{fs::File, sync::Arc};
 
 use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman::{WitnessLibrary, WitnessManager};
-use pil_std_lib::{RCAirData, RangeCheckAir, Std};
+use pil_std_lib::Std;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 
@@ -11,7 +11,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use crate::FibonacciSquarePublics;
 
-use crate::{FibonacciSquare, Pilout, Module, U_8_AIR_AIRGROUP_ID, U_8_AIR_AIR_IDS};
+use crate::{FibonacciSquare, Pilout, Module};
 
 pub struct FibonacciWitness<F: PrimeField> {
     public_inputs_path: Option<PathBuf>,
@@ -31,13 +31,7 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
     fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx.clone(), ectx.clone(), sctx.clone()));
 
-        let rc_air_data = vec![RCAirData {
-            air_name: RangeCheckAir::U8Air,
-            airgroup_id: U_8_AIR_AIRGROUP_ID,
-            air_id: U_8_AIR_AIR_IDS[0],
-        }];
-
-        let std_lib = Std::new(wcm.clone(), Some(rc_air_data));
+        let std_lib = Std::new(wcm.clone());
         let module = Module::new(wcm.clone(), std_lib.clone());
         let fibonacci = FibonacciSquare::new(wcm.clone(), module.clone());
 

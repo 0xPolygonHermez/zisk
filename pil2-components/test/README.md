@@ -4,7 +4,7 @@ Currently pil2-components tests can be launched with the following commands:
 SIMPLE
 
 mkdir -p ./pil2-components/test/simple/build/ \
-&& rm -rf pil2-components/test/simple/build/proofs \
+&& rm -rf pil2-components/test/simple/build/proofs/ \
 && node ../pil2-compiler/src/pil.js ./pil2-components/test/simple/simple.pil \
      -I ./pil2-components/lib/std/pil \
      -o ./pil2-components/test/simple/build/build.pilout \
@@ -28,7 +28,7 @@ mkdir -p ./pil2-components/test/simple/build/ \
 CONNECTION
 
 mkdir -p ./pil2-components/test/std/connection/build/ \
-&& rm -rf pil2-components/test/connection/build/proofs \
+&& rm -rf pil2-components/test/connection/build/proofs/ \
 && node ../pil2-compiler/src/pil.js ./pil2-components/test/std/connection/connection.pil \
      -I ./pil2-components/lib/std/pil \
      -o ./pil2-components/test/std/connection/build/build.pilout \
@@ -52,7 +52,7 @@ mkdir -p ./pil2-components/test/std/connection/build/ \
 LOOKUP
 
 mkdir -p ./pil2-components/test/std/lookup/build/ \
-&& rm -rf pil2-components/test/lookup/build/ \
+&& rm -rf pil2-components/test/lookup/build/proofs/ \
 && node ../pil2-compiler/src/pil.js ./pil2-components/test/std/lookup/lookup.pil \
      -I ./pil2-components/lib/std/pil \
      -o ./pil2-components/test/std/lookup/build/build.pilout \

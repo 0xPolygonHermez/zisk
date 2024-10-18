@@ -56,7 +56,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         let mut trace = Module0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
         //range_check(colu: mod - x_mod, min: 1, max: 2**8-1);
-        let range = (BigInt::from(1), BigInt::from((1 << 8) - 1));
+        let range = self.std_lib.get_range(BigInt::from(1), BigInt::from((1 << 8) - 1), None);
 
         let inputs = self.inputs.lock().unwrap();
 
@@ -70,12 +70,12 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
             trace[i].x_mod = F::from_canonical_u64(x_mod);
 
             // Check if x_mod is in the range
-            self.std_lib.range_check(F::from_canonical_u64(module - x_mod), range.0.clone(), range.1.clone());
+            self.std_lib.range_check(F::from_canonical_u64(module - x_mod), F::one(), range);
         }
 
         // Trivial range check for the remaining rows
         for _ in inputs.len()..num_rows {
-            self.std_lib.range_check(F::from_canonical_u64(module), range.0.clone(), range.1.clone());
+            self.std_lib.range_check(F::from_canonical_u64(module), F::one(), range);
         }
 
         let air_instance = AirInstance::new(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);

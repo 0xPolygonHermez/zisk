@@ -537,7 +537,10 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_zkin_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str) -> *mut c_void {
+        #[cfg(not(feature = "distributed"))]
         let idx = self.prover_idx;
+        #[cfg(feature = "distributed")]
+        let idx;
         #[cfg(feature = "distributed")]
         {
             let segment_id: &usize =

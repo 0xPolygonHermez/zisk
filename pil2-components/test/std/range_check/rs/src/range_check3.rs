@@ -75,15 +75,15 @@ where
             let mut trace =
                 RangeCheck30Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
-            let range1 = (BigInt::from(0), BigInt::from((1 << 4) - 1));
-            let range2 = (BigInt::from(0), BigInt::from((1 << 8) - 1));
+            let range1 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 4) - 1), Some(false));
+            let range2 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_u16(rng.gen_range(0..=(1 << 4) - 1));
                 trace[i].c2 = F::from_canonical_u16(rng.gen_range(0..=(1 << 8) - 1));
 
-                self.std_lib.range_check(trace[i].c1, range1.0.clone(), range1.1.clone());
-                self.std_lib.range_check(trace[i].c2, range2.0.clone(), range2.1.clone());
+                self.std_lib.range_check(trace[i].c1, F::one(), range1);
+                self.std_lib.range_check(trace[i].c2, F::one(), range2);
             }
 
             let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();

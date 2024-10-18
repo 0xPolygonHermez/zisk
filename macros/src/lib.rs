@@ -47,6 +47,15 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
 
         impl<#generics: Copy> #row_struct_name<#generics> {
             pub const ROW_SIZE: usize = #row_size;
+
+            pub fn as_slice(&self) -> &[#generics] {
+                unsafe {
+                    std::slice::from_raw_parts(
+                        self as *const #row_struct_name<#generics> as *const #generics,
+                        #row_size,
+                    )
+                }
+            }
         }
     };
 
@@ -107,25 +116,16 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
                 })
             }
 
-            pub fn map_row_vec(
+            pub fn from_row_vec(
                 external_buffer: Vec<#row_struct_name<#generics>>,
-                fit : bool,
             ) -> Result<Self, Box<dyn std::error::Error>> {
                 let mut num_f = external_buffer.len() * #row_struct_name::<#generics>::ROW_SIZE;
-
-                let num_f_ext = if fit {
-                    num_f
-                } else {
-                    external_buffer.len().next_power_of_two() * #row_struct_name::<#generics>::ROW_SIZE
-                };
-
-                let num_rows = if fit { external_buffer.len() } else { num_f_ext / #row_struct_name::<#generics>::ROW_SIZE };
 
                 let slice_trace = unsafe {
                     let ptr = external_buffer.as_ptr() as *mut #row_struct_name<#generics>;
                     std::slice::from_raw_parts_mut(
                         ptr,
-                        num_rows,
+                        external_buffer.len(),
                     )
                 };
 
@@ -133,9 +133,9 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
                     let mut vec = Vec::from_raw_parts(
                         external_buffer.as_ptr() as *mut #generics,
                         num_f,
-                        num_f_ext,
+                        num_f,
                     );
-                    vec.resize(num_f_ext, #generics::default());
+                    vec.resize(num_f, #generics::default());
                     vec
                 };
 
@@ -144,7 +144,7 @@ fn trace_impl(input: TokenStream2) -> Result<TokenStream2> {
                 Ok(#trace_struct_name {
                     buffer: Some(buffer_f),
                     slice_trace,
-                    num_rows: num_f_ext / #row_struct_name::<#generics>::ROW_SIZE,
+                    num_rows: num_f / #row_struct_name::<#generics>::ROW_SIZE,
                 })
             }
 
@@ -294,7 +294,7 @@ fn test_trace_macro_generates_default_row_struct() {
                     num_rows,
                 })
             }
-            pub fn map_row_vec(
+            pub fn from_row_vec(
                 external_buffer: Vec<SimpleRow<F>>,
             ) -> Result<Self, Box<dyn std::error::Error>> {
                 let num_rows = external_buffer.len().next_power_of_two();
@@ -419,7 +419,7 @@ fn test_trace_macro_with_explicit_row_struct_name() {
                 })
             }
 
-            pub fn map_row_vec(
+            pub fn from_row_vec(
                 external_buffer: Vec<SimpleRow<F>>,
             ) -> Result<Self, Box<dyn std::error::Error>> {
                 let num_rows = external_buffer.len().next_power_of_two();

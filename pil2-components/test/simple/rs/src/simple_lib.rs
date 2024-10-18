@@ -37,7 +37,7 @@ where
     pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
-        let std_lib = Std::new(wcm.clone(), None);
+        let std_lib = Std::new(wcm.clone());
         let simple_left = SimpleLeft::new(wcm.clone());
         let simple_right = SimpleRight::new(wcm.clone());
 

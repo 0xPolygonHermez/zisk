@@ -50,7 +50,7 @@ where
     pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
-        let std_lib = Std::new(wcm.clone(), None);
+        let std_lib = Std::new(wcm.clone());
         let lookup0 = Lookup0::new(wcm.clone());
         let lookup1 = Lookup1::new(wcm.clone());
         let lookup2_12 = Lookup2_12::new(wcm.clone());

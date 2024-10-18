@@ -38,7 +38,7 @@ where
     pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
-        let std_lib = Std::new(wcm.clone(), None);
+        let std_lib = Std::new(wcm.clone());
         let connection1 = Connection1::new(wcm.clone());
         let connection2 = Connection2::new(wcm.clone());
         let connection_new = ConnectionNew::new(wcm.clone());
