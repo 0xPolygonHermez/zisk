@@ -3,7 +3,7 @@ use p3_field::PrimeField;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::{iter::IntoParallelRefMutIterator, prelude::*, ThreadPoolBuilder};
+use rayon::{prelude::*, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
     fs,

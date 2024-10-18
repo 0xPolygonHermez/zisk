@@ -15,7 +15,7 @@ BIN_PATH="$ZISK_BIN_DIR/ziskup"
 
 # Create the .zisk bin directory and ziskup binary if it doesn't exist.
 mkdir -p $ZISK_BIN_DIR
-curl -H "Authorization: token ${ZISK_TOKEN}" -# -L $BIN_URL -o $BIN_PATH
+curl -# -L $BIN_URL -o $BIN_PATH
 chmod +x $BIN_PATH
 
 # Store the correct profile file (i.e. .profile for bash or .zshenv for ZSH).

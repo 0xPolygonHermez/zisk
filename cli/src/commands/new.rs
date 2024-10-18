@@ -9,12 +9,10 @@ pub struct NewCmd {
     name: String,
 }
 
-const TEMPLATE_REPOSITORY_URL: &str = "https://github.com/0xPolygonHermez/zisk_template";
-
 impl NewCmd {
     pub fn run(&self) -> Result<()> {
         let root = Path::new(&self.name);
-
+        let repo_url = "https://{}@github.com/0xPolygonHermez/zisk_template";
         // Create the root directory if it doesn't exist.
         if !root.exists() {
             fs::create_dir(&self.name)?;
@@ -23,7 +21,7 @@ impl NewCmd {
         // Clone the repository.
         let output = Command::new("git")
             .arg("clone")
-            .arg(TEMPLATE_REPOSITORY_URL)
+            .arg(repo_url)
             .arg(root.as_os_str())
             .arg("--recurse-submodules")
             .arg("--depth=1")

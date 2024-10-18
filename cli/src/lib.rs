@@ -68,10 +68,7 @@ pub fn is_supported_target() -> bool {
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
     // Get latest tag from https://api.github.com/repos/0xPolygonHermez/rust/releases/latest
     // and use it to construct the download URL.
-    let url = format!(
-        "https://{}@api.github.com/repos/0xPolygonHermez/rust/releases/latest",
-        std::env::var("GITHUB_ACCESS_TOKEN").unwrap()
-    );
+    let url = "https://api.github.com/repos/0xPolygonHermez/rust/releases/latest";
     let json = client.get(url).send().await.unwrap().json::<serde_json::Value>().await.unwrap();
 
     let name: String = format!("rust-toolchain-{}.tar.gz", target);
@@ -97,13 +94,6 @@ pub async fn download_file(
 ) -> std::result::Result<(), String> {
     let mut headers = HeaderMap::new();
 
-    headers.insert(
-        "Authorization",
-        HeaderValue::from_str(
-            format!("Bearer {}", std::env::var("GITHUB_ACCESS_TOKEN").unwrap()).as_str(),
-        )
-        .unwrap(),
-    );
     headers.insert("Accept", HeaderValue::from_static("application/octet-stream"));
     let res = client
         .get(url)

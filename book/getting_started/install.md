@@ -1,24 +1,56 @@
 # Install
 
+
+
 ## Requirements
-* [Rust (Nightly)](https://www.rust-lang.org/tools/install)
+⚠️ Currently, macOS is not supported for proof generation. A Linux x86_64 machine is required at this time. ⚠️
+
+* [Rust](https://www.rust-lang.org/tools/install)
 * [xz]()
 * [jq]()
 
+### Ubuntu prerequisites
+```bash
+sudo apt-get install -y xz-utils jq curl git build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
+```
+
+### OSX prerequisites
+```bash
+# Install brew first.
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# A dependency for `cargo build`.
+brew install protobuf
+
+# A dependency of `ziskup`.
+brew install libusb jq
+```
+
+#### nodejs
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source $HOME/.bashrc
+nvm install 19
+nvm use 19
+```
+
+#### Circom
+```bash
+https://docs.circom.io/getting-started/installation/
+```
+
 ## Option 1: Prebuilt Binaries (Recommended)
 
-this is temporary until we make the repositories publics
-```bash
-export GITHUB_ACCESS_TOKEN=...
-export ZISK_TOKEN=...
-```
 
 ```bash
-curl -H "Authorization: token ${ZISK_TOKEN}" \
-https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
 
-This will enable the ziskup command in your CLI.
+This will enable the ziskup command in your CLI. You need to restart your terminal to use it or run this command:
+
+```bash
+source $HOME/.bashrc
+```
 
 After completing these steps, you can execute ziskup to install the toolchain:
 

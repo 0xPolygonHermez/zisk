@@ -46,7 +46,7 @@ pub struct ZiskRun {
     #[clap(long)]
     no_default_features: bool,
     #[clap(long, short)]
-    emu: bool,
+    qemu: bool,
     #[clap(long, short)]
     stats: bool,
     #[clap(long)]
@@ -136,7 +136,7 @@ impl ZiskRun {
         if self.release {
             command.arg("--release");
         }
-        if self.emu {
+        if !self.qemu {
             let mut extra_command: String = "".to_string();
             let mut input_command: String = "".to_string();
             if self.stats {
@@ -173,7 +173,7 @@ impl ZiskRun {
             let stem = input_path.file_stem().unwrap_or_default();
             let extension = input_path.extension().unwrap_or_default();
             let output_path = format!(
-                "{}{}_size.{}",
+                "{}/{}_size.{}",
                 build_path,
                 stem.to_str().unwrap_or(""),
                 extension.to_str().unwrap_or("")
@@ -207,11 +207,6 @@ impl ZiskRun {
         }
 
         env::set_var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER", runner_command);
-        // Verify the environment variable is set
-        println!(
-            "CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER: {}",
-            env::var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER").unwrap()
-        );
 
         command.args(["--target", ZISK_TARGET]);
 

@@ -18,13 +18,9 @@ This will create a new project with the following structure:
 ├── build.rs
 ├── Cargo.lock
 ├── Cargo.toml
-├── README.md
-├── rust-toolchain
+├── .gitignore
 └── src
-    ├── bin
-    │   └── hello_zisk.rs
-    ├── lib.rs
-    └── script.ld
+    └── main.rs
 
 2 directories, 8 files
 ```
@@ -32,103 +28,140 @@ This will create a new project with the following structure:
 For running the program in the native architecture:
 ```
 $ cargo run --target x86_64-unknown-linux-gnu
-   Compiling crunchy v0.2.2
-   Compiling tiny-keccak v2.0.2
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hello_world)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.58s
-     Running `target/x86_64-unknown-linux-gnu/debug/hello_zisk`
-Hello, Zisk!
-keccak("Hello, Zisk!"): [147, 41, 209, 243, 3, 171, 124, 49, 98, 118, 203, 166, 56, 28, 45, 41, 53, 159, 129, 193, 208, 229, 15, 201, 63, 11, 158, 3, 183, 26, 50, 124]
+     Running `target/x86_64-unknown-linux-gnu/debug/sha_hasher`
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
 ```
 
-For running the program in the ZisK architecture, this will run the program on a qemu emulating a riscv-64 architecture.
-```
-cargo run --target riscv64ima-polygon-ziskos-elf
-   Compiling crunchy v0.2.2
-   Compiling tiny-keccak v2.0.2
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hello_world)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.56s
-     Running `qemu-system-riscv64 -cpu rv64 -machine virt -m 1G -s -nographic -serial 'mon:stdio' -bios target/riscv64ima-polygon-ziskos-elf/debug/hello_zisk`
-Hello, Zisk!
-keccak("Hello, Zisk!"): [147, 41, 209, 243, 3, 171, 124, 49, 98, 118, 203, 166, 56, 28, 45, 41, 53, 159, 129, 193, 208, 229, 15, 201, 63, 11, 158, 3, 183, 26, 50, 124]
-```
-
-## build inputs
-
-To generate the input data for the program in this case, we use Protocol Buffers (it is also possible to do this manually in raw mode).
-The input parameters are defined in the file src/bin/input.proto:
-```
-syntax = "proto3";
-package inputs;
-
-message Input {
-  string msg = 1;
-  uint64 n = 2;
-  uint64 a = 3;
-  uint64 b = 4;
-}
-```
-Here, we have a message msg and three numbers: n, a, and b.
-
-On the other hand, the gen_input.rs script is responsible for generating a .bin file with the parameters defined in the proto file.
-
-```rust
-fn main() -> io::Result<()> {
-    let input = Input {
-        msg: "Hello, Zisk!! by edu".to_string(),
-        n: 0,
-        a: 0,
-        b: 1,
-    };
-
-    // Serialize the `Input` object to a binary file with fixed size
-    serialize_input(&input)?;
-
-    // Deserialize the `Input` object from the binary file
-    let input_read = deserialize_input()?;
-
-    // Print the deserialized data
-    println!("Input: {:?}", input_read);
-
-    Ok(())
-}
-```
-
-To generate it, it is only necessary to execute:
+## Run on ZisK emulator
 
 ```bash
-$ cargo run --bin inputs --target x86_64-unknown-linux-gnu
-   Compiling hellozisk_rust v0.1.0 (/home/edu/hellozisk_rust)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
-     Running `target/x86_64-unknown-linux-gnu/debug/inputs`
-Input { msg: "Hello, Zisk!!", n: 0, a: 0, b: 1 }
+cargo-zisk run --release
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
+```
+or  
+```bash
+cargo-zisk build --release
+ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher
+```
+### metrics
+```bash
+cargo-zisk run --release -m
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -m -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
+process_rom() steps=99288 duration=0.0024 tp=40.9284 Msteps/s freq=2892.0000 70.6600 clocks/step
 ```
 
-this creates the `input.bin` file inside the `output` folder
+### stats
+```bash
+cargo-zisk run --release --stats
+   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
+n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
+Cost definitions:
+    AREA_PER_SEC: 1000000 steps
+    COST_MEMA_R1: 0.00002 sec
+    COST_MEMA_R2: 0.00004 sec
+    COST_MEMA_W1: 0.00004 sec
+    COST_MEMA_W2: 0.00008 sec
+    COST_USUAL: 0.000008 sec
+    COST_STEP: 0.00005 sec
 
-## Run on ZisK simulator
+Total Cost: 14.25 sec
+    Main Cost: 4.96 sec 99287 steps
+    Mem Cost: 2.54 sec 254054 steps
+    Mem Align: 0.06 sec 3130 steps
+    Opcodes: 6.63 sec 1335 steps (92652 ops)
+    Usual: 0.05 sec 6636 steps
+    Memory: 155262 a reads + 1846 na1 reads + 0 na2 reads + 96304 a writes + 642 na1 writes + 0 na2 writes = 157108 reads + 96946 writes = 254054 r/w
+    Registy: 147515 reads + 90588 writes = 238103 r/w
 
-You will need to have ziskjs installed in the upper path. Running it in release mode is recommended if you want to reduce the number of cycles, but debug mode helps to find problems that may be hidden in release mode.
+Opcodes:
+    flag: 0.00 sec (0 steps/op) (660 ops)
+    copyb: 0.00 sec (0 steps/op) (16521 ops)
+    add: 1.39 sec (77 steps/op) (18059 ops)
+    sub: 0.00 sec (77 steps/op) (10 ops)
+    ltu: 0.03 sec (77 steps/op) (412 ops)
+    eq: 0.02 sec (77 steps/op) (224 ops)
+    sll: 1.24 sec (109 steps/op) (11360 ops)
+    srl: 0.02 sec (109 steps/op) (216 ops)
+    add_w: 0.00 sec (77 steps/op) (52 ops)
+    sub_w: 0.00 sec (77 steps/op) (24 ops)
+    srl_w: 1.43 sec (109 steps/op) (13141 ops)
+    and: 0.40 sec (77 steps/op) (5168 ops)
+    or: 0.94 sec (77 steps/op) (12209 ops)
+    xor: 1.06 sec (77 steps/op) (13779 ops)
+    signextend_b: 0.03 sec (109 steps/op) (320 ops)
+    signextend_w: 0.05 sec (109 steps/op) (480 ops)
+    mul: 0.00 sec (97 steps/op) (17 ops)
+```
+
+## Update zisk toolchain to latest version
 
 ```bash
-SIM=true cargo run --release --target riscv64ima-polygon-ziskos-elf
+ziskup
 ```
 
-## Compile and run in qemu with gdb
+## Prepare Your Setup
+
 ```bash
-GDB=true cargo run --release --target riscv64ima-polygon-ziskos-elf
+git clone https://github.com/0xPolygonHermez/zisk
+git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b develop https://github.com/0xPolygonHermez/pil2-stark-js
 ```
 
-then in another terminal
+All following commands should be executed in the `zisk` folder.
 ```bash
-riscv64-unknown-elf-gdb
-    file target/riscv64ima-polygon-ziskos-elf/release/hello_zisk
-    target remote :1234
-    si
-    x/10i $pc-16
-```
-or for tracing purposes:
-```bash
-riscv64-unknown-elf-gdb --command ../ziskjs/test/zisk_trace_gdb.py
+cd zisk
 ```
 
+### Compile Zisk PIL
+
+```bash
+(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout)
+```
+
+### Compile the PIl2 Stark C++ Library (run only once):
+```bash
+(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS="-L native=$PWD/../pil2-proofman/pil2-stark/lib"
+```
+
+### Generate PIL-Helpers Rust Code
+Run this whenever the `.pilout` file changes:
+
+```bash
+(cd ../pil2-proofman; cargo run --bin proofman-cli pil-helpers --pilout ../zisk/pil/zisk.pilout --path ../zisk/pil/src/ -o)
+```
+
+### Generate Setup Data
+Run this whenever the `.pilout` file changes:
+
+```bash
+(cd ../pil2-proofman-js && npm i)
+node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -r
+```
+
+### Compile Witness Computation library (`libzisk_witness.so`)
+```bash
+cargo build --release
+```
+
+### Generate a Proof
+To generate the proof, the following command needs to be run.
+
+```bash
+(cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -v -a)
+```
+
+### Verify the Proof
+```bash
+(cd ../pil2-stark-js && npm i) 
+node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
+```

@@ -25,7 +25,11 @@ impl Mem {
     /// Adds a read section to the memory structure
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
         let end = start + buffer.len() as u64;
-        let mem_section = MemSection { start, end, buffer: buffer.to_owned() };
+        let mut mem_section = MemSection { start, end, buffer: buffer.to_owned() };
+        while (mem_section.end) % 8 != 0 {
+            mem_section.buffer.push(0);
+            mem_section.end += 1;
+        }
         self.read_sections.push(mem_section);
         /*println!(
             "Mem::add_read_section() start={:x}={} len={} end={:x}={}",
