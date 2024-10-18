@@ -10,16 +10,15 @@ void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* p
 
     uint8_t* ops = &parserArgs.ops[parserParams.opsOffset];
     uint16_t* args = &parserArgs.args[parserParams.argsOffset];
-    uint64_t* numbers = &parserArgs.numbers[parserParams.numbersOffset];
 
     uint64_t i_args = 0;
 
     Goldilocks::Element tmp1[parserParams.nTemp1];
     Goldilocks::Element tmp3[parserParams.nTemp3*FIELD_EXTENSION];
 
-    Goldilocks::Element numbers_[parserParams.nNumbers];
-    for(uint64_t i = 0; i < parserParams.nNumbers; ++i) {
-        numbers_[i] = Goldilocks::fromU64(numbers[i]);
+    Goldilocks::Element numbers_[parserArgs.nNumbers];
+    for(uint64_t i = 0; i < parserArgs.nNumbers; ++i) {
+        numbers_[i] = Goldilocks::fromU64(parserArgs.numbers[i]);
     }
 
     for (uint64_t kk = 0; kk < parserParams.nOps; ++kk) {

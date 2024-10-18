@@ -6,7 +6,6 @@
     // ========================================================================================
     void save_challenges(void *pChallenges, char* globalInfoFile, char *fileDir);
     void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *fileDir);
-    void save_proof(uint64_t proof_id, void *pStarkInfo, void *pFriProof, char *fileDir);
 
     // FRIProof
     // ========================================================================================
@@ -45,7 +44,10 @@
 
     // Hints
     // ========================================================================================
-    void *get_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char* hintFieldName, bool dest, bool inverse, bool print_expression);
+    void *get_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char* hintFieldName, bool dest, bool inverse, bool print_expression, bool initialize_zeros);
+    uint64_t mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2); 
+    void *acc_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName);
+    void *acc_mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2);
     uint64_t set_hint_field(void *pSetupCtx, void* buffer, void* subproofValues, void *values, uint64_t hintId, char* hintFieldName);
 
     // Starks
@@ -67,11 +69,22 @@
     void compute_lev(void *pStarks, void *xiChallenge, void* LEv);
     void compute_evals(void *pStarks, void *buffer, void *LEv, void *evals, void *pProof);
 
-    void compute_fri_folding(void *pStarks, void *pProof, uint64_t step, void *buffer, void *pChallenge);
-    void compute_fri_queries(void *pStarks, void *pProof, uint64_t* friQueries);
-
     void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElements);
     
+    // MerkleTree
+    // =================================================================================
+    void *merkle_tree_new(uint64_t height, uint64_t width, uint64_t arity, bool custom);
+    void merkle_tree_free(void *pMerkleTree);
+
+    // FRI 
+    // =================================================================================
+
+    void compute_fri_folding(uint64_t step, void *buffer, void *pChallenge, uint64_t nBitsExt, uint64_t prevBits, uint64_t currentBits);
+    void compute_fri_merkelize(void *pStarks, void *pProof, uint64_t step, void *buffer, uint64_t currentBits, uint64_t nextBits);
+    void compute_queries(void *pStarks, void *pProof, uint64_t *friQueries, uint64_t nQueries, uint64_t nTrees);
+    void compute_fri_queries(void *pStarks, void *pProof, uint64_t *friQueries, uint64_t nQueries, uint64_t step, uint64_t currentBits);
+    void set_fri_final_pol(void *pProof, void *buffer, uint64_t nBits);
+
     // Transcript
     // =================================================================================
     void *transcript_new(uint32_t elementType, uint64_t arity, bool custom);
@@ -106,5 +119,7 @@
     void *join_zkin_final(void* pPublics, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);
 
     // Util calls
+    // =================================================================================
     void setLogLevel(uint64_t level);
+
 #endif

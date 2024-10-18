@@ -28,12 +28,11 @@ public:
     using TranscriptType = std::conditional_t<std::is_same<ElementType, Goldilocks::Element>::value, TranscriptGL, TranscriptBN128>;
     using MerkleTreeType = std::conditional_t<std::is_same<ElementType, Goldilocks::Element>::value, MerkleTreeGL, MerkleTreeBN128>;
 
-private:
     MerkleTreeType **treesGL;
     MerkleTreeType **treesFRI;
 
 public:
-    Starks(SetupCtx& setupCtx_) : setupCtx(setupCtx_)                                                    
+    Starks(SetupCtx& setupCtx_) : setupCtx(setupCtx_)                                                   
     {
         treesGL = new MerkleTreeType*[setupCtx.starkInfo.nStages + 2];
         treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, (Goldilocks::Element *)setupCtx.constPols.pConstTreeAddress);
@@ -43,7 +42,7 @@ public:
             uint64_t nCols = setupCtx.starkInfo.mapSectionsN[section];
             treesGL[i] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, 1 << setupCtx.starkInfo.starkStruct.nBitsExt, nCols, NULL, false);
         }
-          
+
         treesFRI = new MerkleTreeType*[setupCtx.starkInfo.starkStruct.steps.size() - 1];
         for(uint64_t step = 0; step < setupCtx.starkInfo.starkStruct.steps.size() - 1; ++step) {
             uint64_t nGroups = 1 << setupCtx.starkInfo.starkStruct.steps[step + 1].nBits;
@@ -81,9 +80,6 @@ public:
     void computeEvals(Goldilocks::Element *buffer, Goldilocks::Element *LEv, Goldilocks::Element *evals, FRIProof<ElementType> &proof);
 
     void calculateXDivXSub(Goldilocks::Element *xiChallenge, Goldilocks::Element *xDivXSub);
-    
-    void computeFRIFolding(uint64_t step, FRIProof<ElementType> &fproof, Goldilocks::Element *buffer, Goldilocks::Element *challenge);
-    void computeFRIQueries(FRIProof<ElementType> &fproof, uint64_t* friQueries);
 
     void calculateHash(ElementType* hash, Goldilocks::Element* buffer, uint64_t nElements);
 

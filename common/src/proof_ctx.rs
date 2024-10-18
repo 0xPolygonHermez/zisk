@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::{mem::MaybeUninit, sync::RwLock};
 use std::path::PathBuf;
 
 use crate::{AirInstancesRepository, GlobalInfo, VerboseMode, WitnessPilout};
@@ -24,7 +24,7 @@ impl<F> Default for Challenges<F> {
 }
 
 pub struct BuffHelper<F> {
-    pub buff_helper: RwLock<Vec<F>>,
+    pub buff_helper: RwLock<Vec<MaybeUninit<F>>>,
 }
 
 impl<F> Default for BuffHelper<F> {
@@ -37,12 +37,12 @@ pub struct ProofOptions {
     pub verify_constraints: bool,
     pub verbose_mode: VerboseMode,
     pub aggregation: bool,
-    pub save_proofs: bool,
+    pub verify_proof: bool,
 }
 
 impl ProofOptions {
-    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, aggregation: bool, save_proofs: bool) -> Self {
-        Self { verify_constraints, verbose_mode, aggregation, save_proofs }
+    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, aggregation: bool, verify_proof: bool) -> Self {
+        Self { verify_constraints, verbose_mode, aggregation, verify_proof }
     }
 }
 

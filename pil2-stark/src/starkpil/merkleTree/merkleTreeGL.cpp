@@ -114,6 +114,71 @@ void MerkleTreeGL::genMerkleProof(Goldilocks::Element *proof, uint64_t idx, uint
     genMerkleProof(&proof[nFieldElements], nextIdx, offset + nextN * 2, nextN);
 }
 
+bool MerkleTreeGL::verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<std::vector<Goldilocks::Element>> &v) {
+    Goldilocks::Element value[4];
+    for(uint64_t i = 0; i < nFieldElements; ++i) {
+        value[i] = Goldilocks::zero();
+    }
+
+
+    std::vector<Goldilocks::Element> linearValues;
+
+    for(uint64_t i = 0; i < v.size(); ++i) {
+        for(uint64_t j = 0; j < v[i].size(); ++j) {
+            linearValues.push_back(v[i][j]);
+        }
+    }
+
+#ifdef __AVX512__
+    PoseidonGoldilocks::linear_hash_avx512(value, linearValues.data(), linearValues.size());
+#elif defined(__AVX2__)
+    PoseidonGoldilocks::linear_hash(value, linearValues.data(), linearValues.size());
+#else
+    PoseidonGoldilocks::linear_hash_seq(value, linearValues.data(), linearValues.size());
+#endif
+
+    calculateRootFromProof(value, mp, idx, 0);
+    for(uint64_t i = 0; i < 4; ++i) {
+        if(Goldilocks::toU64(value[i]) != Goldilocks::toU64(root[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void MerkleTreeGL::calculateRootFromProof(Goldilocks::Element (&value)[4], std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, uint64_t offset) {
+    if(offset == mp.size()) return;
+
+    uint64_t currIdx = idx & 1;
+    uint64_t nextIdx = idx / 2;
+
+    Goldilocks::Element inputs[12];
+
+    if(currIdx == 0) {
+        std::memcpy(&inputs[0], value, nFieldElements * sizeof(Goldilocks::Element));
+        std::memcpy(&inputs[4], mp[offset].data(), nFieldElements * sizeof(Goldilocks::Element));
+    } else {
+        std::memcpy(&inputs[0], mp[offset].data(), nFieldElements * sizeof(Goldilocks::Element));
+        std::memcpy(&inputs[4], value, nFieldElements * sizeof(Goldilocks::Element));
+    }
+    
+    for(uint64_t i = 8; i < 12; ++i) {
+        inputs[i] = Goldilocks::zero();
+    }
+
+#ifdef __AVX512__
+    PoseidonGoldilocks::hash_avx512(value, inputs);
+#elif defined(__AVX2__)
+    PoseidonGoldilocks::hash(value, inputs);
+#else
+    PoseidonGoldilocks::hash_seq(value, inputs);
+#endif
+
+    calculateRootFromProof(value, mp, nextIdx, offset + 1);
+}
+
+
 void MerkleTreeGL::merkelize()
 {
 #ifdef __AVX512__

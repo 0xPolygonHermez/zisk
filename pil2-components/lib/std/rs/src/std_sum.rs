@@ -14,7 +14,7 @@ use log::debug;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val,
+    acc_hint_field, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields,
     HintFieldOptions, HintFieldOutput, HintFieldValue,
 };
 
@@ -257,44 +257,20 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     // Populate the im columns
                     for hint in im_hints {
-                        let mut im = get_hint_field::<F>(
+                        let id = mul_hint_fields::<F>(
                             &sctx,
                             &pctx.public_inputs,
                             &pctx.challenges,
                             air_instance,
                             *hint as usize,
                             "reference",
-                            HintFieldOptions::dest(),
-                        );
-                        let num = get_hint_field::<F>(
-                            &sctx,
-                            &pctx.public_inputs,
-                            &pctx.challenges,
-                            air_instance,
-                            *hint as usize,
                             "numerator",
                             HintFieldOptions::default(),
-                        );
-                        let den = get_hint_field::<F>(
-                            &sctx,
-                            &pctx.public_inputs,
-                            &pctx.challenges,
-                            air_instance,
-                            *hint as usize,
                             "denominator",
                             HintFieldOptions::inverse(),
                         );
 
-                        // Apply a map&reduce strategy to compute the division
-                        // TODO! Explore how to do it in only one step
-                        // Step 1: Compute the division in parallel
-                        let results: Vec<HintFieldOutput<F>> =
-                            (0..num_rows).into_par_iter().map(|i| num.get(i) * den.get(i)).collect(); // Collect results into a vector
-                                                                                                      // Step 2: Store the results in 'im'
-                        for (i, &value) in results.iter().enumerate() {
-                            im.set(i, value);
-                        }
-                        set_hint_field(&sctx, air_instance, *hint, "reference", &im);
+                        air_instance.set_commit_calculated(id as usize);
                     }
 
                     // We know that at most one product hint exists
@@ -304,35 +280,22 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                         gsum_hints[0] as usize
                     };
 
-                    // Use the hint to populate the gsum column
-                    let mut gsum = get_hint_field::<F>(
+                    // This call accumulates "expression" into "reference" expression and stores its last value to "result"
+                    // Alternatively, this could be done using get_hint_field and set_hint_field methods and doing the accumulation in Rust,
+                    // TODO: GENERALIZE CALLS
+                    let (pol_id, subproofvalue_id) = acc_hint_field::<F>(
                         &sctx,
                         &pctx.public_inputs,
                         &pctx.challenges,
                         air_instance,
                         gsum_hint,
                         "reference",
-                        HintFieldOptions::dest(),
-                    );
-                    let expr = get_hint_field::<F>(
-                        &sctx,
-                        &pctx.public_inputs,
-                        &pctx.challenges,
-                        air_instance,
-                        gsum_hint,
+                        "result",
                         "expression",
-                        HintFieldOptions::default(),
                     );
 
-                    gsum.set(0, expr.get(0));
-                    for i in 1..num_rows {
-                        // TODO: We should perform the following division in batch using div_lib
-                        gsum.set(i, gsum.get(i - 1) + expr.get(i));
-                    }
-
-                    // set the computed gsum column and its associated airgroup_val
-                    set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
-                    set_hint_field_val(&sctx, air_instance, gsum_hint as u64, "result", gsum.get(num_rows - 1));
+                    air_instance.set_commit_calculated(pol_id as usize);
+                    air_instance.set_subproofvalue_calculated(subproofvalue_id as usize);
                 }
             }
         }

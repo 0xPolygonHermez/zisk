@@ -20,6 +20,7 @@ p3-field.workspace = true
 libloading = "0.8.4"
 colored = "2"
 mpi = { version = "0.8.0", optional = true }
+serde_json = "1.0.68"
 
 
 [features]

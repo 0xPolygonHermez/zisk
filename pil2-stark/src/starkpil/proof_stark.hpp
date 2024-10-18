@@ -96,19 +96,21 @@ public:
         std::memcpy(&root[0], &_root[0], nFieldElements * sizeof(ElementType));
     };
 
-    ordered_json ProofTree2json()
+    ordered_json ProofTree2json(bool friQueries = true)
     {
         ordered_json j_ProofTree2json = ordered_json::object();
 
-        ordered_json json_root = ordered_json::array();
-        if(root.size() == 1) {
-            j_ProofTree2json["root"] = toString(root[0]);
-        } else {
-            for (uint i = 0; i < root.size(); i++)
-            {
-                json_root.push_back(toString(root[i]));
+        if(friQueries) {
+             ordered_json json_root = ordered_json::array();
+            if(root.size() == 1) {
+                j_ProofTree2json["root"] = toString(root[0]);
+            } else {
+                for (uint i = 0; i < root.size(); i++)
+                {
+                    json_root.push_back(toString(root[i]));
+                }
+                j_ProofTree2json["root"] = json_root;
             }
-            j_ProofTree2json["root"] = json_root;
         }
 
         ordered_json json_polQueries = ordered_json::array();
@@ -139,17 +141,20 @@ template <typename ElementType>
 class Fri
 {
 public:
+    ProofTree<ElementType> trees;
+    std::vector<ProofTree<ElementType>> treesFRI;
     std::vector<std::vector<Goldilocks::Element>> pol;
-    std::vector<ProofTree<ElementType>> trees;
+   
 
-    Fri(StarkInfo &starkInfo) : pol(1 << starkInfo.starkStruct.steps[starkInfo.starkStruct.steps.size() - 1].nBits, std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())), trees() {
+    Fri(StarkInfo &starkInfo) :  trees((starkInfo.starkStruct.verificationHashType == "GL") ? HASH_SIZE : 1, starkInfo.starkStruct.nQueries),
+                                 treesFRI(),
+                                 pol(1 << starkInfo.starkStruct.steps[starkInfo.starkStruct.steps.size() - 1].nBits, std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())) {
         uint64_t nQueries = starkInfo.starkStruct.nQueries;
-        
-        // Initialize each ProofTree with nFieldElements and nQueries
-        for (size_t i = 0; i < starkInfo.starkStruct.steps.size(); i++)
+        uint64_t nFieldElements = (starkInfo.starkStruct.verificationHashType == "GL") ? HASH_SIZE : 1;
+       
+        for (size_t i = 0; i < starkInfo.starkStruct.steps.size() - 1; i++)
         {
-            uint64_t nFieldElements = (starkInfo.starkStruct.verificationHashType == "GL") ? HASH_SIZE : 1;
-            trees.emplace_back(nFieldElements, nQueries);
+            treesFRI.emplace_back(nFieldElements, nQueries);
         }
     }
 
@@ -160,14 +165,18 @@ public:
             std::memcpy(&pol[i][0], &pPol[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
         }
     }
+    ordered_json QueriesP2json()
+    {
+        return trees.ProofTree2json(false);
+    }
 
-    ordered_json FriP2json()
+    ordered_json FriQueriesP2json()
     {
         ordered_json j = ordered_json::array();
 
-        for (uint i = 0; i < trees.size(); i++)
+        for (uint i = 0; i < treesFRI.size(); i++)
         {
-            j.push_back((trees[i].ProofTree2json()));
+            j.push_back((treesFRI[i].ProofTree2json()));
         }
 
         ordered_json json_pol = ordered_json::array();
@@ -280,7 +289,10 @@ public:
 
         j["subproofValues"] = json_subproofValues;
         
-        j["fri"] = fri.FriP2json();
+        j["queries"] = fri.QueriesP2json();
+
+        j["fri"] = fri.FriQueriesP2json();
+
         return j;
     }
 };

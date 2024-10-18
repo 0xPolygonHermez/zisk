@@ -226,7 +226,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
                 &mut air_instance,
                 hint.to_usize().unwrap(),
                 "reference",
-                HintFieldOptions::dest(),
+                HintFieldOptions::dest_with_zeros(),
             ));
         }
 

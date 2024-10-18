@@ -170,6 +170,7 @@ void StarkInfo::load(json j)
     }
 
     setMapOffsets();
+    
 }
 
 void StarkInfo::setMapOffsets() {

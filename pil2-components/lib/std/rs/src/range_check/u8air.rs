@@ -124,7 +124,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
             &mut air_instance,
             self.hint.load(Ordering::Acquire) as usize,
             "reference",
-            HintFieldOptions::dest(),
+            HintFieldOptions::dest_with_zeros(),
         );
 
         pctx.air_instance_repo.add_air_instance(air_instance);

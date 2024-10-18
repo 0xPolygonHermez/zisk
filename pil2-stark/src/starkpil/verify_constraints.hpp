@@ -51,23 +51,13 @@ std::tuple<bool, ConstraintRowInfo> checkConstraint(Goldilocks::Element* dest, P
 }
 
 
-ConstraintInfo verifyConstraint(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* dest, uint64_t constraintId) {        
+ConstraintInfo verifyConstraint(SetupCtx& setupCtx, Goldilocks::Element* dest, uint64_t constraintId) {        
     ConstraintInfo constraintInfo;
     constraintInfo.id = constraintId;
     constraintInfo.stage = setupCtx.expressionsBin.constraintsInfoDebug[constraintId].stage;
     constraintInfo.imPol = setupCtx.expressionsBin.constraintsInfoDebug[constraintId].imPol;
     constraintInfo.line = setupCtx.expressionsBin.constraintsInfoDebug[constraintId].line.c_str();
     constraintInfo.nrows = 0;
-
-#ifdef __AVX512__
-    ExpressionsAvx512 expressionsCtx(setupCtx);
-#elif defined(__AVX2__)
-    ExpressionsAvx expressionsCtx(setupCtx);
-#else
-    ExpressionsPack expressionsCtx(setupCtx);
-#endif
-
-    expressionsCtx.calculateExpressions(params, dest, setupCtx.expressionsBin.expressionsBinArgsConstraints, setupCtx.expressionsBin.constraintsInfoDebug[constraintId], false, false, false);
 
     uint64_t N = (1 << setupCtx.starkInfo.starkStruct.nBits);
 
@@ -110,9 +100,37 @@ ConstraintsResults *verifyConstraints(SetupCtx& setupCtx, Goldilocks::Element *b
     ConstraintsResults *constraintsInfo = new ConstraintsResults();
     constraintsInfo->nConstraints = setupCtx.expressionsBin.constraintsInfoDebug.size();
     constraintsInfo->constraintInfo = new ConstraintInfo[constraintsInfo->nConstraints];
-    Goldilocks::Element* pBuffer = new Goldilocks::Element[(1 << setupCtx.starkInfo.starkStruct.nBits) * FIELD_EXTENSION];
+
+    uint64_t N = (1 << setupCtx.starkInfo.starkStruct.nBits);
+
+    uint64_t nPols = 0;
+    for(uint64_t stage = 1; stage <= setupCtx.starkInfo.nStages; stage++) {
+        nPols += setupCtx.starkInfo.mapSectionsN["cm" + to_string(stage)];
+    }
+
+    // TODO: REUSE MEMORY
+    Goldilocks::Element* pBuffer = new Goldilocks::Element[setupCtx.expressionsBin.constraintsInfoDebug.size() * N * FIELD_EXTENSION];
+
+    std::vector<Dest> dests;
     for (uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); i++) {
-        auto constraintInfo = verifyConstraint(setupCtx, params, pBuffer, i);
+        Dest constraintDest(&pBuffer[i*FIELD_EXTENSION*N]);
+        constraintDest.addParams(setupCtx.expressionsBin.constraintsInfoDebug[i]);
+        dests.push_back(constraintDest);
+    }
+
+#ifdef __AVX512__
+    ExpressionsAvx512 expressionsCtx(setupCtx);
+#elif defined(__AVX2__)
+    ExpressionsAvx expressionsCtx(setupCtx);
+#else
+    ExpressionsPack expressionsCtx(setupCtx);
+#endif
+
+    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsConstraints, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits));
+
+#pragma omp parallel for
+    for (uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); i++) {
+        auto constraintInfo = verifyConstraint(setupCtx, dests[i].dest, i);
         constraintsInfo->constraintInfo[i] = constraintInfo;
     }
     

@@ -135,7 +135,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-proofman-js
           token: ${{ secrets.ZISK_CI_TOKEN }}
-          ref: feature/setup
+          ref: develop
           path: pil2-proofman-js
 
       - name: Install pil2-proofman-js dependencies

@@ -1,103 +1,16 @@
 #include "expressions_bin.hpp"
 
 ExpressionsBin::ExpressionsBin(string file, bool globalBin) {
-    if(!globalBin) {
-        std::unique_ptr<BinFileUtils::BinFile> expressionsBinFile = BinFileUtils::openExisting(file, "chps", 1);
-        loadExpressionsBin(expressionsBinFile.get());
+    std::unique_ptr<BinFileUtils::BinFile> binFile = BinFileUtils::openExisting(file, "chps", 1);
+
+    if(globalBin) {
+        loadGlobalBin(binFile.get());
     } else {
-        std::unique_ptr<BinFileUtils::BinFile> globalBinFile = BinFileUtils::openExisting(file, "chps", 1);
-        loadGlobalBin(globalBinFile.get());
+        loadExpressionsBin(binFile.get());
     }
 }
 
 void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
-    expressionsBin->startReadSection(BINARY_IMPOLS_SECTION);
-
-    uint32_t nOpsImPols = expressionsBin->readU32LE();
-    uint32_t nArgsImPols = expressionsBin->readU32LE();
-    uint32_t nNumbersImPols = expressionsBin->readU32LE();
-    uint32_t nConstPolsIdsImPols = expressionsBin->readU32LE();
-    uint32_t nCmPolsIdsImPols = expressionsBin->readU32LE();
-    uint32_t nChallengesIdsImPols = expressionsBin->readU32LE();
-    uint32_t nPublicsIdsImPols = expressionsBin->readU32LE();
-    uint32_t nSubproofValuesIdsImPols = expressionsBin->readU32LE();
-
-    expressionsBinArgsImPols.ops = new uint8_t[nOpsImPols];
-    expressionsBinArgsImPols.args = new uint16_t[nArgsImPols];
-    expressionsBinArgsImPols.numbers = new uint64_t[nNumbersImPols];
-    expressionsBinArgsImPols.constPolsIds = new uint16_t[nConstPolsIdsImPols];
-    expressionsBinArgsImPols.cmPolsIds = new uint16_t[nCmPolsIdsImPols];
-    expressionsBinArgsImPols.challengesIds = new uint16_t[nChallengesIdsImPols];
-    expressionsBinArgsImPols.publicsIds = new uint16_t[nPublicsIdsImPols];
-    expressionsBinArgsImPols.subproofValuesIds = new uint16_t[nSubproofValuesIdsImPols];
-           
-    uint32_t nStages = expressionsBin->readU32LE();
-
-    for(uint64_t i = 0; i < nStages; ++i) {
-        ParserParams imPolsStageInfo;
-        imPolsStageInfo.destDim = 0;
-        imPolsStageInfo.nTemp1 = expressionsBin->readU32LE();
-        imPolsStageInfo.nTemp3 = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nOps = expressionsBin->readU32LE();
-        imPolsStageInfo.opsOffset = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nArgs = expressionsBin->readU32LE();
-        imPolsStageInfo.argsOffset = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nNumbers = expressionsBin->readU32LE();
-        imPolsStageInfo.numbersOffset = expressionsBin->readU32LE();
-        
-        imPolsStageInfo.nConstPolsUsed = expressionsBin->readU32LE();
-        imPolsStageInfo.constPolsOffset = expressionsBin->readU32LE();
-        
-        imPolsStageInfo.nCmPolsUsed = expressionsBin->readU32LE();
-        imPolsStageInfo.cmPolsOffset = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nChallengesUsed = expressionsBin->readU32LE();
-        imPolsStageInfo.challengesOffset = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nPublicsUsed = expressionsBin->readU32LE();
-        imPolsStageInfo.publicsOffset = expressionsBin->readU32LE();
-
-        imPolsStageInfo.nSubproofValuesUsed = expressionsBin->readU32LE();
-        imPolsStageInfo.subproofValuesOffset = expressionsBin->readU32LE();
-
-        imPolsInfo.push_back(imPolsStageInfo);
-    }
-
-    for(uint64_t j = 0; j < nOpsImPols; ++j) {
-        expressionsBinArgsImPols.ops[j] = expressionsBin->readU8LE();
-    }
-    for(uint64_t j = 0; j < nArgsImPols; ++j) {
-        expressionsBinArgsImPols.args[j] = expressionsBin->readU16LE();
-    }
-    for(uint64_t j = 0; j < nNumbersImPols; ++j) {
-        expressionsBinArgsImPols.numbers[j] = expressionsBin->readU64LE();
-    }
-
-    for(uint64_t j = 0; j < nConstPolsIdsImPols; ++j) {
-        expressionsBinArgsImPols.constPolsIds[j] = expressionsBin->readU16LE();
-    }
-
-    for(uint64_t j = 0; j < nCmPolsIdsImPols; ++j) {
-        expressionsBinArgsImPols.cmPolsIds[j] = expressionsBin->readU16LE();
-    }
-
-    for(uint64_t j = 0; j < nChallengesIdsImPols; ++j) {
-        expressionsBinArgsImPols.challengesIds[j] = expressionsBin->readU16LE();
-    }
-
-    for(uint64_t j = 0; j < nPublicsIdsImPols; ++j) {
-        expressionsBinArgsImPols.publicsIds[j] = expressionsBin->readU16LE();
-    }
-
-    for(uint64_t j = 0; j < nSubproofValuesIdsImPols; ++j) {
-        expressionsBinArgsImPols.subproofValuesIds[j] = expressionsBin->readU16LE();
-    }
-    
-    expressionsBin->endReadSection();
-
     expressionsBin->startReadSection(BINARY_EXPRESSIONS_SECTION);
 
     uint32_t nOpsExpressions = expressionsBin->readU32LE();
@@ -117,6 +30,7 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     expressionsBinArgsExpressions.challengesIds = new uint16_t[nChallengesIdsExpressions];
     expressionsBinArgsExpressions.publicsIds = new uint16_t[nPublicsIdsExpressions];
     expressionsBinArgsExpressions.subproofValuesIds = new uint16_t[nSubproofValuesIdsExpressions];
+    expressionsBinArgsExpressions.nNumbers = nNumbersExpressions;
 
     uint64_t nExpressions = expressionsBin->readU32LE();
 
@@ -138,9 +52,6 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
 
         parserParamsExpression.nArgs = expressionsBin->readU32LE();
         parserParamsExpression.argsOffset = expressionsBin->readU32LE();
-
-        parserParamsExpression.nNumbers = expressionsBin->readU32LE();
-        parserParamsExpression.numbersOffset = expressionsBin->readU32LE();
 
         parserParamsExpression.nConstPolsUsed = expressionsBin->readU32LE();
         parserParamsExpression.constPolsOffset = expressionsBin->readU32LE();
@@ -213,6 +124,7 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     expressionsBinArgsConstraints.challengesIds = new uint16_t[nChallengesIdsDebug];
     expressionsBinArgsConstraints.publicsIds = new uint16_t[nPublicsIdsDebug];
     expressionsBinArgsConstraints.subproofValuesIds = new uint16_t[nSubproofValuesIdsDebug];
+    expressionsBinArgsConstraints.nNumbers = nNumbersDebug;
     
     uint32_t nConstraints = expressionsBin->readU32LE();
 
@@ -237,9 +149,6 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
 
         parserParamsConstraint.nArgs = expressionsBin->readU32LE();
         parserParamsConstraint.argsOffset = expressionsBin->readU32LE();
-
-        parserParamsConstraint.nNumbers = expressionsBin->readU32LE();
-        parserParamsConstraint.numbersOffset = expressionsBin->readU32LE();
 
         parserParamsConstraint.nConstPolsUsed = expressionsBin->readU32LE();
         parserParamsConstraint.constPolsOffset = expressionsBin->readU32LE();
@@ -354,6 +263,7 @@ void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
     expressionsBinArgsConstraints.ops = new uint8_t[nOpsDebug];
     expressionsBinArgsConstraints.args = new uint16_t[nArgsDebug];
     expressionsBinArgsConstraints.numbers = new uint64_t[nNumbersDebug];
+    expressionsBinArgsConstraints.nNumbers = nNumbersDebug;
 
     uint32_t nGlobalConstraints = globalBin->readU32LE();
 
@@ -372,8 +282,6 @@ void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
         parserParamsConstraint.nArgs = globalBin->readU32LE();
         parserParamsConstraint.argsOffset = globalBin->readU32LE();
 
-        parserParamsConstraint.nNumbers = globalBin->readU32LE();
-        parserParamsConstraint.numbersOffset = globalBin->readU32LE();
 
         parserParamsConstraint.line = globalBin->readString();
 

@@ -12,8 +12,8 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, set_hint_field, set_hint_field_val,
-    HintFieldOptions, HintFieldOutput, HintFieldValue,
+    acc_mul_hint_fields, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, HintFieldOptions,
+    HintFieldOutput, HintFieldValue,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -249,43 +249,25 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                         gprod_hints[0] as usize
                     };
 
-                    // Use the hint to populate the gprod column
-                    let mut gprod = get_hint_field::<F>(
+                    // This call calculates "numerator" / "denominator" and accumulates it into "reference". Its last value is stored into "result"
+                    // Alternatively, this could be done using get_hint_field and set_hint_field methods and calculating the operations in Rust,
+                    // TODO: GENERALIZE CALLS
+                    let (pol_id, subproofvalue_id) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx.public_inputs,
                         &pctx.challenges,
                         air_instance,
                         gprod_hint,
                         "reference",
-                        HintFieldOptions::dest(),
-                    );
-                    let num = get_hint_field::<F>(
-                        &sctx,
-                        &pctx.public_inputs,
-                        &pctx.challenges,
-                        air_instance,
-                        gprod_hint,
+                        "result",
                         "numerator",
-                        HintFieldOptions::default(),
-                    );
-                    let den = get_hint_field::<F>(
-                        &sctx,
-                        &pctx.public_inputs,
-                        &pctx.challenges,
-                        air_instance,
-                        gprod_hint,
                         "denominator",
-                        HintFieldOptions::default(),
+                        false,
+                        true,
                     );
 
-                    gprod.set(0, num.get(0) / den.get(0));
-                    for i in 1..num_rows {
-                        gprod.set(i, gprod.get(i - 1) * (num.get(i) / den.get(i)));
-                    }
-
-                    // set the computed gprod column and its associated airgroup_val
-                    set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
-                    set_hint_field_val(&sctx, air_instance, gprod_hint as u64, "result", gprod.get(num_rows - 1));
+                    air_instance.set_commit_calculated(pol_id as usize);
+                    air_instance.set_subproofvalue_calculated(subproofvalue_id as usize);
                 }
             }
         }

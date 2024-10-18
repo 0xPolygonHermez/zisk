@@ -137,7 +137,7 @@ public:
     std::map<std::pair<std::string, bool>, uint64_t> mapOffsets;
     
     uint64_t mapTotalN;
- 
+    
     /* Constructor */
     StarkInfo(string file);
 

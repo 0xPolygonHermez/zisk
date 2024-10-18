@@ -25,14 +25,88 @@ private:
     uint64_t merkleTreeCustom;
 
 public:
-    Goldilocks::Element *pConstPolsAddress;
+    Goldilocks::Element *pConstPolsAddress = nullptr;
     Goldilocks::Element *pConstPolsAddressExtended;
-    Goldilocks::Element *pConstTreeAddress;
-    Goldilocks::Element *zi;
-    Goldilocks::Element *S;
-    Goldilocks::Element *x;
-    Goldilocks::Element *x_n; // Needed for PIL1 compatibility
-    Goldilocks::Element *x_2ns; // Needed for PIL1 compatibility
+    Goldilocks::Element *pConstTreeAddress = nullptr;
+    Goldilocks::Element *zi = nullptr;
+    Goldilocks::Element *S = nullptr;
+    Goldilocks::Element *x = nullptr;
+    Goldilocks::Element *x_n = nullptr; // Needed for PIL1 compatibility
+    Goldilocks::Element *x_2ns = nullptr; // Needed for PIL1 compatibility
+
+    ConstPols(StarkInfo& starkInfo_, Goldilocks::Element* z, Goldilocks::Element* constVals): starkInfo(starkInfo_) {        
+        pConstPolsAddress = (Goldilocks::Element *)malloc(starkInfo.nConstants * starkInfo.starkStruct.nQueries * sizeof(Goldilocks::Element));
+        for(uint64_t i = 0; i < starkInfo.nConstants * starkInfo.starkStruct.nQueries; ++i) {
+            pConstPolsAddress[i] = constVals[i];
+        }
+
+
+        zi = new Goldilocks::Element[starkInfo.boundaries.size() * FIELD_EXTENSION];
+
+        Goldilocks::Element one[3] = {Goldilocks::one(), Goldilocks::zero(), Goldilocks::zero()};
+
+        Goldilocks::Element xN[3] = {Goldilocks::one(), Goldilocks::zero(), Goldilocks::zero()};
+        for(uint64_t i = 0; i < uint64_t(1 << starkInfo.starkStruct.nBits); ++i) {
+            Goldilocks3::mul((Goldilocks3::Element *)xN, (Goldilocks3::Element *)xN, (Goldilocks3::Element *)z);
+        }
+
+        Goldilocks::Element zN[3] = { xN[0] - Goldilocks::one(), xN[1], xN[2]};
+        Goldilocks::Element zNInv[3];
+        Goldilocks3::inv((Goldilocks3::Element *)zNInv, (Goldilocks3::Element *)zN);
+        std::memcpy(&zi[0], zNInv, FIELD_EXTENSION * sizeof(Goldilocks::Element));
+
+        for(uint64_t i = 1; i < starkInfo.boundaries.size(); ++i) {
+            Boundary boundary = starkInfo.boundaries[i];
+            if(boundary.name == "firstRow") {
+                Goldilocks::Element zi_[3];
+                Goldilocks3::sub((Goldilocks3::Element &)zi_[0], (Goldilocks3::Element &)z[0], (Goldilocks3::Element &)one[0]);
+                Goldilocks3::inv((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_);
+                Goldilocks3::mul((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zN);
+                std::memcpy(&zi[i*FIELD_EXTENSION], zi_, FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            } else if(boundary.name == "lastRow") {
+                Goldilocks::Element root = Goldilocks::one();
+                for(uint64_t i = 0; i < uint64_t(1 << starkInfo.starkStruct.nBits) - 1; ++i) {
+                    root = root * Goldilocks::w(starkInfo.starkStruct.nBits);
+                }
+                Goldilocks::Element zi_[3];
+                Goldilocks3::sub((Goldilocks3::Element &)zi_[0], (Goldilocks3::Element &)z[0], (Goldilocks3::Element &)root);
+                Goldilocks3::inv((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_);
+                Goldilocks3::mul((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zN);
+                std::memcpy(&zi[i*FIELD_EXTENSION], zi_, FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            } else if(boundary.name == "everyRow") {
+                uint64_t nRoots = boundary.offsetMin + boundary.offsetMax;
+                Goldilocks::Element roots[nRoots];
+                Goldilocks::Element zi_[3] = { Goldilocks::one(), Goldilocks::zero(), Goldilocks::zero()};
+                for(uint64_t i = 0; i < boundary.offsetMin; ++i) {
+                    roots[i] = Goldilocks::one();
+                    for(uint64_t j = 0; j < i; ++j) {
+                        roots[i] = roots[i] * Goldilocks::w(starkInfo.starkStruct.nBits);
+                    }
+                    Goldilocks::Element aux[3];
+                    Goldilocks3::sub((Goldilocks3::Element &)aux[0], (Goldilocks3::Element &)z[0], (Goldilocks3::Element &)roots[i]);
+                    Goldilocks3::mul((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_, (Goldilocks3::Element *)aux);
+                }
+
+                for(uint64_t i = 0; i < boundary.offsetMax; ++i) {
+                    roots[i + boundary.offsetMin] = Goldilocks::one();
+                    for(uint64_t j = 0; j < (uint64_t(1 << starkInfo.starkStruct.nBits) - i - 1); ++j) {
+                        roots[i + boundary.offsetMin] = roots[i + boundary.offsetMin] * Goldilocks::w(starkInfo.starkStruct.nBits);
+                    }
+                    Goldilocks::Element aux[3];
+                    Goldilocks3::sub((Goldilocks3::Element &)aux[0], (Goldilocks3::Element &)z[0], (Goldilocks3::Element &)roots[i + boundary.offsetMin]);
+                    Goldilocks3::mul((Goldilocks3::Element *)zi_, (Goldilocks3::Element *)zi_, (Goldilocks3::Element *)aux);
+                }
+
+                std::memcpy(&zi[i*FIELD_EXTENSION], zi_, FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            }
+        }
+
+        x_n = new Goldilocks::Element[FIELD_EXTENSION];
+        x_n[0] = z[0];
+        x_n[1] = z[1];
+        x_n[2] = z[2];
+
+    };
 
     ConstPols(StarkInfo& starkInfo_, std::string constPolsFile): starkInfo(starkInfo_), N(1 << starkInfo.starkStruct.nBits), NExtended(1 << starkInfo.starkStruct.nBitsExt) {
         
@@ -265,14 +339,14 @@ public:
     }
 
     ~ConstPols()
-    {
-        free(pConstPolsAddress);
-        free(pConstTreeAddress);
-        delete zi;
-        delete S;
-        delete x;
-        delete x_n; // Needed for PIL1 compatibility
-        delete x_2ns; // Needed for PIL1 compatibility
+    {   
+        if(pConstPolsAddress != nullptr) free(pConstPolsAddress);
+        if(pConstTreeAddress != nullptr) free(pConstTreeAddress);
+        if(zi != nullptr) delete zi;
+        if(S != nullptr) delete S;
+        if(x != nullptr) delete x;
+        if(x_n != nullptr) delete x_n;
+        if(x_2ns != nullptr) delete x_2ns;        
     }
 };
 

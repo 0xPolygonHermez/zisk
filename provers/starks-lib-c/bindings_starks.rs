@@ -15,15 +15,6 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10save_proofmPvS_Pc"]
-    pub fn save_proof(
-        proof_id: u64,
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        pFriProof: *mut ::std::os::raw::c_void,
-        fileDir: *mut ::std::os::raw::c_char,
-    );
-}
-extern "C" {
     #[link_name = "\u{1}_Z13fri_proof_newPv"]
     pub fn fri_proof_new(pSetupCtx: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 }
@@ -130,17 +121,14 @@ extern "C" {
 }
 extern "C" {
     #[link_name = "\u{1}_Z19expressions_bin_newPcb"]
-    pub fn expressions_bin_new(
-        filename: *mut ::std::os::raw::c_char,
-        global: bool,
-    ) -> *mut ::std::os::raw::c_void;
+    pub fn expressions_bin_new(filename: *mut ::std::os::raw::c_char, global: bool) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z20expressions_bin_freePv"]
     pub fn expressions_bin_free(pExpressionsBin: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14get_hint_fieldPvS_S_S_S_S_mPcbbb"]
+    #[link_name = "\u{1}_Z14get_hint_fieldPvS_S_S_S_S_mPcbbbb"]
     pub fn get_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
@@ -153,6 +141,57 @@ extern "C" {
         dest: bool,
         inverse: bool,
         print_expression: bool,
+        initialize_zeros: bool,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15mul_hint_fieldsPvS_S_S_S_S_mPcS0_S0_bb"]
+    pub fn mul_hint_fields(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldNameDest: *mut ::std::os::raw::c_char,
+        hintFieldName1: *mut ::std::os::raw::c_char,
+        hintFieldName2: *mut ::std::os::raw::c_char,
+        inverse1: bool,
+        inverse2: bool,
+    ) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z14acc_hint_fieldPvS_S_S_S_S_mPcS0_S0_"]
+    pub fn acc_hint_field(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldNameDest: *mut ::std::os::raw::c_char,
+        hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
+        hintFieldName: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19acc_mul_hint_fieldsPvS_S_S_S_S_mPcS0_S0_S0_bb"]
+    pub fn acc_mul_hint_fields(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        public_inputs: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
+        subproofValues: *mut ::std::os::raw::c_void,
+        evals: *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldNameDest: *mut ::std::os::raw::c_char,
+        hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
+        hintFieldName1: *mut ::std::os::raw::c_char,
+        hintFieldName2: *mut ::std::os::raw::c_char,
+        inverse1: bool,
+        inverse2: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -262,30 +301,76 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19compute_fri_foldingPvS_mS_S_"]
-    pub fn compute_fri_folding(
-        pStarks: *mut ::std::os::raw::c_void,
-        pProof: *mut ::std::os::raw::c_void,
-        step: u64,
-        buffer: *mut ::std::os::raw::c_void,
-        pChallenge: *mut ::std::os::raw::c_void,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z19compute_fri_queriesPvS_Pm"]
-    pub fn compute_fri_queries(
-        pStarks: *mut ::std::os::raw::c_void,
-        pProof: *mut ::std::os::raw::c_void,
-        friQueries: *mut u64,
-    );
-}
-extern "C" {
     #[link_name = "\u{1}_Z14calculate_hashPvS_S_m"]
     pub fn calculate_hash(
         pStarks: *mut ::std::os::raw::c_void,
         pHhash: *mut ::std::os::raw::c_void,
         pBuffer: *mut ::std::os::raw::c_void,
         nElements: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15merkle_tree_newmmmb"]
+    pub fn merkle_tree_new(
+        height: u64,
+        width: u64,
+        arity: u64,
+        custom: bool,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z16merkle_tree_freePv"]
+    pub fn merkle_tree_free(pMerkleTree: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19compute_fri_foldingmPvS_mmm"]
+    pub fn compute_fri_folding(
+        step: u64,
+        buffer: *mut ::std::os::raw::c_void,
+        pChallenge: *mut ::std::os::raw::c_void,
+        nBitsExt: u64,
+        prevBits: u64,
+        currentBits: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z21compute_fri_merkelizePvS_mS_mm"]
+    pub fn compute_fri_merkelize(
+        pStarks: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
+        step: u64,
+        buffer: *mut ::std::os::raw::c_void,
+        currentBits: u64,
+        nextBits: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15compute_queriesPvS_Pmmm"]
+    pub fn compute_queries(
+        pStarks: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
+        friQueries: *mut u64,
+        nQueries: u64,
+        nTrees: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19compute_fri_queriesPvS_Pmmmm"]
+    pub fn compute_fri_queries(
+        pStarks: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
+        friQueries: *mut u64,
+        nQueries: u64,
+        step: u64,
+        currentBits: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z17set_fri_final_polPvS_m"]
+    pub fn set_fri_final_pol(
+        pProof: *mut ::std::os::raw::c_void,
+        buffer: *mut ::std::os::raw::c_void,
+        nBits: u64,
     );
 }
 extern "C" {

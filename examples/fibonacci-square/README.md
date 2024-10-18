@@ -17,12 +17,12 @@ cd ..
 
 ### 1.3 Install `pil2-proofman-js`
 
-Clone the `pil2-proofman-js` repository, switch to the `feature/setup` branch, and install the dependencies:
+Clone the `pil2-proofman-js` repository, switch to the `develop` branch, and install the dependencies:
 
 ```bash
 git clone https://github.com/0xPolygonHermez/pil2-proofman-js
 cd pil2-proofman-js
-git checkout feature/setup
+git checkout develop
 
 # TODO: Verify if the Stark Recurser raises any issues during this process
 

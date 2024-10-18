@@ -43,14 +43,6 @@ pub fn save_publics_c(n_publics: u64, public_inputs: *mut std::os::raw::c_void, 
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn save_proof_c(proof_id: u64, p_stark_info: *mut c_void, p_fri_proof: *mut c_void, output_dir: &str) {
-    let file_dir = CString::new(output_dir).unwrap();
-    unsafe {
-        save_proof(proof_id, p_stark_info, p_fri_proof, file_dir.as_ptr() as *mut std::os::raw::c_char);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
     unsafe { fri_proof_new(p_setup_ctx) }
 }
@@ -216,6 +208,7 @@ pub fn get_hint_ids_by_name_c(p_expressions_bin: *mut c_void, hint_name: &str) -
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
 pub fn get_hint_field_c(
     p_setup_ctx: *mut c_void,
     steps_params: StepsParams,
@@ -224,6 +217,7 @@ pub fn get_hint_field_c(
     dest: bool,
     inverse: bool,
     print_expression: bool,
+    initialize_zeros: bool,
 ) -> *mut c_void {
     let field_name = CString::new(hint_field_name).unwrap();
     unsafe {
@@ -239,6 +233,107 @@ pub fn get_hint_field_c(
             dest,
             inverse,
             print_expression,
+            initialize_zeros,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
+pub fn mul_hint_fields_c(
+    p_setup_ctx: *mut c_void,
+    steps_params: StepsParams,
+    hint_id: u64,
+    hint_field_dest: &str,
+    hint_field_name1: &str,
+    inverse1: bool,
+    hint_field_name2: &str,
+    inverse2: bool,
+) -> u64 {
+    let field_dest = CString::new(hint_field_dest).unwrap();
+    let field_name1 = CString::new(hint_field_name1).unwrap();
+    let field_name2 = CString::new(hint_field_name2).unwrap();
+
+    unsafe {
+        mul_hint_fields(
+            p_setup_ctx,
+            steps_params.buffer,
+            steps_params.public_inputs,
+            steps_params.challenges,
+            steps_params.subproof_values,
+            steps_params.evals,
+            hint_id,
+            field_dest.as_ptr() as *mut std::os::raw::c_char,
+            field_name1.as_ptr() as *mut std::os::raw::c_char,
+            field_name2.as_ptr() as *mut std::os::raw::c_char,
+            inverse1,
+            inverse2,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn acc_hint_field_c(
+    p_setup_ctx: *mut c_void,
+    steps_params: StepsParams,
+    hint_id: u64,
+    hint_field_dest: &str,
+    hint_field_subproovalue: &str,
+    hint_field_name: &str,
+) -> *mut c_void {
+    let field_dest = CString::new(hint_field_dest).unwrap();
+    let field_subproofvalue = CString::new(hint_field_subproovalue).unwrap();
+    let field_name = CString::new(hint_field_name).unwrap();
+
+    unsafe {
+        acc_hint_field(
+            p_setup_ctx,
+            steps_params.buffer,
+            steps_params.public_inputs,
+            steps_params.challenges,
+            steps_params.subproof_values,
+            steps_params.evals,
+            hint_id,
+            field_dest.as_ptr() as *mut std::os::raw::c_char,
+            field_subproofvalue.as_ptr() as *mut std::os::raw::c_char,
+            field_name.as_ptr() as *mut std::os::raw::c_char,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
+pub fn acc_mul_hint_fields_c(
+    p_setup_ctx: *mut c_void,
+    steps_params: StepsParams,
+    hint_id: u64,
+    hint_field_dest: &str,
+    hint_field_subproovalue: &str,
+    hint_field_name1: &str,
+    hint_field_name2: &str,
+    inverse1: bool,
+    inverse2: bool,
+) -> *mut c_void {
+    let field_dest = CString::new(hint_field_dest).unwrap();
+    let field_subproofvalue = CString::new(hint_field_subproovalue).unwrap();
+    let field_name1 = CString::new(hint_field_name1).unwrap();
+    let field_name2: CString = CString::new(hint_field_name2).unwrap();
+
+    unsafe {
+        acc_mul_hint_fields(
+            p_setup_ctx,
+            steps_params.buffer,
+            steps_params.public_inputs,
+            steps_params.challenges,
+            steps_params.subproof_values,
+            steps_params.evals,
+            hint_id,
+            field_dest.as_ptr() as *mut std::os::raw::c_char,
+            field_subproofvalue.as_ptr() as *mut std::os::raw::c_char,
+            field_name1.as_ptr() as *mut std::os::raw::c_char,
+            field_name2.as_ptr() as *mut std::os::raw::c_char,
+            inverse1,
+            inverse2,
         )
     }
 }
@@ -274,6 +369,18 @@ pub fn starks_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
 pub fn starks_free_c(p_stark: *mut c_void) {
     unsafe {
         starks_free(p_stark);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn merkle_tree_new_c(height: u64, width: u64, arity: u64, custom: bool) -> *mut c_void {
+    unsafe { merkle_tree_new(height, width, arity, custom) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn merkle_tree_free_c(merkle_tree: *mut c_void) {
+    unsafe {
+        merkle_tree_free(merkle_tree);
     }
 }
 
@@ -376,21 +483,63 @@ pub fn compute_evals_c(
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn compute_fri_folding_c(
-    p_stark: *mut c_void,
     step: u64,
-    pProof: *mut c_void,
     buffer: *mut c_void,
     challenge: *mut c_void,
+    n_bits_ext: u64,
+    prev_bits: u64,
+    current_bits: u64,
 ) {
     unsafe {
-        compute_fri_folding(p_stark, pProof, step, buffer, challenge);
+        compute_fri_folding(step, buffer, challenge, n_bits_ext, prev_bits, current_bits);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_fri_queries_c(p_stark: *mut c_void, p_proof: *mut c_void, p_fri_queries: *mut u64) {
+pub fn compute_fri_merkelize_c(
+    p_starks: *mut c_void,
+    p_proof: *mut c_void,
+    step: u64,
+    buffer: *mut c_void,
+    current_bits: u64,
+    next_bits: u64,
+) {
     unsafe {
-        compute_fri_queries(p_stark, p_proof, p_fri_queries);
+        compute_fri_merkelize(p_starks, p_proof, step, buffer, current_bits, next_bits);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_queries_c(
+    p_stark: *mut c_void,
+    p_proof: *mut c_void,
+    p_fri_queries: *mut u64,
+    n_queries: u64,
+    n_trees: u64,
+) {
+    unsafe {
+        compute_queries(p_stark, p_proof, p_fri_queries, n_queries, n_trees);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn compute_fri_queries_c(
+    p_starks: *mut c_void,
+    p_proof: *mut c_void,
+    p_fri_queries: *mut u64,
+    n_queries: u64,
+    step: u64,
+    current_bits: u64,
+) {
+    unsafe {
+        compute_fri_queries(p_starks, p_proof, p_fri_queries, n_queries, step, current_bits);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_fri_final_pol_c(p_proof: *mut c_void, buffer: *mut c_void, n_bits: u64) {
+    unsafe {
+        set_fri_final_pol(p_proof, buffer, n_bits);
     }
 }
 
@@ -636,11 +785,6 @@ pub fn save_publics_c(_n_publics: u64, _public_inputs: *mut c_void, _output_dir:
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn save_proof_c(_proof_id: u64, _p_stark_info: *mut c_void, _p_fri_proof: *mut c_void, _output_dir: &str) {
-    trace!("{}: ··· {}", "ffi     ", "save_proof: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn fri_proof_new_c(_p_setup_ctx: *mut c_void) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "fri_proof_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -778,6 +922,7 @@ pub fn get_hint_ids_by_name_c(_p_expressions_bin: *mut c_void, _hint_name: &str)
 }
 
 #[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
 pub fn get_hint_field_c(
     _p_setup_ctx: *mut c_void,
     _steps_params: StepsParams,
@@ -786,8 +931,55 @@ pub fn get_hint_field_c(
     _dest: bool,
     _inverse: bool,
     _print_expression: bool,
+    _initialize_zeros: bool,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_hint_field: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
+pub fn mul_hint_fields_c(
+    _p_setup_ctx: *mut c_void,
+    _steps_params: StepsParams,
+    _hint_id: u64,
+    _hint_field_dest: &str,
+    _hint_field_name1: &str,
+    _inverse1: bool,
+    _hint_field_name2: &str,
+    _inverse2: bool,
+) -> u64 {
+    trace!("{}: ··· {}", "ffi     ", "mul_hint_fields: This is a mock call because there is no linked library");
+    0
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn acc_hint_field_c(
+    _p_setup_ctx: *mut c_void,
+    _steps_params: StepsParams,
+    _hint_id: u64,
+    _hint_field_dest: &str,
+    _hint_field_subproovalue: &str,
+    _hint_field_name: &str,
+) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "acc_hint_fields: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
+pub fn acc_mul_hint_fields_c(
+    _p_setup_ctx: *mut c_void,
+    _steps_params: StepsParams,
+    _hint_id: u64,
+    _hint_field_dest: &str,
+    _hint_field_subproovalue: &str,
+    _hint_field_name1: &str,
+    _hint_field_name2: &str,
+    _inverse1: bool,
+    _inverse2: bool,
+) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "acc_mul_hint_fields: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
@@ -813,6 +1005,17 @@ pub fn starks_new_c(_p_config: *mut c_void) -> *mut c_void {
 #[cfg(feature = "no_lib_link")]
 pub fn starks_free_c(_p_stark: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "starks_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn merkle_tree_new_c(_height: u64, _width: u64, _arity: u64, _custom: bool) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "merkle_tree_new: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn merkle_tree_free_c(_merkle_tree: *mut c_void) {
+    trace!("{}: ··· {}", "ffi     ", "merkle_tree_free: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -903,18 +1106,54 @@ pub fn get_fri_pol_c(_p_setup_ctx: *mut c_void, _buffer: *mut c_void) -> *mut c_
 
 #[cfg(feature = "no_lib_link")]
 pub fn compute_fri_folding_c(
-    _p_stark: *mut c_void,
     _step: u64,
-    _p_proof: *mut c_void,
     _buffer: *mut c_void,
     _challenge: *mut c_void,
+    _n_bits_ext: u64,
+    _prev_bits: u64,
+    _current_bits: u64,
 ) {
     trace!("{}: ··· {}", "ffi     ", "compute_fri_folding: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_fri_queries_c(_p_stark: *mut c_void, _p_proof: *mut c_void, _p_fri_queries: *mut u64) {
+pub fn compute_fri_merkelize_c(
+    _p_starks: *mut c_void,
+    _p_proof: *mut c_void,
+    _step: u64,
+    _buffer: *mut c_void,
+    _current_bits: u64,
+    _next_bits: u64,
+) {
+    trace!("{}: ··· {}", "ffi     ", "compute_fri_merkelize: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_queries_c(
+    _p_stark: *mut c_void,
+    _p_proof: *mut c_void,
+    _p_fri_queries: *mut u64,
+    _n_queries: u64,
+    _n_trees: u64,
+) {
+    trace!("{}: ··· {}", "ffi     ", "compute_queries: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn compute_fri_queries_c(
+    _p_starks: *mut c_void,
+    _p_proof: *mut c_void,
+    _p_fri_queries: *mut u64,
+    _n_queries: u64,
+    _step: u64,
+    _current_bits: u64,
+) {
     trace!("{}: ··· {}", "ffi     ", "compute_fri_queries: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_fri_final_pol_c(_p_proof: *mut c_void, _buffer: *mut c_void, _n_bits: u64) {
+    trace!("{}: ··· {}", "ffi     ", "set_fri_final_pol: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

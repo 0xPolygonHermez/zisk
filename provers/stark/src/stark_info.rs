@@ -14,7 +14,7 @@ pub struct Boundary {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Copy)]
 pub struct StepStruct {
     #[serde(rename = "nBits")]
     pub n_bits: u64,

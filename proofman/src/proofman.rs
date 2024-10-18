@@ -5,13 +5,15 @@ use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
 use std::fs;
 use std::error::Error;
+use std::mem::MaybeUninit;
+
 use colored::*;
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use transcript::FFITranscript;
 
-use crate::{WitnessLibrary, WitnessLibInitFn};
+use crate::{WitnessLibInitFn, WitnessLibrary};
 use crate::verify_constraints_proof;
 use crate::generate_recursion_proof;
 
@@ -138,13 +140,7 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), ectx.clone(), &mut transcript, n_provers);
 
         //Generate proves_out
-        let proves_out = Self::finalize_proof(
-            &mut provers,
-            pctx.clone(),
-            output_dir_path.to_string_lossy().as_ref(),
-            options.aggregation,
-            options.save_proofs,
-        );
+        let proves_out = Self::finalize_proof(&mut provers, pctx.clone(), output_dir_path.to_string_lossy().as_ref());
 
         timer_stop_and_log_info!(GENERATING_PROOF);
 
@@ -156,24 +152,14 @@ impl<F: Field + 'static> ProofMan<F> {
 
         timer_start_info!(GENERATING_AGGREGATION_PROOFS);
         timer_start_info!(GENERATING_COMPRESSOR_PROOFS);
-        let comp_proofs = generate_recursion_proof(
-            &pctx,
-            &proves_out,
-            &ProofType::Compressor,
-            output_dir_path.clone(),
-            options.save_proofs,
-        )?;
+        let comp_proofs =
+            generate_recursion_proof(&pctx, &proves_out, &ProofType::Compressor, output_dir_path.clone(), false)?;
         timer_stop_and_log_info!(GENERATING_COMPRESSOR_PROOFS);
         log::info!("{}: Compressor proofs generated successfully", Self::MY_NAME);
 
         timer_start_info!(GENERATING_RECURSIVE1_PROOFS);
-        let recursive1_proofs = generate_recursion_proof(
-            &pctx,
-            &comp_proofs,
-            &ProofType::Recursive1,
-            output_dir_path.clone(),
-            options.save_proofs,
-        )?;
+        let recursive1_proofs =
+            generate_recursion_proof(&pctx, &comp_proofs, &ProofType::Recursive1, output_dir_path.clone(), false)?;
         timer_stop_and_log_info!(GENERATING_RECURSIVE1_PROOFS);
         log::info!("{}: Recursive1 proofs generated successfully", Self::MY_NAME);
 
@@ -183,7 +169,7 @@ impl<F: Field + 'static> ProofMan<F> {
             &recursive1_proofs,
             &ProofType::Recursive2,
             output_dir_path.clone(),
-            options.save_proofs,
+            false,
         )?;
         timer_stop_and_log_info!(GENERATING_RECURSIVE2_PROOFS);
         log::info!("{}: Recursive2 proofs generated successfully", Self::MY_NAME);
@@ -281,7 +267,9 @@ impl<F: Field + 'static> ProofMan<F> {
                 buff_helper_size = buff_helper_prover_size;
             }
         }
-        let buff_helper: Vec<F> = vec![F::zero(); buff_helper_size];
+
+        let buff_helper: Vec<MaybeUninit<F>> = Vec::with_capacity(buff_helper_size);
+
         *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
         cont
     }
@@ -468,7 +456,6 @@ impl<F: Field + 'static> ProofMan<F> {
         transcript: &mut FFITranscript,
         n_provers: usize,
     ) {
-        let setup_airs = sctx.get_setup_airs();
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
         let size = ectx.dctx.n_processes;
         let rank = ectx.dctx.rank;
@@ -477,7 +464,7 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(num_commit_stages + 2, provers, pctx.clone(), transcript);
         timer_start_debug!(CALCULATING_EVALS);
         info!("{}: Calculating evals", Self::MY_NAME);
-        for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
+        for (airgroup_id, airgroup) in sctx.get_setup_airs().iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
@@ -516,10 +503,10 @@ impl<F: Field + 'static> ProofMan<F> {
         );
 
         // Calculate fri polynomial
-        Self::get_challenges(num_commit_stages + 3, provers, pctx.clone(), transcript);
+        Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 3, provers, pctx.clone(), transcript);
         info!("{}: Calculating FRI Polynomials", Self::MY_NAME);
         timer_start_debug!(CALCULATING_FRI_POLINOMIAL);
-        for (airgroup_id, airgroup) in setup_airs.iter().enumerate() {
+        for (airgroup_id, airgroup) in sctx.get_setup_airs().iter().enumerate() {
             for air_id in airgroup.iter() {
                 let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
                 if !air_instances_idx.is_empty() {
@@ -549,18 +536,23 @@ impl<F: Field + 'static> ProofMan<F> {
         }
         timer_stop_and_log_debug!(CALCULATING_FRI_POLINOMIAL);
 
-        // FRI Steps
         let global_steps_fri: Vec<usize> = pctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
-        let num_opening_stages = global_steps_fri.len() as u32 + 3;
+        let num_opening_stages = global_steps_fri.len() as u32;
+
         timer_start_debug!(CALCULATING_FRI);
-        for opening_id in 3..=num_opening_stages {
+        for opening_id in 0..=num_opening_stages {
             timer_start_debug!(CALCULATING_FRI_STEP);
-            Self::get_challenges(num_commit_stages + 1 + opening_id, provers, pctx.clone(), transcript);
+            Self::get_challenges(
+                pctx.global_info.n_challenges.len() as u32 + 4 + opening_id,
+                provers,
+                pctx.clone(),
+                transcript,
+            );
             if opening_id == num_opening_stages - 1 {
                 info!(
                     "{}: Calculating final FRI polynomial at {}",
                     Self::MY_NAME,
-                    global_steps_fri[opening_id as usize - 3]
+                    global_steps_fri[opening_id as usize]
                 );
             } else if opening_id == num_opening_stages {
                 info!("{}: Calculating FRI queries", Self::MY_NAME);
@@ -568,16 +560,16 @@ impl<F: Field + 'static> ProofMan<F> {
                 info!(
                     "{}: Calculating FRI folding from {} to {}",
                     Self::MY_NAME,
-                    global_steps_fri[opening_id as usize - 3],
-                    global_steps_fri[opening_id as usize - 2]
+                    global_steps_fri[opening_id as usize],
+                    global_steps_fri[opening_id as usize + 1]
                 );
             }
             for prover in provers.iter_mut() {
-                prover.opening_stage(opening_id, pctx.clone());
+                prover.opening_stage(opening_id + 3, pctx.clone());
             }
-            if opening_id < provers[0].num_opening_stages() {
+            if opening_id < num_opening_stages {
                 Self::calculate_challenges(
-                    num_commit_stages + 1 + opening_id,
+                    pctx.global_info.n_challenges.len() as u32 + 4 + opening_id,
                     provers,
                     pctx.clone(),
                     ectx.clone(),
@@ -595,13 +587,11 @@ impl<F: Field + 'static> ProofMan<F> {
         provers: &mut [Box<dyn Prover<F>>],
         proof_ctx: Arc<ProofCtx<F>>,
         output_dir: &str,
-        aggregation: bool,
-        save_proofs: bool,
     ) -> Vec<*mut c_void> {
-        timer_start_debug!(SAVING_PROOF);
+        timer_start_debug!(FINALIZING_PROOF);
         let mut proves = Vec::new();
         for prover in provers.iter_mut() {
-            proves.push(prover.save_proof(proof_ctx.clone(), output_dir, save_proofs));
+            proves.push(prover.get_zkin_proof(proof_ctx.clone(), output_dir));
         }
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
@@ -613,12 +603,10 @@ impl<F: Field + 'static> ProofMan<F> {
         let global_info_path = proof_ctx.global_info.get_proving_key_path().join("pilout.globalInfo.json");
         let global_info_file: &str = global_info_path.to_str().unwrap();
 
-        if aggregation || save_proofs {
-            save_publics_c(n_publics, public_inputs, output_dir);
-            save_challenges_c(challenges, global_info_file, output_dir);
-        }
+        save_publics_c(n_publics, public_inputs, output_dir);
+        save_challenges_c(challenges, global_info_file, output_dir);
 
-        timer_stop_and_log_debug!(SAVING_PROOF);
+        timer_stop_and_log_debug!(FINALIZING_PROOF);
         proves
     }
 
