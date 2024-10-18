@@ -1,8 +1,8 @@
 use crate::{
-    Emu, EmuOptions, EmuSlice, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments,
-    ParEmuOptions, ZiskEmulatorErr,
+    Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
+    ZiskEmulatorErr,
 };
-use p3_field::{AbstractField, PrimeField};
+use p3_field::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -224,23 +224,8 @@ impl ZiskEmulator {
         Ok((vec_traces, emu_slices))
     }
 
-    pub fn process_slice<F: AbstractField>(
-        rom: &ZiskRom,
-        trace: &EmuTrace,
-    ) -> Result<EmuSlice<F>, ZiskEmulatorErr> {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        let start = Instant::now();
-        let emu_slice = emu.run_slice(trace);
-        println!("process_slice() duration={:.4}", start.elapsed().as_secs_f64());
-
-        Ok(emu_slice)
-    }
-
     #[inline]
-    pub fn process_slice_by_op_type<F: PrimeField>(
+    pub fn process_slice_required<F: PrimeField>(
         rom: &ZiskRom,
         vec_traces: &[EmuTrace],
         op_type: ZiskOperationType,
@@ -250,21 +235,7 @@ impl ZiskEmulator {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
         // Run the emulation
-        emu.run_slice_by_op_type::<F>(vec_traces, op_type, emu_trace_start, num_rows)
-    }
-
-    #[inline]
-    pub fn process_slice_2<F: AbstractField>(
-        rom: &ZiskRom,
-        trace: &EmuTrace,
-        emu_slice: &mut EmuSlice<F>,
-    ) {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-        // Run the emulation
-        //let start = Instant::now();
-        emu.run_slice_2(trace, emu_slice);
-        //println!("process_slice() duration={:.4}", start.elapsed().as_secs_f64());
+        emu.run_slice_required::<F>(vec_traces, op_type, emu_trace_start, num_rows)
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {

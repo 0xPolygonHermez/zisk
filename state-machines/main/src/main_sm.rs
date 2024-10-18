@@ -283,11 +283,7 @@ impl<F: PrimeField> MainSM<F> {
             filled as f64 / air.num_rows() as f64 * 100.0
         );
 
-        let mut emu: Emu<'_> = Emu::new(&self.zisk_rom);
-        emu.ctx.inst_ctx.pc = segment_trace.start.pc;
-        emu.ctx.inst_ctx.sp = segment_trace.start.sp;
-        emu.ctx.inst_ctx.step = segment_trace.start.step;
-        emu.ctx.inst_ctx.c = segment_trace.start.c;
+        let mut emu = Emu::from_emu_trace_start(&self.zisk_rom, &segment_trace.start);
 
         let total_steps = segment_trace.steps.len();
         const CHUNK_SIZE: usize = 4096;
@@ -303,7 +299,7 @@ impl<F: PrimeField> MainSM<F> {
             let start_pos_abs = std::cmp::min(chunk_start, total_steps);
             let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
             for (i, step) in segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate() {
-                tmp_trace[i] = emu.step_slice_buff(step);
+                tmp_trace[i] = emu.step_slice_full_trace(step);
                 tmp_trace[i].main_first_segment = main_first_segment;
                 tmp_trace[i].main_last_segment = main_last_segment;
                 tmp_trace[i].main_segment = main_segment;
@@ -343,7 +339,7 @@ impl<F: PrimeField> MainSM<F> {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
         timer_start_debug!(PROCESS_BINARY);
-        let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
+        let inputs = ZiskEmulator::process_slice_required::<F>(
             &self.zisk_rom,
             vec_traces,
             iectx.op_type,
@@ -373,7 +369,7 @@ impl<F: PrimeField> MainSM<F> {
     ) {
         let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
-        let inputs = ZiskEmulator::process_slice_by_op_type::<F>(
+        let inputs = ZiskEmulator::process_slice_required::<F>(
             &self.zisk_rom,
             vec_traces,
             iectx.op_type,
