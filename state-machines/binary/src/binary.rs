@@ -96,67 +96,6 @@ impl<F: PrimeField> BinarySM<F> {
         }
     }
 
-    // pub fn par_prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-    //     let mut _inputs_basic = Vec::new();
-    //     let mut _inputs_extension = Vec::new();
-
-    //     let basic_operations = BinaryBasicSM::<F>::operations();
-    //     let extension_operations = BinaryExtensionSM::<F>::operations();
-
-    //     // TODO Split the operations into basic and extended operations in parallel
-    //     for operation in operations {
-    //         if basic_operations.contains(&operation.opcode) {
-    //             _inputs_basic.push(operation.clone());
-    //         } else if extension_operations.contains(&operation.opcode) {
-    //             _inputs_extension.push(operation.clone());
-    //         } else {
-    //             panic!("BinarySM: Operator {:#04x} not found", operation.opcode);
-    //         }
-    //     }
-
-    //     let mut inputs_basic = self.inputs_basic.lock().unwrap();
-    //     inputs_basic.extend(_inputs_basic);
-
-    //     while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
-    //         let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
-    //         let drained_inputs_basic =
-    // inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
-
-    //         let binary_basic_sm_cloned = self.binary_basic_sm.clone();
-
-    //         self.threads_controller.add_working_thread();
-    //         let thread_controller = self.threads_controller.clone();
-
-    //         binary_basic_sm_cloned.prove(&drained_inputs_basic, false);
-
-    //         thread_controller.remove_working_thread();
-    //     }
-    //     drop(inputs_basic);
-
-    //     let mut inputs_extension = self.inputs_extension.lock().unwrap();
-    //     inputs_extension.extend(_inputs_extension);
-
-    //     while inputs_extension.len() >= PROVE_CHUNK_SIZE || (drain &&
-    // !inputs_extension.is_empty())     {
-    //         let num_drained_extension = std::cmp::min(PROVE_CHUNK_SIZE, inputs_extension.len());
-    //         let drained_inputs_extension =
-    //             inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
-    //         let binary_extension_sm_cloned = self.binary_extension_sm.clone();
-
-    //         self.threads_controller.add_working_thread();
-    //         let thread_controller = self.threads_controller.clone();
-
-    //         binary_extension_sm_cloned.par_prove(&drained_inputs_extension, false);
-
-    //         thread_controller.remove_working_thread();
-    //     }
-    //     drop(inputs_extension);
-    // }
-
-    // pub fn prove_basic(&self, operations: &Vec<Vec<ZiskRequired>>, scope: &Scope) {
-    //     self.binary_basic_sm.prove_basic(operations, scope);
-    // }
-
     pub fn prove_instance(
         &self,
         operations: Vec<ZiskRequiredOperation>,
