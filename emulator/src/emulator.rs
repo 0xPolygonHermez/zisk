@@ -1,12 +1,18 @@
-use crate::{Emu, EmuOptions, EmuSlice, EmuTrace, ErrWrongArguments, ZiskEmulatorErr};
-use p3_field::AbstractField;
+use crate::{
+    Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
+    ZiskEmulatorErr,
+};
+use p3_field::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::{
+    Riscv2zisk, ZiskOperationType, ZiskRequiredOperation, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
+};
 
 pub trait Emulator {
     fn emulate(
@@ -15,6 +21,7 @@ pub trait Emulator {
         callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr>;
 }
+use rayon::prelude::*;
 
 pub struct ZiskEmulator;
 
@@ -155,17 +162,80 @@ impl ZiskEmulator {
         Ok(output)
     }
 
-    pub fn process_slice<F: AbstractField>(
+    pub fn par_process_rom<F: PrimeField>(
         rom: &ZiskRom,
-        trace: &EmuTrace,
-    ) -> Result<EmuSlice<F>, ZiskEmulatorErr> {
+        inputs: &[u8],
+        options: &EmuOptions,
+        num_threads: usize,
+        op_sizes: [u64; ZISK_OPERATION_TYPE_VARIANTS],
+    ) -> Result<(Vec<EmuTrace>, EmuStartingPoints), ZiskEmulatorErr> {
+        let mut emu_traces = vec![Vec::new(); num_threads];
+        let emu_slices = Mutex::new(EmuStartingPoints::default());
+
+        emu_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
+            let par_emu_options = ParEmuOptions::new(
+                num_threads,
+                thread_id,
+                op_sizes[ZiskOperationType::None as usize] as usize,
+                op_sizes,
+            );
+
+            // Run the emulation
+            let mut emu = Emu::new(rom);
+            let result = emu.par_run::<F>(inputs.to_owned(), options, &par_emu_options);
+
+            if !emu.terminated() {
+                panic!("Emulation did not complete");
+                // TODO!
+                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
+            }
+
+            *emu_trace = result.0;
+
+            if thread_id == 0 {
+                *emu_slices.lock().unwrap() = result.1;
+            }
+        });
+
+        let capacity = emu_traces.iter().map(|trace| trace.len()).sum::<usize>();
+        let mut vec_traces = Vec::with_capacity(capacity);
+        for i in 0..capacity {
+            let x = i % num_threads;
+            let y = i / num_threads;
+
+            vec_traces.push(std::mem::take(&mut emu_traces[x][y]));
+        }
+
+        // For performance reasons we didn't collect main operation starting points because we
+        // can generate them from the execution trace.
+        let mut emu_slices = emu_slices.into_inner().unwrap();
+        emu_slices.total_steps[ZiskOperationType::None as usize] =
+            vec_traces.iter().map(|trace| trace.steps.len()).sum::<usize>() as u64;
+        for vec_trace in &vec_traces {
+            emu_slices.add(
+                ZiskOperationType::None,
+                vec_trace.start.pc,
+                vec_trace.start.sp,
+                vec_trace.start.c,
+                vec_trace.start.step,
+            );
+        }
+
+        Ok((vec_traces, emu_slices))
+    }
+
+    #[inline]
+    pub fn process_slice_required<F: PrimeField>(
+        rom: &ZiskRom,
+        vec_traces: &[EmuTrace],
+        op_type: ZiskOperationType,
+        emu_trace_start: &EmuTraceStart,
+        num_rows: usize,
+    ) -> Vec<ZiskRequiredOperation> {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
-
         // Run the emulation
-        let emu_slice = emu.run_slice(trace);
-
-        Ok(emu_slice)
+        emu.run_slice_required::<F>(vec_traces, op_type, emu_trace_start, num_rows)
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {

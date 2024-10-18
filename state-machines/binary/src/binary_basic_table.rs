@@ -6,12 +6,11 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use proofman_util::create_buffer_fast;
-use rayon::Scope;
-use sm_common::{OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredBinaryBasicTable, P2_16, P2_17, P2_18, P2_19, P2_8};
-use zisk_pil::{BinaryTable0Trace, BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
+use proofman_common::AirInstance;
+use rayon::{prelude::*, Scope};
+use sm_common::create_prover_buffer;
+use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_pil::{BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
 
 pub struct BinaryBasicTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -19,14 +18,9 @@ pub struct BinaryBasicTableSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredBinaryBasicTable>>,
-
     // Row multiplicity table
     num_rows: usize,
     multiplicity: Mutex<Vec<u64>>,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -43,10 +37,8 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let binary_basic_table = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
-            _phantom: std::marker::PhantomData,
         };
         let binary_basic_table = Arc::new(binary_basic_table);
         wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
@@ -58,33 +50,22 @@ impl<F: Field> BinaryBasicTableSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self, _: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicTableSM<F> as Provable<ZiskRequiredBinaryBasicTable, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
+            // Create the prover buffer
+            let (mut prover_buffer, offset) = create_prover_buffer(
+                self.wcm.get_ectx(),
+                self.wcm.get_sctx(),
+                BINARY_TABLE_AIRGROUP_ID,
+                BINARY_TABLE_AIR_IDS[0],
             );
 
-            let buffer_allocator = self.wcm.get_ectx().buffer_allocator.as_ref();
-            let (buffer_size, offsets) = buffer_allocator
-                .get_buffer_info(
-                    self.wcm.get_sctx(),
-                    BINARY_TABLE_AIRGROUP_ID,
-                    BINARY_TABLE_AIR_IDS[0],
-                )
-                .expect("BinaryTable buffer not found");
-
-            let mut buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
-            let mut trace_accessor =
-                BinaryTable0Trace::map_buffer(&mut buffer, self.num_rows, offsets[0] as usize)
-                    .unwrap();
-
             let multiplicity = self.multiplicity.lock().unwrap();
-            for i in 0..self.num_rows {
-                trace_accessor[i].multiplicity = F::from_canonical_u64(multiplicity[i]);
-            }
+
+            prover_buffer[offset as usize..offset as usize + self.num_rows]
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
 
             info!(
                 "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
@@ -92,8 +73,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 self.num_rows,
             );
 
-            let air_instance =
-                AirInstance::new(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, buffer);
+            let air_instance = AirInstance::new(
+                BINARY_TABLE_AIRGROUP_ID,
+                BINARY_TABLE_AIR_IDS[0],
+                None,
+                prover_buffer,
+            );
             self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
         }
     }
@@ -103,13 +88,12 @@ impl<F: Field> BinaryBasicTableSM<F> {
         vec![0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x22]
     }
 
-    pub fn process_slice(&self, input: &Vec<ZiskRequiredBinaryBasicTable>) {
+    pub fn process_slice(&self, input: &[u64]) {
         // Create the trace vector
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        for i in input {
-            assert!(i.row < self.num_rows as u64);
-            multiplicity[i.row as usize] += i.multiplicity;
+        for (i, val) in input.iter().enumerate() {
+            multiplicity[i] += *val;
         }
     }
 
@@ -183,49 +167,4 @@ impl<F: Field> BinaryBasicTableSM<F> {
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
-
-impl<F: Field> Provable<ZiskRequiredBinaryBasicTable, OpResult> for BinaryBasicTableSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredBinaryBasicTable,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
-    fn prove(&self, operations: &[ZiskRequiredBinaryBasicTable], drain: bool, _scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= self.num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(self.num_rows, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.process_slice(&drained_inputs);
-            }
-        }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredBinaryBasicTable,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-        result
-    }
-}
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {}

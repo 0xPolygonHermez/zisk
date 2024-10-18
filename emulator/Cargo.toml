@@ -15,6 +15,7 @@ path = "src/bin/ziskemu.rs"
 zisk-core = { path = "../core" }
 riscv = { path="../riscv" }
 zisk-pil = { path="../pil" }
+rayon = { workspace = true }
 
 p3-field = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }

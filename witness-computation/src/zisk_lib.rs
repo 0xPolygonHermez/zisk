@@ -1,4 +1,5 @@
-use pil_std_lib::{RCAirData, RangeCheckAir, Std};
+use pil_std_lib::Std;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
@@ -6,7 +7,6 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_main::MainSM;
@@ -44,14 +44,7 @@ impl<F: PrimeField> ZiskWitness<F> {
         let wcm = WitnessManager::new(pctx, ectx, sctx);
         let wcm = Arc::new(wcm);
 
-        // Create STD instance
-        let rc_air_data = vec![RCAirData {
-            air_name: RangeCheckAir::SpecifiedRanges,
-            airgroup_id: SPECIFIED_RANGES_AIRGROUP_ID,
-            air_id: SPECIFIED_RANGES_AIR_IDS[0],
-        }];
-
-        let std = Std::new(wcm.clone(), Some(rc_air_data));
+        let std = Std::new(wcm.clone());
 
         let mem_sm = MemSM::new(wcm.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());

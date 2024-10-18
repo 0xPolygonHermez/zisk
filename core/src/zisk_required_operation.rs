@@ -6,6 +6,7 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
+#[derive(Clone)]
 pub struct ZiskRequiredMemory {
     pub step: u64,
     pub is_write: bool,
@@ -15,31 +16,9 @@ pub struct ZiskRequiredMemory {
 }
 
 #[derive(Clone, Default)]
-pub struct ZiskRequiredBinaryBasicTable {
-    pub opcode: u8,
-    pub a: u64,
-    pub b: u64,
-    pub row: u64,
-    pub multiplicity: u64,
-}
-
-#[derive(Clone, Default)]
-pub struct ZiskRequiredBinaryExtensionTable {
-    pub opcode: u8,
-    pub a: u64,
-    pub b: u64,
-    pub offset: u64,
-    pub row: u64,
-    pub multiplicity: u64,
-}
-
-#[derive(Clone, Default)]
-pub struct ZiskRequiredRangeCheck {
-    pub rc: u64,
-}
-
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,
     pub binary: Vec<ZiskRequiredOperation>,
+    pub binary_extension: Vec<ZiskRequiredOperation>,
     pub memory: Vec<ZiskRequiredMemory>,
 }

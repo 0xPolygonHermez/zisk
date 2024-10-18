@@ -29,7 +29,8 @@ impl From<OpType> for ZiskOperationType {
         match op_type {
             OpType::Internal => ZiskOperationType::Internal,
             OpType::Arith | OpType::ArithA32 | OpType::ArithAm32 => ZiskOperationType::Arith,
-            OpType::Binary | OpType::BinaryE => ZiskOperationType::Binary,
+            OpType::Binary => ZiskOperationType::Binary,
+            OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
         }
     }

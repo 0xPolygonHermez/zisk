@@ -95,6 +95,21 @@ impl<F: PrimeField> BinarySM<F> {
             self.binary_extension_sm.unregister_predecessor(scope);
         }
     }
+
+    pub fn prove_instance(
+        &self,
+        operations: Vec<ZiskRequiredOperation>,
+        is_extension: bool,
+        prover_buffer: &mut [F],
+        offset: u64,
+        scope: &Scope,
+    ) {
+        if !is_extension {
+            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset, scope);
+        } else {
+            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset, scope);
+        }
+    }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}
