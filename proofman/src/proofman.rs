@@ -3,6 +3,7 @@ use log::{info, trace};
 use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
 use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
+use core::panic;
 use std::fs;
 use std::error::Error;
 use std::mem::MaybeUninit;
@@ -22,9 +23,6 @@ use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, S
 use std::os::raw::c_void;
 
 use proofman_util::{timer_start_info, timer_start_debug, timer_stop_and_log_info, timer_stop_and_log_debug};
-
-#[cfg(feature = "distributed")]
-use mpi::collective::CommunicatorCollectives;
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -53,7 +51,6 @@ impl<F: Field + 'static> ProofMan<F> {
             &output_dir_path,
             options.verify_constraints,
         )?;
-
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
         let ectx = ExecutionCtx::builder()
             .with_rom_path(rom_path)
@@ -61,7 +58,6 @@ impl<F: Field + 'static> ProofMan<F> {
             .with_verbose_mode(options.verbose_mode)
             .build();
         let ectx = Arc::new(ectx);
-
         // Load the witness computation dynamic library
         let library = unsafe { Library::new(&witness_lib_path)? };
 
@@ -76,24 +72,27 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
 
-        if ectx.dctx.read().unwrap().is_master() {
+        let mut dctx = ectx.dctx.write().unwrap();
+        dctx.close();
+        if dctx.rank == 0 {
             Self::print_summary(pctx.clone());
         }
+        drop(dctx);
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
-        let n_provers: usize = Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
+        Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
 
         if provers.is_empty() {
             return Err("No instances found".into());
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
+        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, false);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
         for stage in 1..=num_commit_stages {
             Self::get_challenges(stage, &mut provers, pctx.clone(), &transcript);
-
             if stage != 1 {
                 witness_lib.calculate_witness(stage, pctx.clone(), ectx.clone(), sctx.clone());
             }
@@ -112,7 +111,6 @@ impl<F: Field + 'static> ProofMan<F> {
                     ectx.clone(),
                     &mut transcript,
                     options.verify_constraints,
-                    n_provers,
                 );
             }
         }
@@ -135,11 +133,10 @@ impl<F: Field + 'static> ProofMan<F> {
             ectx.clone(),
             &mut transcript,
             false,
-            n_provers,
         );
 
         // Compute openings
-        Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), ectx.clone(), &mut transcript, n_provers);
+        Self::opening_stages(&mut provers, pctx.clone(), ectx.clone(), &mut transcript);
 
         //Generate proves_out
         let proves_out = Self::finalize_proof(&mut provers, pctx.clone(), output_dir_path.to_string_lossy().as_ref());
@@ -235,18 +232,10 @@ impl<F: Field + 'static> ProofMan<F> {
         provers: &mut Vec<Box<dyn Prover<F>>>,
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx>,
-    ) -> usize {
+    ) {
         timer_start_debug!(INITIALIZE_PROVERS);
-        let mut cont = 0;
         info!("{}: Initializing provers", Self::MY_NAME);
         for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
-            cont += 1;
-            #[cfg(feature = "distributed")]
-            let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
-            #[cfg(feature = "distributed")]
-            if segment_idx as i32 % _ectx.dctx.read().unwrap().n_processes != _ectx.dctx.read().unwrap().rank {
-                continue;
-            }
             let air_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
             log::debug!("{}: Initializing prover for air instance {}", Self::MY_NAME, air_name);
             let prover = Box::new(StarkProver::new(
@@ -276,7 +265,6 @@ impl<F: Field + 'static> ProofMan<F> {
 
         *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
         timer_stop_and_log_debug!(INITIALIZE_PROVERS);
-        cont
     }
 
     pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], proof_ctx: Arc<ProofCtx<F>>) {
@@ -353,7 +341,6 @@ impl<F: Field + 'static> ProofMan<F> {
         ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
         verify_constraints: bool,
-        n_provers: usize,
     ) {
         if stage == 1 {
             let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
@@ -363,87 +350,48 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         let dctx = ectx.dctx.read().unwrap();
-        let is_distributed = dctx.is_distributed();
-        let n_processes = dctx.n_processes;
+
+        // calculate my roots
+        let mut roots: Vec<u64> = vec![0; 4 * provers.len()];
+        for (i, prover) in provers.iter_mut().enumerate() {
+            // Important we need the roots in u64 in order to distribute them
+            let values = prover.get_transcript_values_u64(stage as u64, pctx.clone());
+            if values.is_empty() {
+                panic!("No transcript values found for prover {}", i);
+            }
+            roots[i * 4..(i + 1) * 4].copy_from_slice(&values)
+        }
+        // get all roots
+        let all_roots = dctx.distribute_roots(roots);
+
+        // add challenges to transcript in order
+        for group_idxs in dctx.my_groups.iter() {
+            if verify_constraints {
+                let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
+                transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
+            } else {
+                let mut values = Vec::new();
+                for idx in group_idxs.iter() {
+                    let value = vec![
+                        F::from_wrapped_u64(all_roots[*idx]),
+                        F::from_wrapped_u64(all_roots[*idx + 1]),
+                        F::from_wrapped_u64(all_roots[*idx + 2]),
+                        F::from_wrapped_u64(all_roots[*idx + 3]),
+                    ];
+                    values.push(value);
+                }
+                if !values.is_empty() {
+                    let value = Self::hash_b_tree(&*provers[0], values);
+                    transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
+                }
+            }
+        }
         drop(dctx);
+        if stage == 0 {
+            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
+            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
-        if !is_distributed {
-            info!("{}: Calculating challenges", Self::MY_NAME);
-            let airgroups = pctx.global_info.air_groups.clone();
-            for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
-                if verify_constraints {
-                    let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
-                    transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
-                } else {
-                    let airgroup_instances = pctx.air_instance_repo.find_airgroup_instances(airgroup_id);
-
-                    if !airgroup_instances.is_empty() {
-                        let mut values = Vec::new();
-                        for prover_idx in airgroup_instances.iter() {
-                            let value = provers[*prover_idx].get_transcript_values(stage as u64, pctx.clone());
-                            values.push(value);
-                        }
-                        if !values.is_empty() {
-                            let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values.clone());
-                            transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
-                        }
-                    }
-                }
-            }
-        } else {
-            let size = n_processes;
-            // max number of roots
-            let max_roots = (n_provers as i32 + size - 1) / size;
-
-            // calculate my roots
-            let mut roots: Vec<u64> = vec![0; 4 * max_roots as usize];
-            for (i, prover) in provers.iter_mut().enumerate() {
-                //prover.get_root(stage as u64, pctx.clone(), &mut roots[i * 4..(i + 1) * 4]);
-                let values = prover.get_transcript_values_u64(stage as u64, pctx.clone());
-                if values.is_empty() {
-                    panic!("No transcript values found for prover {}", i);
-                }
-                roots[i * 4..(i + 1) * 4].copy_from_slice(&values)
-            }
-
-            // Use all ghater
-            let all_roots: Vec<u64> = vec![0; 4 * max_roots as usize * size as usize];
-            #[cfg(feature = "distributed")]
-            ectx.dctx.read().unwrap().world.all_gather_into(&roots, &mut all_roots);
-
-            // add challenges to transcript
-            let airgroups = pctx.global_info.air_groups.clone();
-            for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
-                if verify_constraints {
-                    let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
-                    transcript.add_elements(dummy_elements.as_ptr() as *mut c_void, 4);
-                } else {
-                    let airgroup_instances = pctx.air_instance_repo.find_airgroup_instances(airgroup_id);
-                    if !airgroup_instances.is_empty() {
-                        let mut values: Vec<Vec<F>> = Vec::new();
-                        for air_idx in airgroup_instances.iter() {
-                            let mut value = Vec::new();
-                            let air_instance = &pctx.air_instance_repo.air_instances.read().unwrap()[*air_idx];
-                            let segment_idx = air_instance.air_segment_id.unwrap_or(0); // Only for main proof
-                            let root_rank = segment_idx % size as usize;
-                            let root_idx = segment_idx / size as usize;
-                            let root_ptr = &all_roots[root_rank * 4 * max_roots as usize + root_idx * 4
-                                ..root_rank * 4 * max_roots as usize + root_idx * 4 + 4];
-
-                            value.push(F::from_wrapped_u64(root_ptr[0]));
-                            value.push(F::from_wrapped_u64(root_ptr[1]));
-                            value.push(F::from_wrapped_u64(root_ptr[2]));
-                            value.push(F::from_wrapped_u64(root_ptr[3]));
-
-                            values.push(value);
-                        }
-                        if !values.is_empty() {
-                            let value = Self::hash_b_tree(&*provers[0], values);
-                            transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
-                        }
-                    }
-                }
-            }
+            transcript.add_elements(public_inputs, pctx.global_info.n_publics);
         }
     }
 
@@ -459,95 +407,35 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn opening_stages(
         provers: &mut [Box<dyn Prover<F>>],
         pctx: Arc<ProofCtx<F>>,
-        sctx: Arc<SetupCtx>,
         ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
-        n_provers: usize,
     ) {
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
         let dctx = ectx.dctx.read().unwrap();
-        let size = dctx.n_processes;
-        let rank = dctx.rank;
-        let is_distributed = dctx.is_distributed();
-        drop(dctx);
 
         // Calculate evals
-        Self::get_challenges(num_commit_stages + 2, provers, pctx.clone(), transcript);
         timer_start_debug!(CALCULATING_EVALS);
-        info!("{}: Calculating evals", Self::MY_NAME);
-        for (airgroup_id, airgroup) in sctx.get_setup_airs().iter().enumerate() {
-            for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
-                if !air_instances_idx.is_empty() {
-                    if is_distributed {
-                        let mut is_first = true;
-                        for idx in air_instances_idx {
-                            let segment_idx =
-                                &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
-                            if *segment_idx as i32 % size == rank {
-                                let loc_idx = segment_idx / size as usize;
-                                if is_first {
-                                    provers[loc_idx].calculate_lev(pctx.clone());
-                                    is_first = false;
-                                }
-                                provers[loc_idx].opening_stage(1, pctx.clone());
-                            }
-                        }
-                    } else {
-                        provers[air_instances_idx[0]].calculate_lev(pctx.clone());
-                        for idx in air_instances_idx {
-                            provers[idx].opening_stage(1, pctx.clone());
-                        }
-                    }
-                }
+        for group_idx in dctx.my_air_subgroups.iter() {
+            provers[group_idx[0]].calculate_lev(pctx.clone());
+            for idx in group_idx.iter() {
+                provers[*idx].opening_stage(1, pctx.clone());
             }
         }
         timer_stop_and_log_debug!(CALCULATING_EVALS);
-        Self::calculate_challenges(
-            num_commit_stages + 2,
-            provers,
-            pctx.clone(),
-            ectx.clone(),
-            transcript,
-            false,
-            n_provers,
-        );
+        Self::calculate_challenges(num_commit_stages + 2, provers, pctx.clone(), ectx.clone(), transcript, false);
 
         // Calculate fri polynomial
         Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 3, provers, pctx.clone(), transcript);
         info!("{}: Calculating FRI Polynomials", Self::MY_NAME);
         timer_start_debug!(CALCULATING_FRI_POLINOMIAL);
-
-        let is_distributed = ectx.dctx.read().unwrap().is_distributed();
-        for (airgroup_id, airgroup) in sctx.get_setup_airs().iter().enumerate() {
-            for air_id in airgroup.iter() {
-                let air_instances_idx: Vec<usize> = pctx.air_instance_repo.find_air_instances(airgroup_id, *air_id);
-                if !air_instances_idx.is_empty() {
-                    if is_distributed {
-                        let mut is_first = true;
-                        for idx in air_instances_idx {
-                            let segment_idx =
-                                &pctx.air_instance_repo.air_instances.read().unwrap()[idx].air_segment_id.unwrap();
-                            if *segment_idx as i32 % size == rank {
-                                let loc_idx = segment_idx / size as usize;
-                                if is_first {
-                                    provers[loc_idx].calculate_xdivxsub(pctx.clone());
-                                    is_first = false;
-                                }
-                                provers[loc_idx].opening_stage(2, pctx.clone());
-                            }
-                        }
-                    } else {
-                        provers[air_instances_idx[0]].calculate_xdivxsub(pctx.clone());
-
-                        for idx in air_instances_idx {
-                            provers[idx].opening_stage(2, pctx.clone());
-                        }
-                    }
-                }
+        for group_idx in dctx.my_air_subgroups.iter() {
+            provers[group_idx[0]].calculate_xdivxsub(pctx.clone());
+            for idx in group_idx.iter() {
+                provers[*idx].opening_stage(2, pctx.clone());
             }
         }
         timer_stop_and_log_debug!(CALCULATING_FRI_POLINOMIAL);
+        drop(dctx);
 
         let global_steps_fri: Vec<usize> = pctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
         let num_opening_stages = global_steps_fri.len() as u32;
@@ -588,7 +476,6 @@ impl<F: Field + 'static> ProofMan<F> {
                     ectx.clone(),
                     transcript,
                     false,
-                    n_provers,
                 );
             }
             timer_stop_and_log_debug!(CALCULATING_FRI_STEP);

@@ -23,13 +23,14 @@ impl<F: Field> AirInstancesRepository<F> {
         }
     }
 
-    pub fn add_air_instance(&self, mut air_instance: AirInstance<F>) {
+    pub fn add_air_instance(&self, mut air_instance: AirInstance<F>, global_idx: Option<usize>) {
         let mut air_instances = self.air_instances.write().unwrap();
         let n_air_instances = air_instances.len();
 
         let mut air_instances_counts = self.air_instances_counts.write().unwrap();
         let instance_id = air_instances_counts.entry((air_instance.airgroup_id, air_instance.air_id)).or_insert(0);
         air_instance.set_air_instance_id(*instance_id, n_air_instances);
+        air_instance.global_idx = global_idx;
         *instance_id += 1;
         air_instances.push(air_instance);
     }
@@ -38,17 +39,11 @@ impl<F: Field> AirInstancesRepository<F> {
         let air_instances = self.air_instances.read().unwrap();
 
         let mut indices = Vec::new();
-        #[cfg(feature = "distributed")]
-        let mut segment_ids = Vec::new();
         for (index, air_instance) in air_instances.iter().enumerate() {
             if air_instance.airgroup_id == airgroup_id {
                 indices.push(index);
-                #[cfg(feature = "distributed")]
-                segment_ids.push(air_instance.air_segment_id.unwrap_or(0));
             }
         }
-        #[cfg(feature = "distributed")]
-        indices.sort_by(|a, b| segment_ids[*a].cmp(&segment_ids[*b]));
         indices
     }
 

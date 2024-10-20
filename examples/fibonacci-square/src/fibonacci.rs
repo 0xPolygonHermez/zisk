@@ -82,7 +82,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo2", F::from_canonical_u64(2));
         air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", vec![F::from_canonical_u64(5); 3]);
 
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        pctx.air_instance_repo.add_air_instance(air_instance, Some(pctx.air_instance_repo.air_instances.read().unwrap().len()));
 
         Ok(b)
     }

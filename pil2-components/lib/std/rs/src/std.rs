@@ -8,7 +8,6 @@ use p3_field::PrimeField;
 use rayon::Scope;
 
 use proofman::WitnessManager;
-use proofman_common::ProofCtx;
 
 use crate::{StdMode, ModeName, StdProd, StdRangeCheck, StdSum};
 
@@ -37,9 +36,9 @@ impl<F: PrimeField> Std<F> {
         self.range_check_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, pctx: Arc<ProofCtx<F>>, scope: Option<&Scope>) {
+    pub fn unregister_predecessor(&self, scope: Option<&Scope>) {
         if self.range_check_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.range_check.drain_inputs(pctx, scope);
+            self.range_check.drain_inputs(scope);
         }
     }
 

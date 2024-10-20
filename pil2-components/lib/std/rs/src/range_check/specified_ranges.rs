@@ -94,25 +94,68 @@ impl<F: PrimeField> SpecifiedRanges<F> {
     pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect();
+        let pctx = self.wcm.get_arc_pctx();
+        let sctx = self.wcm.get_arc_sctx();
+        let ectx = self.wcm.get_arc_ectx();
 
         // Perform the last update
         self.update_multiplicity(drained_inputs);
 
-        // Set the multiplicity columns as done
-        let hints = self.hints.lock().unwrap();
+        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> = ectx.dctx.write().unwrap();
 
-        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        let air_instance_id = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
-        let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
+        let (is_myne, global_idx) = dctx.add_instance(self.airgroup_id, self.air_id, 1);
 
-        let mul_columns = &*self.mul_columns.lock().unwrap();
+        let mut multiplicities = self
+            .mul_columns
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|column| match column {
+                HintFieldValue::Column(values) => {
+                    values.iter().map(|x| x.as_canonical_biguint().to_u64().unwrap()).collect::<Vec<u64>>()
+                }
+                _ => panic!("Multiplicities must be columns"),
+            })
+            .collect::<Vec<Vec<u64>>>(); //rick: definir multiplicities com u32 directe?
+        let owner = dctx.owner(global_idx);
 
-        for (index, hint) in hints[1..].iter().enumerate() {
-            set_hint_field(&self.wcm.get_sctx(), air_instance, *hint, "reference", &mul_columns[index]);
+        dctx.distribute_multiplicities(&mut multiplicities, owner);
+
+        if is_myne {
+            // Set the multiplicity columns as done
+            let hints = self.hints.lock().unwrap();
+
+            let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
+            let instance: Vec<usize> = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
+            let air_instance_id = if instance.len() != 0 {
+                air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
+            } else {
+                // create instance
+                let (buffer_size, _) =
+                    ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
+                let buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
+                let air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
+                pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+                pctx.air_instance_repo.air_instances.read().unwrap().len() - 1
+            };
+            let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
+            let air_instance = &mut air_instance_rw[air_instance_id];
+
+            //let mul_columns = &*self.mul_columns.lock().unwrap();
+
+            let mul_columns_2 = multiplicities
+                .iter()
+                .map(|multiplicities| {
+                    HintFieldValue::Column(multiplicities.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>())
+                })
+                .collect::<Vec<HintFieldValue<F>>>();
+
+            for (index, hint) in hints[1..].iter().enumerate() {
+                set_hint_field(&self.wcm.get_sctx(), air_instance, *hint, "reference", &mul_columns_2[index]);
+            }
+
+            log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");
         }
-
-        log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<(Range<F>, F, F)>) {
@@ -289,7 +332,8 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
 
         *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
 
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        //pctx.air_instance_repo.add_air_instance(air_instance);
+        //rick: simplificar per operar només amb la multipliciata, res més... no cal crear buffer, etc...
     }
 
     fn calculate_witness(

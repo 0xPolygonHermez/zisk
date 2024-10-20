@@ -87,20 +87,59 @@ impl<F: PrimeField> U16Air<F> {
     pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect();
+        let pctx = self.wcm.get_pctx();
+        let sctx = self.wcm.get_sctx();
+        let ectx = self.wcm.get_ectx();
 
         // Perform the last update
         self.update_multiplicity(drained_inputs);
 
-        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        let air_instance_id = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0];
+        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> = ectx.dctx.write().unwrap();
 
-        let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
-        let air_instance = &mut air_instance_rw[air_instance_id];
+        let (is_myne, global_idx) = dctx.add_instance(self.airgroup_id, self.air_id, 1);
+        let mut multiplicity = match &*self.mul_column.lock().unwrap() {
+            HintFieldValue::Column(values) => {
+                values.iter().map(|x| x.as_canonical_biguint().to_u64().unwrap()).collect::<Vec<u64>>()
+            }
+            _ => panic!("Multiplicities must be a column"),
+        }; //rick: definir multiplicities com u32 directe?
 
-        let mul_column = &*self.mul_column.lock().unwrap();
-        set_hint_field(&self.wcm.get_sctx(), air_instance, self.hint.load(Ordering::Acquire), "reference", mul_column);
+        let owner = dctx.owner(global_idx);
+        dctx.distribute_multiplicity(&mut multiplicity, owner);
 
-        log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "U16Air");
+        if is_myne {
+            let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
+            let instance: Vec<usize> = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
+            let air_instance_id = if instance.len() != 0 {
+                //rick: this code will desapear
+                air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
+            } else {
+                // create instance
+                let (buffer_size, _) =
+                    ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
+                let buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
+                let air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
+                pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+                pctx.air_instance_repo.air_instances.read().unwrap().len() - 1
+            };
+
+            let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
+            let air_instance = &mut air_instance_rw[air_instance_id];
+
+            // copy multiplicitis back to mul_column
+            let mul_column_2 =
+                HintFieldValue::Column(multiplicity.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>());
+
+            set_hint_field(
+                &self.wcm.get_sctx(),
+                air_instance,
+                self.hint.load(Ordering::Acquire),
+                "reference",
+                &mul_column_2,
+            );
+
+            log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "U16Air");
+        }
     }
 
     fn update_multiplicity(&self, drained_inputs: Vec<(F, F)>) {
@@ -145,7 +184,8 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
             HintFieldOptions::dest_with_zeros(),
         );
 
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        //pctx.air_instance_repo.add_air_instance(air_instance);
+        //rick: simplificar per operar només amb la multipliciata, res més... no cal crear buffer, etc...
     }
 
     fn calculate_witness(
