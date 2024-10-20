@@ -37,7 +37,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     // STD
-    std: Arc<Std<F>>,
+    pub std: Arc<Std<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -49,7 +49,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+    pub binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -331,7 +331,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         Self::prove_internal(
             &self.wcm,
@@ -340,7 +339,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             operations,
             prover_buffer,
             offset,
-            scope,
         );
     }
 
@@ -351,7 +349,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let air = wcm
@@ -415,7 +412,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
 
-        scope.spawn(|_| {
+        std::thread::spawn(move || {
             drop(operations);
             drop(multiplicity_table);
             drop(range_check);
@@ -448,7 +445,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let std = self.std.clone();
 
-                scope.spawn(move |scope| {
+                scope.spawn(move |_scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
                         wcm.get_ectx(),
                         wcm.get_sctx(),
@@ -463,7 +460,6 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         drained_inputs,
                         &mut prover_buffer,
                         offset,
-                        scope,
                     );
 
                     let air_instance = AirInstance::new(

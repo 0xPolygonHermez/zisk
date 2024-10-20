@@ -52,34 +52,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
     pub fn unregister_predecessor(&self, _: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // Create the prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                self.wcm.get_ectx(),
-                self.wcm.get_sctx(),
-                BINARY_TABLE_AIRGROUP_ID,
-                BINARY_TABLE_AIR_IDS[0],
-            );
-
-            let multiplicity = self.multiplicity.lock().unwrap();
-
-            prover_buffer[offset as usize..offset as usize + self.num_rows]
-                .par_iter_mut()
-                .enumerate()
-                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
-
-            info!(
-                "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
-                Self::MY_NAME,
-                self.num_rows,
-            );
-
-            let air_instance = AirInstance::new(
-                BINARY_TABLE_AIRGROUP_ID,
-                BINARY_TABLE_AIR_IDS[0],
-                None,
-                prover_buffer,
-            );
-            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            self.create_air_instance();
         }
     }
 
@@ -164,6 +137,37 @@ impl<F: Field> BinaryBasicTableSM<F> {
             0x23 => 4 * P2_19 + 5 * P2_18 + 5 * P2_17,
             _ => panic!("BinaryBasicTableSM::offset_opcode() got invalid opcode={}", opcode),
         }
+    }
+
+    pub fn create_air_instance(&self) {
+        // Create the prover buffer
+        let (mut prover_buffer, offset) = create_prover_buffer(
+            self.wcm.get_ectx(),
+            self.wcm.get_sctx(),
+            BINARY_TABLE_AIRGROUP_ID,
+            BINARY_TABLE_AIR_IDS[0],
+        );
+
+        let multiplicity = self.multiplicity.lock().unwrap();
+
+        prover_buffer[offset as usize..offset as usize + self.num_rows]
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
+
+        info!(
+            "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
+            Self::MY_NAME,
+            self.num_rows,
+        );
+
+        let air_instance = AirInstance::new(
+            BINARY_TABLE_AIRGROUP_ID,
+            BINARY_TABLE_AIR_IDS[0],
+            None,
+            prover_buffer,
+        );
+        self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
     }
 }
 

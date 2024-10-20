@@ -7,6 +7,7 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
+use proofman_common::{ExecutionCtx, ProofCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredOperation;
@@ -102,13 +103,18 @@ impl<F: PrimeField> BinarySM<F> {
         is_extension: bool,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         if !is_extension {
-            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset, scope);
+            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset);
         } else {
-            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset, scope);
+            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset);
         }
+    }
+
+    pub fn create_table_instances(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>) {
+        self.binary_basic_sm.binary_basic_table_sm.create_air_instance();
+        self.binary_extension_sm.binary_extension_table_sm.create_air_instance();
+        self.binary_extension_sm.std.unregister_predecessor(pctx, None);
     }
 }
 

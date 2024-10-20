@@ -31,7 +31,7 @@ pub struct BinaryBasicSM<F> {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+    pub binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -424,7 +424,6 @@ impl<F: Field> BinaryBasicSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         Self::prove_internal(
             &self.wcm,
@@ -432,7 +431,6 @@ impl<F: Field> BinaryBasicSM<F> {
             operations,
             prover_buffer,
             offset,
-            scope,
         );
     }
 
@@ -442,7 +440,6 @@ impl<F: Field> BinaryBasicSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         timer_start_trace!(BINARY_TRACE);
         let air = wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
@@ -494,7 +491,7 @@ impl<F: Field> BinaryBasicSM<F> {
         binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
 
-        scope.spawn(|_| {
+        std::thread::spawn(move || {
             drop(operations);
             drop(multiplicity_table);
         });
@@ -520,7 +517,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                scope.spawn(move |scope| {
+                scope.spawn(move |_scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
                         wcm.get_ectx(),
                         wcm.get_sctx(),
@@ -534,7 +531,6 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                         drained_inputs,
                         &mut prover_buffer,
                         offset,
-                        scope,
                     );
 
                     let air_instance = AirInstance::new(

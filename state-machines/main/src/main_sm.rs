@@ -3,7 +3,7 @@ use p3_field::PrimeField;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::prelude::*;
 use sm_binary::BinarySM;
 use std::{
     fs,
@@ -151,7 +151,6 @@ impl<F: PrimeField> MainSM<F> {
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
-        let pool = ThreadPoolBuilder::new().build().unwrap();
 
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
@@ -186,80 +185,87 @@ impl<F: PrimeField> MainSM<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
-        pool.scope(|scope| {
-            // Run the emulator in parallel n times to collect execution traces
-            // and record the execution starting points for each AIR instance
-            timer_start_debug!(PAR_PROCESS_ROM);
-            let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
-                &self.zisk_rom,
-                &public_inputs,
-                &emu_options,
-                Self::NUM_THREADS,
-                op_sizes,
-            )
-            .expect("Error during emulator execution");
-            timer_stop_and_log_debug!(PAR_PROCESS_ROM);
+        // Run the emulator in parallel n times to collect execution traces
+        // and record the execution starting points for each AIR instance
+        timer_start_debug!(PAR_PROCESS_ROM);
+        let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+            &self.zisk_rom,
+            &public_inputs,
+            &emu_options,
+            Self::NUM_THREADS,
+            op_sizes,
+        )
+        .expect("Error during emulator execution");
+        timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
-            emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+        emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
-            let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
-                Vec::with_capacity(emu_slices.points.len());
+        let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
+            Vec::with_capacity(emu_slices.points.len());
 
-            let mut dctx = ectx.dctx.write().unwrap();
-            for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
-                let (airgroup_id, air_id) = match emu_slice.op_type {
-                    ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
-                    ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
-                    ZiskOperationType::BinaryE => {
-                        (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
-                    }
-                    _ => panic!("Invalid operation type"),
-                };
-                dctx.add_instance(airgroup_id, air_id, idx, 1);
-
-                if dctx.is_my_instance(idx) {
-                    let (buffer, offset) =
-                        create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                    instances_ctx.push(InstanceExtensionCtx::new(
-                        buffer,
-                        offset,
-                        emu_slice.op_type,
-                        emu_slice.emu_trace_start.clone(),
-                        None,
-                    ));
+        let mut dctx = ectx.dctx.write().unwrap();
+        for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
+            let (airgroup_id, air_id) = match emu_slice.op_type {
+                ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+                ZiskOperationType::BinaryE => {
+                    (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
                 }
-            }
-            drop(dctx);
+                _ => panic!("Invalid operation type"),
+            };
+            dctx.add_instance(airgroup_id, air_id, idx, 1);
 
-            instances_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| match iectx.op_type {
+            if dctx.is_my_instance(idx) {
+                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    buffer,
+                    offset,
+                    emu_slice.op_type,
+                    emu_slice.emu_trace_start.clone(),
+                    None,
+                ));
+            }
+        }
+        drop(dctx);
+
+        instances_extension_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| {
+            match iectx.op_type {
                 ZiskOperationType::None => {
                     self.prove_main(&emu_traces, idx, iectx, &pctx);
                 }
                 ZiskOperationType::Binary => {
-                    self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
+                    self.prove_binary(&emu_traces, idx, iectx, &pctx);
                 }
                 ZiskOperationType::BinaryE => {
-                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
+                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx);
                 }
                 _ => panic!("Invalid operation type"),
-            });
-
-            timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
-            for iectx in instances_ctx {
-                if let Some(air_instance) = iectx.air_instance {
-                    pctx.air_instance_repo.add_air_instance(air_instance);
-                }
             }
-            timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
-
-            std::thread::spawn(move || {
-                drop(emu_traces);
-            });
-
-            // self.mem_sm.unregister_predecessor(scope);
-            self.binary_sm.unregister_predecessor(scope);
-            // self.arith_sm.register_predecessor(scope);
         });
+        // Drop the emulator traces concurrently
+        std::thread::spawn(move || {
+            drop(emu_traces);
+        });
+        timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
+
+        let std_instances = pctx.air_instance_repo.extract_all_instances();
+
+        for iectx in instances_extension_ctx {
+            if let Some(air_instance) = iectx.air_instance {
+                pctx.air_instance_repo.add_air_instance(air_instance);
+            }
+        }
+
+        for air_instance in std_instances {
+            pctx.air_instance_repo.add_air_instance(air_instance);
+        }
+        self.binary_sm.create_table_instances(pctx, ectx);
+
+        timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
+
+        // self.mem_sm.unregister_predecessor(scope);
+        //self.binary_sm.unregister_predecessor(scope);
+        // self.arith_sm.register_predecessor(scope);
     }
 
     fn prove_main(
@@ -334,7 +340,6 @@ impl<F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
@@ -349,7 +354,7 @@ impl<F: PrimeField> MainSM<F> {
         timer_stop_and_log_debug!(PROCESS_BINARY);
 
         timer_start_debug!(PROVE_BINARY);
-        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset, scope);
+        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
@@ -365,7 +370,6 @@ impl<F: PrimeField> MainSM<F> {
         segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
@@ -377,7 +381,7 @@ impl<F: PrimeField> MainSM<F> {
             air.num_rows(),
         );
 
-        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset, scope);
+        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
