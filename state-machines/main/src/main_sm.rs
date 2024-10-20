@@ -204,7 +204,7 @@ impl<F: PrimeField> MainSM<F> {
             Vec::with_capacity(emu_slices.points.len());
 
         let mut dctx = ectx.dctx.write().unwrap();
-        for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
+        for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
                 ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
@@ -213,9 +213,8 @@ impl<F: PrimeField> MainSM<F> {
                 }
                 _ => panic!("Invalid operation type"),
             };
-            dctx.add_instance(airgroup_id, air_id, idx, 1);
 
-            if dctx.is_my_instance(idx) {
+            if dctx.add_instance(airgroup_id, air_id, 1) {
                 let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                 instances_extension_ctx.push(InstanceExtensionCtx::new(
                     buffer,
@@ -256,7 +255,7 @@ impl<F: PrimeField> MainSM<F> {
         timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
         timer_start_debug!(CREATE_TABLE_INSTANCES);
-        self.binary_sm.create_table_instances(pctx, ectx);
+        self.binary_sm.create_table_instances();
         timer_stop_and_log_debug!(CREATE_TABLE_INSTANCES);
     }
 

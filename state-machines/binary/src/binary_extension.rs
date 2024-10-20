@@ -103,7 +103,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
             self.binary_extension_table_sm.unregister_predecessor(scope);
 
-            self.std.unregister_predecessor(self.wcm.get_arc_pctx(), None);
+            self.std.unregister_predecessor(None);
         }
     }
 
