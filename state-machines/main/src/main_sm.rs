@@ -246,26 +246,18 @@ impl<F: PrimeField> MainSM<F> {
         std::thread::spawn(move || {
             drop(emu_traces);
         });
+
         timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
-
-        let std_instances = pctx.air_instance_repo.extract_all_instances();
-
         for iectx in instances_extension_ctx {
             if let Some(air_instance) = iectx.air_instance {
                 pctx.air_instance_repo.add_air_instance(air_instance);
             }
         }
-
-        for air_instance in std_instances {
-            pctx.air_instance_repo.add_air_instance(air_instance);
-        }
-        self.binary_sm.create_table_instances(pctx, ectx);
-
         timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
-        // self.mem_sm.unregister_predecessor(scope);
-        //self.binary_sm.unregister_predecessor(scope);
-        // self.arith_sm.register_predecessor(scope);
+        timer_start_debug!(CREATE_TABLE_INSTANCES);
+        self.binary_sm.create_table_instances(pctx, ectx);
+        timer_stop_and_log_debug!(CREATE_TABLE_INSTANCES);
     }
 
     fn prove_main(
