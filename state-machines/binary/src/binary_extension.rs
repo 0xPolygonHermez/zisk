@@ -37,7 +37,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     // STD
-    std: Arc<Std<F>>,
+    pub std: Arc<Std<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -49,7 +49,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+    pub binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -373,7 +373,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         Self::prove_internal(
             &self.wcm,
@@ -382,7 +381,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             operations,
             prover_buffer,
             offset,
-            scope,
         );
     }
 
@@ -393,7 +391,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let pctx = wcm.get_pctx();
@@ -460,7 +457,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
 
-        scope.spawn(|_| {
+        std::thread::spawn(move || {
             drop(operations);
             drop(multiplicity_table);
             drop(range_check);
@@ -509,7 +506,6 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         drained_inputs,
                         &mut prover_buffer,
                         offset,
-                        scope,
                     );
 
                     let air_instance = AirInstance::new(
@@ -519,7 +515,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         None,
                         prover_buffer,
                     );
-                    pctx_cloned.air_instance_repo.add_air_instance(air_instance);
+                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
 
                     thread_controller.remove_working_thread();
                 });

@@ -651,7 +651,6 @@ impl<F: Field> BinaryBasicSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         Self::prove_internal(
             &self.wcm,
@@ -659,7 +658,6 @@ impl<F: Field> BinaryBasicSM<F> {
             operations,
             prover_buffer,
             offset,
-            scope,
         );
     }
 
@@ -669,7 +667,6 @@ impl<F: Field> BinaryBasicSM<F> {
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         timer_start_trace!(BINARY_TRACE);
         let pctx = wcm.get_pctx();
@@ -730,7 +727,7 @@ impl<F: Field> BinaryBasicSM<F> {
         binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
 
-        scope.spawn(|_| {
+        std::thread::spawn(move || {
             drop(operations);
             drop(multiplicity_table);
         });
@@ -773,7 +770,6 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                         drained_inputs,
                         &mut prover_buffer,
                         offset,
-                        scope,
                     );
 
                     let air_instance = AirInstance::new(
@@ -783,7 +779,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                         None,
                         prover_buffer,
                     );
-                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
 
                     thread_controller.remove_working_thread();
                 });

@@ -48,7 +48,14 @@ impl<F: Field> RomSM<F> {
 
         let air_instance =
             AirInstance::new(sctx.clone(), ROM_AIRGROUP_ID, air_id, None, prover_buffer);
-        self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+        let (is_mine, instance_gid) =
+            self.wcm.get_ectx().dctx.write().unwrap().add_instance(ROM_AIRGROUP_ID, air_id, 1);
+        if is_mine {
+            self.wcm
+                .get_pctx()
+                .air_instance_repo
+                .add_air_instance(air_instance, Some(instance_gid));
+        }
 
         Ok(())
     }
