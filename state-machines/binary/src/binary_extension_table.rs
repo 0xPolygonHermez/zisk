@@ -107,11 +107,19 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> =
             ectx.dctx.write().unwrap();
 
-        if dctx.add_instance(
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        let (is_myne, instance_idx) = dctx.add_instance(
             BINARY_EXTENSION_TABLE_AIRGROUP_ID,
             BINARY_EXTENSION_TABLE_AIR_IDS[0],
             1,
-        ) {
+        );
+        let owner = dctx.owner(instance_idx);
+
+        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
+        dctx.add_reduce_multiplicity(&mut multiplicity_, owner);
+
+        if is_myne {
             // Create the prover buffer
             let (mut prover_buffer, offset) = create_prover_buffer(
                 self.wcm.get_ectx(),
@@ -120,12 +128,10 @@ impl<F: Field> BinaryExtensionTableSM<F> {
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
             );
 
-            let multiplicity = self.multiplicity.lock().unwrap();
-
             prover_buffer[offset as usize..offset as usize + self.num_rows]
                 .par_iter_mut()
                 .enumerate()
-                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
+                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
 
             info!(
                 "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
