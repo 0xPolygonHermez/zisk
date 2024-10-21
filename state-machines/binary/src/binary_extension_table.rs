@@ -9,8 +9,22 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
 use sm_common::create_prover_buffer;
-use zisk_core::{P2_11, P2_19, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
 use zisk_pil::{BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS};
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+#[repr(u8)]
+pub enum BinaryExtensionTableOp {
+    Sll = 0x0d,
+    Srl = 0x0e,
+    Sra = 0x0f,
+    SllW = 0x1d,
+    SrlW = 0x1e,
+    SraW = 0x1f,
+    SignExtendB = 0x23,
+    SignExtendH = 0x24,
+    SignExtendW = 0x25,
+}
 
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -88,7 +102,14 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
     pub fn operations() -> Vec<u8> {
         // TODO! Review this codes
-        vec![0x0d, 0x0e, 0x0f, 0x24, 0x25, 0x26]
+        vec![
+            ZiskOp::Sll.code(),
+            ZiskOp::Srl.code(),
+            ZiskOp::Sra.code(),
+            ZiskOp::SignExtendB.code(),
+            ZiskOp::SignExtendH.code(),
+            ZiskOp::SignExtendW.code(),
+        ]
     }
 
     pub fn process_slice(&self, input: &[u64]) {
@@ -100,7 +121,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
     }
 
     //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
-    pub fn calculate_table_row(opcode: u8, offset: u64, a: u64, b: u64) -> u64 {
+    pub fn calculate_table_row(opcode: BinaryExtensionTableOp, offset: u64, a: u64, b: u64) -> u64 {
         // Calculate the different row offset contributors, according to the PIL
         assert!(a <= 0xff);
         let offset_a: u64 = a;
@@ -114,18 +135,18 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         //assert!(row < self.num_rows as u64);
     }
 
-    fn offset_opcode(opcode: u8) -> u64 {
+    fn offset_opcode(opcode: BinaryExtensionTableOp) -> u64 {
         match opcode {
-            0x0d => 0,
-            0x0e => P2_19,
-            0x0f => 2 * P2_19,
-            0x1d => 3 * P2_19,
-            0x1e => 4 * P2_19,
-            0x1f => 5 * P2_19,
-            0x23 => 6 * P2_19,
-            0x24 => 6 * P2_19 + P2_11,
-            0x25 => 6 * P2_19 + 2 * P2_11,
-            _ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={}", opcode),
+            BinaryExtensionTableOp::Sll => 0,
+            BinaryExtensionTableOp::Srl => P2_19,
+            BinaryExtensionTableOp::Sra => 2 * P2_19,
+            BinaryExtensionTableOp::SllW => 3 * P2_19,
+            BinaryExtensionTableOp::SrlW => 4 * P2_19,
+            BinaryExtensionTableOp::SraW => 5 * P2_19,
+            BinaryExtensionTableOp::SignExtendB => 6 * P2_19,
+            BinaryExtensionTableOp::SignExtendH => 6 * P2_19 + P2_11,
+            BinaryExtensionTableOp::SignExtendW => 6 * P2_19 + 2 * P2_11,
+            //_ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={:?}", opcode),
         }
     }
 }
