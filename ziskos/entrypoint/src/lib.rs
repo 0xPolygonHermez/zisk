@@ -33,10 +33,7 @@ pub fn read_input<'a>() -> &'a [u8] {
 
 #[cfg(not(target_os = "ziskos"))]
 pub fn read_input<'a>() -> &'a [u8] {
-    use std::fs::File;
-    use std::io::Read;
-    use std::mem;
-    use std::slice;
+    use std::{fs::File, io::Read, mem, slice};
 
     let mut file = File::open("build/input.bin").unwrap();
     let mut buffer = Vec::new();
