@@ -90,7 +90,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
 
     col witness main_step;
-    col witness multiplicity;
+//    col witness multiplicity;
     lookup_proves(
         operation_bus_id,
         [
@@ -104,7 +104,8 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
             out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
             0
         ],
-        multiplicity
+	1
+//        multiplicity
     );
 
     range_check(colu: in2[0], min: 0, max: 2**24-1, sel: op_is_shift);

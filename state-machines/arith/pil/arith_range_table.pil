@@ -5,15 +5,17 @@ const int ARITH_RANGE_TABLE_ID = 330;
 
 airtemplate ArithRangeTable(int N = 2**17) {
 
+    // TODO: update values
     col fixed RANGES = [0:2**16,1:2**15,2:2**15];
+    col fixed INDEX = [0..2]...;
     col fixed VALUES = [0..2**16-1]...;
 
     col witness multiplicity;
 
-    lookup_proves(ARITH_TABLE_ID, [RANGES, VALUES], multiplicity);
+    lookup_proves(ARITH_RANGE_TABLE_ID, [RANGES, INDEX, VALUES], multiplicity);
 }
 
-function arith_range_table_assumes(const expr range_type, const expr value) {
+function arith_range_table_assumes(const expr range_type, const int index, const expr value) {
     // TODO: define rule for empty rows
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value]);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, index, value]);
 }

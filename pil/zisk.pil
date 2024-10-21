@@ -28,7 +28,7 @@ airgroup ArithTable {
 airgroup ArithRangeTable {
     ArithRangeTable();
 }
-
+/*
 airgroup Binary {
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
 }
@@ -43,4 +43,4 @@ airgroup BinaryExtension {
 
 airgroup BinaryExtensionTable {
     BinaryExtensionTable(disable_fixed: 0);
-}
+}*/

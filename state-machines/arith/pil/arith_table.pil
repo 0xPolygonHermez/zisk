@@ -1,6 +1,6 @@
 require "std_lookup.pil"
 
-const int ARITH_TABLE_ID = 330;
+const int ARITH_TABLE_ID = 331;
 
 airtemplate ArithTable(int N = 2**6) {
 
@@ -166,15 +166,13 @@ airtemplate ArithTable(int N = 2**6) {
 
     col witness multiplicity;
 
-    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES]);
+    // TODO:
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES, 0, 0]);
 }
 
 function arith_table_assumes( const expr op, const expr m32, const expr div, const expr na, const expr nb,
-                              const expr np, const expr nr, const expr na32, const expr nd32,
-                              const expr range_a1, const expr range_b1, const expr range_c1, const expr range_d1,
-                              const expr range_a3, const expr range_b3, const expr range_c3, const expr range_d3) {
+                              const expr np, const expr nr, const expr sext, const expr range_ab, const expr range_cd) {
     // TODO: define rule for empty rows
-    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * na32 + 128 * nd32 +
-                                               2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 +
-                                               2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3]);
+    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext,
+                                           range_ab, range_cd]);
 }
