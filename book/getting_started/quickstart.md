@@ -130,7 +130,7 @@ cd zisk
 
 ### Compile the PIl2 Stark C++ Library (run only once):
 ```bash
-(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS="-L native=$PWD/../pil2-proofman/pil2-stark/lib"
+(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS=$RUSTFLAGS" -L native=$PWD/../pil2-proofman/pil2-stark/lib"
 ```
 
 ### Generate PIL-Helpers Rust Code
