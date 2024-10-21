@@ -262,8 +262,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         for hint in hints_guard[1..].iter() {
             mul_columns_guard.push(get_hint_field::<F>(
                 &sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
+                &pctx,
                 &mut air_instance,
                 hint.to_usize().unwrap(),
                 "reference",
@@ -274,15 +273,8 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         // Set the number of rows
         let hint = hints_guard[0];
 
-        let num_rows = get_hint_field::<F>(
-            &sctx,
-            &pctx.public_inputs,
-            &pctx.challenges,
-            &mut air_instance,
-            hint as usize,
-            "num_rows",
-            HintFieldOptions::dest(),
-        );
+        let num_rows =
+            get_hint_field::<F>(&sctx, &pctx, &mut air_instance, hint as usize, "num_rows", HintFieldOptions::dest());
 
         let HintFieldValue::Field(num_rows) = num_rows else {
             log::error!("Number of rows must be a field element");

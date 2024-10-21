@@ -141,8 +141,7 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
 
         *self.mul_column.lock().unwrap() = get_hint_field::<F>(
             self.wcm.get_sctx(),
-            &pctx.public_inputs,
-            &pctx.challenges,
+            &pctx,
             &mut air_instance,
             u16air_hints[0] as usize,
             "reference",

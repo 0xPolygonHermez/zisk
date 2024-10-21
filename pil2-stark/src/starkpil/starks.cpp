@@ -275,11 +275,11 @@ void Starks<ElementType>::ffi_treesGL_get_root(uint64_t index, ElementType *dst)
 }
 
 template <typename ElementType>
-void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals) {
+void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, StepsParams &params) {
     std::vector<Dest> dests;
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].imPol && setupCtx.starkInfo.cmPolsMap[i].stage == step) {
-            Dest destStruct(&buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("cm" + to_string(step), false)] + setupCtx.starkInfo.cmPolsMap[i].stagePos], setupCtx.starkInfo.mapSectionsN["cm" + to_string(step)]);
+            Dest destStruct(&params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("cm" + to_string(step), false)] + setupCtx.starkInfo.cmPolsMap[i].stagePos], setupCtx.starkInfo.mapSectionsN["cm" + to_string(step)]);
             destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[setupCtx.starkInfo.cmPolsMap[i].expId], false);
             
             dests.push_back(destStruct);
@@ -296,21 +296,11 @@ void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, Goldilocks::
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
 
-        StepsParams params {
-            pols : buffer,
-            publicInputs,
-            challenges,
-            subproofValues,
-            evals,
-            xDivXSub: nullptr,
-        };
-
-
     expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits));
 }
 
 template <typename ElementType>
-void Starks<ElementType>::calculateQuotientPolynomial(Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals) {
+void Starks<ElementType>::calculateQuotientPolynomial(StepsParams &params) {
 #ifdef __AVX512__
     ExpressionsAvx512 expressionsCtx(setupCtx);
 #elif defined(__AVX2__)
@@ -318,19 +308,11 @@ void Starks<ElementType>::calculateQuotientPolynomial(Goldilocks::Element *buffe
 #else
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
-    StepsParams params {
-        pols : buffer,
-        publicInputs,
-        challenges,
-        subproofValues,
-        evals,
-        xDivXSub: nullptr,
-    };
-    expressionsCtx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
+    expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
 }
 
 template <typename ElementType>
-void Starks<ElementType>::calculateFRIPolynomial(Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals, Goldilocks::Element *xDivXSub) {
+void Starks<ElementType>::calculateFRIPolynomial(StepsParams &params) {
 #ifdef __AVX512__
     ExpressionsAvx512 expressionsCtx(setupCtx);
 #elif defined(__AVX2__)
@@ -338,13 +320,5 @@ void Starks<ElementType>::calculateFRIPolynomial(Goldilocks::Element *buffer, Go
 #else
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
-    StepsParams params {
-        pols : buffer,
-        publicInputs,
-        challenges,
-        subproofValues,
-        evals,
-        xDivXSub,
-    };
-    expressionsCtx.calculateExpression(params, &buffer[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]], setupCtx.starkInfo.friExpId);
+    expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]], setupCtx.starkInfo.friExpId);
 }

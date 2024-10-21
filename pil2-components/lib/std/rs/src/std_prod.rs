@@ -82,25 +82,11 @@ impl<F: PrimeField> StdProd<F> {
         debug_hints_data: Vec<u64>,
     ) {
         for hint in debug_hints_data.iter() {
-            let _name = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "name_piop",
-                HintFieldOptions::default(),
-            );
+            let _name =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "name_piop", HintFieldOptions::default());
 
-            let opid = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "opid",
-                HintFieldOptions::default(),
-            );
+            let opid =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "opid", HintFieldOptions::default());
             let opid = if let HintFieldValue::Field(opid) = opid {
                 if let Some(opids) = &self.mode.opids {
                     if !opids.contains(&opid.as_canonical_biguint().to_u64().expect("Cannot convert to u64")) {
@@ -113,15 +99,8 @@ impl<F: PrimeField> StdProd<F> {
                 panic!("sumid must be a field element");
             };
 
-            let proves = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "proves",
-                HintFieldOptions::default(),
-            );
+            let proves =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "proves", HintFieldOptions::default());
             let proves = if let HintFieldValue::Field(proves) = proves {
                 if !proves.is_zero() && !proves.is_one() {
                     log::error!("Proves hint must be either 0 or 1");
@@ -133,20 +112,12 @@ impl<F: PrimeField> StdProd<F> {
                 panic!();
             };
 
-            let selector = get_hint_field::<F>(
-                sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
-                air_instance,
-                *hint as usize,
-                "selector",
-                HintFieldOptions::default(),
-            );
+            let selector =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "selector", HintFieldOptions::default());
 
             let expressions = get_hint_field_a::<F>(
                 sctx,
-                &pctx.public_inputs,
-                &pctx.challenges,
+                pctx,
                 air_instance,
                 *hint as usize,
                 "references",
@@ -254,16 +225,15 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     // TODO: GENERALIZE CALLS
                     let (pol_id, subproofvalue_id) = acc_mul_hint_fields::<F>(
                         &sctx,
-                        &pctx.public_inputs,
-                        &pctx.challenges,
+                        &pctx,
                         air_instance,
                         gprod_hint,
                         "reference",
                         "result",
                         "numerator",
                         "denominator",
-                        false,
-                        true,
+                        HintFieldOptions::default(),
+                        HintFieldOptions::inverse(),
                     );
 
                     air_instance.set_commit_calculated(pol_id as usize);

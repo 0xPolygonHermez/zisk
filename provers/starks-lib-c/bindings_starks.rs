@@ -121,55 +121,43 @@ extern "C" {
 }
 extern "C" {
     #[link_name = "\u{1}_Z19expressions_bin_newPcb"]
-    pub fn expressions_bin_new(filename: *mut ::std::os::raw::c_char, global: bool) -> *mut ::std::os::raw::c_void;
+    pub fn expressions_bin_new(
+        filename: *mut ::std::os::raw::c_char,
+        global: bool,
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z20expressions_bin_freePv"]
     pub fn expressions_bin_free(pExpressionsBin: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14get_hint_fieldPvS_S_S_S_S_mPcbbbb"]
+    #[link_name = "\u{1}_Z14get_hint_fieldPvS_mPcS_"]
     pub fn get_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
-        dest: bool,
-        inverse: bool,
-        print_expression: bool,
-        initialize_zeros: bool,
+        hintOptions: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15mul_hint_fieldsPvS_S_S_S_S_mPcS0_S0_bb"]
+    #[link_name = "\u{1}_Z15mul_hint_fieldsPvS_mPcS0_S0_S_S_"]
     pub fn mul_hint_fields(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
         hintFieldName1: *mut ::std::os::raw::c_char,
         hintFieldName2: *mut ::std::os::raw::c_char,
-        inverse1: bool,
-        inverse2: bool,
+        hintOptions1: *mut ::std::os::raw::c_void,
+        hintOptions2: *mut ::std::os::raw::c_void,
     ) -> u64;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14acc_hint_fieldPvS_S_S_S_S_mPcS0_S0_"]
+    #[link_name = "\u{1}_Z14acc_hint_fieldPvS_mPcS0_S0_"]
     pub fn acc_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
         hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
@@ -177,21 +165,17 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19acc_mul_hint_fieldsPvS_S_S_S_S_mPcS0_S0_S0_bb"]
+    #[link_name = "\u{1}_Z19acc_mul_hint_fieldsPvS_mPcS0_S0_S0_S_S_"]
     pub fn acc_mul_hint_fields(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
         hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
         hintFieldName1: *mut ::std::os::raw::c_char,
         hintFieldName2: *mut ::std::os::raw::c_char,
-        inverse1: bool,
-        inverse2: bool,
+        hintOptions1: *mut ::std::os::raw::c_void,
+        hintOptions2: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -237,38 +221,25 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_S_S_S_S_S_"]
+    #[link_name = "\u{1}_Z24calculate_fri_polynomialPvS_"]
     pub fn calculate_fri_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
-        xDivXSub: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z29calculate_quotient_polynomialPvS_"]
     pub fn calculate_quotient_polynomial(
         pStarks: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvmS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z28calculate_impols_expressionsPvmS_"]
     pub fn calculate_impols_expressions(
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -418,14 +389,10 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z18verify_constraintsPvS_S_S_S_S_"]
+    #[link_name = "\u{1}_Z18verify_constraintsPvS_"]
     pub fn verify_constraints(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -448,13 +415,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13print_by_namePvS_S_S_S_PcPmmmb"]
+    #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]
     pub fn print_by_name(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        public_inputs: *mut ::std::os::raw::c_void,
-        challenges: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         name: *mut ::std::os::raw::c_char,
         lengths: *mut u64,
         first_value: u64,

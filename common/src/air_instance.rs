@@ -1,4 +1,20 @@
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, os::raw::c_void};
+
+#[repr(C)]
+pub struct StepsParams {
+    pub buffer: *mut c_void,
+    pub public_inputs: *mut c_void,
+    pub challenges: *mut c_void,
+    pub subproof_values: *mut c_void,
+    pub evals: *mut c_void,
+    pub xdivxsub: *mut c_void,
+}
+
+impl From<&StepsParams> for *mut c_void {
+    fn from(params: &StepsParams) -> *mut c_void {
+        params as *const StepsParams as *mut c_void
+    }
+}
 
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]

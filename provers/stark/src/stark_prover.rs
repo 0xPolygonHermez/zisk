@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::any::type_name;
 use std::sync::Arc;
 
+use proofman_common::StepsParams;
 use proofman_common::{
     BufferAllocator, ConstraintInfo, ConstraintsResults, ProofCtx, ProofType, Prover, ProverInfo, ProverStatus,
     SetupCtx,
@@ -141,14 +142,16 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
 
-        let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+        let steps_params = StepsParams {
+            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
+            challenges: (*challenges_guard).as_ptr() as *mut c_void,
+            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            evals: air_instance.evals.as_ptr() as *mut c_void,
+            xdivxsub: std::ptr::null_mut(),
+        };
 
-        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
-        let evals = air_instance.evals.as_ptr() as *mut c_void;
-        let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
-
-        let raw_ptr = verify_constraints_c(self.p_setup, buffer, public_inputs, challenges, subproof_values, evals);
+        let raw_ptr = verify_constraints_c(self.p_setup, (&steps_params).into());
 
         unsafe {
             let constraints_result = Box::from_raw(raw_ptr as *mut ConstraintsResults);
@@ -160,8 +163,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
-        let evals = air_instance.evals.as_ptr() as *mut c_void;
         let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
@@ -169,8 +170,14 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
 
-        let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+        let steps_params = StepsParams {
+            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
+            challenges: (*challenges_guard).as_ptr() as *mut c_void,
+            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            evals: air_instance.evals.as_ptr() as *mut c_void,
+            xdivxsub: std::ptr::null_mut(),
+        };
 
         if stage_id as usize <= proof_ctx.global_info.n_challenges.len() {
             let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
@@ -188,15 +195,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                     panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
                 }
             }
-            calculate_impols_expressions_c(
-                self.p_stark,
-                stage_id as u64,
-                buffer,
-                public_inputs,
-                challenges,
-                subproof_values,
-                evals,
-            );
+
+            calculate_impols_expressions_c(self.p_stark, stage_id as u64, (&steps_params).into());
             for i in 0..n_commits {
                 let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
@@ -215,7 +215,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 self.instance_id,
                 air_name
             );
-            calculate_quotient_polynomial_c(self.p_stark, buffer, public_inputs, challenges, subproof_values, evals);
+            calculate_quotient_polynomial_c(self.p_stark, (&steps_params).into());
             for i in 0..n_commits {
                 let cm_pol: &crate::stark_info::PolMap =
                     self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
@@ -631,22 +631,22 @@ impl<F: Field> StarkProver<F> {
         debug!("{}: ··· Calculating FRI polynomial of instance {} of {}", Self::MY_NAME, self.instance_id, air_name);
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
-
-        let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-        let challenges = (*challenges_guard).as_ptr() as *mut c_void;
-
-        let evals = air_instance.evals.as_ptr() as *mut c_void;
-        let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
+        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
 
         let p_stark = self.p_stark;
 
-        let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
-        let xdivxsub = (*buff_helper_guard).as_ptr() as *mut c_void;
+        let steps_params = StepsParams {
+            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
+            challenges: (*challenges_guard).as_ptr() as *mut c_void,
+            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            evals: air_instance.evals.as_ptr() as *mut c_void,
+            xdivxsub: (*buff_helper_guard).as_ptr() as *mut c_void,
+        };
 
-        calculate_fri_polynomial_c(p_stark, buffer, public_inputs, challenges, subproof_values, evals, xdivxsub);
+        calculate_fri_polynomial_c(p_stark, (&steps_params).into());
     }
 
     fn compute_fri_folding(&mut self, step_index: u32, proof_ctx: Arc<ProofCtx<F>>) {

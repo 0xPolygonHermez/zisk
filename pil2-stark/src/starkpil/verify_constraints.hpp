@@ -87,16 +87,8 @@ ConstraintInfo verifyConstraint(SetupCtx& setupCtx, Goldilocks::Element* dest, u
     return constraintInfo;
 }
 
-ConstraintsResults *verifyConstraints(SetupCtx& setupCtx, Goldilocks::Element *buffer, Goldilocks::Element *publicInputs, Goldilocks::Element *challenges, Goldilocks::Element *subproofValues, Goldilocks::Element *evals) {
-    StepsParams params {
-        pols: buffer,
-        publicInputs,
-        challenges,
-        subproofValues,
-        evals,
-        xDivXSub: nullptr,
-    };
-
+ConstraintsResults *verifyConstraints(SetupCtx& setupCtx, StepsParams &params) {
+    
     ConstraintsResults *constraintsInfo = new ConstraintsResults();
     constraintsInfo->nConstraints = setupCtx.expressionsBin.constraintsInfoDebug.size();
     constraintsInfo->constraintInfo = new ConstraintInfo[constraintsInfo->nConstraints];

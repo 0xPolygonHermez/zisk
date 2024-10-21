@@ -138,7 +138,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         }
     }
     TimerStart(CALCULATE_IM_POLS);
-    starks.calculateImPolsExpressions(2, pAddress, publicInputs, challenges, subproofValues, evals);
+    starks.calculateImPolsExpressions(2, params);
     TimerStopAndLog(CALCULATE_IM_POLS);
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].imPol && setupCtx.starkInfo.cmPolsMap[i].stage == 2) {
@@ -171,7 +171,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         }
     }
     
-    starks.calculateQuotientPolynomial(pAddress, publicInputs, challenges, subproofValues, evals);
+    starks.calculateQuotientPolynomial(params);
 
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].stage == setupCtx.starkInfo.nStages + 1) {
@@ -225,9 +225,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     TimerStart(STARK_STEP_FRI);
 
     TimerStart(COMPUTE_FRI_POLYNOMIAL);
-    Goldilocks::Element *xDivXSub = &pAddress[setupCtx.starkInfo.mapOffsets[std::make_pair("xDivXSubXi", true)]];
-    starks.calculateXDivXSub(xiChallenge, xDivXSub);
-    starks.calculateFRIPolynomial(pAddress, publicInputs, challenges, subproofValues, evals, xDivXSub);
+    params.xDivXSub = &pAddress[setupCtx.starkInfo.mapOffsets[std::make_pair("xDivXSubXi", true)]];
+    starks.calculateXDivXSub(xiChallenge, params.xDivXSub);
+    starks.calculateFRIPolynomial(params);
     TimerStopAndLog(COMPUTE_FRI_POLYNOMIAL);
 
     Goldilocks::Element challenge[FIELD_EXTENSION];

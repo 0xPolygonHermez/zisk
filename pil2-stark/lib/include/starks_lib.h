@@ -44,10 +44,10 @@
 
     // Hints
     // ========================================================================================
-    void *get_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char* hintFieldName, bool dest, bool inverse, bool print_expression, bool initialize_zeros);
-    uint64_t mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2); 
-    void *acc_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName);
-    void *acc_mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2);
+    void *get_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char* hintFieldName, void* hintOptions);
+    uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2); 
+    void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName);
+    void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2);
     uint64_t set_hint_field(void *pSetupCtx, void* buffer, void* subproofValues, void *values, uint64_t hintId, char* hintFieldName);
 
     // Starks
@@ -60,9 +60,9 @@
     void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub);
     void *get_fri_pol(void *pSetupCtx, void *buffer);
 
-    void calculate_fri_polynomial(void *pStarks, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, void *xDivXSub);
-    void calculate_quotient_polynomial(void *pStarks, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals);
-    void calculate_impols_expressions(void *pStarks, uint64_t step, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals);
+    void calculate_fri_polynomial(void *pStarks, void* stepsParams);
+    void calculate_quotient_polynomial(void *pStarks, void* stepsParams);
+    void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParams);
 
     void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
     
@@ -96,7 +96,7 @@
 
     // Constraints
     // =================================================================================
-    void *verify_constraints(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals);
+    void *verify_constraints(void *pSetupCtx, void* stepsParams);
 
     // Global constraints
     // =================================================================================
@@ -105,7 +105,7 @@
 
     // Debug functions
     // =================================================================================
-    void *print_by_name(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values);
+    void *print_by_name(void *pSetupCtx, void* stepsParams, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values);
     void print_row(void *pSetupCtx, void *buffer, uint64_t stage, uint64_t row);
     void print_expression(void *pSetupCtx, void* pol, uint64_t dim, uint64_t first_value, uint64_t last_value);
 

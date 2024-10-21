@@ -1,12 +1,12 @@
 use proofman_starks_lib_c::{
     get_hint_field_c, get_hint_ids_by_name_c, mul_hint_fields_c, acc_hint_field_c, acc_mul_hint_fields_c,
-    print_by_name_c, print_expression_c, print_row_c, set_hint_field_c, StepsParams,
+    print_by_name_c, print_expression_c, print_row_c, set_hint_field_c,
 };
 
 use std::collections::HashMap;
 
 use p3_field::Field;
-use proofman_common::{AirInstance, Challenges, ExtensionField, ProofCtx, PublicInputs, SetupCtx};
+use proofman_common::{AirInstance, ExtensionField, ProofCtx, SetupCtx, StepsParams};
 
 use std::os::raw::c_void;
 
@@ -49,12 +49,19 @@ pub struct HintIdsResult {
     pub hint_ids: *mut u64,
 }
 
+#[repr(C)]
 #[derive(Default)]
 pub struct HintFieldOptions {
     pub dest: bool,
     pub inverse: bool,
     pub print_expression: bool,
     pub initialize_zeros: bool,
+}
+
+impl From<&HintFieldOptions> for *mut c_void {
+    fn from(options: &HintFieldOptions) -> *mut c_void {
+        options as *const HintFieldOptions as *mut c_void
+    }
 }
 
 impl HintFieldOptions {
@@ -660,8 +667,7 @@ pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u
 #[allow(clippy::too_many_arguments)]
 pub fn mul_hint_fields<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_dest: &str,
@@ -672,34 +678,33 @@ pub fn mul_hint_fields<F: Clone + Copy + Debug + Display>(
 ) -> u64 {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.evals.as_ptr() as *mut c_void,
-        evals: air_instance.subproof_values.as_ptr() as *mut c_void,
+        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     mul_hint_fields_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_dest,
         hint_field_name1,
-        options1.inverse,
         hint_field_name2,
-        options2.inverse,
+        (&options1).into(),
+        (&options2).into(),
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_dest: &str,
@@ -708,8 +713,8 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
 ) -> (u64, u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -717,11 +722,12 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
         challenges: challenges_ptr,
         subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = acc_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_dest,
         hint_field_subprooval,
@@ -738,21 +744,20 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
 #[allow(clippy::too_many_arguments)]
 pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_dest: &str,
     hint_field_subprooval: &str,
     hint_field_name1: &str,
     hint_field_name2: &str,
-    inverse1: bool,
-    inverse2: bool,
+    options1: HintFieldOptions,
+    options2: HintFieldOptions,
 ) -> (u64, u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -760,18 +765,19 @@ pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
         challenges: challenges_ptr,
         subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = acc_mul_hint_fields_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_dest,
         hint_field_subprooval,
         hint_field_name1,
         hint_field_name2,
-        inverse1,
-        inverse2,
+        (&options1).into(),
+        (&options2).into(),
     );
 
     let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
@@ -783,8 +789,7 @@ pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
 
 pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
@@ -792,26 +797,24 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
 ) -> HintFieldValue<F> {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.evals.as_ptr() as *mut c_void,
-        evals: air_instance.subproof_values.as_ptr() as *mut c_void,
+        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -826,8 +829,7 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
 
 pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
@@ -835,26 +837,24 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
 ) -> HintFieldValuesVec<F> {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.evals.as_ptr() as *mut c_void,
-        evals: air_instance.subproof_values.as_ptr() as *mut c_void,
+        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -875,8 +875,7 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
 
 pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
     setup_ctx: &SetupCtx,
-    public_inputs: &PublicInputs,
-    challenges: &Challenges<F>,
+    proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
@@ -884,26 +883,24 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
 ) -> HintFieldValues<F> {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
-    let public_inputs_ptr = (*public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.evals.as_ptr() as *mut c_void,
-        evals: air_instance.subproof_values.as_ptr() as *mut c_void,
+        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -943,17 +940,15 @@ pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
         challenges: std::ptr::null_mut(),
         subproof_values: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -982,17 +977,15 @@ pub fn get_hint_field_constant_a<F: Clone + Copy + Debug + Display>(
         challenges: std::ptr::null_mut(),
         subproof_values: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -1027,17 +1020,15 @@ pub fn get_hint_field_constant_m<F: Clone + Copy + Debug + Display>(
         challenges: std::ptr::null_mut(),
         subproof_values: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         hint_id as u64,
         hint_field_name,
-        options.dest,
-        options.inverse,
-        options.print_expression,
-        options.initialize_zeros,
+        (&options).into(),
     );
 
     unsafe {
@@ -1195,6 +1186,7 @@ pub fn print_by_name<F: Clone + Copy + Debug + Display>(
         challenges: challenges_ptr,
         subproof_values: air_instance.evals.as_ptr() as *mut c_void,
         evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
     };
 
     let mut lengths_vec = lengths.unwrap_or_default();
@@ -1202,7 +1194,7 @@ pub fn print_by_name<F: Clone + Copy + Debug + Display>(
 
     let _raw_ptr = print_by_name_c(
         (&setup.p_setup).into(),
-        steps_params,
+        (&steps_params).into(),
         name,
         lengths_ptr,
         first_print_value,

@@ -208,23 +208,23 @@ void expressions_bin_free(void *pExpressionsBin)
 
 // Hints
 // ========================================================================================
-void *get_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldName, bool dest, bool inverse, bool printExpression, bool initialize_zeros) 
+void *get_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char* hintFieldName, void* hintOptions) 
 {
-    HintFieldValues hintFieldValues = getHintField(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldName), dest, inverse, printExpression, initialize_zeros);
+    HintFieldValues hintFieldValues = getHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldName), *(HintFieldOptions *) hintOptions);
     return new HintFieldValues(hintFieldValues);
 }
 
-uint64_t mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2) 
+uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2) 
 {
-    return multiplyHintFields(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldNameDest), string(hintFieldName1), string(hintFieldName2), inverse1, inverse2);
+    return multiplyHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldName1), string(hintFieldName2), *(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2);
 }
 
-void *acc_hint_field(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName) {
-    return new VecU64Result(accHintField(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName)));
+void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName) {
+    return new VecU64Result(accHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName)));
 }
 
-void *acc_mul_hint_fields(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2) {
-    return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName1), string(hintFieldName2), inverse1, inverse2));
+void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2) {
+    return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2));
 }
 
 
@@ -254,23 +254,23 @@ void treesGL_get_root(void *pStarks, uint64_t index, void *dst)
     starks->ffi_treesGL_get_root(index, (Goldilocks::Element *)dst);
 }
 
-void calculate_fri_polynomial(void *pStarks, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals, void* xDivXSub)
+void calculate_fri_polynomial(void *pStarks, void* stepsParams)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->calculateFRIPolynomial((Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals, (Goldilocks::Element *)xDivXSub);
+    starks->calculateFRIPolynomial(*(StepsParams *)stepsParams);
 }
 
 
-void calculate_quotient_polynomial(void *pStarks,  void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals)
+void calculate_quotient_polynomial(void *pStarks, void* stepsParams)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->calculateQuotientPolynomial((Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals);
+    starks->calculateQuotientPolynomial(*(StepsParams *)stepsParams);
 }
 
-void calculate_impols_expressions(void *pStarks, uint64_t step, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals)
+void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParams)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->calculateImPolsExpressions(step, (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals);
+    starks->calculateImPolsExpressions(step, *(StepsParams *)stepsParams);
 }
 
 void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper) {
@@ -423,9 +423,9 @@ void get_permutations(void *pTranscript, uint64_t *res, uint64_t n, uint64_t nBi
 
 // Constraints
 // =================================================================================
-void *verify_constraints(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, void* evals)
+void *verify_constraints(void *pSetupCtx, void* stepsParams)
 {
-    ConstraintsResults *constraintsInfo = verifyConstraints(*(SetupCtx *)pSetupCtx, (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)evals);
+    ConstraintsResults *constraintsInfo = verifyConstraints(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams);
     return constraintsInfo;
 }
 
@@ -444,8 +444,8 @@ void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, v
 // Debug functions
 // =================================================================================  
 
-void *print_by_name(void *pSetupCtx, void* buffer, void* public_inputs, void* challenges, void* subproofValues, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values) {
-    HintFieldInfo hintFieldInfo = printByName(*(SetupCtx *)pSetupCtx, (Goldilocks::Element *)buffer, (Goldilocks::Element *)public_inputs, (Goldilocks::Element *)challenges, (Goldilocks::Element *)subproofValues, string(name), lengths, first_value, last_value, return_values);
+void *print_by_name(void *pSetupCtx, void* pStepsParams, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values) {
+    HintFieldInfo hintFieldInfo = printByName(*(SetupCtx *)pSetupCtx, *(StepsParams *)pStepsParams, string(name), lengths, first_value, last_value, return_values);
     return new HintFieldInfo(hintFieldInfo);
 }
 
