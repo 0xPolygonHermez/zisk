@@ -22,25 +22,32 @@ macro_rules! entrypoint {
 use crate::ziskos_definitions::ziskos_config::*;
 
 #[cfg(target_os = "ziskos")]
-pub fn read_input() -> Vec<u8> {
+pub fn read_input<'a>() -> &'a [u8] {
     // Create a slice of the first 8 bytes to get the size
     let bytes = unsafe { core::slice::from_raw_parts(INPUT_ADDR as *const u8, 8) };
     // Convert the slice to a u64 (little-endian)
     let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
 
-    let input =
-        unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) };
-    input.to_vec()
+    unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) }
 }
 
 #[cfg(not(target_os = "ziskos"))]
-pub fn read_input() -> Vec<u8> {
-    use std::{fs::File, io::Read};
+pub fn read_input<'a>() -> &'a [u8] {
+    use std::fs::File;
+    use std::io::Read;
+    use std::mem;
+    use std::slice;
 
     let mut file = File::open("build/input.bin").unwrap();
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
-    buffer
+
+    let ptr = buffer.as_ptr();
+    let len = buffer.len();
+
+    mem::forget(buffer);
+
+    unsafe { slice::from_raw_parts(ptr, len) }
 }
 
 #[cfg(target_os = "ziskos")]
