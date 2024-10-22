@@ -1,3 +1,5 @@
+use zisk_core::zisk_ops::*;
+
 const MULU: u8 = 0xb0;
 const MULUH: u8 = 0xb1;
 const MULSUH: u8 = 0xb3;
@@ -16,11 +18,151 @@ const REM_W: u8 = 0xbf;
 const FLAG_NAMES: [&str; 8] = ["m32", "div", "na", "nb", "np", "nr", "sext", "sec"];
 
 pub trait ArithHelpers {
-    fn calculate_flags_and_ranges(a: u64, b: u64, op: u8) -> [u64; 11] {
+    fn sign32(abs_value: u64, negative: bool) -> u64 {
+        assert!(0xFFFF_FFFF >= abs_value, "abs_value:0x{0:X}({0}) is too big", abs_value);
+        if negative {
+            (0xFFFF_FFFF - abs_value) + 1
+        } else {
+            abs_value
+        }
+    }
+    fn sign64(abs_value: u64, negative: bool) -> u64 {
+        if negative {
+            (0xFFFF_FFFF_FFFF_FFFF - abs_value) + 1
+        } else {
+            abs_value
+        }
+    }
+    fn sign128(abs_value: u128, negative: bool) -> u128 {
+        if negative {
+            (0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF - abs_value) + 1
+        } else {
+            abs_value
+        }
+    }
+    fn abs32(value: u64) -> [u64; 2] {
+        let negative = if (value & 0x8000_0000) != 0 { 1 } else { 0 };
+        let abs_value = if negative == 1 { (0xFFFF_FFFF - value) + 1 } else { value };
+        // println!(
+        //     "value:0x{0:X}({0}) abs_value:0x{1:X}({1}) negative:{2}",
+        //     value, abs_value, negative
+        // );
+        [abs_value, negative]
+    }
+    fn abs64(value: u64) -> [u64; 2] {
+        let negative = if (value & 0x8000_0000_0000_0000) != 0 { 1 } else { 0 };
+        let abs_value = if negative == 1 { (0xFFFF_FFFF_FFFF_FFFF - value) + 1 } else { value };
+        [abs_value, negative]
+    }
+    fn calculate_mul_w(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs32(a);
+        let [abs_b, nb] = Self::abs32(b);
+        // println!(
+        //     "a:0x{0:X}({0}) b:0x{1:X}({1}) abs_a:0x{2:X}({2}) na:{3} abs_b:{4:X}({4}) nb:{5}",
+        //     a, b, abs_a, na, abs_b, nb
+        // );
+        let abs_c = abs_a * abs_b;
+        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+        Self::sign64(abs_c, nc == 1)
+    }
+
+    fn calculate_mulsu(a: u64, b: u64) -> [u64; 2] {
+        let [abs_a, na] = Self::abs64(a);
+        let abs_c = abs_a as u128 * b as u128;
+        let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
+        let c = Self::sign128(abs_c, nc == 1);
+        [c as u64, (c >> 64) as u64]
+    }
+
+    fn calculate_mul(a: u64, b: u64) -> [u64; 2] {
+        let [abs_a, na] = Self::abs64(a);
+        let [abs_b, nb] = Self::abs64(b);
+        let abs_c = abs_a as u128 * abs_b as u128;
+        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+        let c = Self::sign128(abs_c, nc == 1);
+        [c as u64, (c >> 64) as u64]
+    }
+
+    fn calculate_div(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs64(a);
+        let [abs_b, nb] = Self::abs64(b);
+        let abs_c = abs_a / abs_b;
+        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+        Self::sign64(abs_c, nc == 1)
+    }
+
+    fn calculate_rem(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs64(a);
+        let [abs_b, _nb] = Self::abs64(b);
+        let abs_c = abs_a % abs_b;
+        let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
+        Self::sign64(abs_c, nc == 1)
+    }
+
+    fn calculate_div_w(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs32(a);
+        let [abs_b, nb] = Self::abs32(b);
+        let abs_c = abs_a / abs_b;
+        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+        Self::sign32(abs_c, nc == 1)
+    }
+
+    fn calculate_rem_w(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs32(a);
+        let [abs_b, _nb] = Self::abs32(b);
+        let abs_c = abs_a % abs_b;
+        let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
+        Self::sign32(abs_c, nc == 1)
+    }
+
+    fn calculate_emulator_res(op: u8, a: u64, b: u64) -> (u64, bool) {
+        match op {
+            MULU => return op_mulu(a, b),
+            MULUH => return op_muluh(a, b),
+            MULSUH => return op_mulsuh(a, b),
+            MUL => return op_mul(a, b),
+            MULH => return op_mulh(a, b),
+            MUL_W => return op_mul_w(a, b),
+            DIVU => return op_divu(a, b),
+            REMU => return op_remu(a, b),
+            DIVU_W => return op_divu_w(a, b),
+            REMU_W => return op_remu_w(a, b),
+            DIV => return op_div(a, b),
+            REM => return op_rem(a, b),
+            DIV_W => return op_div_w(a, b),
+            REM_W => return op_rem_w(a, b),
+            _ => {
+                panic!("Invalid opcode");
+            }
+        }
+    }
+
+    fn calculate_abcd_from_ab(op: u8, a: u64, b: u64) -> [u64; 4] {
+        match op {
+            MULU | MULUH => {
+                let c: u128 = a as u128 * b as u128;
+                [a, b, c as u64, (c >> 64) as u64]
+            }
+            MULSUH => {
+                let [c, d] = Self::calculate_mulsu(a, b);
+                [a, b, c, d]
+            }
+            MUL | MULH => {
+                let [c, d] = Self::calculate_mul(a, b);
+                [a, b, c, d]
+            }
+            MUL_W => [a, b, Self::calculate_mul_w(a, b), 0],
+            DIVU | REMU | DIVU_W | REMU_W => [a / b, b, a, a % b],
+            DIV | REM => [Self::calculate_div(a, b), b, a, Self::calculate_rem(a, b)],
+            DIV_W | REM_W => [Self::calculate_div_w(a, b), b, a, Self::calculate_rem_w(a, b)],
+            _ => {
+                panic!("Invalid opcode");
+            }
+        }
+    }
+    fn calculate_flags_and_ranges(op: u8, a: u64, b: u64, c: u64, d: u64) -> [u64; 11] {
         let mut m32: u64 = 0;
         let mut div: u64 = 0;
-        let mut na: u64 = 0;
-        let mut nb: u64 = 0;
         let mut np: u64 = 0;
         let mut nr: u64 = 0;
         let mut sext: u64 = 0;
@@ -44,7 +186,7 @@ pub trait ArithHelpers {
 
         let mut sa = false;
         let mut sb = false;
-        let mut rem32 = false;
+        let mut rem = false;
 
         match op {
             MULU => {}
@@ -70,9 +212,11 @@ pub trait ArithHelpers {
             }
             DIVU => {
                 div = 1;
+                assert!(b != 0, "Error on DIVU a:{:x}({}) b:{:x}({})", a, b, a, b);
             }
             REMU => {
                 div = 1;
+                rem = true;
                 secondary_res = 1;
             }
             DIV => {
@@ -83,6 +227,7 @@ pub trait ArithHelpers {
             REM => {
                 sa = true;
                 sb = true;
+                rem = true;
                 div = 1;
                 secondary_res = 1;
             }
@@ -90,14 +235,16 @@ pub trait ArithHelpers {
                 // divu_w, remu_w
                 div = 1;
                 m32 = 1;
-                sext = if ((a as u32 / b as u32) as i32) < 0 { 1 } else { 0 };
+                // use a in bus
+                sext = if (a & 0x8000_0000) != 0 { 1 } else { 0 };
             }
             REMU_W => {
                 // divu_w, remu_w
                 div = 1;
                 m32 = 1;
-                rem32 = true;
-                sext = if ((a as u32 % b as u32) as i32) < 0 { 1 } else { 0 };
+                rem = true;
+                // use d in bus
+                sext = if (d & 0x8000_0000) != 0 { 1 } else { 0 };
                 secondary_res = 1;
             }
             DIV_W => {
@@ -106,7 +253,8 @@ pub trait ArithHelpers {
                 sb = true;
                 div = 1;
                 m32 = 1;
-                sext = if (a as i32 / b as i32) < 0 { 1 } else { 0 };
+                // use a in bus
+                sext = if (a & 0x8000_0000) != 0 { 1 } else { 0 };
             }
             REM_W => {
                 // div_w, rem_w
@@ -114,63 +262,49 @@ pub trait ArithHelpers {
                 sb = true;
                 div = 1;
                 m32 = 1;
-                rem32 = true;
-                sext = if (a as i32 % b as i32) < 0 { 1 } else { 0 };
+                rem = true;
+                // use d in bus
+                sext = if (d & 0x8000_0000) != 0 { 1 } else { 0 };
                 secondary_res = 1;
             }
             _ => {
                 panic!("Invalid opcode");
             }
         }
-        if sa {
-            na = if m32 == 1 {
-                if (a as i32) < 0 {
-                    1
-                } else {
-                    0
-                }
-            } else {
-                if (a as i64) < 0 {
-                    1
-                } else {
-                    0
-                }
-            }
-        }
-        if sb {
-            nb = if m32 == 1 {
-                if (b as i32) < 0 {
-                    1
-                } else {
-                    0
-                }
-            } else {
-                if (b as i64) < 0 {
-                    1
-                } else {
-                    0
-                }
-            }
-        }
+        let sign_mask: u64 = if m32 == 1 { 0x8000_0000 } else { 0x8000_0000_0000_0000 };
+        let na = if sa && (a & sign_mask) != 0 { 1 } else { 0 };
+        let nb = if sb && (b & sign_mask) != 0 { 1 } else { 0 };
+        // a sign => b sign
+        let nc = if sa && (c & sign_mask) != 0 { 1 } else { 0 };
 
         // a == 0 || b == 0 => np == 0 ==> how was a signed operation
         // after that sign of np was verified with range check.
-
-        np = if (a != 0) && (b != 0) { na ^ nb } else { 0 };
-        nr = if div == 1 { na } else { 0 };
-
+        if div == 1 {
+            np = if c != 0 { nc ^ nb } else { 0 };
+            nr = if d != 0 { nc } else { 0 };
+        } else {
+            np = if (c != 0) || (d != 0) { na ^ nb } else { 0 };
+            nr = 0;
+        }
         if m32 == 1 {
             // mulw, divu_w, remu_w, div_w, rem_w
-            range_a1 = if sa { 1 + na } else { 0 };
+            range_a1 = if sa {
+                1 + na
+            } else if div == 1 && !rem {
+                1 + sext
+            } else {
+                0
+            };
             range_b1 = if sb { 1 + nb } else { 0 };
-            range_c1 = if !rem32 {
+            // m32 && div == 0 => mulw
+            range_c1 = if div == 0 {
                 sext + 1
             } else if sa {
                 1 + np
             } else {
                 0
             };
-            range_d1 = if rem32 {
+            range_d1 = if rem {
                 sext + 1
             } else if sa {
                 1 + nr
@@ -414,9 +548,6 @@ pub trait ArithHelpers {
 
         chunks
     }
-    fn me() -> i32 {
-        13
-    }
 }
 
 fn flags_to_strings(mut flags: u64, flag_names: &[&str]) -> String {
@@ -602,7 +733,7 @@ fn get_test_values(value: u64) -> [u64; 16] {
             0,
             0,
         ],
-        ALL_32 => [
+        ALL_NZ_32 => [
             1,
             2,
             3,
@@ -625,13 +756,13 @@ fn get_test_values(value: u64) -> [u64; 16] {
             1,
             2,
             3,
+            0x0000_7FFF,
+            0x0000_FFFF,
             MAX_P_32 - 1,
             MAX_P_32,
-            MIN_N_32,
-            MAX_32 - 1,
-            MAX_32,
+            MAX_P_32 - 1,
+            MAX_P_32,
             VALUES_END,
-            0,
             0,
             0,
             0,
@@ -642,13 +773,13 @@ fn get_test_values(value: u64) -> [u64; 16] {
             1,
             2,
             3,
+            0x0000_7FFF,
+            0x0000_FFFF,
             MAX_P_32 - 1,
             MAX_P_32,
-            MIN_N_32,
-            MAX_32 - 1,
-            MAX_32,
+            MAX_P_32 - 1,
+            MAX_P_32,
             VALUES_END,
-            0,
             0,
             0,
             0,
@@ -691,7 +822,7 @@ fn test_calculate_range_checks() {
     }
 
     // NOTE: update TEST_COUNT with number of tests, ALL,ALL => 3*3 = 9
-    const TEST_COUNT: u32 = 2472;
+    const TEST_COUNT: u32 = 2510;
 
     // NOTE: use 0x0000_0000 instead of 0, to avoid auto-format in one line, 0 is too short.
     let tests = [
@@ -713,7 +844,7 @@ fn test_calculate_range_checks() {
             range_ab: R_FF,
             range_cd: R_FF,
         },
-        // 2 - MULSHU
+        // 2 - MULSUH
         TestParams {
             op: MULSUH,
             a: ALL_P_64,
@@ -722,7 +853,7 @@ fn test_calculate_range_checks() {
             range_ab: R_3PF,
             range_cd: R_3FP,
         },
-        // 3 - MULSHU
+        // 3 - MULSUH
         TestParams {
             op: MULSUH,
             a: ALL_N_64,
@@ -731,7 +862,7 @@ fn test_calculate_range_checks() {
             range_ab: R_3NF,
             range_cd: R_3FN,
         },
-        // 4 - MULSHU
+        // 4 - MULSUH
         TestParams {
             op: MULSUH,
             a: ALL_N_64,
@@ -942,7 +1073,7 @@ fn test_calculate_range_checks() {
         TestParams {
             op: DIVU,
             a: ALL_64,
-            b: ALL_64,
+            b: ALL_NZ_64,
             flags: F_DIV + 0,
             range_ab: R_FF,
             range_cd: R_FF,
@@ -951,7 +1082,7 @@ fn test_calculate_range_checks() {
         TestParams {
             op: REMU,
             a: ALL_64,
-            b: ALL_64,
+            b: ALL_NZ_64,
             flags: F_DIV + F_SEC,
             range_ab: R_FF,
             range_cd: R_FF,
@@ -988,9 +1119,9 @@ fn test_calculate_range_checks() {
             op: DIV,
             a: MIN_N_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NA + F_NB + F_NR,
-            range_ab: R_3NN,
-            range_cd: R_3PN,
+            flags: F_DIV + F_NB,
+            range_ab: R_3PN,
+            range_cd: R_3PP,
         },
         // 33 - DIV
         TestParams {
@@ -1042,9 +1173,9 @@ fn test_calculate_range_checks() {
             op: REM,
             a: MIN_N_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NA + F_NB + F_NR + F_SEC,
-            range_ab: R_3NN,
-            range_cd: R_3PN,
+            flags: F_DIV + F_NB + F_SEC,
+            range_ab: R_3PN,
+            range_cd: R_3PP,
         },
         // 39 - REM
         TestParams {
@@ -1064,27 +1195,216 @@ fn test_calculate_range_checks() {
             range_ab: R_3PN,
             range_cd: R_3PP,
         },
-        // DIVU_W
-        // REMU_W
-        // DIV_W
-        // REM_W
+        // 41 - DIVU_W
+        TestParams {
+            op: DIVU_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0001,
+            flags: F_DIV + F_M32 + F_SEXT,
+            range_ab: R_1NF,
+            range_cd: R_FF,
+        },
+        // 42 - DIVU_W
+        TestParams {
+            op: DIVU_W,
+            a: ALL_NZ_32,
+            b: 0x0000_00002,
+            flags: F_DIV + F_M32,
+            range_ab: R_1PF,
+            range_cd: R_FF,
+        },
+        // 43 - DIVU_W
+        TestParams {
+            op: DIVU_W,
+            a: ALL_NZ_32,
+            b: MAX_32,
+            flags: F_DIV + F_M32,
+            range_ab: R_1PF,
+            range_cd: R_FF,
+        },
+        // 44 - DIVU_W
+        TestParams {
+            op: DIVU_W,
+            a: 0,
+            b: ALL_NZ_32,
+            flags: F_DIV + F_M32,
+            range_ab: R_1PF,
+            range_cd: R_FF,
+        },
+        // 45 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0001,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 46 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: ALL_32,
+            b: 0x0000_00002,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 47 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: ALL_NZ_P_32,
+            b: MAX_32,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 48 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: ALL_32,
+            b: 0x8000_0000,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 49 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0,
+            b: ALL_NZ_32,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 50 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0xFFFF_FFFE,
+            b: 0xFFFF_FFFF,
+            flags: F_DIV + F_M32 + F_SEXT + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FN,
+        },
+        // 51 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0xFFFF_FFFE,
+            b: 0xFFFF_FFFE,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 52 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0x8000_0000,
+            b: 0x8000_0001,
+            flags: F_DIV + F_M32 + F_SEXT + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FN,
+        },
+        // 53 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0x8000_0001,
+            b: 0x8000_0000,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 54 - REMU_W
+        TestParams {
+            op: REMU_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0003,
+            flags: F_DIV + F_M32 + F_SEC,
+            range_ab: R_FF,
+            range_cd: R_1FP,
+        },
+        // 55 - DIV_W (-1/1=-1 REM:0)
+        TestParams {
+            op: DIV_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0001,
+            flags: F_DIV + F_NA + F_NP + F_M32 + F_SEXT,
+            range_ab: R_1NP,
+            range_cd: R_1NP,
+        },
+        // 56 - REM_W !!!
+        TestParams {
+            op: REM_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0001,
+            flags: F_DIV + F_NA + F_NP + F_M32 + F_SEC,
+            range_ab: R_1NP,
+            range_cd: R_1NP,
+        },
+        // 57 - DIV_W <======
+        TestParams {
+            op: DIV_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0002,
+            flags: F_DIV + F_NP + F_NR + F_M32,
+            range_ab: R_1PP,
+            range_cd: R_1NN,
+        },
+        // 58 - REM_W
+        TestParams {
+            op: REM_W,
+            a: 0xFFFF_FFFF,
+            b: 0x0000_0002,
+            flags: F_DIV + F_NP + F_NR + F_M32 + F_SEC + F_SEXT,
+            range_ab: R_1PP,
+            range_cd: R_1NN,
+        },
     ];
 
     let mut count = 0;
     let mut index: u32 = 0;
+
+    #[derive(Debug, PartialEq)]
+    struct TestDone {
+        op: u8,
+        a: u64,
+        b: u64,
+        index: u32,
+        offset: u32,
+    }
+
+    let mut tests_done: Vec<TestDone> = Vec::new();
     for test in tests {
         let a_values = get_test_values(test.a);
-        for a in a_values {
-            if a == VALUES_END {
+        let mut offset = 0;
+        for _a in a_values {
+            if _a == VALUES_END {
                 break;
-            };
+            }
             let b_values = get_test_values(test.b);
-            for b in b_values {
-                if b == VALUES_END {
+            for _b in b_values {
+                if _b == VALUES_END {
                     break;
-                };
+                }
+                let test_info = TestDone { op: test.op, a: _a, b: _b, index, offset };
+                let previous = tests_done
+                    .iter()
+                    .find(|&x| x.op == test_info.op && x.a == test_info.a && x.b == test_info.b);
+                match previous {
+                    Some(e) => {
+                        println!(
+                            "\x1B[35mDuplicated TEST #{} op:0x{:x} a:0x{:X} b:0x{:X} offset:{}\x1B[0m",
+                            e.index, e.op, e.a, e.b, e.offset
+                        );
+                    }
+                    None => {
+                        tests_done.push(test_info);
+                    }
+                }
+                println!("testing #{} op:0x{:x} with _a:0x{:X} _b:0x{:X}", index, test.op, _a, _b);
+                let (emu_c, emu_flag) = TestArithHelpers::calculate_emulator_res(test.op, _a, _b);
+                let [a, b, c, d] = TestArithHelpers::calculate_abcd_from_ab(test.op, _a, _b);
+
                 let [m32, div, na, nb, np, nr, sext, sec, range_ab, range_cd, ranges] =
-                    TestArithHelpers::calculate_flags_and_ranges(a, b, test.op);
+                    TestArithHelpers::calculate_flags_and_ranges(test.op, a, b, c, d);
 
                 let flags =
                     m32 + div * 2 + na * 4 + nb * 8 + np * 16 + nr * 32 + sext * 64 + sec * 128;
@@ -1092,11 +1412,16 @@ fn test_calculate_range_checks() {
                 assert_eq!(
                     [flags, range_ab, range_cd],
                     [test.flags, test.range_ab, test.range_cd],
-                    "testing #{} op:0x{:x} with a:0x{:X} b:0x{:X} flags:{:b}[{}]/{:b}[{}] range_ab:{}/{}  range_cd:{}/{} ranges:{}",
+                    "testing #{} op:0x{:x} with _a:0x{:X} _b:0x{:X} a:0x{:X} b:0x{:X} c:0x{:X} d:0x{:X} EMU:0x{:X} flags:{:b}[{}]/{:b}[{}] range_ab:{}/{}  range_cd:{}/{} ranges:{}",
                     index,
                     test.op,
+                    _a,
+                    _b,
                     a,
                     b,
+                    c,
+                    d,
+                    emu_c,
                     flags,
                     flags_to_strings(flags, &FLAG_NAMES),
                     test.flags,
@@ -1107,6 +1432,27 @@ fn test_calculate_range_checks() {
                     test.range_cd,
                     ranges
                 );
+                println!("testing #{} op:0x{:x} with _a:0x{:X} _b:0x{:X} a:0x{:X} b:0x{:X} c:0x{:X} d:0x{:X} EMU:0x{:X} flags:{:b}[{}]/{:b}[{}] range_ab:{}/{}  range_cd:{}/{} ranges:{}",
+                    index,
+                    test.op,
+                    _a,
+                    _b,
+                    a,
+                    b,
+                    c,
+                    d,
+                    emu_c,
+                    flags,
+                    flags_to_strings(flags, &FLAG_NAMES),
+                    test.flags,
+                    flags_to_strings(test.flags, &FLAG_NAMES),
+                    range_ab,
+                    test.range_ab,
+                    range_cd,
+                    test.range_cd,
+                    ranges
+                );
+                offset += 1;
                 count += 1;
             }
         }

@@ -142,14 +142,30 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
     //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   c1   d1               a1,b1,c1,d1
 
+
+    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(c)
+    // -----------------------------------------------------------------------------
+    //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
+    //  0   0   1   0  *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   d3   =0   =0   =0  a3,      d3
+    //  0   0   1   1  mul      mulh       (0xb4,0xb5)   a3   b3   d3   =0   =0   =0  a3,b3,   d3
+    //  0   1   0   0  mul_w    *n/a*      (0xb6,0xb7)   =0   =0   =0   =0   c1   =0
+
+    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(a,d)(*2)
+    // ------------------------------------------------------------------------------
+    //  1   0   0   0  divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
+    //  1   0   1   1  div      rem        (0xba,0xbb)   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
+    //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   a1   d1               a1      ,d1
+    //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
+
     // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb
+    // (*2) sext affects to 32 bits result (bus), but in divisions a is used as result
     // see 5 previous constraints.
     // =0 means forced to zero by previous constraints
 
-    // bus result     mul     div
-    // --------------------------------
-    // primary         c       a
-    // secondary       d       d
+    // bus result     primary  secondary
+    // ----------------------------------
+    // mul (mulh)           c       d
+    // div (remu)           a       d
 
     col witness bus_a_low;
     bus_a_low === div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
@@ -211,10 +227,10 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     //   8  -  F  -  F ab cd    2    2
     //   9  F  F  F  +    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
     //  10  F  F  F  -    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
-    //  11  F  +  F  F    cd    3    1 a1 sign <=> b1 sign
+    //  11  F  +  F  F ab cd    3    1 *a1 for sext/divu
     //  12  F  +  F  + ab cd    2    2
     //  13  F  +  F  - ab cd    2    2
-    //  14  F  -  F  F    cd    3    1 a1 sign <=> b1 sign
+    //  14  F  -  F  F ab cd    3    1 *a1 for sext/divu
     //  15  F  -  F  + ab cd    2    2
     //  16  F  -  F  - ab cd    2    2
     //                       ---- ----
