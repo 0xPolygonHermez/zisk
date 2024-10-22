@@ -1,9 +1,9 @@
-require "std_common.pil";
+require "std_tools.pil";
 
 // Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
 
-function sum_assumes(const int name, const int opid, const expr cols[], const expr sel = 1) {
-    update_piop_sum(name, 0, [opid], opid, sel, cols);
+function sum_assumes(const int name, const int opid, const expr cols[], const expr sel = 1, const int is_direct = 0) {
+    update_piop_sum(name, 0, [opid], opid, sel, cols, is_direct);
 }
 
 function sum_proves(const int name, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
@@ -16,18 +16,23 @@ function sum_assumes_dynamic(const int name, const int opid[], const expr sumid,
 
 private function init_containers_sum(int name, int opid[]) {
     container proof.std.gsum {
-        // FIX: dynamic arrays not ready
+        // Used for final checks
         int opids_count = 0;
         int opids[100];
-        expr gsum = 0;  // Resulting sum of every airgroup and every air.
-                        // Declared as expression (unknown at runtime), but used as field element.
+
+        // Resulting sum of every airgroup and every air
+        // It is the accumulation of each partial sum that each instance 
+        // of each air constributes to. It must be zero at the end.
+        expr gsum = 0;  
+
+        // Direct shortcut to the previous sum
+        int direct_gsum_count = 0;
+        expr direct_gsum_s[100];
+        expr direct_gsum_e[100];
     }
 
     container airgroup.std.gsum {
         airgroupval aggregate(sum) gsum_result;
-
-        int direct_gsum_count = 0;
-        expr direct_gsum[100];
     }
 
     container air.std.gsum {
@@ -48,13 +53,8 @@ private function init_containers_sum(int name, int opid[]) {
     }
 }
 
-private function initial_checks_sum(int proves, int opid[], expr cols[]) {
+private function initial_checks_sum(int proves, int opid[], expr cols[], int is_direct) {
     const int cols_count = length(cols);
-
-    if (cols_count < 1) {
-        string side = proves ? "proves" : "assumes";
-        error(`The number of columns in ${side} of ${name} #${opid} must be at least 1`);
-    }
 
     for (int i = 0; i < length(opid); i++) {
         // Assumes and proves of the same opid must have the same number of columns
@@ -65,18 +65,15 @@ private function initial_checks_sum(int proves, int opid[], expr cols[]) {
             // add opid on a list to verify at final
             proof.std.gsum.opids[proof.std.gsum.opids_count] = opid[i];
             proof.std.gsum.opids_count++;
-        } else if (cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
+        } else if (!is_direct && cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
             const int expected_cols = proof.std.gsum.`id${opid[i]}`.cols;
             error(`The number of columns of PIOP #${opid[i]} must be ${expected_cols} but was ${cols_count}`);
         }
 
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
         // proves and assumes to verify at the end that all of them match
-        if (proves) {
-            proof.std.gsum.`id${opid[i]}`.proves++;
-        } else {
-            proof.std.gsum.`id${opid[i]}`.assumes++;
-        }
+        const string name_str = proves ? "proves" : "assumes";
+        proof.std.gsum.`id${opid[i]}`.`${name_str}`++;
     }
 }
 
@@ -92,22 +89,28 @@ private function initial_checks_sum(int proves, int opid[], expr cols[]) {
  * @param cols columns of the PIOP
  */
 private function update_piop_sum(int name, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
+    const int cols_count = length(cols);
+    if (cols_count < 1) {
+        string side = proves ? "proves" : "assumes";
+        error(`The number of columns in ${side} of ${name} #${opid} must be at least 1`);
+    }
+
     if (length(opid) > 2) {
         error("Support for more than 2 opids is not implemented yet");
     }
 
     init_containers_sum(name, opid);
 
-    if (!is_direct) {
-        initial_checks_sum(proves, opid, cols);
+    initial_checks_sum(proves, opid, cols, is_direct);
 
+    if (!is_direct) {
         // Create debug hints for the witness computation
         const int ncols = length(cols);
         string name_cols[ncols];
         for (int i = 0; i < ncols; i++) {
             name_cols[i] = string(cols[i]);
         }
-        @gsum_member_data{name_piop: get_piop_name(name), sumid: sumid, proves: proves, selector: sel, references: cols}; // TODO: names: name_cols
+        @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves, selector: sel, references: cols};
     }
 
     init_challenges();
@@ -116,19 +119,15 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
     expr cols_compressed = compress_cols(sumid, cols);
 
     if (is_direct) {
-        use airgroup.std.gsum;
+        use proof.std.gsum;
 
-        // adding the expression from which the proof constraint will be directly updated
-        direct_gsum[direct_gsum_count] = sel * (cols_compressed - 1) + 1;
+        direct_gsum_s[direct_gsum_count] = proves ? sel : 0-sel;
+        direct_gsum_e[direct_gsum_count] = cols_compressed;
         direct_gsum_count++;
-
-        // update values at the airgroup level
-        on final airgroup piop_gsum_airgroup_direct();
     } else {
         use air.std.gsum;
         
         gsum_s[gsum_nargs] = proves ? sel : 0-sel;
-                
         gsum_e[gsum_nargs] = cols_compressed;
         gsum_t[gsum_nargs] = proves;
         gsum_nargs++;
@@ -139,11 +138,14 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         // define constraints at the air level
         on final air piop_gsum_air();
 
-        // update values at the airgroup level
+        // update the contributions at the airgroup level
         on final airgroup piop_gsum_airgroup();
+
+        // at the end, check consistency of all the opids
+        on final proof check_opids_were_completed_sum();
     }
 
-    // update constraints at the proof level
+    // adds the global constraint
     on final proof piop_gsum_proof();
 }
 
@@ -264,28 +266,45 @@ private function piop_gsum_airgroup() {
 }
 
 /**
- * It It updates the expression for the grandprod at the proof level directly
- */
-private function piop_gsum_airgroup_direct() {
-    use airgroup.std.gsum;
-    for (int i = 0; i < direct_gsum_count; i++) {
-        proof.std.gsum.gsum += direct_gsum[i];
-    }
-}
-
-/**
- * It defines the constraints for the grandsum at the proof level
+ * It It updates the expression for the grandsum at the proof level directly
  */
 private function piop_gsum_proof() {
-    check_gsum_was_completed();
+    use proof.std.gsum;
 
-    proof.std.gsum.gsum === 0;
+    //           s_1        s_2          s_3
+    // gsum + -------- + --------- + ---------- === 0
+    //           e_1        e_2          e_3
+    // where:
+    // s_i = mul_i  if the i-th term is a prove,
+    // s_i = -sel_i if the i-th term is an assume,
+    // e_i = (t_i + ɣ) if the i-th term is a prove,
+    // e_i = (f_i + ɣ) if the i-th term is an assume,
+    //
+    // We rewrite it as:
+    //      gsum·e_1·e_2·e_3 + s_1·e_2·e_3  + s_2·e_1·e_3 + s_3·e_1·e_2 === 0
+    //
+    // Note: We cannot update this constraint directly if some of the elements
+    //       are not globally defined: constants, public inputs, airgroupvalues, ...
+
+    expr LHS = 1;
+    expr RHS = 0;
+    for (int i = 0; i < direct_gsum_count; i++) {
+        LHS *= (direct_gsum_e[i] + std_gamma);
+
+        expr tmp = direct_gsum_s[i];
+        for (int j = 0; j < direct_gsum_count; j++) {
+            if (j != i) tmp *= (direct_gsum_e[j] + std_gamma);
+        }
+        RHS += tmp;
+    }
+
+    gsum * LHS + RHS === 0;
 }
 
 /**
  * It checks that all the assumes and proves of the same opid have been defined
  */
-private function check_gsum_was_completed() {
+private function check_opids_were_completed_sum() {
     for (int i = 0; i < proof.std.gsum.opids_count; i++) {
         int opid = proof.std.gsum.opids[i];
         use proof.std.gsum.`id${opid}`;

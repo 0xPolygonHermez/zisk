@@ -1,24 +1,32 @@
-function init_challenges() {
-    if (!defined(std_alpha)) {
-        challenge stage(2) std_alpha;
-    }
-    if (!defined(std_gamma)) {
-        challenge stage(2) std_gamma;
-    }
-}
+require "std_constants.pil";
+require "std_sum.pil";
+require "std_prod.pil";
 
-/**
- * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
- * @param busid (unique) identifier of the PIOP
- * @param cols columns of the PIOP
- * @return busid + C₁·α + C₂·α² + ... + Cₙ·αⁿ
- */
-function compress_cols(expr busid, expr cols[]): expr {
-    expr cols_compressed = 0;
-    for (int i = length(cols) - 1; i >= 0; i = i - 1) {
-        cols_compressed = (cols_compressed + cols[i]) * std_alpha;
-    }
-    cols_compressed = cols_compressed + busid;
+const int DEFAULT_DIRECT_NAME = PIOP_NAME_DIRECT;
+const int DEFAULT_DIRECT_BUS_TYPE = PIOP_BUS_SUM;
 
-    return cols_compressed;
+// Updates the global constraint directly
+// We allow any expression as inputs to this function, but if some of it is not a global element
+// the PIL will throw an error
+function direct_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, int bus_type = PIOP_BUS_DEFAULT, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_DIRECT_NAME;
+
+    if (bus_type == PIOP_BUS_DEFAULT) bus_type = DEFAULT_DIRECT_BUS_TYPE;
+
+    switch (bus_type) {
+        case PIOP_BUS_SUM:
+            if (proves) {
+                sum_proves(name, opid, cols, sel, is_direct: 1);
+            } else {
+                sum_assumes(name, opid, cols, sel, is_direct: 1);
+            }
+        case PIOP_BUS_PROD:
+            if (proves) {
+                prod_proves(name, opid, cols, sel, is_direct: 1);
+            } else {
+                prod_assumes(name, opid, cols, sel, is_direct: 1);
+            }
+        default:
+            error(`Unknown bus type: ${bus_type} for opid: ${opid}`);
+    }
 }
