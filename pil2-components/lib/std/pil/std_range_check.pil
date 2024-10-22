@@ -65,6 +65,7 @@ airtemplate U16Air(const int N = 2**16) {
         error(`The number of rows N should be 2**16 to use the predefined range U16, got N=${N} instead`);
     }
 
+    // save the airgroup id and air id of the table for latter use
     proof.std.u16.airgroup_id = AIRGROUP_ID;
     proof.std.u16.air_id = AIR_ID;
 
@@ -77,6 +78,7 @@ airtemplate U16Air(const int N = 2**16) {
 }
 
 airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int predefineds[], const int mins[], const int maxs[]) {
+    // save the airgroup id and air id of the table for latter use
     proof.std.specified.airgroup_id = AIRGROUP_ID;
     proof.std.specified.air_id = AIR_ID;
 
@@ -264,6 +266,20 @@ function range_check(expr colu, int min, int max, expr sel = 1, int predefined =
     }
 }
 
+function createPreMetadata() {
+    if (proof.std.rc.u8_used) {
+        @u8air{airgroup_id: proof.std.u8.airgroup_id, air_id: proof.std.u8.air_id};
+    }
+
+    if (proof.std.rc.u16_used) {
+        @u16air{airgroup_id: proof.std.u16.airgroup_id, air_id: proof.std.u16.air_id};
+    }
+}
+
+function createMetadata() {
+    @specified_ranges{airgroup_id: proof.std.specified.airgroup_id, air_id: proof.std.specified.air_id};
+}
+
 function range_check_id(const int min, const int max, const int predefined = 0) {
     range_validator(min, max);
 
@@ -328,6 +344,7 @@ private function opid_process(const int min, const int max, const int predefined
     const int opid = get_opid(min, max);
 
     // Save range data for later use
+    rcproof.predefineds[rcproof.opids_count] = predefined;
     rcproof.mins[rcproof.opids_count] = min;
     rcproof.maxs[rcproof.opids_count] = max;
     rcproof.opids[rcproof.opids_count] = opid;
@@ -346,13 +363,24 @@ private function declarePreRangeAir() {
     }
 
     if (u8_used) {
+        // container used to store the airgroup id and air id of the table
+        container proof.std.u8 {
+            int airgroup_id = 0;
+            int air_id = 0;
+        }
+
         // TODO: The following airtemplate should be instantiated outside of the airgroup
         airgroup U8Air {
             U8Air();
         }
     }
 
-    if (u16_used == 1) {
+    if (u16_used) {
+        container proof.std.u16 {
+            int airgroup_id = 0;
+            int air_id = 0;
+        }
+
         // TODO: The following airtemplate should be instantiated outside of the airgroup
         airgroup U16Air {
             U16Air();
@@ -375,5 +403,5 @@ private function declareRangeAir() {
 
     const int next_pow2 = 2**(log2(max_diff));
 
-    SpecifiedRanges(next_pow2, opids, opids_count, mins, maxs);
+    SpecifiedRanges(next_pow2, opids, opids_count, predefineds, mins, maxs);
 }
