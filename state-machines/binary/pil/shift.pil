@@ -1,0 +1,99 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+
+/*
+    Coprocessor in charge of performing shift operations:
+
+    ┼────────┼────────┼──────────┼
+    │  name  │  bits  │   op     │
+    ┼────────┼────────┼──────────┼
+    │  SLL   │   64   │   0x0d   │
+    │  SRL   │   64   │   0x0e   │
+    │  SRA   │   64   │   0x0f   │
+    │  SLL_W │   32   │   0x1d   │
+    │  SRL_W │   32   │   0x1e   │
+    │  SRA_W │   32   │   0x1f   │
+    ┼────────┼────────┼──────────┼
+
+    Examples:
+    =======================================
+
+    SLL 28
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x10000000    0x00000001
+    1    0x22      0x00000000    0x00000220
+    2    0x33      0x00000000    0x00033000
+    3    0x44      0x00000000    0x04400000
+    4    0x55      0x00000000    0x50000000
+    5    0x66      0x00000000    0x00000000
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x10000000    0x54433221
+
+    SLL_W 8
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x00001100    0x00000000
+    1    0x22      0x00220000    0x00000000
+    2    0x33      0x33000000    0x00000000
+    3    0x44      0x00000000    0x00000044
+    4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00) 
+    5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x33221100    0x00000000
+*/
+
+const int SHIFT_ID = 21;
+
+airtemplate Shift(const int N = 2**18, const int operation_bus_id = SHIFT_ID) {
+    const int bits = 64;
+    const int bytes = bits / 8;
+    const int half_bytes = bytes / 2;
+
+    col witness op;    
+    col witness in1[bytes];
+    col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
+    col witness out[bytes][2];
+
+    // Constraints to check the correctness of each shift operation
+    for (int j = 0; j < bytes; j++) {
+       lookup_assumes(SHIFT_TABLE_ID, [op, j, in1[j], in2_low, out[j][0], out[j][1]]);
+    }
+
+    // Constraints to make sure that this component is called from the main component
+    expr in1_low = 0;
+    expr in1_high = 0;
+    expr out_low = 0;
+    expr out_high = 0;
+    for (int i = 0; i < half_bytes; i++) {
+        in1_low += in1[i] * (0xFF ** i);
+        in1_high += in1[i + half_bytes] * (0xFF ** i);
+        out_low += out[i][0] + out[i + half_bytes][0];
+        out_high += out[i][1] + out[i + half_bytes][1];
+    }
+
+    col witness in2[2];
+    col witness main_step;
+    col witness multiplicity;
+    lookup_proves(
+        operation_bus_id,
+        [
+            main_step,
+            op,
+            in1_low,
+            in1_high,
+            in2_low + 256 * in2[0],
+            in2[1],
+            out_low,
+            out_high,
+            0
+        ],
+        multiplicity
+    );
+
+    range_check(in2[0], 0, 2**24-1);
+}

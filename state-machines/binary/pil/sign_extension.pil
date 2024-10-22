@@ -1,0 +1,88 @@
+require "std_lookup.pil"
+
+/*
+    Coprocessor in charge of performing sign extension operations:
+
+    ┼────────┼────────┼──────────┼
+    │  name  │  bits  │   op     │
+    ┼────────┼────────┼──────────┼
+    │  SE_B  │   32   │   0x23   │
+    │  SE_H  │   32   │   0x24   │
+    │  SE_W  │   32   │   0x25   │
+    ┼────────┼────────┼──────────┼
+
+    Examples:
+    ======================================= 
+
+    SE_B
+    input        input[0]   sign_bit    input[1]    output   
+    ------------------------------------------------------------
+    0xd72678a7    0x27          1       0xd72678    0xFFFFFFa7 (0xa7 & 0x80 = 0x80)  
+    ------------------------------------------------------------
+
+    SE_H
+    input        input[0]   sign_bit    input[1]    output   
+    ------------------------------------------------------------
+    0x443370bc    0x70bc        0       0x4433      0x000070bc (0x70 & 0x80 = 0x00)  
+    ------------------------------------------------------------
+
+    SE_W
+    input         input[0]   sign_bit    input[1]    output   
+    ------------------------------------------------------------
+    0x8a3f7a40    0x7a40         1       0xa3f       0x8a3f7a40 (0x8a & 0x80 = 0x80)  
+    ------------------------------------------------------------
+*/
+
+const int SIGN_EXTENSION_ID = 22;
+
+airtemplate SignExtension(const int N = 2**18, const int operation_bus_id = SIGN_EXTENSION_ID) {
+
+    col witness sel_8;
+    col witness sel_16;
+    expr sel_32 = 1 - sel_8 - sel_16;
+    col witness input[2];
+    col witness sign_bit;
+
+    // Constraints to check the correctness of each sign extension operation
+    sel_8 * (1 - sel_8) === 0;
+    sel_16 * (1 - sel_16) === 0;
+    sel_8 * sel_16 === 0;
+    sign_bit * (1 - sign_bit) === 0;
+
+    expr bit_offset = sel_8 * 2**7 + sel_16 * 2**15 + sel_32 * 2**31;
+    expr padding = sel_8 * 0xFFFFFF00 + sel_16 * 0xFFFF0000;
+    expr factor_32 = sel_32 * 2**16;
+    expr factor = sel_8 * 2**8 + sel_16 * 2**16 + factor_32;
+    expr input_low  = input[0] + sign_bit * bit_offset +
+                      input[1] * factor;
+    expr output_low = input[0] + sign_bit * (bit_offset + padding) +
+                      input[1] * factor_32;
+
+    int id_range_24 = range_check_id(0, 2**24-1);
+    int id_range_16 = range_check_id(0, 2**16-1);
+    int id_range_15 = range_check_id(0, 2**15-1);
+    int id_range_7 = range_check_id(0, 2**7-1);
+
+    range_check_dynamic(input[0], id_range_7 * sel_8 + id_range_15 * sel_16 + id_range_16 * sel_32);
+    range_check_dynamic(input[1], id_range_24 * sel_8 + id_range_16 * sel_16 + id_range_15 * sel_32);
+
+    // Constraints to make sure that this component is called from the main component
+    col witness in2_low;
+    col witness main_step;
+    col witness multiplicity;
+    lookup_proves(
+        operation_bus_id,
+        [
+            main_step,
+            sel_8 * 0x23 + sel_16 * 0x24 + sel_32 * 0x25,
+            input_low,
+            0,
+            in2_low,
+            0,
+            output_low,
+            sign_bit * 0xFFFFFFFF,
+            0
+        ],
+        multiplicity
+    );
+}

@@ -8,20 +8,15 @@ require "constants.pil"
 // SRA     (OP:0x0f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
 // SLL_W   (OP:0x1d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21  
 // SRL_W   (OP:0x1e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19
-// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20
-// SE_B    (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11
-// SE_H    (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12
-// SE_W    (OP:0x25)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22
+// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20        => 2^22
 
-const int BINARY_EXTENSION_TABLE_ID = 124;
+const int SHIFT_TABLE_ID = 124;
 
-airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 0) {
+airtemplate ShiftTable(const int N = 2**22, const int disable_fixed = 0) {
     
     #pragma memory m1 start
 
     const int SE_MASK_32 = 0xFFFFFFFF00000000;
-    const int SE_MASK_16 = 0xFFFFFFFFFFFF0000;
-    const int SE_MASK_8 = 0xFFFFFFFFFFFFFF00;
 
     const int SIGN_32_BIT = 0x80000000;
     const int SIGN_BYTE = 0x80;
@@ -57,10 +52,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     0:(P2_11*3)]...;                    
 
     col fixed OP = [0x0d:P2_19, 0x0e:P2_19, 0x0f:P2_19,     // SLL, SRL, SRA
-                    0x1d:P2_19, 0x1e:P2_19, 0x1f:P2_19,     // SLL_W, SRL_W, SRA_W
-                    0x23:P2_11, 0x24:P2_11, 0x25:P2_11]...; // SE_B, SE_H, SE_W
-
-    col fixed OP_IS_SHIFT = [1:(P2_19*6), 0:(P2_11*3)]...;
+                    0x1d:P2_19, 0x1e:P2_19, 0x1f:P2_19]...; // SLL_W, SRL_W, SRA_W
 
     #pragma timer t1 end
     #pragma timer t2 start
@@ -72,7 +64,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
 
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        int [op, offset, a, b, op_is_shift] = [OP[i], OFFSET[i], A[i], B[i], OP_IS_SHIFT[i]];
+        int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int _out = 0;
         const int _a = a << (8*offset);
         switch (op) {
@@ -93,6 +85,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     }
                 }
             }
+
             case 0x1d: // SLL_W
                 if (offset >= 4) {
                     // last most significant bytes are ignored because it's 32-bit operation
@@ -131,37 +124,6 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     }
                 }
 
-            case 0x23: // SE_B
-                if (offset == 0) {
-                    // the most significant bit of first byte determines the sign extend
-                    _out = (a & SIGN_BYTE) ? a | SE_MASK_8 : a
-                } else {
-                    // the rest of the bytes are ignored
-                    _out = 0;
-                }
-
-            case 0x24: // SE_H
-                if (offset == 0) {            
-                    // fist byte not define the sign extend, but participate of result
-                    _out = a;
-                } else if (offset == 1) {
-                    // the most significant bit of second byte determines the sign extend
-                    _out = (a & SIGN_BYTE) ? _a | SE_MASK_16 : _a
-                } else {
-                    // the rest of the bytes are ignored
-                    _out = 0;
-                }
-
-            case 0x25: // SE_W
-                if (offset <= 3) {
-                    _out = _a;
-                    if (offset == 3) {
-                        if (a & SIGN_BYTE) {
-                            // the most significant bit of fourth byte determines the sign extend
-                            _out = _out | SE_MASK_32
-                        }
-                    }
-                }
             default:
                 error(`Invalid operation ${op}`);
         }
@@ -170,11 +132,11 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
         const int _c1 = (_out >> 32) & MASK_32;
         C0[i] = _c0;
         C1[i] = _c1;
-        log(`T ${op},${offset},${a},${b},${_c0},${_c1},${op_is_shift},${i},${_out}`)
+        log(`T ${i},${op},${offset},${a},${b},${_c0},${_c1},${_out}`)
     }
     #pragma timer t2 end
     #pragma timer tt end
 
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, OP_IS_SHIFT], multiplicity);
+    lookup_proves(SHIFT_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
     #pragma memory m1 end
 }
