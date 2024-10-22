@@ -102,9 +102,10 @@ macro_rules! define_ops {
 		/// All relevant metadata associated with the operation can be efficiently accessed via
 		/// the const methods on this enum.
         #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+        #[repr(u8)]
         pub enum ZiskOp {
             $(
-                $name,
+                $name = $code,
             )*
         }
 

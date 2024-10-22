@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use crate::BinaryExtensionTableSM;
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -16,7 +16,7 @@ use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
-use zisk_core::ZiskRequiredOperation;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -108,7 +108,47 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     }
 
     pub fn operations() -> Vec<u8> {
-        vec![0x0d, 0x0e, 0x0f, 0x1d, 0x1e, 0x1f, 0x23, 0x24, 0x25]
+        vec![
+            ZiskOp::Sll.code(),
+            ZiskOp::Srl.code(),
+            ZiskOp::Sra.code(),
+            ZiskOp::SllW.code(),
+            ZiskOp::SrlW.code(),
+            ZiskOp::SraW.code(),
+            ZiskOp::SignExtendB.code(),
+            ZiskOp::SignExtendH.code(),
+            ZiskOp::SignExtendW.code(),
+        ]
+    }
+
+    fn opcode_is_shift(opcode: ZiskOp) -> bool {
+        match opcode {
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SllW |
+            ZiskOp::SrlW |
+            ZiskOp::SraW => true,
+
+            ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
+
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+        }
+    }
+
+    fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
+        match opcode {
+            ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
+
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SignExtendB |
+            ZiskOp::SignExtendH |
+            ZiskOp::SignExtendW => false,
+
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+        }
     }
 
     pub fn process_slice(
@@ -119,21 +159,19 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         // Get the opcode
         let op = operation.opcode;
 
+        // Get a ZiskOp from the code
+        let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
+
         // Create an empty trace
         let mut row =
             BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
-        let op_is_shift = (op == 0x0d) ||
-            (op == 0x0e) ||
-            (op == 0x0f) ||
-            (op == 0x1d) ||
-            (op == 0x1e) ||
-            (op == 0x1f);
+        let op_is_shift = Self::opcode_is_shift(opcode);
         row.op_is_shift = F::from_bool(op_is_shift);
 
         // Set if the opcode is a shift word operation
-        let op_is_shift_word = (op == 0x1d) || (op == 0x1e) || (op == 0x1f);
+        let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
         // Detect if this is a sign extend operation
         let a = if op_is_shift { operation.a } else { operation.b };
@@ -165,138 +203,142 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
 
         // Calculate output based on opcode
-        match operation.opcode {
-                0x0d /* SLL */ => {
-                    for j in 0..8 {
-                        let bits_to_shift = b_low + 8*j as u64;
-                        let out = if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x0e /* SRL */ => {
-                    for j in 0..8 {
-                        let out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x0f /* SRA */ => {
-                    for j in 0..8 {
-                        let mut out = ((a_bytes[j] as u64) << (8*j as u64)) >> b_low;
-                        if j == 7 {
-                            // most significant bit of most significant byte define if negative or not
-                            // if negative then add b bits one on the left
-                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out |= MASK_64 << (64 - b_low);
-                            }
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x1d /* SLL_W */ => {
-                    for j in 0..8 {
-                        let mut out: u64;
-                        if j >= 4 {
-                            out = 0;
-                        }
-                        else {
-                            out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
-                            if (out & SIGN_32_BIT) != 0 {
-                                out |= SE_MASK_32;
-                            }
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x1e /* SRL_W */ => {
-                    for j in 0..8 {
-                        let mut out: u64;
-                        if j >= 4 {
-                            out = 0;
-                        } else {
-                            out = (((a_bytes[j] as u64) << (8 * j as u64)) >> b_low) & MASK_32;
-                            if (out & SIGN_32_BIT) != 0 {
-                                out |= SE_MASK_32;
-                            }
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x1f /* SRA_W */ => {
-                    for j in 0..8 {
-                        let mut out: u64;
-                        if j >= 4 {
-                            out = 0;
-                        } else {
-                            out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
-                            if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                    out |= MASK_64 << (32 - b_low);
-                            }
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x23 /* SE_B */ => {
-                    for j in 0..8 {
-                        let out: u64;
-                        if j == 0 {
-                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out = (a_bytes[j] as u64) | SE_MASK_8;
-                            } else {
-                                out = a_bytes[j] as u64;
-                            }
-                        } else {
-                            out = 0;
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x24 /* SE_H */ => {
-                    for j in 0..8 {
-                        let out: u64;
-                        if j == 0 {
-                            out = a_bytes[j] as u64;
-                        } else if j == 1 {
-                            if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out = (a_bytes[j] as u64) | SE_MASK_16;
-                            } else {
-                                out = a_bytes[j] as u64;
-                            }
-                        } else {
-                            out = 0;
-                        }
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-
-                0x25 /* SE_W */ => {
-                    for j in 0..4 {
-                        let mut out = (a_bytes[j] as u64) << (8 * j as u64);
-                        if j == 3 &&
-                             ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                                out |= SE_MASK_32;
-                            }
-
-                        t_out[j][0] = out & 0xffffffff;
-                        t_out[j][1] = (out >> 32) & 0xffffffff;
-                    }
-                },
-                _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", operation.opcode),
+        let binary_extension_table_op: BinaryExtensionTableOp;
+        match opcode {
+            ZiskOp::Sll => {
+                binary_extension_table_op = BinaryExtensionTableOp::Sll;
+                for j in 0..8 {
+                    let bits_to_shift = b_low + 8 * j as u64;
+                    let out =
+                        if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
             }
+            ZiskOp::Srl => {
+                binary_extension_table_op = BinaryExtensionTableOp::Srl;
+                for j in 0..8 {
+                    let out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::Sra => {
+                binary_extension_table_op = BinaryExtensionTableOp::Sra;
+                for j in 0..8 {
+                    let mut out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
+                    if j == 7 {
+                        // most significant bit of most significant byte define if negative or not
+                        // if negative then add b bits one on the left
+                        if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                            out |= MASK_64 << (64 - b_low);
+                        }
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SllW => {
+                binary_extension_table_op = BinaryExtensionTableOp::SllW;
+                for j in 0..8 {
+                    let mut out: u64;
+                    if j >= 4 {
+                        out = 0;
+                    } else {
+                        out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
+                        if (out & SIGN_32_BIT) != 0 {
+                            out |= SE_MASK_32;
+                        }
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SrlW => {
+                binary_extension_table_op = BinaryExtensionTableOp::SrlW;
+                for j in 0..8 {
+                    let mut out: u64;
+                    if j >= 4 {
+                        out = 0;
+                    } else {
+                        out = (((a_bytes[j] as u64) << (8 * j as u64)) >> b_low) & MASK_32;
+                        if (out & SIGN_32_BIT) != 0 {
+                            out |= SE_MASK_32;
+                        }
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SraW => {
+                binary_extension_table_op = BinaryExtensionTableOp::SraW;
+                for j in 0..8 {
+                    let mut out: u64;
+                    if j >= 4 {
+                        out = 0;
+                    } else {
+                        out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
+                        if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                            out |= MASK_64 << (32 - b_low);
+                        }
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SignExtendB => {
+                binary_extension_table_op = BinaryExtensionTableOp::SignExtendB;
+                for j in 0..8 {
+                    let out: u64;
+                    if j == 0 {
+                        if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                            out = (a_bytes[j] as u64) | SE_MASK_8;
+                        } else {
+                            out = a_bytes[j] as u64;
+                        }
+                    } else {
+                        out = 0;
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SignExtendH => {
+                binary_extension_table_op = BinaryExtensionTableOp::SignExtendH;
+                for j in 0..8 {
+                    let out: u64;
+                    if j == 0 {
+                        out = a_bytes[j] as u64;
+                    } else if j == 1 {
+                        if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                            out = (a_bytes[j] as u64) | SE_MASK_16;
+                        } else {
+                            out = a_bytes[j] as u64;
+                        }
+                    } else {
+                        out = 0;
+                    }
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            ZiskOp::SignExtendW => {
+                binary_extension_table_op = BinaryExtensionTableOp::SignExtendW;
+                for j in 0..4 {
+                    let mut out = (a_bytes[j] as u64) << (8 * j as u64);
+                    if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                        out |= SE_MASK_32;
+                    }
+
+                    t_out[j][0] = out & 0xffffffff;
+                    t_out[j][1] = (out >> 32) & 0xffffffff;
+                }
+            }
+            _ => panic!(
+                "BinaryExtensionSM::process_slice() found invalid opcode={}",
+                operation.opcode
+            ),
+        }
 
         // Convert the trace output to field elements
         for j in 0..8 {
@@ -309,7 +351,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
             let row = BinaryExtensionTableSM::<F>::calculate_table_row(
-                op,
+                binary_extension_table_op,
                 i as u64,
                 *a_byte as u64,
                 in2_low,
@@ -395,7 +437,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let padding_size = air.num_rows() - operations.len();
         for i in 0..8 {
             let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::<F>::calculate_table_row(0x25, i, 0, 0);
+            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+                BinaryExtensionTableOp::SignExtendW,
+                i,
+                0,
+                0,
+            );
             multiplicity_table[row as usize] += multiplicity;
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
