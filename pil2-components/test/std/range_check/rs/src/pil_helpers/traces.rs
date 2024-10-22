@@ -27,6 +27,10 @@ trace!(MultiRangeCheck20Row, MultiRangeCheck20Trace<F> {
  a: [F; 2], sel: [F; 2], range_sel: [F; 2],
 });
 
+trace!(RangeCheckDynamic0Row, RangeCheckDynamic0Trace<F> {
+ colu: F, sel_7: F, sel_8: F, sel_16: F, sel_17: F,
+});
+
 trace!(U8Air0Row, U8Air0Trace<F> {
  mul: F,
 });
@@ -36,5 +40,5 @@ trace!(U16Air0Row, U16Air0Trace<F> {
 });
 
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 19],
+ mul: [F; 21],
 });

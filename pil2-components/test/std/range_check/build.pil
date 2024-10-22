@@ -1,5 +1,6 @@
 require "range_check.pil";
 require "multi_range_check.pil";
+require "range_check_dynamic.pil";
 
 airgroup RangeCheck3 {
     RangeCheck3();
@@ -21,4 +22,8 @@ airgroup MultiRangeCheck1 {
 
 airgroup MultiRangeCheck2 {
     MultiRangeCheck2();
+}
+
+airgroup RangeCheckDynamic {
+    RangeCheckDynamic();
 }

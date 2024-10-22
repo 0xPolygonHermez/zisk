@@ -1,0 +1,20 @@
+require "std_range_check.pil";
+
+airtemplate RangeCheckDynamic(const int N = 2**3) {
+
+    col witness colu;
+    col witness sel_7, sel_8, sel_16, sel_17;
+
+    int id_range_7 = range_check_id(0, 2**7-1);
+    int id_range_8 = range_check_id(0, 2**8-1);
+    assert(id_range_8 == OPIDS[0]);
+    int id_range_8_2 = range_check_id(0, 2**8-1);
+    assert(id_range_8_2 == id_range_8);
+    int id_range_17 = range_check_id(0, 2**17-1);
+    int id_range_16 = range_check_id(0, 2**16-1);
+    assert(id_range_16 == OPIDS[1]);
+    int id_range_7_2 = range_check_id(0, 2**7-1);
+    assert(id_range_7_2 == id_range_7);
+
+    range_check_dynamic(colu, id_range_7 * sel_7 + id_range_8 * sel_8 + id_range_16 * sel_16 + id_range_17 * sel_17);
+};
