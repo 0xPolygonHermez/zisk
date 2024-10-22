@@ -36,5 +36,5 @@ trace!(U16Air0Row, U16Air0Trace<F> {
 });
 
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 15],
+ mul: [F; 19],
 });
