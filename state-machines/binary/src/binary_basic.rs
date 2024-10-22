@@ -229,7 +229,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_byte as u64,
                         b_byte as u64,
@@ -273,7 +273,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_byte as u64,
                         b_byte as u64,
@@ -380,7 +380,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -425,7 +425,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -479,7 +479,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -533,7 +533,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
-                            binary_basic_table_op.clone()
+                            binary_basic_table_op
                         },
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -561,7 +561,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::<F>::calculate_table_row(
-                        binary_basic_table_op.clone(),
+                        binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         0,
@@ -588,7 +588,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::<F>::calculate_table_row(
-                        binary_basic_table_op.clone(),
+                        binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         0,
@@ -615,7 +615,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::<F>::calculate_table_row(
-                        binary_basic_table_op.clone(),
+                        binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         0,

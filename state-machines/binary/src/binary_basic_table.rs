@@ -146,11 +146,10 @@ impl<F: Field> BinaryBasicTableSM<F> {
         // Calculate the different row offset contributors, according to the PIL
         let offset_a: u64 = a;
         let offset_b: u64 = b * P2_8;
-        let offset_last: u64 = if Self::opcode_has_last(opcode.clone()) { last * P2_16 } else { 0 };
-        let offset_cin: u64 = if Self::opcode_has_cin(opcode.clone()) { cin * P2_17 } else { 0 };
-        let offset_result_is_a: u64 =
-            if Self::opcode_result_is_a(opcode.clone()) { P2_18 } else { 0 }; // TODO: Should we add it only if c == a?
-        let offset_opcode: u64 = Self::offset_opcode(opcode.clone());
+        let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
+        let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
+        let offset_result_is_a: u64 = if Self::opcode_result_is_a(opcode) { P2_18 } else { 0 }; // TODO: Should we add it only if c == a?
+        let offset_opcode: u64 = Self::offset_opcode(opcode);
 
         offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
         //assert!(row < self.num_rows as u64);
