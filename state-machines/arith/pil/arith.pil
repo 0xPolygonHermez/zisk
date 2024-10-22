@@ -227,7 +227,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness range_ab;
     col witness range_cd;
 
-    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, range_ab, range_cd);
+    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, secondary_res, range_ab, range_cd);
 
     // 0 - a1/c1
     // 1 - b1/d1

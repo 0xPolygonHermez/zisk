@@ -170,9 +170,13 @@ airtemplate ArithTable(int N = 2**6) {
     lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES, 0, 0]);
 }
 
-function arith_table_assumes( const expr op, const expr m32, const expr div, const expr na, const expr nb,
-                              const expr np, const expr nr, const expr sext, const expr range_ab, const expr range_cd) {
+function arith_table_assumes( const expr op, const expr flag_m32, const expr flag_div, const expr flag_na,
+                              const expr flag_nb, const expr flag_np, const expr flag_nr, const expr flag_sext,
+                              const expr flag_secondary_res, const expr range_ab, const expr range_cd) {
+
+    // TODO: #pragma binary flag_m32 => check any constraint on compilation time
     // TODO: define rule for empty rows
-    lookup_assumes(ARITH_TABLE_ID, cols: [ op, m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext,
-                                           range_ab, range_cd]);
+    lookup_assumes(ARITH_TABLE_ID, cols: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
+                                           16 * flag_np + 32 * flag_nr + 64 * flag_sext +
+                                           128 * flag_secondary_res, range_ab, range_cd]);
 }
