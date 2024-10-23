@@ -43,7 +43,7 @@ pub struct EmuOptions {
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
     /// Log the output to console
-    #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
+    #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
     pub log_output: bool,
     /// Trace every this number of steps
     pub trace_steps: Option<u64>,
