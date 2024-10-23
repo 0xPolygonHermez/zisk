@@ -6,7 +6,7 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
@@ -30,6 +30,8 @@ pub struct BinaryBasicSM<F> {
 
     // Secondary State machines
     binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+
+    sctx: Arc<SetupCtx>,
 }
 
 #[derive(Debug)]
@@ -42,12 +44,14 @@ impl<F: Field> BinaryBasicSM<F> {
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
         binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_basic = Self {
             wcm: wcm.clone(),
+            sctx,
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -736,7 +740,7 @@ impl<F: Field> BinaryBasicSM<F> {
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
+impl<F: Field + Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
@@ -754,6 +758,8 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
+
+                let sctx = self.sctx.clone();
 
                 scope.spawn(move |scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
@@ -773,6 +779,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                     );
 
                     let air_instance = AirInstance::new(
+                        sctx,
                         BINARY_AIRGROUP_ID,
                         BINARY_AIR_IDS[0],
                         None,

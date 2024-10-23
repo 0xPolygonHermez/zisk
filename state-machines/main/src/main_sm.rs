@@ -60,6 +60,8 @@ pub struct MainSM<F: PrimeField> {
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
+
+    sctx: Arc<SetupCtx>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -86,6 +88,7 @@ impl<F: PrimeField> MainSM<F> {
     pub fn new(
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
@@ -122,6 +125,7 @@ impl<F: PrimeField> MainSM<F> {
             mem_sm: mem_sm.clone(),
             binary_sm: binary_sm.clone(),
             arith_sm: arith_sm.clone(),
+            sctx,
         });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
@@ -325,7 +329,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
-            Some(AirInstance::new(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0], Some(segment_id), buffer));
+            Some(AirInstance::new(self.sctx.clone(), MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0], Some(segment_id), buffer));
     }
 
     fn prove_binary(
@@ -355,7 +359,7 @@ impl<F: PrimeField> MainSM<F> {
         timer_start_debug!(CREATE_AIR_INSTANCE);
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
-            Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
+            Some(AirInstance::new(self.sctx.clone(), BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
         timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
     }
 
@@ -381,6 +385,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
+            self.sctx.clone(),
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS[0],
             Some(segment_id),
