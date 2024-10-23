@@ -890,5 +890,5 @@ pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_pubout(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_pubout(ctx.a, ctx.b);
-    //println!("opc_pubout() a={} b={}", ctx.a, ctx.b);
+    println!("public ${} = {:#010x}", ctx.a, ctx.b);
 }

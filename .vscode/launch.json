@@ -32,6 +32,31 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'ziskemu hello_world'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ziskemu"
+                ],
+                "filter": {
+                    "name": "ziskemu",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-e",
+                "/Users/jbaylina/git/zisk/hello_world/target/riscv64ima-polygon-ziskos-elf/debug/sha_hasher",
+                "-i",
+                "/Users/jbaylina/git/zisk/hello_world/build/input.bin",
+                "-c",
+                "-m",
+                "-x",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'riscv2zisk'",
             "cargo": {
                 "args": [
