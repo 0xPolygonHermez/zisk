@@ -1443,7 +1443,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("reg", 1, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set reg1 to output data length read at OUTPUT_ADDR"));
+    zib.verbose("Set reg1 to output data length read at OUTPUT_ADDR");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1455,7 +1455,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("reg", 2, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set reg2 to 0"));
+    zib.verbose("Set reg2 to 0");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1467,7 +1467,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set reg3 to OUTPUT_ADDR + 4"));
+    zib.verbose("Set reg3 to OUTPUT_ADDR + 4");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1479,7 +1479,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("eq").unwrap();
     zib.store("none", 0, false, false);
     zib.j(20, 4);
-    zib.verbose(&format!("If reg1==reg2 jumpt to end"));
+    zib.verbose("If reg1==reg2 jumpt to end");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1492,7 +1492,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("none", 0, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set c to mem(output_data[index]), a=index"));
+    zib.verbose("Set c to mem(output_data[index]), a=index");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1504,7 +1504,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("pubout").unwrap();
     zib.store("none", 0, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Public output, set c to output_data[index], a=index"));
+    zib.verbose("Public output, set c to output_data[index], a=index");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1516,7 +1516,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("add").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set reg3 to reg3 + 4"));
+    zib.verbose("Set reg3 to reg3 + 4");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1528,7 +1528,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("add").unwrap();
     zib.store("reg", 2, false, false);
     zib.j(4, -16);
-    zib.verbose(&format!("Set reg2 to reg2 + 1"));
+    zib.verbose("Set reg2 to reg2 + 1");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
