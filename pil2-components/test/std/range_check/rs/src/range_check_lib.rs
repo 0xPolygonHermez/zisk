@@ -9,7 +9,8 @@ use p3_goldilocks::Goldilocks;
 use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
-    RangeCheckDynamic, MultiRangeCheck1, MultiRangeCheck2, Pilout, RangeCheck1, RangeCheck2, RangeCheck3, RangeCheck4,
+    RangeCheckMix, RangeCheckDynamic1, RangeCheckDynamic2, MultiRangeCheck1, MultiRangeCheck2, Pilout, RangeCheck1,
+    RangeCheck2, RangeCheck3, RangeCheck4,
 };
 
 pub struct RangeCheckWitness<F: PrimeField> {
@@ -20,7 +21,9 @@ pub struct RangeCheckWitness<F: PrimeField> {
     pub range_check4: OnceCell<Arc<RangeCheck4<F>>>,
     pub multi_range_check1: OnceCell<Arc<MultiRangeCheck1<F>>>,
     pub multi_range_check2: OnceCell<Arc<MultiRangeCheck2<F>>>,
-    pub range_check_dynamic: OnceCell<Arc<RangeCheckDynamic<F>>>,
+    pub range_check_dynamic1: OnceCell<Arc<RangeCheckDynamic1<F>>>,
+    pub range_check_dynamic2: OnceCell<Arc<RangeCheckDynamic2<F>>>,
+    pub range_check_mix: OnceCell<Arc<RangeCheckMix<F>>>,
     pub std_lib: OnceCell<Arc<Std<F>>>,
 }
 
@@ -46,7 +49,9 @@ where
             range_check4: OnceCell::new(),
             multi_range_check1: OnceCell::new(),
             multi_range_check2: OnceCell::new(),
-            range_check_dynamic: OnceCell::new(),
+            range_check_dynamic1: OnceCell::new(),
+            range_check_dynamic2: OnceCell::new(),
+            range_check_mix: OnceCell::new(),
             std_lib: OnceCell::new(),
         }
     }
@@ -61,7 +66,9 @@ where
         let range_check4 = RangeCheck4::new(wcm.clone(), std_lib.clone());
         let multi_range_check1 = MultiRangeCheck1::new(wcm.clone(), std_lib.clone());
         let multi_range_check2 = MultiRangeCheck2::new(wcm.clone(), std_lib.clone());
-        let range_check_dynamic = RangeCheckDynamic::new(wcm.clone(), std_lib.clone());
+        let range_check_dynamic1 = RangeCheckDynamic1::new(wcm.clone(), std_lib.clone());
+        let range_check_dynamic2 = RangeCheckDynamic2::new(wcm.clone(), std_lib.clone());
+        let range_check_mix = RangeCheckMix::new(wcm.clone(), std_lib.clone());
 
         let _ = self.wcm.set(wcm);
         let _ = self.range_check1.set(range_check1);
@@ -70,7 +77,9 @@ where
         let _ = self.range_check4.set(range_check4);
         let _ = self.multi_range_check1.set(multi_range_check1);
         let _ = self.multi_range_check2.set(multi_range_check2);
-        let _ = self.range_check_dynamic.set(range_check_dynamic);
+        let _ = self.range_check_dynamic1.set(range_check_dynamic1);
+        let _ = self.range_check_dynamic2.set(range_check_dynamic2);
+        let _ = self.range_check_mix.set(range_check_mix);
         let _ = self.std_lib.set(std_lib);
     }
 }
@@ -97,7 +106,9 @@ where
         self.range_check4.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.multi_range_check1.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.multi_range_check2.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.range_check_dynamic.get().unwrap().execute(pctx, ectx, sctx);
+        self.range_check_dynamic1.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.range_check_dynamic2.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
+        self.range_check_mix.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
     }
 
     fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {

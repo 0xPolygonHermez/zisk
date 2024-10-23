@@ -1,13 +1,42 @@
+require "std_range_check.pil";
 require "range_check.pil";
 require "multi_range_check.pil";
 require "range_check_dynamic.pil";
 
+airtemplate RangeCheckMix(const int N = 2**6) {
+    col witness a[4];
+    col witness b[2];
+    col witness c[1];
+    col witness range_sel[5];
+
+    // First user interface
+    range_check(a[0], 0, 2**8-1);
+    range_check(a[1], 50, 2**7-1);
+    range_check(a[2], -1, 2**3);
+    range_check(a[3], -2**7+1, -50);
+
+    // Second user interface
+    multi_range_check(b[0], 0, 2**7-1, 0, 2**4-1, range_sel[0]);
+    multi_range_check(b[1], 2**5, 2**8-1, 2**8, 2**9-1, range_sel[1]);
+
+    // Third user interface
+    int id_range_1 = range_check_id(5225, 29023);
+    int id_range_2 = range_check_id(-8719, -7269);
+    int id_range_3 = range_check_id(-10, 10);
+    int id_range_4 = range_check_id(0, 2**8-1);
+    int id_range_5 = range_check_id(0, 2**7-1);
+
+    range_check_dynamic(c[0], id_range_1 * range_sel[2] + id_range_3 * range_sel[3] + id_range_5 * range_sel[4]);
+}
+
 airgroup RangeCheck3 {
     RangeCheck3();
 }
+
 airgroup RangeCheck2 {
     RangeCheck2();
 }
+
 airgroup RangeCheck1 {
     RangeCheck1();
 }
@@ -24,6 +53,14 @@ airgroup MultiRangeCheck2 {
     MultiRangeCheck2();
 }
 
-airgroup RangeCheckDynamic {
-    RangeCheckDynamic();
+airgroup RangeCheckDynamic1 {
+    RangeCheckDynamic1();
+}
+
+airgroup RangeCheckDynamic2 {
+    RangeCheckDynamic2();
+}
+
+airgroup RangeCheckMix {
+    RangeCheckMix();
 }

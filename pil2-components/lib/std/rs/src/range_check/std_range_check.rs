@@ -228,7 +228,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         let range = range_item.range;
 
         if self.mode.name == ModeName::Debug && !range.contains(value) {
-            log::error!("Value {} is not in the range [min,max] = {:?}", value, range,);
+            log::error!("Value {} is not in the range [min,max] = {}", value, range);
             panic!();
         }
 

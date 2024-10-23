@@ -271,16 +271,16 @@ private function range_validator(const int min, const int max) {
     if (min > max) {
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
-        error(`Min and max are the same, you should use a single value check instead: ${colu} == ${min}`);
+        error(`Min and max are the same, you should use a single value check instead: colu === ${min}`);
     } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
         const int diff = max - min + 1;
 
-        string diff_str = `(${colu} - ${min})`;
+        string diff_str = `(colu - ${min})`;
         for (int i = 1; i < diff; i = i + 1) {
-            diff_str = diff_str + `·(${colu} - ${min + i})`;
+            diff_str = diff_str + `·(colu - ${min + i})`;
         }
 
-        println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} == 0`);
+        println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} === 0`);
     } else if (max - min + 1 > MAX_RANGE_LEN) {
         error(`The range [${min}..${max}] is too big, the maximum range length is (PRIME - 1) / 2 = ${MAX_RANGE_LEN}`);
     } else if (max >= PRIME) {

@@ -58,6 +58,6 @@ airtemplate RangeCheck4(const int N = 2**6) {
     range_check(a6, -1, 2**3, sel1);  // One less than the minimum predefined
 
     // Negative
-    range_check(a7, min: -2**7+1, max: -50);
-    range_check(a8, min: -2**8+1, max: -127);
+    range_check(a7, -2**7+1, -50);
+    range_check(a8, -2**8+1, -127);
 };

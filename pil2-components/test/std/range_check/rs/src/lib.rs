@@ -6,7 +6,9 @@ mod range_check2;
 mod range_check3;
 mod range_check4;
 mod range_check_lib;
-mod range_check_dynamic;
+mod range_check_dynamic1;
+mod range_check_dynamic2;
+mod range_check_mix;
 
 pub use multi_range_check1::*;
 pub use multi_range_check2::*;
@@ -16,4 +18,6 @@ pub use range_check2::*;
 pub use range_check3::*;
 pub use range_check4::*;
 pub use range_check_lib::*;
-pub use range_check_dynamic::*;
+pub use range_check_dynamic1::*;
+pub use range_check_dynamic2::*;
+pub use range_check_mix::*;

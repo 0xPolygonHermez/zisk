@@ -8,31 +8,31 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{RangeCheckDynamic0Trace, RANGE_CHECK_DYNAMIC_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_AIR_IDS};
+use crate::{RangeCheckDynamic10Trace, RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS};
 
-pub struct RangeCheckDynamic<F: PrimeField> {
+pub struct RangeCheckDynamic1<F: PrimeField> {
     std_lib: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> RangeCheckDynamic<F>
+impl<F: PrimeField> RangeCheckDynamic1<F>
 where
     Standard: Distribution<F>,
 {
-    const MY_NAME: &'static str = "RngChDy ";
+    const MY_NAME: &'static str = "RngChDy1";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
-        let multi_range_check1 = Arc::new(Self { std_lib });
+        let range_check_dynamic1 = Arc::new(Self { std_lib });
 
         wcm.register_component(
-            multi_range_check1.clone(),
-            Some(RANGE_CHECK_DYNAMIC_AIRGROUP_ID),
-            Some(RANGE_CHECK_DYNAMIC_AIR_IDS),
+            range_check_dynamic1.clone(),
+            Some(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID),
+            Some(RANGE_CHECK_DYNAMIC_1_AIR_IDS),
         );
 
         // Register dependency relations
-        multi_range_check1.std_lib.register_predecessor();
+        range_check_dynamic1.std_lib.register_predecessor();
 
-        multi_range_check1
+        range_check_dynamic1
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
@@ -40,18 +40,18 @@ where
         let (buffer_size, _) = ectx
             .buffer_allocator
             .as_ref()
-            .get_buffer_info(&sctx, RANGE_CHECK_DYNAMIC_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_AIR_IDS[0])
+            .get_buffer_info(&sctx, RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0])
             .unwrap();
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance =
-            AirInstance::new(RANGE_CHECK_DYNAMIC_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_AIR_IDS[0], None, buffer);
+            AirInstance::new(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for RangeCheckDynamic<F>
+impl<F: PrimeField> WitnessComponent<F> for RangeCheckDynamic1<F>
 where
     Standard: Distribution<F>,
 {
@@ -65,21 +65,21 @@ where
     ) {
         let mut rng = rand::thread_rng();
 
-        log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheckDynamic", stage);
+        log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheckDynamic1", stage);
 
         if stage == 1 {
             let (buffer_size, offsets) = ectx
                 .buffer_allocator
                 .as_ref()
-                .get_buffer_info(&sctx, RANGE_CHECK_DYNAMIC_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_AIR_IDS[0])
+                .get_buffer_info(&sctx, RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0])
                 .unwrap();
 
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
             let num_rows =
-                pctx.pilout.get_air(RANGE_CHECK_DYNAMIC_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_AIR_IDS[0]).num_rows();
+                pctx.pilout.get_air(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0]).num_rows();
             let mut trace =
-                RangeCheckDynamic0Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                RangeCheckDynamic10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let range7 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 7) - 1), Some(false));
             let range8 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
