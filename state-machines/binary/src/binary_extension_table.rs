@@ -117,7 +117,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let owner = dctx.owner(instance_idx);
 
         let mut multiplicity_ = std::mem::take(&mut *multiplicity);
-        dctx.add_reduce_multiplicity(&mut multiplicity_, owner);
+        dctx.distribute_multiplicity(&mut multiplicity_, owner);
 
         if is_myne {
             // Create the prover buffer
