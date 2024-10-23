@@ -253,11 +253,11 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     // This call accumulates "expression" into "reference" expression and stores its last value to "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and doing the accumulation in Rust,
                     // TODO: GENERALIZE CALLS
-                    let (pol_id, subproofvalue_id) =
+                    let (pol_id, airgroupvalue_id) =
                         acc_hint_field::<F>(&sctx, &pctx, air_instance, gsum_hint, "reference", "result", "expression");
 
                     air_instance.set_commit_calculated(pol_id as usize);
-                    air_instance.set_subproofvalue_calculated(subproofvalue_id as usize);
+                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }
         }

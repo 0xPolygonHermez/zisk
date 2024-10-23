@@ -68,8 +68,10 @@ struct ParserParams
     uint32_t challengesOffset;
     uint32_t nPublicsUsed;
     uint32_t publicsOffset;
-    uint32_t nSubproofValuesUsed;
-    uint32_t subproofValuesOffset;
+    uint32_t nAirgroupValuesUsed;
+    uint32_t airgroupValuesOffset;
+    uint32_t nAirValuesUsed;
+    uint32_t airValuesOffset;
     uint32_t firstRow;
     uint32_t lastRow;
     uint32_t destDim;
@@ -87,7 +89,8 @@ struct ParserArgs
     uint16_t* cmPolsIds;
     uint16_t* challengesIds;
     uint16_t* publicsIds;
-    uint16_t* subproofValuesIds;
+    uint16_t* airgroupValuesIds;
+    uint16_t* airValuesIds;
     uint64_t nNumbers;
 };
 
@@ -112,7 +115,8 @@ public:
         if (expressionsBinArgsExpressions.cmPolsIds) delete[] expressionsBinArgsExpressions.cmPolsIds;
         if (expressionsBinArgsExpressions.challengesIds) delete[] expressionsBinArgsExpressions.challengesIds;
         if (expressionsBinArgsExpressions.publicsIds) delete[] expressionsBinArgsExpressions.publicsIds;
-        if (expressionsBinArgsExpressions.subproofValuesIds) delete[] expressionsBinArgsExpressions.subproofValuesIds;
+        if (expressionsBinArgsExpressions.airgroupValuesIds) delete[] expressionsBinArgsExpressions.airgroupValuesIds;
+        if (expressionsBinArgsExpressions.airValuesIds) delete[] expressionsBinArgsExpressions.airValuesIds;
 
         if (expressionsBinArgsConstraints.ops) delete[] expressionsBinArgsConstraints.ops;
         if (expressionsBinArgsConstraints.args) delete[] expressionsBinArgsConstraints.args;
@@ -121,7 +125,8 @@ public:
         if (expressionsBinArgsConstraints.cmPolsIds) delete[] expressionsBinArgsConstraints.cmPolsIds;
         if (expressionsBinArgsConstraints.challengesIds) delete[] expressionsBinArgsConstraints.challengesIds;
         if (expressionsBinArgsConstraints.publicsIds) delete[] expressionsBinArgsConstraints.publicsIds;
-        if (expressionsBinArgsConstraints.subproofValuesIds) delete[] expressionsBinArgsConstraints.subproofValuesIds;
+        if (expressionsBinArgsConstraints.airgroupValuesIds) delete[] expressionsBinArgsConstraints.airgroupValuesIds;
+        if (expressionsBinArgsConstraints.airValuesIds) delete[] expressionsBinArgsConstraints.airValuesIds;
     };
 
     /* Constructor */

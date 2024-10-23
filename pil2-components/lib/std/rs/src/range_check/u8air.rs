@@ -1,7 +1,6 @@
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
-use std::fmt::Display;
 use num_traits::ToPrimitive;
-use p3_field::PrimeField;
+use p3_field::{Field, PrimeField};
 
 use proofman::{get_hint_field_gc, WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -12,7 +11,7 @@ use std::sync::atomic::Ordering;
 const PROVE_CHUNK_SIZE: usize = 1 << 5;
 const NUM_ROWS: usize = 1 << 8;
 
-pub struct U8Air<F: Copy + Display> {
+pub struct U8Air<F: Field> {
     wcm: Arc<WitnessManager<F>>,
 
     // Parameters
@@ -133,7 +132,7 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
         let buffer = create_buffer_fast(buffer_size as usize);
 
         // Add a new air instance. Since U8Air is a table, only this air instance is needed
-        let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
+        let mut air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
 
         *self.mul_column.lock().unwrap() = get_hint_field::<F>(
             &sctx,

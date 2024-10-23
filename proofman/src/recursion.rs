@@ -52,6 +52,8 @@ pub fn generate_recursion_proof<F: Field>(
                 {
                     proves_out.push(proves[prover_idx]);
                 } else {
+                    let air_instance_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
+
                     timer_start_trace!(GET_SETUP);
                     let setup = sctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("Setup not found");
                     let p_setup: *mut c_void = (&setup.p_setup).into();
@@ -81,8 +83,6 @@ pub fn generate_recursion_proof<F: Field>(
                     let p_address = buffer.as_ptr() as *mut c_void;
 
                     timer_start_trace!(GENERATE_PROOF);
-
-                    let air_instance_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
 
                     let proof_type_str = match proof_type {
                         ProofType::Compressor => "compressor",
@@ -121,7 +121,7 @@ pub fn generate_recursion_proof<F: Field>(
             }
         }
         ProofType::Recursive2 => {
-            let n_airgroups = pctx.global_info.subproofs.len();
+            let n_airgroups = pctx.global_info.air_groups.len();
             let mut proves_recursive2: Vec<*mut c_void> = Vec::with_capacity(n_airgroups);
 
             for airgroup in 0..n_airgroups {
@@ -187,7 +187,7 @@ pub fn generate_recursion_proof<F: Field>(
                                     true => output_dir_path
                                         .join(format!(
                                             "proofs/recursive2_{}_{}_{}.json",
-                                            pctx.global_info.subproofs[airgroup],
+                                            pctx.global_info.air_groups[airgroup],
                                             j,
                                             j + 1
                                         ))
@@ -234,7 +234,7 @@ pub fn generate_recursion_proof<F: Field>(
             let challenges = (*challenges_guard).as_ptr() as *mut c_void;
 
             let mut stark_infos_recursive2 = Vec::new();
-            for (idx, _) in pctx.global_info.subproofs.iter().enumerate() {
+            for (idx, _) in pctx.global_info.air_groups.iter().enumerate() {
                 stark_infos_recursive2.push(sctx.get_setup(idx, 0).unwrap().p_setup.p_stark_info);
             }
 

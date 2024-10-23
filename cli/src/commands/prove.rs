@@ -58,9 +58,11 @@ impl ProveCmd {
 
         initialize_logger(self.verbose.into());
 
-        if !Path::new(&self.output_dir.join("proofs")).exists() {
-            fs::create_dir_all(self.output_dir.join("proofs")).unwrap();
+        if Path::new(&self.output_dir.join("proofs")).exists() {
+            fs::remove_dir_all(self.output_dir.join("proofs")).expect("Failed to remove the proofs directory");
         }
+
+        fs::create_dir_all(self.output_dir.join("proofs")).expect("Failed to create the proofs directory");
 
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(

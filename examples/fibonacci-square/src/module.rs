@@ -78,7 +78,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
             self.std_lib.range_check(F::from_canonical_u64(module), F::one(), range);
         }
 
-        let air_instance = AirInstance::new(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
+        let air_instance = AirInstance::new(sctx.clone(), MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
 
         self.std_lib.unregister_predecessor(pctx, None);

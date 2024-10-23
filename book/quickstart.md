@@ -26,7 +26,7 @@ public in1;
 public in2;
 public out;
 
-subproof Fibonacci(2**10) {
+airgroup Fibonacci(2**10) {
     col witness a,b;
 
     col fixed L1 = [1,0...];
@@ -40,7 +40,7 @@ subproof Fibonacci(2**10) {
 }
 ```
 
-In this code you are defining a PIL2 with a single subproof inside it. The subproof calculates the Fibonacci sequence and is defined to compute a unique type of Algebraic Intermediate Representation (from now on AIR) of 2<sup>10</sup> rows. The subproof has three public inputs `in1`, `in2` and `out`, has two witness columns `a` and `b` and two fixed (a.k.a. constant) columns `L1` and `LLAST`.
+In this code you are defining a PIL2 with a single airgroup inside it. The airgroup calculates the Fibonacci sequence and is defined to compute a unique type of Algebraic Intermediate Representation (from now on AIR) of 2<sup>10</sup> rows. The airgroup has three public inputs `in1`, `in2` and `out`, has two witness columns `a` and `b` and two fixed (a.k.a. constant) columns `L1` and `LLAST`.
 
 The fixed polynomials `L1` and `LLAST` are defined as `[1,0...]` and `[0...,1]` respectively. The first one is a polynomial that has a 1 in the first position and 0 in the rest of the positions. The second one is a polynomial that has a 0 in the first position and 1 in the rest of the positions.
 
@@ -122,9 +122,9 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             return;
         }
 
-        let subproof_id = proof_ctx.pilout.find_subproof_id_by_name("Fibonacci").expect("Subproof not found");
+        let airgroup_id = proof_ctx.pilout.find_airgroup_id_by_name("Fibonacci").expect("Airgroup not found");
         let air_id = 0;
-        let num_rows = proof_ctx.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize;
+        let num_rows = proof_ctx.pilout.air_groups[airgroup_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci { a: Goldilocks, b: Goldilocks });
         let mut fib = Fibonacci::new(num_rows);
@@ -137,7 +137,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        proof_ctx.add_trace_to_air_instance(subproof_id, air_id, fib).expect("Error adding trace to air instance");
+        proof_ctx.add_trace_to_air_instance(airgroup_id, air_id, fib).expect("Error adding trace to air instance");
     }
 }
 

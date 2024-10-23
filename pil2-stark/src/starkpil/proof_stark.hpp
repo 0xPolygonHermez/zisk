@@ -201,21 +201,23 @@ public:
     uint64_t nStages;
     uint64_t nFieldElements;
     uint64_t airId;
-    uint64_t subproofId;
+    uint64_t airgroupId;
     ElementType **roots;
     Fri<ElementType> fri;
     std::vector<std::vector<Goldilocks::Element>> evals;
-    std::vector<std::vector<Goldilocks::Element>> subproofValues;
+    std::vector<std::vector<Goldilocks::Element>> airgroupValues;
+    std::vector<std::vector<Goldilocks::Element>> airValues;
     Proofs(StarkInfo &starkInfo) :
         fri(starkInfo),
         evals(starkInfo.evMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-        subproofValues(starkInfo.nSubProofValues, std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero()))
+        airgroupValues(starkInfo.airgroupValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
+        airValues(starkInfo.airValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero()))
         {
             nStages = starkInfo.nStages + 1;
             roots = new ElementType*[nStages];
             nFieldElements = starkInfo.starkStruct.verificationHashType == "GL" ? HASH_SIZE : 1;
             airId = starkInfo.airId;
-            subproofId = starkInfo.subproofId;
+            airgroupId = starkInfo.airgroupId;
             for(uint64_t i = 0; i < nStages; i++)
             {
                 roots[i] = new ElementType[nFieldElements];
@@ -237,10 +239,17 @@ public:
         }
     }
 
-    void setSubproofValues(Goldilocks::Element *_subproofValues) {
-        for (uint64_t i = 0; i < subproofValues.size(); i++)
+    void setAirgroupValues(Goldilocks::Element *_airgroupValues) {
+        for (uint64_t i = 0; i < airgroupValues.size(); i++)
         {
-            std::memcpy(&subproofValues[i][0], &_subproofValues[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            std::memcpy(&airgroupValues[i][0], &_airgroupValues[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+        }
+    }
+
+    void setAirValues(Goldilocks::Element *_airValues) {
+        for (uint64_t i = 0; i < airValues.size(); i++)
+        {
+            std::memcpy(&airValues[i][0], &_airValues[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
         }
     }
 
@@ -249,7 +258,7 @@ public:
         ordered_json j = ordered_json::object();
 
         j["airId"] = airId;
-        j["subproofId"] = subproofId;
+        j["airgroupId"] = airgroupId;
         
         for(uint64_t i = 0; i < nStages; i++) {
             ordered_json json_root = ordered_json::array();
@@ -276,18 +285,31 @@ public:
         }
         j["evals"] = json_evals;
 
-        ordered_json json_subproofValues = ordered_json::array();
-        for (uint i = 0; i < subproofValues.size(); i++)
+        ordered_json json_airgroupValues = ordered_json::array();
+        for (uint i = 0; i < airgroupValues.size(); i++)
         {
             ordered_json element = ordered_json::array();
-            for (uint j = 0; j < subproofValues[i].size(); j++)
+            for (uint j = 0; j < airgroupValues[i].size(); j++)
             {
-                element.push_back(Goldilocks::toString(subproofValues[i][j]));
+                element.push_back(Goldilocks::toString(airgroupValues[i][j]));
             }
-            json_subproofValues.push_back(element);
+            json_airgroupValues.push_back(element);
         }
 
-        j["subproofValues"] = json_subproofValues;
+        j["airgroupValues"] = json_airgroupValues;
+
+        ordered_json json_airValues = ordered_json::array();
+        for (uint i = 0; i < airValues.size(); i++)
+        {
+            ordered_json element = ordered_json::array();
+            for (uint j = 0; j < airValues[i].size(); j++)
+            {
+                element.push_back(Goldilocks::toString(airValues[i][j]));
+            }
+            json_airValues.push_back(element);
+        }
+
+        j["airValues"] = json_airValues;
         
         j["queries"] = fri.QueriesP2json();
 
@@ -305,11 +327,11 @@ public:
     std::vector<ElementType> publics;
     
     uint64_t airId;
-    uint64_t subproofId;
+    uint64_t airgroupId;
 
     FRIProof(StarkInfo &starkInfo) : proof(starkInfo), publics(starkInfo.nPublics) {
         airId = starkInfo.airId;
-        subproofId = starkInfo.subproofId;
+        airgroupId = starkInfo.airgroupId;
     };
 };
 

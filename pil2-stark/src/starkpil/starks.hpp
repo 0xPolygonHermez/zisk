@@ -32,10 +32,10 @@ public:
     MerkleTreeType **treesFRI;
 
 public:
-    Starks(SetupCtx& setupCtx_) : setupCtx(setupCtx_)                                                   
+    Starks(SetupCtx& setupCtx_) : setupCtx(setupCtx_)                                    
     {
         treesGL = new MerkleTreeType*[setupCtx.starkInfo.nStages + 2];
-        treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, (Goldilocks::Element *)setupCtx.constPols.pConstTreeAddress);
+        if(setupCtx.constPols.pConstTreeAddress != nullptr) treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, (Goldilocks::Element *)setupCtx.constPols.pConstTreeAddress);
         for (uint64_t i = 0; i < setupCtx.starkInfo.nStages + 1; i++)
         {
             std::string section = "cm" + to_string(i + 1);
@@ -87,7 +87,8 @@ public:
     void addTranscript(TranscriptType &transcript, ElementType* buffer, uint64_t nElements);
     void getChallenge(TranscriptType &transcript, Goldilocks::Element& challenge);
 
-
+    void setConstTree(ConstPols &constPols);
+    
     // Following function are created to be used by the ffi interface
     void ffi_treesGL_get_root(uint64_t index, ElementType *dst);
 

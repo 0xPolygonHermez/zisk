@@ -244,6 +244,13 @@ void Starks<ElementType>::evmap(Goldilocks::Element *buffer, Goldilocks::Element
 }
 
 template <typename ElementType>
+void Starks<ElementType>::setConstTree(ConstPols &constPols)
+{
+    setupCtx.constPols = constPols;
+    treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, (Goldilocks::Element *)setupCtx.constPols.pConstTreeAddress);
+}
+
+template <typename ElementType>
 void Starks<ElementType>::getChallenge(TranscriptType &transcript, Goldilocks::Element &challenge)
 {
     transcript.getField((uint64_t *)&challenge);
@@ -308,6 +315,11 @@ void Starks<ElementType>::calculateQuotientPolynomial(StepsParams &params) {
 #else
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
+    if(setupCtx.constPols.pConstTreeAddress == nullptr) {
+        zklog.error("Const tree is not set");
+        exitProcess();
+        exit(-1);
+    }
     expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
 }
 

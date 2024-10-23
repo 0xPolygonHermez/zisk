@@ -76,7 +76,12 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         // }
         // log::info!("Result Fibonacci buffer: {:?}", result);
 
-        let air_instance = AirInstance::new(FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], Some(0), buffer);
+        let mut air_instance =
+            AirInstance::new(sctx.clone(), FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], Some(0), buffer);
+        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", F::from_canonical_u64(1));
+        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo2", F::from_canonical_u64(2));
+        air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", vec![F::from_canonical_u64(5); 3]);
+
         pctx.air_instance_repo.add_air_instance(air_instance);
 
         Ok(b)

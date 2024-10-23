@@ -135,7 +135,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-proofman-js
           token: ${{ secrets.ZISK_CI_TOKEN }}
-          ref: develop
+          ref: 0.0.2
           path: pil2-proofman-js
 
       - name: Install pil2-proofman-js dependencies
@@ -147,7 +147,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-compiler
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: develop
+          ref: feature/pilout_v2_airgroup
           path: pil2-compiler
 
       - name: Install pil2-compiler dependencies
@@ -179,6 +179,10 @@ jobs:
       - name: Modify Cargo.toml std permutation
         run: |
           sed -i 's/# *"pil2-components\/test\/std\/permutation\/rs"/"pil2-components\/test\/std\/permutation\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std connection
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/connection\/rs"/"pil2-components\/test\/std\/connection\/rs"/' ./Cargo.toml
 
       - name: Modify Cargo.toml std range-check
         run: |
@@ -235,6 +239,22 @@ jobs:
       - name: Generate PIL Helpers permutation
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/permutation/build/build.pilout --path ./pil2-components/test/std/permutation/rs/src -o
+        
+      - name: Create dir build connection
+        run: |
+          mkdir -p ./pil2-components/test/std/connection/build/
+
+      - name: Compile PIL connection
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/connection/connection.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/connection/build/build.pilout
+
+      - name: Generate setup connection
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/connection/build/build.pilout -b ./pil2-components/test/std/connection/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers connection
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/connection/build/build.pilout --path ./pil2-components/test/std/connection/rs/src -o
 
       - name: Create dir build range-check
         run: |
@@ -306,6 +326,18 @@ jobs:
       - name: Verify proof permutation
         run: |
           node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/permutation/build/provingKey -p ./pil2-components/test/std/permutation/build
+
+      - name: Verify constraints connection
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey
+
+      - name: Generate proof connection
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey --output-dir ./pil2-components/test/std/connection/build -d
+
+      - name: Verify proof connection
+        run: |
+          node pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build
 
       - name: Verify constraints range-check
         run: |

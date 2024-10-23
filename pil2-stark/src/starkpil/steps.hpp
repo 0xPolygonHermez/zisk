@@ -8,7 +8,8 @@ struct StepsParams
     Goldilocks::Element *pols;
     Goldilocks::Element *publicInputs;
     Goldilocks::Element *challenges;
-    Goldilocks::Element *subproofValues;
+    Goldilocks::Element *airgroupValues;
+    Goldilocks::Element *airValues;
     Goldilocks::Element *evals;
     Goldilocks::Element *xDivXSub;
 };

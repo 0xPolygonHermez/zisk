@@ -20,8 +20,8 @@
 //         println!("");
 
 //         let pilout = PilOutProxy::new(&self.pilout.display().to_string(), false)?;
-//         for (subproof_id, _subproof) in pilout.subproofs.iter().enumerate() {
-//             let output = match trace_setup_handler(&pilout, subproof_id) {
+//         for (airgroup_id, _airgroup) in pilout.air_groups.iter().enumerate() {
+//             let output = match trace_setup_handler(&pilout, airgroup_id) {
 //                 Ok(output) => output,
 //                 Err(e) => return Err(e),
 //             };

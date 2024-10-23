@@ -15,15 +15,6 @@
 
 class ConstPols 
 {
-private:
-    StarkInfo& starkInfo;
-    uint64_t N;
-    uint64_t NExtended;
-
-    uint64_t nFieldElements;
-    uint64_t merkleTreeArity;
-    uint64_t merkleTreeCustom;
-
 public:
     Goldilocks::Element *pConstPolsAddress = nullptr;
     Goldilocks::Element *pConstPolsAddressExtended;
@@ -34,7 +25,36 @@ public:
     Goldilocks::Element *x_n = nullptr; // Needed for PIL1 compatibility
     Goldilocks::Element *x_2ns = nullptr; // Needed for PIL1 compatibility
 
-    ConstPols(StarkInfo& starkInfo_, Goldilocks::Element* z, Goldilocks::Element* constVals): starkInfo(starkInfo_) {        
+    ConstPols(StarkInfo& starkInfo, std::string constPolsFile, bool calculateTree = true) {
+
+        loadConstPols(starkInfo, constPolsFile);
+
+        if(calculateTree) {
+           calculateConstTree(starkInfo);
+        }
+
+        computeZerofier(starkInfo);
+
+        computeX(starkInfo);
+
+        computeConnectionsX(starkInfo); // Needed for PIL1 compatibility
+    }
+
+    ConstPols(StarkInfo& starkInfo, std::string constPolsFile, std::string constTreeFile) {
+
+        loadConstPols(starkInfo, constPolsFile);
+            
+        loadConstTree(starkInfo, constTreeFile);
+
+        computeZerofier(starkInfo);
+
+        computeX(starkInfo);
+
+        computeConnectionsX(starkInfo); // Needed for PIL1 compatibility
+    }
+
+    // For verification only
+    ConstPols(StarkInfo& starkInfo, Goldilocks::Element* z, Goldilocks::Element* constVals) {        
         pConstPolsAddress = (Goldilocks::Element *)malloc(starkInfo.nConstants * starkInfo.starkStruct.nQueries * sizeof(Goldilocks::Element));
         for(uint64_t i = 0; i < starkInfo.nConstants * starkInfo.starkStruct.nQueries; ++i) {
             pConstPolsAddress[i] = constVals[i];
@@ -105,31 +125,21 @@ public:
         x_n[0] = z[0];
         x_n[1] = z[1];
         x_n[2] = z[2];
-
     };
 
-    ConstPols(StarkInfo& starkInfo_, std::string constPolsFile): starkInfo(starkInfo_), N(1 << starkInfo.starkStruct.nBits), NExtended(1 << starkInfo.starkStruct.nBitsExt) {
-        
-        if(starkInfo.starkStruct.verificationHashType == std::string("BN128")) {
-            nFieldElements = 1;
-            merkleTreeArity = starkInfo.starkStruct.merkleTreeArity;
-            merkleTreeCustom = starkInfo.starkStruct.merkleTreeCustom;
-        } else {
-            nFieldElements = HASH_SIZE;
-            merkleTreeArity = 2;
-            merkleTreeCustom = true;
-        }
-
-        loadConstPols(starkInfo, constPolsFile);
-
-        pConstTreeAddress = (Goldilocks::Element *)malloc(getConstTreeSize());
+    void calculateConstTree(StarkInfo& starkInfo) {
+        pConstTreeAddress = (Goldilocks::Element *)malloc(getConstTreeSize(starkInfo));
         if(pConstTreeAddress == NULL)
         {
             zklog.error("Starks::Starks() failed to allocate pConstTreeAddress");
             exitProcess();
         }
         pConstPolsAddressExtended = &pConstTreeAddress[2];
-
+    
+        uint64_t merkleTreeArity = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? starkInfo.starkStruct.merkleTreeArity : 2;
+        uint64_t merkleTreeCustom = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? starkInfo.starkStruct.merkleTreeCustom : true;
+        uint64_t N = 1 << starkInfo.starkStruct.nBits;
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         NTT_Goldilocks ntt(N);
         ntt.extendPol((Goldilocks::Element *)pConstPolsAddressExtended, (Goldilocks::Element *)pConstPolsAddress, NExtended, N, starkInfo.nConstants);
         MerkleTreeGL mt(merkleTreeArity, merkleTreeCustom, NExtended, starkInfo.nConstants, (Goldilocks::Element *)pConstPolsAddressExtended);
@@ -138,52 +148,30 @@ public:
         pConstTreeAddress[0] = Goldilocks::fromU64(starkInfo.nConstants);  
         pConstTreeAddress[1] = Goldilocks::fromU64(NExtended);
         memcpy(&pConstTreeAddress[2 + starkInfo.nConstants * NExtended], mt.nodes, mt.numNodes * sizeof(Goldilocks::Element));
-
-        computeZerofier();
-
-        computeX();
-
-        computeConnectionsX(); // Needed for PIL1 compatibility
     }
 
-    ConstPols(StarkInfo& starkInfo_, std::string constPolsFile, std::string constTreeFile) : starkInfo(starkInfo_), N(1 << starkInfo.starkStruct.nBits), NExtended(1 << starkInfo.starkStruct.nBitsExt) {
-        
-        if(starkInfo.starkStruct.verificationHashType == std::string("BN128")) {
-            nFieldElements = 1;
-            merkleTreeArity = starkInfo.starkStruct.merkleTreeArity;
-            merkleTreeCustom = starkInfo.starkStruct.merkleTreeCustom;
-        } else {
-            nFieldElements = HASH_SIZE;
-            merkleTreeArity = 2;
-            merkleTreeCustom = true;
-        }
-
-        loadConstPols(starkInfo, constPolsFile);
-            
-        uint64_t constTreeSizeBytes = getConstTreeSize();
+    void loadConstTree(StarkInfo& starkInfo, std::string constTreeFile) {
+        uint64_t constTreeSizeBytes = getConstTreeSize(starkInfo);
 
         pConstTreeAddress = (Goldilocks::Element *)loadFileParallel(constTreeFile, constTreeSizeBytes);
         
         pConstPolsAddressExtended = &pConstTreeAddress[2];
-
-        computeZerofier();
-
-        computeX();
-
-        computeConnectionsX(); // Needed for PIL1 compatibility
     }
 
     void loadConstPols(StarkInfo& starkInfo, std::string constPolsFile) {
         // Allocate an area of memory, mapped to file, to read all the constant polynomials,
         // and create them using the allocated address
 
+        uint64_t N = 1 << starkInfo.starkStruct.nBits;
         uint64_t constPolsSize = starkInfo.nConstants * sizeof(Goldilocks::Element) * N;
         
         pConstPolsAddress = (Goldilocks::Element *)loadFileParallel(constPolsFile, constPolsSize);
     }
 
-    uint64_t getConstTreeSize()
+    uint64_t getConstTreeSize(StarkInfo& starkInfo)
     {   
+        uint64_t merkleTreeArity = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? starkInfo.starkStruct.merkleTreeArity : 2;
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         uint n_tmp = NExtended;
         uint64_t nextN = floor(((double)(n_tmp - 1) / merkleTreeArity) + 1);
         uint64_t acc = nextN * merkleTreeArity;
@@ -204,6 +192,7 @@ public:
 
         uint64_t elementSize = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? sizeof(RawFr::Element) : sizeof(Goldilocks::Element);
         uint64_t numElements = NExtended * starkInfo.nConstants * sizeof(Goldilocks::Element);
+        uint64_t nFieldElements = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? 1 : HASH_SIZE;
         uint64_t total = numElements + acc * nFieldElements * elementSize;
         if(starkInfo.starkStruct.verificationHashType == std::string("BN128")) {
             total += 16; // HEADER
@@ -214,24 +203,26 @@ public:
         
     };
 
-    void computeZerofier() {
+    void computeZerofier(StarkInfo& starkInfo) {
+        uint64_t N = 1 << starkInfo.starkStruct.nBits;
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         zi = new Goldilocks::Element[starkInfo.boundaries.size() * NExtended];
 
         for(uint64_t i = 0; i < starkInfo.boundaries.size(); ++i) {
             Boundary boundary = starkInfo.boundaries[i];
             if(boundary.name == "everyRow") {
-                buildZHInv();
+                buildZHInv(starkInfo);
             } else if(boundary.name == "firstRow") {
-                buildOneRowZerofierInv(i, 0);
+                buildOneRowZerofierInv(starkInfo, i, 0);
             } else if(boundary.name == "lastRow") {
-                buildOneRowZerofierInv(i, N);
+                buildOneRowZerofierInv(starkInfo, i, N);
             } else if(boundary.name == "everyRow") {
-                buildFrameZerofierInv(i, boundary.offsetMin, boundary.offsetMax);
+                buildFrameZerofierInv(starkInfo, i, boundary.offsetMin, boundary.offsetMax);
             }
         }
     }
 
-    void computeConnectionsX() {
+    void computeConnectionsX(StarkInfo& starkInfo) {
         uint64_t N = 1 << starkInfo.starkStruct.nBits;
         uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         x_n = new Goldilocks::Element[N];
@@ -250,7 +241,8 @@ public:
         }
     }
 
-    void computeX() {
+    void computeX(StarkInfo& starkInfo) {
+        uint64_t N = 1 << starkInfo.starkStruct.nBits;
         uint64_t extendBits = starkInfo.starkStruct.nBitsExt - starkInfo.starkStruct.nBits;
         x = new Goldilocks::Element[N << extendBits];
         x[0] = Goldilocks::shift();
@@ -267,8 +259,9 @@ public:
         }
     }
 
-    void buildZHInv()
+    void buildZHInv(StarkInfo& starkInfo)
     {
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         uint64_t extendBits = starkInfo.starkStruct.nBitsExt - starkInfo.starkStruct.nBits;
         uint64_t extend = (1 << extendBits);
         
@@ -288,8 +281,9 @@ public:
         }
     };
 
-    void buildOneRowZerofierInv(uint64_t offset, uint64_t rowIndex)
+    void buildOneRowZerofierInv(StarkInfo& starkInfo, uint64_t offset, uint64_t rowIndex)
     {
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         Goldilocks::Element root = Goldilocks::one();
 
         for(uint64_t i = 0; i < rowIndex; ++i) {
@@ -306,8 +300,10 @@ public:
         }
     }
 
-    void buildFrameZerofierInv(uint64_t offset, uint64_t offsetMin, uint64_t offsetMax)
+    void buildFrameZerofierInv(StarkInfo& starkInfo, uint64_t offset, uint64_t offsetMin, uint64_t offsetMax)
     {
+        uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
+        uint64_t N = 1 << starkInfo.starkStruct.nBits;
         uint64_t nRoots = offsetMin + offsetMax;
         Goldilocks::Element roots[nRoots];
 

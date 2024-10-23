@@ -7,6 +7,10 @@ public out;
 
 airtemplate FibonacciSquare(const int N = 2**8) {
 
+    airval fibo1;
+    airval fibo2;
+    airval stage(2) fibo3;
+
     col fixed L1 = [1,0...];
     col witness a,b;
 
@@ -16,6 +20,8 @@ airtemplate FibonacciSquare(const int N = 2**8) {
     L1' * (b - out) === 0;
 
     (a' - b) * (1 - L1') === 0;
+
+    2*fibo1 - fibo2 === 0;
 
     permutation_assumes(MODULE_ID, [a*a + b*b, b'], 1 - L1');
 }

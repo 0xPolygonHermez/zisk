@@ -1,4 +1,6 @@
 use std::error::Error;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
 use std::any::type_name;
@@ -106,14 +108,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             vec![F::zero(); self.stark_info.challenges_map.as_ref().unwrap().len() * Self::FIELD_EXTENSION];
         *proof_ctx.challenges.challenges.write().unwrap() = challenges;
 
-        let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
-        let n_evals = self.stark_info.ev_map.len();
-
-        let evals = vec![F::zero(); n_evals * Self::FIELD_EXTENSION];
-        let subproof_values = vec![F::zero(); n_subproof_values * Self::FIELD_EXTENSION];
-
-        air_instance.init_prover(evals, subproof_values);
-
         self.p_proof = Some(fri_proof_new_c(self.p_setup));
 
         let number_stage1_commits = *self.stark_info.map_sections_n.get("cm1").unwrap() as usize;
@@ -146,7 +140,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             buffer: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
-            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+            airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
             evals: air_instance.evals.as_ptr() as *mut c_void,
             xdivxsub: std::ptr::null_mut(),
         };
@@ -163,8 +158,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn calculate_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let subproof_values = air_instance.subproof_values.as_ptr() as *mut c_void;
-
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
 
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
@@ -174,7 +167,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             buffer: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
-            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+            airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
             evals: air_instance.evals.as_ptr() as *mut c_void,
             xdivxsub: std::ptr::null_mut(),
         };
@@ -203,9 +197,11 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                     air_instance.set_commit_calculated(i);
                 }
             }
+
             if stage_id as usize == proof_ctx.global_info.n_challenges.len() {
                 let p_proof = self.p_proof.unwrap();
-                fri_proof_set_subproof_values_c(p_proof, subproof_values);
+                fri_proof_set_airgroup_values_c(p_proof, steps_params.airgroup_values);
+                fri_proof_set_air_values_c(p_proof, steps_params.airvalues);
             }
         } else {
             let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
@@ -222,6 +218,34 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 if cm_pol.stage == (proof_ctx.global_info.n_challenges.len() + 1) as u64 {
                     air_instance.set_commit_calculated(i);
                 }
+            }
+        }
+
+        let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
+        for i in 0..n_commits {
+            let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+            if cm_pol.stage == stage_id as u64 && !air_instance.commits_calculated.contains_key(&i) {
+                panic!("Stage {} cannot be committed: Witness column {} is not calculated", stage_id, cm_pol.name);
+            }
+        }
+
+        let n_airgroupvalues = self.stark_info.airgroupvalues_map.as_ref().expect("REASON").len();
+        for i in 0..n_airgroupvalues {
+            let airgroup_value = self.stark_info.airgroupvalues_map.as_ref().expect("REASON").get(i).unwrap();
+            if airgroup_value.stage == stage_id as u64 && !air_instance.airgroupvalue_calculated.contains_key(&i) {
+                panic!(
+                    "Stage {} cannot be committed: Airgroupvalue {} is not calculated",
+                    stage_id, airgroup_value.name
+                );
+            }
+        }
+
+        let n_airvalues = self.stark_info.airvalues_map.as_ref().expect("REASON").len();
+        for i in 0..n_airvalues {
+            let air_value = self.stark_info.airvalues_map.as_ref().expect("REASON").get(i).unwrap();
+
+            if air_value.stage == stage_id as u64 && !air_instance.airvalue_calculated.contains_key(&i) {
+                panic!("Stage {} cannot be committed: Airvalue {} is not calculated", stage_id, air_value.name);
             }
         }
     }
@@ -244,27 +268,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
         let p_proof = self.p_proof.unwrap();
         let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
-
-        let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
-        for i in 0..n_commits {
-            let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
-            if cm_pol.stage == stage_id as u64 && !air_instance.commits_calculated.contains_key(&i) {
-                panic!("Stage {} cannot be committed: Witness column {} is not calculated", stage_id, cm_pol.name);
-            }
-        }
-
-        if stage_id == self.num_stages() {
-            let n_subproof_values = self.stark_info.subproofvalues_map.as_ref().expect("REASON").len();
-            for i in 0..n_subproof_values {
-                let subproof_value = self.stark_info.subproofvalues_map.as_ref().expect("REASON").get(i).unwrap();
-                if !air_instance.subproofvalue_calculated.contains_key(&i) {
-                    panic!(
-                        "Stage {} cannot be committed: Subproofvalue {} is not calculated ---> {}",
-                        stage_id, subproof_value.name, i
-                    );
-                }
-            }
-        }
 
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
@@ -381,28 +384,103 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<F> {
-        let p_stark: *mut std::ffi::c_void = self.p_stark;
+        let values =
+            self.get_transcript_values_u64(stage, proof_ctx).iter().map(|v| F::from_canonical_u64(*v)).collect();
+        values
+    }
+
+    fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64> {
+        let p_stark = self.p_stark;
 
         let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
 
-        let mut value = vec![F::zero(); self.n_field_elements];
+        let mut value: Vec<Goldilocks> = vec![Goldilocks::zero(); self.n_field_elements];
         if stage <= (Self::num_stages(self) + 1) as u64 {
-            let tree_index = if stage == 0 {
-                let stark_info: &StarkInfo = &self.stark_info;
-                stark_info.n_stages as u64 + 1
-            } else {
-                stage - 1
-            };
+            let (n_airvals_stage, indexes): (usize, Vec<usize>) = self
+                .stark_info
+                .airvalues_map
+                .as_ref()
+                .map(|map| {
+                    let mut indexes = Vec::new();
+                    let count = map
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, entry)| {
+                            if entry.stage == stage {
+                                indexes.push(*index);
+                                true
+                            } else {
+                                false
+                            }
+                        })
+                        .count();
 
-            treesGL_get_root_c(p_stark, tree_index, value.as_mut_ptr() as *mut c_void);
-            trace!(
-                "{}: ··· MerkleTree root for stage {} of instance {} of {} is: {:?}",
-                Self::MY_NAME,
-                stage,
-                self.instance_id,
-                air_name,
-                value,
-            );
+                    (count, indexes)
+                })
+                .unwrap_or((0, Vec::new()));
+
+            if stage == 1 || n_airvals_stage > 0 {
+                let size = if stage == 1 {
+                    2 * self.n_field_elements + n_airvals_stage
+                } else {
+                    self.n_field_elements + n_airvals_stage * Self::FIELD_EXTENSION
+                };
+                let mut values_hash = vec![F::zero(); size];
+
+                let verkey = proof_ctx
+                    .global_info
+                    .get_air_setup_path(self.airgroup_id, self.air_id, &ProofType::Basic)
+                    .display()
+                    .to_string()
+                    + ".verkey.json";
+
+                let mut file = File::open(&verkey).expect("Unable to open file");
+                let mut json_str = String::new();
+                file.read_to_string(&mut json_str).expect("Unable to read file");
+                let vk: Vec<u64> = serde_json::from_str(&json_str).expect("REASON");
+                for j in 0..self.n_field_elements {
+                    values_hash[j] = F::from_canonical_u64(vk[j]);
+                }
+
+                let mut root = vec![F::zero(); self.n_field_elements];
+                treesGL_get_root_c(p_stark, stage - 1, root.as_mut_ptr() as *mut c_void);
+
+                trace!(
+                    "{}: ··· MerkleTree root for stage {} of instance {} of {} is: {:?}",
+                    Self::MY_NAME,
+                    stage,
+                    self.instance_id,
+                    air_name,
+                    root,
+                );
+                for (j, &root_value) in root.iter().enumerate().take(self.n_field_elements) {
+                    let index = if stage == 1 { self.n_field_elements + j } else { j };
+                    values_hash[index] = root_value;
+                }
+                let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
+                for index in 0..n_airvals_stage {
+                    if stage == 1 {
+                        values_hash[2 * self.n_field_elements + index] =
+                            air_instance.airvalues[indexes[index] * Self::FIELD_EXTENSION];
+                    } else {
+                        values_hash[self.n_field_elements + index * Self::FIELD_EXTENSION] =
+                            air_instance.airvalues[indexes[index] * Self::FIELD_EXTENSION];
+                        values_hash[self.n_field_elements + index * Self::FIELD_EXTENSION + 1] =
+                            air_instance.airvalues[indexes[index] * Self::FIELD_EXTENSION];
+                        values_hash[self.n_field_elements + index * Self::FIELD_EXTENSION + 2] =
+                            air_instance.airvalues[indexes[index] * Self::FIELD_EXTENSION];
+                    }
+                }
+
+                calculate_hash_c(
+                    p_stark,
+                    value.as_mut_ptr() as *mut c_void,
+                    values_hash.as_mut_ptr() as *mut c_void,
+                    size as u64,
+                );
+            } else {
+                treesGL_get_root_c(p_stark, stage - 1, value.as_mut_ptr() as *mut c_void);
+            }
         } else if stage == (Self::num_stages(self) + 2) as u64 {
             let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
             let evals = air_instance.evals.as_ptr() as *mut c_void;
@@ -426,55 +504,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 if step_index < n_steps {
                     let p_proof = self.p_proof.unwrap();
                     fri_proof_get_tree_root_c(p_proof, value.as_mut_ptr() as *mut c_void, step_index as u64);
-                } else {
-                    let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-                    let buffer = air_instance.get_buffer_ptr() as *mut c_void;
-
-                    let n_hash = (1 << (steps[n_steps].n_bits)) * Self::FIELD_EXTENSION as u64;
-                    let fri_pol = get_fri_pol_c(self.p_setup, buffer);
-                    calculate_hash_c(p_stark, value.as_mut_ptr() as *mut c_void, fri_pol, n_hash);
-                }
-            }
-        }
-        value
-    }
-
-    fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64> {
-        let p_stark: *mut std::ffi::c_void = self.p_stark;
-
-        let mut value: Vec<Goldilocks> = vec![Goldilocks::zero(); self.n_field_elements];
-        if stage <= (Self::num_stages(self) + 1) as u64 {
-            let tree_index = if stage == 0 {
-                let stark_info: &StarkInfo = &self.stark_info;
-                stark_info.n_stages as u64 + 1
-            } else {
-                stage - 1
-            };
-
-            treesGL_get_root_c(p_stark, tree_index, value.as_mut_ptr() as *mut c_void);
-        } else if stage == (Self::num_stages(self) + 2) as u64 {
-            let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-            let evals = air_instance.evals.as_ptr() as *mut c_void;
-            calculate_hash_c(
-                p_stark,
-                value.as_mut_ptr() as *mut c_void,
-                evals,
-                (self.stark_info.ev_map.len() * Self::FIELD_EXTENSION) as u64,
-            );
-        } else if stage > (Self::num_stages(self) + 3) as u64 {
-            let steps = &self.stark_info.stark_struct.steps;
-
-            let steps_fri: Vec<usize> = proof_ctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
-            let step_index =
-                self.stark_info.stark_struct.steps.iter().position(|s| {
-                    s.n_bits as usize == steps_fri[(stage as u32 - (Self::num_stages(self) + 4)) as usize]
-                });
-
-            if let Some(step_index) = step_index {
-                let n_steps = steps.len() - 1;
-                if step_index < n_steps {
-                    let p_proof = self.p_proof.unwrap();
-                    fri_proof_get_tree_root_c(p_proof, value.as_mut_ptr() as *mut c_void, (step_index + 1) as u64);
                 } else {
                     let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
                     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
@@ -641,7 +670,8 @@ impl<F: Field> StarkProver<F> {
             buffer: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
-            subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+            airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+            airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
             evals: air_instance.evals.as_ptr() as *mut c_void,
             xdivxsub: (*buff_helper_guard).as_ptr() as *mut c_void,
         };

@@ -4,7 +4,7 @@ package pilout;
 message PilOut {
     optional string name = 1;
     bytes baseField = 2;                        // base field characteristic
-    repeated Subproof subproofs = 3;
+    repeated AirGroup airGroups = 3;
     repeated uint32 numChallenges = 4;          // number of challenges per stage
     uint32 numProofValues = 5;
     uint32 numPublicValues = 6;
@@ -15,15 +15,15 @@ message PilOut {
     repeated Symbol symbols = 11;
 }
 
-message Subproof {
+message AirGroup {
     optional string name = 1;
-    bool aggregable = 2;
-    repeated SubproofValue subproofvalues = 3;
-    repeated BasicAir airs = 4;
+    repeated AirGroupValue airGroupValues = 2;
+    repeated Air airs = 3;
 }
 
-message SubproofValue {
+message AirGroupValue {
     AggregationType aggType = 1;
+    uint32 stage = 2;
 }
 
 enum AggregationType {
@@ -85,9 +85,10 @@ message GlobalOperand {
         uint32 idx = 1;
     }
 
-    message SubproofValue {
-        uint32 subproofId = 1;
-        uint32 idx = 2;
+    message AirGroupValue {
+        uint32 airGroupId = 1;
+        uint32 stage = 2;
+        uint32 idx = 3;
     }
 
     message PublicValue {
@@ -111,7 +112,7 @@ message GlobalOperand {
         Constant constant = 1;
         Challenge challenge = 2;
         ProofValue proofValue = 3;
-        SubproofValue subproofValue = 4;
+        AirGroupValue airGroupValue = 4;
         PublicValue publicValue = 5;
         PublicTableAggregatedValue publicTableAggregatedValue = 6;
         PublicTableColumn publicTableColumn = 7;
@@ -119,9 +120,7 @@ message GlobalOperand {
     }
 }
 
-// ================ BasicAir ================
-
-message BasicAir {
+message Air {
     optional string name = 1;
     optional uint32 numRows = 2;            // log2(n), where n is the number of rows
     repeated PeriodicCol periodicCols = 3;
@@ -129,6 +128,8 @@ message BasicAir {
     repeated uint32 stageWidths = 5;        // stage widths excluding stage 0 (fixed columns)
     repeated Expression expressions = 6;
     repeated Constraint constraints = 7;
+    repeated uint32 stageAirValues = 8;        // stage airvalues 
+    bool aggregable = 9;
 }
 
 message PeriodicCol {
@@ -184,8 +185,14 @@ message Operand {
         uint32 idx = 1;
     }
 
-    message SubproofValue {
-        uint32 idx = 1;
+    message AirGroupValue {
+        uint32 stage = 1;
+        uint32 idx = 2;    
+    }
+
+    message AirValue {
+        uint32 stage = 1;
+        uint32 idx = 2;
     }
 
     message PublicValue {
@@ -216,12 +223,13 @@ message Operand {
         Constant constant = 1;
         Challenge challenge = 2;
         ProofValue proofValue = 3;
-        SubproofValue subproofValue = 4;
+        AirGroupValue airGroupValue = 4;
         PublicValue publicValue = 5;
         PeriodicCol periodicCol = 6;
         FixedCol fixedCol = 7;
         WitnessCol witnessCol = 8;
         Expression expression = 9;
+        AirValue airValue = 10;
     }
 }
 
@@ -261,15 +269,16 @@ enum SymbolType {
     PERIODIC_COL = 2;
     WITNESS_COL = 3;
     PROOF_VALUE = 4;
-    SUBPROOF_VALUE = 5;
+    AIR_GROUP_VALUE = 5;    
     PUBLIC_VALUE = 6;
     PUBLIC_TABLE = 7;
     CHALLENGE = 8;
+    AIR_VALUE = 9;    
 }
 
 message Symbol {
     string name = 1;
-    optional uint32 subproofId = 2;
+    optional uint32 airGroupId = 2;
     optional uint32 airId = 3;
     SymbolType type = 4;
     uint32 id = 5;
@@ -297,6 +306,6 @@ message HintFieldArray {
 message Hint {
     string name = 1;
     repeated HintField hintFields = 2;
-    optional uint32 subproofId = 3;
+    optional uint32 airGroupId = 3;
     optional uint32 airId = 4;
 }

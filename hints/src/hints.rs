@@ -27,7 +27,7 @@ pub enum HintFieldType {
 
 #[repr(C)]
 #[allow(dead_code)]
-pub struct HintFieldInfo<F> {
+pub struct HintFieldInfo<F: Field> {
     size: u64,
     offset: u8, // 1 or 3cd
     field_type: HintFieldType,
@@ -38,7 +38,7 @@ pub struct HintFieldInfo<F> {
 }
 
 #[repr(C)]
-pub struct HintFieldInfoValues<F> {
+pub struct HintFieldInfoValues<F: Field> {
     pub n_values: u64,
     pub hint_field_values: *mut HintFieldInfo<F>,
 }
@@ -83,7 +83,7 @@ impl HintFieldOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HintFieldValue<F: Clone + Copy + Display> {
+pub enum HintFieldValue<F: Field> {
     Field(F),
     FieldExtended(ExtensionField<F>),
     Column(Vec<F>),
@@ -91,7 +91,7 @@ pub enum HintFieldValue<F: Clone + Copy + Display> {
     String(String),
 }
 
-impl<F: Clone + Copy + Display> Display for HintFieldValue<F> {
+impl<F: Field> Display for HintFieldValue<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             HintFieldValue::Field(value) => write!(f, "{}", value),
@@ -109,28 +109,28 @@ impl<F: Clone + Copy + Display> Display for HintFieldValue<F> {
     }
 }
 
-pub struct HintFieldValues<F: Clone + Copy + Display> {
+pub struct HintFieldValues<F: Field> {
     pub values: HashMap<Vec<u64>, HintFieldValue<F>>,
 }
 
-impl<F: Clone + Copy + Debug + Display> HintFieldValues<F> {
+impl<F: Field> HintFieldValues<F> {
     pub fn get(&self, index: usize) -> HashMap<Vec<u64>, HintFieldOutput<F>> {
         self.values.iter().map(|(key, value)| (key.clone(), value.get(index))).collect()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct HintFieldValuesVec<F: Clone + Copy + Debug + Display> {
+pub struct HintFieldValuesVec<F: Field> {
     pub values: Vec<HintFieldValue<F>>,
 }
 
-impl<F: Clone + Copy + Debug + Display> HintFieldValuesVec<F> {
+impl<F: Field> HintFieldValuesVec<F> {
     pub fn get(&self, index: usize) -> Vec<HintFieldOutput<F>> {
         self.values.iter().map(|value| value.get(index)).collect()
     }
 }
 
-impl<F: Clone + Copy + Debug + Display> Display for HintFieldValuesVec<F> {
+impl<F: Field> Display for HintFieldValuesVec<F> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "[")?;
         for (i, value) in self.values.iter().enumerate() {
@@ -163,7 +163,7 @@ pub fn format_vec<T: Copy + Clone + Debug + Display>(vec: &[T]) -> String {
     format!("[{}]", vec.iter().map(|item| item.to_string()).collect::<Vec<String>>().join(", "))
 }
 
-impl<F: Clone + Copy + Debug + Display> HintFieldValue<F> {
+impl<F: Field> HintFieldValue<F> {
     pub fn get(&self, index: usize) -> HintFieldOutput<F> {
         match self {
             HintFieldValue::Field(value) => HintFieldOutput::Field(*value),
@@ -619,7 +619,7 @@ impl<F: Field> HintFieldValue<F> {
 pub struct HintCol;
 
 impl HintCol {
-    pub fn from_hint_field<F: Clone + Copy + Display>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
+    pub fn from_hint_field<F: Field>(hint_field: &HintFieldInfo<F>) -> HintFieldValue<F> {
         let values_slice = match hint_field.field_type {
             HintFieldType::String => &[],
             _ => unsafe { std::slice::from_raw_parts(hint_field.values, hint_field.size as usize) },
@@ -665,7 +665,7 @@ pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn mul_hint_fields<F: Clone + Copy + Debug + Display>(
+pub fn mul_hint_fields<F: Field + Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
@@ -685,7 +685,8 @@ pub fn mul_hint_fields<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -702,13 +703,13 @@ pub fn mul_hint_fields<F: Clone + Copy + Debug + Display>(
     )
 }
 
-pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
+pub fn acc_hint_field<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_dest: &str,
-    hint_field_subprooval: &str,
+    hint_field_airgroupvalue: &str,
     hint_field_name: &str,
 ) -> (u64, u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
@@ -720,7 +721,8 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -730,7 +732,7 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
         (&steps_params).into(),
         hint_id as u64,
         hint_field_dest,
-        hint_field_subprooval,
+        hint_field_airgroupvalue,
         hint_field_name,
     );
 
@@ -742,13 +744,13 @@ pub fn acc_hint_field<F: Clone + Copy + Debug + Display>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
+pub fn acc_mul_hint_fields<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_dest: &str,
-    hint_field_subprooval: &str,
+    hint_field_airgroupvalue: &str,
     hint_field_name1: &str,
     hint_field_name2: &str,
     options1: HintFieldOptions,
@@ -763,7 +765,8 @@ pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -773,7 +776,7 @@ pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
         (&steps_params).into(),
         hint_id as u64,
         hint_field_dest,
-        hint_field_subprooval,
+        hint_field_airgroupvalue,
         hint_field_name1,
         hint_field_name2,
         (&options1).into(),
@@ -787,7 +790,7 @@ pub fn acc_mul_hint_fields<F: Clone + Copy + Debug + Display>(
     (slice[0], slice[1])
 }
 
-pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
@@ -795,7 +798,11 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValue<F> {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = if options.dest {
+        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    } else {
+        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    };
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
@@ -804,7 +811,8 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -827,7 +835,7 @@ pub fn get_hint_field<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field_a<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
@@ -835,7 +843,11 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValuesVec<F> {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = if options.dest {
+        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    } else {
+        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    };
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
@@ -844,7 +856,8 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -873,7 +886,7 @@ pub fn get_hint_field_a<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field_m<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
@@ -881,7 +894,11 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValues<F> {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = if options.dest {
+        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    } else {
+        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
+    };
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
@@ -890,7 +907,8 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.subproof_values.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
     };
@@ -924,7 +942,7 @@ pub fn get_hint_field_m<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field_constant<F: Field>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -938,7 +956,8 @@ pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
         buffer: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
-        subproof_values: std::ptr::null_mut(),
+        airgroup_values: std::ptr::null_mut(),
+        airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
     };
@@ -961,7 +980,7 @@ pub fn get_hint_field_constant<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn get_hint_field_constant_a<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field_constant_a<F: Field>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -969,13 +988,14 @@ pub fn get_hint_field_constant_a<F: Clone + Copy + Debug + Display>(
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> Vec<HintFieldValue<F>> {
-    let setup = setup_ctx.get_setup(airgroup_id, air_id).expect("REASON");
+    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
 
     let steps_params = StepsParams {
         buffer: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
-        subproof_values: std::ptr::null_mut(),
+        airgroup_values: std::ptr::null_mut(),
+        airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
     };
@@ -1004,7 +1024,7 @@ pub fn get_hint_field_constant_a<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn get_hint_field_constant_m<F: Clone + Copy + Debug + Display>(
+pub fn get_hint_field_constant_m<F: Field>(
     setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
@@ -1012,13 +1032,14 @@ pub fn get_hint_field_constant_m<F: Clone + Copy + Debug + Display>(
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValues<F> {
-    let setup = setup_ctx.get_setup(airgroup_id, air_id).expect("REASON");
+    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
 
     let steps_params = StepsParams {
         buffer: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
-        subproof_values: std::ptr::null_mut(),
+        airgroup_values: std::ptr::null_mut(),
+        airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
     };
@@ -1055,16 +1076,24 @@ pub fn get_hint_field_constant_m<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn set_hint_field<F: Copy + Debug + Display>(
+pub fn set_hint_field<F: Field>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
     values: &HintFieldValue<F>,
 ) {
-    let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+    let steps_params = StepsParams {
+        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        public_inputs: std::ptr::null_mut(),
+        challenges: std::ptr::null_mut(),
+        airgroup_values: std::ptr::null_mut(),
+        airvalues: std::ptr::null_mut(),
+        evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
+    };
 
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let values_ptr: *mut c_void = match values {
         HintFieldValue::Column(vec) => vec.as_ptr() as *mut c_void,
@@ -1072,22 +1101,29 @@ pub fn set_hint_field<F: Copy + Debug + Display>(
         _ => panic!("Only column and column extended are accepted"),
     };
 
-    let id =
-        set_hint_field_c((&setup.p_setup).into(), buffer, std::ptr::null_mut(), values_ptr, hint_id, hint_field_name);
+    let id = set_hint_field_c((&setup.p_setup).into(), (&steps_params).into(), values_ptr, hint_id, hint_field_name);
 
     air_instance.set_commit_calculated(id as usize);
 }
 
-pub fn set_hint_field_val<F: Clone + Copy + Debug + Display>(
+pub fn set_hint_field_val<F: Field>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
     value: HintFieldOutput<F>,
 ) {
-    let subproof_values = air_instance.subproof_values.as_mut_ptr() as *mut c_void;
+    let steps_params = StepsParams {
+        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        public_inputs: std::ptr::null_mut(),
+        challenges: std::ptr::null_mut(),
+        airgroup_values: air_instance.airgroup_values.as_mut_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_mut_ptr() as *mut c_void,
+        evals: std::ptr::null_mut(),
+        xdivxsub: std::ptr::null_mut(),
+    };
 
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let mut value_array: Vec<F> = Vec::new();
 
@@ -1104,19 +1140,12 @@ pub fn set_hint_field_val<F: Clone + Copy + Debug + Display>(
 
     let values_ptr = value_array.as_ptr() as *mut c_void;
 
-    let id = set_hint_field_c(
-        (&setup.p_setup).into(),
-        std::ptr::null_mut(),
-        subproof_values,
-        values_ptr,
-        hint_id,
-        hint_field_name,
-    );
+    let id = set_hint_field_c((&setup.p_setup).into(), (&steps_params).into(), values_ptr, hint_id, hint_field_name);
 
-    air_instance.set_subproofvalue_calculated(id as usize);
+    air_instance.set_airgroupvalue_calculated(id as usize);
 }
 
-pub fn print_expression<F: Clone + Copy + Debug + Display>(
+pub fn print_expression<F: Field>(
     setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     expr: &HintFieldValue<F>,
@@ -1154,12 +1183,7 @@ pub fn print_expression<F: Clone + Copy + Debug + Display>(
     }
 }
 
-pub fn print_row<F: Clone + Copy + Debug + Display>(
-    setup_ctx: &SetupCtx,
-    air_instance: &AirInstance<F>,
-    stage: u64,
-    row: u64,
-) {
+pub fn print_row<F: Field>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
 
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
@@ -1167,7 +1191,7 @@ pub fn print_row<F: Clone + Copy + Debug + Display>(
     print_row_c((&setup.p_setup).into(), buffer, stage, row);
 }
 
-pub fn print_by_name<F: Clone + Copy + Debug + Display>(
+pub fn print_by_name<F: Field>(
     setup_ctx: &SetupCtx,
     proof_ctx: Arc<ProofCtx<F>>,
     air_instance: &AirInstance<F>,
@@ -1184,7 +1208,8 @@ pub fn print_by_name<F: Clone + Copy + Debug + Display>(
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
-        subproof_values: air_instance.evals.as_ptr() as *mut c_void,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
     };

@@ -24,16 +24,16 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
 
     Goldilocks::Element* evals = new Goldilocks::Element[setupCtx.starkInfo.evMap.size() * FIELD_EXTENSION];
     Goldilocks::Element* challenges = new Goldilocks::Element[setupCtx.starkInfo.challengesMap.size() * FIELD_EXTENSION];
-    Goldilocks::Element* subproofValues = new Goldilocks::Element[setupCtx.starkInfo.nSubProofValues * FIELD_EXTENSION];
+    Goldilocks::Element* airgroupValues = new Goldilocks::Element[setupCtx.starkInfo.airgroupValuesMap.size() * FIELD_EXTENSION];
     
-    vector<bool> subProofValuesCalculated(setupCtx.starkInfo.nSubProofValues, false);
+    vector<bool> airgroupValuesCalculated(setupCtx.starkInfo.airgroupValuesMap.size(), false);
     vector<bool> commitsCalculated(setupCtx.starkInfo.cmPolsMap.size(), false);
 
     StepsParams params = {
         pols : pAddress,
         publicInputs : publicInputs,
         challenges : challenges,
-        subproofValues : subproofValues,
+        airgroupValues : airgroupValues,
         evals : evals,
         xDivXSub : nullptr,
     };
@@ -279,7 +279,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
 
     delete challenges;
     delete evals;
-    delete subproofValues;
+    delete airgroupValues;
     
     nlohmann::ordered_json jProof = proof.proof.proof2json();
     nlohmann::ordered_json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);

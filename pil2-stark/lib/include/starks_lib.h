@@ -11,7 +11,8 @@
     // ========================================================================================
     void *fri_proof_new(void *pSetupCtx);
     void fri_proof_get_tree_root(void *pFriProof, void* root, uint64_t tree_index);
-    void fri_proof_set_subproofvalues(void *pFriProof, void *subproofValues);
+    void fri_proof_set_airgroupvalues(void *pFriProof, void *airgroupValues);
+    void fri_proof_set_airvalues(void *pFriProof, void *airValues);
     void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* globalInfoFile, char *fileDir);
     void fri_proof_free_zkinproof(void *pZkinProof);
     void fri_proof_free(void *pFriProof);
@@ -29,12 +30,19 @@
     uint64_t get_stark_info_n_publics(void *pStarkInfo);
     uint64_t get_map_total_n(void *pStarkInfo);
     uint64_t get_map_offsets(void *pStarkInfo, char *stage, bool flag);
+    uint64_t get_n_airvals(void *pStarkInfo);
+    uint64_t get_n_airgroupvals(void *pStarkInfo);
+    uint64_t get_n_evals(void *pStarkInfo);
+    int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName);
+    int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airValueName);
     void stark_info_free(void *pStarkInfo);
 
     // Const Pols
     // ========================================================================================
-    void *const_pols_new(char* filename, void *pStarkInfo);
+    void *const_pols_new(char* filename, void *pStarkInfo, bool calculate_tree);
     void *const_pols_with_tree_new(char* filename, char* treeFilename, void *pStarkInfo);
+    void load_const_tree(void *pConstPols, void *pStarkInfo, char *treeFilename);
+    void calculate_const_tree(void *pConstPols, void *pStarkInfo);
     void const_pols_free(void *pConstPols);
 
     // Expressions Bin
@@ -45,10 +53,10 @@
     // Hints
     // ========================================================================================
     void *get_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char* hintFieldName, void* hintOptions);
-    uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2); 
-    void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName);
-    void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, bool inverse1, bool inverse2);
-    uint64_t set_hint_field(void *pSetupCtx, void* buffer, void* subproofValues, void *values, uint64_t hintId, char* hintFieldName);
+    uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2); 
+    void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName);
+    void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2,  void* hintOptions1, void *hintOptions2);
+    uint64_t set_hint_field(void *pSetupCtx, void* stepsParams, void *values, uint64_t hintId, char* hintFieldName);
 
     // Starks
     // ========================================================================================
@@ -70,6 +78,8 @@
     void compute_evals(void *pStarks, void *buffer, void *LEv, void *evals, void *pProof);
 
     void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElements);
+
+    void set_const_tree(void *pStarks, void *pConstPols);
     
     // MerkleTree
     // =================================================================================

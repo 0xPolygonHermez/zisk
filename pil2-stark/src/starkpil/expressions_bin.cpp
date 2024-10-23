@@ -20,7 +20,8 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     uint32_t nCmPolsIdsExpressions = expressionsBin->readU32LE();
     uint32_t nChallengesIdsExpressions = expressionsBin->readU32LE();
     uint32_t nPublicsIdsExpressions = expressionsBin->readU32LE();
-    uint32_t nSubproofValuesIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nAirgroupValuesIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nAirValuesIdsExpressions = expressionsBin->readU32LE();
 
     expressionsBinArgsExpressions.ops = new uint8_t[nOpsExpressions];
     expressionsBinArgsExpressions.args = new uint16_t[nArgsExpressions];
@@ -29,7 +30,8 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     expressionsBinArgsExpressions.cmPolsIds = new uint16_t[nCmPolsIdsExpressions];
     expressionsBinArgsExpressions.challengesIds = new uint16_t[nChallengesIdsExpressions];
     expressionsBinArgsExpressions.publicsIds = new uint16_t[nPublicsIdsExpressions];
-    expressionsBinArgsExpressions.subproofValuesIds = new uint16_t[nSubproofValuesIdsExpressions];
+    expressionsBinArgsExpressions.airgroupValuesIds = new uint16_t[nAirgroupValuesIdsExpressions];
+    expressionsBinArgsExpressions.airValuesIds = new uint16_t[nAirValuesIdsExpressions];
     expressionsBinArgsExpressions.nNumbers = nNumbersExpressions;
 
     uint64_t nExpressions = expressionsBin->readU32LE();
@@ -65,8 +67,11 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
         parserParamsExpression.nPublicsUsed = expressionsBin->readU32LE();
         parserParamsExpression.publicsOffset = expressionsBin->readU32LE();
 
-        parserParamsExpression.nSubproofValuesUsed = expressionsBin->readU32LE();
-        parserParamsExpression.subproofValuesOffset = expressionsBin->readU32LE();
+        parserParamsExpression.nAirgroupValuesUsed = expressionsBin->readU32LE();
+        parserParamsExpression.airgroupValuesOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nAirValuesUsed = expressionsBin->readU32LE();
+        parserParamsExpression.airValuesOffset = expressionsBin->readU32LE();
 
         parserParamsExpression.line = expressionsBin->readString();
 
@@ -99,8 +104,12 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
         expressionsBinArgsExpressions.publicsIds[j] = expressionsBin->readU16LE();
     }
 
-    for(uint64_t j = 0; j < nSubproofValuesIdsExpressions; ++j) {
-        expressionsBinArgsExpressions.subproofValuesIds[j] = expressionsBin->readU16LE();
+    for(uint64_t j = 0; j < nAirgroupValuesIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.airgroupValuesIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nAirValuesIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.airValuesIds[j] = expressionsBin->readU16LE();
     }
 
     expressionsBin->endReadSection();
@@ -114,7 +123,8 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     uint32_t nCmPolsIdsDebug = expressionsBin->readU32LE();
     uint32_t nChallengesIdsDebug = expressionsBin->readU32LE();
     uint32_t nPublicsIdsDebug = expressionsBin->readU32LE();
-    uint32_t nSubproofValuesIdsDebug = expressionsBin->readU32LE();
+    uint32_t nAirgroupValuesIdsDebug = expressionsBin->readU32LE();
+    uint32_t nAirValuesIdsDebug = expressionsBin->readU32LE();
 
     expressionsBinArgsConstraints.ops = new uint8_t[nOpsDebug];
     expressionsBinArgsConstraints.args = new uint16_t[nArgsDebug];
@@ -123,7 +133,8 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     expressionsBinArgsConstraints.cmPolsIds = new uint16_t[nCmPolsIdsDebug];
     expressionsBinArgsConstraints.challengesIds = new uint16_t[nChallengesIdsDebug];
     expressionsBinArgsConstraints.publicsIds = new uint16_t[nPublicsIdsDebug];
-    expressionsBinArgsConstraints.subproofValuesIds = new uint16_t[nSubproofValuesIdsDebug];
+    expressionsBinArgsConstraints.airgroupValuesIds = new uint16_t[nAirgroupValuesIdsDebug];
+    expressionsBinArgsConstraints.airValuesIds = new uint16_t[nAirValuesIdsDebug];
     expressionsBinArgsConstraints.nNumbers = nNumbersDebug;
     
     uint32_t nConstraints = expressionsBin->readU32LE();
@@ -162,8 +173,11 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
         parserParamsConstraint.nPublicsUsed = expressionsBin->readU32LE();
         parserParamsConstraint.publicsOffset = expressionsBin->readU32LE();
 
-        parserParamsConstraint.nSubproofValuesUsed = expressionsBin->readU32LE();
-        parserParamsConstraint.subproofValuesOffset = expressionsBin->readU32LE();
+        parserParamsConstraint.nAirgroupValuesUsed = expressionsBin->readU32LE();
+        parserParamsConstraint.airgroupValuesOffset = expressionsBin->readU32LE();
+
+        parserParamsConstraint.nAirValuesUsed = expressionsBin->readU32LE();
+        parserParamsConstraint.airValuesOffset = expressionsBin->readU32LE();
 
         parserParamsConstraint.imPol = bool(expressionsBin->readU32LE());
         parserParamsConstraint.line = expressionsBin->readString();
@@ -198,8 +212,12 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
         expressionsBinArgsConstraints.publicsIds[j] = expressionsBin->readU16LE();
     }
 
-    for(uint64_t j = 0; j < nSubproofValuesIdsDebug; ++j) {
-        expressionsBinArgsConstraints.subproofValuesIds[j] = expressionsBin->readU16LE();
+    for(uint64_t j = 0; j < nAirgroupValuesIdsDebug; ++j) {
+        expressionsBinArgsConstraints.airgroupValuesIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nAirValuesIdsDebug; ++j) {
+        expressionsBinArgsConstraints.airValuesIds[j] = expressionsBin->readU16LE();
     }
 
     expressionsBin->endReadSection();
@@ -325,7 +343,7 @@ void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
                     hintFieldValue.value = globalBin->readU64LE();
                 } else if(hintFieldValue.operand == opType::string_) {
                     hintFieldValue.stringValue = globalBin->readString();
-                } else if(hintFieldValue.operand == opType::subproofvalue) {
+                } else if(hintFieldValue.operand == opType::airgroupvalue || hintFieldValue.operand == opType::airvalue) {
                     hintFieldValue.dim = globalBin->readU32LE();
                     hintFieldValue.id = globalBin->readU32LE();
                 } else if(hintFieldValue.operand == opType::tmp || hintFieldValue.operand == opType::public_) {

@@ -41,21 +41,21 @@ impl PilOutProxy {
     }
 
     pub fn get_airgroup_idx(&self, name: &str) -> Option<usize> {
-        self.pilout.subproofs.iter().position(|x| x.name.as_deref() == Some(name))
+        self.pilout.air_groups.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
     pub fn get_air_idx(&self, airgroup_id: usize, name: &str) -> Option<usize> {
-        self.pilout.subproofs[airgroup_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
+        self.pilout.air_groups[airgroup_id].airs.iter().position(|x| x.name.as_deref() == Some(name))
     }
 
-    pub fn get_air(&self, airgroup_id: usize, air_id: usize) -> &crate::pilout::BasicAir {
-        &self.pilout.subproofs[airgroup_id].airs[air_id]
+    pub fn get_air(&self, airgroup_id: usize, air_id: usize) -> &crate::pilout::Air {
+        &self.pilout.air_groups[airgroup_id].airs[air_id]
     }
 
-    pub fn find_air(&self, air_group_name: &str, air_name: &str) -> Option<&crate::pilout::BasicAir> {
+    pub fn find_air(&self, air_group_name: &str, air_name: &str) -> Option<&crate::pilout::Air> {
         let airgroup_id = self.get_airgroup_idx(air_group_name)?;
         let air_id = self.get_air_idx(airgroup_id, air_name)?;
-        Some(&self.pilout.subproofs[airgroup_id].airs[air_id])
+        Some(&self.pilout.air_groups[airgroup_id].airs[air_id])
     }
 
     pub fn num_stages(&self) -> u32 {
@@ -66,16 +66,16 @@ impl PilOutProxy {
         }
     }
 
-    pub fn num_rows(&self, subproof_id: usize, air_id: usize) -> usize {
-        self.pilout.subproofs[subproof_id].airs[air_id].num_rows.unwrap() as usize
+    pub fn num_rows(&self, airgroup_id: usize, air_id: usize) -> usize {
+        self.pilout.air_groups[airgroup_id].airs[air_id].num_rows.unwrap() as usize
     }
 
-    pub fn name(&self, subproof_id: usize, air_id: usize) -> &str {
-        self.pilout.subproofs[subproof_id].airs[air_id].name.as_ref().unwrap()
+    pub fn name(&self, airgroup_id: usize, air_id: usize) -> &str {
+        self.pilout.air_groups[airgroup_id].airs[air_id].name.as_ref().unwrap()
     }
 
     pub fn print_pilout_info(&self) {
-        // Print PilOut subproofs and airs names and degrees
+        // Print PilOut airgroups and airs names and degrees
         trace!("{}: ··· '{}' PilOut info", Self::MY_NAME, self.name.as_ref().unwrap());
 
         let base_field: &Vec<u8> = self.pilout.base_field.as_ref();
@@ -85,22 +85,21 @@ impl PilOutProxy {
         }
         trace!("{}:     Base field: {}", Self::MY_NAME, hex_string);
 
-        trace!("{}:     Subproofs:", Self::MY_NAME);
-        for (subproof_index, subproof) in self.pilout.subproofs.iter().enumerate() {
+        trace!("{}:     Airgroups:", Self::MY_NAME);
+        for (airgroup_index, airgroup) in self.pilout.air_groups.iter().enumerate() {
             trace!(
-                "{}:     + [{}] {} (aggregable: {}, subproof values: {})",
+                "{}:     + [{}] {} (airgroup values: {})",
                 Self::MY_NAME,
-                subproof_index,
-                subproof.name.as_ref().unwrap(),
-                subproof.aggregable,
-                subproof.subproofvalues.len()
+                airgroup_index,
+                airgroup.name.as_ref().unwrap(),
+                airgroup.air_group_values.len()
             );
 
-            for (air_index, air) in self.pilout.subproofs[subproof_index].airs.iter().enumerate() {
+            for (air_index, air) in self.pilout.air_groups[airgroup_index].airs.iter().enumerate() {
                 trace!(
                     "{}:       [{}][{}] {} (rows: {}, fixed cols: {}, periodic cols: {}, stage widths: {}, expressions: {}, constraints: {})",
                     Self::MY_NAME,
-                    subproof_index,
+                    airgroup_index,
                     air_index,
                     air.name.as_ref().unwrap(),
                     air.num_rows.unwrap(),

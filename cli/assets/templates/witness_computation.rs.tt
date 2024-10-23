@@ -15,7 +15,7 @@ impl Executor<Goldilocks> for {wc.name}WC \{
         // add witness computation here...
 
         // proof_ctx
-        //     .add_trace_to_air_instance(subproof_id, air_id, trace)
+        //     .add_trace_to_air_instance(airgroup_id, air_id, trace)
         //     .expect("Error adding trace to air instance");
     }
 }

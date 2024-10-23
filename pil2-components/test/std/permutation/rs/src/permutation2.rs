@@ -32,7 +32,8 @@ impl<F: PrimeField + Copy> Permutation2<F> {
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(PERMUTATION_AIRGROUP_ID, PERMUTATION_2_6_AIR_IDS[0], None, buffer);
+        let air_instance =
+            AirInstance::new(sctx.clone(), PERMUTATION_AIRGROUP_ID, PERMUTATION_2_6_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }

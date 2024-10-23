@@ -88,7 +88,6 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
-        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, false, n_provers);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -217,7 +216,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 let mut sorted_air_ids: Vec<_> = air_map.keys().collect();
                 sorted_air_ids.sort();
 
-                let airgroup_name = &pctx.global_info.subproofs[*airgroup_id];
+                let airgroup_name = &pctx.global_info.air_groups[*airgroup_id];
                 trace!("{}:     + AirGroup [{}] {}", Self::MY_NAME, airgroup_id, airgroup_name);
 
                 for &air_id in &sorted_air_ids {
@@ -237,7 +236,9 @@ impl<F: Field + 'static> ProofMan<F> {
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx>,
     ) -> usize {
+        timer_start_debug!(INITIALIZE_PROVERS);
         let mut cont = 0;
+        info!("{}: Initializing provers", Self::MY_NAME);
         for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
             cont += 1;
             #[cfg(feature = "distributed")]
@@ -274,6 +275,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let buff_helper: Vec<MaybeUninit<F>> = Vec::with_capacity(buff_helper_size);
 
         *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
+        timer_stop_and_log_debug!(INITIALIZE_PROVERS);
         cont
     }
 
@@ -353,16 +355,21 @@ impl<F: Field + 'static> ProofMan<F> {
         verify_constraints: bool,
         n_provers: usize,
     ) {
+        if stage == 1 {
+            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
+            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
+
+            transcript.add_elements(public_inputs, pctx.global_info.n_publics);
+        }
+
         let dctx = ectx.dctx.read().unwrap();
         let is_distributed = dctx.is_distributed();
         let n_processes = dctx.n_processes;
         drop(dctx);
 
         if !is_distributed {
-            if stage != 0 {
-                info!("{}: Calculating challenges", Self::MY_NAME);
-            }
-            let airgroups = pctx.global_info.subproofs.clone();
+            info!("{}: Calculating challenges", Self::MY_NAME);
+            let airgroups = pctx.global_info.air_groups.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
                 if verify_constraints {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
@@ -377,7 +384,7 @@ impl<F: Field + 'static> ProofMan<F> {
                             values.push(value);
                         }
                         if !values.is_empty() {
-                            let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values);
+                            let value = Self::hash_b_tree(&*provers[airgroup_instances[0]], values.clone());
                             transcript.add_elements(value.as_ptr() as *mut c_void, value.len());
                         }
                     }
@@ -405,7 +412,7 @@ impl<F: Field + 'static> ProofMan<F> {
             ectx.dctx.read().unwrap().world.all_gather_into(&roots, &mut all_roots);
 
             // add challenges to transcript
-            let airgroups = pctx.global_info.subproofs.clone();
+            let airgroups = pctx.global_info.air_groups.clone();
             for (airgroup_id, _airgroup) in airgroups.iter().enumerate() {
                 if verify_constraints {
                     let dummy_elements = [F::zero(), F::one(), F::two(), F::neg_one()];
@@ -437,13 +444,6 @@ impl<F: Field + 'static> ProofMan<F> {
                     }
                 }
             }
-        }
-
-        if stage == 0 {
-            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
-            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-
-            transcript.add_elements(public_inputs, pctx.global_info.n_publics);
         }
     }
 
@@ -630,7 +630,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut air_instances = HashMap::new();
         for air_instance in air_instances_repo.iter() {
             let air_name = pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].clone().name;
-            let air_group_name = pctx.global_info.subproofs[air_instance.airgroup_id].clone();
+            let air_group_name = pctx.global_info.air_groups[air_instance.airgroup_id].clone();
             let air_instance = air_instances.entry(air_group_name).or_insert_with(HashMap::new);
             let air_instance = air_instance.entry(air_name).or_insert(0);
             *air_instance += 1;

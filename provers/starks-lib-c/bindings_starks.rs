@@ -27,10 +27,17 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z28fri_proof_set_subproofvaluesPvS_"]
-    pub fn fri_proof_set_subproofvalues(
+    #[link_name = "\u{1}_Z28fri_proof_set_airgroupvaluesPvS_"]
+    pub fn fri_proof_set_airgroupvalues(
         pFriProof: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
+        airgroupValues: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z23fri_proof_set_airvaluesPvS_"]
+    pub fn fri_proof_set_airvalues(
+        pFriProof: *mut ::std::os::raw::c_void,
+        airValues: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -97,14 +104,41 @@ extern "C" {
     ) -> u64;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z13get_n_airvalsPv"]
+    pub fn get_n_airvals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z18get_n_airgroupvalsPv"]
+    pub fn get_n_airgroupvals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z11get_n_evalsPv"]
+    pub fn get_n_evals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z23get_airvalue_id_by_namePvPc"]
+    pub fn get_airvalue_id_by_name(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        airValueName: *mut ::std::os::raw::c_char,
+    ) -> i64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z28get_airgroupvalue_id_by_namePvPc"]
+    pub fn get_airgroupvalue_id_by_name(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        airValueName: *mut ::std::os::raw::c_char,
+    ) -> i64;
+}
+extern "C" {
     #[link_name = "\u{1}_Z15stark_info_freePv"]
     pub fn stark_info_free(pStarkInfo: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14const_pols_newPcPv"]
+    #[link_name = "\u{1}_Z14const_pols_newPcPvb"]
     pub fn const_pols_new(
         filename: *mut ::std::os::raw::c_char,
         pStarkInfo: *mut ::std::os::raw::c_void,
+        calculate_tree: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -114,6 +148,21 @@ extern "C" {
         treeFilename: *mut ::std::os::raw::c_char,
         pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15load_const_treePvS_Pc"]
+    pub fn load_const_tree(
+        pConstPols: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        treeFilename: *mut ::std::os::raw::c_char,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20calculate_const_treePvS_"]
+    pub fn calculate_const_tree(
+        pConstPols: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
+    );
 }
 extern "C" {
     #[link_name = "\u{1}_Z15const_pols_freePv"]
@@ -160,7 +209,7 @@ extern "C" {
         stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
-        hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
+        hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
         hintFieldName: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -171,7 +220,7 @@ extern "C" {
         stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
-        hintFieldNameSubproofVal: *mut ::std::os::raw::c_char,
+        hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
         hintFieldName1: *mut ::std::os::raw::c_char,
         hintFieldName2: *mut ::std::os::raw::c_char,
         hintOptions1: *mut ::std::os::raw::c_void,
@@ -179,11 +228,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_S_mPc"]
+    #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
     pub fn set_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
-        subproofValues: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
         values: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
@@ -278,6 +326,13 @@ extern "C" {
         pHhash: *mut ::std::os::raw::c_void,
         pBuffer: *mut ::std::os::raw::c_void,
         nElements: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z14set_const_treePvS_"]
+    pub fn set_const_tree(
+        pStarks: *mut ::std::os::raw::c_void,
+        pConstPols: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -501,3 +556,4 @@ extern "C" {
     #[link_name = "\u{1}_Z11setLogLevelm"]
     pub fn setLogLevel(level: u64);
 }
+

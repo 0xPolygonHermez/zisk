@@ -23,10 +23,11 @@ typedef enum
     cm = 1,
     tmp = 2,
     public_ = 3,
-    subproofvalue = 4,
+    airgroupvalue = 4,
     challenge = 5,
     number = 6,
     string_ = 7,
+    airvalue = 8,
 } opType;
 
 
@@ -105,11 +106,10 @@ public:
     // Read from starkInfo file
     StarkStruct starkStruct;
 
-    uint64_t subproofId;
+    uint64_t airgroupId;
     uint64_t airId;
 
     uint64_t nPublics;
-    uint64_t nSubProofValues;
     uint64_t nConstants;
     
     uint64_t nStages;
@@ -117,7 +117,8 @@ public:
     vector<PolMap> cmPolsMap;
     vector<PolMap> constPolsMap;
     vector<PolMap> challengesMap;
-    vector<PolMap> subproofValuesMap;
+    vector<PolMap> airgroupValuesMap;
+    vector<PolMap> airValuesMap;
     vector<PolMap> publicsMap;
 
     vector<EvMap> evMap;

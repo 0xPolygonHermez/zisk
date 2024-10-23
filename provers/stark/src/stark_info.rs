@@ -53,8 +53,8 @@ pub enum OpType {
     Tmp = 2,
     #[serde(rename = "public")]
     Public = 3,
-    #[serde(rename = "subproofvalue")]
-    SubproofValue = 4,
+    #[serde(rename = "airgroupvalue")]
+    AirgroupValue = 4,
     #[serde(rename = "challenge")]
     Challenge = 5,
     #[serde(rename = "number")]
@@ -70,7 +70,7 @@ impl OpType {
             OpType::Cm => 1,
             OpType::Tmp => 2,
             OpType::Public => 3,
-            OpType::SubproofValue => 4,
+            OpType::AirgroupValue => 4,
             OpType::Challenge => 5,
             OpType::Number => 6,
             OpType::String => 7,
@@ -128,16 +128,13 @@ pub struct StarkInfo {
     #[serde(rename = "starkStruct")]
     pub stark_struct: StarkStruct,
 
-    #[serde(default, rename = "subproofId")]
-    pub subproof_id: u64,
+    #[serde(default, rename = "airgroupId")]
+    pub airgroup_id: u64,
     #[serde(default, rename = "airId")]
     pub air_id: u64,
 
     #[serde(rename = "nPublics")]
     pub n_publics: u64,
-    // Default value for nSubAirValues is 0
-    #[serde(default, rename = "nSubproofValues")]
-    pub n_subproof_values: u64,
     #[serde(rename = "nConstants")]
     pub n_constants: u64,
     #[serde(default, rename = "nStages")]
@@ -147,8 +144,10 @@ pub struct StarkInfo {
     pub cm_pols_map: Option<Vec<PolMap>>,
     #[serde(rename = "challengesMap")]
     pub challenges_map: Option<Vec<PolMap>>,
-    #[serde(rename = "subproofValuesMap")]
-    pub subproofvalues_map: Option<Vec<PolMap>>,
+    #[serde(rename = "airgroupValuesMap")]
+    pub airgroupvalues_map: Option<Vec<PolMap>>,
+    #[serde(rename = "airValuesMap")]
+    pub airvalues_map: Option<Vec<PolMap>>,
     #[serde(rename = "evMap")]
     pub ev_map: Vec<EvMap>,
 

@@ -10,7 +10,6 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
     uint64_t friSteps = starkInfo.starkStruct.steps.size() - 1;
     uint64_t nQueries = starkInfo.starkStruct.nQueries;
     uint64_t nStages = starkInfo.nStages;
-    uint64_t nSubProofValues = starkInfo.nSubProofValues;
    
     string valsQ = "s0_vals" + to_string(nStages + 1);
     string siblingsQ = "s0_siblings" + to_string(nStages + 1);
@@ -69,8 +68,12 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
 
     zkinOut["finalPol"] = proof["fri"][friSteps];
 
-    if (nSubProofValues > 0) {
-        zkinOut["subproofValues"] = proof["subproofValues"];
+    if (starkInfo.airgroupValuesMap.size() > 0) {
+        zkinOut["airgroupvalues"] = proof["airgroupValues"];
+    }
+
+    if (starkInfo.airValuesMap.size() > 0) {
+        zkinOut["airvalues"] = proof["airValues"];
     }
     
     return zkinOut;
@@ -279,18 +282,13 @@ void *publics2zkin(ordered_json &zkin, Goldilocks::Element* publics, json& globa
             zkin["sv_aggregationTypes"][i] = Goldilocks::toString(publics[p++]);
         }
 
-        zkin["sv_subproofValues"] = ordered_json::array();
+        zkin["sv_airgroupvalues"] = ordered_json::array();
         for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
-            zkin["sv_subproofValues"][i] = ordered_json::array();
+            zkin["sv_airgroupvalues"][i] = ordered_json::array();
             for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
-                zkin["sv_subproofValues"][i][k] = Goldilocks::toString(publics[p++]);
+                zkin["sv_airgroupvalues"][i][k] = Goldilocks::toString(publics[p++]);
             }
         }
-    }
-
-    zkin["sv_rootC"] = ordered_json::array();
-    for(uint64_t j = 0; j < 4; ++j) {
-        zkin["sv_rootC"][j] = Goldilocks::toString(publics[p++]);
     }
 
     for(uint64_t i = 0; i < globalInfo["numChallenges"].size() + 1; ++i) {
@@ -359,6 +357,7 @@ void *addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recursive2Ver
         zkin["rootCAgg"][i] = Goldilocks::toString(recursive2VerKey[i]);
     }
 
+    json2file(zkin, "recursive2.json");
     return (void *)new ordered_json(zkin);
 }
 
@@ -376,7 +375,7 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
     zkinFinal["challenges"] = challengesJson["challenges"];
     zkinFinal["challengesFRISteps"] = challengesJson["challengesFRISteps"];
 
-    for(uint64_t i = 0; i < globalInfo["subproofs"].size(); ++i) {
+    for(uint64_t i = 0; i < globalInfo["air_groups"].size(); ++i) {
         ordered_json zkin = *(ordered_json *)zkin_vec[i];
         StarkInfo &starkInfo = *(StarkInfo *)starkInfo_vec[i];
 
@@ -410,10 +409,8 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
 
         if(globalInfo["aggTypes"][i].size() > 0) {
             zkinFinal["s" + to_string(i) + "_sv_aggregationTypes"] = zkin["sv_aggregationTypes"];
-            zkinFinal["s" + to_string(i) + "_sv_subproofValues"] = zkin["sv_subproofValues"];
+            zkinFinal["s" + to_string(i) + "_sv_airgroupvalues"] = zkin["sv_airgroupvalues"];
         }
-
-        zkinFinal["s" + to_string(i) + "_sv_rootC"] = zkin["sv_rootC"];
 
         for(uint64_t j = 0; j < globalInfo["numChallenges"].size() + 1; ++j) {
             zkinFinal["s" + to_string(i) + "_sv_root" + to_string(j + 1)] = zkin["sv_root" + to_string(j + 1)];
@@ -491,12 +488,9 @@ ordered_json joinzkinrecursive2(json& globalInfo, uint64_t airgroupId, Goldilock
             assert(zkin2["sv_aggregationTypes"][a] == zkin1["sv_aggregationTypes"][a]);
         }
 
-        zkinRecursive2["a_sv_subproofValues"] = zkin1["sv_subproofValues"];
-        zkinRecursive2["b_sv_subproofValues"] = zkin2["sv_subproofValues"];
+        zkinRecursive2["a_sv_airgroupvalues"] = zkin1["sv_airgroupvalues"];
+        zkinRecursive2["b_sv_airgroupvalues"] = zkin2["sv_airgroupvalues"];
     }
-
-    zkinRecursive2["a_sv_rootC"] = zkin1["sv_rootC"];
-    zkinRecursive2["b_sv_rootC"] = zkin2["sv_rootC"];
 
     for(uint64_t j = 0; j < globalInfo["numChallenges"].size() + 1; ++j) {
         zkinRecursive2["a_sv_root" + to_string(j + 1)] = zkin1["sv_root" + to_string(j + 1)];

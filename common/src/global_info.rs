@@ -11,7 +11,7 @@ pub struct GlobalInfo {
     pub folder_path: String,
     pub name: String,
     pub airs: Vec<Vec<GlobalInfoAir>>,
-    pub subproofs: Vec<String>,
+    pub air_groups: Vec<String>,
 
     #[serde(rename = "aggTypes")]
     pub agg_types: Vec<Vec<GlobalInfoAggType>>,
@@ -101,14 +101,14 @@ impl GlobalInfo {
 
         let air_setup_folder = match proof_type {
             ProofType::Recursive2 => {
-                format!("{}/{}/{}/recursive2/recursive2", self.folder_path, self.name, self.subproofs[airgroup_id])
+                format!("{}/{}/{}/recursive2/recursive2", self.folder_path, self.name, self.air_groups[airgroup_id])
             }
             ProofType::Compressor | ProofType::Recursive1 => {
                 format!(
                     "{}/{}/{}/airs/{}/{}/{}",
                     self.folder_path,
                     self.name,
-                    self.subproofs[airgroup_id],
+                    self.air_groups[airgroup_id],
                     self.airs[airgroup_id][air_id].name,
                     type_str,
                     type_str,
@@ -119,7 +119,7 @@ impl GlobalInfo {
                     "{}/{}/{}/airs/{}/{}/{}",
                     self.folder_path,
                     self.name,
-                    self.subproofs[airgroup_id],
+                    self.air_groups[airgroup_id],
                     self.airs[airgroup_id][air_id].name,
                     type_str,
                     self.get_air_name(airgroup_id, air_id),
@@ -132,11 +132,11 @@ impl GlobalInfo {
     }
 
     pub fn get_air_group_name(&self, airgroup_id: usize) -> &str {
-        &self.subproofs[airgroup_id]
+        &self.air_groups[airgroup_id]
     }
 
     pub fn get_airgroup_id(&self, air_group_name: &str) -> usize {
-        self.subproofs
+        self.air_groups
             .iter()
             .position(|name| name == air_group_name)
             .unwrap_or_else(|| panic!("Air group '{}' not found", air_group_name))

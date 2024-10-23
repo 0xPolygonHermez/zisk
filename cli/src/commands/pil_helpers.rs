@@ -97,12 +97,12 @@ impl PilHelpersCmd {
         let mut constant_airgroups: Vec<(String, usize)> = Vec::new();
         let mut constant_airs: Vec<(String, Vec<usize>, String)> = Vec::new();
 
-        for (subproof_id, subproof) in pilout.subproofs.iter().enumerate() {
+        for (airgroup_id, airgroup) in pilout.air_groups.iter().enumerate() {
             wcctxs.push(AirGroupsCtx {
-                airgroup_id: subproof_id,
-                name: subproof.name.as_ref().unwrap().clone().to_case(Case::Pascal),
-                snake_name: subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
-                airs: subproof
+                airgroup_id,
+                name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Pascal),
+                snake_name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
+                airs: airgroup
                     .airs
                     .iter()
                     .enumerate()
@@ -117,9 +117,9 @@ impl PilHelpersCmd {
 
             // Prepare constants
             constant_airgroups
-                .push((subproof.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), subproof_id));
+                .push((airgroup.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), airgroup_id));
 
-            for (air_idx, air) in subproof.airs.iter().enumerate() {
+            for (air_idx, air) in airgroup.airs.iter().enumerate() {
                 let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();
                 let contains_key = constant_airs.iter().position(|(name, _, _)| name == &air_name);
 
@@ -137,15 +137,15 @@ impl PilHelpersCmd {
         }
 
         // Build columns data for traces
-        for (subproof_id, subproof) in pilout.subproofs.iter().enumerate() {
-            for (air_id, _) in subproof.airs.iter().enumerate() {
-                // Search symbols where subproof_id == subproof_id && air_id == air_id && type == WitnessCol
+        for (airgroup_id, airgroup) in pilout.air_groups.iter().enumerate() {
+            for (air_id, _) in airgroup.airs.iter().enumerate() {
+                // Search symbols where airgroup_id == airgroup_id && air_id == air_id && type == WitnessCol
                 pilout
                     .symbols
                     .iter()
                     .filter(|symbol| {
-                        symbol.subproof_id.is_some()
-                            && symbol.subproof_id.unwrap() == subproof_id as u32
+                        symbol.air_group_id.is_some()
+                            && symbol.air_group_id.unwrap() == airgroup_id as u32
                             && symbol.air_id.is_some()
                             && symbol.air_id.unwrap() == air_id as u32
                             && symbol.stage.is_some()
@@ -153,7 +153,7 @@ impl PilHelpersCmd {
                             && symbol.r#type == SymbolType::WitnessCol as i32
                     })
                     .for_each(|symbol| {
-                        let air = wcctxs[subproof_id].airs.get_mut(air_id).unwrap();
+                        let air = wcctxs[airgroup_id].airs.get_mut(air_id).unwrap();
                         let name = symbol.name.split_once('.').map(|x| x.1).unwrap_or(&symbol.name);
                         let r#type = if symbol.lengths.is_empty() {
                             "F".to_string() // Case when lengths.len() == 0

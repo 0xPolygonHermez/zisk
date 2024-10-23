@@ -1,5 +1,7 @@
 use std::{collections::HashMap, sync::RwLock};
 
+use p3_field::Field;
+
 use crate::AirInstance;
 
 pub struct AirInstancesRepository<F> {
@@ -7,13 +9,13 @@ pub struct AirInstancesRepository<F> {
     pub air_instances_counts: RwLock<HashMap<(usize, usize), usize>>,
 }
 
-impl Default for AirInstancesRepository<usize> {
+impl<F: Field> Default for AirInstancesRepository<F> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<F> AirInstancesRepository<F> {
+impl<F: Field> AirInstancesRepository<F> {
     pub fn new() -> Self {
         AirInstancesRepository {
             air_instances: RwLock::new(Vec::new()),

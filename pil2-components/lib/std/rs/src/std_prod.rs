@@ -223,7 +223,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     // This call calculates "numerator" / "denominator" and accumulates it into "reference". Its last value is stored into "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and calculating the operations in Rust,
                     // TODO: GENERALIZE CALLS
-                    let (pol_id, subproofvalue_id) = acc_mul_hint_fields::<F>(
+                    let (pol_id, airgroupvalue_id) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
@@ -237,7 +237,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                     );
 
                     air_instance.set_commit_calculated(pol_id as usize);
-                    air_instance.set_subproofvalue_calculated(subproofvalue_id as usize);
+                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }
         }

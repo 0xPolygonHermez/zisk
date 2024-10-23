@@ -62,10 +62,16 @@ void fri_proof_get_tree_root(void *pFriProof, void* root, uint64_t tree_index)
     }
 }
 
-void fri_proof_set_subproofvalues(void *pFriProof, void *subproofValues)
+void fri_proof_set_airgroupvalues(void *pFriProof, void *airgroupValues)
 {
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
-    friProof->proof.setSubproofValues((Goldilocks::Element *)subproofValues);
+    friProof->proof.setAirgroupValues((Goldilocks::Element *)airgroupValues);
+}
+
+void fri_proof_set_airvalues(void *pFriProof, void *airValues)
+{
+    FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
+    friProof->proof.setAirValues((Goldilocks::Element *)airValues);
 }
 void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* globalInfoFile, char *fileDir)
 {
@@ -149,8 +155,36 @@ uint64_t get_map_total_n(void *pStarkInfo)
     return ((StarkInfo *)pStarkInfo)->mapTotalN;
 }
 
+uint64_t get_n_airvals(void *pStarkInfo) {
+    return ((StarkInfo *)pStarkInfo)->airValuesMap.size();
+}
+
+uint64_t get_n_airgroupvals(void *pStarkInfo) {
+    return ((StarkInfo *)pStarkInfo)->airgroupValuesMap.size();
+}
+
+uint64_t get_n_evals(void *pStarkInfo) {
+    return ((StarkInfo *)pStarkInfo)->evMap.size();
+}
+
+int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    for(uint64_t i = 0; i < starkInfo.airValuesMap.size(); ++i) {
+        if(starkInfo.airValuesMap[i].name == string(airValueName)) return i;
+    }
+    return -1;
+}
+
+int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airgroupValueName) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    for(uint64_t i = 0; i < starkInfo.airgroupValuesMap.size(); ++i) {
+        if(starkInfo.airgroupValuesMap[i].name == string(airgroupValueName)) return i;
+    }
+    return -1;
+};
+
 uint64_t get_stark_info_n(void *pStarkInfo) {
-    uint64_t N =  1 << ((StarkInfo *)pStarkInfo)->starkStruct.nBits;
+    uint64_t N = 1 << ((StarkInfo *)pStarkInfo)->starkStruct.nBits;
     return N;
 }
 
@@ -172,9 +206,9 @@ void stark_info_free(void *pStarkInfo)
 
 // Const Pols
 // ========================================================================================
-void *const_pols_new(char* filename, void *pStarkInfo) 
+void *const_pols_new(char* filename, void *pStarkInfo, bool calculate_tree) 
 {
-    auto const_pols = new ConstPols(*(StarkInfo *)pStarkInfo, filename);
+    auto const_pols = new ConstPols(*(StarkInfo *)pStarkInfo, filename, calculate_tree);
 
     return const_pols;
 }
@@ -184,6 +218,16 @@ void *const_pols_with_tree_new(char* filename, char* treeFilename, void *pStarkI
     auto const_pols = new ConstPols(*(StarkInfo *)pStarkInfo, filename, treeFilename);
 
     return const_pols;
+}
+
+void load_const_tree(void *pConstPols, void *pStarkInfo, char *treeFilename) {
+    ConstPols *constPols = (ConstPols *)pConstPols;
+    constPols->loadConstTree(*(StarkInfo *)pStarkInfo, treeFilename);
+}
+
+void calculate_const_tree(void *pConstPols, void *pStarkInfo) {
+    ConstPols *constPols = (ConstPols *)pConstPols;
+    constPols->calculateConstTree(*(StarkInfo *)pStarkInfo);
 }
 
 void const_pols_free(void *pConstPols)
@@ -219,18 +263,18 @@ uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, ch
     return multiplyHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldName1), string(hintFieldName2), *(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2);
 }
 
-void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName) {
-    return new VecU64Result(accHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName)));
+void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName) {
+    return new VecU64Result(accHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName)));
 }
 
-void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameSubproofVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2) {
-    return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameSubproofVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2));
+void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2) {
+    return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2));
 }
 
 
-uint64_t set_hint_field(void *pSetupCtx, void* buffer, void* subproofValues, void *values, uint64_t hintId, char * hintFieldName) 
+uint64_t set_hint_field(void *pSetupCtx, void* params, void *values, uint64_t hintId, char * hintFieldName) 
 {
-    return setHintField(*(SetupCtx *)pSetupCtx,  (Goldilocks::Element *)buffer, (Goldilocks::Element *)subproofValues, (Goldilocks::Element *)values, hintId, string(hintFieldName));
+    return setHintField(*(SetupCtx *)pSetupCtx,  *(StepsParams *)params, (Goldilocks::Element *)values, hintId, string(hintFieldName));
 }
 
 // Starks
@@ -316,6 +360,12 @@ void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElemen
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
     starks->calculateHash((Goldilocks::Element *)pHhash, (Goldilocks::Element *)pBuffer, nElements);
+}
+
+void set_const_tree(void *pStarks, void *pConstPols) 
+{
+    Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
+    starks->setConstTree(*(ConstPols *)pConstPols);
 }
 
 // MerkleTree

@@ -29,7 +29,7 @@
 
 // #[derive(Debug, Serialize)]
 // struct WCContext {
-//     subproof_id: usize,
+//     airgroup_id: usize,
 //     name: String,
 //     snake_name: String,
 //     airs: Vec<AirContext>,
@@ -89,16 +89,16 @@
 //         tt.add_template("main.rs", MAIN_RS)?;
 //         tt.add_template("wc.rs", WC_RS)?;
 
-//         // get the wc, fill subproof_id with the  index inside subproofs
+//         // get the wc, fill airgroup_id with the  index inside airgroups
 //         let mut wc = Vec::new();
 
-//         for (index, subproof) in pilout.subproofs.iter().enumerate() {
-//             let subproof_id = index;
+//         for (index, airgroup) in pilout.air_groups.iter().enumerate() {
+//             let airgroup_id = index;
 //             wc.push(WCContext {
-//                 subproof_id,
-//                 name: subproof.name.as_ref().unwrap().clone().to_case(Case::Pascal),
-//                 snake_name: subproof.name.as_ref().unwrap().clone().to_case(Case::Snake),
-//                 airs: subproof.airs.iter().map(|air| AirContext { name: air.name.as_ref().unwrap().clone() }).collect(),
+//                 airgroup_id,
+//                 name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Pascal),
+//                 snake_name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Snake),
+//                 airs: airgroup.airs.iter().map(|air| AirContext { name: air.name.as_ref().unwrap().clone() }).collect(),
 //             });
 //         }
 
@@ -131,7 +131,7 @@
 //                 tt.render("wc.rs", &data)?,
 //             )?;
 
-//             let traces_content = trace_setup_handler(&pilout, wc.subproof_id)?;
+//             let traces_content = trace_setup_handler(&pilout, wc.airgroup_id)?;
 //             fs::write(
 //                 src_folder.join("witness_computation").join(format!("{}_traces.rs", wc.snake_name)),
 //                 traces_content,

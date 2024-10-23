@@ -47,16 +47,10 @@ void StarkInfo::load(json j)
     }
 
     airId = j["airId"];
-    subproofId = j["subproofId"];
+    airgroupId = j["airgroupId"];
 
     nPublics = j["nPublics"];
     nConstants = j["nConstants"];
-
-    if(j.contains("nSubproofValues")) {
-        nSubProofValues = j["nSubproofValues"];
-    } else {
-        nSubProofValues = 0;
-    }
 
     nStages = j["nStages"];
 
@@ -97,11 +91,20 @@ void StarkInfo::load(json j)
         publicsMap.push_back(map);
     }
 
-    for (uint64_t i = 0; i < j["subproofValuesMap"].size(); i++) 
+    for (uint64_t i = 0; i < j["airgroupValuesMap"].size(); i++) 
     {
         PolMap map;
-        map.name = j["subproofValuesMap"][i]["name"];
-        subproofValuesMap.push_back(map);
+        map.name = j["airgroupValuesMap"][i]["name"];
+        map.stage = j["airgroupValuesMap"][i]["stage"];
+        airgroupValuesMap.push_back(map);
+    }
+
+    for (uint64_t i = 0; i < j["airValuesMap"].size(); i++) 
+    {
+        PolMap map;
+        map.name = j["airValuesMap"][i]["name"];
+        map.stage = j["airValuesMap"][i]["stage"];
+        airValuesMap.push_back(map);
     }
 
     for (uint64_t i = 0; i < j["cmPolsMap"].size(); i++) 
@@ -248,14 +251,16 @@ opType string2opType(const string s)
         return tmp;
     if(s == "public")
         return public_;
-    if(s == "subproofValue")
-        return subproofvalue;
+    if(s == "airgroupvalue")
+        return airgroupvalue;
     if(s == "challenge")
         return challenge;
     if(s == "number")
         return number;
     if(s == "string") 
         return string_;
+    if(s == "airvalue") 
+        return airvalue;
     zklog.error("string2opType() found invalid string=" + s);
     exitProcess();
     exit(-1);

@@ -51,7 +51,7 @@ impl Setup {
 
         let p_const_pols = match PathBuf::from(&const_pols_tree_path).exists() {
             true => const_pols_with_tree_new_c(const_pols_path.as_str(), const_pols_tree_path.as_str(), p_stark_info),
-            false => const_pols_new_c(const_pols_path.as_str(), p_stark_info),
+            false => const_pols_new_c(const_pols_path.as_str(), p_stark_info, true),
         };
 
         Self { air_id, airgroup_id, p_setup: SetupC { p_stark_info, p_expressions_bin, p_const_pols } }
@@ -96,7 +96,7 @@ impl Setup {
                 const_pols_tree_path.as_str(),
                 self.p_setup.p_stark_info,
             ),
-            false => const_pols_new_c(const_pols_path.as_str(), self.p_setup.p_stark_info),
+            false => const_pols_new_c(const_pols_path.as_str(), self.p_setup.p_stark_info, true),
         };
 
         self.p_setup.p_const_pols = p_const_pols;

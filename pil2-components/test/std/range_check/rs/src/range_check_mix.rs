@@ -46,7 +46,8 @@ where
 
         let buffer = vec![F::zero(); buffer_size as usize];
 
-        let air_instance = AirInstance::new(RANGE_CHECK_MIX_AIRGROUP_ID, RANGE_CHECK_MIX_AIR_IDS[0], None, buffer);
+        let air_instance =
+            AirInstance::new(sctx.clone(), RANGE_CHECK_MIX_AIRGROUP_ID, RANGE_CHECK_MIX_AIR_IDS[0], None, buffer);
         pctx.air_instance_repo.add_air_instance(air_instance);
     }
 }

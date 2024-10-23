@@ -257,7 +257,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let buffer = create_buffer_fast(buffer_size as usize);
 
         // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed
-        let mut air_instance = AirInstance::new(self.airgroup_id, self.air_id, None, buffer);
+        let mut air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
         let mut mul_columns_guard = self.mul_columns.lock().unwrap();
         for hint in hints_guard[1..].iter() {
             mul_columns_guard.push(get_hint_field::<F>(
@@ -273,8 +273,14 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         // Set the number of rows
         let hint = hints_guard[0];
 
-        let num_rows =
-            get_hint_field::<F>(&sctx, &pctx, &mut air_instance, hint as usize, "num_rows", HintFieldOptions::dest());
+        let num_rows = get_hint_field_constant::<F>(
+            &sctx,
+            self.airgroup_id,
+            self.air_id,
+            hint as usize,
+            "num_rows",
+            HintFieldOptions::default(),
+        );
 
         let HintFieldValue::Field(num_rows) = num_rows else {
             log::error!("Number of rows must be a field element");
