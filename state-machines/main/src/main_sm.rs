@@ -215,7 +215,7 @@ impl<F: PrimeField> MainSM<F> {
             timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
             emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
-            
+
             // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
             handle_rom.join().unwrap().expect("Error during ROM witness computation");
 

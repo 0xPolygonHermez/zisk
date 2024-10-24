@@ -22,7 +22,18 @@ impl<F: Field> RomSM<F> {
         rom_sm
     }
 
-    pub fn prove(&self, _rom_path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send>> {
+    pub fn prove(&self, rom_path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let prover_buffer = &mut [F::zero(); 1];
+        let offset = 0;
+
+        Self::compute_trace(rom_path, prover_buffer, offset)
+    }
+
+    pub fn compute_trace(
+        _rom_path: PathBuf,
+        _prover_buffer: &mut [F],
+        _offset: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
         // FIXME! Implement proof logic
         println!("Proving ROM");
         let elf_filename: String = _rom_path.to_str().unwrap().into();

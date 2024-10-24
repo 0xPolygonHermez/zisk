@@ -1530,7 +1530,7 @@ version = "0.1.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#d9c07ae8a1fb474edbf8d63ab6dcf291347fa6ea"
 dependencies = [
  "colored",
- "sysinfo",
+ "sysinfo 0.31.4",
 ]
 
 [[package]]
@@ -1830,6 +1830,16 @@ dependencies = [
 [[package]]
 name = "rom-merkle"
 version = "0.1.0"
+dependencies = [
+ "clap",
+ "colored",
+ "env_logger",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "sm-rom",
+ "sysinfo 0.32.0",
+]
 
 [[package]]
 name = "rustc-demangle"
@@ -2231,6 +2241,20 @@ name = "sysinfo"
 version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "355dbe4f8799b304b05e1b0f05fc59b2a18d36645cf169607da45bde2f69a1be"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+ "memchr",
+ "ntapi",
+ "rayon",
+ "windows",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b5ae3f4f7d64646c46c4cae4e3f01d1c5d255c7406fdd7c7f999a94e488791"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -3015,7 +3039,7 @@ dependencies = [
  "pprof",
  "rayon",
  "riscv",
- "sysinfo",
+ "sysinfo 0.31.4",
  "vergen",
  "zisk-core",
  "zisk-pil",
