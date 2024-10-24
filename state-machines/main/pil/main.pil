@@ -1,7 +1,4 @@
-// require "std_permutation.pil"
-// require "std_lookup.pil"
-// require "mem.pil"
-// require "operation.pil"
+require "std_lookup.pil"
 
 const int BOOT_ADDR = 0x1000;
 
@@ -16,8 +13,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     airval main_last_segment;
     airval main_segment;
 
-    main_first_segment * (1 - main_first_segment) === 0;    
-    main_last_segment * (1 - main_last_segment) === 0;  
+    main_first_segment * (1 - main_first_segment) === 0;
+    main_last_segment * (1 - main_last_segment) === 0;
     main_first_segment * main_segment === 0;
 
     const expr L1 = SEGMENT_L1 * main_first_segment;
@@ -41,7 +38,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Instruction
 
     // a_src_step
-    // a_src_mem 
+    // a_src_mem
     // a_src_imm
     // a_src_sp
     // b_src_mem
@@ -106,7 +103,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
 
     col witness jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
-    col witness end;                     
+    col witness end;
     col witness m32;
 
     const expr addr_step = STEP * 3;
@@ -126,21 +123,21 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     // Mem.load
-    // mem_load(sel: a_src_mem, 
-    //          step: addr_step, 
+    // mem_load(sel: a_src_mem,
+    //          step: addr_step,
     //          addr: addr[0],
     //          value: a);
 
     // Mem.load
     // mem_load(sel: sel_mem_b,
-    //          step: addr_step + 1, 
+    //          step: addr_step + 1,
     //          bytes: ind_width,
     //          addr: addr[1],
     //          value: b);
 
     // Mem.store
-    // mem_store(sel: store_mem + store_ind, 
-    //           step: addr_step + 2, 
+    // mem_store(sel: store_mem + store_ind,
+    //           step: addr_step + 2,
     //           bytes: ind_width,
     //           addr: addr[2],
     //           value: [store_ra*(pc + jmp_offset2 - c[0]) + c[0], (1 - store_ra) * c[1]]);
@@ -202,8 +199,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // continuations
     // continuations_transition(pc, set_pc * (c[0] + jmp_offset1  - new_pc) + new_pc);
-    // continuations_transition(last_c[0], c[0]); // last_c[0]' = c[0];        
-    // continuations_transition(last_c[1], c[1]); // last_c[1]' = c[1];        
+    // continuations_transition(last_c[0], c[0]); // last_c[0]' = c[0];
+    // continuations_transition(last_c[1], c[1]); // last_c[1]' = c[1];
 
     // const expr new_pc = pc + flag*(jmp_offset1 - jmp_offset2) + jmp_offset2;
     // const expr next_pc = set_pc * (c[0] + jmp_offset1  - new_pc) + new_pc  + end * L1' * (0x8000_0000 - (pc + jmp_offset1));
@@ -219,10 +216,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         const expr next_sp = set_sp * (c[0] - sp) + sp + inc_sp;;
         (1 - SEGMENT_LAST) * (sp' - next_sp) === 0;
         // permutation_proves(MAIN_CONTINUATION_ID, sel: SEGMENT_LAST, cols: [next_pc, ...c, next_sp]);
-        // permutation_assumes(MAIN_CONTINUATION_ID, sel: SEGMENT_L1, cols: [pc, ...last_c, sp]); 
+        // permutation_assumes(MAIN_CONTINUATION_ID, sel: SEGMENT_L1, cols: [pc, ...last_c, sp]);
     } else {
         // permutation_proves(MAIN_CONTINUATION_ID, sel: SEGMENT_LAST, cols: [next_pc, ...c]);
-        // permutation_assumes(MAIN_CONTINUATION_ID, sel: SEGMENT_L1, cols: [pc, ...last_c]); 
+        // permutation_assumes(MAIN_CONTINUATION_ID, sel: SEGMENT_L1, cols: [pc, ...last_c]);
     }
 
     // pc' === set_pc * ( c[0] + jmp_offset1  - new_pc) + new_pc  + end * L1'*(0x8000_0000 - (pc + jmp_offset1 ));  // Assume that when end=1 then  set_pc = 0 and flag = 0
@@ -231,14 +228,27 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     flag * (1 - flag) === 0;
 
-    /*
-    if (stack_enabled) {    
-        const expr rom_flags =  a_src_imm + 2 * a_src_mem + 4 * b_src_imm + 8 * b_src_mem + 16 * store_ra + 32 * store_mem + 64 * store_ind + 128 * set_pc + 256 * m32 + 512 * end + 1024 * is_external_op +
-                               2**11 * a_src_sp + 2**12 * a_use_sp_imm1 + 2**13 * a_src_step + 2**14 * b_src_ind + 2**15 * store_use_sp;
-        // lookup_assumes(ROM_ID, cols: [pc, rom_flags, op, a_offset_imm0, b_offset_imm0, ind_width, store_offset, jmp_offset1, jmp_offset2, inc_sp, b_use_sp_imm1]);
-    } else {
-        const expr rom_flags = a_src_imm + 2 * a_src_mem + 4 * b_src_imm + 8 * b_src_mem + 16 * store_ra + 32 * store_mem + 64 * store_ind + 128 * set_pc + 256 * m32 + 512 * end + 1024 * is_external_op;
-        // lookup_assumes(ROM_ID, cols: [pc, rom_flags, op, a_offset_imm0, b_offset_imm0, ind_width, store_offset, jmp_offset1, jmp_offset2, a_src_step_imm1, b_src_ind_imm1]);
-    }
-    */
+
+    // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
+    // match with main trace.
+    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm + 32 * b_src_mem
+                           + 64 * is_external_op + 128 * store_ra + 256 * store_mem + 512 * store_ind +
+                           + 1024 * set_pc + 2048 * end + 4096 * m32;
+
+    a_src_imm * (1 - a_src_imm) === 0;
+    a_src_mem * (1 - a_src_mem) === 0;
+    a_src_step * (1 - a_src_step) === 0;
+    b_src_imm * (1 - b_src_imm) === 0;
+    b_src_mem * (1 - b_src_mem) === 0;
+    is_external_op * (1 - is_external_op) === 0;
+    store_ra * (1 - store_ra) === 0;
+    store_mem * (1 - store_mem) === 0;
+    store_ind * (1 - store_ind) === 0;
+    set_pc * (1 - set_pc) === 0;
+    end * (1 - end) === 0;
+    m32 * (1 - m32) === 0;
+
+    lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
+                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1);
+
 }
