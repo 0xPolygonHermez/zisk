@@ -400,6 +400,8 @@ pub trait ArithHelpers {
         np: i64,
         nr: i64,
         fab: i64,
+        secondary_res: i64,
+        sext: i64,
     ) -> [i64; 8] {
         // TODO: unroll this function in variants (div,m32) and (na,nb,nr,np)
         // div, m32, na, nb === f(div,m32,na,nb) => fa, nb, nr
@@ -507,6 +509,9 @@ pub trait ArithHelpers {
         nb: u64,
         np: u64,
         nr: u64,
+        secondary_res: u64,
+        sext: u64,
+        bus: [u64; 8],
     ) -> bool {
         let fab: i64 = 1 - 2 * na as i64 - 2 * nb as i64 + 4 * na as i64 * nb as i64;
         let a_chunks = Self::u64_to_chunks(a);
@@ -531,8 +536,19 @@ pub trait ArithHelpers {
         );
 
         let mut chunks = Self::calculate_chunks(
-            a_chunks, b_chunks, c_chunks, d_chunks, m32 as i64, div as i64, na as i64, nb as i64,
-            np as i64, nr as i64, fab,
+            a_chunks,
+            b_chunks,
+            c_chunks,
+            d_chunks,
+            m32 as i64,
+            div as i64,
+            na as i64,
+            nb as i64,
+            np as i64,
+            nr as i64,
+            fab,
+            secondary_res as i64,
+            sext as i64,
         );
         let mut carry: i64 = 0;
         println!(
@@ -581,7 +597,7 @@ pub trait ArithHelpers {
             chunks[7],
             carry
         );
-        if chunks[0] != 0
+        let mut passed = if chunks[0] != 0
             || chunks[1] != 0
             || chunks[2] != 0
             || chunks[3] != 0
@@ -596,7 +612,56 @@ pub trait ArithHelpers {
         } else {
             println!("[\x1B[32mOK\x1B[0m]");
             true
-        }
+        };
+        const CHUNK_SIZE: i64 = 0x10000;
+        let bus_a_low: i64 = div as i64 * (c_chunks[0] + c_chunks[1] * CHUNK_SIZE)
+            + (1 - div as i64) * (a_chunks[0] + a_chunks[1] * CHUNK_SIZE);
+        let bus_a_high: i64 = div as i64 * (c_chunks[2] + c_chunks[3] * CHUNK_SIZE)
+            + (1 - div as i64) * (a_chunks[2] + a_chunks[3] * CHUNK_SIZE);
+
+        let bus_b_low: i64 = b_chunks[0] + CHUNK_SIZE * b_chunks[1];
+        let bus_b_high: i64 = b_chunks[2] + CHUNK_SIZE * b_chunks[3];
+
+        let res2_low: i64 = d_chunks[0] + CHUNK_SIZE * d_chunks[1];
+        let res2_high: i64 = d_chunks[2] + CHUNK_SIZE * d_chunks[3];
+
+        let res_low: i64 = secondary_res as i64 * res2_low
+            + (1 - secondary_res as i64)
+                * (a_chunks[0] + c_chunks[0] + CHUNK_SIZE * (a_chunks[1] + c_chunks[1])
+                    - bus_a_low);
+        println!(
+            "RES_LOW: 0x{0:X}({0}) 0x{1:X}({1}) 0x{2:X}({2})",
+            res_low,
+            a_chunks[2] + c_chunks[2] + CHUNK_SIZE * (a_chunks[3] + c_chunks[3]),
+            bus_a_high
+        );
+        let res_high: i64 = (1 - m32 as i64)
+            * (secondary_res as i64 * res2_high
+                + (1 - secondary_res as i64)
+                    * ((a_chunks[2] + c_chunks[2] + CHUNK_SIZE * (a_chunks[3] + c_chunks[3]))
+                        - bus_a_high))
+            + sext as i64 * 0xFFFFFFFF;
+        passed = passed
+            && if bus[1] != bus_a_low as u64
+                || bus[2] != bus_a_high as u64
+                || bus[3] != bus_b_low as u64
+                || bus[4] != bus_b_high as u64
+                || bus[5] != res_low as u64
+                || bus[6] != res_high as u64
+            {
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[1], bus_a_low);
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[2], bus_a_high);
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[3], bus_b_low);
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[4], bus_b_high);
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[5], res_low);
+                println!("0x{0:X} ({0}) vs 0x{1:X} ({1})", bus[6], res_high);
+                println!("[\x1B[31mFAIL BUS\x1B[0m]");
+                false
+            } else {
+                println!("[\x1B[32mOK BUS\x1B[0m]");
+                true
+            };
+        passed
     }
 }
 
@@ -1503,7 +1568,19 @@ fn test_calculate_range_checks() {
                     test.range_cd,
                     ranges
                 );
-                if !TestArithHelpers::execute_chunks(a, b, c, d, m32, div, na, nb, np, nr) {
+                let bus: [u64; 8] = [
+                    test.op as u64,
+                    _a & 0xFFFF_FFFF,
+                    _a >> 32,
+                    _b & 0xFFFF_FFFF,
+                    _b >> 32,
+                    emu_c & 0xFFFF_FFFF,
+                    emu_c >> 32,
+                    if emu_flag { 1 } else { 0 },
+                ];
+                if !TestArithHelpers::execute_chunks(
+                    a, b, c, d, m32, div, na, nb, np, nr, sec, sext, bus,
+                ) {
                     errors += 1;
                     println!("TOTAL ERRORS: {}", errors);
                 }

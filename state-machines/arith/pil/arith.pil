@@ -36,6 +36,9 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                         // fab = 1  if sign of a,b are the same
                         // fab = -1 if sign of a,b are different
 
+    col witness na_fb;
+    col witness nb_fa;
+
     col witness debug_main_step; // only for debug
 
     col witness secondary_res;       // op_index: 0 => first result, 1 => second result;
@@ -43,6 +46,8 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     // factor ab € {-1, 1}
     fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
+    na_fb === na * (1 - 2 * nb);
+    nb_fa === nb * (1 - 2 * na);
 
     const expr eq[CHUNKS_OP];
 
@@ -88,17 +93,21 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     eq[2] = fab * a[2] * b[0]
             + fab * a[1] * b[1]
             + fab * a[0] * b[2]
-            - c[2]              // ⎫ np == 0 ➜ - c
-            + 2 * np * c[2]     // ⎭ np == 1 ➜ c
-            + div * d[2]        // ⎫ div == 1 ➜ d or -d
-            - 2 * nr * d[2]     // ⎭ div == 0 ➜ 0
-            - np * div * m32    // m32 == 1 and np == 1 ➜ -2^32 (global) or -1 (in 3rd chunk)
-            + nr * m32;         // m32 == 1 and nr == 1 ➜ div == 1 ➜ 2^32 (global) or 1 (in 3rd chunk)
+            + a[0] * nb_fa * m32 // ⎫ sign contribution when m32
+            + b[0] * na_fb * m32 // ⎭
+            - c[2]               // ⎫ np == 0 ➜ - c
+            + 2 * np * c[2]      // ⎭ np == 1 ➜ c
+            + div * d[2]         // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[2]      // ⎭ div == 0 ➜ 0
+            - np * div * m32     // m32 == 1 and np == 1 ➜ -2^32 (global) or -1 (in 3rd chunk)
+            + nr * m32;          // m32 == 1 and nr == 1 ➜ div == 1 ➜ 2^32 (global) or 1 (in 3rd chunk)
 
     eq[3] = fab * a[3] * b[0]
             + fab * a[2] * b[1]
             + fab * a[1] * b[2]
             + fab * a[0] * b[3]  // NOTE: m32 => high part is 0
+            + a[1] * nb_fa * m32 // ⎫ sign contribution when m32
+            + b[1] * na_fb * m32 // ⎭
             - c[3]               // ⎫ np == 0 ➜ - c
             + 2 * np * c[3]      // ⎭ np == 1 ➜ c
             + div * d[3]         // ⎫ div == 1 ➜ d or -d
@@ -107,31 +116,35 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     eq[4] = fab * a[3] * b[1]
             + fab * a[2] * b[2]
             + fab * a[1] * b[3]
-            + na * b[0] * (1 - 2 * nb) // nb == 1 ➜  degree
-            + nb * a[0] * (1 - 2 * na) // 3 degree
-            - np * div                 //            |
-            + np * div * m32           // 3 degree   | np * (div ^ m32)
-            - 2 * div * m32 * np       // 3 degree   |
-            + nr * (1 - m32)           // 3 degree
+            + na * nb * m32
+            // + b[0] * na * (1 - 2 * nb)
+            // + a[0] * nb * (1 - 2 * na)
+            + b[0] * na_fb * (1 - m32)
+            + a[0] * nb_fa * (1 - m32)
+
+            - np * m32 * (1 - div)  //
+            - np * (1 - m32) * div // 2^64 (np)
+            + nr * (1 - m32)  // 2^64 (nr)
+
             - d[0] * (1 - div)           // 3 degree
             + 2 * np * d[0] * (1 - div); // 3 degree
 
     eq[5] = fab * a[3] * b[2]       // 3 degree
             + fab * a[2] * b[3]     // 3 degree
-            + nb * a[1] * (1 - 2 * na)
-            + na * b[1] * (1 - 2 * nb)
+            + a[1] * nb_fa * (1 - m32)
+            + b[1] * na_fb * (1 - m32)
             - d[1] * (1 - div)
-            + 2 * np * d[1] * (1 - div);
+            + d[1] * 2 * np * (1 - div);
 
     eq[6] = fab * a[3] * b[3]            // 3 degree
-            + nb * a[2] * (1 - 2 * na)   // 3 degree
-            + na * b[2] * (1 - 2 * nb)   // 3 degree
+            + a[2] * nb_fa * (1 - m32)
+            + b[2] * na_fb * (1 - m32)
             - d[2] * (1 - div)
             + 2 * np * d[2] * (1 - div); // 3 degree
 
-    eq[7] = CHUNK_SIZE * na * nb
-            + na * b[3] * (1 - 2 * nb)   // 3 degree
-            + nb * a[3] * (1 - 2 * na)   // 3 degree
+    eq[7] = CHUNK_SIZE * na * nb * (1 - m32)
+            + a[3] * nb_fa * (1 - m32)
+            + b[3] * na_fb * (1 - m32)
             - CHUNK_SIZE * np * (1 - div) * (1 - m32) // 3 degree
             // - CHUNK_SIZE * np * (1 - div)
             - d[3] * (1 - div)
@@ -194,7 +207,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     bus_a_low === div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
 
     col witness bus_a_high;
-    bus_a_high === div * (c[2] + c[2] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
+    bus_a_high === div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
 
     m32 * (1 - bus_a_high) === 0;
 
