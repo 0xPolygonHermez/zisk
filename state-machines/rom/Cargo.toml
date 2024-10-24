@@ -7,6 +7,7 @@ edition = "2021"
 zisk-core = { path = "../../core" }
 sm-common = { path = "../common" }
 zisk-pil = { path = "../../pil" }
+ziskemu = { path = "../../emulator" }
 
 p3-field = { workspace=true }
 proofman-common = { workspace = true }
