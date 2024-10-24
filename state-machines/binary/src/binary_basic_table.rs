@@ -52,7 +52,12 @@ pub enum BasicTableSMErr {
 impl<F: Field> BinaryBasicTableSM<F> {
     const MY_NAME: &'static str = "BinaryT ";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, sctx: Arc<SetupCtx>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new(
+        wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
         let air = wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
 
         let binary_basic_table = Self {

@@ -40,8 +40,12 @@ pub struct BinarySM<F: PrimeField> {
 
 impl<F: PrimeField> BinarySM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>, sctx: Arc<SetupCtx>) -> Arc<Self> {
-        let binary_basic_table_sm =
-            BinaryBasicTableSM::new(wcm.clone(), sctx.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+        let binary_basic_table_sm = BinaryBasicTableSM::new(
+            wcm.clone(),
+            sctx.clone(),
+            BINARY_TABLE_AIRGROUP_ID,
+            BINARY_TABLE_AIR_IDS,
+        );
         let binary_basic_sm = BinaryBasicSM::new(
             wcm.clone(),
             sctx.clone(),

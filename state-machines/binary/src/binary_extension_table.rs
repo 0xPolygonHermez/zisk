@@ -46,7 +46,12 @@ pub enum ExtensionTableSMErr {
 impl<F: Field> BinaryExtensionTableSM<F> {
     const MY_NAME: &'static str = "BinaryET";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, sctx: Arc<SetupCtx>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new(
+        wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
         let air = wcm
             .get_pctx()
             .pilout
