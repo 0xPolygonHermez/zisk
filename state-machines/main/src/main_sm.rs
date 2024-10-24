@@ -63,7 +63,7 @@ pub struct MainSM<F: PrimeField> {
     sctx: Arc<SetupCtx>,
     binary_sm: Arc<BinarySM<F>>,
     mem_sm: Arc<MemSM>,
-    rom_sm: Arc<RomSM>,
+    rom_sm: Arc<RomSM<F>>,
 }
 
 impl<F: PrimeField> MainSM<F> {
