@@ -61,7 +61,7 @@ pub struct MainSM<F: PrimeField> {
     arith_sm: Arc<ArithSM>,
     binary_sm: Arc<BinarySM<F>>,
     mem_sm: Arc<MemSM>,
-    rom_sm: Arc<RomSM>,
+    rom_sm: Arc<RomSM<F>>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -88,7 +88,7 @@ impl<F: PrimeField> MainSM<F> {
     pub fn new(
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
-        rom_sm: Arc<RomSM>,
+        rom_sm: Arc<RomSM<F>>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
