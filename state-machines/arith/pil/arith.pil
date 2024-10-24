@@ -49,48 +49,71 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     // NOTE: Equations with m32 for multiplication not exists, because mul m32 it's an unsigned operation.
     //       In internal equations, it's same than unsigned mul 64 where high part of a and b are zero
 
-    eq[0] = fab * a[0] * b[0]   // 3 degree
-            - c[0]
-            + 2 * np * c[0]
-            + div * d[0]
-            - 2 * nr * d[0];
+    // abs(x)  x >= 0 ➜ nx == 0 ➜ x
+    //         x < 0  ➜ nx == 1 ➜ 2^64 - x
+    //
+    // abs(x,nx) = nx * (2^64 - 2 * x) + x = 2^64 * nx - 2 * nx * x + x
+    //
+    //    chunk[0] = x[0] - 2 * nx + x[0]  // 2^0
+    //    chunk[1] = x[1] - 2 * nx + x[1]  // 2^16
+    //    chunk[2] = x[2] - 2 * nx + x[2]  // 2^24
+    //    chunk[3] = x[3] - 2 * nx + x[3]  // 2^48
+    //    chunk[4] = nx                    // 2^64
+    //
+    //    or chunk[3] = x[3] - 2 * nx + x[3] + 2^16 * nx
+    //       chunk[4] = 0
+    //
+    //    dual use of d, on multiplication d is high part of result, while in division d
+    //    is the remainder. Selector of these two uses is div or nr (because nr = 0 for div = 0)
+    //
+    //    div = 0  ➜   a * b = 2^64 * d + c ➜  a * b - 2^64 * d - c === 0
+    //    div = 1  ➜   a * b + d = c ➜  a * b - c + d === 0
+    //
+    //    eq = a * b + c - div * d - (1 - div) * 2^64 * d
 
-    eq[1] = fab * a[1] * b[0]    // 3 degree
-            + fab * a[0] * b[1]  // 3 degree
-            - c[1]
-            + 2 * np * c[1]
-            + div * d[1]
-            - 2 * nr * d[1];
+    eq[0] = fab * a[0] * b[0]
+            - c[0]              // ⎫ np == 0 ➜ - c
+            + 2 * np * c[0]     // ⎭ np == 1 ➜ - c + 2c = c
+            + div * d[0]        // ⎫ div == 0 ➜ nr = 0  ➜ 0
+            - 2 * nr * d[0];    // ⎥ div == 1 and nr == 0 ➜ d
+                                // ⎭ div == 1 and nr == 1 ➜ d - 2d = -d
 
-    eq[2] = fab * a[2] * b[0]    // 3 degree
-            + fab * a[1] * b[1]  // 3 degree
-            + fab * a[0] * b[2]  // 3 degree
-            - c[2]
-            + 2 * np * c[2]
-            + div * d[2]
-            - 2 * nr * d[2]
-            - np * div * m32     // 3 degree
-            + nr * div * m32;    // 3 degree
+    eq[1] = fab * a[1] * b[0]
+            + fab * a[0] * b[1]
+            - c[1]              // ⎫ np == 0 ➜ - c
+            + 2 * np * c[1]     // ⎭ np == 1 ➜ c
+            + div * d[1]        // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[1];    // ⎭ div == 0 ➜ 0
 
-    eq[3] = fab * a[3] * b[0]    // 3 degree
-            + fab * a[2] * b[1]  // 3 degree
-            + fab * a[1] * b[2]  // 3 degree
-            + fab * a[0] * b[3]  // 3 degree
-            - c[3]
-            + 2 * np * c[3]
-            + div * d[3]
-            - 2 * nr * d[3];
+    eq[2] = fab * a[2] * b[0]
+            + fab * a[1] * b[1]
+            + fab * a[0] * b[2]
+            - c[2]              // ⎫ np == 0 ➜ - c
+            + 2 * np * c[2]     // ⎭ np == 1 ➜ c
+            + div * d[2]        // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[2]     // ⎭ div == 0 ➜ 0
+            - np * div * m32    // m32 == 1 and np == 1 ➜ -2^32 (global) or -1 (in 3rd chunk)
+            + nr * m32;         // m32 == 1 and nr == 1 ➜ div == 1 ➜ 2^32 (global) or 1 (in 3rd chunk)
 
-    eq[4] = fab * a[3] * b[1]    // 3 degree
-            + fab * a[2] * b[2]  // 3 degree
-            + fab * a[1] * b[3]  // 3 degree
-            + na * b[0] * (1 - 2 * nb) // 3 degree
+    eq[3] = fab * a[3] * b[0]
+            + fab * a[2] * b[1]
+            + fab * a[1] * b[2]
+            + fab * a[0] * b[3]  // NOTE: m32 => high part is 0
+            - c[3]               // ⎫ np == 0 ➜ - c
+            + 2 * np * c[3]      // ⎭ np == 1 ➜ c
+            + div * d[3]         // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[3];     // ⎭ div == 0 ➜ 0
+
+    eq[4] = fab * a[3] * b[1]
+            + fab * a[2] * b[2]
+            + fab * a[1] * b[3]
+            + na * b[0] * (1 - 2 * nb) // nb == 1 ➜  degree
             + nb * a[0] * (1 - 2 * na) // 3 degree
             - np * div                 //            |
             + np * div * m32           // 3 degree   | np * (div ^ m32)
             - 2 * div * m32 * np       // 3 degree   |
-            // + nr * (1 - m32) * div     // 3 degree
-            - d[0] * (1 - div)
+            + nr * (1 - m32)           // 3 degree
+            - d[0] * (1 - div)           // 3 degree
             + 2 * np * d[0] * (1 - div); // 3 degree
 
     eq[5] = fab * a[3] * b[2]       // 3 degree
@@ -109,8 +132,8 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     eq[7] = CHUNK_SIZE * na * nb
             + na * b[3] * (1 - 2 * nb)   // 3 degree
             + nb * a[3] * (1 - 2 * na)   // 3 degree
-            // - CHUNK_SIZE * np * (1 - div) * (1 - m32) // 3 degree
-            - CHUNK_SIZE * np * (1 - div)
+            - CHUNK_SIZE * np * (1 - div) * (1 - m32) // 3 degree
+            // - CHUNK_SIZE * np * (1 - div)
             - d[3] * (1 - div)
             + 2 * np * d[3] * (1 - div); // 3 degree
 

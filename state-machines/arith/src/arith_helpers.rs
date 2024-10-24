@@ -34,11 +34,13 @@ pub trait ArithHelpers {
         }
     }
     fn sign128(abs_value: u128, negative: bool) -> u128 {
-        if negative {
+        let res = if negative {
             (0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF - abs_value) + 1
         } else {
             abs_value
-        }
+        };
+        println!("sign128({:X},{})={:X}", abs_value, negative, res);
+        res
     }
     fn abs32(value: u64) -> [u64; 2] {
         let negative = if (value & 0x8000_0000) != 0 { 1 } else { 0 };
@@ -55,15 +57,16 @@ pub trait ArithHelpers {
         [abs_value, negative]
     }
     fn calculate_mul_w(a: u64, b: u64) -> u64 {
-        let [abs_a, na] = Self::abs32(a);
-        let [abs_b, nb] = Self::abs32(b);
+        a * b
+        // let [abs_a, na] = Self::abs32(a);
+        // let [abs_b, nb] = Self::abs32(b);
+        // let abs_c = abs_a * abs_b;
+        // let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
         // println!(
-        //     "a:0x{0:X}({0}) b:0x{1:X}({1}) abs_a:0x{2:X}({2}) na:{3} abs_b:{4:X}({4}) nb:{5}",
-        //     a, b, abs_a, na, abs_b, nb
+        //     "a:0x{0:X}({0}) b:0x{1:X}({1}) abs_a:0x{2:X}({2}) na:{3} abs_b:0x{4:X}({4}) nb:{5} abs_b:0x{6:X}({6}) nc:{7}",
+        //     a, b, abs_a, na, abs_b, nb, abs_c, nc
         // );
-        let abs_c = abs_a * abs_b;
-        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
-        Self::sign64(abs_c, nc == 1)
+        // Self::sign64(abs_c, nc == 1)
     }
 
     fn calculate_mulsu(a: u64, b: u64) -> [u64; 2] {
@@ -77,6 +80,10 @@ pub trait ArithHelpers {
     fn calculate_mul(a: u64, b: u64) -> [u64; 2] {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
+        println!(
+            "mul(a:0x{:X}, b:0x{:X} abs_a:0x{:X} na:{} abs_b:0x{:X} nb:{}",
+            a, b, abs_a, na, abs_b, nb,
+        );
         let abs_c = abs_a as u128 * abs_b as u128;
         let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
         let c = Self::sign128(abs_c, nc == 1);
@@ -272,18 +279,22 @@ pub trait ArithHelpers {
             }
         }
         let sign_mask: u64 = if m32 == 1 { 0x8000_0000 } else { 0x8000_0000_0000_0000 };
+        let sign_c_mask: u64 =
+            if m32 == 1 && div == 1 { 0x8000_0000 } else { 0x8000_0000_0000_0000 };
         let na = if sa && (a & sign_mask) != 0 { 1 } else { 0 };
         let nb = if sb && (b & sign_mask) != 0 { 1 } else { 0 };
         // a sign => b sign
-        let nc = if sa && (c & sign_mask) != 0 { 1 } else { 0 };
+        let nc = if sa && (c & sign_c_mask) != 0 { 1 } else { 0 };
+        let nd = if sa && (d & sign_mask) != 0 { 1 } else { 0 };
 
         // a == 0 || b == 0 => np == 0 ==> how was a signed operation
         // after that sign of np was verified with range check.
+        // TODO: review if secure
         if div == 1 {
-            np = if c != 0 { nc ^ nb } else { 0 };
-            nr = if d != 0 { nc } else { 0 };
+            np = nc; //if c != 0 { na ^ nb } else { 0 };
+            nr = nd;
         } else {
-            np = if (c != 0) || (d != 0) { na ^ nb } else { 0 };
+            np = if m32 == 1 { nc } else { nd }; // if (c != 0) || (d != 0) { na ^ nb } else { 0 }
             nr = 0;
         }
         if m32 == 1 {
@@ -376,94 +387,8 @@ pub trait ArithHelpers {
             + range_d1;
         [m32, div, na, nb, np, nr, sext, secondary_res, range_ab, range_cd, ranges]
     }
-    /*
-    fn calculate_flags(
-        &self,
-        op: u8,
-        a: u64,
-        b: u64,
-        na: &mut i64,
-        nb: &mut i64,
-        nr: &mut i64,
-        np: &mut i64,
-        na32: &mut i64,
-        nd32: &mut i64,
-        m32: &mut i64,
-        div: &mut i64,
-        fab: &mut i64,
-    ) -> [u64; 8] {
-        let MUL_W = 1;
-                match (op) {
-                    MUL_W=> {
-                        let na = if (a as i32) < 0 { 1 } else { 0 };
-                        let nb = if (b as i32) < 0 { 1 } else { 0 };
-                        let c = (a as i32 * b as i32);
-                        let nc = if c < 0 { 1 } else { 0 };
-                    }
-                    MULSUH => {
-                        let na = if (a as i64) < 0 { 1 } else { 0 };
-                        let _na = input.a & (2n**63n) ? 1n : 0n;
-                        let _a = _na ? 2n ** 64n - a : a;
-                        let _prod = _a * b;
-                        let _nc = _prod && _na;
 
-                        _prod = _nc ? 2n**128n - _prod : _prod;
-                        c = _prod & (2n**64n - 1n);
-                        d = _prod >> 64n;
-                        // console.log(input.c.toString(16), c.toString(16));
-                        break;
-                    }
-                    case 'divu':
-                    case 'divu_w': {
-                        this.log(opdef.n,a,b);
-                        const div = a / b;
-                        const rem = a % b;
-                        c = a;
-                        a = div;
-                        d = rem;
-                        break;
-                    }
-                    case 'div': {
-                        this.log('div',a,b);
-                        let _na = input.a & (2n**63n) ? 1n : 0n;
-                        let _a = _na ? 2n ** 64n - a : a;
-                        let _nb = input.b & (2n**63n) ? 1n : 0n;
-                        let _b = _nb ? 2n ** 64n - b : b;
-                        const div = _a / _b;
-                        const rem = _a % _b;
-                        c = a;
-                        a = (div && _na ^ _nb) ? 2n**64n - div : div;
-                        d = (rem && _na) ? 2n**64n - rem : rem;
-                        break;
-                    }
-                    case 'div_w': {
-                        this.log('div_w',a,b);
-                        let _na = input.a & (2n**31n) ? 1n : 0n;
-                        let _a = _na ? 2n ** 32n - a : a;
-                        let _nb = input.b & (2n**31n) ? 1n : 0n;
-                        let _b = _nb ? 2n ** 32n - b : b;
-                        this.log([_a,_b].map(x => x.toString(16)).join(' '));
-                        const div = _a / _b;
-                        const rem = _a % _b;
-                        this.log(div, rem, _na, _nb)
-                        c = a;
-                        a = (div && (_na ^ _nb)) ? 2n**32n - div : div;
-                        d = (rem && _na) ? 2n**32n - rem : rem;
-                        this.log('[a,b,c,d]='+[a,b,c,d].map(x => x.toString(16)).join(' '));
-                        break;
-                    }
-                }
-                if (m32) {
-                    this.log(opdef.a_signed, opdef.b_signed, a.toString(16), (a & 0x80000000n).toString(16));
-                    a = (opdef.a_signed && a & 0x80000000n) ? a | 0xFFFFFFFF00000000n : a;
-                    b = (opdef.b_signed && b & 0x80000000n) ? b | 0xFFFFFFFF00000000n : b;
-                }
-
-                return [a,b,c,d];
-        [0, 0, 0, 0, 0, 0, 0, 0]
-    } */
     fn calculate_chunks(
-        &self,
         a: [i64; 4],
         b: [i64; 4],
         c: [i64; 4],
@@ -482,7 +407,10 @@ pub trait ArithHelpers {
 
         let mut chunks: [i64; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 
-        chunks[0] = fab * a[0] * b[0]  // chunk9
+        let na_fb = na * (1 - 2 * nb);
+        let nb_fa = nb * (1 - 2 * na);
+
+        chunks[0] = fab * a[0] * b[0]  // chunk0
             - c[0]
             + 2 * np * c[0]
             + div * d[0]
@@ -498,17 +426,21 @@ pub trait ArithHelpers {
         chunks[2] = fab * a[2] * b[0]    // chunk2
             + fab * a[1] * b[1]
             + fab * a[0] * b[2]
+            + a[0] * nb_fa * m32
+            + b[0] * na_fb * m32
             - c[2]
-            + (2 * np) * c[2]
+            + 2 * np * c[2]
             + div * d[2]
             - 2 * nr * d[2]
             - np * div * m32
-            + nr * m32;
+            + nr * m32; // div == 0 ==> nr = 0
 
         chunks[3] = fab * a[3] * b[0]    // chunk3
             + fab * a[2] * b[1]
             + fab * a[1] * b[2]
             + fab * a[0] * b[3]
+            + a[1] * nb_fa * m32
+            + b[1] * na_fb * m32
             - c[3]
             + 2 * np * c[3]
             + div * d[3]
@@ -517,36 +449,154 @@ pub trait ArithHelpers {
         chunks[4] = fab * a[3] * b[1]    // chunk4
             + fab * a[2] * b[2]
             + fab * a[1] * b[3]
-            + b[0] * na * (1 - 2 * nb)
-            + a[0] * nb * (1 - 2 * na)
-            - np * div
-            + m32
-            - 2 * div * m32
-            + nr * (1 - m32)
-            - d[0] * (1 - div)
-            + d[0] * 2 * np * (1 - div);
+            + na * nb * m32
+            // + b[0] * na * (1 - 2 * nb)
+            // + a[0] * nb * (1 - 2 * na)
+            + b[0] * na_fb * (1 - m32)
+            + a[0] * nb_fa * (1 - m32)
+            // high bits ^^^
+            // - np * div
+            // + np * div * m32
+            // - 2 * div * m32 * np
+            - np * m32 * (1 - div)  //
+            - np * (1 - m32) * div // 2^64 (np)
+            + nr * (1 - m32)  // 2^64 (nr)
+            // high part d
+            - d[0] * (1 - div)           // m32 == 1 and div == 0 => d = 0
+            + 2 * np * d[0] * (1 - div); //
 
         chunks[5] = fab * a[3] * b[2]    // chunk5
             + fab * a[2] * b[3]
-            + a[1] * nb * (1 - 2 * na)
-            + b[1] * na * (1 - 2 * nb)
+            + a[1] * nb_fa * (1 - m32)
+            + b[1] * na_fb * (1 - m32)
             - d[1] * (1 - div)
             + d[1] * 2 * np * (1 - div);
 
         chunks[6] = fab as i64 * a[3] * b[3]    // chunk6
-            + a[2] * nb * (1 - 2 * na)
-            + b[2] * na * (1 - 2 * nb)
+            + a[2] * nb_fa * (1 - m32)
+            + b[2] * na_fb * (1 - m32)
             - d[2] * (1 - div)
             + d[2] * 2 * np * (1 - div);
 
-        chunks[7] = 0x10000 * na * nb    // chunk7
-            + b[3] * na * (1 - 2 * nb)
-            + a[3] * nb * (1 - 2 * na)
+        // 0x4000_0000_0000_0000__8000_0000_0000_0000
+        chunks[7] = 0x10000 * na * nb  * (1 - m32)  // chunk7
+            + a[3] * nb_fa * (1 - m32)
+            + b[3] * na_fb * (1 - m32)
             - 0x10000 * np * (1 - div) * (1 - m32)
             - d[3] * (1 - div)
             + d[3] * 2 * np * (1 - div);
 
         chunks
+    }
+    fn u64_to_chunks(a: u64) -> [i64; 4] {
+        [
+            (a & 0xFFFF) as i64,
+            ((a >> 16) & 0xFFFF) as i64,
+            ((a >> 32) & 0xFFFF) as i64,
+            ((a >> 48) & 0xFFFF) as i64,
+        ]
+    }
+    fn execute_chunks(
+        a: u64,
+        b: u64,
+        c: u64,
+        d: u64,
+        m32: u64,
+        div: u64,
+        na: u64,
+        nb: u64,
+        np: u64,
+        nr: u64,
+    ) -> bool {
+        let fab: i64 = 1 - 2 * na as i64 - 2 * nb as i64 + 4 * na as i64 * nb as i64;
+        let a_chunks = Self::u64_to_chunks(a);
+        let b_chunks = Self::u64_to_chunks(b);
+        let c_chunks = Self::u64_to_chunks(c);
+        let d_chunks = Self::u64_to_chunks(d);
+        println!(
+            "A: 0x{0:>04X} \x1B[32m{0:>5}\x1B[0m|0x{1:>04X} \x1B[32m{1:>5}\x1B[0m|0x{2::>04X} \x1B[32m{2:>5}\x1B[0m|0x{3:>04X} \x1B[32m{3:>5}\x1B[0m|",
+            a_chunks[0], a_chunks[1], a_chunks[2], a_chunks[3]
+        );
+        println!(
+            "B: 0x{0:>04X} \x1B[32m{0:>5}\x1B[0m|0x{1:>04X} \x1B[32m{1:>5}\x1B[0m|0x{2::>04X} \x1B[32m{2:>5}\x1B[0m|0x{3:>04X} \x1B[32m{3:>5}\x1B[0m|",
+            b_chunks[0], b_chunks[1], b_chunks[2], b_chunks[3]
+        );
+        println!(
+            "C: 0x{0:>04X} \x1B[32m{0:>5}\x1B[0m|0x{1:>04X} \x1B[32m{1:>5}\x1B[0m|0x{2::>04X} \x1B[32m{2:>5}\x1B[0m|0x{3:>04X} \x1B[32m{3:>5}\x1B[0m|",
+            c_chunks[0], c_chunks[1], c_chunks[2], c_chunks[3]
+        );
+        println!(
+            "D: 0x{0:>04X} \x1B[32m{0:>5}\x1B[0m|0x{1:>04X} \x1B[32m{1:>5}\x1B[0m|0x{2::>04X} \x1B[32m{2:>5}\x1B[0m|0x{3:>04X} \x1B[32m{3:>5}\x1B[0m|",
+            d_chunks[0], d_chunks[1], d_chunks[2], d_chunks[3]
+        );
+
+        let mut chunks = Self::calculate_chunks(
+            a_chunks, b_chunks, c_chunks, d_chunks, m32 as i64, div as i64, na as i64, nb as i64,
+            np as i64, nr as i64, fab,
+        );
+        let mut carry: i64 = 0;
+        println!(
+            "0x{0:X}({0}),0x{1:X}({1}),0x{2:X}({2}),0x{3:X}({3}),0x{4:X}({4}),0x{5:X}({5}),0x{6:X}{6},0x{7:X}({7}) fab:{8:X}",
+            chunks[0], chunks[1], chunks[2], chunks[3], chunks[4], chunks[5], chunks[6], chunks[7], fab
+        );
+        let mut carrys: [i64; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+        for _index in 0..8 {
+            println!(
+                "APPLY CARRY:{0} CHUNK[{1}]:{2:X} ({2}) {3:X}({3})",
+                carry,
+                _index,
+                chunks[_index],
+                chunks[_index] + carry
+            );
+            let chunk_value = chunks[_index] + carry;
+            carry = chunk_value / 0x10000;
+            chunks[_index] = chunk_value - carry * 0x10000;
+            carrys[_index] = carry;
+        }
+        println!(
+            "CARRY 0x{0:X}({0}),0x{1:X}({1}),0x{2:X}({2}),0x{3:X}({3}),0x{4:X}({4}),0x{5:X}({5}),0x{6:X}{6},0x{7:X}({7}) fab:{8:X}",
+            carrys[0], carrys[1], carrys[2], carrys[3], carrys[4], carrys[5], carrys[6], carrys[7], fab
+        );
+        println!(
+            "0x{:X},0x{:X},0x{:X},0x{:X},0x{:X},0x{:X},0x{:X},0x{:X} carry:0x{:X}",
+            chunks[0],
+            chunks[1],
+            chunks[2],
+            chunks[3],
+            chunks[4],
+            chunks[5],
+            chunks[6],
+            chunks[7],
+            carry
+        );
+        println!(
+            "{} {} {} {} {} {} {} {} {}",
+            chunks[0],
+            chunks[1],
+            chunks[2],
+            chunks[3],
+            chunks[4],
+            chunks[5],
+            chunks[6],
+            chunks[7],
+            carry
+        );
+        if chunks[0] != 0
+            || chunks[1] != 0
+            || chunks[2] != 0
+            || chunks[3] != 0
+            || chunks[4] != 0
+            || chunks[5] != 0
+            || chunks[6] != 0
+            || chunks[7] != 0
+            || carry != 0
+        {
+            println!("[\x1B[31mFAIL\x1B[0m]");
+            false
+        } else {
+            println!("[\x1B[32mOK\x1B[0m]");
+            true
+        }
     }
 }
 
@@ -1110,18 +1160,18 @@ fn test_calculate_range_checks() {
             op: DIV,
             a: MAX_P_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NB + F_NP,
+            flags: F_DIV + F_NB, // a/b = 0 ➜ np = 0
             range_ab: R_3PN,
-            range_cd: R_3NP,
+            range_cd: R_3PP,
         },
         // 32 - DIV
         TestParams {
             op: DIV,
             a: MIN_N_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NB,
+            flags: F_DIV + F_NB + F_NP, // a/b = 1 ➜ 1 * b_neg ➜ np = 1
             range_ab: R_3PN,
-            range_cd: R_3PP,
+            range_cd: R_3NP,
         },
         // 33 - DIV
         TestParams {
@@ -1164,18 +1214,18 @@ fn test_calculate_range_checks() {
             op: REM,
             a: MAX_P_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NB + F_NP + F_SEC,
+            flags: F_DIV + F_NB + F_SEC,
             range_ab: R_3PN,
-            range_cd: R_3NP,
+            range_cd: R_3PP,
         },
         // 38 - REM
         TestParams {
             op: REM,
             a: MIN_N_64,
             b: MIN_N_64,
-            flags: F_DIV + F_NB + F_SEC,
+            flags: F_DIV + F_NB + F_NP + F_SEC,
             range_ab: R_3PN,
-            range_cd: R_3PP,
+            range_cd: R_3NP,
         },
         // 39 - REM
         TestParams {
@@ -1372,6 +1422,7 @@ fn test_calculate_range_checks() {
     }
 
     let mut tests_done: Vec<TestDone> = Vec::new();
+    let mut errors = 0;
     for test in tests {
         let a_values = get_test_values(test.a);
         let mut offset = 0;
@@ -1452,11 +1503,16 @@ fn test_calculate_range_checks() {
                     test.range_cd,
                     ranges
                 );
+                if !TestArithHelpers::execute_chunks(a, b, c, d, m32, div, na, nb, np, nr) {
+                    errors += 1;
+                    println!("TOTAL ERRORS: {}", errors);
+                }
                 offset += 1;
                 count += 1;
             }
         }
         index += 1;
     }
+    println!("TOTAL ERRORS: {}", errors);
     assert_eq!(count, TEST_COUNT, "Number of tests not matching");
 }
