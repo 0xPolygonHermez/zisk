@@ -5,6 +5,7 @@ members = [
     "emulator",
     "pil",
     "riscv",
+    "rom-merkle",
     "state-machines/arith",
     "state-machines/binary",
     "state-machines/common",

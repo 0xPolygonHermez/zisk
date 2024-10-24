@@ -1828,6 +1828,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rom-merkle"
+version = "0.1.0"
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2106,6 +2110,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "zisk-core",
+ "zisk-pil",
 ]
 
 [[package]]

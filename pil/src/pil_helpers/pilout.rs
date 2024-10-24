@@ -8,19 +8,27 @@ pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 pub const MAIN_AIRGROUP_ID: usize = 0;
 
-pub const BINARY_AIRGROUP_ID: usize = 1;
+pub const ROM_AIRGROUP_ID: usize = 1;
 
-pub const BINARY_TABLE_AIRGROUP_ID: usize = 2;
+pub const BINARY_AIRGROUP_ID: usize = 2;
 
-pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 3;
+pub const BINARY_TABLE_AIRGROUP_ID: usize = 3;
 
-pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 4;
+pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 4;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 5;
+pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 5;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
 
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
+
+pub const ROM_S_AIR_IDS: &[usize] = &[0];
+
+pub const ROM_M_AIR_IDS: &[usize] = &[1];
+
+pub const ROM_L_AIR_IDS: &[usize] = &[2];
 
 pub const BINARY_AIR_IDS: &[usize] = &[0];
 
@@ -41,6 +49,12 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("Main"));
 
         air_group.add_air(Some("Main"), 2097152);
+
+        let air_group = pilout.add_air_group(Some("Rom"));
+
+        air_group.add_air(Some("RomS"), 65536);
+        air_group.add_air(Some("RomM"), 4194304);
+        air_group.add_air(Some("RomL"), 67108864);
 
         let air_group = pilout.add_air_group(Some("Binary"));
 
