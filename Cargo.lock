@@ -2058,6 +2058,7 @@ dependencies = [
  "sm-binary",
  "sm-common",
  "sm-mem",
+ "sm-rom",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2091,6 +2092,20 @@ dependencies = [
  "sm-common",
  "zisk-core",
  "zisk-pil",
+]
+
+[[package]]
+name = "sm-rom"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "p3-field",
+ "proofman",
+ "proofman-common",
+ "proofman-macros",
+ "rayon",
+ "sm-common",
+ "zisk-core",
 ]
 
 [[package]]
@@ -2981,6 +2996,7 @@ dependencies = [
  "sm-main",
  "sm-mem",
  "sm-quick-ops",
+ "sm-rom",
  "zisk-pil",
 ]
 

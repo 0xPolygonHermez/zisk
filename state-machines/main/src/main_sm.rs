@@ -1,5 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_rom::RomSM;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -57,11 +58,12 @@ pub struct MainSM<F: PrimeField> {
     zisk_rom_path: PathBuf,
 
     // State machines
-    mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 
     sctx: Arc<SetupCtx>,
+    binary_sm: Arc<BinarySM<F>>,
+    mem_sm: Arc<MemSM>,
+    rom_sm: Arc<RomSM>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -89,6 +91,7 @@ impl<F: PrimeField> MainSM<F> {
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
         sctx: Arc<SetupCtx>,
+        rom_sm: Arc<RomSM>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
@@ -122,10 +125,11 @@ impl<F: PrimeField> MainSM<F> {
         let main_sm = Arc::new(Self {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
-            mem_sm: mem_sm.clone(),
-            binary_sm: binary_sm.clone(),
-            arith_sm: arith_sm.clone(),
             sctx,
+            arith_sm,
+            binary_sm,
+            mem_sm,
+            rom_sm,
         });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));

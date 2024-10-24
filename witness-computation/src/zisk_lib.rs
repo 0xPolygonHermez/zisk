@@ -1,5 +1,6 @@
 use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use sm_rom::RomSM;
 use std::{error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
@@ -46,6 +47,7 @@ impl<F: PrimeField> ZiskWitness<F> {
 
         let std = Std::new(wcm.clone());
 
+        let rom_sm = RomSM::new(wcm.clone(), sctx.clone());
         let mem_sm = MemSM::new(wcm.clone(), sctx.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone(), sctx.clone());
         let arith_sm = ArithSM::new(wcm.clone(), sctx.clone());
@@ -53,7 +55,8 @@ impl<F: PrimeField> ZiskWitness<F> {
         let main_sm = MainSM::new(
             self.rom_path.clone(),
             wcm.clone(),
-            sctx.clone(),
+            sctx,
+            rom_sm,
             mem_sm,
             binary_sm,
             arith_sm,

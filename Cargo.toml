@@ -11,6 +11,7 @@ members = [
     "state-machines/freq-ops",
     "state-machines/main",
     "state-machines/mem",
+    "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint", 
 ]
