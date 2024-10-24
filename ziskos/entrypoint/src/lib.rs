@@ -32,19 +32,41 @@ pub fn read_input<'a>() -> &'a [u8] {
 }
 
 #[cfg(not(target_os = "ziskos"))]
-pub fn read_input<'a>() -> &'a [u8] {
-    use std::{fs::File, io::Read, mem, slice};
+use std::cell::RefCell;
 
-    let mut file = File::open("build/input.bin").unwrap();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
+#[cfg(not(target_os = "ziskos"))]
+thread_local! {
+    /// A thread-local storage to memoize the `build/input.bin` file
+    static FILE_CONTENT: RefCell<Option<&'static [u8]>> = RefCell::new(None);
+}
 
-    let ptr = buffer.as_ptr();
-    let len = buffer.len();
+#[cfg(not(target_os = "ziskos"))]
+pub fn read_input<'a>() -> &'static [u8] {
+    use std::{
+        fs::File,
+        io::{Error, Read},
+    };
+    FILE_CONTENT
+        .with(|file_content| {
+            // Return early if we have already memoized the file
+            if let Some(static_slice) = *file_content.borrow() {
+                return Ok::<&'static [u8], Error>(static_slice);
+            }
 
-    mem::forget(buffer);
+            // Read the file into a Vec<u8>
+            let mut file = File::open("build/input.bin")?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
 
-    unsafe { slice::from_raw_parts(ptr, len) }
+            // Leak the memory to get a 'static reference
+            let static_slice: &'static [u8] = Box::leak(buffer.into_boxed_slice());
+
+            // Memoize the result in thread-local storage
+            *file_content.borrow_mut() = Some(static_slice);
+
+            Ok(static_slice)
+        })
+        .expect("Failed to read 'build/input.bin'")
 }
 
 #[cfg(target_os = "ziskos")]
