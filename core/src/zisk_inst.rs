@@ -9,6 +9,7 @@ pub enum ZiskOperationType {
     Binary,
     BinaryE,
     Keccak,
+    PubOut,
 }
 
 pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 6;
