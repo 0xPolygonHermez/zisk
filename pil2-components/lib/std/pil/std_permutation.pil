@@ -5,7 +5,7 @@ require "std_prod.pil";
 const int DEFAULT_PERMUTATION_NAME = PIOP_NAME_PERMUTATION;
 
 // Note: This constant allows you to choose whether the permutation is proven via the sum or product bus
-int DEFAULT_PERMUTATION_BUS_TYPE = PIOP_BUS_PROD;
+int DEFAULT_PERMUTATION_BUS_TYPE = PIOP_BUS_SUM;
 
 function permutation_assumes(const int opid, const expr cols[], const expr sel = 1, int bus_type = PIOP_BUS_DEFAULT, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_PERMUTATION_NAME;
