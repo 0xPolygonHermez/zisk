@@ -12,7 +12,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
@@ -39,6 +39,9 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
+    // SetupCtx
+    sctx: Arc<SetupCtx>,
+
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -63,6 +66,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
+        sctx: Arc<SetupCtx>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -70,6 +74,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let binary_extension_sm = Self {
             wcm: wcm.clone(),
             std: std.clone(),
+            sctx: sctx.clone(),
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -495,6 +500,8 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let std = self.std.clone();
 
+                let sctx = self.sctx.clone();
+
                 scope.spawn(move |scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
                         wcm.get_ectx(),
@@ -514,6 +521,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                     );
 
                     let air_instance = AirInstance::new(
+                        sctx,
                         BINARY_EXTENSION_AIRGROUP_ID,
                         BINARY_EXTENSION_AIR_IDS[0],
                         None,

@@ -6,7 +6,7 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, SetupCtx};
 use rayon::{prelude::*, Scope};
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
@@ -28,6 +28,7 @@ pub enum BinaryExtensionTableOp {
 
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
+    sctx: Arc<SetupCtx>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -45,7 +46,12 @@ pub enum ExtensionTableSMErr {
 impl<F: Field> BinaryExtensionTableSM<F> {
     const MY_NAME: &'static str = "BinaryET";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new(
+        wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
+        airgroup_id: usize,
+        air_ids: &[usize],
+    ) -> Arc<Self> {
         let air = wcm
             .get_pctx()
             .pilout
@@ -53,6 +59,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
         let binary_extension_table = Self {
             wcm: wcm.clone(),
+            sctx,
             registered_predecessors: AtomicU32::new(0),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
@@ -91,6 +98,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             );
 
             let air_instance = AirInstance::new(
+                self.sctx.clone(),
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,

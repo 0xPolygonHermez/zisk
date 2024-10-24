@@ -41,16 +41,23 @@ impl<F: PrimeField> ZiskWitness<F> {
     }
 
     fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let wcm = WitnessManager::new(pctx, ectx, sctx);
+        let wcm = WitnessManager::new(pctx, ectx, sctx.clone());
         let wcm = Arc::new(wcm);
 
         let std = Std::new(wcm.clone());
 
-        let mem_sm = MemSM::new(wcm.clone());
-        let binary_sm = BinarySM::new(wcm.clone(), std.clone());
-        let arith_sm = ArithSM::new(wcm.clone());
+        let mem_sm = MemSM::new(wcm.clone(), sctx.clone());
+        let binary_sm = BinarySM::new(wcm.clone(), std.clone(), sctx.clone());
+        let arith_sm = ArithSM::new(wcm.clone(), sctx.clone());
 
-        let main_sm = MainSM::new(self.rom_path.clone(), wcm.clone(), mem_sm, binary_sm, arith_sm);
+        let main_sm = MainSM::new(
+            self.rom_path.clone(),
+            wcm.clone(),
+            sctx.clone(),
+            mem_sm,
+            binary_sm,
+            arith_sm,
+        );
 
         self.wcm = Some(wcm);
         self.main_sm = Some(main_sm);

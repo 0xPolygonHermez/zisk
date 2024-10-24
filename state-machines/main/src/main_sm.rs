@@ -60,6 +60,8 @@ pub struct MainSM<F: PrimeField> {
     mem_sm: Arc<MemSM>,
     binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
+
+    sctx: Arc<SetupCtx>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -86,6 +88,7 @@ impl<F: PrimeField> MainSM<F> {
     pub fn new(
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
+        sctx: Arc<SetupCtx>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
@@ -122,6 +125,7 @@ impl<F: PrimeField> MainSM<F> {
             mem_sm: mem_sm.clone(),
             binary_sm: binary_sm.clone(),
             arith_sm: arith_sm.clone(),
+            sctx,
         });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
@@ -289,10 +293,6 @@ impl<F: PrimeField> MainSM<F> {
         const CHUNK_SIZE: usize = 4096;
         let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
 
-        let main_first_segment = F::from_bool(segment_id == 0);
-        let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
-        let main_segment = F::from_canonical_usize(segment_id);
-
         let mut last_row = Main0Row::<F>::default();
         for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
             // process the steps of the chunk
@@ -300,9 +300,6 @@ impl<F: PrimeField> MainSM<F> {
             let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
             for (i, step) in segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate() {
                 tmp_trace[i] = emu.step_slice_full_trace(step);
-                tmp_trace[i].main_first_segment = main_first_segment;
-                tmp_trace[i].main_last_segment = main_last_segment;
-                tmp_trace[i].main_segment = main_segment;
             }
 
             // if there are steps in the chunk update last row
@@ -324,8 +321,23 @@ impl<F: PrimeField> MainSM<F> {
         }
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
-        iectx.air_instance =
-            Some(AirInstance::new(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0], Some(segment_id), buffer));
+        let mut air_instance = AirInstance::new(
+            self.sctx.clone(),
+            MAIN_AIRGROUP_ID,
+            MAIN_AIR_IDS[0],
+            Some(segment_id),
+            buffer,
+        );
+
+        let main_first_segment = F::from_bool(segment_id == 0);
+        let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
+        let main_segment = F::from_canonical_usize(segment_id);
+
+        air_instance.set_airvalue(&self.sctx, "Main.main_first_segment", main_first_segment);
+        air_instance.set_airvalue(&self.sctx, "Main.main_last_segment", main_last_segment);
+        air_instance.set_airvalue(&self.sctx, "Main.main_segment", main_segment);
+
+        iectx.air_instance = Some(air_instance);
     }
 
     fn prove_binary(
@@ -354,8 +366,13 @@ impl<F: PrimeField> MainSM<F> {
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
         let buffer = std::mem::take(&mut iectx.prover_buffer);
-        iectx.air_instance =
-            Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
+        iectx.air_instance = Some(AirInstance::new(
+            self.sctx.clone(),
+            BINARY_AIRGROUP_ID,
+            BINARY_AIR_IDS[0],
+            Some(segment_id),
+            buffer,
+        ));
         timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
     }
 
@@ -381,6 +398,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
+            self.sctx.clone(),
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS[0],
             Some(segment_id),

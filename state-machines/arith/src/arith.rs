@@ -29,10 +29,12 @@ pub struct ArithSM {
     arith32_sm: Arc<Arith32SM>,
     arith64_sm: Arc<Arith64SM>,
     arith3264_sm: Arc<Arith3264SM>,
+
+    sctx: Arc<SetupCtx>,
 }
 
 impl ArithSM {
-    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>, sctx: Arc<SetupCtx>) -> Arc<Self> {
         let arith32_sm = Arith32SM::new(wcm.clone());
         let arith64_sm = Arith64SM::new(wcm.clone());
         let arith3264_sm = Arith3264SM::new(wcm.clone());
@@ -45,6 +47,7 @@ impl ArithSM {
             arith32_sm,
             arith64_sm,
             arith3264_sm,
+            sctx,
         };
         let arith_sm = Arc::new(arith_sm);
 

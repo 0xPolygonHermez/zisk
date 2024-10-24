@@ -830,9 +830,6 @@ impl<'a> Emu<'a> {
             // inc_sp: F::from_canonical_u64(inst.inc_sp),
             jmp_offset1: F::from_canonical_u64(inst.jmp_offset1 as u64),
             jmp_offset2: F::from_canonical_u64(inst.jmp_offset2 as u64),
-            main_segment: F::from_canonical_u64(0),
-            main_first_segment: F::from_bool(false),
-            main_last_segment: F::from_bool(false),
             end: F::from_bool(inst_ctx.end),
             m32: F::from_bool(inst.m32),
             operation_bus_enabled: F::from_bool(

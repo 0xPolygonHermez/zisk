@@ -14,16 +14,8 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
-    // TODO: airgroup val
-    // airgroupval aggregate(sum) mem_segment;         // aggregate(serial)
-    // airgroupval aggregate(sum) mem_last_segment;    // aggregate(last)
-
-    col witness mem_segment; 
-    col witness mem_last_segment;    
-
-    mem_segment === 'mem_segment;
-    mem_last_segment === 'mem_last_segment;
-
+    airval mem_segment; 
+    airval mem_last_segment;    
 
     col witness addr;  // n-byte address, real address = addr * MEM_BYTES
     col witness step;
