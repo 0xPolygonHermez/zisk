@@ -12,14 +12,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     const expr SEGMENT_LAST = SEGMENT_L1';
 
-    // TODO: airval
-    // airgroupval aggregate(sum) main_first_segment;   // first
-    // airgroupval aggregate(sum) main_last_segment;    // final
-    // airgroupval aggregate(sum) main_segment;         // serial
-
-    col witness main_first_segment;   // first
-    col witness main_last_segment;    // final
-    col witness main_segment;         // serial
+    airval main_first_segment;
+    airval main_last_segment;
+    airval main_segment;
 
     main_first_segment * (1 - main_first_segment) === 0;    
     main_last_segment * (1 - main_last_segment) === 0;  

@@ -50,7 +50,14 @@ impl<F: PrimeField> ZiskWitness<F> {
         let binary_sm = BinarySM::new(wcm.clone(), std.clone(), sctx.clone());
         let arith_sm = ArithSM::new(wcm.clone(), sctx.clone());
 
-        let main_sm = MainSM::new(self.rom_path.clone(), wcm.clone(), sctx.clone(), mem_sm, binary_sm, arith_sm);
+        let main_sm = MainSM::new(
+            self.rom_path.clone(),
+            wcm.clone(),
+            sctx.clone(),
+            mem_sm,
+            binary_sm,
+            arith_sm,
+        );
 
         self.wcm = Some(wcm);
         self.main_sm = Some(main_sm);
