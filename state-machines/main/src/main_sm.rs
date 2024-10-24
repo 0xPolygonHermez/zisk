@@ -1,31 +1,33 @@
 use log::info;
 use p3_field::PrimeField;
 
-use core::panic;
+use core::{num, panic};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use sm_binary::BinarySM;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
-use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
+use zisk_core::{
+    Riscv2zisk, ZiskOperationType, ZiskRequiredMemory, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
+};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
-    BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
+    BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS, MEM_AIRGROUP_ID, MEM_AIR_IDS,
 };
-use ziskemu::{Emu, EmuOptions, EmuTrace, EmuTraceStart, ZiskEmulator};
+use ziskemu::{Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ZiskEmulator};
 
 //use process::Command;
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_common::create_prover_buffer;
-use sm_mem::MemSM;
+use sm_mem::MemProxy;
 
 pub struct InstanceExtensionCtx<F> {
     pub prover_buffer: Vec<F>,
@@ -57,7 +59,7 @@ pub struct MainSM<F: PrimeField> {
     zisk_rom_path: PathBuf,
 
     // State machines
-    mem_sm: Arc<MemSM>,
+    mem_proxy: Arc<MemProxy<F>>,
     binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 }
@@ -86,7 +88,7 @@ impl<F: PrimeField> MainSM<F> {
     pub fn new(
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
-        mem_sm: Arc<MemSM>,
+        mem_proxy: Arc<MemProxy<F>>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
     ) -> Arc<Self> {
@@ -119,7 +121,7 @@ impl<F: PrimeField> MainSM<F> {
         let main_sm = Arc::new(Self {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
-            mem_sm: mem_sm.clone(),
+            mem_proxy: mem_proxy.clone(),
             binary_sm: binary_sm.clone(),
             arith_sm: arith_sm.clone(),
         });
@@ -127,7 +129,7 @@ impl<F: PrimeField> MainSM<F> {
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        main_sm.mem_sm.register_predecessor();
+        main_sm.mem_proxy.register_predecessor();
         main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 
@@ -186,11 +188,18 @@ impl<F: PrimeField> MainSM<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
+        let mut instances_ctx = vec![];
+        let mut emu_traces = vec![];
+        let mut emu_slices = EmuStartingPoints::default();
+        let emu_mem = Mutex::new(Vec::new());
+
         pool.scope(|scope| {
+            Self::execute_mem(scope, &public_inputs, &self.zisk_rom, &emu_mem);
+
             // Run the emulator in parallel n times to collect execution traces
             // and record the execution starting points for each AIR instance
             timer_start_debug!(PAR_PROCESS_ROM);
-            let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+            (emu_traces, emu_slices) = ZiskEmulator::par_process_rom::<F>(
                 &self.zisk_rom,
                 &public_inputs,
                 &emu_options,
@@ -199,11 +208,49 @@ impl<F: PrimeField> MainSM<F> {
             )
             .expect("Error during emulator execution");
             timer_stop_and_log_debug!(PAR_PROCESS_ROM);
+        });
 
+        pool.scope(|_| {
             emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
-            let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
-                Vec::with_capacity(emu_slices.points.len());
+            // Once Main, Binary and BinaryE instances are created, we add the Memory instances
+            let emu_mem = emu_mem.into_inner().unwrap();
+
+            instances_ctx = Vec::with_capacity(emu_slices.points.len() + emu_mem.len());
+
+            // *******************************************
+            // Calculate mem_slices
+            let air_mem = pctx.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+
+            let chunk_size = air_mem.num_rows() - 1;
+            let num_chunks = (emu_mem.len() + chunk_size - 1) / chunk_size;
+            emu_mem.par_chunks(chunk_size).enumerate().for_each(|(index, chunk)| {
+                // Determine the last element of the previous chunk
+                let previous_last = if index == 0 {
+                    // If this is the first chunk, get the last element of the vector (circular behavior)
+                    emu_mem.last().unwrap()
+                } else {
+                    // Otherwise, get the last element of the previous chunk
+                    &emu_mem[(index - 1) * chunk_size]
+                };
+
+                let (buffer, offset) =
+                    create_prover_buffer::<F>(&ectx, &sctx, MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+                self.mem_proxy.prove_instance(
+                    chunk,
+                    previous_last.clone(),
+                    index,
+                    index == num_chunks - 1,
+                    buffer,
+                    offset,
+                    pctx.clone(),
+                    ectx.clone(),
+                    sctx.clone(),
+                );
+
+                // Your processing logic goes here
+            });
+            // *******************************************
 
             let mut dctx = ectx.dctx.write().unwrap();
             for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
@@ -230,18 +277,22 @@ impl<F: PrimeField> MainSM<F> {
                 }
             }
             drop(dctx);
+        });
 
-            instances_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| match iectx.op_type {
-                ZiskOperationType::None => {
-                    self.prove_main(&emu_traces, idx, iectx, &pctx);
+        pool.scope(|scope| {
+            instances_ctx.par_iter_mut().enumerate().for_each(|(segment_id, iectx)| {
+                match iectx.op_type {
+                    ZiskOperationType::None => {
+                        self.prove_main(&emu_traces, segment_id, iectx, &pctx);
+                    }
+                    ZiskOperationType::Binary => {
+                        self.prove_binary(&emu_traces, segment_id, iectx, &pctx, scope);
+                    }
+                    ZiskOperationType::BinaryE => {
+                        self.prove_binary_extension(&emu_traces, segment_id, iectx, &pctx, scope);
+                    }
+                    _ => panic!("Invalid operation type"),
                 }
-                ZiskOperationType::Binary => {
-                    self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
-                }
-                ZiskOperationType::BinaryE => {
-                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
-                }
-                _ => panic!("Invalid operation type"),
             });
 
             timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
@@ -259,6 +310,27 @@ impl<F: PrimeField> MainSM<F> {
             // self.mem_sm.unregister_predecessor(scope);
             self.binary_sm.unregister_predecessor(scope);
             // self.arith_sm.register_predecessor(scope);
+        });
+    }
+
+    fn execute_mem<'a>(
+        scope: &rayon::Scope<'a>,
+        public_inputs: &'a [u8],
+        zisk_rom: &'a ZiskRom,
+        emu_mem: &'a Mutex<Vec<ZiskRequiredMemory>>,
+    ) {
+        scope.spawn(move |_| {
+            timer_start_debug!(PAR_PROCESS_ROM_MEM);
+            let mut required_mem = ZiskEmulator::par_process_rom_mem::<F>(zisk_rom, public_inputs)
+                .expect("Error during emulator execution");
+            timer_stop_and_log_debug!(PAR_PROCESS_ROM_MEM);
+
+            timer_start_debug!(MEM_SORT);
+            required_mem.sort_by_key(|mem| mem.address);
+            timer_stop_and_log_debug!(MEM_SORT);
+
+            println!("Emulator memory usage: {:?}", required_mem.len());
+            *emu_mem.lock().unwrap() = required_mem;
         });
     }
 

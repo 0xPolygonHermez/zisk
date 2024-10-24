@@ -10,7 +10,7 @@ use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, Witne
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_main::MainSM;
-use sm_mem::MemSM;
+use sm_mem::MemProxy;
 
 pub struct ZiskWitness<F: PrimeField> {
     pub public_inputs_path: PathBuf,
@@ -46,11 +46,12 @@ impl<F: PrimeField> ZiskWitness<F> {
 
         let std = Std::new(wcm.clone());
 
-        let mem_sm = MemSM::new(wcm.clone());
+        let mem_proxy = MemProxy::new(wcm.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
         let arith_sm = ArithSM::new(wcm.clone());
 
-        let main_sm = MainSM::new(self.rom_path.clone(), wcm.clone(), mem_sm, binary_sm, arith_sm);
+        let main_sm =
+            MainSM::new(self.rom_path.clone(), wcm.clone(), mem_proxy, binary_sm, arith_sm);
 
         self.wcm = Some(wcm);
         self.main_sm = Some(main_sm);

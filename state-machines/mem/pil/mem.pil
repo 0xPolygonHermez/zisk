@@ -18,14 +18,14 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     // airgroupval aggregate(sum) mem_segment;         // aggregate(serial)
     // airgroupval aggregate(sum) mem_last_segment;    // aggregate(last)
 
-    col witness mem_segment; 
-    col witness mem_last_segment;    
+    col witness mem_segment;
+    col witness mem_last_segment;
 
     mem_segment === 'mem_segment;
     mem_last_segment === 'mem_last_segment;
 
 
-    col witness addr;  // n-byte address, real address = addr * MEM_BYTES
+    col witness addr; // n-byte address, real address = addr * MEM_BYTES
     col witness step;
     col witness sel, wr;
     col witness value[RC];
@@ -50,13 +50,16 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     //          setting mem_last_segment = 1
 
     // if addr_changes == 0 means that addr and previous address are the same
-    (1 - addr_changes) * ('addr - addr) === 0;
+    const expr same_addr = 1 - SEGMENT_L1 - addr_changes;
+    same_addr * ('addr - addr) === 0;
 
     col witness same_value;
-    (1 - same_value) * (1 - wr) * (1 - addr_changes) === 0;
+    same_value * (1 - same_value) === 0;
+    (1 - same_value) * (1 - wr) * same_addr === 0;
 
     col witness first_addr_access_is_read;
-    (1 - first_addr_access_is_read) * rd * (1 - addr_changes) === 0;
+    first_addr_access_is_read * (1 - first_addr_access_is_read) === 0;
+    (1 - first_addr_access_is_read) * rd * same_addr === 0;
 
     for (int index = 0; index < length(value); index = index + 1) {
         same_value * (value[index] - 'value[index])  ===  0;
@@ -93,7 +96,7 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     // permutation_proves(MEMORY_CONT_ID, [(mem_segment + 1), addr, step, ...value], sel: mem_last_segment * 'SEGMENT_L1); // last row
     // permutation_assumes(MEMORY_CONT_ID, [mem_segment, 0, addr, step, ...value], sel: SEGMENT_L1); // first row
 
-    permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel); 
+    permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
 
 // TODO: detect non default value but not called, mandatory parameter.
