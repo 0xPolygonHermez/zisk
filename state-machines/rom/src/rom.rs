@@ -19,9 +19,11 @@ impl<F: Field> RomSM<F> {
         rom_sm
     }
 
-    pub fn prove(&self, _rom_path: PathBuf) {
+    pub fn prove(&self, _rom_path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send>> {
         // FIXME! Implement proof logic
-        unimplemented!();
+        println!("Proving ROM");
+
+        Ok(())
     }
 }
 
