@@ -1,5 +1,6 @@
+
 require "constants.pil"
-// require "std_permutation.pil"
+require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
@@ -10,6 +11,12 @@ require "binary/pil/binary_extension_table.pil"
 const int OPERATION_BUS_ID = 5000;
 airgroup Main {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+}
+
+airgroup Rom {
+    Rom(N: 2**16) alias RomS;
+    Rom(N: 2**22) alias RomM;
+    Rom(N: 2**26) alias RomL;
 }
 
 // airgroup Mem {
