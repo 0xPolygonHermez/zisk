@@ -740,7 +740,7 @@ impl<F: Field> BinaryBasicSM<F> {
     }
 }
 
-impl<F: Field + Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
+impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
