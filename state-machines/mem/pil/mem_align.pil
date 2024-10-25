@@ -1,0 +1,164 @@
+require "std_permutation.pil"
+
+airtemplate MemAlign(int N = 2**10) {
+
+/*
+    #### width = 8 bits ####
+
+    +---+---+===+---+    range_0 = 16
+    |   0   | 1 | 2 |    range_1 = 8        M0|M1
+    +---+---+===+---+    range_2 = 8
+       
+    +---+===+---+---+    range_0 = 8
+    | 0 | 1 |   2   |    range_1 = 8        M0|M1
+    +---+===+---+---+    range_2 = 16
+       
+    +---+---+---+===+    range_0 = 24       M0|M1
+    |    0      | 1 |    range_1 = 8
+    +---+---+---+===+   
+
+    +===+---+---+---+    range_0 = 8        M0|M1
+    | 0 |     1     |    range_1 = 24
+    +===+---+---+---+   
+
+    #### width = 16 bits ####
+    
+    +---+===+===+---+    range_0 = 8        M0|M1  
+    | 0 |   1   | 2 |    range_1 = 16
+    +---+===+===+---+    range_2 = 8
+       
+    +---+---+===+===+    range_0 = 16       M0|M1  
+    |   0   |   1   |    range_1 = 16
+    +---+---+===+===+    
+
+    +===+===+---+---+    range_0 = 16       M0|M1 
+    |   0   |   1   |    range_1 = 16
+    +===+===+---+---+    
+
+    +---+---+---+===+  +===+---+---+---+    range_0 = 24   range_3 = 24
+    |    0      | 1 |  | 2 |     3     |    range_1 = 8
+    +---+---+---+===+  +===+---+---+---+    range_2 = 8
+
+
+    #### width = 24 bits #### => explore 64 bits as two/tree steps
+    
+    +---+===+===+===+    range_0 = 8        M0|M1
+    | 0 |     1     |    range_1 = 24    
+    +---+===+===+===+   
+       
+    +===+===+===+---+    range_0 = 24       M0|M1 
+    |     0     | 1 |    range_1 = 8
+    +===+===+===+---+    
+
+    +---+---+---+===+  +===+===+---+---+    range_0 = 24  range_3 = 16  M0_M1|M1_M2
+    |     0     | 1 |  |   2   |   3   |    range_1 = 8
+    +---+---+---+===+  +===+===+---+---+    range_2 = 16
+
+    +---+---+===+===+  +===+---+---+---+    range_0 = 16  range_3 = 24  M0_M1|M1_M2
+    |   0   |   1   |  | 2 |     3     |    range_1 = 16
+    +---+---+===+===+  +===+---+---+---+    range_2 = 8
+
+
+    #### width = 32 bits ####
+    
+    +===+===+===+===+  M0|M1
+    |    direct0    |   
+    +===+===+===+===+   
+
+    +---+---+---+===+  +===+===+===+---+    range_0 = 24  range_3 = 8  M0_M1|M1_M2
+    |     0     | 1 |  |     2     | 3 |    range_1 = 8
+    +---+---+---+===+  +===+===+===+---+    range_2 = 24
+
+    +---+---+===+===+  +===+===+---+---+    range_0 = 16  range_3 = 16 M0_M1|M1_M2
+    |   0   |   1   |  |   2   |   3   |    range_1 = 16
+    +---+---+===+===+  +===+===+---+---+    range_2 = 16
+
+    +---+===+===+===+  +===+---+---+---+    range_0 = 8   range_3 = 24 M0_M1|M1_M2
+    | 0 |     1     |  | 2 |     3     |    range_1 = 24
+    +---+===+===+===+  +===+---+---+---+    range_2 = 8
+
+
+    #### width = 64 bits ####
+    
+    +===+===+===+===+  +===+===+===+===+   M0_M1|M1_M2
+    |    direct0    |  |    direct1    |   
+    +===+===+===+===+  +===+===+===+===+   
+
+    +---+---+---+===+  +===+===+===+===+  +===+===+===+---+    range_0 = 24   range_3 = 8  M0_M1_M2|M1_M2_M3
+    |     0     | 1 |  |    direct0    |  |     2     | 3 |    range_1 = 8
+    +---+---+---+===+  +===+===+===+===+  +===+===+===+---+    range_2 = 24
+
+    +---+---+===+===+  +===+===+===+===+  +===+===+---+---+    range_0 = 16   range_3 = 16 M0_M1_M2|M1_M2_M3
+    |   0   |   1   |  |    direct0    |  |   2   |   3   |    range_1 = 16
+    +---+---+===+===+  +===+===+===+===+  +===+===+---+---+    range_2 = 16
+
+    +---+===+===+===+  +===+===+===+===+  +===+---+---+---+    range_0 = 8   range_3 = 24  M0_M1_M2|M1_M2_M3
+    | 0 |     1     |  |    direct0    |  | 2 |     3     |    range_1 = 24
+    +---+===+===+===+  +===+===+===+===+  +===+---+---+---+    range_2 = 8
+*/
+
+
+    // 4 RC = 12
+    // 1 LT = 3
+    // 1 permutation assume + 1 permutation proves = 6
+    // 25 cols
+    // TOTAL: 47 cols
+
+    // bytes
+    // 5 standard (addr, offset, width, sel, ..)
+    // 1 LT = 3
+    // 8 bytes
+    // 8 range checks x 3 = 24
+    // 1 permutation assume + 1 permutation proves = 6
+    // 8 factors 
+    // TOTAL: 54 cols 
+        
+    // range check offset with LT
+
+    col witness slice[4];
+    col witness slice_ranges[4];
+    col witness direct[2];
+    col witness factor0[3];
+    col witness factor1[3];
+    col witness factorv[2][2];
+    col witness addr64;
+    col witness offset;
+    col witness width;
+    col witness clock;
+    col witness value;
+    col witness reset;
+
+    // if direct is active, factors no sense and viceversa.
+    direct[0] * factor0[0] === 0;
+    direct[0] * factor0[1] === 0;
+    direct[0] * factor0[2] === 0;
+
+    // if direct is active, factors no sense and viceversa.
+    direct[1] * factor1[0] === 0;
+    direct[1] * factor1[1] === 0;
+    direct[1] * factor1[2] === 0;
+
+    const expr m0 = direct[0] + slice[0] * factor0[0] + slice[1] * factor0[1] + slice[2] * factor0[2];
+    const expr m1 = direct[1] + slice[1] * factor1[0] + slice[2] * factor1[1] + slice[3] * factor1[2];
+
+    value[0] === 'value[0] * (1 - reset) + slice[1] * factorv[0][0] + slice[2] * factorv[0][1];
+    value[1] === 'value[1] * (1 - reset) + slice[1] * factorv[1][0] + slice[2] * factorv[1][1];
+
+    // permutation_assume(MEMORY_ID, sel, [addr64 + offset, step - 1 - clock, m0, m1])
+    // permutation_proves(MEMORY_ID, sel, [addr64 + offset, step - 1 - clock, m0, m1])
+
+    // maximum 5 steps (2 read + prepare/clean value + 2 write)
+    // read rebuild value
+    
+    // clean (no prepare)
+    // width 
+    //  8       nothing to do
+    //  4       nothing to do
+    //  2       2 x RC 16 bits
+    //  1       2 x RC 8, 24 bits
+
+    // but aligned need to divide in two
+    // worse case write 64 in 3 words of 32.
+    
+    // slice_ranges[0] = 24;    
+}

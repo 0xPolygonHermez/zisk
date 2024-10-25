@@ -75,7 +75,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         col witness air.b_imm1;
     }
     col witness b_src_ind;
-    col witness ind_width;  // 8 , 4, 2, 1
+    col witness ind_width;  // 8, 4, 2, 1
 
     // Operations related
 
@@ -109,8 +109,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     col witness end;                     
     col witness m32;
 
-    const expr addr_step = STEP * 3;
-
     const expr sel_mem_b;
     const expr addr[3];
 
@@ -125,25 +123,28 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         addr[2] = store_offset + store_ind * a[0];
     }
 
-    // Mem.load
-    // mem_load(sel: a_src_mem, 
-    //          step: addr_step, 
-    //          addr: addr[0],
-    //          value: a);
+    const expr addr_step = 3 * STEP; // TBD!!!
+    // Memory Loads
+    mem_load(sel: a_src_mem, 
+            step: addr_step, 
+     step_offset: 0,
+            addr: addr[0],
+           value: a);
 
-    // Mem.load
-    // mem_load(sel: sel_mem_b,
-    //          step: addr_step + 1, 
-    //          bytes: ind_width,
-    //          addr: addr[1],
-    //          value: b);
+    mem_load(sel: sel_mem_b,
+            step: addr_step, 
+     step_offset: 1,
+           bytes: ind_width,
+            addr: addr[1],
+           value: b);
 
-    // Mem.store
-    // mem_store(sel: store_mem + store_ind, 
-    //           step: addr_step + 2, 
-    //           bytes: ind_width,
-    //           addr: addr[2],
-    //           value: [store_ra*(pc + jmp_offset2 - c[0]) + c[0], (1 - store_ra) * c[1]]);
+    // Memory Stores
+    mem_store(sel: store_mem + store_ind, 
+             step: addr_step, 
+      step_offset: 2,
+            bytes: ind_width,
+             addr: addr[2],
+            value: [store_ra*(pc + jmp_offset2 - c[0]) + c[0], (1 - store_ra) * c[1]]);
 
 
     // Operation.assume => how organize software
