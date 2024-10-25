@@ -109,10 +109,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     col witness end;                     
     col witness m32;
 
-    const expr sel_mem_b;
+    const expr sel_mem_b = b_src_mem + b_src_ind;;
     const expr addr[3];
-
-    sel_mem_b = b_src_mem + b_src_ind;
     if (stack_enabled) {
         addr[0] = a_offset_imm0 + a_use_sp_imm1 * sp;
         addr[1] = b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;

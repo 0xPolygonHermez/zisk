@@ -28,7 +28,7 @@ airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID,
     col witness value[RC];
     col witness addr_changes;
 
-    const expr rd = (1 - wr);
+    const expr rd = 1 - wr;
     sel * (1 - sel) === 0;
     wr * (1 - wr) === 0;
 
@@ -93,7 +93,11 @@ airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID,
     // permutation_proves(MEMORY_CONT_ID, [(mem_segment + 1), addr, step, ...value], sel: mem_last_segment * 'SEGMENT_L1); // last row
     // permutation_assumes(MEMORY_CONT_ID, [mem_segment, 0, addr, step, ...value], sel: SEGMENT_L1); // first row
 
-    permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of MEM_BYTES 
+    // and the width to be exactly MEM_BYTES
+    // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of MEM_BYTES.
+    // These are handled with the Memory Align component
+    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
 
 function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {
