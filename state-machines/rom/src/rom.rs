@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{BufferAllocator, SetupCtx};
+use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, SRC_IMM, SRC_IND};
@@ -32,7 +32,16 @@ impl<F: Field> RomSM<F> {
         let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
         let sctx = self.wcm.get_sctx();
 
-        let (_prover_buffer, _offset) = Self::compute_trace(rom_path, buffer_allocator, sctx)?;
+        let (prover_buffer, _, air_id) = Self::compute_trace(rom_path, buffer_allocator, sctx)?;
+
+        let air_instance = AirInstance::new(
+            self.wcm.get_arc_sctx().clone(),
+            ROM_AIRGROUP_ID,
+            air_id,
+            None,
+            prover_buffer,
+        );
+        self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
         Ok(())
     }
@@ -41,7 +50,7 @@ impl<F: Field> RomSM<F> {
         rom_path: PathBuf,
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
-    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+    ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
         println!("Proving ROM for ELF file={}", elf_filename);
@@ -82,7 +91,7 @@ impl<F: Field> RomSM<F> {
         number_of_instructions: usize,
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
-    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+    ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_s_size;
 
@@ -123,7 +132,7 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomS0Row::default();
         }
 
-        Ok((prover_buffer, offsets[0]))
+        Ok((prover_buffer, offsets[0], ROM_S_AIR_IDS[0]))
     }
 
     fn create_rom_m(
@@ -132,7 +141,7 @@ impl<F: Field> RomSM<F> {
         number_of_instructions: usize,
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
-    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+    ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_m_size;
 
@@ -173,7 +182,7 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomM1Row::default();
         }
 
-        Ok((prover_buffer, offsets[0]))
+        Ok((prover_buffer, offsets[0], ROM_M_AIR_IDS[0]))
     }
 
     fn create_rom_l(
@@ -182,7 +191,7 @@ impl<F: Field> RomSM<F> {
         number_of_instructions: usize,
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
-    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+    ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_l_size;
 
@@ -223,7 +232,7 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomL2Row::default();
         }
 
-        Ok((prover_buffer, offsets[0]))
+        Ok((prover_buffer, offsets[0], ROM_L_AIR_IDS[0]))
     }
 }
 
