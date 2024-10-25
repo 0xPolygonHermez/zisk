@@ -91,7 +91,7 @@ impl<F: PrimeField> MainSM<F> {
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
         sctx: Arc<SetupCtx>,
-        rom_sm: Arc<RomSM>,
+        rom_sm: Arc<RomSM<F>>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,

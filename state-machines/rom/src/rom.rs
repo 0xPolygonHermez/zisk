@@ -1,21 +1,24 @@
-use core::num;
 use std::{path::PathBuf, sync::Arc};
 
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::trace;
-use sm_common::create_prover_buffer;
+use proofman_common::{BufferAllocator, SetupCtx};
+use proofman_util::create_buffer_fast;
+
 use zisk_core::{Riscv2zisk, SRC_IMM, SRC_IND};
-use zisk_pil::{Pilout, RomL2Row, RomL2Trace, RomM1Row, RomM1Trace, RomS0Row, RomS0Trace};
-use zisk_pil::{ROM_AIRGROUP_ID, ROM_L_AIR_IDS, ROM_M_AIR_IDS, ROM_S_AIR_IDS};
+use zisk_pil::{
+    Pilout, RomL2Row, RomL2Trace, RomM1Row, RomM1Trace, RomS0Row, RomS0Trace, ROM_AIRGROUP_ID,
+    ROM_L_AIR_IDS, ROM_M_AIR_IDS, ROM_S_AIR_IDS,
+};
 //use ziskemu::ZiskEmulatorErr;
+use std::error::Error;
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
 }
 
 impl<F: Field> RomSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, _sctx: Arc<SetupCtx>) -> Arc<Self> {
         let rom_sm = Self { wcm: wcm.clone() };
         let rom_sm = Arc::new(rom_sm);
 
@@ -26,14 +29,19 @@ impl<F: Field> RomSM<F> {
     }
 
     pub fn prove(&self, rom_path: PathBuf) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let (prover_buffer, offset) = self.compute_trace(rom_path)?;
+        let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
+        let sctx = self.wcm.get_sctx();
+
+        let (_prover_buffer, _offset) = Self::compute_trace(rom_path, buffer_allocator, sctx)?;
+
         Ok(())
     }
 
     pub fn compute_trace(
-        &self,
         rom_path: PathBuf,
-    ) -> Result<(Vec<F>, u64), Box<dyn std::error::Error + Send>> {
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
         println!("Proving ROM for ELF file={}", elf_filename);
@@ -52,173 +60,170 @@ impl<F: Field> RomSM<F> {
         let rom = rom_result.unwrap();
 
         let pilout = Pilout::pilout();
-        let rom_s_size: usize = pilout.get_air(ROM_AIRGROUP_ID, ROM_S_AIR_IDS[0]).num_rows();
-        let rom_m_size = pilout.get_air(ROM_AIRGROUP_ID, ROM_M_AIR_IDS[0]).num_rows();
-        let rom_l_size = pilout.get_air(ROM_AIRGROUP_ID, ROM_L_AIR_IDS[0]).num_rows();
+        let sizes = (
+            pilout.get_air(ROM_AIRGROUP_ID, ROM_S_AIR_IDS[0]).num_rows(),
+            pilout.get_air(ROM_AIRGROUP_ID, ROM_M_AIR_IDS[0]).num_rows(),
+            pilout.get_air(ROM_AIRGROUP_ID, ROM_L_AIR_IDS[0]).num_rows(),
+        );
 
         let number_of_instructions = rom.insts.len();
-        if number_of_instructions <= rom_s_size {
-            // Set trace size
-            let trace_size = rom_s_size;
 
-            // Allocate a prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                self.wcm.get_ectx(),
-                self.wcm.get_sctx(),
-                ROM_AIRGROUP_ID,
-                ROM_S_AIR_IDS[0],
-            );
-
-            // Create an empty ROM trace
-            let mut rom_trace =
-                RomS0Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offset as usize)
-                    .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
-
-            // For every instruction in the rom, fill its corresponding ROM trace
-            for (i, inst_builder) in rom.insts.into_iter().enumerate() {
-                let inst = inst_builder.1.i;
-                rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-                rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
-                rom_trace[i].a_imm1 = F::from_canonical_u64(if inst.a_src == SRC_IMM {
-                    inst.a_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
-                rom_trace[i].b_imm1 = F::from_canonical_u64(if inst.b_src == SRC_IMM {
-                    inst.b_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_src_ind = F::from_canonical_u64(if inst.b_src == SRC_IND {
-                    inst.b_offset_imm0
-                } else {
-                    0
-                });
-                rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
-                rom_trace[i].op = F::from_canonical_u8(inst.op);
-                rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
-                rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
-                rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
-                rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
-                rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
-            }
-
-            // Padd with zeroes
-            for i in number_of_instructions..trace_size {
-                rom_trace[i] = RomS0Row::default();
-            }
-
-            Ok((prover_buffer, offset))
-        } else if number_of_instructions <= rom_m_size {
-            // Set trace size
-            let trace_size = rom_m_size;
-
-            // Allocate a prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                self.wcm.get_ectx(),
-                self.wcm.get_sctx(),
-                ROM_AIRGROUP_ID,
-                ROM_M_AIR_IDS[0],
-            );
-
-            // Create an empty ROM trace
-            let mut rom_trace =
-                RomM1Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offset as usize)
-                    .expect("RomSM::compute_trace() failed mapping buffer to ROMM0Trace");
-
-            // For every instruction in the rom, fill its corresponding ROM trace
-            for (i, inst_builder) in rom.insts.into_iter().enumerate() {
-                let inst = inst_builder.1.i;
-                rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-                rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
-                rom_trace[i].a_imm1 = F::from_canonical_u64(if inst.a_src == SRC_IMM {
-                    inst.a_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
-                rom_trace[i].b_imm1 = F::from_canonical_u64(if inst.b_src == SRC_IMM {
-                    inst.b_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_src_ind = F::from_canonical_u64(if inst.b_src == SRC_IND {
-                    inst.b_offset_imm0
-                } else {
-                    0
-                });
-                rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
-                rom_trace[i].op = F::from_canonical_u8(inst.op);
-                rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
-                rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
-                rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
-                rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
-                rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
-            }
-
-            // Padd with zeroes
-            for i in number_of_instructions..trace_size {
-                rom_trace[i] = RomM1Row::default();
-            }
-
-            Ok((prover_buffer, offset))
-        } else if number_of_instructions < rom_l_size {
-            // Set trace size
-            let trace_size = rom_l_size;
-
-            // Allocate a prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                self.wcm.get_ectx(),
-                self.wcm.get_sctx(),
-                ROM_AIRGROUP_ID,
-                ROM_L_AIR_IDS[0],
-            );
-
-            // Create an empty ROM trace
-            let mut rom_trace =
-                RomL2Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offset as usize)
-                    .expect("RomSM::compute_trace() failed mapping buffer to ROML0Trace");
-
-            // For every instruction in the rom, fill its corresponding ROM trace
-            for (i, inst_builder) in rom.insts.into_iter().enumerate() {
-                let inst = inst_builder.1.i;
-                rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-                rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
-                rom_trace[i].a_imm1 = F::from_canonical_u64(if inst.a_src == SRC_IMM {
-                    inst.a_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
-                rom_trace[i].b_imm1 = F::from_canonical_u64(if inst.b_src == SRC_IMM {
-                    inst.b_use_sp_imm1
-                } else {
-                    0
-                });
-                rom_trace[i].b_src_ind = F::from_canonical_u64(if inst.b_src == SRC_IND {
-                    inst.b_offset_imm0
-                } else {
-                    0
-                });
-                rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
-                rom_trace[i].op = F::from_canonical_u8(inst.op);
-                rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
-                rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
-                rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
-                rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
-                rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
-            }
-
-            // Padd with zeroes
-            for i in number_of_instructions..trace_size {
-                rom_trace[i] = RomL2Row::default();
-            }
-
-            Ok((prover_buffer, offset))
-        } else {
-            panic!("RomSM::compute_trace() found rom too big size={}", number_of_instructions)
+        match number_of_instructions {
+            n if n <= sizes.0 => Self::create_rom_s(sizes.0, rom, n, buffer_allocator, sctx),
+            n if n <= sizes.1 => Self::create_rom_m(sizes.1, rom, n, buffer_allocator, sctx),
+            n if n < sizes.2 => Self::create_rom_l(sizes.2, rom, n, buffer_allocator, sctx),
+            _ => panic!("RomSM::compute_trace() found rom too big size={}", number_of_instructions),
         }
+    }
+
+    fn create_rom_s(
+        rom_s_size: usize,
+        rom: zisk_core::ZiskRom,
+        number_of_instructions: usize,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+        // Set trace size
+        let trace_size = rom_s_size;
+
+        // Allocate a prover buffer
+        let (buffer_size, offsets) = buffer_allocator
+            .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_S_AIR_IDS[0])
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
+
+        // Create an empty ROM trace
+        let mut rom_trace =
+            RomS0Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
+                .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, inst_builder) in rom.insts.into_iter().enumerate() {
+            let inst = inst_builder.1.i;
+            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
+            rom_trace[i].a_imm1 =
+                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
+            rom_trace[i].b_imm1 =
+                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_src_ind =
+                F::from_canonical_u64(if inst.b_src == SRC_IND { inst.b_offset_imm0 } else { 0 });
+            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
+            rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
+            rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
+            rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
+            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
+        }
+
+        // Padd with zeroes
+        for i in number_of_instructions..trace_size {
+            rom_trace[i] = RomS0Row::default();
+        }
+
+        Ok((prover_buffer, offsets[0]))
+    }
+
+    fn create_rom_m(
+        rom_m_size: usize,
+        rom: zisk_core::ZiskRom,
+        number_of_instructions: usize,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+        // Set trace size
+        let trace_size = rom_m_size;
+
+        // Allocate a prover buffer
+        let (buffer_size, offsets) = buffer_allocator
+            .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_M_AIR_IDS[0])
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
+
+        // Create an empty ROM trace
+        let mut rom_trace =
+            RomM1Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
+                .expect("RomSM::compute_trace() failed mapping buffer to ROMM0Trace");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, inst_builder) in rom.insts.into_iter().enumerate() {
+            let inst = inst_builder.1.i;
+            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
+            rom_trace[i].a_imm1 =
+                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
+            rom_trace[i].b_imm1 =
+                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_src_ind =
+                F::from_canonical_u64(if inst.b_src == SRC_IND { inst.b_offset_imm0 } else { 0 });
+            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
+            rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
+            rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
+            rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
+            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
+        }
+
+        // Padd with zeroes
+        for i in number_of_instructions..trace_size {
+            rom_trace[i] = RomM1Row::default();
+        }
+
+        Ok((prover_buffer, offsets[0]))
+    }
+
+    fn create_rom_l(
+        rom_l_size: usize,
+        rom: zisk_core::ZiskRom,
+        number_of_instructions: usize,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(Vec<F>, u64), Box<dyn Error + Send>> {
+        // Set trace size
+        let trace_size = rom_l_size;
+
+        // Allocate a prover buffer
+        let (buffer_size, offsets) = buffer_allocator
+            .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_L_AIR_IDS[0])
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
+
+        // Create an empty ROM trace
+        let mut rom_trace =
+            RomL2Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
+                .expect("RomSM::compute_trace() failed mapping buffer to ROML0Trace");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, inst_builder) in rom.insts.into_iter().enumerate() {
+            let inst = inst_builder.1.i;
+            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_trace[i].a_offset_imm0 = F::from_canonical_u64(inst.a_offset_imm0);
+            rom_trace[i].a_imm1 =
+                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
+            rom_trace[i].b_imm1 =
+                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_src_ind =
+                F::from_canonical_u64(if inst.b_src == SRC_IND { inst.b_offset_imm0 } else { 0 });
+            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
+            rom_trace[i].jmp_offset1 = F::from_canonical_u64(inst.jmp_offset1 as u64);
+            rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
+            rom_trace[i].multiplicity = F::from_canonical_u64(1); // TODO: review
+            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
+        }
+
+        // Padd with zeroes
+        for i in number_of_instructions..trace_size {
+            rom_trace[i] = RomL2Row::default();
+        }
+
+        Ok((prover_buffer, offsets[0]))
     }
 }
 
