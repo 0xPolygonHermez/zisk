@@ -92,5 +92,8 @@ fn main() {
         std::process::exit(1);
     }*/
 
+    // Compute LDE and Merkelize and get the root of the rom
+    // TODO: Implement the logic to compute the trace
+
     log::info!("ROM proof successful");
 }
