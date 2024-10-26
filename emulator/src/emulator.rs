@@ -11,7 +11,8 @@ use std::{
 };
 use sysinfo::System;
 use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskRequiredOperation, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
+    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
+    ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 pub trait Emulator {
@@ -160,6 +161,24 @@ impl ZiskEmulator {
         }
 
         Ok(output)
+    }
+
+    pub fn process_rom_pc_histogram(
+        rom: &ZiskRom,
+        inputs: &[u8],
+        options: &EmuOptions,
+    ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
+        // Create a emulator instance with this rom and inputs
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        let pc_histogram = emu.run_pc_histogram(inputs.to_owned(), options);
+
+        if !emu.terminated() {
+            return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
+
+        Ok(pc_histogram)
     }
 
     pub fn par_process_rom<F: PrimeField>(

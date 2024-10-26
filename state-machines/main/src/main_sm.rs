@@ -198,8 +198,14 @@ impl<F: PrimeField> MainSM<F> {
             // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
             // Spawn the ROM thread
             let rom_sm = self.rom_sm.clone();
-            let rom_path = self.zisk_rom_path.clone();
-            let handle_rom = std::thread::spawn(move || rom_sm.prove(rom_path));
+            let zisk_rom = self.zisk_rom.clone();
+            let pc_histogram = ZiskEmulator::process_rom_pc_histogram(
+                &self.zisk_rom,
+                &public_inputs,
+                &emu_options,
+            )
+            .expect("MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()");
+            let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
 
             // Run the emulator in parallel n times to collect execution traces
             // and record the execution starting points for each AIR instance

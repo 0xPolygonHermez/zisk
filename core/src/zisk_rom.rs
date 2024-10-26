@@ -6,7 +6,7 @@ use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IND, SRC_STEP};
 // use crate::SRC_SP;
 
 /// RO data structure
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RoData {
     pub from: u64,
     pub length: usize,
@@ -22,7 +22,7 @@ impl RoData {
 }
 
 /// ZisK ROM data, including a map address to ZisK instruction
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ZiskRom {
     pub next_init_inst_addr: u64,
     pub insts: HashMap<u64, ZiskInstBuilder>,
