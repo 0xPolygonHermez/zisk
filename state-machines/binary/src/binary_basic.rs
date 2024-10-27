@@ -539,7 +539,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                         None,
                         prover_buffer,
                     );
-                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
 
                     thread_controller.remove_working_thread();
                 });

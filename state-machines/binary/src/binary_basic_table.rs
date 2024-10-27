@@ -145,9 +145,9 @@ impl<F: Field> BinaryBasicTableSM<F> {
             ectx.dctx.write().unwrap();
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        let (is_myne, instance_idx) =
+        let (is_myne, instance_global_idx) =
             dctx.add_instance(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], 1);
-        let owner = dctx.owner(instance_idx);
+        let owner: usize = dctx.owner(instance_global_idx);
 
         let mut multiplicity_ = std::mem::take(&mut *multiplicity);
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
@@ -176,7 +176,10 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 None,
                 prover_buffer,
             );
-            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+            self.wcm
+                .get_pctx()
+                .air_instance_repo
+                .add_air_instance(air_instance, Some(instance_global_idx));
         }
     }
 }

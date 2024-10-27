@@ -32,6 +32,7 @@ pub struct InstanceExtensionCtx<F> {
     pub offset: u64,
     pub op_type: ZiskOperationType,
     pub emu_trace_start: EmuTraceStart,
+    pub instance_global_idx: usize,
     pub air_instance: Option<AirInstance<F>>,
 }
 
@@ -41,9 +42,10 @@ impl<F: Default + Clone> InstanceExtensionCtx<F> {
         offset: u64,
         op_type: ZiskOperationType,
         emu_trace_start: EmuTraceStart,
+        instance_global_idx: usize,
         air_instance: Option<AirInstance<F>>,
     ) -> Self {
-        Self { prover_buffer, offset, op_type, emu_trace_start, air_instance }
+        Self { prover_buffer, offset, op_type, emu_trace_start, instance_global_idx, air_instance }
     }
 }
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
@@ -204,7 +206,7 @@ impl<F: PrimeField> MainSM<F> {
             Vec::with_capacity(emu_slices.points.len());
 
         let mut dctx = ectx.dctx.write().unwrap();
-        for emu_slice in emu_slices.points.iter() {
+        for (gidx, emu_slice) in emu_slices.points.iter().enumerate() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
                 ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
@@ -213,37 +215,35 @@ impl<F: PrimeField> MainSM<F> {
                 }
                 _ => panic!("Invalid operation type"),
             };
-
-            match dctx.add_instance(airgroup_id, air_id, 1) {
-                (true, _) => {
-                    let (buffer, offset) =
-                        create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                    instances_extension_ctx.push(InstanceExtensionCtx::new(
-                        buffer,
-                        offset,
-                        emu_slice.op_type,
-                        emu_slice.emu_trace_start.clone(),
-                        None,
-                    ));
-                }
-                _ => {}
+                match dctx.add_instance(airgroup_id, air_id, 1) {
+                    (true, _) => {
+                        let (buffer, offset) =
+                            create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+                        instances_extension_ctx.push(InstanceExtensionCtx::new(
+                            buffer,
+                            offset,
+                            emu_slice.op_type,
+                            emu_slice.emu_trace_start.clone(),
+                            gidx,
+                            None,
+                        ));
+                    }
+                    _ => {}
             }
         }
         drop(dctx);
 
-        instances_extension_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| {
-            match iectx.op_type {
-                ZiskOperationType::None => {
-                    self.prove_main(&emu_traces, idx, iectx, &pctx);
-                }
-                ZiskOperationType::Binary => {
-                    self.prove_binary(&emu_traces, idx, iectx, &pctx);
-                }
-                ZiskOperationType::BinaryE => {
-                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx);
-                }
-                _ => panic!("Invalid operation type"),
+        instances_extension_ctx.par_iter_mut().for_each(|iectx| match iectx.op_type {
+            ZiskOperationType::None => {
+                self.prove_main(&emu_traces, iectx, &pctx);
             }
+            ZiskOperationType::Binary => {
+                self.prove_binary(&emu_traces, iectx, &pctx);
+            }
+            ZiskOperationType::BinaryE => {
+                self.prove_binary_extension(&emu_traces, iectx, &pctx);
+            }
+            _ => panic!("Invalid operation type"),
         });
         // Drop the emulator traces concurrently
         std::thread::spawn(move || {
@@ -253,7 +253,8 @@ impl<F: PrimeField> MainSM<F> {
         timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
         for iectx in instances_extension_ctx {
             if let Some(air_instance) = iectx.air_instance {
-                pctx.air_instance_repo.add_air_instance(air_instance);
+                pctx.air_instance_repo
+                    .add_air_instance(air_instance, Some(iectx.instance_global_idx));
             }
         }
         timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
@@ -266,10 +267,10 @@ impl<F: PrimeField> MainSM<F> {
     fn prove_main(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
+        let segment_id = iectx.instance_global_idx;
         let segment_trace = &vec_traces[segment_id];
 
         let offset = iectx.offset;
@@ -332,7 +333,6 @@ impl<F: PrimeField> MainSM<F> {
     fn prove_binary(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
@@ -355,14 +355,13 @@ impl<F: PrimeField> MainSM<F> {
         timer_start_debug!(CREATE_AIR_INSTANCE);
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance =
-            Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], Some(segment_id), buffer));
+            Some(AirInstance::new(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0], None, buffer));
         timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
     }
 
     fn prove_binary_extension(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
@@ -382,7 +381,7 @@ impl<F: PrimeField> MainSM<F> {
         iectx.air_instance = Some(AirInstance::new(
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS[0],
-            Some(segment_id),
+            None,
             buffer,
         ));
     }
