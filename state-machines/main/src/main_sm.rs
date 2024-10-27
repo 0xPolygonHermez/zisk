@@ -228,7 +228,7 @@ impl<F: PrimeField> MainSM<F> {
             Vec::with_capacity(emu_slices.points.len());
 
         let mut dctx = ectx.dctx.write().unwrap();
-        for (gidx, emu_slice) in emu_slices.points.iter().enumerate() {
+        for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
                 ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
@@ -238,7 +238,7 @@ impl<F: PrimeField> MainSM<F> {
                 _ => panic!("Invalid operation type"),
             };
             match dctx.add_instance(airgroup_id, air_id, 1) {
-                (true, _) => {
+                (true, global_idx) => {
                     let (buffer, offset) =
                         create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                     instances_extension_ctx.push(InstanceExtensionCtx::new(
@@ -246,7 +246,7 @@ impl<F: PrimeField> MainSM<F> {
                         offset,
                         emu_slice.op_type,
                         emu_slice.emu_trace_start.clone(),
-                        gidx,
+                        global_idx,
                         None,
                     ));
                 }
@@ -281,9 +281,9 @@ impl<F: PrimeField> MainSM<F> {
         }
         timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
-        timer_start_debug!(CREATE_TABLE_INSTANCES);
-        self.binary_sm.create_table_instances();
-        timer_stop_and_log_debug!(CREATE_TABLE_INSTANCES);
+        // self.mem_sm.unregister_predecessor(scope);
+        self.binary_sm.unregister_predecessor();
+        // self.arith_sm.register_predecessor(scope);
     }
 
     fn prove_main(
@@ -388,7 +388,7 @@ impl<F: PrimeField> MainSM<F> {
             self.sctx.clone(),
             BINARY_AIRGROUP_ID,
             BINARY_AIR_IDS[0],
-            Some(segment_id),
+            None,
             buffer,
         ));
         timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);

@@ -66,18 +66,18 @@ impl<F: Field> BinaryBasicSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryBasicSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            /*<BinaryBasicSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
                 scope,
             );
 
-            self.threads_controller.wait_for_threads();
+            self.threads_controller.wait_for_threads();*/
 
-            self.binary_basic_table_sm.unregister_predecessor(scope);
+            self.binary_basic_table_sm.unregister_predecessor();
         }
     }
 
@@ -756,7 +756,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                scope.spawn(move |scope| {
+                scope.spawn(move |_scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
                         &wcm.get_ectx(),
                         &wcm.get_sctx(),

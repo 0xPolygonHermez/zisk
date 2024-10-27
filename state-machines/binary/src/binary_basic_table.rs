@@ -6,7 +6,7 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, SetupCtx};
 use rayon::{prelude::*, Scope};
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8};
@@ -71,7 +71,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, _: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.create_air_instance();
         }

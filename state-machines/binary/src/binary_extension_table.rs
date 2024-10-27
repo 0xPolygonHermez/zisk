@@ -8,6 +8,8 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
+use proofman_common::{AirInstance, SetupCtx};
+use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
 use zisk_pil::{BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS};
@@ -67,7 +69,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, _: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.create_air_instance();
         }
@@ -161,7 +163,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             );
 
             let air_instance = AirInstance::new(
-                self.scxt.clone(),
+                self.wcm.get_sctx(),
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,

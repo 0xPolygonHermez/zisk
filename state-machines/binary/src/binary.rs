@@ -81,18 +81,18 @@ impl<F: PrimeField> BinarySM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            /*<BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
                 scope,
-            );
-            self.threads_controller.wait_for_threads();
+            );*/
+            //self.threads_controller.wait_for_threads();
 
-            self.binary_basic_sm.unregister_predecessor(scope);
-            self.binary_extension_sm.unregister_predecessor(scope);
+            self.binary_basic_sm.unregister_predecessor();
+            self.binary_extension_sm.unregister_predecessor();
         }
     }
 

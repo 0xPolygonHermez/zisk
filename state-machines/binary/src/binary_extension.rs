@@ -37,7 +37,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     // STD
-    pub std: Arc<Std<F>>,
+    std: Arc<Std<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -49,7 +49,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
-    pub binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
 #[derive(Debug)]
@@ -90,18 +90,18 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinaryExtensionSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            /*<BinaryExtensionSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
                 scope,
             );
 
-            self.threads_controller.wait_for_threads();
+            self.threads_controller.wait_for_threads();*/
 
-            self.binary_extension_table_sm.unregister_predecessor(scope);
+            self.binary_extension_table_sm.unregister_predecessor();
 
             self.std.unregister_predecessor(self.wcm.get_pctx(), None);
         }
@@ -490,8 +490,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                let pctx_cloned = pctx.clone();
-                scope.spawn(move |scope| {
+                scope.spawn(move |_scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
                         &wcm.get_ectx(),
                         &wcm.get_sctx(),
