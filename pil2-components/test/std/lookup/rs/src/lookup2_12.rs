@@ -35,7 +35,7 @@ where
 
         let air_instance = AirInstance::new(sctx.clone(), LOOKUP_AIRGROUP_ID, LOOKUP_2_12_AIR_IDS[0], None, buffer);
 
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }
 

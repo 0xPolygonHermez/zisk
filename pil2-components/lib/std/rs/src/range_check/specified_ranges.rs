@@ -333,7 +333,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
 
         //pctx.air_instance_repo.add_air_instance(air_instance);
-        //rick: simplificar per operar només amb la multipliciata, res més... no cal crear buffer, etc...
+        // note: there is room for simplification here
     }
 
     fn calculate_witness(

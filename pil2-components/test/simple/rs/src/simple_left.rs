@@ -33,8 +33,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(sctx.clone(), SIMPLE_AIRGROUP_ID, SIMPLE_LEFT_AIR_IDS[0], None, buffer);
-        let gid = pctx.air_instance_repo.air_instances.read().unwrap().len();
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
+        pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }
 

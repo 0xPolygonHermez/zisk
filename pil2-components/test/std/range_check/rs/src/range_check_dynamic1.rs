@@ -52,7 +52,7 @@ where
             None,
             buffer,
         );
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }
 
