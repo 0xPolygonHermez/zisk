@@ -116,7 +116,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
                 }
                 _ => panic!("Multiplicities must be columns"),
             })
-            .collect::<Vec<Vec<u64>>>(); //rick: definir multiplicities com u32 directe?
+            .collect::<Vec<Vec<u64>>>();
         let owner = dctx.owner(global_idx);
 
         dctx.distribute_multiplicities(&mut multiplicities, owner);
@@ -140,8 +140,6 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             };
             let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
             let air_instance = &mut air_instance_rw[air_instance_id];
-
-            //let mul_columns = &*self.mul_columns.lock().unwrap();
 
             let mul_columns_2 = multiplicities
                 .iter()

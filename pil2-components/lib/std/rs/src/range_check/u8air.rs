@@ -101,7 +101,7 @@ impl<F: PrimeField> U8Air<F> {
                 values.iter().map(|x| x.as_canonical_biguint().to_u64().unwrap()).collect::<Vec<u64>>()
             }
             _ => panic!("Multiplicities must be a column"),
-        }; //rick: definir multiplicities com u32 directe?
+        };
 
         let owner = dctx.owner(global_idx);
         dctx.distribute_multiplicity(&mut multiplicity, owner);
@@ -110,7 +110,6 @@ impl<F: PrimeField> U8Air<F> {
             let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
             let instance: Vec<usize> = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
             let air_instance_id = if !instance.is_empty() {
-                //rick: this code will desapear
                 air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
             } else {
                 // create instance

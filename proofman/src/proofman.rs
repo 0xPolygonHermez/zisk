@@ -87,7 +87,6 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
-        Self::calculate_challenges(0, &mut provers, pctx.clone(), ectx.clone(), &mut transcript, false);
 
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -387,12 +386,6 @@ impl<F: Field + 'static> ProofMan<F> {
             }
         }
         drop(dctx);
-        if stage == 0 {
-            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
-            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-
-            transcript.add_elements(public_inputs, pctx.global_info.n_publics);
-        }
     }
 
     fn get_challenges(
