@@ -385,13 +385,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<F> {
-        
-        let values = self.get_transcript_values_u64(stage, proof_ctx)
-            .iter()
-            .map(|v| F::from_canonical_u64(*v))
-            .collect();
+        let values =
+            self.get_transcript_values_u64(stage, proof_ctx).iter().map(|v| F::from_canonical_u64(*v)).collect();
         values
-
     }
 
     fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64> {
@@ -571,9 +567,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_zkin_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str) -> *mut c_void {
-        
-        let gidx =
-                proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].global_idx.unwrap();
+        let gidx = proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].global_idx.unwrap();
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 

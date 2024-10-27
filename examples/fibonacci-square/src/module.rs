@@ -80,7 +80,8 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
 
         let air_instance = AirInstance::new(sctx.clone(), MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
 
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(pctx.air_instance_repo.air_instances.read().unwrap().len()));
+        pctx.air_instance_repo
+            .add_air_instance(air_instance, Some(pctx.air_instance_repo.air_instances.read().unwrap().len()));
 
         self.std_lib.unregister_predecessor(None);
     }

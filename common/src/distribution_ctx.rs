@@ -148,7 +148,7 @@ impl DistributionCtx {
             let instance_idx = self.instances[*glob_idx];
             my_air_subgroups_indices.entry(instance_idx).or_insert_with(Vec::new).push(loc_idx);
         }
-        
+
         // Flatten the HashMap into a single vector for my_air_subgroups
         for (_, indices) in my_air_subgroups_indices {
             self.my_air_subgroups.push(indices);
@@ -194,7 +194,7 @@ impl DistributionCtx {
                 }
                 self.world.process_at_rank(_owner as i32).send(&packed_multiplicity[..]);
             } else {
-                let mut packed_multiplicity: Vec<u32> = vec![0; _multiplicity.len() * 2+1];
+                let mut packed_multiplicity: Vec<u32> = vec![0; _multiplicity.len() * 2 + 1];
                 for i in 0..self.n_processes {
                     if i != _owner as i32 {
                         self.world.process_at_rank(i).receive_into(&mut packed_multiplicity);
@@ -203,7 +203,6 @@ impl DistributionCtx {
                             let m = packed_multiplicity[j as usize + 1] as u64;
                             _multiplicity[idx] += m;
                         }
-                        
                     }
                 }
             }
