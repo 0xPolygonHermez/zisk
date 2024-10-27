@@ -36,3 +36,19 @@ function permutation_proves(const int opid, const expr cols[], const expr sel = 
             error(`Unknown bus type: ${bus_type}`);
     }
 }
+
+// Permutation with freedom in whether to assume or prove based on the provided selector
+function permutation(const int opid, const expr cols[], const expr sel = 1, int bus_type = PIOP_BUS_DEFAULT, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_PERMUTATION_NAME;
+
+    if (bus_type == PIOP_BUS_DEFAULT) bus_type = DEFAULT_PERMUTATION_BUS_TYPE;
+
+    switch (bus_type) {
+        case PIOP_BUS_SUM:
+            sum_proves(name, opid, cols, sel);
+        case PIOP_BUS_PROD:
+            error("Free permutation with product bus is not supported");
+        default:
+            error(`Unknown bus type: ${bus_type}`);
+    }
+}
