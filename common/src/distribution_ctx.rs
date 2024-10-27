@@ -134,7 +134,7 @@ impl DistributionCtx {
                 self.roots_gatherv_displ[self.instances_owner[idx].0] as usize + self.instances_owner[idx].1 * 4;
             #[cfg(not(feature = "distributed"))]
             let pos_buffer = idx * 4;
-            group_indices.entry(group_id).or_insert_with(Vec::new).push(pos_buffer);
+            group_indices.entry(group_id).or_default().push(pos_buffer);
         }
 
         // Flatten the HashMap into a single vector for my_groups
@@ -146,7 +146,7 @@ impl DistributionCtx {
         let mut my_air_subgroups_indices: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
         for (loc_idx, glob_idx) in self.my_instances.iter().enumerate() {
             let instance_idx = self.instances[*glob_idx];
-            my_air_subgroups_indices.entry(instance_idx).or_insert_with(Vec::new).push(loc_idx);
+            my_air_subgroups_indices.entry(instance_idx).or_default().push(loc_idx);
         }
 
         // Flatten the HashMap into a single vector for my_air_subgroups
@@ -174,7 +174,7 @@ impl DistributionCtx {
         }
     }
 
-    pub fn distribute_multiplicity(&self, _multiplicity: &mut Vec<u64>, _owner: usize) {
+    pub fn distribute_multiplicity(&self, _multiplicity: &mut [u64], _owner: usize) {
         #[cfg(feature = "distributed")]
         {
             //assert that I can operate with u32
@@ -209,7 +209,7 @@ impl DistributionCtx {
         }
     }
 
-    pub fn distribute_multiplicities(&self, _multiplicities: &mut Vec<Vec<u64>>, _owner: usize) {
+    pub fn distribute_multiplicities(&self, _multiplicities: &mut [Vec<u64>], _owner: usize) {
         #[cfg(feature = "distributed")]
         {
             // Ensure that each multiplicity vector can be operated with u32

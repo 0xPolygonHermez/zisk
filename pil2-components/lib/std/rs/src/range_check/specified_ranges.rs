@@ -127,7 +127,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
 
             let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
             let instance: Vec<usize> = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
-            let air_instance_id = if instance.len() != 0 {
+            let air_instance_id = if !instance.is_empty() {
                 air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
             } else {
                 // create instance
