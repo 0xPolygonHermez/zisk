@@ -15,7 +15,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
+use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
@@ -41,9 +41,6 @@ pub struct BinaryExtensionSM<F: PrimeField> {
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
@@ -71,7 +68,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             wcm: wcm.clone(),
             std: std.clone(),
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
             binary_extension_table_sm,
         };
@@ -97,9 +93,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 &[],
                 true,
                 scope,
-            );
-
-            self.threads_controller.wait_for_threads();*/
+            );*/
 
             self.binary_extension_table_sm.unregister_predecessor();
 
@@ -468,7 +462,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
 
 impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
+    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, _scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
@@ -483,41 +477,34 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                 let binary_extension_table_sm = self.binary_extension_table_sm.clone();
                 let wcm = self.wcm.clone();
 
-                self.threads_controller.add_working_thread();
-                let thread_controller = self.threads_controller.clone();
-
                 let std = self.std.clone();
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                scope.spawn(move |_scope| {
-                    let (mut prover_buffer, offset) = create_prover_buffer(
-                        &wcm.get_ectx(),
-                        &wcm.get_sctx(),
-                        BINARY_EXTENSION_AIRGROUP_ID,
-                        BINARY_EXTENSION_AIR_IDS[0],
-                    );
+                let (mut prover_buffer, offset) = create_prover_buffer(
+                    &wcm.get_ectx(),
+                    &wcm.get_sctx(),
+                    BINARY_EXTENSION_AIRGROUP_ID,
+                    BINARY_EXTENSION_AIR_IDS[0],
+                );
 
-                    Self::prove_internal(
-                        &wcm,
-                        &binary_extension_table_sm,
-                        &std,
-                        drained_inputs,
-                        &mut prover_buffer,
-                        offset,
-                    );
+                Self::prove_internal(
+                    &wcm,
+                    &binary_extension_table_sm,
+                    &std,
+                    drained_inputs,
+                    &mut prover_buffer,
+                    offset,
+                );
 
-                    let air_instance = AirInstance::new(
-                        sctx,
-                        BINARY_EXTENSION_AIRGROUP_ID,
-                        BINARY_EXTENSION_AIR_IDS[0],
-                        None,
-                        prover_buffer,
-                    );
-                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-
-                    thread_controller.remove_working_thread();
-                });
+                let air_instance = AirInstance::new(
+                    sctx,
+                    BINARY_EXTENSION_AIRGROUP_ID,
+                    BINARY_EXTENSION_AIR_IDS[0],
+                    None,
+                    prover_buffer,
+                );
+                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
             }
         }
     }
