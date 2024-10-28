@@ -12,7 +12,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, SetupCtx};
+use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
@@ -39,9 +39,6 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
-    // SetupCtx
-    sctx: Arc<SetupCtx>,
-
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -66,7 +63,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
-        sctx: Arc<SetupCtx>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
@@ -74,7 +70,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let binary_extension_sm = Self {
             wcm: wcm.clone(),
             std: std.clone(),
-            sctx: sctx.clone(),
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -108,7 +103,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
             self.binary_extension_table_sm.unregister_predecessor(scope);
 
-            self.std.unregister_predecessor(self.wcm.get_arc_pctx(), None);
+            self.std.unregister_predecessor(self.wcm.get_pctx(), None);
         }
     }
 
@@ -401,12 +396,10 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         scope: &Scope,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let air = wcm
-            .get_pctx()
-            .pilout
-            .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-        let air_binary_extension_table = wcm
-            .get_pctx()
+        let pctx = wcm.get_pctx();
+
+        let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary_extension_table = pctx
             .pilout
             .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
@@ -482,11 +475,9 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self
-                .wcm
-                .get_pctx()
-                .pilout
-                .get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+            let pctx = self.wcm.get_pctx();
+            let air =
+                pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -500,12 +491,13 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let std = self.std.clone();
 
-                let sctx = self.sctx.clone();
+                let sctx = self.wcm.get_sctx().clone();
 
+                let pctx_cloned = pctx.clone();
                 scope.spawn(move |scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
-                        wcm.get_ectx(),
-                        wcm.get_sctx(),
+                        &wcm.get_ectx(),
+                        &wcm.get_sctx(),
                         BINARY_EXTENSION_AIRGROUP_ID,
                         BINARY_EXTENSION_AIR_IDS[0],
                     );
@@ -527,7 +519,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                         None,
                         prover_buffer,
                     );
-                    wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+                    pctx_cloned.air_instance_repo.add_air_instance(air_instance);
 
                     thread_controller.remove_working_thread();
                 });

@@ -18,7 +18,7 @@ pub struct RomSM<F> {
 }
 
 impl<F: Field> RomSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, _sctx: Arc<SetupCtx>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let rom_sm = Self { wcm: wcm.clone() };
         let rom_sm = Arc::new(rom_sm);
 
@@ -41,14 +41,14 @@ impl<F: Field> RomSM<F> {
         }
 
         let main_trace_len =
-            self.wcm.get_arc_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows()
+            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows()
                 as u64;
 
         let (prover_buffer, _, air_id) =
-            Self::compute_trace_rom(rom, buffer_allocator, sctx, pc_histogram, main_trace_len)?;
+            Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len)?;
 
         let air_instance = AirInstance::new(
-            self.wcm.get_arc_sctx().clone(),
+            sctx.clone(),
             ROM_AIRGROUP_ID,
             air_id,
             None,
