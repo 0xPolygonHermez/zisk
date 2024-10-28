@@ -6,8 +6,8 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, SetupCtx};
-use rayon::{prelude::*, Scope};
+use proofman_common::AirInstance;
+use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::{BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
@@ -247,7 +247,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 self.num_rows,
             );
             let air_instance = AirInstance::new(
-                self.sctx.clone(),
+                self.wcm.get_sctx(),
                 BINARY_TABLE_AIRGROUP_ID,
                 BINARY_TABLE_AIR_IDS[0],
                 None,

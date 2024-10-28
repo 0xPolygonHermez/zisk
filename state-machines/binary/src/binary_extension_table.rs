@@ -7,8 +7,6 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use rayon::{prelude::*, Scope};
-use proofman_common::{AirInstance, SetupCtx};
 use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
