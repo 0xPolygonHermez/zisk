@@ -237,20 +237,17 @@ impl<F: PrimeField> MainSM<F> {
                 }
                 _ => panic!("Invalid operation type"),
             };
-            match dctx.add_instance(airgroup_id, air_id, 1) {
-                (true, global_idx) => {
-                    let (buffer, offset) =
-                        create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                    instances_extension_ctx.push(InstanceExtensionCtx::new(
-                        buffer,
-                        offset,
-                        emu_slice.op_type,
-                        emu_slice.emu_trace_start.clone(),
-                        global_idx,
-                        None,
-                    ));
-                }
-                _ => {}
+
+            if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
+                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    buffer,
+                    offset,
+                    emu_slice.op_type,
+                    emu_slice.emu_trace_start.clone(),
+                    global_idx,
+                    None,
+                ));
             }
         }
         drop(dctx);
