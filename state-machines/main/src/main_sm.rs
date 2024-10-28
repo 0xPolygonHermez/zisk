@@ -4,7 +4,7 @@ use sm_rom::RomSM;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::prelude::*;
 use sm_binary::BinarySM;
 use std::{
     fs,
@@ -33,6 +33,8 @@ pub struct InstanceExtensionCtx<F> {
     pub offset: u64,
     pub op_type: ZiskOperationType,
     pub emu_trace_start: EmuTraceStart,
+    pub segment_id: Option<usize>,
+    pub instance_global_idx: usize,
     pub air_instance: Option<AirInstance<F>>,
 }
 
@@ -42,9 +44,19 @@ impl<F: Default + Clone> InstanceExtensionCtx<F> {
         offset: u64,
         op_type: ZiskOperationType,
         emu_trace_start: EmuTraceStart,
+        segment_id: Option<usize>,
+        instance_global_idx: usize,
         air_instance: Option<AirInstance<F>>,
     ) -> Self {
-        Self { prover_buffer, offset, op_type, emu_trace_start, air_instance }
+        Self {
+            prover_buffer,
+            offset,
+            op_type,
+            emu_trace_start,
+            instance_global_idx,
+            segment_id,
+            air_instance,
+        }
     }
 }
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
@@ -159,7 +171,6 @@ impl<F: PrimeField> MainSM<F> {
     ) {
         // Create a thread pool to manage the execution of all the state machines related to the
         // execution process
-        let pool = ThreadPoolBuilder::new().build().unwrap();
 
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
@@ -194,104 +205,110 @@ impl<F: PrimeField> MainSM<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
-        pool.scope(|scope| {
-            // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
-            // Spawn the ROM thread
-            let rom_sm = self.rom_sm.clone();
-            let zisk_rom = self.zisk_rom.clone();
-            let pc_histogram = ZiskEmulator::process_rom_pc_histogram(
-                &self.zisk_rom,
-                &public_inputs,
-                &emu_options,
-            )
-            .expect("MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()");
-            let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
+        // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
+        // Spawn the ROM thread
+        let rom_sm = self.rom_sm.clone();
+        let zisk_rom = self.zisk_rom.clone();
+        let pc_histogram =
+            ZiskEmulator::process_rom_pc_histogram(&self.zisk_rom, &public_inputs, &emu_options)
+                .expect(
+                    "MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()",
+                );
+        let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
 
-            // Run the emulator in parallel n times to collect execution traces
-            // and record the execution starting points for each AIR instance
-            timer_start_debug!(PAR_PROCESS_ROM);
-            let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
-                &self.zisk_rom,
-                &public_inputs,
-                &emu_options,
-                Self::NUM_THREADS,
-                op_sizes,
-            )
-            .expect("Error during emulator execution");
-            timer_stop_and_log_debug!(PAR_PROCESS_ROM);
+        // Run the emulator in parallel n times to collect execution traces
+        // and record the execution starting points for each AIR instance
+        timer_start_debug!(PAR_PROCESS_ROM);
+        let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+            &self.zisk_rom,
+            &public_inputs,
+            &emu_options,
+            Self::NUM_THREADS,
+            op_sizes,
+        )
+        .expect("Error during emulator execution");
+        timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
-            emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+        emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
-            // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
-            handle_rom.join().unwrap().expect("Error during ROM witness computation");
+        // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
+        handle_rom.join().unwrap().expect("Error during ROM witness computation");
 
-            let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
-                Vec::with_capacity(emu_slices.points.len());
+        let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
+            Vec::with_capacity(emu_slices.points.len());
 
-            let mut dctx = ectx.dctx.write().unwrap();
-            for (idx, emu_slice) in emu_slices.points.iter().enumerate() {
-                let (airgroup_id, air_id) = match emu_slice.op_type {
-                    ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
-                    ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
-                    ZiskOperationType::BinaryE => {
-                        (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
-                    }
-                    _ => panic!("Invalid operation type"),
-                };
-                dctx.add_instance(airgroup_id, air_id, idx, 1);
-
-                if dctx.is_my_instance(idx) {
-                    let (buffer, offset) =
-                        create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                    instances_ctx.push(InstanceExtensionCtx::new(
-                        buffer,
-                        offset,
-                        emu_slice.op_type,
-                        emu_slice.emu_trace_start.clone(),
-                        None,
-                    ));
-                }
-            }
-            drop(dctx);
-
-            instances_ctx.par_iter_mut().enumerate().for_each(|(idx, iectx)| match iectx.op_type {
-                ZiskOperationType::None => {
-                    self.prove_main(&emu_traces, idx, iectx, &pctx);
-                }
-                ZiskOperationType::Binary => {
-                    self.prove_binary(&emu_traces, idx, iectx, &pctx, scope);
-                }
+        let mut dctx = ectx.dctx.write().unwrap();
+        let mut main_segnent_id = 0;
+        for emu_slice in emu_slices.points.iter() {
+            let (airgroup_id, air_id) = match emu_slice.op_type {
+                ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
                 ZiskOperationType::BinaryE => {
-                    self.prove_binary_extension(&emu_traces, idx, iectx, &pctx, scope);
+                    (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
                 }
                 _ => panic!("Invalid operation type"),
-            });
-
-            timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
-            for iectx in instances_ctx {
-                if let Some(air_instance) = iectx.air_instance {
-                    pctx.air_instance_repo.add_air_instance(air_instance);
+            };
+            let segmen_id = match emu_slice.op_type {
+                ZiskOperationType::None => {
+                    main_segnent_id += 1;
+                    Some(main_segnent_id - 1)
                 }
+                _ => None,
+            };
+
+            if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
+                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    buffer,
+                    offset,
+                    emu_slice.op_type,
+                    emu_slice.emu_trace_start.clone(),
+                    segmen_id,
+                    global_idx,
+                    None,
+                ));
             }
-            timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
+        }
+        drop(dctx);
 
-            std::thread::spawn(move || {
-                drop(emu_traces);
-            });
-
-            // self.mem_sm.unregister_predecessor(scope);
-            self.binary_sm.unregister_predecessor(scope);
-            // self.arith_sm.register_predecessor(scope);
+        instances_extension_ctx.par_iter_mut().for_each(|iectx| match iectx.op_type {
+            ZiskOperationType::None => {
+                self.prove_main(&emu_traces, iectx, &pctx);
+            }
+            ZiskOperationType::Binary => {
+                self.prove_binary(&emu_traces, iectx, &pctx);
+            }
+            ZiskOperationType::BinaryE => {
+                self.prove_binary_extension(&emu_traces, iectx, &pctx);
+            }
+            _ => panic!("Invalid operation type"),
         });
+        // Drop the emulator traces concurrently
+        std::thread::spawn(move || {
+            drop(emu_traces);
+        });
+
+        timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
+        for iectx in instances_extension_ctx {
+            if let Some(air_instance) = iectx.air_instance {
+                pctx.air_instance_repo
+                    .add_air_instance(air_instance, Some(iectx.instance_global_idx));
+            }
+        }
+        timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
+
+        // self.mem_sm.unregister_predecessor(scope);
+        self.binary_sm.unregister_predecessor();
+        // self.arith_sm.register_predecessor(scope);
     }
 
     fn prove_main(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
+        let segment_id = iectx.segment_id.unwrap();
         let segment_trace = &vec_traces[segment_id];
 
         let offset = iectx.offset;
@@ -362,10 +379,8 @@ impl<F: PrimeField> MainSM<F> {
     fn prove_binary(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
@@ -380,7 +395,7 @@ impl<F: PrimeField> MainSM<F> {
         timer_stop_and_log_debug!(PROCESS_BINARY);
 
         timer_start_debug!(PROVE_BINARY);
-        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset, scope);
+        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
@@ -389,7 +404,7 @@ impl<F: PrimeField> MainSM<F> {
             self.sctx.clone(),
             BINARY_AIRGROUP_ID,
             BINARY_AIR_IDS[0],
-            Some(segment_id),
+            None,
             buffer,
         ));
         timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
@@ -398,10 +413,8 @@ impl<F: PrimeField> MainSM<F> {
     fn prove_binary_extension(
         &self,
         vec_traces: &[EmuTrace],
-        segment_id: usize,
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
-        scope: &rayon::Scope,
     ) {
         let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
@@ -413,14 +426,14 @@ impl<F: PrimeField> MainSM<F> {
             air.num_rows(),
         );
 
-        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset, scope);
+        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
             self.sctx.clone(),
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS[0],
-            Some(segment_id),
+            None,
             buffer,
         ));
     }

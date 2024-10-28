@@ -8,7 +8,7 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use rayon::Scope;
-use sm_common::{OpResult, Provable, ThreadController};
+use sm_common::{OpResult, Provable};
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
@@ -22,9 +22,6 @@ const PROVE_CHUNK_SIZE: usize = 1 << 16;
 pub struct BinarySM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs_basic: Mutex<Vec<ZiskRequiredOperation>>,
@@ -61,7 +58,6 @@ impl<F: PrimeField> BinarySM<F> {
 
         let binary_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
             inputs_basic: Mutex::new(Vec::new()),
             inputs_extension: Mutex::new(Vec::new()),
             binary_basic_sm,
@@ -81,18 +77,18 @@ impl<F: PrimeField> BinarySM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            /*<BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
                 self,
                 &[],
                 true,
                 scope,
-            );
-            self.threads_controller.wait_for_threads();
+            );*/
+            //self.threads_controller.wait_for_threads();
 
-            self.binary_basic_sm.unregister_predecessor(scope);
-            self.binary_extension_sm.unregister_predecessor(scope);
+            self.binary_basic_sm.unregister_predecessor();
+            self.binary_extension_sm.unregister_predecessor();
         }
     }
 
@@ -102,12 +98,11 @@ impl<F: PrimeField> BinarySM<F> {
         is_extension: bool,
         prover_buffer: &mut [F],
         offset: u64,
-        scope: &Scope,
     ) {
         if !is_extension {
-            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset, scope);
+            self.binary_basic_sm.prove_instance(operations, prover_buffer, offset);
         } else {
-            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset, scope);
+            self.binary_extension_sm.prove_instance(operations, prover_buffer, offset);
         }
     }
 }
@@ -142,14 +137,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
 
             let binary_basic_sm_cloned = self.binary_basic_sm.clone();
 
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            scope.spawn(move |scope| {
-                binary_basic_sm_cloned.prove(&drained_inputs_basic, false, scope);
-
-                thread_controller.remove_working_thread();
-            });
+            binary_basic_sm_cloned.prove(&drained_inputs_basic, false, scope);
         }
         drop(inputs_basic);
 
@@ -163,14 +151,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
                 inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
             let binary_extension_sm_cloned = self.binary_extension_sm.clone();
 
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            scope.spawn(move |scope| {
-                binary_extension_sm_cloned.prove(&drained_inputs_extension, false, scope);
-
-                thread_controller.remove_working_thread();
-            });
+            binary_extension_sm_cloned.prove(&drained_inputs_extension, false, scope);
         }
         drop(inputs_extension);
     }

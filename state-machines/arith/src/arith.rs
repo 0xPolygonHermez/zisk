@@ -8,7 +8,7 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-use sm_common::{OpResult, Provable, ThreadController};
+use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -17,9 +17,6 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 pub struct ArithSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs32: Mutex<Vec<ZiskRequiredOperation>>,
@@ -39,7 +36,6 @@ impl ArithSM {
 
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
             inputs32: Mutex::new(Vec::new()),
             inputs64: Mutex::new(Vec::new()),
             arith32_sm,
@@ -64,8 +60,6 @@ impl ArithSM {
     pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <ArithSM as Provable<ZiskRequiredOperation, OpResult>>::prove(self, &[], true, scope);
-
-            self.threads_controller.wait_for_threads();
 
             self.arith3264_sm.unregister_predecessor::<F>(scope);
             self.arith64_sm.unregister_predecessor::<F>(scope);
@@ -127,14 +121,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             let drained_inputs32 = inputs32.drain(..num_drained32).collect::<Vec<_>>();
             let arith32_sm_cloned = self.arith32_sm.clone();
 
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            scope.spawn(move |scope| {
-                arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
-
-                thread_controller.remove_working_thread();
-            });
+            arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
         }
         drop(inputs32);
 
@@ -150,14 +137,7 @@ impl Provable<ZiskRequiredOperation, OpResult> for ArithSM {
             let drained_inputs64 = inputs64.drain(..num_drained64).collect::<Vec<_>>();
             let arith64_sm_cloned = self.arith64_sm.clone();
 
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            scope.spawn(move |scope| {
-                arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
-
-                thread_controller.remove_working_thread();
-            });
+            arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
         }
         drop(inputs64);
     }
