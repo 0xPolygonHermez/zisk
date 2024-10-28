@@ -1,6 +1,9 @@
 require "std_lookup.pil"
 
 const int BOOT_ADDR = 0x1000;
+const int END_PC_ADDR = 0x2000;
+
+const int NOP_ROM_ADDR = 0x10000000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
 
@@ -106,7 +109,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
 
     col witness jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
-    col witness end;
     col witness m32;
 
     const expr addr_step = STEP * 3;
@@ -222,8 +224,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     const expr next_pc = set_pc * (c[0] + jmp_offset1) + (1 - set_pc) * (pc + jmp_offset2) + flag * (jmp_offset1 - jmp_offset2);
     (1 - SEGMENT_L1') * (pc - 'next_pc) === 0;
 
-    // + end * L1' * (0x8000_0000 - (pc + jmp_offset1));
-
     const expr is_last_continuation = SEGMENT_LAST * main_last_segment;
     const expr specific_registers[stack_enabled ? 2:1];
     specific_registers[0] = pc;
@@ -246,9 +246,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, ...a, ...b, ...c, flag],
                                         sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
-    // BOOT_ADDR es called from
-    // L1 * (pc - BOOT_ADDR) === 0; // when end of program jump to this address
-
     flag * (1 - flag) === 0;
 
 
@@ -256,7 +253,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // match with main trace.
     const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm + 32 * b_src_mem
                            + 64 * is_external_op + 128 * store_ra + 256 * store_mem + 512 * store_ind +
-                           + 1024 * set_pc + 2048 * end + 4096 * m32;
+                           + 1024 * set_pc + 2048 * m32;
 
     a_src_imm * (1 - a_src_imm) === 0;
     a_src_mem * (1 - a_src_mem) === 0;
@@ -268,10 +265,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     store_mem * (1 - store_mem) === 0;
     store_ind * (1 - store_ind) === 0;
     set_pc * (1 - set_pc) === 0;
-    end * (1 - end) === 0;
     m32 * (1 - m32) === 0;
 
-    lookup_assumes(ROM_BUS_ID, [SEGMENT_L1 * (10000 - pc) + pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
+
+    lookup_assumes(ROM_BUS_ID, [SEGMENT_L1 * (NOP_ROM_ADDR - pc) + pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1);
 
 }
