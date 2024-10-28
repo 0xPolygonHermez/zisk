@@ -14,7 +14,7 @@ members = [
     "state-machines/mem",
     "state-machines/rom",
     "witness-computation",
-    "ziskos/entrypoint", 
+    "ziskos/entrypoint",
 ]
 
 resolver = "2"
