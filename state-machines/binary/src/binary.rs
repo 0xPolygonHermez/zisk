@@ -7,7 +7,6 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::SetupCtx;
 use rayon::Scope;
 use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::ZiskRequiredOperation;
@@ -34,21 +33,14 @@ pub struct BinarySM<F: PrimeField> {
     // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM<F>>,
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
-
-    sctx: Arc<SetupCtx>,
 }
 
 impl<F: PrimeField> BinarySM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>, sctx: Arc<SetupCtx>) -> Arc<Self> {
-        let binary_basic_table_sm = BinaryBasicTableSM::new(
-            wcm.clone(),
-            sctx.clone(),
-            BINARY_TABLE_AIRGROUP_ID,
-            BINARY_TABLE_AIR_IDS,
-        );
+    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
+        let binary_basic_table_sm =
+            BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
         let binary_basic_sm = BinaryBasicSM::new(
             wcm.clone(),
-            sctx.clone(),
             binary_basic_table_sm,
             BINARY_AIRGROUP_ID,
             BINARY_AIR_IDS,
@@ -56,14 +48,12 @@ impl<F: PrimeField> BinarySM<F> {
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new(
             wcm.clone(),
-            sctx.clone(),
             BINARY_EXTENSION_TABLE_AIRGROUP_ID,
             BINARY_EXTENSION_TABLE_AIR_IDS,
         );
         let binary_extension_sm = BinaryExtensionSM::new(
             wcm.clone(),
             std,
-            sctx.clone(),
             binary_extension_table_sm,
             BINARY_EXTENSION_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
@@ -76,7 +66,6 @@ impl<F: PrimeField> BinarySM<F> {
             inputs_extension: Mutex::new(Vec::new()),
             binary_basic_sm,
             binary_extension_sm,
-            sctx,
         };
         let binary_sm = Arc::new(binary_sm);
 
