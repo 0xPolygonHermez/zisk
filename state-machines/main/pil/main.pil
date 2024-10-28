@@ -22,7 +22,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //
     // - it's possible reference previous row, but no next row.
     //
-    // - the first two rows has same STEP 0.
+    // - the first two rows has same SEGMENT_STEP 0.
     //
     // - global bus constraint with initial state of main (as initial PC)
     //          [segment:0, is_last_segment: 0, pc: INITIAL_PC, a, b, c, flag]
@@ -195,8 +195,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
         a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
-        a_src_c * (a[index] - 'c[index]) === 0;
-        b_src_c * (b[index] - 'c[index]) === 0;
+        (1 - SEGMENT_L1) * a_src_c * (a[index] - 'c[index]) === 0;
+        (1 - SEGMENT_L1) * b_src_c * (b[index] - 'c[index]) === 0;
 
         a_src_imm * (a[index] - a_imm[index]) === 0;
         b_src_imm * (b[index] - b_imm[index]) === 0;
@@ -242,7 +242,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //                          row = N-1 => bus_main_segment = 0      (proves)
     //
 
-    const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment + 1 - main_last_segment);
+    const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
     permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, ...a, ...b, ...c, flag],
                                         sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
@@ -271,7 +271,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     end * (1 - end) === 0;
     m32 * (1 - m32) === 0;
 
-    lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
+    lookup_assumes(ROM_BUS_ID, [SEGMENT_L1 * (10000 - pc) + pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1);
 
 }
