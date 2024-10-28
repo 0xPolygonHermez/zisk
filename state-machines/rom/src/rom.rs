@@ -7,8 +7,8 @@ use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM, SRC_IND};
 use zisk_pil::{
-    Pilout, RomL2Row, RomL2Trace, RomM1Row, RomM1Trace, RomS0Row, RomS0Trace, ROM_AIRGROUP_ID,
-    ROM_L_AIR_IDS, ROM_M_AIR_IDS, ROM_S_AIR_IDS,
+    Pilout, RomL2Row, RomL2Trace, RomM1Row, RomM1Trace, RomS0Row, RomS0Trace, MAIN_AIRGROUP_ID,
+    MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_L_AIR_IDS, ROM_M_AIR_IDS, ROM_S_AIR_IDS,
 };
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
@@ -18,7 +18,7 @@ pub struct RomSM<F> {
 }
 
 impl<F: Field> RomSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, _sctx: Arc<SetupCtx>) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let rom_sm = Self { wcm: wcm.clone() };
         let rom_sm = Arc::new(rom_sm);
 
@@ -36,16 +36,18 @@ impl<F: Field> RomSM<F> {
         let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
         let sctx = self.wcm.get_sctx();
 
-        let (prover_buffer, _, air_id) =
-            Self::compute_trace_rom(rom, buffer_allocator, sctx, pc_histogram)?;
+        if pc_histogram.end_pc == 0 {
+            panic!("RomSM::prove() detected pc_histogram.end_pc == 0"); // TODO: return an error
+        }
 
-        let air_instance = AirInstance::new(
-            self.wcm.get_arc_sctx().clone(),
-            ROM_AIRGROUP_ID,
-            air_id,
-            None,
-            prover_buffer,
-        );
+        let main_trace_len =
+            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+
+        let (prover_buffer, _, air_id) =
+            Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len)?;
+
+        let air_instance =
+            AirInstance::new(sctx.clone(), ROM_AIRGROUP_ID, air_id, None, prover_buffer);
         self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
         Ok(())
@@ -74,7 +76,7 @@ impl<F: Field> RomSM<F> {
 
         let empty_pc_histogram = ZiskPcHistogram::default();
 
-        Self::compute_trace_rom(&rom, buffer_allocator, sctx, empty_pc_histogram)
+        Self::compute_trace_rom(&rom, buffer_allocator, sctx, empty_pc_histogram, 0)
     }
 
     pub fn compute_trace_rom(
@@ -82,6 +84,7 @@ impl<F: Field> RomSM<F> {
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
         pc_histogram: ZiskPcHistogram,
+        main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         let pilout = Pilout::pilout();
         let sizes = (
@@ -93,15 +96,33 @@ impl<F: Field> RomSM<F> {
         let number_of_instructions = rom.insts.len();
 
         match number_of_instructions {
-            n if n <= sizes.0 => {
-                Self::create_rom_s(sizes.0, rom, n, buffer_allocator, sctx, pc_histogram)
-            }
-            n if n <= sizes.1 => {
-                Self::create_rom_m(sizes.1, rom, n, buffer_allocator, sctx, pc_histogram)
-            }
-            n if n < sizes.2 => {
-                Self::create_rom_l(sizes.2, rom, n, buffer_allocator, sctx, pc_histogram)
-            }
+            n if n <= sizes.0 => Self::create_rom_s(
+                sizes.0,
+                rom,
+                n,
+                buffer_allocator,
+                sctx,
+                pc_histogram,
+                main_trace_len,
+            ),
+            n if n <= sizes.1 => Self::create_rom_m(
+                sizes.1,
+                rom,
+                n,
+                buffer_allocator,
+                sctx,
+                pc_histogram,
+                main_trace_len,
+            ),
+            n if n < sizes.2 => Self::create_rom_l(
+                sizes.2,
+                rom,
+                n,
+                buffer_allocator,
+                sctx,
+                pc_histogram,
+                main_trace_len,
+            ),
             _ => panic!("RomSM::compute_trace() found rom too big size={}", number_of_instructions),
         }
     }
@@ -113,6 +134,7 @@ impl<F: Field> RomSM<F> {
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
         pc_histogram: ZiskPcHistogram,
+        main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_s_size;
@@ -133,14 +155,18 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
-            let multiplicity: u64;
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
+            let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
             } else {
                 let counter = pc_histogram.map.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
+                    if inst.paddr == pc_histogram.end_pc {
+                        multiplicity += main_trace_len - (pc_histogram.steps % main_trace_len);
+                    }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
                 }
@@ -163,7 +189,7 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
             rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
             rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
-            println!(
+            /*println!(
                 "ROM SM [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}], {}",
                 inst.paddr,
                 inst.a_offset_imm0,
@@ -178,7 +204,7 @@ impl<F: Field> RomSM<F> {
                 inst.jmp_offset2 as u64,
                 inst.get_flags(),
                 multiplicity,
-            );
+            );*/
         }
 
         // Padd with zeroes
@@ -196,6 +222,7 @@ impl<F: Field> RomSM<F> {
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
         pc_histogram: ZiskPcHistogram,
+        main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_m_size;
@@ -216,14 +243,18 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
-            let multiplicity: u64;
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
+            let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
             } else {
                 let counter = pc_histogram.map.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
+                    if inst.paddr == pc_histogram.end_pc {
+                        multiplicity += main_trace_len - (pc_histogram.steps % main_trace_len);
+                    }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
                 }
@@ -263,6 +294,7 @@ impl<F: Field> RomSM<F> {
         buffer_allocator: Arc<dyn BufferAllocator>,
         sctx: &SetupCtx,
         pc_histogram: ZiskPcHistogram,
+        main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size
         let trace_size = rom_l_size;
@@ -283,14 +315,18 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
-            let multiplicity: u64;
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
+            let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
             } else {
                 let counter = pc_histogram.map.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
+                    if inst.paddr == pc_histogram.end_pc {
+                        multiplicity += main_trace_len - (pc_histogram.steps % main_trace_len);
+                    }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
                 }

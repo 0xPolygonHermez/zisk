@@ -6,7 +6,7 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, SetupCtx};
+use proofman_common::AirInstance;
 use rayon::{prelude::*, Scope};
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
@@ -28,7 +28,6 @@ pub enum BinaryExtensionTableOp {
 
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
-    sctx: Arc<SetupCtx>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -46,20 +45,14 @@ pub enum ExtensionTableSMErr {
 impl<F: Field> BinaryExtensionTableSM<F> {
     const MY_NAME: &'static str = "BinaryET";
 
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        sctx: Arc<SetupCtx>,
-        airgroup_id: usize,
-        air_ids: &[usize],
-    ) -> Arc<Self> {
-        let air = wcm
-            .get_pctx()
+    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+        let pctx = wcm.get_pctx();
+        let air = pctx
             .pilout
             .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
 
         let binary_extension_table = Self {
             wcm: wcm.clone(),
-            sctx,
             registered_predecessors: AtomicU32::new(0),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
@@ -78,8 +71,8 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             // Create the prover buffer
             let (mut prover_buffer, offset) = create_prover_buffer(
-                self.wcm.get_ectx(),
-                self.wcm.get_sctx(),
+                &self.wcm.get_ectx(),
+                &self.wcm.get_sctx(),
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
             );
@@ -98,13 +91,15 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             );
 
             let air_instance = AirInstance::new(
-                self.sctx.clone(),
+                self.wcm.get_sctx().clone(),
                 BINARY_EXTENSION_TABLE_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,
                 prover_buffer,
             );
-            self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
+
+            let pctx = self.wcm.get_pctx();
+            pctx.air_instance_repo.add_air_instance(air_instance);
         }
     }
 
