@@ -94,9 +94,9 @@ impl<F: PrimeField> SpecifiedRanges<F> {
     pub fn drain_inputs(&self) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect();
-        let pctx = self.wcm.get_arc_pctx();
-        let sctx = self.wcm.get_arc_sctx();
-        let ectx = self.wcm.get_arc_ectx();
+        let pctx = self.wcm.get_pctx();
+        let sctx = self.wcm.get_sctx();
+        let ectx = self.wcm.get_ectx();
 
         // Perform the last update
         self.update_multiplicity(drained_inputs);
