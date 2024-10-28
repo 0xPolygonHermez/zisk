@@ -41,19 +41,13 @@ impl<F: Field> RomSM<F> {
         }
 
         let main_trace_len =
-            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows()
-                as u64;
+            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
 
         let (prover_buffer, _, air_id) =
             Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len)?;
 
-        let air_instance = AirInstance::new(
-            sctx.clone(),
-            ROM_AIRGROUP_ID,
-            air_id,
-            None,
-            prover_buffer,
-        );
+        let air_instance =
+            AirInstance::new(sctx.clone(), ROM_AIRGROUP_ID, air_id, None, prover_buffer);
         self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance);
 
         Ok(())
