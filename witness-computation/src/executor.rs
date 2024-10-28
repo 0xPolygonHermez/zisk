@@ -80,7 +80,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main_sm = MainSM::new(wcm.clone(), mem_sm.clone(), binary_sm.clone(), arith_sm.clone());
+        let main_sm = MainSM::new(wcm.clone(), arith_sm.clone(), binary_sm.clone(), mem_sm.clone());
 
         Self { zisk_rom, main_sm, rom_sm, mem_sm, binary_sm, arith_sm }
     }

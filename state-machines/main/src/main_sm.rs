@@ -58,9 +58,13 @@ pub struct MainSM<F: PrimeField> {
     /// Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
-    // State machines
+    /// Arithmetic state machine
     arith_sm: Arc<ArithSM>,
+
+    /// Binary state machine
     binary_sm: Arc<BinarySM<F>>,
+
+    /// Memory state machine
     mem_sm: Arc<MemSM>,
 }
 
@@ -72,19 +76,17 @@ impl<F: PrimeField> MainSM<F> {
     /// machines that directly interact with the MainSM
     /// Returns an Arc to the MainSM state machine
     /// # Arguments
-    /// * `rom_path` - Path to the ROM file
     /// * `wcm` - Witness computation manager to register the state machine
-    /// * `mem_sm` - Arc to the MemSM state machine
-    /// * `binary_sm` - Arc to the BinarySM state machine
     /// * `arith_sm` - Arc to the ArithSM state machine
-    /// * `air_ids` - Array of Main Air IDs extracted from the pilout
+    /// * `binary_sm` - Arc to the BinarySM state machine
+    /// * `mem_sm` - Arc to the MemSM state machine
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        mem_sm: Arc<MemSM>,
-        binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
+        binary_sm: Arc<BinarySM<F>>,
+        mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {
         let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm, mem_sm });
 
