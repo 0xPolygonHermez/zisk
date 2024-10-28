@@ -82,7 +82,10 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo2", F::from_canonical_u64(2));
         air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", vec![F::from_canonical_u64(5); 3]);
 
-        pctx.air_instance_repo.add_air_instance(air_instance, None);
+        let (is_myne, gid ) = ectx.dctx.write().unwrap().add_instance(FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0],1);
+        if is_myne{
+            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
+        }
 
         Ok(b)
     }

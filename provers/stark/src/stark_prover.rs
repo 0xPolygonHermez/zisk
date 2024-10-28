@@ -568,9 +568,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
     fn get_zkin_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str) -> *mut c_void {
         
-        #[cfg(not(feature = "distributed"))]
-        let gidx = self.prover_idx;        
-        #[cfg(feature = "distributed")]
         let gidx = proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].global_idx.unwrap();
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
