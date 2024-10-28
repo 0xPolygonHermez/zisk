@@ -6,7 +6,7 @@ use std::sync::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, SetupCtx};
+use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable, ThreadController};
@@ -30,8 +30,6 @@ pub struct BinaryBasicSM<F> {
 
     // Secondary State machines
     binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
-
-    sctx: Arc<SetupCtx>,
 }
 
 #[derive(Debug)]
@@ -44,14 +42,12 @@ impl<F: Field> BinaryBasicSM<F> {
 
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        sctx: Arc<SetupCtx>,
         binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_basic = Self {
             wcm: wcm.clone(),
-            sctx,
             registered_predecessors: AtomicU32::new(0),
             threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
@@ -676,9 +672,10 @@ impl<F: Field> BinaryBasicSM<F> {
         scope: &Scope,
     ) {
         timer_start_trace!(BINARY_TRACE);
-        let air = wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+        let pctx = wcm.get_pctx();
+        let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_table =
-            wcm.get_pctx().pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+            pctx.pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
 
         info!(
@@ -747,7 +744,8 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            let air = self.wcm.get_pctx().pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+            let pctx = self.wcm.get_pctx();
+            let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -759,12 +757,12 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 self.threads_controller.add_working_thread();
                 let thread_controller = self.threads_controller.clone();
 
-                let sctx = self.sctx.clone();
+                let sctx = self.wcm.get_sctx().clone();
 
                 scope.spawn(move |scope| {
                     let (mut prover_buffer, offset) = create_prover_buffer(
-                        wcm.get_ectx(),
-                        wcm.get_sctx(),
+                        &wcm.get_ectx(),
+                        &wcm.get_sctx(),
                         BINARY_AIRGROUP_ID,
                         BINARY_AIR_IDS[0],
                     );

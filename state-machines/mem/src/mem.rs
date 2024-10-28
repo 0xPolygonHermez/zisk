@@ -30,11 +30,10 @@ pub struct MemSM {
     // Secondary State machines
     mem_aligned_sm: Arc<MemAlignedSM>,
     mem_unaligned_sm: Arc<MemUnalignedSM>,
-    sctx: Arc<SetupCtx>,
 }
 
 impl MemSM {
-    pub fn new<F>(wcm: Arc<WitnessManager<F>>, sctx: Arc<SetupCtx>) -> Arc<Self> {
+    pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let mem_aligned_sm = MemAlignedSM::new(wcm.clone());
         let mem_unaligned_sm = MemUnalignedSM::new(wcm.clone());
 
@@ -45,7 +44,6 @@ impl MemSM {
             inputs_unaligned: Mutex::new(Vec::new()),
             mem_aligned_sm: mem_aligned_sm.clone(),
             mem_unaligned_sm: mem_unaligned_sm.clone(),
-            sctx,
         };
         let mem_sm = Arc::new(mem_sm);
 
