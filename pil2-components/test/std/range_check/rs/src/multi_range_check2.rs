@@ -52,7 +52,11 @@ where
             None,
             buffer,
         );
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        let (is_myne, gid) =
+            ectx.dctx.write().unwrap().add_instance(MULTI_RANGE_CHECK_2_AIRGROUP_ID, MULTI_RANGE_CHECK_2_AIR_IDS[0], 1);
+        if is_myne {
+            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
+        }
     }
 }
 

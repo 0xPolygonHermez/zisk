@@ -52,7 +52,11 @@ where
             None,
             buffer,
         );
-        pctx.air_instance_repo.add_air_instance(air_instance);
+        let (is_myne, gid) =
+            ectx.dctx.write().unwrap().add_instance(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0], 1);
+        if is_myne {
+            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
+        }
     }
 }
 

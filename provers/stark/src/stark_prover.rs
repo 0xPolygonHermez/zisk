@@ -1,3 +1,4 @@
+use core::panic;
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
@@ -390,11 +391,11 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64> {
-        let p_stark = self.p_stark;
+        let p_stark: *mut std::ffi::c_void = self.p_stark;
 
         let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
 
-        let mut value: Vec<Goldilocks> = vec![Goldilocks::zero(); self.n_field_elements];
+        let mut value = vec![Goldilocks::zero(); self.n_field_elements];
         if stage <= (Self::num_stages(self) + 1) as u64 {
             let (n_airvals_stage, indexes): (usize, Vec<usize>) = self
                 .stark_info
@@ -566,17 +567,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_zkin_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str) -> *mut c_void {
-        #[cfg(not(feature = "distributed"))]
-        let idx = self.prover_idx;
-        #[cfg(feature = "distributed")]
-        let idx;
-        #[cfg(feature = "distributed")]
-        {
-            let segment_id: &usize =
-                &proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].air_segment_id.unwrap();
-            idx = *segment_id;
-        }
-
+        let gidx = proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].global_idx.unwrap();
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
@@ -587,7 +578,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let global_info_file: &str = global_info_path.to_str().unwrap();
 
         fri_proof_get_zkinproof_c(
-            idx as u64,
+            gidx as u64,
             self.p_proof.unwrap(),
             public_inputs,
             challenges,
