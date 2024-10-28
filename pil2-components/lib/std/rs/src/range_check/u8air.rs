@@ -28,8 +28,8 @@ impl<F: PrimeField> U8Air<F> {
     const MY_NAME: &'static str = "U8Air   ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let pctx = wcm.get_arc_pctx();
-        let sctx = wcm.get_arc_sctx();
+        let pctx = wcm.get_pctx();
+        let sctx = wcm.get_sctx();
 
         // Scan global hints to get the airgroup_id and air_id
         let hint_global = get_hint_ids_by_name(sctx.get_global_bin(), "u8air");
@@ -97,7 +97,7 @@ impl<F: PrimeField> U8Air<F> {
         let air_instance = &mut air_instance_rw[air_instance_id];
 
         let mul_column = &*self.mul_column.lock().unwrap();
-        set_hint_field(self.wcm.get_sctx(), air_instance, self.hint.load(Ordering::Acquire), "reference", mul_column);
+        set_hint_field(&self.wcm.get_sctx(), air_instance, self.hint.load(Ordering::Acquire), "reference", mul_column);
 
         log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "U8Air");
     }

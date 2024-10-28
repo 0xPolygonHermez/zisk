@@ -34,8 +34,8 @@ impl<F: PrimeField> SpecifiedRanges<F> {
     const MY_NAME: &'static str = "SpecRang";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let pctx = wcm.get_arc_pctx();
-        let sctx = wcm.get_arc_sctx();
+        let pctx = wcm.get_pctx();
+        let sctx = wcm.get_sctx();
 
         // Scan global hints to get the airgroup_id and air_id
         let hint_global = get_hint_ids_by_name(sctx.get_global_bin(), "specified_ranges");
@@ -109,7 +109,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         let mul_columns = &*self.mul_columns.lock().unwrap();
 
         for (index, hint) in hints[1..].iter().enumerate() {
-            set_hint_field(self.wcm.get_sctx(), air_instance, *hint, "reference", &mul_columns[index]);
+            set_hint_field(&self.wcm.get_sctx(), air_instance, *hint, "reference", &mul_columns[index]);
         }
 
         log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");

@@ -73,7 +73,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
     const _MY_NAME: &'static str = "STD Range Check";
 
     pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let sctx = wcm.get_arc_sctx();
+        let sctx = wcm.get_sctx();
 
         // Scan global hints to know which airs are associated with the range check
         let u8air_hint = get_hint_ids_by_name(sctx.get_global_bin(), "u8air");

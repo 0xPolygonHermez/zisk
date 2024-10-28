@@ -112,27 +112,15 @@ impl<F> WitnessManager<F> {
         timer_stop_and_log_debug!(CALCULATING_WITNESS);
     }
 
-    pub fn get_pctx(&self) -> &ProofCtx<F> {
-        self.pctx.as_ref()
-    }
-
-    pub fn get_ectx(&self) -> &ExecutionCtx {
-        self.ectx.as_ref()
-    }
-
-    pub fn get_sctx(&self) -> &SetupCtx {
-        self.sctx.as_ref()
-    }
-
-    pub fn get_arc_pctx(&self) -> Arc<ProofCtx<F>> {
+    pub fn get_pctx(&self) -> Arc<ProofCtx<F>> {
         self.pctx.clone()
     }
 
-    pub fn get_arc_ectx(&self) -> Arc<ExecutionCtx> {
+    pub fn get_ectx(&self) -> Arc<ExecutionCtx> {
         self.ectx.clone()
     }
 
-    pub fn get_arc_sctx(&self) -> Arc<SetupCtx> {
+    pub fn get_sctx(&self) -> Arc<SetupCtx> {
         self.sctx.clone()
     }
 }
