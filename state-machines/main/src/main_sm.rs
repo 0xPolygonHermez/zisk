@@ -33,6 +33,7 @@ pub struct InstanceExtensionCtx<F> {
     pub offset: u64,
     pub op_type: ZiskOperationType,
     pub emu_trace_start: EmuTraceStart,
+    pub segment_id: Option<usize>,
     pub instance_global_idx: usize,
     pub air_instance: Option<AirInstance<F>>,
 }
@@ -43,10 +44,19 @@ impl<F: Default + Clone> InstanceExtensionCtx<F> {
         offset: u64,
         op_type: ZiskOperationType,
         emu_trace_start: EmuTraceStart,
+        segment_id: Option<usize>,
         instance_global_idx: usize,
         air_instance: Option<AirInstance<F>>,
     ) -> Self {
-        Self { prover_buffer, offset, op_type, emu_trace_start, instance_global_idx, air_instance }
+        Self {
+            prover_buffer,
+            offset,
+            op_type,
+            emu_trace_start,
+            instance_global_idx,
+            segment_id,
+            air_instance,
+        }
     }
 }
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
@@ -228,6 +238,7 @@ impl<F: PrimeField> MainSM<F> {
             Vec::with_capacity(emu_slices.points.len());
 
         let mut dctx = ectx.dctx.write().unwrap();
+        let mut main_segnent_id = 0;
         for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
@@ -237,6 +248,13 @@ impl<F: PrimeField> MainSM<F> {
                 }
                 _ => panic!("Invalid operation type"),
             };
+            let segmen_id = match emu_slice.op_type {
+                ZiskOperationType::None => {
+                    main_segnent_id += 1;
+                    Some(main_segnent_id - 1)
+                }
+                _ => None,
+            };
 
             if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
                 let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
@@ -245,6 +263,7 @@ impl<F: PrimeField> MainSM<F> {
                     offset,
                     emu_slice.op_type,
                     emu_slice.emu_trace_start.clone(),
+                    segmen_id,
                     global_idx,
                     None,
                 ));
@@ -289,7 +308,7 @@ impl<F: PrimeField> MainSM<F> {
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
-        let segment_id = iectx.instance_global_idx;
+        let segment_id = iectx.segment_id.unwrap();
         let segment_trace = &vec_traces[segment_id];
 
         let offset = iectx.offset;
