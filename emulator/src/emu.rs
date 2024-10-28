@@ -335,9 +335,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some()
-                && (options.print_step.unwrap() != 0)
-                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some() &&
+                (options.print_step.unwrap() != 0) &&
+                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -517,9 +517,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end
-                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
-                    == self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end ||
+                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+                    self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -689,11 +689,11 @@ impl<'a> Emu<'a> {
 
         let mut current_box_id = 0;
         let mut current_step_idx = loop {
-            if current_box_id == vec_traces.len() - 1
-                || vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
+            if current_box_id == vec_traces.len() - 1 ||
+                vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
             {
-                break emu_trace_start.step as usize
-                    - vec_traces[current_box_id].start.step as usize;
+                break emu_trace_start.step as usize -
+                    vec_traces[current_box_id].start.step as usize;
             }
             current_box_id += 1;
         };
@@ -857,8 +857,8 @@ impl<'a> Emu<'a> {
             end: F::from_bool(inst_ctx.end),
             m32: F::from_bool(inst.m32),
             operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
+                inst.op_type == ZiskOperationType::Binary ||
+                    inst.op_type == ZiskOperationType::BinaryE,
             ),
         }
     }

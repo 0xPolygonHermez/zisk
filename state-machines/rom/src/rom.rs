@@ -161,7 +161,8 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
             let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
@@ -248,7 +249,8 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
             let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
@@ -319,7 +321,8 @@ impl<F: Field> RomSM<F> {
             // Get the Zisk instruction
             let inst = inst_builder.1.i;
 
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this execution
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
             let mut multiplicity: u64;
             if pc_histogram.map.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
