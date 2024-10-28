@@ -71,7 +71,13 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     }
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         timer_start_info!(EXECUTE);
-        self.executor.get().unwrap().execute(self.public_inputs_path.clone(), pctx, ectx, sctx);
+        self.executor.get().unwrap().execute(
+            &self.rom_path,
+            &self.public_inputs_path,
+            pctx,
+            ectx,
+            sctx,
+        );
         timer_stop_and_log_info!(EXECUTE);
     }
 
