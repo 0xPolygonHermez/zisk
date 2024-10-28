@@ -7,7 +7,7 @@ use crate::{
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ZiskInstBuilder {
     ind_width_set: bool,
     pub i: ZiskInst,

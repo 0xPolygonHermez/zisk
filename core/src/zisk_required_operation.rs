@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {
     pub step: u64,
@@ -21,4 +23,11 @@ pub struct ZiskRequired {
     pub binary: Vec<ZiskRequiredOperation>,
     pub binary_extension: Vec<ZiskRequiredOperation>,
     pub memory: Vec<ZiskRequiredMemory>,
+}
+
+#[derive(Clone, Default)]
+pub struct ZiskPcHistogram {
+    pub map: HashMap<u64, u64>,
+    pub end_pc: u64,
+    pub steps: u64,
 }

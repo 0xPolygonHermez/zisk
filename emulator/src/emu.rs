@@ -9,9 +9,9 @@ use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
+    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
+    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -253,6 +253,30 @@ impl<'a> Emu<'a> {
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
+    }
+
+    /// Run the whole program, getting pc histogram
+    #[inline(always)]
+    pub fn run_pc_histogram(&mut self, inputs: Vec<u8>, options: &EmuOptions) -> ZiskPcHistogram {
+        // Create an empty pc histogram
+        let mut histogram = ZiskPcHistogram::default();
+
+        // Context, where the state of the execution is stored and modified at every execution step
+        self.ctx = self.create_emu_context(inputs);
+
+        // Run the steps
+        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+            let count = histogram.map.entry(self.ctx.inst_ctx.pc).or_default();
+            *count += 1;
+            //println!("Emu::run_pc_histogram() adding pc={}", self.ctx.inst_ctx.pc);
+            self.step_fast();
+            if self.ctx.inst_ctx.end {
+                histogram.end_pc = self.ctx.inst_ctx.pc;
+                histogram.steps = self.ctx.inst_ctx.step;
+            }
+        }
+
+        histogram
     }
 
     /// Run the whole program

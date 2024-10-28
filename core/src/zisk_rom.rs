@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
-use crate::{
-    ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND,
-    STORE_MEM,
-};
+use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IND, SRC_STEP};
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
 /// RO data structure
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RoData {
     pub from: u64,
     pub length: usize,
@@ -25,7 +22,7 @@ impl RoData {
 }
 
 /// ZisK ROM data, including a map address to ZisK instruction
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ZiskRom {
     pub next_init_inst_addr: u64,
     pub insts: HashMap<u64, ZiskInstBuilder>,
@@ -208,7 +205,7 @@ impl ZiskRom {
         // instruction
         for key in &keys {
             let i = &self.insts[key].i;
-            let rom_flags = self.get_rom_flags(i);
+            let rom_flags = i.get_flags();
 
             // #[cfg(feature = "sp")]
             // {
@@ -275,7 +272,7 @@ impl ZiskRom {
         for key in &keys {
             let mut aux: [u8; 8];
             let i = &self.insts[key].i;
-            let rom_flags = self.get_rom_flags(i);
+            let rom_flags = i.get_flags();
             aux = key.to_le_bytes();
             v.extend(aux);
             aux = rom_flags.to_le_bytes();
@@ -352,42 +349,5 @@ impl ZiskRom {
         if result.is_err() {
             panic!("ZiskRom::save_to_bin_file() failed writing to file={}", file_name);
         }
-    }
-
-    pub fn get_rom_flags(&self, i: &ZiskInst) -> u64 {
-        // #[cfg(feature = "sp")]
-        // let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
-        //     ((i.a_src == SRC_MEM) as u64) << 1 |
-        //     ((i.b_src == SRC_IMM) as u64) << 2 |
-        //     ((i.b_src == SRC_MEM) as u64) << 3 |
-        //     (i.store_ra as u64) << 4 |
-        //     ((i.store == STORE_MEM) as u64) << 5 |
-        //     ((i.store == STORE_IND) as u64) << 6 |
-        //     (i.set_pc as u64) << 7 |
-        //     (i.m32 as u64) << 8 |
-        //     (i.end as u64) << 9 |
-        //     (i.is_external_op as u64) << 10 |
-        //     ((i.a_src == SRC_SP) as u64) << 11 |
-        //     (i.a_use_sp_imm1) << 12 |
-        //     ((i.a_src == SRC_STEP) as u64) << 13 |
-        //     ((i.b_src == SRC_IND) as u64) << 14 |
-        //     (i.store_use_sp as u64) << 15;
-
-        // #[cfg(not(feature = "sp"))]
-        let rom_flags: u64 = ((i.a_src == SRC_IMM) as u64) |
-            ((i.a_src == SRC_MEM) as u64) << 1 |
-            ((i.b_src == SRC_IMM) as u64) << 2 |
-            ((i.b_src == SRC_MEM) as u64) << 3 |
-            (i.store_ra as u64) << 4 |
-            ((i.store == STORE_MEM) as u64) << 5 |
-            ((i.store == STORE_IND) as u64) << 6 |
-            (i.set_pc as u64) << 7 |
-            (i.m32 as u64) << 8 |
-            (i.end as u64) << 9 |
-            (i.is_external_op as u64) << 10 |
-            ((i.a_src == SRC_STEP) as u64) << 13 |
-            ((i.b_src == SRC_IND) as u64) << 14;
-
-        rom_flags
     }
 }

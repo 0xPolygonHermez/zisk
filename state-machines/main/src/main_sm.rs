@@ -1,5 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_rom::RomSM;
 
 use core::panic;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -57,11 +58,12 @@ pub struct MainSM<F: PrimeField> {
     zisk_rom_path: PathBuf,
 
     // State machines
-    mem_sm: Arc<MemSM>,
-    binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
 
     sctx: Arc<SetupCtx>,
+    binary_sm: Arc<BinarySM<F>>,
+    mem_sm: Arc<MemSM>,
+    rom_sm: Arc<RomSM<F>>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -89,6 +91,7 @@ impl<F: PrimeField> MainSM<F> {
         rom_path: PathBuf,
         wcm: Arc<WitnessManager<F>>,
         sctx: Arc<SetupCtx>,
+        rom_sm: Arc<RomSM<F>>,
         mem_sm: Arc<MemSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
@@ -122,10 +125,11 @@ impl<F: PrimeField> MainSM<F> {
         let main_sm = Arc::new(Self {
             zisk_rom,
             zisk_rom_path: rom_path.to_path_buf(),
-            mem_sm: mem_sm.clone(),
-            binary_sm: binary_sm.clone(),
-            arith_sm: arith_sm.clone(),
             sctx,
+            arith_sm,
+            binary_sm,
+            mem_sm,
+            rom_sm,
         });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
@@ -191,6 +195,18 @@ impl<F: PrimeField> MainSM<F> {
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
         pool.scope(|scope| {
+            // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
+            // Spawn the ROM thread
+            let rom_sm = self.rom_sm.clone();
+            let zisk_rom = self.zisk_rom.clone();
+            let pc_histogram = ZiskEmulator::process_rom_pc_histogram(
+                &self.zisk_rom,
+                &public_inputs,
+                &emu_options,
+            )
+            .expect("MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()");
+            let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
+
             // Run the emulator in parallel n times to collect execution traces
             // and record the execution starting points for each AIR instance
             timer_start_debug!(PAR_PROCESS_ROM);
@@ -205,6 +221,9 @@ impl<F: PrimeField> MainSM<F> {
             timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
             emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+
+            // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
+            handle_rom.join().unwrap().expect("Error during ROM witness computation");
 
             let mut instances_ctx: Vec<InstanceExtensionCtx<F>> =
                 Vec::with_capacity(emu_slices.points.len());
