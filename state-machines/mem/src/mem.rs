@@ -72,8 +72,8 @@ impl<F> WitnessComponent<F> for MemSM {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
     ) {
     }
 }
