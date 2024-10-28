@@ -38,7 +38,11 @@ where
 
         let air_instance =
             AirInstance::new(sctx.clone(), CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0], None, buffer);
-        pctx.air_instance_repo.add_air_instance(air_instance, None);
+        let (is_myne, gid) =
+            ectx.dctx.write().unwrap().add_instance(CONNECTION_AIRGROUP_ID, CONNECTION_2_AIR_IDS[0], 1);
+        if is_myne {
+            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
+        }
     }
 }
 
