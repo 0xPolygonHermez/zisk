@@ -1,0 +1,99 @@
+
+const int MEM_ALIGN_ROM_ID = 133;
+
+//        PROGRAM  SIZE   ADDR   OFFSET   WIDTH   SEL[8]       Running Total
+// RV        0      2   | 2^16 x   2^1  x  2^1  x  2^1  = 2^? |     
+// RWV       1      3   | 2^16 x   2^1  x  2^1  x  2^1  = 2^? |                 
+// RVR       2      3   | 2^16 x   2^1  x  2^1  x  2^1  = 2^? |           
+// RWVWR     3      5   | 2^16 x   2^1  x  2^1  x  2^1  = 2^? |
+
+airtemplate MemAlignRom(const int N = 2**22) {
+    if (N < 2**22) {
+        error(`N must be at least 2^22, but N=${N} was provided`);
+    }
+
+    col witness multiplicity;
+
+    if (disable_fixed) {
+        col fixed _K = [0...];
+        multiplicity * _K === 0;
+
+        println("*** DISABLE_FIXED ***");
+        return;
+    }
+
+
+    col fixed ADDR;
+
+    col fixed OFFSET;
+
+    col fixed WIDTH;
+
+    col fixed SEL[8];
+
+    col fixed PC;
+    col fixed WR;
+    col fixed RESET;
+    col fixed SEL_UP_TO_DOWN;
+    col fixed SEL_DOWN_TO_UP;
+    for (int i = 0; i < N; i++) {
+        const int [addr, offset, width, reset] = [ADDR[i], OFFSET[i], WIDTH[i], RESET[i]];
+
+        int pc = 0;
+        int wr = 0;
+        int reset = 0;
+        int sel_up_to_down = 0;
+        int sel_down_to_up = 0;
+        int program = 0;
+        switch (program) {
+            case 0: // R -> V
+                pc
+
+            case 1: // R -> W -> V
+
+            case 2: // R -> V -> R
+
+            case 3: // R1 -> W1 -> V -> W2 -> R2
+        }
+
+        // TODO: Update the program based on the index i.
+
+        PC[i] = pc;
+        WR[i] = wr;
+        RESET[i] = reset;
+        SEL_UP_TO_DOWN[i] = sel_up_to_down;
+        SEL_DOWN_TO_UP[i] = sel_down_to_up;
+    }
+
+    lookup_proves(MEM_ALIGN_ROM_ID, [], multiplicity);
+
+// 0 2
+// 2 3
+// 3 4
+// 4 5
+// 5 0
+
+//         delta_addr = addr - 'addr;
+// | delta_addr * (1 - reset) | reset |
+
+// addr1   reset = 1  DELTA_ADDR = 0
+// addr1   reset = 0  DELTA_ADDR = 0
+// addr1   reset = 0  DELTA_ADDR = 0
+// addr1+1 reset = 0  DELTA_ADDR = 1
+// addr1+1
+// addr2   reset = 1  DELTA_ADDR = 0
+
+
+// 0  8
+// 8  9
+// 9  10
+// 10 11
+
+//   1   2 d
+//   2   3 d
+//   3   4 d
+//   4   5 d
+//   5   0 d
+//   6   2 d
+//   7   3
+}
