@@ -357,7 +357,6 @@ void *addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recursive2Ver
         zkin["rootCAgg"][i] = Goldilocks::toString(recursive2VerKey[i]);
     }
 
-    json2file(zkin, "recursive2.json");
     return (void *)new ordered_json(zkin);
 }
 
