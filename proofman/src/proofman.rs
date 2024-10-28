@@ -408,7 +408,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Calculate evals
         timer_start_debug!(CALCULATING_EVALS);
-        for group_idx in dctx.my_air_subgroups.iter() {
+        for group_idx in dctx.my_air_groups.iter() {
             provers[group_idx[0]].calculate_lev(pctx.clone());
             for idx in group_idx.iter() {
                 provers[*idx].opening_stage(1, pctx.clone());
@@ -421,7 +421,7 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 3, provers, pctx.clone(), transcript);
         info!("{}: Calculating FRI Polynomials", Self::MY_NAME);
         timer_start_debug!(CALCULATING_FRI_POLINOMIAL);
-        for group_idx in dctx.my_air_subgroups.iter() {
+        for group_idx in dctx.my_air_groups.iter() {
             provers[group_idx[0]].calculate_xdivxsub(pctx.clone());
             for idx in group_idx.iter() {
                 provers[*idx].opening_stage(2, pctx.clone());

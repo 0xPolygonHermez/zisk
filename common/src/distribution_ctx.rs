@@ -28,7 +28,7 @@ pub struct DistributionCtx {
     #[cfg(feature = "distributed")]
     pub roots_gatherv_displ: Vec<i32>,
     pub my_groups: Vec<Vec<usize>>,
-    pub my_air_subgroups: Vec<Vec<usize>>,
+    pub my_air_groups: Vec<Vec<usize>>,
 }
 
 impl DistributionCtx {
@@ -53,7 +53,7 @@ impl DistributionCtx {
                 roots_gatherv_count: vec![0; n_processes as usize],
                 roots_gatherv_displ: vec![0; n_processes as usize],
                 my_groups: Vec::new(),
-                my_air_subgroups: Vec::new(),
+                my_air_groups: Vec::new(),
             }
         }
         #[cfg(not(feature = "distributed"))]
@@ -68,7 +68,7 @@ impl DistributionCtx {
                 owners_count: vec![0; 1],
                 owners_weight: vec![0; 1],
                 my_groups: Vec::new(),
-                my_air_subgroups: Vec::new(),
+                my_air_groups: Vec::new(),
             }
         }
     }
@@ -143,15 +143,15 @@ impl DistributionCtx {
         }
 
         // Create my eval groups
-        let mut my_air_subgroups_indices: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+        let mut my_air_groups_indices: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
         for (loc_idx, glob_idx) in self.my_instances.iter().enumerate() {
             let instance_idx = self.instances[*glob_idx];
-            my_air_subgroups_indices.entry(instance_idx).or_default().push(loc_idx);
+            my_air_groups_indices.entry(instance_idx).or_default().push(loc_idx);
         }
 
-        // Flatten the HashMap into a single vector for my_air_subgroups
-        for (_, indices) in my_air_subgroups_indices {
-            self.my_air_subgroups.push(indices);
+        // Flatten the HashMap into a single vector for my_air_groups
+        for (_, indices) in my_air_groups_indices {
+            self.my_air_groups.push(indices);
         }
     }
 
