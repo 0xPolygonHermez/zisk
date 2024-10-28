@@ -28,4 +28,6 @@ pub struct ZiskRequired {
 #[derive(Clone, Default)]
 pub struct ZiskPcHistogram {
     pub map: HashMap<u64, u64>,
+    pub end_pc: u64,
+    pub steps: u64,
 }
