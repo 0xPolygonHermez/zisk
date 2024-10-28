@@ -194,7 +194,7 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].jmp_offset2 = F::from_canonical_u64(inst.jmp_offset2 as u64);
             rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
             rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
-            println!(
+            /*println!(
                 "ROM SM [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}], {}",
                 inst.paddr,
                 inst.a_offset_imm0,
@@ -209,7 +209,7 @@ impl<F: Field> RomSM<F> {
                 inst.jmp_offset2 as u64,
                 inst.get_flags(),
                 multiplicity,
-            );
+            );*/
         }
 
         // Padd with zeroes

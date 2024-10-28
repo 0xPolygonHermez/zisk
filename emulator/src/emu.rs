@@ -268,7 +268,7 @@ impl<'a> Emu<'a> {
         while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
             let count = histogram.map.entry(self.ctx.inst_ctx.pc).or_default();
             *count += 1;
-            println!("Emu::run_pc_histogram() adding pc={}", self.ctx.inst_ctx.pc);
+            //println!("Emu::run_pc_histogram() adding pc={}", self.ctx.inst_ctx.pc);
             self.step_fast();
             if self.ctx.inst_ctx.end {
                 histogram.end_pc = self.ctx.inst_ctx.pc;
