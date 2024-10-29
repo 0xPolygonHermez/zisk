@@ -83,10 +83,12 @@ airtemplate MemAlign(int N = 2**10, const int MEM_BYTES = 8) {
            +----+----+----+----+----+----+----+----+
     */
 
+// n-byte address, real address = addr * MEM_BYTES
+
     col witness step;
 
     col witness pc;
-    col witness addr;
+    col witness addr;           // n-byte address, real address = addr * MEM_BYTES
     col witness offset;
     col witness width;
     col witness reset;
@@ -113,7 +115,7 @@ airtemplate MemAlign(int N = 2**10, const int MEM_BYTES = 8) {
         assume_val[0] += reg[i] * 2**i;
         assume_val[1] += reg[i + 4] * 2**i;
     }
-    permutation_assumes(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr, step, MEM_BYTES, ...assume_val], sel: sel_assume);
+    permutation_assumes(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...assume_val], sel: sel_assume);
 
     // Prove unaligned memory accesses against the Main component
     const expr sel_prove = 1 - sel_assume;
@@ -131,5 +133,5 @@ airtemplate MemAlign(int N = 2**10, const int MEM_BYTES = 8) {
         prove_val[0] = sel[i] * _prove_val0;
         prove_val[1] = sel[i] * _prove_val1;
     }
-    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr, step, width, ...prove_val], sel: sel_prove);
+    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, width, ...prove_val], sel: sel_prove);
 }
