@@ -2,130 +2,201 @@ require "std_lookup.pil"
 
 const int ARITH_TABLE_ID = 331;
 
-airtemplate ArithTable(int N = 2**6) {
+airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
 
     // TABLE
-    // op
-    // m32|div|na|nb|nr|np|na32|nd32|range_a1(*)|range_b1(*)|range_c1(*)|range_d1(*)|range_a3(*)|range_b3(*)|range_c3(*)|range_d3(*)
+    // op,m32|div|na|nb|np|nr|sext,range_ab,range_cd
 
-    // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32
-    // ----------------------------------------------------------------------------------
-    //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
-    //  0   0   1   0       *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   =0   d3   =0   =0  a3,      d3
-    //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3
-    //  0   1   1   1    x  mul_w    *n/a*      (0xb6,0xb7)   a1   b1   =0   d3   c1   =0           d3, a1,b1,c1
-    //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
-    //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3
-    //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
-    //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
+    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(c)
+    // -----------------------------------------------------------------------------
+    //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
+    //  0   0   1   0  *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   d3   =0   =0   =0  a3,      d3
+    //  0   0   1   1  mul      mulh       (0xb4,0xb5)   a3   b3   d3   =0   =0   =0  a3,b3,   d3
+    //  0   1   0   0  mul_w    *n/a*      (0xb6,0xb7)   =0   =0   =0   =0   c1   =0
+
+    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(a,d)(*2)
+    // ------------------------------------------------------------------------------
+    //  1   0   0   0  divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
+    //  1   0   1   1  div      rem        (0xba,0xbb)   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
+    //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   a1   d1               a1      ,d1
+    //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
 
     const int OPS[14] = [0xb0, 0xb1, 0xb3, 0xb4, 0xb5, 0xb6, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf];
 
     col fixed OP;
-    col fixed FLAGS_AND_RANGES;
+    col fixed FLAGS;
+    col fixed RANGE_AB;
+    col fixed RANGE_CD;
 
     int index = 0;
-    int size = 0;
-    while (index < N) {
-        for (int iop = 0; iop < length(OPS); ++iop) {
-            int opcode = OPS[iop];
-            int m32 = 0;    // 32 bits operation
-            int div = 0;    // division operation (div,rem)
-            int sa = 0;
-            int sb = 0;
+    int aborted = 0;
 
-            switch (opcode & 0xFE) {
-                case 0xb2: // mulsuh
-                    sa = 1;
-                case 0xb4: // mul, mulh
-                    sa = 1;
-                    sb = 1;
-                case 0xb6: // mul_w
-                    m32 = 1;
-                    sa = 1;
-                    sb = 1;
-                case 0xb8: // divu, remu
-                    div = 1;
-                case 0xba: // div, rem
-                    sa = 1;
-                    sb = 1;
-                    div = 1;
-                case 0xbc: // divu_w, remu_w
-                    div = 1;
-                    m32 = 1;
-                case 0xbe: // div_w, rem_w
-                    sa = 1;
-                    sb = 1;
-                    div = 1;
-                    m32 = 1;
+    if (generate_table) {
+        int air.op2row[512];
+        for (int i = 0; i < 512; ++i) {
+            op2row[i] = -1;
+        }
+    }
+
+    for (int opcode = 0xb0; opcode <= 0xbf; ++opcode) {
+        if (opcode == 0xb2 || opcode == 0xb7) {
+            continue;
+        }
+        int m32 = 0;    // 32 bits operation
+        int div = 0;    // division operation (div,rem)
+        int sa = 0;
+        int sb = 0;
+        int secondary = 0;
+        string opname = "";
+        switch (opcode) {
+            case 0xb0:
+                opname = "mulu";
+            case 0xb1:
+                opname = "mulh";
+                secondary = 1;
+            case 0xb3:
+                opname = "mulsuh";
+                sa = 1;
+            case 0xb4:
+                opname = "mul";
+                sa = 1;
+                sb = 1;
+            case 0xb5:
+                opname = "mulh";
+                sa = 1;
+                sb = 1;
+                secondary = 1;
+            case 0xb6:
+                opname = "mul_w";
+                m32 = 1;
+                sa = 1;
+                sb = 1;
+            case 0xb8:
+                opname = "divu";
+                div = 1;
+            case 0xb9:
+                opname = "remu";
+                div = 1;
+                secondary = 1;
+            case 0xba:
+                opname = "div";
+                sa = 1;
+                sb = 1;
+                div = 1;
+            case 0xbb:
+                opname = "rem";
+                sa = 1;
+                sb = 1;
+                div = 1;
+                secondary = 1;
+            case 0xbc:
+                opname = "divu_w";
+                div = 1;
+                m32 = 1;
+            case 0xbd:
+                opname = "remu_w";
+                div = 1;
+                m32 = 1;
+                secondary = 1;
+            case 0xbe:
+                opname = "div_w";
+                sa = 1;
+                sb = 1;
+                div = 1;
+                m32 = 1;
+            case 0xbf:
+                opname = "rem_w";
+                sa = 1;
+                sb = 1;
+                div = 1;
+                m32 = 1;
+                secondary = 1;
+        }
+
+        for (int icase = 0; icase < 32; ++icase) {
+            int na = 0x01 & icase ? 1 : 0;
+            int nb = 0x02 & icase ? 1 : 0;
+            int np = 0x04 & icase ? 1 : 0;
+            int nr = 0x08 & icase ? 1 : 0;
+            int sext = 0x10 & icase ? 1 : 0;
+
+            if (sext && !m32) continue;
+            if (nr && !div) continue;
+            if (na && !sa) continue;
+            if (nb && !sb) continue;
+            if (np && !sa && !sb) continue;
+            if (nr && !sa && !sb) continue;
+            if (np && !na && !nb && !div) continue;
+            if (np && na && nb) continue;
+            if (!np & nr) continue;
+
+            int range_a1 = m32 * sa ? 1 + na : 0;
+            int range_b1 = m32 * sb ? 1 + nb : 0;
+
+            int range_c1 = 0;
+            if (m32) {
+                if (div) {
+                    // range_c1 = np || na32 ? 2 : 1;
+                } else {
+                    // range_c1 = 1 + na32;
+                }
             }
+            int range_d1 = m32 * div ? (((np * sa) || sext) ? 1:2) : 0;
 
-            // CASES:
-            // sa = 0 sb = 0  => [a >= 0, b >= 0]
-            // sa = 1 sb = 0  => [a >= 0, b >= 0], [a < 0, b >= 0]
-            // sa = 1 sb = 1  => [a >= 0, b >= 0], [a < 0, b >= 0], [a >= 0, b < 0], [a < 0, b < 0]
+            int range_a3 = (1 - m32) * sa ? 1 + na : 0;
+            int range_b3 = (1 - m32) * sb ? 1 + na : 0;
+            int range_c3 = div * (1 - m32) * sa ? 1 + np : 0;
+            int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
 
-            int cases = 1 + sa + sb + sa * sb;
-
-            println("#ARITH_TABLE", opcode, index, cases);
-
+            if (generate_table) {
+                op2row[(opcode - 0xb0) * 32 + icase] = index;
+            }
+            println(`==> #${index} op:${opname} [${opcode}] na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} sa:${sa} sb:${sb} secondary:${secondary}`);
+            ++index;
+        }
+    }
+/*
+        int cases = 1 + 2 * sa + 2 * sb + sa * sb;
+        for (int sext = 0; sext < (1 + m32); ++sext) {
             for (int icase = 0; icase < cases; ++icase) {
-                int na = 0;     // a is negative
-                int nb = 0;     // b is negative
-                int np = 0;     // prod is negative
-                int nr = 0;     // rem is negative
-                int na32 = 0;   // a is 32-bit negative, 31th bit is 1.
-                int nd32 = 0;   // d is 32-bit negative, 31th bit is 1.
+
+                int na = 0;         // a is negative
+                int nb = 0;         // b is negative
+                int a_is_zero = 0;  // a is zero
+                int b_is_zero = 0;  // b is zero
+                int np = 0;         // prod is negative
+                int nr = 0;         // rem is negative
+                int abort_case = 0; // if abort copy values of row 0
                 switch (icase) {
+                    // case 0: [a >= 0, b >= 0]
                     case 1:
+                        // [a < 0, b > 0]
                         na = 1;
                     case 2:
-                        nb = 1;
+                        // [a < 0, b = 0]
+                        na = 1;
+                        b_is_zero = 1;
                     case 3:
+                        //  [a > 0, b < 0]
+                        nb = 1;
+                    case 4:
+                        // [a = 0, b < 0]
+                        nb = 1;
+                        a_is_zero = 1;
+                    case 5:
+                        // [a < 0, b < 0]
                         na = 1;
                         nb = 1;
                 }
+                if ((div && b_is_zero) || (sext && (a_is_zero || b_is_zero))) {
+                    abort_case = 1;
+                }
                 np = na + nb - na * nb;
+                if (np && (a_is_zero || b_is_zero)) {
+                    // - * 0 = 0 (no negative)
+                    np = 0;
+                }
                 nr = div ? na : 0;
-                na32 = m32 ? na : 0;
-                nd32 = m32 ? nr : 0;
-
-                // negative a,c,d,na32,nd32 must be 0 if no signed_a
-                // na * (1 - sa) === 0;
-                // nr * (1 - sa) === 0;
-                // nr * (1 - div) === 0;
-                // np * (1 - sa) === 0;
-                // na32 * (1 - sa) === 0;
-                // nd32 * (1 - sa) === 0;
-
-                // negative b must be 0 if no signed_b
-                // nb * (1 - sb) === 0;
-
-                // na32, nd32 only available when 32 bits operation
-                // na32 * (1 - m32) === 0;
-                // nd32 * (1 - m32) === 0;
-
-                // nr, nd32 only could be one 1 in divisions
-                // nr * (1 - div) === 0;
-                // nd32 * (1 - div) === 0;
-
-                // if sb === 1 then sa must be 1, not allowed sa = 0, sb = 1
-                // sb * (1 - sa) === 0;
-                // m32 * (sa - sb) === 0;
-                // div * (sa - sb) === 0;
-                // (1 - div) * m32 * (1 - sa) === 0;
-                // (1 - div) * m32 * (1 - sb) === 0;
-
-                // div m32 sa  sb  comm primary  secondary  opcodes       na   nb   nr   np na32 nd32
-                // ----------------------------------------------------------------------------------
-                //  0   0   0   0    x  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
-                //  0   0   1   0       *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   =0   d3   =0   =0  a3,      d3
-                //  0   0   1   1    x  mul      mulh       (0xb4,0xb5)   a3   b3   =0   d3   =0   =0  a3,b3,   d3
-                //  0   1   1   1    x  mul_w    *n/a*      (0xb6,0xb7)   a1   b1   =0   d3   c1   =0           d3, a1,b1,c1
-                //  1   0   0   0       divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
-                //  1   0   1   1       div      rem        (0xba,0xbb)   a3   b3   d3   c3   =0   =0  a3,b3,c3,d3
-                //  1   1   0   0       divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
-                //  1   1   1   1       div_w    rem_w      (0xbe,0xbf)   a1   b1   d1   c1   c1   d1               a1,b1,c1,d1
 
                 int range_a1 = m32 * sa ? 1 + na : 0;
                 int range_b1 = m32 * sb ? 1 + nb : 0;
@@ -133,41 +204,68 @@ airtemplate ArithTable(int N = 2**6) {
                 int range_c1 = 0;
                 if (m32) {
                     if (div) {
-                        range_c1 = np || na32 ? 2 : 1;
+                        // range_c1 = np || na32 ? 2 : 1;
                     } else {
-                        range_c1 = 1 + na32;
+                        // range_c1 = 1 + na32;
                     }
                 }
-                int range_d1 = m32 * div ? (((np * sa) || nd32) ? 1:2) : 0;
+                int range_d1 = m32 * div ? (((np * sa) || sext) ? 1:2) : 0;
 
                 int range_a3 = (1 - m32) * sa ? 1 + na : 0;
                 int range_b3 = (1 - m32) * sb ? 1 + na : 0;
                 int range_c3 = div * (1 - m32) * sa ? 1 + np : 0;
                 int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
 
-                OP[index] = opcode;
-                FLAGS_AND_RANGES[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * na32 + 128 * nd32 +
-                                          2**8 * range_a1 + 2**10 * range_b1 + 2**12 * range_c1 + 2**14 * range_d1 +
-                                          2**16 * range_a3 + 2**18 * range_b3 + 2**20 * range_c3 + 2**22 * range_d3;
+
+                if (abort_case) {
+                    println(`ABORT op:${opcode} sa:${sa} sb:${sb} a_is_zero:${a_is_zero} b_is_zero:${b_is_zero} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} secondary:${secondary}`);
+                    OP[index] = OP[0];
+                    FLAGS[index] = FLAGS[0];
+                    RANGE_AB[index] = RANGE_AB[0];
+                    RANGE_CD[index] = RANGE_CD[0];
+                    ++aborted;
+                } else {
+                    println(`ADD op:${opcode} sa:${sa} sb:${sb} a_is_zero:${a_is_zero} b_is_zero:${b_is_zero} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} secondary:${secondary}`);
+                    OP[index] = opcode;
+                    FLAGS[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext + 128 * secondary;
+                    RANGE_AB[index] = 0;
+                    RANGE_CD[index] = 0;
+                }
 
                 index = index + 1;
-                if (index == N) break;
             }
-            if (index == N) break;
         }
-        if (size == 0) size = index;
-    }
+    }*/
+    const int size = index;
 
     println("ARITH_TABLE SIZE: ", size);
-    println("ARITH_FLAGS: ", FLAGS_AND_RANGES);
+    println("ARITH_TABLE ABORTED: ", aborted);
+    println("ARITH_FLAGS: ", FLAGS);
+    if (generate_table) {
+        println("let arith_table_rows: [i16; 512] = [", op2row, "];");
+    }
+    return;
     for (index = 0; index < size; ++index) {
-        println(FLAGS_AND_RANGES[index]);
+        println(FLAGS[index]);
     }
 
+    // padding repeat first row
+
+    const int padding_op = OP[0];
+    const int padding_flags = FLAGS[0];
+    const int padding_range_ab = RANGE_AB[0];
+    const int padding_range_cd = RANGE_CD[0];
+
+    for (index = size; index < N; ++index) {
+        OP[index] = padding_op;
+        FLAGS[index] = padding_flags;
+        RANGE_AB[index] = padding_range_ab;
+        RANGE_CD[index] = padding_range_cd;
+    }
     col witness multiplicity;
 
     // TODO:
-    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS_AND_RANGES, 0, 0]);
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS, RANGE_AB, RANGE_CD]);
 }
 
 function arith_table_assumes( const expr op, const expr flag_m32, const expr flag_div, const expr flag_na,
