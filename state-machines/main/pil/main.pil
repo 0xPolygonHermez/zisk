@@ -114,7 +114,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     const expr addr_step = STEP * 3;
 
     const expr sel_mem_b;
-    const expr addr[3];
 
     sel_mem_b = b_src_mem + b_src_ind;
     if (stack_enabled) {
@@ -128,47 +127,41 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     } else {
         const expr air.addr0;
         col witness air.addr1;
-        col witness air.addr2;
+        const expr air.addr2;
         addr0 = a_offset_imm0;
         addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]);
-        addr2 === store_offset + store_ind * a[0];
+        addr2 = store_offset + store_ind * a[0];
     }
 
+    // Mem.load
+    mem_load(sel: a_src_mem,
+             step: addr_step,
+             addr: addr0,
+             value: a);
 
     // Mem.load
-    //mem_load(sel: a_src_mem,
-    //         step: addr_step,
-    //         addr: addr0,
-    //         value: a);
+    mem_load(sel: sel_mem_b,
+              step: addr_step + 1,
+              bytes: ind_width,
+              addr: addr1,
+              value: b);
 
-    // Mem.load
-    //mem_load(sel: sel_mem_b,
-    //          step: addr_step + 1,
-    //          bytes: ind_width,
-    //          addr: addr1,
-    //          value: b);
+    const expr store_value[2];
 
-    col witness store_value[2];
+    store_value[0] = store_ra*(pc + jmp_offset2 - c[0]) + c[0];
+    store_value[1] = (1 - store_ra) * c[1];
 
-    store_value[0] === store_ra*(pc + jmp_offset2 - c[0]) + c[0];
-    store_value[1] === (1 - store_ra) * c[1];
     // Mem.store
-    //mem_store(sel: store_mem + store_ind,
-    //          step: addr_step + 2,
-    //          bytes: ind_width,
-    //          addr: addr2,
-    //          value: store_value);
-
+    mem_store(sel: store_mem + store_ind,
+              step: addr_step + 2,
+              bytes: ind_width,
+              addr: addr2,
+              value: store_value);
 
     // Operation.assume => how organize software
-    col witness __debug_operation_bus_enabled;
-    col witness hi_a;
-    col witness hi_b;
+    // col witness __debug_operation_bus_enabled;
 
-    hi_a === a[1] * (1 - m32);
-    hi_b === b[1] * (1 - m32);
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], hi_a, b[0], hi_b, ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
-    // lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * (1 - SEGMENT_L1), name: PIOP_NAME_ISOLATED);
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op, name: PIOP_NAME_ISOLATED);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -197,8 +190,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
         a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
-        (1 - SEGMENT_L1) * a_src_c * (a[index] - 'c[index]) === 0;
-        (1 - SEGMENT_L1) * b_src_c * (b[index] - 'c[index]) === 0;
+        a_src_c * (a[index] - 'c[index]) === 0;
+        b_src_c * (b[index] - 'c[index]) === 0;
 
         a_src_imm * (a[index] - a_imm[index]) === 0;
         b_src_imm * (b[index] - b_imm[index]) === 0;
@@ -243,7 +236,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //
 
     const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
-    permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, ...a, ...b, ...c, flag],
+    permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, ...a, ...c],
                                         sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
     flag * (1 - flag) === 0;
@@ -253,22 +246,27 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // match with main trace.
     const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm + 32 * b_src_mem
                            + 64 * is_external_op + 128 * store_ra + 256 * store_mem + 512 * store_ind +
-                           + 1024 * set_pc + 2048 * m32;
-
-    a_src_imm * (1 - a_src_imm) === 0;
-    a_src_mem * (1 - a_src_mem) === 0;
-    a_src_step * (1 - a_src_step) === 0;
-    b_src_imm * (1 - b_src_imm) === 0;
-    b_src_mem * (1 - b_src_mem) === 0;
-    is_external_op * (1 - is_external_op) === 0;
-    store_ra * (1 - store_ra) === 0;
-    store_mem * (1 - store_mem) === 0;
-    store_ind * (1 - store_ind) === 0;
-    set_pc * (1 - set_pc) === 0;
-    m32 * (1 - m32) === 0;
+                           + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind;
 
 
-    lookup_assumes(ROM_BUS_ID, [SEGMENT_L1 * (NOP_ROM_ADDR - pc) + pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
-                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1);
+    // SETTINGS ROW 0
+    // -----------------------------------------------------
+    // b_offset_imm0 = b[0] = c[0] <== c[0] previous segment
+    // b_imm1 = b[1] = c[1] <== c[1] previous segment
+    // a_offset_imm0 = a[0] <== a[0] previous segment
+    // a_imm1 = a[1] <== a[1] previous segment
+    // op = 1
+    // pc <== pc previous segment
+    // jmp_offset1 = jmp_offset2 = 0
+    // flag = 0
+    // a_src_imm = b_src_imm = 1 (rest flags to 0)
+
+    SEGMENT_L1 * jmp_offset1 === 0;
+    SEGMENT_L1 * jmp_offset2 === 0;
+    SEGMENT_L1 * (rom_flags - 18) === 0; // 18 = a_src_imm(2) + b_src_imm(16)
+    SEGMENT_L1 * (op - 1) === 0;
+
+    lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
+                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
 
 }

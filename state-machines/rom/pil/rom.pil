@@ -9,7 +9,6 @@ airtemplate Rom(int N = 2**21, int stack_enabled = 0, const int rom_bus_id = ROM
     col witness a_imm1;
     col witness b_offset_imm0;
     col witness b_imm1;
-    col witness b_src_ind;
     col witness ind_width;
     col witness op;
     col witness store_offset;
@@ -17,8 +16,9 @@ airtemplate Rom(int N = 2**21, int stack_enabled = 0, const int rom_bus_id = ROM
     col witness jmp_offset2;
     col witness flags;
 
+
     col witness multiplicity;
 
-    lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, b_src_ind, ind_width,
+    lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, flags], mul: multiplicity);
 }
