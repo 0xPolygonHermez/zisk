@@ -2,7 +2,6 @@ mod operations;
 mod provable;
 mod session;
 mod temp;
-mod thread_controller;
 mod worker;
 
 pub use operations::*;
@@ -11,7 +10,6 @@ use proofman_util::create_buffer_fast;
 pub use provable::*;
 pub use session::*;
 pub use temp::*;
-pub use thread_controller::*;
 pub use worker::*;
 
 pub fn create_prover_buffer<F>(

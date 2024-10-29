@@ -7,7 +7,7 @@ use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use rayon::{prelude::*, Scope};
+use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
 use zisk_pil::{BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS};
@@ -67,39 +67,9 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, _: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // Create the prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                &self.wcm.get_ectx(),
-                &self.wcm.get_sctx(),
-                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
-                BINARY_EXTENSION_TABLE_AIR_IDS[0],
-            );
-
-            let multiplicity = self.multiplicity.lock().unwrap();
-
-            prover_buffer[offset as usize..offset as usize + self.num_rows]
-                .par_iter_mut()
-                .enumerate()
-                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity[i]));
-
-            info!(
-                "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
-                Self::MY_NAME,
-                self.num_rows,
-            );
-
-            let air_instance = AirInstance::new(
-                self.wcm.get_sctx().clone(),
-                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
-                BINARY_EXTENSION_TABLE_AIR_IDS[0],
-                None,
-                prover_buffer,
-            );
-
-            let pctx = self.wcm.get_pctx();
-            pctx.air_instance_repo.add_air_instance(air_instance);
+            self.create_air_instance();
         }
     }
 
@@ -150,6 +120,57 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             BinaryExtensionTableOp::SignExtendH => 6 * P2_19 + P2_11,
             BinaryExtensionTableOp::SignExtendW => 6 * P2_19 + 2 * P2_11,
             //_ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={:?}", opcode),
+        }
+    }
+
+    pub fn create_air_instance(&self) {
+        let ectx = self.wcm.get_ectx();
+        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> =
+            ectx.dctx.write().unwrap();
+
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        let (is_myne, instance_global_idx) = dctx.add_instance(
+            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+            BINARY_EXTENSION_TABLE_AIR_IDS[0],
+            1,
+        );
+        let owner = dctx.owner(instance_global_idx);
+
+        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
+        dctx.distribute_multiplicity(&mut multiplicity_, owner);
+
+        if is_myne {
+            // Create the prover buffer
+            let (mut prover_buffer, offset) = create_prover_buffer(
+                &self.wcm.get_ectx(),
+                &self.wcm.get_sctx(),
+                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+                BINARY_EXTENSION_TABLE_AIR_IDS[0],
+            );
+
+            prover_buffer[offset as usize..offset as usize + self.num_rows]
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
+
+            info!(
+                "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
+                Self::MY_NAME,
+                self.num_rows,
+            );
+
+            let air_instance = AirInstance::new(
+                self.wcm.get_sctx(),
+                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+                BINARY_EXTENSION_TABLE_AIR_IDS[0],
+                None,
+                prover_buffer,
+            );
+            self.wcm
+                .get_pctx()
+                .air_instance_repo
+                .add_air_instance(air_instance, Some(instance_global_idx));
         }
     }
 }
