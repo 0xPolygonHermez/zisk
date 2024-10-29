@@ -3,7 +3,9 @@ use pil_std_lib::Std;
 use proofman::WitnessManager;
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+
 use rayon::prelude::*;
+
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_common::create_prover_buffer;
@@ -137,8 +139,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
-        // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
-        // Spawn the ROM thread
+        // ROM State Machine
+        // ----------------------------------------------
+        // Run the ROM to compute the ROM witness
         let rom_sm = self.rom_sm.clone();
         let zisk_rom = self.zisk_rom.clone();
         let pc_histogram =
@@ -148,6 +151,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 );
         let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
 
+        // Main, Binary and Arith State Machines
+        // ----------------------------------------------
         // Run the emulator in parallel n times to collect execution traces
         // and record the execution starting points for each AIR instance
         timer_start_debug!(PAR_PROCESS_ROM);
@@ -163,7 +168,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
-        // FIXME: This is a temporary solution to run the emulator in parallel with the ROM SM
+        // Join threads to synchronize the execution
         handle_rom.join().unwrap().expect("Error during ROM witness computation");
 
         // FIXME: Move InstanceExtensionCtx form main SM to another place

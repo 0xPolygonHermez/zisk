@@ -1,10 +1,11 @@
 use log::info;
 use p3_field::PrimeField;
 
+use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_binary::BinarySM;
 use std::sync::Arc;
-use zisk_core::{ZiskOperationType, ZiskRom};
+use zisk_core::ZiskRom;
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
@@ -16,39 +17,8 @@ use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID,
     BINARY_EXTENSION_AIR_IDS, MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
 };
-use ziskemu::{Emu, EmuTrace, EmuTraceStart, ZiskEmulator};
+use ziskemu::{Emu, EmuTrace, ZiskEmulator};
 
-pub struct InstanceExtensionCtx<F> {
-    pub prover_buffer: Vec<F>,
-    pub offset: u64,
-    pub op_type: ZiskOperationType,
-    pub emu_trace_start: EmuTraceStart,
-    pub segment_id: Option<usize>,
-    pub instance_global_idx: usize,
-    pub air_instance: Option<AirInstance<F>>,
-}
-
-impl<F: Default + Clone> InstanceExtensionCtx<F> {
-    pub fn new(
-        prover_buffer: Vec<F>,
-        offset: u64,
-        op_type: ZiskOperationType,
-        emu_trace_start: EmuTraceStart,
-        segment_id: Option<usize>,
-        instance_global_idx: usize,
-        air_instance: Option<AirInstance<F>>,
-    ) -> Self {
-        Self {
-            prover_buffer,
-            offset,
-            op_type,
-            emu_trace_start,
-            instance_global_idx,
-            segment_id,
-            air_instance,
-        }
-    }
-}
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
 ///
 /// The MainSM state machine is responsible for orchestrating the execution of the program and
