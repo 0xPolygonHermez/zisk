@@ -222,7 +222,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     flag * set_pc === 0;
     const expr next_pc = set_pc * (c[0] + jmp_offset1) + (1 - set_pc) * (pc + jmp_offset2) + flag * (jmp_offset1 - jmp_offset2);
-    (1 - SEGMENT_L1') * (pc - 'next_pc) === 0;
+    (1 - SEGMENT_L1) * (pc - 'next_pc) === 0;
 
     const expr is_last_continuation = SEGMENT_LAST * main_last_segment;
     const expr specific_registers[stack_enabled ? 2:1];

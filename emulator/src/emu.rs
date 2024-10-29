@@ -802,18 +802,54 @@ impl<'a> Emu<'a> {
         // Calculate intermediate values
         let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
-        let c = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
+        let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
         let hi_a = a[1] * (1 - inst.m32 as u64);
         let hi_b = b[1] * (1 - inst.m32 as u64);
         let store_value = [
-            (inst.store_ra as i64) * (last_pc as i64 + inst.jmp_offset2 - c[0] as i64)
-                + c[0] as i64,
-            (1 - (inst.store_ra as i64)) * c[1] as i64,
+            if inst.store_ra { (inst.paddr as i64 + inst.jmp_offset2) as u64 } else { c[0] },
+            if inst.store_ra { 0 } else { c[1] },
         ];
 
-        let addr1 = inst.b_offset_imm0 + if inst.b_src == SRC_IND { inst_ctx.a } else { 0 };
+        let addr1 = (inst.b_offset_imm0 as i64
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
         let addr2 =
             (inst.store_offset + if inst.store == STORE_IND { a[0] as i64 } else { 0 }) as u64;
+
+        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+            F::from_canonical_u64(inst.jmp_offset1 as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+        };
+
+        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+            F::from_canonical_u64(inst.jmp_offset2 as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+        };
+
+        let store_offset = if inst.store_offset >= 0 {
+            F::from_canonical_u64(inst.store_offset as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+        };
+
+        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+            F::from_canonical_u64(inst.a_offset_imm0)
+        } else {
+            F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+        };
+
+        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+            F::from_canonical_u64(inst.b_offset_imm0 as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+        };
+
+        if inst_ctx.step < 100 {
+            let inst_string = inst.to_text();
+            println! {"MAIN step={} pc={} last_pc={} a={:x} b={:x} c={:x} m32={} store_ra={} store_value=[{},{}] jmp_offset1={} jmp_offset2={} flag={} addr1={} addr2={} inst={:?}",
+            inst_ctx.step, inst.paddr, last_pc, inst_ctx.a, inst_ctx.b, inst_ctx.c, inst.m32, inst.store_ra, store_value[0], store_value[1], inst.jmp_offset1, inst.jmp_offset2, inst_ctx.flag, addr1, addr2, inst_string};
+        }
 
         EmuFullTraceStep {
             a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
@@ -821,10 +857,10 @@ impl<'a> Emu<'a> {
             c: [F::from_canonical_u64(c[0]), F::from_canonical_u64(c[1])],
 
             flag: F::from_bool(inst_ctx.flag),
-            pc: F::from_canonical_u64(last_pc),
+            pc: F::from_canonical_u64(inst.paddr),
             a_src_imm: F::from_bool(inst.a_src == SRC_IMM),
             a_src_mem: F::from_bool(inst.a_src == SRC_MEM),
-            a_offset_imm0: F::from_canonical_u64(inst.a_offset_imm0),
+            a_offset_imm0,
             // #[cfg(not(feature = "sp"))]
             a_imm1: F::from_canonical_u64(inst.a_use_sp_imm1),
             // #[cfg(feature = "sp")]
@@ -836,7 +872,7 @@ impl<'a> Emu<'a> {
             a_src_step: F::from_bool(inst.a_src == SRC_STEP),
             b_src_imm: F::from_bool(inst.b_src == SRC_IMM),
             b_src_mem: F::from_bool(inst.b_src == SRC_MEM),
-            b_offset_imm0: F::from_canonical_u64(inst.b_offset_imm0),
+            b_offset_imm0,
             // #[cfg(not(feature = "sp"))]
             b_imm1: F::from_canonical_u64(inst.b_use_sp_imm1),
             // #[cfg(feature = "sp")]
@@ -848,7 +884,7 @@ impl<'a> Emu<'a> {
             store_ra: F::from_bool(inst.store_ra),
             store_mem: F::from_bool(inst.store == STORE_MEM),
             store_ind: F::from_bool(inst.store == STORE_IND),
-            store_offset: F::from_canonical_u64(inst.store_offset as u64),
+            store_offset,
             set_pc: F::from_bool(inst.set_pc),
             // #[cfg(feature = "sp")]
             // store_use_sp: F::from_bool(inst.store_use_sp),
@@ -856,14 +892,14 @@ impl<'a> Emu<'a> {
             // set_sp: F::from_bool(inst.set_sp),
             // #[cfg(feature = "sp")]
             // inc_sp: F::from_canonical_u64(inst.inc_sp),
-            jmp_offset1: F::from_canonical_u64(inst.jmp_offset1 as u64),
-            jmp_offset2: F::from_canonical_u64(inst.jmp_offset2 as u64),
+            jmp_offset1,
+            jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             addr2: F::from_canonical_u64(addr2),
             store_value: [
-                F::from_canonical_u64(store_value[0] as u64),
-                F::from_canonical_u64(store_value[0] as u64),
+                F::from_canonical_u64(store_value[0]),
+                F::from_canonical_u64(store_value[1]),
             ],
             __debug_operation_bus_enabled: F::from_bool(
                 inst.op_type == ZiskOperationType::Binary
