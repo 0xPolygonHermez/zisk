@@ -803,7 +803,7 @@ impl<'a> Emu<'a> {
         let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
-        
+
         let addr1 = (inst.b_offset_imm0 as i64
             + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
@@ -882,6 +882,10 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
+            __debug_operation_bus_enabled: F::from_bool(
+                inst.op_type == ZiskOperationType::Binary
+                    || inst.op_type == ZiskOperationType::BinaryE,
+            ),
         }
     }
 

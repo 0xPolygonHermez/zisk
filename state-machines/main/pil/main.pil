@@ -160,9 +160,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //          value: store_value);
 
     // Operation.assume => how organize software
-    // col witness __debug_operation_bus_enabled;
+    col witness __debug_operation_bus_enabled;
 
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op, name: PIOP_NAME_ISOLATED);
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -259,8 +259,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // b_imm1 = b[1] = c[1] <== c[1] previous segment
     // a_offset_imm0 = a[0] <== a[0] previous segment
     // a_imm1 = a[1] <== a[1] previous segment
-    // op = 1
-    // pc <== pc previous segment
+    // op = 1 (copyb: c=b, flag=0)
+    // pc <== pc previous segment (start of program at first segment; it needs to be equal to pc of row 1)
     // jmp_offset1 = jmp_offset2 = 0
     // flag = 0
     // a_src_imm = b_src_imm = 1 (rest flags to 0)
@@ -273,6 +273,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
 
-    direct_update(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0], bus_type: PIOP_BUS_SUM);
-    direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 8192, 0, 0], bus_type: PIOP_BUS_SUM);
+    //direct_update(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0], bus_type: PIOP_BUS_SUM);
+    //direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 8192, 0, 0], bus_type: PIOP_BUS_SUM);
 }
