@@ -190,6 +190,24 @@ pub trait ArithHelpers {
             }
         }
     }
+    fn decode_one_range(range_xy: u64) -> [u64; 4] {
+        if range_xy == 9 {
+            [0, 0, 0, 0]
+        } else if range_xy > 9 {
+            let x = (range_xy - 8) / 3;
+            let y = (range_xy - 8) % 3;
+            [0, 0, x, y]
+        } else {
+            let x = range_xy / 3;
+            let y = range_xy % 3;
+            [x, y, 0, 0]
+        }
+    }
+    fn decode_ranges(range_ab: u64, range_cd: u64) -> [u64; 8] {
+        let ab = Self::decode_one_range(range_ab);
+        let cd = Self::decode_one_range(range_cd);
+        [ab[0], ab[1], cd[0], cd[1], ab[2], ab[3], cd[2], cd[3]]
+    }
     fn calculate_flags_and_ranges(op: u8, a: u64, b: u64, c: u64, d: u64) -> [u64; 11] {
         let mut m32: u64 = 0;
         let mut div: u64 = 0;
@@ -534,6 +552,8 @@ pub trait ArithHelpers {
         nr: u64,
         secondary_res: u64,
         sext: u64,
+        range_ab: u64,
+        range_cd: u64,
         bus: [u64; 8],
     ) -> bool {
         let fab: i64 = 1 - 2 * na as i64 - 2 * nb as i64 + 4 * na as i64 * nb as i64;
@@ -684,7 +704,46 @@ pub trait ArithHelpers {
                 println!("[\x1B[32mOK BUS\x1B[0m]");
                 true
             };
+        // check all chunks and carries
+        let carry_min_value: i64 = -0x0F_FFFF;
+        let carry_max_value: i64 = 0x0F_FFFF;
+        for index in 0..8 {
+            passed = passed
+                && if carrys[index] > carry_max_value || carrys[index] < carry_min_value {
+                    println!("[\x1B[31mFAIL CARRY RANGE CHECK\x1B[0m]");
+                    false
+                } else {
+                    println!("[\x1B[32mOK CARRY RANGE CHECK\x1B[0m]");
+                    true
+                };
+        }
+        let ranges = Self::decode_ranges(range_ab, range_cd);
+        Self::check_range(0, a_chunks[0]);
+        Self::check_range(0, b_chunks[0]);
+        Self::check_range(0, c_chunks[0]);
+        Self::check_range(0, d_chunks[0]);
+
+        Self::check_range(ranges[4], a_chunks[1]);
+        Self::check_range(ranges[5], b_chunks[1]);
+        Self::check_range(ranges[6], c_chunks[1]);
+        Self::check_range(ranges[7], d_chunks[1]);
+
+        Self::check_range(0, a_chunks[2]);
+        Self::check_range(0, b_chunks[2]);
+        Self::check_range(0, c_chunks[2]);
+        Self::check_range(0, d_chunks[2]);
+
+        Self::check_range(ranges[0], a_chunks[3]);
+        Self::check_range(ranges[1], b_chunks[3]);
+        Self::check_range(ranges[2], c_chunks[3]);
+        Self::check_range(ranges[3], d_chunks[3]);
+
         passed
+    }
+    fn check_range(range_id: u64, value: i64) {
+        assert!(range_id != 0 || (value >= 0 && value <= 0xFFFF));
+        assert!(range_id != 1 || (value >= 0 && value <= 0x7FFF));
+        assert!(range_id != 2 || (value >= 0x8000 && value <= 0xFFFF));
     }
 }
 
@@ -1608,7 +1667,7 @@ fn test_calculate_range_checks() {
                     if emu_flag { 1 } else { 0 },
                 ];
                 if !TestArithHelpers::execute_chunks(
-                    a, b, c, d, m32, div, na, nb, np, nr, sec, sext, bus,
+                    a, b, c, d, m32, div, na, nb, np, nr, sec, sext, range_ab, range_cd, bus,
                 ) {
                     errors += 1;
                     println!("TOTAL ERRORS: {}", errors);
