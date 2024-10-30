@@ -201,7 +201,7 @@ impl<F: Field> RomSM<F> {
                 F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
             };
             let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                F::from_canonical_u64(inst.b_offset_imm0 as u64)
+                F::from_canonical_u64(inst.b_offset_imm0)
             } else {
                 F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
             };
@@ -316,7 +316,7 @@ impl<F: Field> RomSM<F> {
                 F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
             };
             let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                F::from_canonical_u64(inst.b_offset_imm0 as u64)
+                F::from_canonical_u64(inst.b_offset_imm0)
             } else {
                 F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
             };
@@ -415,7 +415,7 @@ impl<F: Field> RomSM<F> {
                 F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
             };
             let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                F::from_canonical_u64(inst.b_offset_imm0 as u64)
+                F::from_canonical_u64(inst.b_offset_imm0)
             } else {
                 F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
             };
