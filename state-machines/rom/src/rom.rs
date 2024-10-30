@@ -187,8 +187,8 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
             rom_trace[i].b_imm1 =
                 F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_trace[i].b_src_ind =
-                F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
+            //rom_trace[i].b_src_ind =
+            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
             rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
             rom_trace[i].op = F::from_canonical_u8(inst.op);
             rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
@@ -275,8 +275,8 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
             rom_trace[i].b_imm1 =
                 F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_trace[i].b_src_ind =
-                F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
+            //rom_trace[i].b_src_ind =
+            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
             rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
             rom_trace[i].op = F::from_canonical_u8(inst.op);
             rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);
@@ -347,8 +347,8 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].b_offset_imm0 = F::from_canonical_u64(inst.b_offset_imm0);
             rom_trace[i].b_imm1 =
                 F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_trace[i].b_src_ind =
-                F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
+            //rom_trace[i].b_src_ind =
+            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
             rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
             rom_trace[i].op = F::from_canonical_u8(inst.op);
             rom_trace[i].store_offset = F::from_canonical_u64(inst.store_offset as u64);

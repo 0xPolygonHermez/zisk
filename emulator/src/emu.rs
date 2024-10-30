@@ -896,17 +896,17 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            addr2: F::from_canonical_u64(addr2),
-            store_value: [
+            //addr2: F::from_canonical_u64(addr2),
+            /*store_value: [
                 F::from_canonical_u64(store_value[0]),
                 F::from_canonical_u64(store_value[1]),
             ],
             __debug_operation_bus_enabled: F::from_bool(
                 inst.op_type == ZiskOperationType::Binary
                     || inst.op_type == ZiskOperationType::BinaryE,
-            ),
-            hi_a: F::from_canonical_u64(hi_a),
-            hi_b: F::from_canonical_u64(hi_b),
+            ),*/
+            //hi_a: F::from_canonical_u64(hi_a),
+            //hi_b: F::from_canonical_u64(hi_b),
         }
     }
 
