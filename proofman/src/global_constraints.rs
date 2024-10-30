@@ -1,6 +1,8 @@
 use p3_field::Field;
-use proofman_hints::{HintCol, HintFieldInfoValues, HintFieldValue, HintFieldValues, HintFieldValuesVec};
-use proofman_starks_lib_c::{get_hint_field_global_constraints_c, verify_global_constraints_c};
+use proofman_hints::{HintCol, HintFieldInfoValues, HintFieldOutput, HintFieldValue, HintFieldValues, HintFieldValuesVec};
+use proofman_starks_lib_c::{
+    get_hint_field_global_constraints_c, set_hint_field_global_constraints_c, verify_global_constraints_c,
+};
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -64,6 +66,9 @@ pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: A
     let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
     let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
+    let proof_values_guard = pctx.proof_values.values.read().unwrap();
+    let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
     let mut airgroupvalues = aggregate_airgroupvals(pctx.clone());
 
     let mut airgroup_values_ptrs: Vec<*mut F> = airgroupvalues
@@ -74,6 +79,7 @@ pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: A
     let global_constraints_verified = verify_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs,
+        proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
     );
 
@@ -107,9 +113,13 @@ pub fn get_hint_field_gc<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let proof_values_guard = pctx.proof_values.values.read().unwrap();
+    let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,
         hint_field_name,
@@ -141,9 +151,13 @@ pub fn get_hint_field_gc_a<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let proof_values_guard = pctx.proof_values.values.read().unwrap();
+    let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,
         hint_field_name,
@@ -181,9 +195,13 @@ pub fn get_hint_field_gc_m<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let proof_values_guard = pctx.proof_values.values.read().unwrap();
+    let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,
         hint_field_name,
@@ -209,4 +227,35 @@ pub fn get_hint_field_gc_m<F: Field>(
 
         HintFieldValues { values: hint_field_values }
     }
+}
+
+pub fn set_hint_field<F: Field>(
+    pctx: Arc<ProofCtx<F>>,
+    sctx: Arc<SetupCtx>,
+    hint_id: u64,
+    hint_field_name: &str,
+    value: HintFieldOutput<F>,
+) {
+    let proof_values_guard = pctx.proof_values.values.read().unwrap();
+    let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
+    let mut value_array: Vec<F> = Vec::new();
+
+    match value {
+        HintFieldOutput::Field(val) => {
+            value_array.push(val);
+        }
+        HintFieldOutput::FieldExtended(val) => {
+            value_array.push(val.value[0]);
+            value_array.push(val.value[1]);
+            value_array.push(val.value[2]);
+        }
+    };
+
+    let values_ptr = value_array.as_ptr() as *mut c_void;
+
+    let id =
+        set_hint_field_global_constraints_c(sctx.get_global_bin(), proof_values, values_ptr, hint_id, hint_field_name);
+
+    pctx.set_proof_value_calculated(id as usize);
 }

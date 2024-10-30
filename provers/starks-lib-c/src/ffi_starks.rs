@@ -35,6 +35,14 @@ pub fn save_publics_c(n_publics: u64, public_inputs: *mut std::os::raw::c_void, 
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn save_proof_values_c(n_proof_values: u64, proof_values: *mut std::os::raw::c_void, output_dir: &str) {
+    let file_dir: CString = CString::new(output_dir).unwrap();
+    unsafe {
+        save_proof_values(n_proof_values, proof_values, file_dir.as_ptr() as *mut std::os::raw::c_char);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
     unsafe { fri_proof_new(p_setup_ctx) }
 }
@@ -592,15 +600,17 @@ pub fn verify_constraints_c(p_setup: *mut c_void, p_steps_params: *mut c_void) -
 pub fn verify_global_constraints_c(
     p_global_constraints_bin: *mut c_void,
     publics: *mut c_void,
+    proof_values: *mut c_void,
     airgroupvalues: *mut *mut c_void,
 ) -> bool {
-    unsafe { verify_global_constraints(p_global_constraints_bin, publics, airgroupvalues) }
+    unsafe { verify_global_constraints(p_global_constraints_bin, publics, proof_values, airgroupvalues) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_hint_field_global_constraints_c(
     p_global_constraints_bin: *mut c_void,
     publics: *mut c_void,
+    proof_values: *mut c_void,
     airgroupvalues: *mut *mut c_void,
     hint_id: u64,
     hint_field_name: &str,
@@ -611,10 +621,31 @@ pub fn get_hint_field_global_constraints_c(
         get_hint_field_global_constraints(
             p_global_constraints_bin,
             publics,
+            proof_values,
             airgroupvalues,
             hint_id,
             field_name.as_ptr() as *mut std::os::raw::c_char,
             print_expression,
+        )
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn set_hint_field_global_constraints_c(
+    p_global_constraints_bin: *mut c_void,
+    proof_values: *mut c_void,
+    values: *mut c_void,
+    hint_id: u64,
+    hint_field_name: &str,
+) -> u64 {
+    let field_name = CString::new(hint_field_name).unwrap();
+    unsafe {
+        set_hint_field_global_constraints(
+            p_global_constraints_bin,
+            proof_values,
+            values,
+            hint_id,
+            field_name.as_ptr() as *mut std::os::raw::c_char,
         )
     }
 }
@@ -710,6 +741,7 @@ pub fn add_recursive2_verkey_c(p_zkin: *mut c_void, recursive2_verkey: &str) -> 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn join_zkin_final_c(
     p_publics: *mut c_void,
+    p_proof_values: *mut c_void,
     p_challenges: *mut c_void,
     global_info_file: &str,
     zkin_recursive2: *mut *mut c_void,
@@ -718,7 +750,16 @@ pub fn join_zkin_final_c(
     let global_info_file_name = CString::new(global_info_file).unwrap();
     let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-    unsafe { join_zkin_final(p_publics, p_challenges, global_info_file_ptr, zkin_recursive2, stark_info_recursive2) }
+    unsafe {
+        join_zkin_final(
+            p_publics,
+            p_proof_values,
+            p_challenges,
+            global_info_file_ptr,
+            zkin_recursive2,
+            stark_info_recursive2,
+        )
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -765,6 +806,11 @@ pub fn save_challenges_c(_p_challenges: *mut std::os::raw::c_void, _global_info_
 #[cfg(feature = "no_lib_link")]
 pub fn save_publics_c(_n_publics: u64, _public_inputs: *mut c_void, _output_dir: &str) {
     trace!("{}: ··· {}", "ffi     ", "save_publics_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn save_proof_values_c(_n_proof_values: u64, _proof_values: *mut c_void, _output_dir: &str) {
+    trace!("{}: ··· {}", "ffi     ", "save_proof_values_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1219,6 +1265,7 @@ pub fn verify_constraints_c(_p_setup: *mut c_void, _p_steps_params: *mut c_void)
 pub fn verify_global_constraints_c(
     _p_global_constraints_bin: *mut c_void,
     _publics: *mut c_void,
+    _proof_values: *mut c_void,
     _airgroupvalues: *mut *mut c_void,
 ) -> bool {
     trace!(
@@ -1233,6 +1280,7 @@ pub fn verify_global_constraints_c(
 pub fn get_hint_field_global_constraints_c(
     _p_global_constraints_bin: *mut c_void,
     _publics: *mut c_void,
+    _proof_values: *mut c_void,
     _airgroupvalues: *mut *mut c_void,
     _hint_id: u64,
     _hint_field_name: &str,
@@ -1244,6 +1292,22 @@ pub fn get_hint_field_global_constraints_c(
         "get_hint_field_global_constraints_c: This is a mock call because there is no linked library"
     );
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn set_hint_field_global_constraints_c(
+    _p_global_constraints_bin: *mut c_void,
+    _proof_values: *mut c_void,
+    _values: *mut c_void,
+    _hint_id: u64,
+    _hint_field_name: &str,
+) -> u64 {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "get_hint_field_global_constraints_c: This is a mock call because there is no linked library"
+    );
+    100000
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1328,6 +1392,7 @@ pub fn join_zkin_recursive2_c(
 #[cfg(feature = "no_lib_link")]
 pub fn join_zkin_final_c(
     _p_publics: *mut c_void,
+    _p_proof_values: *mut c_void,
     _p_challenges: *mut c_void,
     _global_info_file: &str,
     _zkin_recursive2: *mut *mut c_void,

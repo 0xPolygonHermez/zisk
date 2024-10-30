@@ -114,6 +114,7 @@ pub fn generate_recursion_proof<F: Field>(
                         publics2zkin_c(p_prove, p_publics, global_info_file, air_instance.airgroup_id as u64, false);
                     proves_out.push(p_prove);
 
+                    drop(buffer);
                     log::info!("{}: ··· Proof generated.", MY_NAME);
 
                     timer_stop_and_log_trace!(GENERATE_PROOF);
@@ -213,6 +214,7 @@ pub fn generate_recursion_proof<F: Field>(
                                     airgroup as u64,
                                     false,
                                 );
+                                drop(buffer);
                                 timer_stop_and_log_trace!(GENERATE_RECURSIVE2_PROOF);
                                 log::info!("{}: ··· Proof generated.", MY_NAME);
                             }
@@ -229,9 +231,11 @@ pub fn generate_recursion_proof<F: Field>(
 
             let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
             let challenges_guard = pctx.challenges.challenges.read().unwrap();
+            let proof_values_guard = pctx.proof_values.values.read().unwrap();
 
             let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
             let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+            let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
             let mut stark_infos_recursive2 = Vec::new();
             for (idx, _) in pctx.global_info.air_groups.iter().enumerate() {
@@ -244,6 +248,7 @@ pub fn generate_recursion_proof<F: Field>(
 
             let zkin_final = join_zkin_final_c(
                 public_inputs,
+                proof_values,
                 challenges,
                 global_info_file,
                 proves_recursive2_ptr,
@@ -273,6 +278,7 @@ pub fn generate_recursion_proof<F: Field>(
                 output_dir_path.join("proofs/final_proof.json").to_string_lossy().as_ref(),
             );
             log::info!("{}: ··· Proof generated.", MY_NAME);
+            drop(buffer);
             timer_stop_and_log_trace!(GENERATE_PROOF);
         }
         ProofType::Basic => {

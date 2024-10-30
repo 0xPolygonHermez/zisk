@@ -2,7 +2,7 @@ use libloading::{Library, Symbol};
 use log::{info, trace};
 use p3_field::Field;
 use stark::{StarkBufferAllocator, StarkProver};
-use proofman_starks_lib_c::{save_challenges_c, save_publics_c};
+use proofman_starks_lib_c::{save_challenges_c, save_proof_values_c, save_publics_c};
 use core::panic;
 use std::fs;
 use std::error::Error;
@@ -115,6 +115,15 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         witness_lib.end_proof();
+
+        for i in 0..pctx.global_info.n_proof_values {
+            if !pctx.proof_values.values_set.read().unwrap().contains_key(&i) {
+                panic!(
+                    "Proof cannot be generated: Proof value {} is not set",
+                    pctx.global_info.proof_values_map.as_ref().expect("REASON").get(i).unwrap().name
+                );
+            }
+        }
 
         if options.verify_constraints {
             verify_constraints_proof(pctx, ectx, sctx, provers, witness_lib);
@@ -408,6 +417,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         // Calculate evals
         timer_start_debug!(CALCULATING_EVALS);
+        Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 2, provers, pctx.clone(), transcript);
         for group_idx in dctx.my_air_groups.iter() {
             provers[group_idx[0]].calculate_lev(pctx.clone());
             for idx in group_idx.iter() {
@@ -488,15 +498,22 @@ impl<F: Field + 'static> ProofMan<F> {
         }
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
+        let proof_values_guard = proof_ctx.proof_values.values.read().unwrap();
 
         let n_publics = proof_ctx.global_info.n_publics as u64;
         let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
         let challenges = (*challenges_guard).as_ptr() as *mut c_void;
 
+        let n_proof_values = proof_ctx.global_info.n_proof_values as u64;
+        let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+
         let global_info_path = proof_ctx.global_info.get_proving_key_path().join("pilout.globalInfo.json");
         let global_info_file: &str = global_info_path.to_str().unwrap();
 
         save_publics_c(n_publics, public_inputs, output_dir);
+
+        save_proof_values_c(n_proof_values, proof_values, output_dir);
+
         save_challenges_c(challenges, global_info_file, output_dir);
 
         timer_stop_and_log_debug!(FINALIZING_PROOF);

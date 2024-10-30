@@ -42,6 +42,20 @@ void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *file
     json2file(publicStarkJson, string(fileDir) + "/publics.json");
 }
 
+void save_proof_values(unsigned long numProofValues, void *pProofValues, char *fileDir) {
+    Goldilocks::Element* proofValues = (Goldilocks::Element *)pProofValues;
+
+    ordered_json proofValuesJson;
+    for(uint64_t i = 0; i < numProofValues; i++) {
+        proofValuesJson[i] = ordered_json::array();
+        for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
+            proofValuesJson[i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
+        }
+    }
+
+    json2file(proofValuesJson, string(fileDir) + "/proof_values.json");
+}
+
 
 
 void *fri_proof_new(void *pSetupCtx)
@@ -481,14 +495,19 @@ void *verify_constraints(void *pSetupCtx, void* stepsParams)
 
 // Global Constraints
 // =================================================================================
-bool verify_global_constraints(void* p_globalinfo_bin, void *publics, void **airgroupValues) {
-    return verifyGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element **)airgroupValues);
+bool verify_global_constraints(void* p_globalinfo_bin, void *publics, void *proofValues, void **airgroupValues) {
+    return verifyGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues);
 }
 
-void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
+void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
 {
-    HintFieldValues hintFieldValues = getHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
+    HintFieldValues hintFieldValues = getHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
     return new HintFieldValues(hintFieldValues);
+}
+
+uint64_t set_hint_field_global_constraints(void* p_globalinfo_bin, void *proofValues, void *values, uint64_t hintId, char *hintFieldName) 
+{
+    return setHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)proofValues, (Goldilocks::Element *)values, hintId, string(hintFieldName));
 }
 
 // Debug functions
@@ -554,14 +573,15 @@ void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPub
     return (void *) new nlohmann::ordered_json(zkinRecursive2);
 }
 
-void *join_zkin_final(void* pPublics, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2) {
+void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2) {
     json globalInfo;
     file2json(globalInfoFile, globalInfo);
 
     Goldilocks::Element *publics = (Goldilocks::Element *)pPublics;
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
+    Goldilocks::Element *proofValues = (Goldilocks::Element *)pProofValues;
 
-    ordered_json zkinFinal = joinzkinfinal(globalInfo, publics, challenges, zkinRecursive2, starkInfoRecursive2);
+    ordered_json zkinFinal = joinzkinfinal(globalInfo, publics, proofValues, challenges, zkinRecursive2, starkInfoRecursive2);
 
     return (void *) new nlohmann::ordered_json(zkinFinal);    
 }

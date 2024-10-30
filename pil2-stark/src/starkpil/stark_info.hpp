@@ -28,6 +28,7 @@ typedef enum
     number = 6,
     string_ = 7,
     airvalue = 8,
+    proofvalue = 9,
 } opType;
 
 

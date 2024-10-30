@@ -78,7 +78,7 @@ impl OpType {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PolMap {
     pub name: String,
     #[serde(default)]

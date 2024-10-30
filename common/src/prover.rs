@@ -12,7 +12,7 @@ pub enum ProverStatus {
     OpeningStage,
     StagesCompleted,
 }
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProofType {
     Basic,
     Compressor,

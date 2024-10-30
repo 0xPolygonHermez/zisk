@@ -15,6 +15,14 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_Z17save_proof_valuesmPvPc"]
+    pub fn save_proof_values(
+        numProofValues: ::std::os::raw::c_ulong,
+        pProofValues: *mut ::std::os::raw::c_void,
+        fileDir: *mut ::std::os::raw::c_char,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z13fri_proof_newPv"]
     pub fn fri_proof_new(pSetupCtx: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
 }
@@ -451,23 +459,35 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25verify_global_constraintsPvS_PS_"]
+    #[link_name = "\u{1}_Z25verify_global_constraintsPvS_S_PS_"]
     pub fn verify_global_constraints(
         globalBin: *mut ::std::os::raw::c_void,
         publics: *mut ::std::os::raw::c_void,
+        proofValues: *mut ::std::os::raw::c_void,
         airgroupValues: *mut *mut ::std::os::raw::c_void,
     ) -> bool;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z33get_hint_field_global_constraintsPvS_PS_mPcb"]
+    #[link_name = "\u{1}_Z33get_hint_field_global_constraintsPvS_S_PS_mPcb"]
     pub fn get_hint_field_global_constraints(
         globalBin: *mut ::std::os::raw::c_void,
         publics: *mut ::std::os::raw::c_void,
+        proofValues: *mut ::std::os::raw::c_void,
         airgroupValues: *mut *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldName: *mut ::std::os::raw::c_char,
         print_expression: bool,
     ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z33set_hint_field_global_constraintsPvS_S_mPc"]
+    pub fn set_hint_field_global_constraints(
+        p_globalinfo_bin: *mut ::std::os::raw::c_void,
+        proofValues: *mut ::std::os::raw::c_void,
+        values: *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldName: *mut ::std::os::raw::c_char,
+    ) -> u64;
 }
 extern "C" {
     #[link_name = "\u{1}_Z13print_by_namePvS_PcPmmmb"]
@@ -543,9 +563,10 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15join_zkin_finalPvS_PcPS_S1_"]
+    #[link_name = "\u{1}_Z15join_zkin_finalPvS_S_PcPS_S1_"]
     pub fn join_zkin_final(
         pPublics: *mut ::std::os::raw::c_void,
+        pProofValues: *mut ::std::os::raw::c_void,
         pChallenges: *mut ::std::os::raw::c_void,
         globalInfoFile: *mut ::std::os::raw::c_char,
         zkinRecursive2: *mut *mut ::std::os::raw::c_void,
@@ -556,4 +577,3 @@ extern "C" {
     #[link_name = "\u{1}_Z11setLogLevelm"]
     pub fn setLogLevel(level: u64);
 }
-

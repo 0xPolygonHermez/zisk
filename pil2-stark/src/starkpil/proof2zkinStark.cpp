@@ -360,13 +360,24 @@ void *addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recursive2Ver
     return (void *)new ordered_json(zkin);
 }
 
-ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* challenges, void **zkin_vec, void **starkInfo_vec) {
+ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* proofValues, Goldilocks::Element* challenges, void **zkin_vec, void **starkInfo_vec) {
     ordered_json zkinFinal = ordered_json::object();
     
     if(globalInfo["nPublics"] > 0) {
         for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
         {
             zkinFinal["publics"][i] = Goldilocks::toString(publics[i]);
+        }
+    }
+
+    if(globalInfo["numProofValues"] > 0) {
+        zkinFinal["proofValues"] = ordered_json::array();
+        for (uint64_t i = 0; i < globalInfo["numProofValues"]; i++)
+        {
+            zkinFinal["proofValues"][i] = ordered_json::array();
+            for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
+                zkinFinal["proofValues"][i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
+            }
         }
     }
 

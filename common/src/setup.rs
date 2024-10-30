@@ -85,7 +85,7 @@ impl Setup {
         let setup_path = global_info.get_air_setup_path(self.airgroup_id, self.air_id, setup_type);
 
         let air_name = &global_info.airs[self.airgroup_id][self.air_id].name;
-        log::debug!("{}   : ··· Loading const pols for AIR {}", Self::MY_NAME, air_name);
+        log::debug!("{}   : ··· Loading const pols for AIR {} of type {:?}", Self::MY_NAME, air_name, setup_type);
 
         let const_pols_path = setup_path.display().to_string() + ".const";
         let const_pols_tree_path = setup_path.display().to_string() + ".consttree";

@@ -7,6 +7,13 @@ use std::fs;
 use crate::ProofType;
 
 #[derive(Clone, Deserialize)]
+pub struct ProofValueMap {
+    pub name: String,
+    #[serde(default)]
+    pub id: u64,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct GlobalInfo {
     pub folder_path: String,
     pub name: String,
@@ -23,6 +30,11 @@ pub struct GlobalInfo {
     pub n_publics: usize,
     #[serde(rename = "numChallenges")]
     pub n_challenges: Vec<usize>,
+    #[serde(rename = "numProofValues")]
+    pub n_proof_values: usize,
+
+    #[serde(rename = "proofValuesMap")]
+    pub proof_values_map: Option<Vec<ProofValueMap>>,
 }
 
 #[derive(Clone, Deserialize)]

@@ -5,6 +5,16 @@ public in1;
 public in2;
 public out;
 
+proofval value1;
+proofval value2;
+
+private function checkProofValues()
+{
+    mod * value1 - value2 === 0;
+}
+
+on final proof checkProofValues();
+
 airtemplate FibonacciSquare(const int N = 2**8) {
 
     airval fibo1;

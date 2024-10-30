@@ -69,6 +69,9 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
         pctx.public_inputs.inputs.write().unwrap()[24..32].copy_from_slice(&b.to_le_bytes());
 
+        pctx.set_proof_value("value1", F::from_canonical_u64(5));
+        pctx.set_proof_value("value2", F::from_canonical_u64(125));
+
         // Not needed, for debugging!
         // let mut result = F::zero();
         // for (i, _) in buffer.iter().enumerate() {

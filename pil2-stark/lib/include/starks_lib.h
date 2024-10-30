@@ -6,6 +6,7 @@
     // ========================================================================================
     void save_challenges(void *pChallenges, char* globalInfoFile, char *fileDir);
     void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *fileDir);
+    void save_proof_values(unsigned long numProofValues, void *pProofValues, char *fileDir);
 
     // FRIProof
     // ========================================================================================
@@ -110,9 +111,10 @@
 
     // Global constraints
     // =================================================================================
-    bool verify_global_constraints(void *globalBin, void *publics, void **airgroupValues);
-    void *get_hint_field_global_constraints(void *globalBin, void *publics, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression);
-
+    bool verify_global_constraints(void *globalBin, void *publics, void *proofValues, void **airgroupValues);
+    void *get_hint_field_global_constraints(void *globalBin, void *publics, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression);
+    uint64_t set_hint_field_global_constraints(void* p_globalinfo_bin, void *proofValues, void *values, uint64_t hintId, char *hintFieldName);
+    
     // Debug functions
     // =================================================================================
     void *print_by_name(void *pSetupCtx, void* stepsParams, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values);
@@ -126,7 +128,7 @@
     void *public2zkin(void *pZkin, void* pPublics, char* globalInfoFile, uint64_t airgroupId, bool isAggregated);
     void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename);
     void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2);
-    void *join_zkin_final(void* pPublics, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);
+    void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);
 
     // Util calls
     // =================================================================================
