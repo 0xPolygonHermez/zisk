@@ -20,8 +20,6 @@ git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/zisk.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
 git clone -b develop  https://github.com/0xPolygonHermez/pil2-stark-js.git
-
-git clone --recursive -b develop  https://github.com/0xPolygonHermez/pil2-stark.git
 git clone -b feature/setup https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
@@ -116,7 +114,7 @@ node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-components/lib/std_
 
 ### Compile the PIl2 Stark C++ Library (run only once):
 ```bash
-(cd ../pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
+(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
 ```
 
 ### Generate PIL-Helpers Rust Code
@@ -140,7 +138,7 @@ cargo build --release
 
 > If you get a library not found error, set the path manually:
 > ```bash
-> export RUSTFLAGS="-L native=/home/{path to your pil2-stark folder}/lib"
+> export RUSTFLAGS="-L native={path to your pil2-proofman folder}/pil2-stark/lib"
 > ```
 
 ## Generate & Verify Proofs
