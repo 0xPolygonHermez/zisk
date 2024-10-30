@@ -9,6 +9,10 @@ const int DEFAULT_DIRECT_BUS_TYPE = PIOP_BUS_SUM;
 // We allow any expression as inputs to this function, but if some of it is not a global element
 // the PIL will throw an error
 function direct_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, int bus_type = PIOP_BUS_DEFAULT, int name = PIOP_NAME_DEFAULT) {
+    if (AIRGROUP_ID == -1) {
+        error("A direct update has to be performed inside an airgroup");
+    }
+
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_DIRECT_NAME;
 
     if (bus_type == PIOP_BUS_DEFAULT) bus_type = DEFAULT_DIRECT_BUS_TYPE;

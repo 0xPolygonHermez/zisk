@@ -10,7 +10,7 @@ function prod_proves(const int name, const int opid, const expr cols[], const ex
     update_piop_prod(name, 1, opid, sel, cols, is_direct);
 }
 
-private function init_containers_prod(int name, int opid) {
+private function init_proof_containers_prod(int name, int opid) {
     container proof.std.gprod {
         // Used for final checks
         int opids_count = 0;
@@ -31,6 +31,16 @@ private function init_containers_prod(int name, int opid) {
         expr direct_gprod_proves[100];
     }
 
+    // Container used for final checks
+    container proof.std.gprod.`id${opid}` {
+        int name = name;
+        int cols;
+        int proves = 0;
+        int assumes = 0;
+    }
+}
+
+private function init_containers_prod(int name, int opid) {
     container airgroup.std.gprod {
         airgroupval aggregate(prod) gprod_result;
     }
@@ -43,14 +53,6 @@ private function init_containers_prod(int name, int opid) {
         int gprod_proves_count = 0;
         expr gprod_proves_sel[100];
         expr gprod_proves[100];
-    }
-
-    // Container used for final checks
-    container proof.std.gprod.`id${opid}` {
-        int name = name;
-        int cols;
-        int proves = 0;
-        int assumes = 0;
     }
 }
 
@@ -72,12 +74,7 @@ private function initial_checks_prod(int proves, int opid, expr cols[], int is_d
     // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
     // proves and assumes to verify at the end that all of them match (except for the is_direct case)
     const string name_str = proves ? "proves" : "assumes";
-    const string other_name_str = proves ? "assumes" : "proves";
-    if (!is_direct) {
-        proof.std.gprod.`id${opid}`.`${name_str}`++;
-    } else {
-        proof.std.gprod.`id${opid}`.`${name_str}` = proof.std.gprod.`id${opid}`.`${other_name_str}`;
-    }
+    proof.std.gprod.`id${opid}`.`${name_str}`++;
 }
 
 /**
@@ -98,11 +95,11 @@ private function update_piop_prod(int name, int proves, int opid, expr sel, expr
         error(`The number of columns of ${side} #${opid} must be at least 1`);
     }
 
-    init_containers_prod(name, opid);
-
-    initial_checks_prod(proves, opid, cols, is_direct);
+    init_proof_containers_prod(name, opid);
 
     if (!is_direct) {
+        init_containers_prod(name, opid);
+
         // Create debug hints for the witness computation
         const int ncols = length(cols);
         string name_cols[ncols];
@@ -111,6 +108,8 @@ private function update_piop_prod(int name, int proves, int opid, expr sel, expr
         }
         @gprod_member_data{name_piop: get_piop_name(name), names: name_cols, opid: opid, proves: proves, selector: sel, references: cols};
     }
+
+    initial_checks_prod(proves, opid, cols, is_direct);
 
     init_challenges();
 

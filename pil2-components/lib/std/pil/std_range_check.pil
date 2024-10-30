@@ -160,7 +160,12 @@ function range_check(expr colu, int min, int max, expr sel = 1, int predefined =
  * TODO: Add description
  */
 function range_check_group(const expr cols[], const int min, const int max, const expr sels[], const int predefined = 1) {
-    for (int i = 0; i < length(cols); i = i + 1) {
+    const int len = length(cols);
+    if (len != length(sels)) {
+        error(`The length of cols (${len}) and sels (${length(sels)}) should be the same`);
+    }
+
+    for (int i = 0; i < length(cols); i++) {
         range_check(cols[i], min, max, sels[i], predefined);
     }
 }
@@ -276,7 +281,7 @@ private function range_validator(const int min, const int max) {
         const int diff = max - min + 1;
 
         string diff_str = `(colu - ${min})`;
-        for (int i = 1; i < diff; i = i + 1) {
+        for (int i = 1; i < diff; i++) {
             diff_str = diff_str + `·(colu - ${min + i})`;
         }
 

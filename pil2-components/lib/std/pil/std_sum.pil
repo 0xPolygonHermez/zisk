@@ -14,7 +14,7 @@ function sum_assumes_dynamic(const int name, const int opid[], const expr sumid,
     update_piop_sum(name, 0, opid, sumid, sel, cols);
 }
 
-private function init_containers_sum(int name, int opid[]) {
+private function init_proof_containers_sum(int name, int opid[]) {
     container proof.std.gsum {
         // Used for final checks
         int opids_count = 0;
@@ -31,17 +31,6 @@ private function init_containers_sum(int name, int opid[]) {
         expr direct_gsum_e[100];
     }
 
-    container airgroup.std.gsum {
-        airgroupval aggregate(sum) gsum_result;
-    }
-
-    container air.std.gsum {
-        int gsum_nargs = 0;
-        expr gsum_s[100];
-        expr gsum_e[100];
-        int gsum_t[100]; // Used for optimization
-    }
-
     // Container used for final checks
     for (int i = 0; i < length(opid); i++) {
         container proof.std.gsum.`id${opid[i]}` {
@@ -53,11 +42,24 @@ private function init_containers_sum(int name, int opid[]) {
     }
 }
 
+private function init_containers_sum(int name, int opid[]) {
+    container airgroup.std.gsum {
+        airgroupval aggregate(sum) gsum_result;
+    }
+
+    container air.std.gsum {
+        int gsum_nargs = 0;
+        expr gsum_s[100];
+        expr gsum_e[100];
+        int gsum_t[100]; // Used for optimization
+    }
+}
+
 private function initial_checks_sum(int proves, int opid[], expr cols[], int is_direct) {
     const int cols_count = length(cols);
 
     for (int i = 0; i < length(opid); i++) {
-        // Assumes and proves of the same opid must have the same number of columns
+        // Assumes and proves of the same opid must have the same number of columns (except for the is_direct case)
         if (proof.std.gsum.`id${opid[i]}`.cols == 0) {
             // first time called
             proof.std.gsum.`id${opid[i]}`.cols = cols_count;
@@ -71,7 +73,7 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int is_
         }
 
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
-        // proves and assumes to verify at the end that all of them match
+        // proves and assumes to verify at the end that all of them match (except for the is_direct case)
         const string name_str = proves ? "proves" : "assumes";
         proof.std.gsum.`id${opid[i]}`.`${name_str}`++;
     }
@@ -95,11 +97,11 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         error(`The number of columns in ${side} of ${name} #${opid} must be at least 1`);
     }
 
-    init_containers_sum(name, opid);
-
-    initial_checks_sum(proves, opid, cols, is_direct);
+    init_proof_containers_sum(name, opid);
 
     if (!is_direct) {
+        init_containers_sum(name, opid);
+
         // Create debug hints for the witness computation
         const int ncols = length(cols);
         string name_cols[ncols];
@@ -108,6 +110,8 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         }
         @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves, selector: sel, references: cols};
     }
+
+    initial_checks_sum(proves, opid, cols, is_direct);
 
     init_challenges();
 
