@@ -796,24 +796,16 @@ impl<'a> Emu<'a> {
     pub fn build_full_trace_step<F: AbstractField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
-        last_c: u64,
-        last_pc: u64,
+        _last_c: u64, // TODO! Check if it's necessay
+        _last_pc: u64,
     ) -> EmuFullTraceStep<F> {
         // Calculate intermediate values
         let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
-        let hi_a = a[1] * (1 - inst.m32 as u64);
-        let hi_b = b[1] * (1 - inst.m32 as u64);
-        let store_value = [
-            if inst.store_ra { (inst.paddr as i64 + inst.jmp_offset2) as u64 } else { c[0] },
-            if inst.store_ra { 0 } else { c[1] },
-        ];
-
+        
         let addr1 = (inst.b_offset_imm0 as i64
             + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
-        let addr2 =
-            (inst.store_offset + if inst.store == STORE_IND { a[0] as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -844,12 +836,6 @@ impl<'a> Emu<'a> {
         } else {
             F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
         };
-
-        if inst_ctx.step < 100 {
-            let inst_string = inst.to_text();
-            println! {"MAIN step={} pc={} last_pc={} a={:x} b={:x} c={:x} m32={} store_ra={} store_value=[{},{}] jmp_offset1={} jmp_offset2={} flag={} addr1={} addr2={} inst={:?}",
-            inst_ctx.step, inst.paddr, last_pc, inst_ctx.a, inst_ctx.b, inst_ctx.c, inst.m32, inst.store_ra, store_value[0], store_value[1], inst.jmp_offset1, inst.jmp_offset2, inst_ctx.flag, addr1, addr2, inst_string};
-        }
 
         EmuFullTraceStep {
             a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
@@ -896,17 +882,6 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            //addr2: F::from_canonical_u64(addr2),
-            /*store_value: [
-                F::from_canonical_u64(store_value[0]),
-                F::from_canonical_u64(store_value[1]),
-            ],
-            __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
-            ),*/
-            //hi_a: F::from_canonical_u64(hi_a),
-            //hi_b: F::from_canonical_u64(hi_b),
         }
     }
 

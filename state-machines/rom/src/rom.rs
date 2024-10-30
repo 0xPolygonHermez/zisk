@@ -5,7 +5,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
-use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM, SRC_IND};
+use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
 use zisk_pil::{
     Pilout, RomL2Row, RomL2Trace, RomM1Row, RomM1Trace, RomS0Row, RomS0Trace, MAIN_AIRGROUP_ID,
     MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_L_AIR_IDS, ROM_M_AIR_IDS, ROM_S_AIR_IDS,

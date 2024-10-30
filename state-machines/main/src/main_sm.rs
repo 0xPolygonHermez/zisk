@@ -11,7 +11,10 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
+use zisk_core::{
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskOperationType, ZiskRom, ROM_ENTRY,
+    ZISK_OPERATION_TYPE_VARIANTS,
+};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
@@ -201,7 +204,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
-        op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
+        op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64 - 1;
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
@@ -330,10 +333,44 @@ impl<F: PrimeField> MainSM<F> {
         let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
 
         let mut last_row = Main0Row::<F>::default();
-        for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
+
+        // Set row 0
+        let row0 = if segment_id == 0 {
+            Main0Row::<F> {
+                pc: F::from_canonical_u64(ROM_ENTRY),
+                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
+                a_src_imm: F::one(),
+                b_src_imm: F::one(),
+                ..Main0Row::default()
+            }
+        } else {
+            let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
+            let row_previous = emu.step_slice_full_trace(emu_trace_previous);
+
+            Main0Row::<F> {
+                a: row_previous.a,
+                b: row_previous.c,
+                c: row_previous.c,
+                a_offset_imm0: row_previous.a[0],
+                b_offset_imm0: row_previous.c[0],
+                a_imm1: row_previous.a[1],
+                b_imm1: row_previous.c[1],
+                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
+                pc: row_previous.pc,
+                a_src_imm: F::one(),
+                b_src_imm: F::one(),
+                ..Main0Row::default()
+            }
+        };
+
+        iectx.prover_buffer[offset as usize..(offset as usize + Main0Row::<F>::ROW_SIZE)].copy_from_slice(row0.as_slice());
+
+        // Set row 1..n
+        for chunk_start in (0..(air.num_rows())).step_by(CHUNK_SIZE) {
             // process the steps of the chunk
             let start_pos_abs = std::cmp::min(chunk_start, total_steps);
-            let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
+            let end_pos_abs = std::cmp::min(chunk_start + CHUNK_SIZE, total_steps);
+
             for (i, step) in segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate() {
                 tmp_trace[i] = emu.step_slice_full_trace(step);
             }
@@ -351,7 +388,7 @@ impl<F: PrimeField> MainSM<F> {
 
             //copy the chunk to the prover buffer
             let tmp_buffer = tmp_trace.buffer.as_mut().unwrap();
-            let buffer_offset_chunk = offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
+            let buffer_offset_chunk = offset as usize + (chunk_start + 1) * Main0Row::<F>::ROW_SIZE;
             iectx.prover_buffer[buffer_offset_chunk..buffer_offset_chunk + tmp_buffer.len()]
                 .copy_from_slice(tmp_buffer);
         }
@@ -365,7 +402,6 @@ impl<F: PrimeField> MainSM<F> {
             buffer,
         );
 
-        let main_first_segment = F::from_bool(segment_id == 0);
         let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
         let main_segment = F::from_canonical_usize(segment_id);
 
