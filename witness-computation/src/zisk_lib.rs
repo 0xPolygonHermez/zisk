@@ -1,27 +1,26 @@
-use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_rom::RomSM;
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
-use sm_arith::ArithSM;
-use sm_binary::BinarySM;
-use sm_main::MainSM;
-use sm_mem::MemSM;
+
+use crate::ZiskExecutor;
 
 pub struct ZiskWitness<F: PrimeField> {
+    /// Public inputs path
     pub public_inputs_path: PathBuf,
+
+    /// ROM path
     pub rom_path: PathBuf,
 
-    // Witness computation manager
-    pub wcm: Option<Arc<WitnessManager<F>>>,
+    /// Witness computation manager
+    pub wcm: OnceCell<Arc<WitnessManager<F>>>,
 
-    // State machines
-    pub main_sm: Option<Arc<MainSM<F>>>,
+    /// Executor
+    pub executor: OnceCell<ZiskExecutor<F>>,
 }
 
 impl<F: PrimeField> ZiskWitness<F> {
@@ -38,32 +37,20 @@ impl<F: PrimeField> ZiskWitness<F> {
             );
         }
 
-        Ok(ZiskWitness { public_inputs_path, rom_path, wcm: None, main_sm: None })
+        Ok(ZiskWitness {
+            public_inputs_path,
+            rom_path,
+            wcm: OnceCell::new(),
+            executor: OnceCell::new(),
+        })
     }
 
     fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = WitnessManager::new(pctx, ectx, sctx.clone());
         let wcm = Arc::new(wcm);
 
-        let std = Std::new(wcm.clone());
-
-        let rom_sm = RomSM::new(wcm.clone());
-        let mem_sm = MemSM::new(wcm.clone());
-        let binary_sm = BinarySM::new(wcm.clone(), std.clone());
-        let arith_sm = ArithSM::new(wcm.clone());
-
-        let main_sm = MainSM::new(
-            self.rom_path.clone(),
-            wcm.clone(),
-            sctx,
-            rom_sm,
-            mem_sm,
-            binary_sm,
-            arith_sm,
-        );
-
-        self.wcm = Some(wcm);
-        self.main_sm = Some(main_sm);
+        self.wcm.set(wcm.clone()).ok();
+        self.executor.set(ZiskExecutor::new(wcm, self.rom_path.clone())).ok();
     }
 }
 
@@ -76,15 +63,21 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     ) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
-        self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
+        self.wcm.get().unwrap().start_proof(pctx, ectx, sctx);
     }
 
     fn end_proof(&mut self) {
-        self.wcm.as_ref().unwrap().end_proof();
+        self.wcm.get().unwrap().end_proof();
     }
     fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         timer_start_info!(EXECUTE);
-        self.main_sm.as_ref().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
+        self.executor.get().unwrap().execute(
+            &self.rom_path,
+            &self.public_inputs_path,
+            pctx,
+            ectx,
+            sctx,
+        );
         timer_stop_and_log_info!(EXECUTE);
     }
 
@@ -95,7 +88,7 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
-        self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
+        self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
     fn pilout(&self) -> WitnessPilout {
