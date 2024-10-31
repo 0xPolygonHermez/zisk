@@ -66,6 +66,9 @@ pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: A
     let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
     let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
+    let challenges_guard = pctx.challenges.challenges.read().unwrap();
+    let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+
     let proof_values_guard = pctx.proof_values.values.read().unwrap();
     let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
@@ -79,6 +82,7 @@ pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: A
     let global_constraints_verified = verify_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs,
+        challenges,
         proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
     );
@@ -113,12 +117,16 @@ pub fn get_hint_field_gc<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let challenges_guard = pctx.challenges.challenges.read().unwrap();
+    let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+
     let proof_values_guard = pctx.proof_values.values.read().unwrap();
     let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        challenges,
         proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,
@@ -151,12 +159,16 @@ pub fn get_hint_field_gc_a<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let challenges_guard = pctx.challenges.challenges.read().unwrap();
+    let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+
     let proof_values_guard = pctx.proof_values.values.read().unwrap();
     let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        challenges,
         proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,
@@ -195,12 +207,16 @@ pub fn get_hint_field_gc_m<F: Field>(
         .map(|inner_vec| inner_vec.as_mut_ptr()) // Get a raw pointer to each inner Vec
         .collect();
 
+    let challenges_guard = pctx.challenges.challenges.read().unwrap();
+    let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+
     let proof_values_guard = pctx.proof_values.values.read().unwrap();
     let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
     let raw_ptr = get_hint_field_global_constraints_c(
         sctx.get_global_bin(),
         public_inputs_ptr,
+        challenges,
         proof_values,
         airgroup_values_ptrs.as_mut_ptr() as *mut *mut c_void,
         hint_id,

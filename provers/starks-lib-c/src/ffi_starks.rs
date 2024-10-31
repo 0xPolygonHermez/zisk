@@ -600,16 +600,19 @@ pub fn verify_constraints_c(p_setup: *mut c_void, p_steps_params: *mut c_void) -
 pub fn verify_global_constraints_c(
     p_global_constraints_bin: *mut c_void,
     publics: *mut c_void,
+    challenges: *mut c_void,
     proof_values: *mut c_void,
     airgroupvalues: *mut *mut c_void,
 ) -> bool {
-    unsafe { verify_global_constraints(p_global_constraints_bin, publics, proof_values, airgroupvalues) }
+    unsafe { verify_global_constraints(p_global_constraints_bin, publics, challenges, proof_values, airgroupvalues) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
 pub fn get_hint_field_global_constraints_c(
     p_global_constraints_bin: *mut c_void,
     publics: *mut c_void,
+    challenges: *mut c_void,
     proof_values: *mut c_void,
     airgroupvalues: *mut *mut c_void,
     hint_id: u64,
@@ -621,6 +624,7 @@ pub fn get_hint_field_global_constraints_c(
         get_hint_field_global_constraints(
             p_global_constraints_bin,
             publics,
+            challenges,
             proof_values,
             airgroupvalues,
             hint_id,
@@ -1265,6 +1269,7 @@ pub fn verify_constraints_c(_p_setup: *mut c_void, _p_steps_params: *mut c_void)
 pub fn verify_global_constraints_c(
     _p_global_constraints_bin: *mut c_void,
     _publics: *mut c_void,
+    _challenges: *mut c_void,
     _proof_values: *mut c_void,
     _airgroupvalues: *mut *mut c_void,
 ) -> bool {
@@ -1277,9 +1282,11 @@ pub fn verify_global_constraints_c(
 }
 
 #[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
 pub fn get_hint_field_global_constraints_c(
     _p_global_constraints_bin: *mut c_void,
     _publics: *mut c_void,
+    _challenges: *mut c_void,
     _proof_values: *mut c_void,
     _airgroupvalues: *mut *mut c_void,
     _hint_id: u64,
@@ -1305,7 +1312,7 @@ pub fn set_hint_field_global_constraints_c(
     trace!(
         "{}: ··· {}",
         "ffi     ",
-        "get_hint_field_global_constraints_c: This is a mock call because there is no linked library"
+        "set_hint_field_global_constraints_c: This is a mock call because there is no linked library"
     );
     100000
 }

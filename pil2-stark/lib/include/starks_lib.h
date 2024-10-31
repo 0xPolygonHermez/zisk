@@ -111,8 +111,8 @@
 
     // Global constraints
     // =================================================================================
-    bool verify_global_constraints(void *globalBin, void *publics, void *proofValues, void **airgroupValues);
-    void *get_hint_field_global_constraints(void *globalBin, void *publics, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression);
+    bool verify_global_constraints(void *globalBin, void *publics, void* challenges, void *proofValues, void **airgroupValues);
+    void *get_hint_field_global_constraints(void *globalBin, void *publics, void* challenges, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression);
     uint64_t set_hint_field_global_constraints(void* p_globalinfo_bin, void *proofValues, void *values, uint64_t hintId, char *hintFieldName);
     
     // Debug functions

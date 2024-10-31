@@ -495,13 +495,13 @@ void *verify_constraints(void *pSetupCtx, void* stepsParams)
 
 // Global Constraints
 // =================================================================================
-bool verify_global_constraints(void* p_globalinfo_bin, void *publics, void *proofValues, void **airgroupValues) {
-    return verifyGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues);
+bool verify_global_constraints(void* p_globalinfo_bin, void *publics, void *challenges, void *proofValues, void **airgroupValues) {
+    return verifyGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues);
 }
 
-void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
+void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, void *challenges, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
 {
-    HintFieldValues hintFieldValues = getHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
+    HintFieldValues hintFieldValues = getHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
     return new HintFieldValues(hintFieldValues);
 }
 

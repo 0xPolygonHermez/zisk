@@ -459,19 +459,21 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z25verify_global_constraintsPvS_S_PS_"]
+    #[link_name = "\u{1}_Z25verify_global_constraintsPvS_S_S_PS_"]
     pub fn verify_global_constraints(
         globalBin: *mut ::std::os::raw::c_void,
         publics: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
         proofValues: *mut ::std::os::raw::c_void,
         airgroupValues: *mut *mut ::std::os::raw::c_void,
     ) -> bool;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z33get_hint_field_global_constraintsPvS_S_PS_mPcb"]
+    #[link_name = "\u{1}_Z33get_hint_field_global_constraintsPvS_S_S_PS_mPcb"]
     pub fn get_hint_field_global_constraints(
         globalBin: *mut ::std::os::raw::c_void,
         publics: *mut ::std::os::raw::c_void,
+        challenges: *mut ::std::os::raw::c_void,
         proofValues: *mut ::std::os::raw::c_void,
         airgroupValues: *mut *mut ::std::os::raw::c_void,
         hintId: u64,

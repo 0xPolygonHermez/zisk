@@ -11,6 +11,7 @@ proofval value2;
 private function checkProofValues()
 {
     mod * value1 - value2 === 0;
+    std_alpha - std_alpha === 0;
 }
 
 on final proof checkProofValues();

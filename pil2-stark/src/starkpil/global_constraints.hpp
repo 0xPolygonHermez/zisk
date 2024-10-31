@@ -6,7 +6,7 @@
 
 using json = nlohmann::json;
 
-void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* publics, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, ParserArgs &parserArgs, ParserParams &parserParams) {
+void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* publics, Goldilocks::Element* challenges, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, ParserArgs &parserArgs, ParserParams &parserParams) {
 
     uint8_t* ops = &parserArgs.ops[parserParams.opsOffset];
     uint16_t* args = &parserArgs.args[parserParams.argsOffset];
@@ -114,38 +114,80 @@ void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* p
                 break;
             }
             case 15: {
+                // OPERATION WITH DEST: tmp3 - SRC0: challenge - SRC1: tmp1
+                Goldilocks3::op_31_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &challenges[args[i_args + 2]*FIELD_EXTENSION], &tmp1[args[i_args + 3]]);
+                i_args += 4;
+                break;
+            }
+            case 16: {
+                // OPERATION WITH DEST: tmp3 - SRC0: challenge - SRC1: public
+                Goldilocks3::op_31_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &challenges[args[i_args + 2]*FIELD_EXTENSION], &publics[args[i_args + 3]]);
+                i_args += 4;
+                break;
+            }
+            case 17: {
+                // OPERATION WITH DEST: tmp3 - SRC0: challenge - SRC1: number
+                Goldilocks3::op_31_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &challenges[args[i_args + 2]*FIELD_EXTENSION], &numbers_[args[i_args + 3]]);
+                i_args += 4;
+                break;
+            }
+            case 18: {
                 // OPERATION WITH DEST: tmp3 - SRC0: tmp3 - SRC1: tmp3
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &tmp3[args[i_args + 2] * FIELD_EXTENSION], &tmp3[args[i_args + 3] * FIELD_EXTENSION]);
                 i_args += 4;
                 break;
             }
-            case 16: {
+            case 19: {
                 // OPERATION WITH DEST: tmp3 - SRC0: tmp3 - SRC1: airgroupvalue
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &tmp3[args[i_args + 2] * FIELD_EXTENSION], &airgroupValues[args[i_args + 3]][args[i_args + 4] * FIELD_EXTENSION]);
                 i_args += 5;
                 break;
             }
-            case 17: {
+            case 20: {
                 // OPERATION WITH DEST: tmp3 - SRC0: tmp3 - SRC1: proofvalue
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &tmp3[args[i_args + 2] * FIELD_EXTENSION], &proofValues[args[i_args + 3] * FIELD_EXTENSION]);
                 i_args += 4;
                 break;
             }
-            case 18: {
+            case 21: {
+                // OPERATION WITH DEST: tmp3 - SRC0: tmp3 - SRC1: challenge
+                Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &tmp3[args[i_args + 2] * FIELD_EXTENSION], &challenges[args[i_args + 3]*FIELD_EXTENSION]);
+                i_args += 4;
+                break;
+            }
+            case 22: {
                 // OPERATION WITH DEST: tmp3 - SRC0: airgroupvalue - SRC1: airgroupvalue
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &airgroupValues[args[i_args + 2]][args[i_args + 3] * FIELD_EXTENSION], &airgroupValues[args[i_args + 4]][args[i_args + 5] * FIELD_EXTENSION]);
                 i_args += 6;
                 break;
             }
-            case 19: {
+            case 23: {
                 // OPERATION WITH DEST: tmp3 - SRC0: airgroupvalue - SRC1: proofvalue
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &airgroupValues[args[i_args + 2]][args[i_args + 3] * FIELD_EXTENSION], &proofValues[args[i_args + 4] * FIELD_EXTENSION]);
                 i_args += 5;
                 break;
             }
-            case 20: {
+            case 24: {
+                // OPERATION WITH DEST: tmp3 - SRC0: airgroupvalue - SRC1: challenge
+                Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &airgroupValues[args[i_args + 2]][args[i_args + 3] * FIELD_EXTENSION], &challenges[args[i_args + 4]*FIELD_EXTENSION]);
+                i_args += 5;
+                break;
+            }
+            case 25: {
                 // OPERATION WITH DEST: tmp3 - SRC0: proofvalue - SRC1: proofvalue
                 Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &proofValues[args[i_args + 2] * FIELD_EXTENSION], &proofValues[args[i_args + 3] * FIELD_EXTENSION]);
+                i_args += 4;
+                break;
+            }
+            case 26: {
+                // OPERATION WITH DEST: tmp3 - SRC0: proofvalue - SRC1: challenge
+                Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &proofValues[args[i_args + 2] * FIELD_EXTENSION], &challenges[args[i_args + 3]*FIELD_EXTENSION]);
+                i_args += 4;
+                break;
+            }
+            case 27: {
+                // OPERATION WITH DEST: tmp3 - SRC0: challenge - SRC1: challenge
+                Goldilocks3::op_pack(1, args[i_args], &tmp3[args[i_args + 1] * FIELD_EXTENSION], &challenges[args[i_args + 2]*FIELD_EXTENSION], &challenges[args[i_args + 3]*FIELD_EXTENSION]);
                 i_args += 4;
                 break;
             }
@@ -167,11 +209,11 @@ void calculateGlobalExpression(Goldilocks::Element* dest, Goldilocks::Element* p
 }
 
 
-bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, ParserArgs &parserArgs, ParserParams &parserParams) {
+bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element* challenges, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, ParserArgs &parserArgs, ParserParams &parserParams) {
 
     Goldilocks::Element dest[parserParams.destDim];
 
-    calculateGlobalExpression(dest, publics, proofValues, airgroupValues, parserArgs, parserParams);
+    calculateGlobalExpression(dest, publics, challenges, proofValues, airgroupValues, parserArgs, parserParams);
 
     bool isValidConstraint = true;
     if(parserParams.destDim == 1) {
@@ -199,7 +241,7 @@ bool verifyGlobalConstraint(Goldilocks::Element* publics, Goldilocks::Element* p
 }
 
   
-bool verifyGlobalConstraints(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues)
+bool verifyGlobalConstraints(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element* challenges, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues)
 {
 
     std::vector<ParserParams> globalConstraintsInfo = globalConstraintsBin.constraintsInfoDebug;
@@ -210,7 +252,7 @@ bool verifyGlobalConstraints(ExpressionsBin &globalConstraintsBin, Goldilocks::E
         cout << "--------------------------------------------------------" << endl;
         cout << globalConstraintsInfo[i].line << endl;
         cout << "--------------------------------------------------------" << endl;
-        if(!verifyGlobalConstraint(publicInputs, proofValues, airgroupValues, globalConstraintsBin.expressionsBinArgsConstraints, globalConstraintsInfo[i])) {
+        if(!verifyGlobalConstraint(publicInputs, challenges, proofValues, airgroupValues, globalConstraintsBin.expressionsBinArgsConstraints, globalConstraintsInfo[i])) {
             validGlobalConstraints = false;
         };
     }
@@ -219,7 +261,7 @@ bool verifyGlobalConstraints(ExpressionsBin &globalConstraintsBin, Goldilocks::E
 }
 
 
-HintFieldValues getHintFieldGlobalConstraint(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, uint64_t hintId, std::string hintFieldName, bool print_expression) {
+HintFieldValues getHintFieldGlobalConstraint(ExpressionsBin &globalConstraintsBin, Goldilocks::Element* publicInputs, Goldilocks::Element* challenges, Goldilocks::Element* proofValues, Goldilocks::Element** airgroupValues, uint64_t hintId, std::string hintFieldName, bool print_expression) {
    
 
     if(globalConstraintsBin.hints.size() == 0) {
@@ -263,7 +305,7 @@ HintFieldValues getHintFieldGlobalConstraint(ExpressionsBin &globalConstraintsBi
                 cout << "the expression with id: " << hintFieldVal.id << " " << globalConstraintsBin.expressionsInfo[hintFieldVal.id].line << endl;
             }
            
-            calculateGlobalExpression(hintFieldInfo.values, publicInputs, proofValues, airgroupValues, globalConstraintsBin.expressionsBinArgsExpressions, globalConstraintsBin.expressionsInfo[hintFieldVal.id]);
+            calculateGlobalExpression(hintFieldInfo.values, publicInputs, challenges, proofValues, airgroupValues, globalConstraintsBin.expressionsBinArgsExpressions, globalConstraintsBin.expressionsInfo[hintFieldVal.id]);
         } else if (hintFieldVal.operand == opType::public_) {
             hintFieldInfo.size = 1;
             hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
