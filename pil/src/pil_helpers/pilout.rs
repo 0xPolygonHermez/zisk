@@ -2,7 +2,7 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+pub const PILOUT_HASH: &[u8] = b"ZiskContinuations1-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -24,11 +24,7 @@ pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
 
-pub const ROM_S_AIR_IDS: &[usize] = &[0];
-
-pub const ROM_M_AIR_IDS: &[usize] = &[1];
-
-pub const ROM_L_AIR_IDS: &[usize] = &[2];
+pub const ROM_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_AIR_IDS: &[usize] = &[0];
 
@@ -44,7 +40,7 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("ZiskContinuations1", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
 
@@ -52,9 +48,7 @@ impl Pilout {
 
         let air_group = pilout.add_air_group(Some("Rom"));
 
-        air_group.add_air(Some("RomS"), 65536);
-        air_group.add_air(Some("RomM"), 4194304);
-        air_group.add_air(Some("RomL"), 67108864);
+        air_group.add_air(Some("Rom"), 1048576);
 
         let air_group = pilout.add_air_group(Some("Binary"));
 

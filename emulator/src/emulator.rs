@@ -195,7 +195,7 @@ impl ZiskEmulator {
             let par_emu_options = ParEmuOptions::new(
                 num_threads,
                 thread_id,
-                op_sizes[ZiskOperationType::None as usize] as usize,
+                options.trace_steps.unwrap() as usize,
                 op_sizes,
             );
 
@@ -216,6 +216,10 @@ impl ZiskEmulator {
             }
         });
 
+        println!("emu_traces[0][0].len={}", emu_traces[0][0].steps.len());
+        println!("emu_traces[0][0].len={}", emu_traces[1][0].steps.len());
+        println!("emu_slices={:?}", emu_slices.lock().unwrap());
+
         let capacity = emu_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
         for i in 0..capacity {
@@ -233,10 +237,10 @@ impl ZiskEmulator {
         for vec_trace in &vec_traces {
             emu_slices.add(
                 ZiskOperationType::None,
-                vec_trace.start.pc,
-                vec_trace.start.sp,
-                vec_trace.start.c,
-                vec_trace.start.step,
+                vec_trace.start_state.pc,
+                vec_trace.start_state.sp,
+                vec_trace.start_state.c,
+                vec_trace.start_state.step,
             );
         }
 
