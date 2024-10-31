@@ -45,7 +45,6 @@ pub struct ZiskExecutor<F: PrimeField> {
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
-    const BLOCK_SIZE: usize = 2usize.pow(21);
     const NUM_THREADS: usize = 8;
 
     pub fn new(wcm: Arc<WitnessManager<F>>, rom_path: PathBuf) -> Self {
@@ -103,14 +102,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
-        // Create a thread pool to manage the execution of all the state machines related to the
-        // execution process
+        let air_main = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
             elf: Some(rom_path.to_path_buf().display().to_string()),
             inputs: Some(public_inputs_path.display().to_string()),
-            trace_steps: Some(Self::BLOCK_SIZE as u64),
+            trace_steps: Some(air_main.num_rows() as u64 - 1),
             ..EmuOptions::default()
         };
 
@@ -128,7 +126,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // machine. We aim to track the starting point of execution for every N instructions
         // across different operation types. Currently, we are only collecting data for
         // Binary and BinaryE operations.
-        let air_main = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         let air_binary = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_e =
             pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
@@ -186,7 +183,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
                 _ => panic!("Invalid operation type"),
             };
-            let segmen_id = match emu_slice.op_type {
+            let segment_id = match emu_slice.op_type {
                 ZiskOperationType::None => {
                     main_segnent_id += 1;
                     Some(main_segnent_id - 1)
@@ -201,7 +198,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     offset,
                     emu_slice.op_type,
                     emu_slice.emu_trace_start.clone(),
-                    segmen_id,
+                    segment_id,
                     global_idx,
                     None,
                 ));
