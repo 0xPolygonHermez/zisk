@@ -10,6 +10,10 @@ function sum_proves(const int name, const int opid, const expr cols[], const exp
     update_piop_sum(name, 1, [opid], opid, mul, cols, is_direct);
 }
 
+function sum(const int name, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
+    update_piop_sum(name, 2, [opid], opid, mul, cols, is_direct);
+}
+
 function sum_assumes_dynamic(const int name, const int opid[], const expr sumid, const expr cols[], const expr sel = 1) {
     update_piop_sum(name, 0, opid, sumid, sel, cols);
 }
@@ -73,9 +77,15 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int is_
         }
 
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
-        // proves and assumes to verify at the end that all of them match (except for the is_direct case)
-        const string name_str = proves ? "proves" : "assumes";
-        proof.std.gsum.`id${opid[i]}`.`${name_str}`++;
+        // proves and assumes to verify at the end that all of them match
+        if (proves == 2) {
+            // proves = 2 marks that the user is responsible for the use of proves and assumes
+            proof.std.gsum.`id${opid[i]}`.proves++;
+            proof.std.gsum.`id${opid[i]}`.assumes++;
+        } else {
+            const string name_str = proves ? "proves" : "assumes";
+            proof.std.gsum.`id${opid[i]}`.`${name_str}`++;
+        }
     }
 }
 

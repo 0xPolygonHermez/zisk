@@ -72,7 +72,7 @@ private function initial_checks_prod(int proves, int opid, expr cols[], int is_d
     }
 
     // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
-    // proves and assumes to verify at the end that all of them match (except for the is_direct case)
+    // proves and assumes to verify at the end that all of them match
     const string name_str = proves ? "proves" : "assumes";
     proof.std.gprod.`id${opid}`.`${name_str}`++;
 }

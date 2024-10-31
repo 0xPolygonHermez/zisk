@@ -45,7 +45,7 @@ function permutation(const int opid, const expr cols[], const expr sel = 1, int 
 
     switch (bus_type) {
         case PIOP_BUS_SUM:
-            sum_proves(name, opid, cols, sel);
+            sum(name, opid, cols, sel);
         case PIOP_BUS_PROD:
             error("Free permutation with product bus is not supported");
         default:
