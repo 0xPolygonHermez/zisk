@@ -4,7 +4,8 @@ require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
 require "mem/pil/mem.pil"
-// require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align_rom.pil"
 
 const int OPERATION_BUS_ID = 5000;
 airgroup Main {
@@ -13,6 +14,14 @@ airgroup Main {
 
 airgroup Mem {
     Mem(N: 2**21, RC: 2);
+}
+
+airgroup MemAlign {
+    MemAlign(N: 2**21);
+}
+
+airgroup MemAlignRom {
+    MemAlignRom(disable_fixed: 0);
 }
 
 airgroup Binary {

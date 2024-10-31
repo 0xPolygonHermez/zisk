@@ -1,58 +1,57 @@
 require "std_permutation.pil"
+require "std_lookup.pil"
 require "std_range_check.pil"
-require "mem.pil"
 
-airtemplate MemAlign(int N = 2**10, const int MEM_BYTES = 8) {
-    // Problem to solve:
-    // =================
-    // We are given an op (rd,wr), an addr, a step and a bytes-width (8,4,2,1) and we should prove that the memory access is correct.
-    // Note: Either the original addr is not a multiple of 8 or width < 8 to ensure it is a non-aligned access that should be
-    //       handled by this component.
+// Problem to solve:
+// =================
+// We are given an op (rd,wr), an addr, a step and a bytes-width (8,4,2,1) and we should prove that the memory access is correct.
+// Note: Either the original addr is not a multiple of 8 or width < 8 to ensure it is a non-aligned access that should be
+//       handled by this component.
 
-    /*
+/*
     We will model it as a very specified processor with 8 registers and a very limited instruction set.
 
     This processor is limited to 4 possible subprograms:
 
     1] Read operation that spans one memory word w = [w_0, w_1]:
-                  w_0               w_1
-           +---+===+===+===+ +===+---+---+---+
-           | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
-           +---+===+===+===+ +===+---+---+---+
-               |<------ v ------>|
-    
+                    w_0               w_1
+            +---+===+===+===+ +===+---+---+---+
+            | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
+            +---+===+===+===+ +===+---+---+---+
+                |<------ v ------>|
+
     [R] In the first clock cycle, we perform an aligned read to w
     [V] In the second clock cycle, we return the demanded value v from w
 
     2] Write operation that spans one memory word w = [w_0, w_1]:
-                  w_0               w_1
-           +---+---+---+---+ +---+===+===+---+
-           | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
-           +---+---+---+---+ +---+===+===+---+
-                                 |<- v ->|
-    
+                    w_0               w_1
+            +---+---+---+---+ +---+===+===+---+
+            | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
+            +---+---+---+---+ +---+===+===+---+
+                                    |<- v ->|
+
     [R] In the first clock cycle, we perform an aligned read to w
     [W] In the second clock cycle, we compute an aligned write of v to w
     [V] In the third clock cycle, we restore the demanded value from w
 
     3] Read operation that spans two memory words w1 = [w1_0, w1_1] and w2 = [w2_0, w2_1]:
-                 w1_0              w1_1                w2_0              w2_1       
-           +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
-           | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |   | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
-           +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
-                                 |<---------------- v ---------------->|
-    
+                    w1_0              w1_1                w2_0              w2_1       
+            +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
+            | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |   | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
+            +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
+                                    |<---------------- v ---------------->|
+
     [R] In the first clock cycle, we perform an aligned read to w1
     [V] In the second clock cycle, we return the demanded value v from w1 and w2
     [R] In the third clock cycle, we perform an aligned read to w2
 
     4] Write operation that spans two memory words w1 = [w1_0, w1_1] and w2 = [w2_0, w2_1]:
-                 w1_0              w1_1                w2_0              w2_1       
-           +---+===+===+===+ +===+===+===+===+   +===+---+---+---+ +---+---+---+---+
-           | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |   | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
-           +---+===+===+===+ +===+===+===+===+   +===+---+---+---+ +---+---+---+---+
-               |<---------------- v ---------------->|
-    
+                    w1_0              w1_1                w2_0              w2_1       
+            +---+===+===+===+ +===+===+===+===+   +===+---+---+---+ +---+---+---+---+
+            | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |   | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
+            +---+===+===+===+ +===+===+===+===+   +===+---+---+---+ +---+---+---+---+
+                |<---------------- v ---------------->|
+
     [R] In the first clock cycle, we perform an aligned read to w1
     [W] In the second clock cycle, we compute an aligned write of v to w1
     [V] In the third clock cycle, we restore the demanded value from w1 and w2
@@ -61,77 +60,114 @@ airtemplate MemAlign(int N = 2**10, const int MEM_BYTES = 8) {
 
     Example:
     ==========================================================
-                    (offset = 6, width = 4)
-           +----+----+----+----+----+----+----+----+
-           | R7 | R6 | R5 | R4 | R3 | R2 | R1 | R0 | [R1] (assume, up_to_down) sel = [1,1,1,1,1,1,0,0]
-           +----+----+----+----+----+----+----+----+
-                           ⇓
-           +----+----+----+----+----+----+====+====+
-           | W7 | W6 | W5 | W4 | W3 | W2 | W1 | W0 | [W1] (assume, up_to_down) sel = [0,0,0,0,0,0,1,1]
-           +----+----+----+----+----+----+====+====+
-                           ⇓
-           +====+====+----+----+----+----+====+====+
-           | V1 | V0 | V7 | V6 | V5 | V4 | V3 | V2 | [V] (prove) (shift (offset + width) % 8)
-           +====+====+----+----+----+----+====+====+
-                           ⇓
-           +====+====+----+----+----+----+----+----+
-           | W7 | W6 | W5 | W4 | W3 | W2 | W1 | W0 | [W2] (assume, down_to_up) sel = [1,1,0,0,0,0,0,0]
-           +====+====+----+----+----+----+----+----+
-                           ⇓
-           +----+----+----+----+----+----+----+----+
-           | R7 | R6 | R5 | R4 | R3 | R2 | R1 | R0 | [R2] (assume, down_to_up) sel = [0,0,1,1,1,1,1,1]
-           +----+----+----+----+----+----+----+----+
-    */
+            (offset = 6, width = 4)
+    +----+----+----+----+----+----+----+----+
+    | R7 | R6 | R5 | R4 | R3 | R2 | R1 | R0 | [R1] (assume, up_to_down) sel = [1,1,1,1,1,1,0,0]
+    +----+----+----+----+----+----+----+----+
+                    ⇓
+    +----+----+----+----+----+----+====+====+
+    | W7 | W6 | W5 | W4 | W3 | W2 | W1 | W0 | [W1] (assume, up_to_down) sel = [0,0,0,0,0,0,1,1]
+    +----+----+----+----+----+----+====+====+
+                    ⇓
+    +====+====+----+----+----+----+====+====+
+    | V1 | V0 | V7 | V6 | V5 | V4 | V3 | V2 | [V] (prove) (shift (offset + width) % 8) sel = [0,0,0,0,0,0,1,0] (*)
+    +====+====+----+----+----+----+====+====+
+                    ⇓
+    +====+====+----+----+----+----+----+----+
+    | W7 | W6 | W5 | W4 | W3 | W2 | W1 | W0 | [W2] (assume, down_to_up) sel = [1,1,0,0,0,0,0,0]
+    +====+====+----+----+----+----+----+----+
+                    ⇓
+    +----+----+----+----+----+----+----+----+
+    | R7 | R6 | R5 | R4 | R3 | R2 | R1 | R0 | [R2] (assume, down_to_up) sel = [0,0,1,1,1,1,1,1]
+    +----+----+----+----+----+----+----+----+
 
-// n-byte address, real address = addr * MEM_BYTES
+    (*) In this step, we use the selectors to indicate the "scanning" needed to form the bus value:
+        v_0 = sel[0] * [V1,V0,V7,V6] + sel[1] * [V0,V7,V6,V5] + sel[2] * [V7,V6,V5,V4] + sel[3] * [V6,V5,V4,V3]
+        v_1 = sel[4] * [V5,V4,V3,V2] + sel[5] * [V4,V3,V2,V1] + sel[6] * [V3,V2,V1,V0] + sel[7] * [V2,V1,V0,V7]
+    Notice that it is enough with 8 combinations.
+*/
 
-    col witness step;
+airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES = 8, const int CHUNK_BITS = 8) {
+    const int MEM_HALF_BYTES = MEM_BYTES / 2;
 
-    col witness pc;
-    col witness addr;           // n-byte address, real address = addr * MEM_BYTES
-    col witness offset;
-    col witness width;
-    col witness reset;
+    col witness pc;             // line of the program to execute
+    col witness addr;           // MEM_BYTES-byte address, real address = addr * MEM_BYTES
+    col witness offset;         // 0..7, position at which the operation starts
+    col witness width;          // 1,2,4,8, width of the operation
+    col witness reset;          // 1 at the beginning of the operation (indicating an address reset), 0 otherwise
     col witness wr;             // 1 if the operation is a write, 0 otherwise
     col witness sel_up_to_down; // 1 if the next value is the current value (e.g. R -> W)
     col witness sel_down_to_up; // 1 if the next value is the previous value (e.g. W -> R)
     col witness reg[MEM_BYTES]; // Register values, 1 byte each
-    col witness sel[MEM_BYTES];
+    col witness sel[MEM_BYTES]; // Selectors, 1 if the value is used, 0 otherwise
 
-    for (int i = 0; i < MEM_BYTES; i++) {
-        range_check(reg[i], 0, 2**8-1);
+    // 1] Ensure the MemAlign follows the program
+
+    // Registers should be bytes and be shuch that:
+    //  - reg' == reg in transitions R -> V, R -> W, W -> V,
+    //  - 'reg == reg in transitions V <- W, W <- R,
+    // in any case, sel_up_to_down,sel_down_to_up are 0 in [V] steps.
+    for (int i = 0; i < MEM_BYTES; i++) { 
+        range_check(reg[i], 0, 2**CHUNK_BITS-1);
 
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
         ('reg[i] - reg[i]) * sel[i] * sel_down_to_up === 0;
     }
 
-    // Assume aligned memory accesses against the Memory component
+    col fixed L1 = [1,0...];
+    L1 * pc === 0; // The program should start at the first line
+
+    // We compress selectors, so we should ensure they are binary
+    for (int i = 0; i < MEM_BYTES; i++) {
+        sel[i] * (1 - sel[i]) === 0;
+    }
+    wr * (1 - wr) === 0;
+    reset * (1 - reset) === 0;
+    sel_up_to_down * (1 - sel_up_to_down) === 0;
+    sel_down_to_up * (1 - sel_down_to_up) === 0;
+
+    expr flags = 0;
+    for (int i = 0; i < MEM_BYTES; i++) {
+        flags += sel[i] * 2**i;
+    }
+    flags += wr * 2**MEM_BYTES + reset * 2**(MEM_BYTES + 1) + sel_up_to_down * 2**(MEM_BYTES + 2) + sel_down_to_up * 2**(MEM_BYTES + 3);
+
+    lookup_assumes(MEM_ALIGN_ROM_ID, [pc, pc'-pc, (addr-'addr)*(1-reset), offset, width, flags]);
+
+    // 2] Assume aligned memory accesses against the Memory component
     const expr sel_assume = sel_up_to_down + sel_down_to_up;
+    
+    // Offset should be 0 in aligned memory accesses, but this is ensured by the rom
+    // Width should be 8 in aligned memory accesses, but this is ensured by the rom
 
-    expr assume_val[2];
-    assume_val[0] = 0;
-    assume_val[1] = 0;
-    for (int i = 0; i < 4; i++) {
-        assume_val[0] += reg[i] * 2**i;
-        assume_val[1] += reg[i + 4] * 2**i;
-    }
-    permutation_assumes(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...assume_val], sel: sel_assume);
-
-    // Prove unaligned memory accesses against the Main component
-    const expr sel_prove = 1 - sel_assume;
-
-    expr prove_val[2];
-    prove_val[0] = 0;
-    prove_val[1] = 0;
-    for (int i = 0; i < 4; i++) {
-        expr _prove_val0 = 0;
-        expr _prove_val1 = 0;
-        for (int j = i; j < i+4; j++) {
-            _prove_val0 += reg[j] * 2**(j-i);
-            _prove_val1 += reg[(j+4) % 8] * 2**(j-i);
+    // On assume steps, we reconstruct the value from the registers directly
+    expr assume_val[RC];
+    for (int i = 0; i < RC; i++) {
+        assume_val[i] = 0;
+        for (int j = 0; j < MEM_HALF_BYTES; j++) {
+            assume_val[i] += reg[j + i * MEM_HALF_BYTES] * 2**j;
         }
-        prove_val[0] = sel[i] * _prove_val0;
-        prove_val[1] = sel[i] * _prove_val1;
     }
-    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, width, ...prove_val], sel: sel_prove);
+
+    // 3] Prove unaligned memory accesses against the Main component
+    col witness sel_prove;
+
+    sel_prove * sel_assume === 0; // Disjoint selectors
+
+    // On prove steps, we reconstruct the value in the correct manner chosen by the selectors
+    expr prove_val[RC];
+    for (int i = 0; i < RC; i++) {
+        prove_val[i] = 0;
+        for (int j = 0; j < MEM_HALF_BYTES; j++) {
+            expr _prove_val = 0;
+            for (int k = j; k < j + MEM_HALF_BYTES; k++) {
+                _prove_val += reg[(k + i * MEM_HALF_BYTES) % MEM_BYTES] * 2**(k-j);
+            }
+            prove_val[i] += sel[j + i * MEM_HALF_BYTES] * _prove_val;
+        }
+    }
+
+    // We prove and assume with the same permutation check but with disjoint and different sign selectors
+    col witness step;
+    permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES + offset, step, width, ...prove_val], sel: sel_prove - sel_assume);
 }
