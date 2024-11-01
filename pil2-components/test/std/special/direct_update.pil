@@ -2,46 +2,42 @@ require "std_permutation.pil";
 require "std_lookup.pil";
 require "std_common.pil";
 
+const int OP_BUS_ID1 = 100;
+const int OPID1 = 333;
 public input1[10];
 
 airtemplate DirectUpdatePermutation(const int N = 2**4) {
-
-    const int OP_BUS_ID = 100;
-    const int OPID = 333;
-
     col witness a[2],b[2],c[2];
     col witness flag;
     col witness perform_operation;
-    permutation_proves(OP_BUS_ID, [OPID, ...a, ...b, ...c, flag], sel: perform_operation);
-
-    for (int i = 0; i < length(input1)/2; i++) {
-        direct_update(OP_BUS_ID, [OPID, 0, 0, i, 0, input1[2*i], input1[2*i+1], 0], proves: 0, bus_type: PIOP_BUS_PROD);
-    }
+    permutation_proves(OP_BUS_ID1, [OPID1, ...a, ...b, ...c, flag], sel: perform_operation, bus_type: PIOP_BUS_PROD);
 }
-
-public input2[20];
-
-airtemplate DirectUpdateLookup(const int N = 2**5) {
-
-    const int OP_BUS_ID = 200;
-    const int OPID = 444;
-
-    for (int i = 0; i < length(input2)/2; i++) {
-        direct_update(OP_BUS_ID, [OPID, 0, 0, i, 0, input2[2*i], input2[2*i+1], 0])
-    }
-
-    col witness a[2],b[2],c[2];
-    col witness flag;
-    col witness perform_operation;
-    lookup_assumes(OP_BUS_ID, [OPID, ...a, ...b, ...c, flag], sel: perform_operation);
-}
-
-// TODO: Do an example with multiple elements in the direct_update
 
 airgroup Permutation {
     DirectUpdatePermutation();
+
+    for (int i = 0; i < length(input1)/2; i++) {
+        direct_update(OP_BUS_ID1, [OPID1, 0, 0, i, 0, input1[2*i], input1[2*i+1], 0], proves: 0, bus_type: PIOP_BUS_PROD);
+    }
+}
+
+const int OP_BUS_ID2 = 200;
+const int OPID2 = 444;
+public input2[20];
+
+airtemplate DirectUpdateLookup(const int N = 2**5) {
+    col witness a[2],b[2],c[2];
+    col witness flag;
+    col witness perform_operation;
+    lookup_assumes(OP_BUS_ID2, [OPID2, ...a, ...b, ...c, flag], sel: perform_operation);
 }
 
 airgroup Lookup {
+    for (int i = 0; i < length(input2)/2; i++) {
+        direct_update(OP_BUS_ID2, [OPID2, 0, 0, i, 0, input2[2*i], input2[2*i+1], 0])
+    }
+
     DirectUpdateLookup();
 }
+
+// TODO: Do an example with multiple elements in the direct_update

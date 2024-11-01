@@ -69,7 +69,7 @@ mkdir -p ./pil2-components/test/std/lookup/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/liblookup.so \
      --proving-key ./pil2-components/test/std/lookup/build/provingKey \
-     --output-dir ./pil2-components/test/std/lookup/build -d \
+     --output-dir ./pil2-components/test/std/lookup/build/proofs -d \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build/proofs
 
 ------------------------------------

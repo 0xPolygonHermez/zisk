@@ -1,3 +1,14 @@
+require "std_constants.pil";
+
+function set_bus_type(const int bus_type) {
+    if (bus_type != PIOP_BUS_SUM && bus_type != PIOP_BUS_PROD) {
+        error(`Unknown bus type: ${bus_type}`);
+    }
+
+    // Set the bus type for the std components
+    DEFAULT_PERMUTATION_BUS_TYPE = bus_type;
+}
+
 function init_challenges() {
     if (!defined(std_alpha)) {
         challenge stage(2) std_alpha;

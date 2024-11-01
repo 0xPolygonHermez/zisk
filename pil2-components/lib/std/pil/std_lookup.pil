@@ -15,6 +15,13 @@ function lookup_proves(const int opid, const expr cols[], const expr mul = 1, in
     sum_proves(name, opid, cols, mul);
 }
 
+// Lookup with freedom in whether to assume or prove based on the provided selector
+function lookup(const int opid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
+
+    sum_proves(name, opid, cols, mul);
+}
+
 function lookup_assumes_dynamic(const int opid[], const expr sumid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
