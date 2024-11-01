@@ -240,11 +240,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //
 
     const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
-    permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, c[0] * (1 - main_last_segment), c[1] * (1 - main_last_segment)],
-                                        sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
+    // permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, c[0] * (1 - main_last_segment), c[1] * (1 - main_last_segment)],
+    //                                     sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
+    permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
+                                        sel: SEGMENT_LAST, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
+    permutation_assumes(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
+                                        sel: SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
     flag * (1 - flag) === 0;
-
 
     // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
     // match with main trace.
@@ -265,14 +268,12 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // flag = 0
     // a_src_imm = b_src_imm = 1 (rest flags to 0)
 
-    SEGMENT_L1 * jmp_offset1 === 0;
-    SEGMENT_L1 * jmp_offset2 === 0;
-    SEGMENT_L1 * (rom_flags - 19) === 0; // 19 = 1 + a_src_imm(2) + b_src_imm(16)
+    SEGMENT_L1 * (rom_flags - 19 - set_pc * 1024) === 0; // 19 = 1 + a_src_imm(2) + b_src_imm(16)
     SEGMENT_L1 * (op - 1) === 0;
 
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
 
-    direct_update(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0], bus_type: PIOP_BUS_SUM);
-    direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 4312, 0, 0], bus_type: PIOP_BUS_SUM);
+    direct_update(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0], bus_type: PIOP_BUS_SUM, proves: 1);
+    direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 4312, 0, 0], bus_type: PIOP_BUS_SUM, proves: 0);
 }

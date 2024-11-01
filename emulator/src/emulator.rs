@@ -216,10 +216,6 @@ impl ZiskEmulator {
             }
         });
 
-        println!("emu_traces[0][0].len={}", emu_traces[0][0].steps.len());
-        println!("emu_traces[0][0].len={}", emu_traces[1][0].steps.len());
-        println!("emu_slices={:?}", emu_slices.lock().unwrap());
-
         let capacity = emu_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
         for i in 0..capacity {
