@@ -10,28 +10,25 @@ const int MEMORY_MAX_DIFF = 2**22;
 
 const int MAX_MEM_STEP_OFFSET = 3;
 
-airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2 ** 23, int MEM_BYTES = 8 ) {
+airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID, const int MAX_STEP = 2 ** 23, const int MEM_BYTES = 8) {
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
-    // TODO: airgroup val
-    // airgroupval aggregate(sum) mem_segment;         // aggregate(serial)
-    // airgroupval aggregate(sum) mem_last_segment;    // aggregate(last)
+    airval mem_segment; 
+    airval mem_last_segment;    
 
-    col witness mem_segment;
-    col witness mem_last_segment;
-
+    // ????
     mem_segment === 'mem_segment;
     mem_last_segment === 'mem_last_segment;
 
-
-    col witness addr; // n-byte address, real address = addr * MEM_BYTES
+    col witness addr;        // n-byte address, real address = addr * MEM_BYTES
     col witness step;
-    col witness sel, wr;
+    col witness sel;
+    col witness wr;
     col witness value[RC];
     col witness addr_changes;
 
-    const expr rd = (1 - wr);
+    const expr rd = 1 - wr;
     sel * (1 - sel) === 0;
     wr * (1 - wr) === 0;
 
@@ -61,7 +58,7 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     first_addr_access_is_read * (1 - first_addr_access_is_read) === 0;
     (1 - first_addr_access_is_read) * rd * same_addr === 0;
 
-    for (int index = 0; index < length(value); index = index + 1) {
+    for (int index = 0; index < length(value); index++) {
         same_value * (value[index] - 'value[index])  ===  0;
         first_addr_access_is_read * value[index]  ===  0;
     }
@@ -96,22 +93,26 @@ airtemplate Mem (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MAX_STEP = 2
     // permutation_proves(MEMORY_CONT_ID, [(mem_segment + 1), addr, step, ...value], sel: mem_last_segment * 'SEGMENT_L1); // last row
     // permutation_assumes(MEMORY_CONT_ID, [mem_segment, 0, addr, step, ...value], sel: SEGMENT_L1); // first row
 
-    permutation_proves(MEMORY_ID, cols: [wr, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of MEM_BYTES 
+    // and the width to be exactly MEM_BYTES
+    // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of MEM_BYTES.
+    // These are handled with the Memory Align component
+    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
 
-// TODO: detect non default value but not called, mandatory parameter.
-function mem_load(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
+function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {
+    mem_assumes(id, MEMORY_LOAD_OP, addr, step, step_offset, bytes, value, sel);
+}
+
+function mem_store(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {
+    mem_assumes(id, MEMORY_STORE_OP, addr, step, step_offset, bytes, value, sel);
+}
+
+private function mem_assumes(int id, int mem_op, expr addr, expr step, expr step_offset, expr bytes, expr value[], expr sel) {
     if (step_offset > MAX_MEM_STEP_OFFSET) {
         error("max step_offset ${step_offset} is greater than max value ${MAX_MEM_STEP_OFFSET}");
     }
-    // adding one for first continuation
-    permutation_assumes(id, [MEMORY_LOAD_OP, addr, 1 + ((MAX_MEM_STEP_OFFSET + 1) * step) + step_offset, bytes, ...value], sel:sel);
-}
 
-function mem_store(int id = MEMORY_ID, expr sel = 1, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
-    if (step_offset > MAX_MEM_STEP_OFFSET) {
-        error("max step_offset ${step_offset} is greater than max value ${MAX_MEM_STEP_OFFSET}");
-    }
-    // adding one for first continuation
-    permutation_assumes(id, [MEMORY_STORE_OP, addr,  1 + ((MAX_MEM_STEP_OFFSET + 1) * step), bytes, ...value], sel:sel);
+    // adding 1 at step for first continuation
+    permutation_assumes(id, [mem_op, addr, 1 + ((MAX_MEM_STEP_OFFSET + 1) * step) + step_offset, bytes, ...value], sel: sel);
 }

@@ -1,0 +1,296 @@
+require "std_lookup.pil"
+
+const int MEM_ALIGN_ROM_ID = 133;
+const int MEM_ALIGN_ROM_SIZE = P2_8;
+
+//        PROGRAM SIZE
+// RV        0     2    
+// RWV       1     3   
+// RVR       2     3  
+// RWVWR     3     5      
+//
+// Note1: The offset and width are sufficient to group programs with the same number of operations.
+// Note2: The first instruction is always a read.
+
+airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 8, const int disable_fixed = 0) {
+    if (N < MEM_ALIGN_ROM_SIZE) {
+        error(`N must be at least ${MEM_ALIGN_ROM_SIZE}, but N=${N} was provided`);
+    }
+
+    col witness multiplicity;
+
+    if (disable_fixed) {
+        col fixed _K = [0...];
+        multiplicity * _K === 0;
+
+        println("*** DISABLE_FIXED ***");
+        return;
+    }
+
+    // Not all combinations of offset and width are valid for each program.
+    // Moreover, offset is set to 0 and width to 8 in aligned memory accesses.
+                                                                                                                                 //            size
+    col fixed OFFSET   = [[[0,0]:3, [0,1]:3, [0,2]:3, [0,3]:3, [0,4]:3, [0,5]:2, [0,6]:2, [0,7]],                                // RV     6+6*4+4+4+2  = 40 | 40
+                          [[0,0,0]:3, [0,0,1]:3, [0,0,2]:3, [0,0,3]:3, [0,0,4]:3, [0,0,5]:2, [0,0,6]:2, [0,0,7]],                // RWV    9+9*4+6+6+3  = 60 | 100
+                          [[0,1,0], [0,2,0], [0,3,0], [0,4,0], [0,5,0]:2, [0,6,0]:2, [0,7,0]:3],                                 // RVR    3*4+6+6+9    = 33 | 133
+                          [[0,0,1,0,0], [0,0,2,0,0], [0,0,3,0,0], [0,0,4,0,0], [0,0,5,0,0]:2, [0,0,6,0,0]:2, [0,0,7,0,0]:3]]...; // RWVWR  5*4+10+10+15 = 55 | 188 => N = 2^8
+
+    col fixed WIDTH    = [[[8,1,8,2,8,4], [8,1,8,2,8,4]:4, [8,1,8,2]:2, [8,1]],                                                  // RV
+                          [[8,8,1,8,8,2,8,8,4], [8,8,1,8,8,2,8,8,4]:4, [8,8,1,8,8,2]:2, [8,8,1]],                                // RWV
+                          [[8,8,8]:4, [8,4,8,8,8,8]:2, [8,2,8,8,4,8,8,8,8]],                                                     // RVR
+                          [[8,8,8,8,8]:4, [8,8,4,8,8,8,8,8,8,8]:2, [8,8,2,8,8,8,8,4,8,8,8,8,8,8,8]]]...;                         // RWVWR
+
+    const int psize1 = 40;
+    const int psize2 = 60;
+    const int psize3 = 33;
+    const int psize4 = 55;
+
+    // line | pc | pc'-pc | reset |  addr  | (addr-'addr)*(1-reset) |      
+    //   0  | 0  |   1    |   1   |   X1   |            0           | // (RV)
+    //   1  | 1  |  -1    |   0   |   X1   |            0           | 
+    //   2  | 0  |   3    |   1   |   X2   |            0           | // (RV)
+    //   3  | 3  |  -3    |   0   |   X2   |            0           | 
+    //   4  | 0  |   4    |   1   |   X3   |            0           | // (RV)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          | 
+    //  40  | 0  |  41    |   1   |   X4   |            0           | // (RWV)
+    //  41  | 41 |   1    |   0   |   X4   |            0           | 
+    //  42  | 42 | -42    |   0   |   X4   |            0           | 
+    //  43  | 0  |  44    |   1   |   X5   |            0           | // (RWV)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          | 
+    // 100  | 0  |  101   |   1   |   X6   |            0           | // (RVR)
+    // 101  |101 |   1    |   0   |   X6   |            0           | 
+    // 102  |102 | -102   |   0   |  X6+1  |            1           | 
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          | 
+    // 133  | 0  |  134   |   1   |   X7   |            0           | // (RWVWR)
+    // 134  |134 |   1    |   0   |   X7   |            0           | 
+    // 135  |135 |   1    |   0   |   X7   |            0           | 
+    // 136  |136 |   1    |   0   |  X7+1  |            1           | 
+    // 137  |137 | -137   |   0   |  X7+1  |            1           | 
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          | 
+    // 188  | 0  |   0    |   0   |    0   |            0           | // for padding
+
+    col fixed PC;
+    col fixed DELTA_PC;
+    col fixed DELTA_ADDR;
+    col fixed FLAGS;
+    for (int i = 0; i < N; i++) {
+        const int [offset, width] = [OFFSET[i], WIDTH[i]];
+        int pc = 0;
+        int delta_pc = 0;
+        int delta_addr = 0;
+        int is_write = 0;
+        int reset = 0;
+        int sel[MEM_BYTES];
+        for (int j = 0; j < MEM_BYTES; j++) {
+            sel[j] = 0;
+        }
+        int sel_up_to_down = 0;
+        int sel_down_to_up = 0;
+
+        const int line = i;
+        const int next = i+1;
+        if (line < psize1) // RV
+        {
+            if (line % 2 == 0) {
+                // pc = 0;
+                delta_pc = next;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                sel = get_selectors(offset, width, program: 0);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else {
+                pc = line;
+                delta_pc = -pc;
+                delta_addr = 1;
+                // is_write = 0;
+                // reset = 0;
+                // sel = [0:MEM_BYTES]
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            }
+        } 
+        else if (line < psize1+psize2)  // RWV
+        {
+            if (line % 3 == 0) {        // R
+                // pc = 0;
+                delta_pc = next;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                sel = get_selectors(offset, width, program: 1);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 3 == 1) { // W
+                pc = line;
+                delta_pc = 1;
+                delta_addr = 1;
+                is_write = 0;
+                // reset = 0;
+                sel = get_selectors(offset, width, program: 1, is_write: 1);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else {                    // V
+                pc = line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                // sel = [0:MEM_BYTES]
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            }
+        } 
+        else if (line < psize1+psize2+psize3)
+        {
+            if (line % 3 == 0) {        // R
+                // pc = 0;
+                delta_pc = next;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                sel = get_selectors(offset, width, program: 2);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 3 == 1) { // V
+                pc = line;
+                delta_pc = 1;
+                delta_addr = 1;
+                // is_write = 0;
+                // reset = 0;
+                // sel = [0:MEM_BYTES]
+                // sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else {                    // R
+                pc = line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                sel = get_selectors(offset, width, program: 2);
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            }
+        } 
+        else if (line < psize1+psize2+psize3+psize4) 
+        {
+            if (next % 5 == 0) {        // R
+                // pc = 0;
+                delta_pc = next;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                sel = get_selectors(offset, width, program: 3, is_write: 0, is_first: 1);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (next % 5 == 1) { // W
+                pc = line;
+                delta_pc = 1;
+                delta_addr = 1;
+                is_write = 1;
+                // reset = 0;
+                sel = get_selectors(offset, width, program: 3, is_write: 1, is_first: 1);
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (next % 5 == 2) { // V
+                pc = line;
+                delta_pc = 1;
+                delta_addr = 1;
+                // is_write = 0;
+                // reset = 0;
+                // sel = [0:MEM_BYTES]
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            } else if (next % 5 == 3) { // W
+                pc = line;
+                delta_pc = 1;
+                delta_addr = 1;
+                is_write = 1;
+                // reset = 0;
+                sel = get_selectors(offset, width, program: 3, is_write: 1, is_first: 0);
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            } else {                    // R
+                pc = line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                sel = get_selectors(offset, width, program: 3, is_write: 0, is_first: 0);
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            }
+        }
+
+        PC[i] = pc;
+        DELTA_PC[i] = delta_pc;
+        DELTA_ADDR[i] = delta_addr;
+        FLAGS[i] = 0;
+        for (int j = 0; j < MEM_BYTES; j++) {
+            FLAGS[i] += sel[j] * 2**j;
+        }
+        FLAGS[i] += is_write * 2**MEM_BYTES + reset * 2**(MEM_BYTES + 1) + sel_up_to_down * 2**(MEM_BYTES + 2) + sel_down_to_up * 2**(MEM_BYTES + 3);
+    }
+
+    lookup_proves(MEM_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
+}
+
+private function get_selectors(const int offset, const int width, const int program, const int is_write = 0, const int is_first = 0, const int bytes = 8): int[] {
+    int _sel[bytes];
+    for (int j = 0; j < bytes; j++) {
+        _sel[j] = 0;
+    }
+    
+    switch (program) {
+        case 0: // RV
+            for (int j = 0; j < offset; j++) {
+                _sel[j] = 1;
+            }
+
+        case 1: // RWV
+            if (!is_write) {
+                for (int j = 0; j < offset; j++) {
+                    _sel[j] = 1;
+                }
+            } else {
+                for (int j = offset; j < offset + width; j++) {
+                    _sel[j] = 1;
+                }
+            }
+
+        case 2: // RVR
+            for (int j = 0; j < offset; j++) {
+                _sel[j] = 1;
+            }
+
+        case 3: // RWVWR
+            if (is_first) {
+                if (!is_write) {
+                    for (int j = 0; j < offset; j++) {
+                        _sel[j] = 1;
+                    }
+                } else {
+                    for (int j = offset; j < bytes; j++) {
+                        _sel[j] = 1;
+                    }
+                }
+            } else {
+                const int rem = (offset + width) % bytes;
+                if (is_write) {
+                    for (int j = 0; j < rem; j++) {
+                        _sel[j] = 1;
+                    }
+                } else {
+                    for (int j = rem; j < bytes; j++) {
+                        _sel[j] = 1;
+                    }
+                }
+            }
+
+        default:
+            error(`Invalid program ${program}`);
+    }
+
+    return _sel;
+}
