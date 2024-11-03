@@ -485,7 +485,6 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         if instruction.end {
             self.ctx.inst_ctx.end = true;
-            println!("Emu::step() end of execution steps: {}", self.ctx.inst_ctx.step);
             if options.stats {
                 self.ctx.stats.on_steps(self.ctx.inst_ctx.step);
             }
