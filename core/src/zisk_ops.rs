@@ -22,6 +22,7 @@ pub enum OpType {
     Binary,
     BinaryE,
     Keccak,
+    PubOut,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -29,8 +30,10 @@ impl From<OpType> for ZiskOperationType {
         match op_type {
             OpType::Internal => ZiskOperationType::Internal,
             OpType::Arith | OpType::ArithA32 | OpType::ArithAm32 => ZiskOperationType::Arith,
-            OpType::Binary | OpType::BinaryE => ZiskOperationType::Binary,
+            OpType::Binary => ZiskOperationType::Binary,
+            OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
+            OpType::PubOut => ZiskOperationType::PubOut,
         }
     }
 }
@@ -45,6 +48,7 @@ impl Display for OpType {
             Self::Binary => write!(f, "b"),
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
+            Self::PubOut => write!(f, "PubOut"),
         }
     }
 }
@@ -101,9 +105,10 @@ macro_rules! define_ops {
 		/// All relevant metadata associated with the operation can be efficiently accessed via
 		/// the const methods on this enum.
         #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+        #[repr(u8)]
         pub enum ZiskOp {
             $(
-                $name,
+                $name = $code,
             )*
         }
 
@@ -264,6 +269,7 @@ define_ops! {
     (MaxuW, "maxu_w", Binary, 77, 0x1b, opc_maxu_w, op_maxu_w),
     (MaxW, "max_w", Binary, 77, 0x1c, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, 77, 0xf1, opc_keccak, op_keccak),
+    (PubOut, "pubout", PubOut, 77, 0x30, opc_pubout, op_pubout), // TODO: New type
 }
 
 // Constant values used in operation functions
@@ -874,4 +880,15 @@ impl From<ZiskRequiredOperation> for ZiskOp {
     fn from(value: ZiskRequiredOperation) -> Self {
         ZiskOp::try_from_code(value.opcode).unwrap()
     }
+}
+
+/// Copies register b into c as a public output data record, where a contains the data index
+#[inline(always)]
+pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
+    (b, false)
+}
+#[inline(always)]
+pub fn opc_pubout(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pubout(ctx.a, ctx.b);
+    //println!("public ${} = {:#010x}", ctx.a, ctx.b);
 }

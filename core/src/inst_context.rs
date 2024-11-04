@@ -29,6 +29,10 @@ impl InstContext {
             end: false,
         }
     }
+    pub fn to_text(&self) -> String {
+        let s = format! {"a={:x} b={:x} c={:x} flag={} sp={} pc={} step={} end={}", self.a, self.b, self.c, self.flag, self.sp, self.pc, self.step, self.end};
+        s
+    }
 }
 
 impl Default for InstContext {

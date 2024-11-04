@@ -19,7 +19,8 @@ pub struct EmuTraceEnd {
 
 #[derive(Default, Debug, Clone)]
 pub struct EmuTrace {
-    pub start: EmuTraceStart,
+    pub start_state: EmuTraceStart,
+    pub last_state: EmuTraceStart,
     pub steps: Vec<EmuTraceStep>,
     pub end: EmuTraceEnd,
 }

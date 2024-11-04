@@ -1,7 +1,11 @@
 # Install
 
+
+
 ## Requirements
-* [Rust (Nightly)](https://www.rust-lang.org/tools/install)
+⚠️ Currently, macOS is not supported for proof generation. A Linux x86_64 machine is required at this time. ⚠️
+
+* [Rust](https://www.rust-lang.org/tools/install)
 * [xz]()
 * [jq]()
 
@@ -9,6 +13,21 @@
 ```bash
 sudo apt-get install -y xz-utils jq curl git build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
 ```
+
+### Nix Flake
+
+Alternatively, you can use [Nix package manager](https://github.com/NixOS/nix) to install all dependencies. First, follow the [guide to install Nix](https://determinate.systems/nix/) on your OS.
+
+Afterwards, use `flake.nix` in `zisk` repository to load the development environment with:
+```
+nix develop
+
+# You can also use a custom shell: 
+nix develop -c zsh
+```
+
+This will start a new shell with correctly set `PATH` and `LD_LIBRARY_PATH` for dependencies necessary to build the project.
+You can exit this shell with Ctrl+D.
 
 ### OSX prerequisites
 ```bash
@@ -30,20 +49,17 @@ nvm install 19
 nvm use 19
 ```
 
+#### Circom
+```bash
+https://docs.circom.io/getting-started/installation/
+```
+
 ## Option 1: Prebuilt Binaries (Recommended)
 
-<div class="warning">
 
-this is temporary until we make the repositories publics, if you need an installation token, write to the Zisk team
 ```bash
-export ZISK_TOKEN=...
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
 ```
-```bash
-curl -H "Authorization: token ${ZISK_TOKEN}" \
-https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
-```
-</div>
-
 
 This will enable the ziskup command in your CLI. You need to restart your terminal to use it or run this command:
 

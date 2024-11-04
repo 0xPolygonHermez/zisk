@@ -28,7 +28,7 @@ pub struct EmuOptions {
     #[clap(short, long, value_name = "OUTPUT_FILE")]
     pub output: Option<String>,
     /// Sets the maximum number of steps to execute
-    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "100000000")]
+    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "1000000000")]
     pub max_steps: u64,
     /// Sets the print step period in number of steps
     #[clap(short, long, value_name = "PRINT_STEP", default_value = "0")]
@@ -42,7 +42,8 @@ pub struct EmuOptions {
     /// Sets the log step mode
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
-    /// Log the output to console
+    /// Log the output to console. This option is set by default to true as a requirement to pass
+    /// the riscof GHA tests
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
     pub log_output: bool,
     /// Trace every this number of steps

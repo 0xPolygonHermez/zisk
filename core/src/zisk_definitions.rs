@@ -1,3 +1,4 @@
+// a and b registers source types
 pub const SRC_C: u64 = 0;
 pub const SRC_MEM: u64 = 1;
 pub const SRC_IMM: u64 = 2;
@@ -5,9 +6,32 @@ pub const SRC_STEP: u64 = 3;
 // #[cfg(feature = "sp")]
 // pub const SRC_SP: u64 = 4;
 pub const SRC_IND: u64 = 5;
+
+// c register store destination types
 pub const STORE_NONE: u64 = 0;
 pub const STORE_MEM: u64 = 1;
 pub const STORE_IND: u64 = 2;
+
+/* Memory map:
+
+  |--------------- ROM_ENTRY first instr   (    0x1000)
+  | calls program at ROM_ADDR, then returns
+  | kind of a BIOS
+  |--------------- ROM_EXIT last instr     (0x10000000)
+        ...
+  |--------------- ROM_ADDR                (0x80000000)
+  | (rom program)
+  |--------------- INPUT_ADDR              (0x90000000)
+  | (input data)
+  |--------------- SYS_ADDR (= RAM_ADDR)   (0xa0000000)
+  | (sys = 32 registers)
+  |--------------- OUTPUT_ADDR             (0xa0010000)
+  | (output data)
+  |--------------- AVAILABLE_MEM_ADDR      (0xa0020000)
+  | (program memory)
+  |---------------                         (0xb0000000)
+
+*/
 pub const ROM_ADDR: u64 = 0x80000000;
 pub const ROM_ADDR_MAX: u64 = INPUT_ADDR - 1;
 pub const INPUT_ADDR: u64 = 0x90000000;
@@ -21,6 +45,7 @@ pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
 pub const AVAILABLE_MEM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 pub const ROM_ENTRY: u64 = 0x1000;
+pub const ROM_EXIT: u64 = 0x10000000;
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 pub const UART_ADDR: u64 = SYS_ADDR + 512;
 

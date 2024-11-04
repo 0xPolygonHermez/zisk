@@ -7,7 +7,7 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
-use sm_common::{OpResult, Provable, ThreadController};
+use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{
     ARITH_AIRGROUP_ID, ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIRGROUP_ID, ARITH_RANGE_TABLE_AIR_IDS,
@@ -22,9 +22,6 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 pub struct ArithSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
@@ -45,7 +42,7 @@ impl<F: Field> ArithSM<F> {
 
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
+            // threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
             arith_full_sm: ArithFullSM::new(
                 wcm.clone(),
@@ -79,7 +76,7 @@ impl<F: Field> ArithSM<F> {
                 scope,
             );
 
-            self.threads_controller.wait_for_threads();
+            // self.threads_controller.wait_for_threads();
 
             self.arith_full_sm.unregister_predecessor(scope);
         }
@@ -117,8 +114,8 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
             let drained_inputs = operations[..num_drained].to_vec();
             let arith_full_sm_cloned = self.arith_full_sm.clone();
 
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
+            // self.threads_controller.add_working_thread();
+            // let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
                 arith_full_sm_cloned.prove(&drained_inputs, drain, scope);

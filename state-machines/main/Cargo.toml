@@ -8,6 +8,7 @@ sm-arith = { path = "../arith" }
 sm-binary = { path = "../binary" }
 sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
+sm-rom = { path = "../rom" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
 zisk-pil = { path = "../../pil" }

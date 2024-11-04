@@ -11,7 +11,6 @@ impl BuildToolchainCmd {
     pub fn run(&self) -> Result<()> {
         println!("Building toolchain...");
         // Get enviroment variables.
-        let zisk_token = std::env::var("ZISK_TOKEN");
         let build_dir = std::env::var("ZISK_BUILD_DIR");
         let rust_dir = match build_dir {
             Ok(build_dir) => {
@@ -26,20 +25,12 @@ impl BuildToolchainCmd {
                 }
 
                 println!("No ZISK_BUILD_DIR detected, cloning rust.");
-                let repo_url = match zisk_token {
-                    Ok(zisk_token) => {
-                        println!("Detected ZISK_TOKEN, using it to clone rust.");
-                        format!("https://{}@github.com/0xPolygonHermez/rust", zisk_token)
-                    }
-                    Err(_) => {
-                        println!("No ZISK_TOKEN detected. If you get throttled by Github, set it to bypass the rate limit.");
-                        "ssh://git@github.com/0xPolygonHermez/rust".to_string()
-                    }
-                };
+                let repo_url = "https://{}@github.com/0xPolygonHermez/rust";
+
                 Command::new("git")
                     .args([
                         "clone",
-                        &repo_url,
+                        repo_url,
                         "--depth=1",
                         "--single-branch",
                         "--branch=zisk",

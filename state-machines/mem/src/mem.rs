@@ -6,7 +6,7 @@ use std::sync::{
 use crate::{MemAlignedSM, MemUnalignedSM};
 use p3_field::Field;
 use rayon::Scope;
-use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable, ThreadController};
+use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
@@ -19,9 +19,6 @@ const PROVE_CHUNK_SIZE: usize = 1 << 12;
 pub struct MemSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs_aligned: Mutex<Vec<MemOp>>,
@@ -39,7 +36,6 @@ impl MemSM {
 
         let mem_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
             inputs_aligned: Mutex::new(Vec::new()),
             inputs_unaligned: Mutex::new(Vec::new()),
             mem_aligned_sm: mem_aligned_sm.clone(),
@@ -63,8 +59,6 @@ impl MemSM {
     pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             <MemSM as Provable<ZiskRequiredMemory, OpResult>>::prove(self, &[], true, scope);
-
-            self.threads_controller.remove_working_thread();
 
             self.mem_aligned_sm.unregister_predecessor::<F>(scope);
             self.mem_unaligned_sm.unregister_predecessor::<F>(scope);

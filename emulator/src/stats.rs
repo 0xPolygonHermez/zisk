@@ -32,6 +32,8 @@ pub struct Stats {
     usual: u64,
     steps: u64,
     ops: [u64; 256],
+    reg_writes: [u64; 32],
+    reg_reads: [u64; 32],
 }
 
 /// Default constructor for Stats structure
@@ -43,6 +45,8 @@ impl Default for Stats {
             usual: 0,
             steps: 0,
             ops: [0; 256],
+            reg_writes: [0; 32],
+            reg_reads: [0; 32],
         }
     }
 }
@@ -60,6 +64,7 @@ impl Stats {
         }
         if (REG_FIRST..=REG_LAST).contains(&address) {
             self.rops.reads += 1;
+            self.reg_reads[((address - REG_FIRST) / 8) as usize] += 1;
         }
     }
 
@@ -75,6 +80,7 @@ impl Stats {
         }
         if (REG_FIRST..=REG_LAST).contains(&address) {
             self.rops.writes += 1;
+            self.reg_writes[((address - REG_FIRST) / 8) as usize] += 1;
         }
     }
 
@@ -167,6 +173,9 @@ impl Stats {
             total_opcode_cost, total_opcode_steps, total_opcodes
         );
         output += &format!("    Usual: {:.2} sec {} steps\n", cost_usual, self.usual);
+        let memory_reads = self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2;
+        let memory_writes = self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2;
+        let memory_total = memory_reads + memory_writes;
         output += &format!(
             "    Memory: {} a reads + {} na1 reads + {} na2 reads + {} a writes + {} na1 writes + {} na2 writes = {} reads + {} writes = {} r/w\n",
             self.mops.mread_a,
@@ -175,17 +184,43 @@ impl Stats {
             self.mops.mwrite_a,
             self.mops.mwrite_na1,
             self.mops.mwrite_na2,
-            self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2,
-            self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2,
-            self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2 +
-            self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2,
+            memory_reads,
+            memory_writes,
+            memory_total
         );
+        let reg_reads_percentage =
+            if memory_reads != 0 { (self.rops.reads * 100) / memory_reads } else { 0 };
+        let reg_writes_percentage =
+            if memory_writes != 0 { (self.rops.writes * 100) / memory_writes } else { 0 };
+        let reg_total = self.rops.reads + self.rops.writes;
+        let reg_total_percentage =
+            if memory_total != 0 { (reg_total * 100) / memory_total } else { 0 };
+
         output += &format!(
-            "    Registy: {} reads + {} writes = {} r/w\n",
+            "    Registy: reads={}={}% writes={}={}% total={}={}% r/w\n",
             self.rops.reads,
+            reg_reads_percentage,
             self.rops.writes,
-            self.rops.reads + self.rops.writes
+            reg_writes_percentage,
+            reg_total,
+            reg_total_percentage
         );
+
+        for reg in 0..32 {
+            let reads = self.reg_reads[reg];
+            let writes = self.reg_writes[reg];
+            let rw = reads + writes;
+            let reads_percentage =
+                if self.rops.reads != 0 { (reads * 100) / self.rops.reads } else { 0 };
+            let writes_percentage =
+                if self.rops.writes != 0 { (reads * 100) / self.rops.writes } else { 0 };
+            let total_rw = self.rops.reads + self.rops.writes;
+            let rw_percentage = if total_rw != 0 { (rw * 100) / total_rw } else { 0 };
+            output += &format!(
+                "        Reg {} reads={}={}% writes={}={}% r/w={}={}%\n",
+                reg, reads, reads_percentage, writes, writes_percentage, rw, rw_percentage
+            );
+        }
 
         output += "\nOpcodes:\n";
 
