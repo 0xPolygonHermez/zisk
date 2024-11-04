@@ -90,12 +90,12 @@ require "std_range_check.pil"
 airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES = 8, const int CHUNK_BITS = 8) {
     const int MEM_HALF_BYTES = MEM_BYTES / 2;
 
-    col witness pc;             // line of the program to execute
     col witness addr;           // MEM_BYTES-byte address, real address = addr * MEM_BYTES
     col witness offset;         // 0..7, position at which the operation starts
     col witness width;          // 1,2,4,8, width of the operation
-    col witness reset;          // 1 at the beginning of the operation (indicating an address reset), 0 otherwise
     col witness wr;             // 1 if the operation is a write, 0 otherwise
+    col witness pc;             // line of the program to execute
+    col witness reset;          // 1 at the beginning of the operation (indicating an address reset), 0 otherwise
     col witness sel_up_to_down; // 1 if the next value is the current value (e.g. R -> W)
     col witness sel_down_to_up; // 1 if the next value is the previous value (e.g. W -> R)
     col witness reg[MEM_BYTES]; // Register values, 1 byte each
