@@ -46,7 +46,7 @@ impl<F: PrimeField> ZiskWitness<F> {
     }
 
     fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let wcm = WitnessManager::new(pctx, ectx, sctx.clone());
+        let wcm = WitnessManager::new(pctx, ectx, sctx);
         let wcm = Arc::new(wcm);
 
         self.wcm.set(wcm.clone()).ok();

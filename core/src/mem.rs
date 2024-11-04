@@ -151,7 +151,10 @@ impl Mem {
 
         // Check that the address and width fall into this section address range
         if (addr < section.start) || ((addr + width) > section.end) {
-            panic!("Mem::write_silent() invalid addr={}", addr);
+            panic!(
+                "Mem::write_silent() invalid addr={}={:x} write section start={:x} end={:x}",
+                addr, addr, section.start, section.end
+            );
         }
 
         // Calculate the write position

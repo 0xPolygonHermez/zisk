@@ -14,9 +14,7 @@ airgroup Main {
 }
 
 airgroup Rom {
-    Rom(N: 2**16) alias RomS;
-    Rom(N: 2**22) alias RomM;
-    Rom(N: 2**26) alias RomL;
+    Rom(N: 2**20);
 }
 
 // airgroup Mem {

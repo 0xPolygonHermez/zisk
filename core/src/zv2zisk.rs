@@ -2,7 +2,7 @@ use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
     convert_vector, read_u16_le, read_u32_le, read_u64_le, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK,
-    INPUT_ADDR, OUTPUT_ADDR, SYS_ADDR,
+    INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -1533,14 +1533,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0034
+    // :0034 jump to end (success)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
+    zib.src_b("imm", ROM_EXIT, false);
     zib.op("copyb").unwrap();
-    zib.end();
+    zib.set_pc();
     zib.j(0, 0);
-    zib.verbose("end");
+    zib.verbose("jump to end successfully");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1557,14 +1557,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :003c
+    // :003c jump to END (error)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
+    zib.src_b("imm", ROM_EXIT, false);
     zib.op("copyb").unwrap();
-    zib.end();
+    zib.set_pc();
     zib.j(0, 0);
-    zib.verbose("end");
+    zib.verbose("jump to end due to error");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1603,4 +1603,16 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
+
+    // END: all programs should exit here, regardless of the execution result
+    rom.next_init_inst_addr = ROM_EXIT;
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 0, false);
+    zib.op("copyb").unwrap();
+    zib.end();
+    zib.j(0, 0);
+    zib.verbose("end");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
 }

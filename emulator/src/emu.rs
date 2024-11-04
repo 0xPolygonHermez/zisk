@@ -309,7 +309,7 @@ impl<'a> Emu<'a> {
             self.ctx.trace.steps.reserve(self.ctx.callback_steps as usize);
 
             // Init pc to the rom entry address
-            self.ctx.trace.start.pc = ROM_ENTRY;
+            self.ctx.trace.start_state.pc = ROM_ENTRY;
         }
 
         // Call run_fast if only essential work is needed
@@ -404,7 +404,7 @@ impl<'a> Emu<'a> {
         self.ctx = self.create_emu_context(inputs);
 
         // Init pc to the rom entry address
-        self.ctx.trace.start.pc = ROM_ENTRY;
+        self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
         self.ctx.do_stats = options.stats;
@@ -425,12 +425,13 @@ impl<'a> Emu<'a> {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
                     emu_traces.push(EmuTrace {
-                        start: EmuTraceStart {
+                        start_state: EmuTraceStart {
                             pc: self.ctx.inst_ctx.pc,
                             sp: self.ctx.inst_ctx.sp,
                             c: self.ctx.inst_ctx.c,
                             step: self.ctx.inst_ctx.step,
                         },
+                        last_state: EmuTraceStart::default(),
                         steps: Vec::with_capacity(par_options.num_steps),
                         end: EmuTraceEnd { end: false },
                     });
@@ -452,6 +453,7 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     #[allow(unused_variables)]
     pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(EmuTrace)>) {
+        let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
@@ -493,8 +495,9 @@ impl<'a> Emu<'a> {
         #[cfg(debug_assertions)]
         if options.log_step {
             println!(
-                "step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
+                "step={} pc={} next={} op={}={} a={} b={} c={} flag={} inst={}",
                 self.ctx.inst_ctx.step,
+                pc,
                 self.ctx.inst_ctx.pc,
                 instruction.op,
                 instruction.op_str,
@@ -534,10 +537,10 @@ impl<'a> Emu<'a> {
                 (callback)(trace);
 
                 // Set the start-of-trace data
-                self.ctx.trace.start.pc = self.ctx.inst_ctx.pc;
-                self.ctx.trace.start.sp = self.ctx.inst_ctx.sp;
-                self.ctx.trace.start.c = self.ctx.inst_ctx.c;
-                self.ctx.trace.start.step = self.ctx.inst_ctx.step;
+                self.ctx.trace.start_state.pc = self.ctx.inst_ctx.pc;
+                self.ctx.trace.start_state.sp = self.ctx.inst_ctx.sp;
+                self.ctx.trace.start_state.c = self.ctx.inst_ctx.c;
+                self.ctx.trace.start_state.step = self.ctx.inst_ctx.step;
 
                 // Increment the last callback step counter
                 self.ctx.last_callback_step += self.ctx.callback_steps;
@@ -561,6 +564,13 @@ impl<'a> Emu<'a> {
     ) {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
+
+        emu_full_trace_vec.last_state = EmuTraceStart {
+            pc: self.ctx.inst_ctx.pc,
+            sp: self.ctx.inst_ctx.sp,
+            c: self.ctx.inst_ctx.c,
+            step: self.ctx.inst_ctx.step,
+        };
 
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
@@ -690,16 +700,16 @@ impl<'a> Emu<'a> {
         let mut current_box_id = 0;
         let mut current_step_idx = loop {
             if current_box_id == vec_traces.len() - 1 ||
-                vec_traces[current_box_id + 1].start.step >= emu_trace_start.step
+                vec_traces[current_box_id + 1].start_state.step >= emu_trace_start.step
             {
                 break emu_trace_start.step as usize -
-                    vec_traces[current_box_id].start.step as usize;
+                    vec_traces[current_box_id].start_state.step as usize;
             }
             current_box_id += 1;
         };
 
         let last_trace = vec_traces.last().unwrap();
-        let last_step = last_trace.start.step + last_trace.steps.len() as u64;
+        let last_step = last_trace.start_state.step + last_trace.steps.len() as u64;
         let mut current_step = emu_trace_start.step;
 
         while current_step < last_step && result.len() < num_rows {
@@ -796,31 +806,57 @@ impl<'a> Emu<'a> {
     pub fn build_full_trace_step<F: AbstractField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
-        last_c: u64,
-        last_pc: u64,
+        _last_c: u64, // TODO! Check if it's necessay
+        _last_pc: u64,
     ) -> EmuFullTraceStep<F> {
+        // Calculate intermediate values
+        let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
+        let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
+        let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
+
+        let addr1 = (inst.b_offset_imm0 as i64 +
+            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+
+        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+            F::from_canonical_u64(inst.jmp_offset1 as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+        };
+
+        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+            F::from_canonical_u64(inst.jmp_offset2 as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+        };
+
+        let store_offset = if inst.store_offset >= 0 {
+            F::from_canonical_u64(inst.store_offset as u64)
+        } else {
+            F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+        };
+
+        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+            F::from_canonical_u64(inst.a_offset_imm0)
+        } else {
+            F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+        };
+
+        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+            F::from_canonical_u64(inst.b_offset_imm0)
+        } else {
+            F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+        };
+
         EmuFullTraceStep {
-            a: [
-                F::from_canonical_u64(inst_ctx.a & 0xFFFFFFFF),
-                F::from_canonical_u64((inst_ctx.a >> 32) & 0xFFFFFFFF),
-            ],
-            b: [
-                F::from_canonical_u64(inst_ctx.b & 0xFFFFFFFF),
-                F::from_canonical_u64((inst_ctx.b >> 32) & 0xFFFFFFFF),
-            ],
-            c: [
-                F::from_canonical_u64(inst_ctx.c & 0xFFFFFFFF),
-                F::from_canonical_u64((inst_ctx.c >> 32) & 0xFFFFFFFF),
-            ],
-            last_c: [
-                F::from_canonical_u64(last_c & 0xFFFFFFFF),
-                F::from_canonical_u64((last_c >> 32) & 0xFFFFFFFF),
-            ],
+            a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
+            b: [F::from_canonical_u64(b[0]), F::from_canonical_u64(b[1])],
+            c: [F::from_canonical_u64(c[0]), F::from_canonical_u64(c[1])],
+
             flag: F::from_bool(inst_ctx.flag),
-            pc: F::from_canonical_u64(last_pc),
+            pc: F::from_canonical_u64(inst.paddr),
             a_src_imm: F::from_bool(inst.a_src == SRC_IMM),
             a_src_mem: F::from_bool(inst.a_src == SRC_MEM),
-            a_offset_imm0: F::from_canonical_u64(inst.a_offset_imm0),
+            a_offset_imm0,
             // #[cfg(not(feature = "sp"))]
             a_imm1: F::from_canonical_u64(inst.a_use_sp_imm1),
             // #[cfg(feature = "sp")]
@@ -832,7 +868,7 @@ impl<'a> Emu<'a> {
             a_src_step: F::from_bool(inst.a_src == SRC_STEP),
             b_src_imm: F::from_bool(inst.b_src == SRC_IMM),
             b_src_mem: F::from_bool(inst.b_src == SRC_MEM),
-            b_offset_imm0: F::from_canonical_u64(inst.b_offset_imm0),
+            b_offset_imm0,
             // #[cfg(not(feature = "sp"))]
             b_imm1: F::from_canonical_u64(inst.b_use_sp_imm1),
             // #[cfg(feature = "sp")]
@@ -844,7 +880,7 @@ impl<'a> Emu<'a> {
             store_ra: F::from_bool(inst.store_ra),
             store_mem: F::from_bool(inst.store == STORE_MEM),
             store_ind: F::from_bool(inst.store == STORE_IND),
-            store_offset: F::from_canonical_u64(inst.store_offset as u64),
+            store_offset,
             set_pc: F::from_bool(inst.set_pc),
             // #[cfg(feature = "sp")]
             // store_use_sp: F::from_bool(inst.store_use_sp),
@@ -852,11 +888,11 @@ impl<'a> Emu<'a> {
             // set_sp: F::from_bool(inst.set_sp),
             // #[cfg(feature = "sp")]
             // inc_sp: F::from_canonical_u64(inst.inc_sp),
-            jmp_offset1: F::from_canonical_u64(inst.jmp_offset1 as u64),
-            jmp_offset2: F::from_canonical_u64(inst.jmp_offset2 as u64),
-            end: F::from_bool(inst_ctx.end),
+            jmp_offset1,
+            jmp_offset2,
             m32: F::from_bool(inst.m32),
-            operation_bus_enabled: F::from_bool(
+            addr1: F::from_canonical_u64(addr1),
+            __debug_operation_bus_enabled: F::from_bool(
                 inst.op_type == ZiskOperationType::Binary ||
                     inst.op_type == ZiskOperationType::BinaryE,
             ),

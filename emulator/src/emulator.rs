@@ -195,7 +195,7 @@ impl ZiskEmulator {
             let par_emu_options = ParEmuOptions::new(
                 num_threads,
                 thread_id,
-                op_sizes[ZiskOperationType::None as usize] as usize,
+                options.trace_steps.unwrap() as usize,
                 op_sizes,
             );
 
@@ -233,10 +233,10 @@ impl ZiskEmulator {
         for vec_trace in &vec_traces {
             emu_slices.add(
                 ZiskOperationType::None,
-                vec_trace.start.pc,
-                vec_trace.start.sp,
-                vec_trace.start.c,
-                vec_trace.start.step,
+                vec_trace.start_state.pc,
+                vec_trace.start_state.sp,
+                vec_trace.start_state.c,
+                vec_trace.start_state.step,
             );
         }
 

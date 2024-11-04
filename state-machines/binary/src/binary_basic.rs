@@ -206,7 +206,6 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Calculate carry
                     let previous_cin = cin;
                     let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
-                    debug_assert!((result & 0xff) == c_bytes[i] as u64);
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
                     row.carry[i] = F::from_canonical_u64(cin);
@@ -248,10 +247,6 @@ impl<F: Field> BinaryBasicSM<F> {
                     // Calculate carry
                     let previous_cin = cin;
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
-                    debug_assert!(
-                        (256 * cout + a_bytes[i] as u64 - cin - b_bytes[i] as u64) ==
-                            c_bytes[i] as u64
-                    );
                     cin = if i == carry_byte { 0 } else { cout };
                     row.carry[i] = F::from_canonical_u64(cin);
 
@@ -400,10 +395,8 @@ impl<F: Field> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
                         cout = 0;
-                        debug_assert!(plast[i] == c_bytes[i] as u64);
                     } else {
                         cout = 1;
-                        debug_assert!(0 == c_bytes[i] as u64);
                     }
                     if plast[i] == 1 {
                         cout = 1 - cout;

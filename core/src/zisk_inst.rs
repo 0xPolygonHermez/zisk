@@ -1,5 +1,6 @@
 use crate::{
-    source_to_str, store_to_str, InstContext, SRC_IMM, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    source_to_str, store_to_str, InstContext, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND,
+    STORE_MEM,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -177,8 +178,8 @@ impl ZiskInst {
             (((self.store == STORE_MEM) as u64) << 8) |
             (((self.store == STORE_IND) as u64) << 9) |
             ((self.set_pc as u64) << 10) |
-            ((self.end as u64) << 11) |
-            ((self.m32 as u64) << 12);
+            ((self.m32 as u64) << 11) |
+            (((self.b_src == SRC_IND) as u64) << 12);
 
         flags
     }

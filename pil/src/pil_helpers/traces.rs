@@ -4,19 +4,11 @@ use proofman_common as common;
 pub use proofman_macros::trace;
 
 trace!(Main0Row, Main0Trace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], last_c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, end: F, m32: F, operation_bus_enabled: F,
+ a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 });
 
-trace!(RomS0Row, RomS0Trace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
-});
-
-trace!(RomM1Row, RomM1Trace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
-});
-
-trace!(RomL2Row, RomL2Trace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
+trace!(Rom0Row, Rom0Trace<F> {
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
 });
 
 trace!(Binary0Row, Binary0Trace<F> {

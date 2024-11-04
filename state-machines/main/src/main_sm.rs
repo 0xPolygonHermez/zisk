@@ -5,7 +5,7 @@ use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_binary::BinarySM;
 use std::sync::Arc;
-use zisk_core::ZiskRom;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
@@ -82,7 +82,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let offset = iectx.offset;
         let air = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-        let filled = segment_trace.steps.len();
+        let filled = segment_trace.steps.len() + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
@@ -92,63 +92,100 @@ impl<F: PrimeField> MainSM<F> {
             filled as f64 / air.num_rows() as f64 * 100.0
         );
 
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start);
+        // Set Row 0 of the current segment
+        let row0 = if segment_id == 0 {
+            Main0Row::<F> {
+                pc: F::from_canonical_u64(ROM_ENTRY),
+                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
+                a_src_imm: F::one(),
+                b_src_imm: F::one(),
+                ..Main0Row::default()
+            }
+        } else {
+            let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
+            let mut emu =
+                Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
+            let row_previous = emu.step_slice_full_trace(emu_trace_previous);
 
-        let total_steps = segment_trace.steps.len();
-        const CHUNK_SIZE: usize = 4096;
-        let mut tmp_trace = Main0Trace::<F>::new(CHUNK_SIZE);
+            Main0Row::<F> {
+                set_pc: row_previous.set_pc,
+                jmp_offset1: row_previous.jmp_offset1,
+                jmp_offset2: if row_previous.flag == F::one() {
+                    row_previous.jmp_offset1
+                } else {
+                    row_previous.jmp_offset2
+                },
+                a: row_previous.a,
+                b: row_previous.c,
+                c: row_previous.c,
+                a_offset_imm0: row_previous.a[0],
+                b_offset_imm0: row_previous.c[0],
+                addr1: row_previous.c[0],
+                a_imm1: row_previous.a[1],
+                b_imm1: row_previous.c[1],
+                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
+                pc: row_previous.pc,
+                a_src_imm: F::one(),
+                b_src_imm: F::one(),
+                ..Main0Row::default()
+            }
+        };
+
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
+
+        let rng = offset as usize..(offset as usize + Main0Row::<F>::ROW_SIZE);
+        iectx.prover_buffer[rng].copy_from_slice(row0.as_slice());
+
+        // Set Rows 1 to N of the current segment (N = maximum number of air rows)
+        let total_rows = segment_trace.steps.len();
+        const SLICE_ROWS: usize = 4096;
+        let mut partial_trace = Main0Trace::<F>::new(SLICE_ROWS);
 
         let mut last_row = Main0Row::<F>::default();
-        for chunk_start in (0..air.num_rows()).step_by(CHUNK_SIZE) {
+        for slice in (0..(air.num_rows())).step_by(SLICE_ROWS) {
             // process the steps of the chunk
-            let start_pos_abs = std::cmp::min(chunk_start, total_steps);
-            let end_pos_abs = (chunk_start + CHUNK_SIZE).min(total_steps);
-            for (i, step) in segment_trace.steps[start_pos_abs..end_pos_abs].iter().enumerate() {
-                tmp_trace[i] = emu.step_slice_full_trace(step);
+            let slice_start = std::cmp::min(slice, total_rows);
+            let slice_end = std::cmp::min(slice + SLICE_ROWS, total_rows);
+
+            for (i, emu_trace_step) in
+                segment_trace.steps[slice_start..slice_end].iter().enumerate()
+            {
+                partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
             }
 
             // if there are steps in the chunk update last row
-            if end_pos_abs - start_pos_abs > 0 {
-                last_row = tmp_trace[end_pos_abs - start_pos_abs - 1];
+            if slice_end - slice_start > 0 {
+                last_row = partial_trace[slice_end - slice_start - 1];
             }
 
-            // if there are less steps than the chunk size, fill the rest with the
-            // last row
-            for i in (end_pos_abs - start_pos_abs)..CHUNK_SIZE {
-                tmp_trace[i] = last_row;
+            // if there are less steps than the chunk size, fill the rest with the last row
+            for i in (slice_end - slice_start)..SLICE_ROWS {
+                partial_trace[i] = last_row;
             }
 
             //copy the chunk to the prover buffer
-            let tmp_buffer = tmp_trace.buffer.as_mut().unwrap();
-            let buffer_offset_chunk = offset as usize + chunk_start * Main0Row::<F>::ROW_SIZE;
-            iectx.prover_buffer[buffer_offset_chunk..buffer_offset_chunk + tmp_buffer.len()]
-                .copy_from_slice(tmp_buffer);
+            let partial_buffer = partial_trace.buffer.as_ref().unwrap();
+            let buffer_offset_slice = offset as usize + (slice + 1) * Main0Row::<F>::ROW_SIZE;
+
+            let rng = buffer_offset_slice..buffer_offset_slice + partial_buffer.len();
+            iectx.prover_buffer[rng].copy_from_slice(partial_buffer);
         }
 
         let buffer = std::mem::take(&mut iectx.prover_buffer);
+        let sctx = self.wcm.get_sctx();
         let mut air_instance = AirInstance::new(
-            self.wcm.get_sctx(),
+            sctx.clone(),
             MAIN_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
             Some(segment_id),
             buffer,
         );
 
-        let main_first_segment = F::from_bool(segment_id == 0);
         let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
         let main_segment = F::from_canonical_usize(segment_id);
 
-        air_instance.set_airvalue(
-            &self.wcm.get_sctx(),
-            "Main.main_first_segment",
-            main_first_segment,
-        );
-        air_instance.set_airvalue(
-            &self.wcm.get_sctx(),
-            "Main.main_last_segment",
-            main_last_segment,
-        );
-        air_instance.set_airvalue(&self.wcm.get_sctx(), "Main.main_segment", main_segment);
+        air_instance.set_airvalue(&sctx, "Main.main_last_segment", main_last_segment);
+        air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
 
         iectx.air_instance = Some(air_instance);
     }
