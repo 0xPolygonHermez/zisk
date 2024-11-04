@@ -7,6 +7,8 @@ require "arith_range_table.pil"
 //          full   mul_64  full_32  mul_32
 // TOTAL      88       77       57      44
 
+const int OP_LT_ABS = 0x9F;
+
 airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
     // TODO: const int enable_div = 1, const int enable_32_bits = 1, const int enable_64_bits = 1
 
@@ -40,9 +42,17 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness nb_fa;
 
     col witness debug_main_step; // only for debug
-
-    col witness secondary_res;       // op_index: 0 => first result, 1 => second result;
-    secondary_res * (secondary_res - 1) === 0;
+/*
+    col witness secondary;       // op_index: 0 => first result, 1 => second result;
+    secondary * (secondary - 1) === 0;
+*/
+    col witness main_div;
+    col witness main_mul;
+    col witness signed;
+    main_div * (main_div - 1) === 0;
+    main_mul * (main_mul - 1) === 0;
+    main_mul * main_div === 0;
+    signed * (1 - signed) === 0;
 
     // factor ab € {-1, 1}
     fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
@@ -203,6 +213,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     // mul (mulh)           c       d
     // div (remu)           a       d
 
+/*
     col witness bus_a_low;
     bus_a_low === div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
 
@@ -214,23 +225,22 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     const expr bus_b_low = b[0] + CHUNK_SIZE * b[1];
     const expr bus_b_high = b[2] + CHUNK_SIZE * b[3];
 
-    m32 * (1 - b[2]) === 0;
-    m32 * (1 - b[3]) === 0;
+    m32 * (1 - bus_b_high) === 0;
 
     const expr res2_low  = d[0] + CHUNK_SIZE * d[1];
     const expr res2_high = d[2] + CHUNK_SIZE * d[3];
 
     col witness res_low;
-    res_low === secondary_res * res2_low + (1 - secondary_res)  * (a[0] + c[0] + CHUNK_SIZE * (a[1] + c[1]) - bus_a_low);
+    res_low === secondary * res2_low + (1 - secondary)  * (a[0] + c[0] + CHUNK_SIZE * (a[1] + c[1]) - bus_a_low);
 
     col witness res_high;
-    res_high === (1 - m32) * (secondary_res * res2_high + (1 - secondary_res)  * (a[2] + c[2] + CHUNK_SIZE * (a[3] + c[3]) - bus_a_high))
+    res_high === (1 - m32) * (secondary * res2_high + (1 - secondary)  * (a[2] + c[2] + CHUNK_SIZE * (a[3] + c[3]) - bus_a_high))
                    + sext * 0xFFFFFFFF;
 
     col witness multiplicity;
 
     lookup_proves(operation_bus_id, [debug_main_step,
-                                     op + secondary_res,
+                                     op + secondary,
                                      bus_a_low, bus_a_high,
                                      bus_b_low, bus_b_high,
                                      res_low, res_high,
@@ -238,69 +248,76 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
 
     // TODO: review
-    lookup_assumes(operation_bus_id, [debug_main_step, OP_LT, res2_low, res2_high, bus_b_low, bus_b_high, 0, 1, 1], sel: div);
+    lookup_assumes(operation_bus_id, [debug_main_step, sign * (OP_LT_ABS - OP_LT) + OP_LT,
+                                      res2_low, res2_high + m32 * nr * 0xFFFFFFFF,
+                                      bus_b_low, bus_b_high + m32 * nb * 0xFFFFFFFF,
+                                      1, 0, 1], sel: div);
+
+*/
+    const expr secondary = 1 - main_mul - main_div;
+    const expr bus_a0 = div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
+    const expr bus_a1 = div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
+
+    const expr bus_b0 = b[0] + CHUNK_SIZE * b[1];
+    const expr bus_b1 = b[2] + CHUNK_SIZE * b[3];
+
+    const expr bus_res0 = secondary * (d[0] + CHUNK_SIZE * d[1]) +
+                          main_mul * (c[0] + c[1] * CHUNK_SIZE) +
+                          main_div * (a[0] + a[1] * CHUNK_SIZE);
+
+    const expr bus_res1_64 = (secondary * (d[2] + CHUNK_SIZE * d[3]) +
+                              main_mul * (c[2] + c[3] * CHUNK_SIZE) +
+                              main_div * (a[2] + a[3] * CHUNK_SIZE));
+    col witness bus_res1;
+
+    bus_res1 === sext * 0xFFFFFFFF + (1 - m32) * bus_res1_64;
+
+    m32 * (1 - bus_a1) === 0;
+    m32 * (1 - bus_b1) === 0;
+
+
+    col witness multiplicity;
+
+    lookup_proves(operation_bus_id, [debug_main_step,
+                                     op + secondary,
+                                     bus_a0, bus_a1,
+                                     bus_b0, bus_b1,
+                                     bus_res0, bus_res1,
+                                     0], mul: multiplicity);
+
+    lookup_assumes(operation_bus_id, [debug_main_step, signed * (OP_LT_ABS - OP_LT) + OP_LT,
+                                      (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF,
+                                      (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF,
+                                      1, 0, 1], sel: div);
 
     for (int index = 0; index < length(carry); ++index) {
-         range_check(colu: carry[index], min:-2**20, max: 2**20-1);     // TODO: review carry range
+         arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range
     }
-
-    // mul  a * b = c + d * 2^64
-    // div  a * b + d = c   (a <=> c)
-
-    // range_ab / range_cd
-    //
-    //     a3 a1 b3 b1
-    // rid c3 c1 d3 d1 range 2^16 2^15 notes
-    // --- -- -- -- -- ----- ---- ---- -------------------------
-    //   0  F  F  F  F ab cd    4    0
-    //   1  F  F  +  F    cd    3    1 b3 sign => a3 sign
-    //   2  F  F  -  F    cd    3    1 b3 sign => a3 sign
-    //   3  +  F  F  F ab       3    1 c3 sign => d3 sign
-    //   4  +  F  +  F ab cd    2    2
-    //   5  +  F  -  F ab cd    2    2
-    //   6  -  F  F  F ab       3    1 c3 sign => d3 sign
-    //   7  -  F  +  F ab cd    2    2
-    //   8  -  F  -  F ab cd    2    2
-    //   9  F  F  F  +    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
-    //  10  F  F  F  -    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
-    //  11  F  +  F  F ab cd    3    1 *a1 for sext/divu
-    //  12  F  +  F  + ab cd    2    2
-    //  13  F  +  F  - ab cd    2    2
-    //  14  F  -  F  F ab cd    3    1 *a1 for sext/divu
-    //  15  F  -  F  + ab cd    2    2
-    //  16  F  -  F  - ab cd    2    2
-    //                       ---- ----
-    //                         38   22 = 60
-    //
-    // F: [0..2^16-1]   +:[0..2^15-1]   -:[2^15..2^16-1]
-    //
-    // 22 * 2^15 + 38 * 2^16 = (11+38) * 2^16 = 49 * 2^16 < 2^6 * 2^16 ==> 22 bits
 
     col witness range_ab;
     col witness range_cd;
 
-    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, secondary_res, range_ab, range_cd);
+    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, main_mul, main_div, signed, range_ab, range_cd);
 
-    // 0 - a1/c1
-    // 1 - b1/d1
-    // 2 - a3/c3
-    // 3 - b3/d3
+    const expr range_a = range_ab;
+    const expr range_b = range_ab + 26;
+    const expr range_c = range_cd + 17;
+    const expr range_d = range_cd + 9;
 
-    arith_range_table_assumes(range_ab, 0, a[1]);
-    arith_range_table_assumes(range_ab, 1, b[1]);
-    arith_range_table_assumes(range_cd, 0, c[1]);
-    arith_range_table_assumes(range_cd, 1, d[1]);
-    arith_range_table_assumes(range_ab, 2, a[3]);
-    arith_range_table_assumes(range_ab, 3, b[3]);
-    arith_range_table_assumes(range_cd, 2, c[3]);
-    arith_range_table_assumes(range_cd, 3, d[3]);
+    arith_range_table_assumes(range_a, a[1]);
+    arith_range_table_assumes(range_b, b[1]);
+    arith_range_table_assumes(range_c, c[1]);
+    arith_range_table_assumes(range_d, d[1]);
+    arith_range_table_assumes(range_a, a[3]);
+    arith_range_table_assumes(range_b, b[3]);
+    arith_range_table_assumes(range_c, c[3]);
+    arith_range_table_assumes(range_d, d[3]);
 
     // loop for range checks index 0, 2
     for (int index = 0; index < 2; ++index) {
-        arith_range_table_assumes(0, 0, a[2 * index]);
-        arith_range_table_assumes(0, 0, b[2 * index]);
-        arith_range_table_assumes(0, 0, c[2 * index]);
-        arith_range_table_assumes(0, 0, d[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, a[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, b[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, c[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, d[2 * index]);
     }
-
 }

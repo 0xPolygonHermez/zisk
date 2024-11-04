@@ -8,7 +8,7 @@ trace!(Main0Row, Main0Trace<F> {
 });
 
 trace!(Arith0Row, Arith0Trace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, na32: F, nd32: F, m32: F, div: F, fab: F, debug_main_step: F, secondary_res: F, op: F, bus_a_low: F, bus_a_high: F, bus_b_high: F, res1_low: F, div64: F, res1_high: F, multiplicity: F, range_a1: F, range_b1: F, range_c1: F, range_d1: F, range_a3: F, range_b3: F, range_c3: F, range_d3: F,
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
 });
 
 trace!(ArithTable0Row, ArithTable0Trace<F> {
@@ -35,10 +35,6 @@ trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
  multiplicity: F,
 });
 
-trace!(U16Air0Row, U16Air0Trace<F> {
- mul: F,
-});
-
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 2],
+ mul: [F; 1],
 });

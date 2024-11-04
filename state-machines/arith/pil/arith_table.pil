@@ -2,7 +2,7 @@ require "std_lookup.pil"
 
 const int ARITH_TABLE_ID = 331;
 
-airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
+airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
 
     // TABLE
     // op,m32|div|na|nb|np|nr|sext,range_ab,range_cd
@@ -46,14 +46,15 @@ airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
         int div = 0;    // division operation (div,rem)
         int sa = 0;
         int sb = 0;
-        int secondary = 0;
+        int main_mul = 0;
+        int main_div = 0;
         string opname = "";
         switch (opcode) {
             case 0xb0:
                 opname = "mulu";
+                main_mul = 1;
             case 0xb1:
                 opname = "mulh";
-                secondary = 1;
             case 0xb3:
                 opname = "mulsuh";
                 sa = 1;
@@ -61,56 +62,57 @@ airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
                 opname = "mul";
                 sa = 1;
                 sb = 1;
+                main_mul = 1;
             case 0xb5:
                 opname = "mulh";
                 sa = 1;
                 sb = 1;
-                secondary = 1;
             case 0xb6:
                 opname = "mul_w";
                 m32 = 1;
                 sa = 1;
                 sb = 1;
+                main_mul = 1;
             case 0xb8:
                 opname = "divu";
                 div = 1;
+                main_div = 1;
             case 0xb9:
                 opname = "remu";
                 div = 1;
-                secondary = 1;
             case 0xba:
                 opname = "div";
                 sa = 1;
                 sb = 1;
                 div = 1;
+                main_div = 1;
             case 0xbb:
                 opname = "rem";
                 sa = 1;
                 sb = 1;
                 div = 1;
-                secondary = 1;
             case 0xbc:
                 opname = "divu_w";
                 div = 1;
                 m32 = 1;
+                main_div = 1;
             case 0xbd:
                 opname = "remu_w";
                 div = 1;
                 m32 = 1;
-                secondary = 1;
             case 0xbe:
                 opname = "div_w";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 m32 = 1;
+                main_div = 1;
             case 0xbf:
                 opname = "rem_w";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 m32 = 1;
-                secondary = 1;
         }
 
         for (int icase = 0; icase < 32; ++icase) {
@@ -130,123 +132,66 @@ airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
             if (np && na && nb) continue;
             if (!np & nr) continue;
 
-            int range_a1 = m32 * sa ? 1 + na : 0;
-            int range_b1 = m32 * sb ? 1 + nb : 0;
-
+            int range_a1 = 0;
+            int range_b1 = 0;
             int range_c1 = 0;
+            int range_d1 = 0;
+            int range_a3 = 0;
+            int range_b3 = 0;
+            int range_c3 = 0;
+            int range_d3 = 0;
+
             if (m32) {
-                if (div) {
-                    // range_c1 = np || na32 ? 2 : 1;
-                } else {
-                    // range_c1 = 1 + na32;
+                if (sa) {
+                    range_a1 = 1 + na;
+                } else if (main_div) {
+                    range_a1 = 1 + sext;
+                }
+                if (sb) {
+                    range_b1 = 1 + nb;
+                }
+                if (!div) {
+                    range_c1 =  sext + 1;
+                } else if (sa) {
+                    range_c1 = 1 + np;
+                }
+                if (div && !main_div) {
+                    range_c1 = sext + 1;
+                } else if (sa) {
+                    range_c1 = 1 + nr;
+                }
+            } else {
+                if (sa) {
+                    range_a3 = 1 + na;
+                    if (div) {
+                        range_c3 = 1 + np;
+                        range_d3 = 1 + nr;
+                    } else {
+                        range_d3 = 1 + np;
+                    }
+                }
+                if (sb) {
+                    range_b3 = 1 + nb;
                 }
             }
-            int range_d1 = m32 * div ? (((np * sa) || sext) ? 1:2) : 0;
-
-            int range_a3 = (1 - m32) * sa ? 1 + na : 0;
-            int range_b3 = (1 - m32) * sb ? 1 + na : 0;
-            int range_c3 = div * (1 - m32) * sa ? 1 + np : 0;
-            int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
+            int signed = sa || sb ? 1 : 0;
+            OP[index] = opcode;
+            FLAGS[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext +
+                           128 * main_mul + 256 * main_div + 512 * signed;
+            RANGE_AB[index] = range_a3 * 3 + range_b3 + m32 * 8 + range_a1 * 3 + range_b1;
+            RANGE_CD[index] = range_c3 * 3 + range_d3 + m32 * 8 + range_c1 * 3 + range_d1;
 
             if (generate_table) {
                 op2row[(opcode - 0xb0) * 32 + icase] = index;
             }
-            println(`==> #${index} op:${opname} [${opcode}] na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} sa:${sa} sb:${sb} secondary:${secondary}`);
             ++index;
         }
     }
-/*
-        int cases = 1 + 2 * sa + 2 * sb + sa * sb;
-        for (int sext = 0; sext < (1 + m32); ++sext) {
-            for (int icase = 0; icase < cases; ++icase) {
-
-                int na = 0;         // a is negative
-                int nb = 0;         // b is negative
-                int a_is_zero = 0;  // a is zero
-                int b_is_zero = 0;  // b is zero
-                int np = 0;         // prod is negative
-                int nr = 0;         // rem is negative
-                int abort_case = 0; // if abort copy values of row 0
-                switch (icase) {
-                    // case 0: [a >= 0, b >= 0]
-                    case 1:
-                        // [a < 0, b > 0]
-                        na = 1;
-                    case 2:
-                        // [a < 0, b = 0]
-                        na = 1;
-                        b_is_zero = 1;
-                    case 3:
-                        //  [a > 0, b < 0]
-                        nb = 1;
-                    case 4:
-                        // [a = 0, b < 0]
-                        nb = 1;
-                        a_is_zero = 1;
-                    case 5:
-                        // [a < 0, b < 0]
-                        na = 1;
-                        nb = 1;
-                }
-                if ((div && b_is_zero) || (sext && (a_is_zero || b_is_zero))) {
-                    abort_case = 1;
-                }
-                np = na + nb - na * nb;
-                if (np && (a_is_zero || b_is_zero)) {
-                    // - * 0 = 0 (no negative)
-                    np = 0;
-                }
-                nr = div ? na : 0;
-
-                int range_a1 = m32 * sa ? 1 + na : 0;
-                int range_b1 = m32 * sb ? 1 + nb : 0;
-
-                int range_c1 = 0;
-                if (m32) {
-                    if (div) {
-                        // range_c1 = np || na32 ? 2 : 1;
-                    } else {
-                        // range_c1 = 1 + na32;
-                    }
-                }
-                int range_d1 = m32 * div ? (((np * sa) || sext) ? 1:2) : 0;
-
-                int range_a3 = (1 - m32) * sa ? 1 + na : 0;
-                int range_b3 = (1 - m32) * sb ? 1 + na : 0;
-                int range_c3 = div * (1 - m32) * sa ? 1 + np : 0;
-                int range_d3 = div * (1 - m32) * sa ? 1 + np : 0;
-
-
-                if (abort_case) {
-                    println(`ABORT op:${opcode} sa:${sa} sb:${sb} a_is_zero:${a_is_zero} b_is_zero:${b_is_zero} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} secondary:${secondary}`);
-                    OP[index] = OP[0];
-                    FLAGS[index] = FLAGS[0];
-                    RANGE_AB[index] = RANGE_AB[0];
-                    RANGE_CD[index] = RANGE_CD[0];
-                    ++aborted;
-                } else {
-                    println(`ADD op:${opcode} sa:${sa} sb:${sb} a_is_zero:${a_is_zero} b_is_zero:${b_is_zero} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} secondary:${secondary}`);
-                    OP[index] = opcode;
-                    FLAGS[index] = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext + 128 * secondary;
-                    RANGE_AB[index] = 0;
-                    RANGE_CD[index] = 0;
-                }
-
-                index = index + 1;
-            }
-        }
-    }*/
     const int size = index;
 
     println("ARITH_TABLE SIZE: ", size);
-    println("ARITH_TABLE ABORTED: ", aborted);
-    println("ARITH_FLAGS: ", FLAGS);
     if (generate_table) {
-        println("let arith_table_rows: [i16; 512] = [", op2row, "];");
-    }
-    return;
-    for (index = 0; index < size; ++index) {
-        println(FLAGS[index]);
+        println("static ARITH_TABLE_ROWS: [i16; 512] = [", op2row, "];");
     }
 
     // padding repeat first row
@@ -264,17 +209,18 @@ airtemplate ArithTable(int N = 2**8, int generate_table = 1) {
     }
     col witness multiplicity;
 
-    // TODO:
     lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS, RANGE_AB, RANGE_CD]);
 }
 
 function arith_table_assumes( const expr op, const expr flag_m32, const expr flag_div, const expr flag_na,
                               const expr flag_nb, const expr flag_np, const expr flag_nr, const expr flag_sext,
-                              const expr flag_secondary_res, const expr range_ab, const expr range_cd) {
+                              const expr flag_main_mul, const expr flag_main_div, const expr flag_signed,
+                              const expr range_ab, const expr range_cd) {
 
     // TODO: #pragma binary flag_m32 => check any constraint on compilation time
     // TODO: define rule for empty rows
     lookup_assumes(ARITH_TABLE_ID, cols: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
                                            16 * flag_np + 32 * flag_nr + 64 * flag_sext +
-                                           128 * flag_secondary_res, range_ab, range_cd]);
+                                           128 * flag_main_mul + 256 * flag_main_div + 512 * flag_signed,
+                                           range_ab, range_cd]);
 }

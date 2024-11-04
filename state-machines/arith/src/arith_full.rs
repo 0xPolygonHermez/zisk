@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use crate::{
-    arith_table_inputs, ArithRangeTableInputs, ArithRangeTableSM, ArithSM, ArithTableInputs,
-    ArithTableSM,
+    arith_table_inputs, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithSM,
+    ArithTableInputs, ArithTableSM,
 };
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
@@ -76,10 +76,68 @@ impl<F: Field> ArithFullSM<F> {
         range_table_inputs: &mut ArithRangeTableInputs<F>,
         table_inputs: &mut ArithTableInputs<F>,
     ) -> Vec<Arith0Row<F>> {
-        let mut _trace: Vec<Arith0Row<F>> = Vec::new();
-        range_table_inputs.push(0, 0);
-        table_inputs.fast_push(0, 0, 0);
-        _trace
+        let mut traces: Vec<Arith0Row<F>> = Vec::new();
+        let mut aop = ArithOperation::new();
+        for input in input.iter() {
+            aop.calculate(input.opcode, input.a, input.b);
+            let mut t: Arith0Row<F> = Default::default();
+            for i in 0..4 {
+                t.a[i] = F::from_canonical_u64(aop.a[i]);
+                t.b[i] = F::from_canonical_u64(aop.b[i]);
+                t.c[i] = F::from_canonical_u64(aop.c[i]);
+                t.d[i] = F::from_canonical_u64(aop.d[i]);
+                // arith_operation.a[i];
+            }
+            // range_table_inputs.push(0, 0);
+            // table_inputs.fast_push(0, 0, 0);
+            t.m32 = F::from_bool(aop.m32);
+            t.div = F::from_bool(aop.div);
+            t.na = F::from_bool(aop.na);
+            t.nb = F::from_bool(aop.nb);
+            t.np = F::from_bool(aop.np);
+            t.nr = F::from_bool(aop.nr);
+            t.signed = F::from_bool(aop.signed);
+            t.main_mul = F::from_bool(aop.main_mul);
+            t.main_div = F::from_bool(aop.main_div);
+            t.sext = F::from_bool(aop.sext);
+            t.multiplicity = F::one();
+
+            t.fab = if aop.na != aop.nb { F::neg_one() } else { F::one() };
+            //  na * (1 - 2 * nb);
+            t.na_fb = if aop.na {
+                if aop.nb {
+                    F::neg_one()
+                } else {
+                    F::one()
+                }
+            } else {
+                F::zero()
+            };
+            t.nb_fa = if aop.nb {
+                if aop.na {
+                    F::neg_one()
+                } else {
+                    F::one()
+                }
+            } else {
+                F::zero()
+            };
+            t.bus_res1 = F::from_canonical_u64(
+                if aop.sext { 0xFFFFFFFF } else { 0 }
+                    + if aop.main_mul {
+                        aop.c[2] + aop.c[3] << 16
+                    } else if aop.main_div {
+                        aop.a[2] + aop.a[3] << 16
+                    } else {
+                        aop.d[2] + aop.d[3] << 16
+                    },
+            );
+
+            traces.push(t);
+        }
+        // range_table_inputs.push(0, 0);
+        //table_inputs.fast_push(0, 0, 0);
+        traces
     }
 }
 
