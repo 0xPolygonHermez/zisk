@@ -57,9 +57,22 @@ impl ArithTableInputs {
     pub fn new() -> Self {
         ArithTableInputs { multiplicity: [0; ROWS] }
     }
-    pub fn add_use(&self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
+    pub fn add_use(&mut self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
-        self.multiplicity[row as usize];
+        self.multiplicity[row as usize] += 1;
+    }
+    pub fn multi_add_use(
+        &mut self,
+        times: usize,
+        op: u8,
+        na: bool,
+        nb: bool,
+        np: bool,
+        nr: bool,
+        sext: bool,
+    ) {
+        let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
+        self.multiplicity[row as usize] += times as u64;
     }
     pub fn update_with(&mut self, other: &Self) {
         for i in 0..ROWS {

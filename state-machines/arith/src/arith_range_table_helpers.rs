@@ -69,13 +69,21 @@ impl ArithRangeTableInputs {
     pub fn new() -> Self {
         ArithRangeTableInputs { multiplicity: [0; ROWS] }
     }
-    pub fn use_chunk_range_check(&self, range_id: u8, value: u64) {
+    pub fn use_chunk_range_check(&mut self, range_id: u8, value: u64) {
         let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
-        self.multiplicity[row as usize];
+        self.multiplicity[row as usize] += 1;
     }
-    pub fn use_carry_range_check(&self, value: i64) {
+    pub fn use_carry_range_check(&mut self, value: i64) {
         let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
-        self.multiplicity[row as usize];
+        self.multiplicity[row as usize] += 1;
+    }
+    pub fn multi_use_chunk_range_check(&mut self, times: usize, range_id: u8, value: u64) {
+        let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
+        self.multiplicity[row as usize] += times as u64;
+    }
+    pub fn multi_use_carry_range_check(&mut self, times: usize, value: i64) {
+        let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
+        self.multiplicity[row as usize] += times as u64;
     }
     pub fn update_with(&mut self, other: &Self) {
         for i in 0..ROWS {

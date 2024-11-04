@@ -4,15 +4,18 @@ use std::sync::{
 };
 
 use crate::{
-    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
+    arith_constants::*, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs,
+    ArithTableSM,
 };
+use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
-use sm_common::{OpResult, Provable, ThreadController};
+use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::Arith0Row;
+use zisk_pil::*;
 
 fn i64_to_u64_field(value: i64) -> u64 {
     const PRIME_MINUS_ONE: u64 = 0xFFFF_FFFF_0000_0000;
@@ -26,11 +29,10 @@ fn i64_to_u64_field(value: i64) -> u64 {
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 const PRIME: u64 = 0xFFFF_FFFF_0000_0001;
 pub struct ArithFullSM<F> {
+    wcm: Arc<WitnessManager<F>>,
+
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Thread controller to manage the execution of the state machines
-    threads_controller: Arc<ThreadController>,
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
@@ -48,8 +50,8 @@ impl<F: Field> ArithFullSM<F> {
         air_ids: &[usize],
     ) -> Arc<Self> {
         let arith_full_sm = Self {
+            wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
-            threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
             arith_table_sm,
             arith_range_table_sm,
@@ -57,6 +59,9 @@ impl<F: Field> ArithFullSM<F> {
         let arith_full_sm = Arc::new(arith_full_sm);
 
         wcm.register_component(arith_full_sm.clone(), Some(airgroup_id), Some(air_ids));
+
+        arith_full_sm.arith_table_sm.register_predecessor();
+        arith_full_sm.arith_range_table_sm.register_predecessor();
 
         arith_full_sm
     }
@@ -67,14 +72,6 @@ impl<F: Field> ArithFullSM<F> {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <ArithFullSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-            self.threads_controller.wait_for_threads();
-
             self.arith_table_sm.unregister_predecessor(scope);
             self.arith_range_table_sm.unregister_predecessor(scope);
         }
@@ -83,10 +80,25 @@ impl<F: Field> ArithFullSM<F> {
         input: &Vec<ZiskRequiredOperation>,
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
-    ) -> Vec<Arith0Row<F>> {
-        let mut traces: Vec<Arith0Row<F>> = Vec::new();
+        prover_buffer: &mut [F],
+        offset: u64,
+        num_rows: usize,
+    ) {
+        timer_start_trace!(ARITH_TRACE);
+        info!(
+            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            input.len(),
+            num_rows,
+            input.len() as f64 / num_rows as f64 * 100.0
+        );
+        assert!(input.len() <= num_rows);
+
+        let mut traces =
+            Arith0Trace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
+
         let mut aop = ArithOperation::new();
-        for input in input.iter() {
+        for (i, input) in input.iter().enumerate() {
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: Arith0Row<F> = Default::default();
             for i in [0, 2] {
@@ -168,55 +180,93 @@ impl<F: Field> ArithFullSM<F> {
                     },
             );
 
-            traces.push(t);
+            traces[i] = t;
         }
-        // range_table_inputs.push(0, 0);
-        //table_inputs.fast_push(0, 0, 0);
-        traces
+        timer_stop_and_log_trace!(ARITH_TRACE);
+
+        timer_start_trace!(ARITH_PADDING);
+        let padding_offset = input.len();
+        let padding_rows: usize =
+            if num_rows > padding_offset { (num_rows - padding_offset) as usize } else { 0 };
+
+        if padding_rows > 0 {
+            let mut t: Arith0Row<F> = Default::default();
+            let padding_opcode = MULUH;
+            t.op = F::from_canonical_u8(padding_opcode);
+            for i in padding_offset..padding_rows {
+                traces[i] = t;
+            }
+            range_table_inputs.multi_use_chunk_range_check(padding_rows * 16, 0, 0);
+            range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
+            table_inputs.multi_add_use(
+                padding_rows,
+                padding_opcode,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
+        }
+        timer_stop_and_log_trace!(ARITH_PADDING);
     }
+    /*
+    pub fn prove_instance(
+        &self,
+        operations: Vec<ZiskRequiredOperation>,
+        prover_buffer: &mut [F],
+        offset: u64,
+    ) {
+        Self::prove_internal(
+            &self.wcm,
+            &self.binary_basic_table_sm,
+            operations,
+            prover_buffer,
+            offset,
+        );
+    }*/
 }
 
-impl<F: Field> WitnessComponent<F> for ArithFullSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: Send + Sync> WitnessComponent<F> for ArithFullSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                if drain && !inputs.is_empty() {
-                    println!("ArithFullSM: Draining inputs");
-                }
+            let pctx = self.wcm.get_pctx();
+            let air = pctx.pilout.get_air(ARITH_AIRGROUP_ID, ARITH_AIR_IDS[0]);
+            let num_rows = air.num_rows();
 
-                // self.threads_controller.add_working_thread();
-                // let thread_controller = self.threads_controller.clone();
+            let all_arith_range_table = Arc::new(Mutex::new(ArithRangeTableInputs::new()));
+            let all_arith_table = Arc::new(Mutex::new(ArithTableInputs::new()));
 
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
+                let num_drained = std::cmp::min(num_rows, inputs.len());
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
-                let mut all_arith_range_table = Mutex::new(ArithRangeTableInputs::new());
-                let mut all_arith_table = Mutex::new(ArithTableInputs::new());
+                let (mut prover_buffer, offset) = create_prover_buffer(
+                    &self.wcm.get_ectx(),
+                    &self.wcm.get_sctx(),
+                    ARITH_AIRGROUP_ID,
+                    ARITH_AIR_IDS[0],
+                );
 
+                let mut _all_arith_range_table = Arc::clone(&all_arith_range_table);
+                let mut _all_arith_table = Arc::clone(&all_arith_table);
                 scope.spawn(move |_| {
                     let mut arith_range_table = ArithRangeTableInputs::new();
                     let mut arith_table = ArithTableInputs::new();
-                    let _trace = Self::process_slice(
-                        &_drained_inputs,
+                    Self::process_slice(
+                        &drained_inputs,
                         &mut arith_range_table,
                         &mut arith_table,
+                        &mut prover_buffer,
+                        offset,
+                        num_rows,
                     );
-                    all_arith_range_table.lock().unwrap().update_with(&arith_range_table);
-                    all_arith_table.lock().unwrap().update_with(&arith_table);
+                    _all_arith_range_table.lock().unwrap().update_with(&arith_range_table);
+                    _all_arith_table.lock().unwrap().update_with(&arith_table);
                     // thread_controller.remove_working_thread();
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                 });

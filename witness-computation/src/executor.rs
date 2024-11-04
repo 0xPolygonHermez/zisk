@@ -41,7 +41,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub binary_sm: Arc<BinarySM<F>>,
 
     /// Arithmetic State Machine
-    pub arith_sm: Arc<ArithSM>,
+    pub arith_sm: Arc<ArithSM<F>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {

@@ -29,7 +29,7 @@ pub struct MainSM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     /// Arithmetic state machine
-    arith_sm: Arc<ArithSM>,
+    arith_sm: Arc<ArithSM<F>>,
 
     /// Binary state machine
     binary_sm: Arc<BinarySM<F>>,
@@ -54,7 +54,7 @@ impl<F: PrimeField> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        arith_sm: Arc<ArithSM>,
+        arith_sm: Arc<ArithSM<F>>,
         binary_sm: Arc<BinarySM<F>>,
         mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {

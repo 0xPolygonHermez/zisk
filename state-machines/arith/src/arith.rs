@@ -25,6 +25,7 @@ pub struct ArithSM<F> {
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
+
     arith_full_sm: Arc<ArithFullSM<F>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
@@ -59,6 +60,8 @@ impl<F: Field> ArithSM<F> {
         wcm.register_component(arith_sm.clone(), None, None);
 
         arith_sm.arith_full_sm.register_predecessor();
+        arith_sm.arith_table_sm.register_predecessor();
+        arith_sm.arith_range_table_sm.register_predecessor();
 
         arith_sm
     }
@@ -69,41 +72,16 @@ impl<F: Field> ArithSM<F> {
 
     pub fn unregister_predecessor(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <ArithSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );
-
-            // self.threads_controller.wait_for_threads();
-
+            self.arith_range_table_sm.unregister_predecessor(scope);
+            self.arith_table_sm.unregister_predecessor(scope);
             self.arith_full_sm.unregister_predecessor(scope);
         }
     }
 }
 
-impl<F: Field> WitnessComponent<F> for ArithSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F: Field> WitnessComponent<F> for ArithSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
         while operations.len() >= PROVE_CHUNK_SIZE || (drain && !operations.is_empty()) {
             if drain && !operations.is_empty() {
@@ -117,24 +95,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
             // self.threads_controller.add_working_thread();
             // let thread_controller = self.threads_controller.clone();
 
-            scope.spawn(move |scope| {
-                arith_full_sm_cloned.prove(&drained_inputs, drain, scope);
-
-                thread_controller.remove_working_thread();
-            });
+            arith_full_sm_cloned.prove(&drained_inputs, drain, scope);
         }
-    }
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-
-        self.prove(&[operation], drain, scope);
-
-        result
     }
 }
