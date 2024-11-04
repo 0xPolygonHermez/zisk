@@ -2,7 +2,7 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"ZiskContinuations1-hash";
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -18,8 +18,6 @@ pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 4;
 
 pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 5;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
-
 //AIR CONSTANTS
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
@@ -32,15 +30,15 @@ pub const BINARY_TABLE_AIR_IDS: &[usize] = &[0];
 
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[1];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
 
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("ZiskContinuations1", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Main"));
 
@@ -61,14 +59,11 @@ impl Pilout {
         let air_group = pilout.add_air_group(Some("BinaryExtension"));
 
         air_group.add_air(Some("BinaryExtension"), 2097152);
+        air_group.add_air(Some("SpecifiedRanges"), 16777216);
 
         let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
 
         air_group.add_air(Some("BinaryExtensionTable"), 4194304);
-
-        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
-
-        air_group.add_air(Some("SpecifiedRanges"), 16777216);
 
         pilout
     }

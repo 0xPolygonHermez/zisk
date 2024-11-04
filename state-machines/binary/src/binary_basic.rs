@@ -109,32 +109,32 @@ impl<F: Field> BinaryBasicSM<F> {
 
     fn opcode_is_32_bits(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Add |
-            ZiskOp::Sub |
-            ZiskOp::Ltu |
-            ZiskOp::Lt |
-            ZiskOp::Leu |
-            ZiskOp::Le |
-            ZiskOp::Eq |
-            ZiskOp::Minu |
-            ZiskOp::Min |
-            ZiskOp::Maxu |
-            ZiskOp::Max |
-            ZiskOp::And |
-            ZiskOp::Or |
-            ZiskOp::Xor => false,
+            ZiskOp::Add
+            | ZiskOp::Sub
+            | ZiskOp::Ltu
+            | ZiskOp::Lt
+            | ZiskOp::Leu
+            | ZiskOp::Le
+            | ZiskOp::Eq
+            | ZiskOp::Minu
+            | ZiskOp::Min
+            | ZiskOp::Maxu
+            | ZiskOp::Max
+            | ZiskOp::And
+            | ZiskOp::Or
+            | ZiskOp::Xor => false,
 
-            ZiskOp::AddW |
-            ZiskOp::SubW |
-            ZiskOp::LtuW |
-            ZiskOp::LtW |
-            ZiskOp::LeuW |
-            ZiskOp::LeW |
-            ZiskOp::EqW |
-            ZiskOp::MinuW |
-            ZiskOp::MinW |
-            ZiskOp::MaxuW |
-            ZiskOp::MaxW => true,
+            ZiskOp::AddW
+            | ZiskOp::SubW
+            | ZiskOp::LtuW
+            | ZiskOp::LtW
+            | ZiskOp::LeuW
+            | ZiskOp::LeW
+            | ZiskOp::EqW
+            | ZiskOp::MinuW
+            | ZiskOp::MinW
+            | ZiskOp::MaxuW
+            | ZiskOp::MaxW => true,
 
             _ => panic!("Binary basic opcode_is_32_bits() got invalid opcode={:?}", opcode),
         }
@@ -181,7 +181,7 @@ impl<F: Field> BinaryBasicSM<F> {
         }
 
         // Set main SM step
-        row.main_step = F::from_canonical_u64(operation.step);
+        // row.main_step = F::from_canonical_u64(operation.step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;
@@ -303,9 +303,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -352,9 +352,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -446,9 +446,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -500,9 +500,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -684,8 +684,8 @@ impl<F: Field> BinaryBasicSM<F> {
         let padding_row = Binary0Row::<F> {
             m_op: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
-            main_step: F::zero(), /* TODO: remove, since main_step is just for
-                                   * debugging */
+            // main_step: F::zero(), /* TODO: remove, since main_step is just for
+            //                       * debugging */
             ..Default::default()
         };
 

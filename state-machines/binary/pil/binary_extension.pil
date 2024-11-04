@@ -44,7 +44,7 @@ x    in1[x]    out[x][0]     out[x][1]
 1    0x22      0x00220000    0x00000000
 2    0x33      0x33000000    0x00000000
 3    0x44      0x00000000    0x00000044
-4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00) 
+4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
 5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
 6    0x77      0x00000000    0x00000000
 7    0x88      0x00000000    0x00000000
@@ -72,7 +72,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     const int bits = 64;
     const int bytes = bits / 8;
 
-    col witness op;    
+    col witness op;
     col witness in1[bytes];
     col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
     col witness out[bytes][2];
@@ -89,12 +89,10 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = BI
     expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
     expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
 
-    col witness main_step;
     col witness multiplicity;
     lookup_proves(
         operation_bus_id,
         [
-            main_step,
             op,
             op_is_shift * (in1_low - in2[0]) + in2[0],
             op_is_shift * (in1_high - in2[1]) + in2[1],
