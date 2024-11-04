@@ -26,7 +26,7 @@ use ziskemu::{EmuOptions, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file that contains the ZisK program to be executed
-    pub zisk_rom: ZiskRom,
+    pub zisk_rom: Arc<ZiskRom>,
 
     /// Main State Machine
     pub main_sm: Arc<MainSM<F>>,
@@ -76,6 +76,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
             // TODO - Remove this when the ZisK ROM is able to be loaded from a file
             panic!("ROM file must be an ELF file");
         };
+
+        let zisk_rom = Arc::new(zisk_rom);
 
         // TODO - Compute MAX_ACCUMULATED having the num_rows of the Main AIR
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
