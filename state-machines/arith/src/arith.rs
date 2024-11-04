@@ -108,70 +108,24 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
     }
 
     fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
-        // let mut _inputs32 = Vec::new();
-        // let mut _inputs64 = Vec::new();
-
-        // let operations64 = ArithMul64SM::<F>::operations();
-        // let operations32 = Arith32SM::<F>::operations();
-
-        // TODO Split the operations into 32 and 64 bit operations in parallel
-        // for operation in operations {
-        //     if operations32.contains(&operation.opcode) {
-        //         _inputs32.push(operation.clone());
-        //     } else if operations64.contains(&operation.opcode) {
-        //         _inputs64.push(operation.clone());
-        //     } else {
-        //         panic!("ArithSM: Operator {:x} not found", operation.opcode);
-        //     }
-        // }
-
-        // TODO When drain is true, drain remaining inputs to the 3264 bits state machine
-        /*
-        let mut inputs32 = self.inputs_32.lock().unwrap();
-        inputs32.extend(_inputs32);
-
-        while inputs32.len() >= PROVE_CHUNK_SIZE || (drain && !inputs32.is_empty()) {
-            if drain && !inputs32.is_empty() {
-                // println!("ArithSM: Draining inputs32");
+        while operations.len() >= PROVE_CHUNK_SIZE || (drain && !operations.is_empty()) {
+            if drain && !operations.is_empty() {
+                // println!("ArithSM: Draining inputs");
             }
 
-            let num_drained32 = std::cmp::min(PROVE_CHUNK_SIZE, inputs32.len());
-            let drained_inputs32 = inputs32.drain(..num_drained32).collect::<Vec<_>>();
-            let arith32_sm_cloned = self.arith_32_sm.clone();
+            let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, operations.len());
+            let drained_inputs = operations[..num_drained].to_vec();
+            let arith_full_sm_cloned = self.arith_full_sm.clone();
 
             self.threads_controller.add_working_thread();
             let thread_controller = self.threads_controller.clone();
 
             scope.spawn(move |scope| {
-                arith32_sm_cloned.prove(&drained_inputs32, drain, scope);
+                arith_full_sm_cloned.prove(&drained_inputs, drain, scope);
 
                 thread_controller.remove_working_thread();
             });
         }
-        drop(inputs32);
-
-        let mut inputs64 = self.inputs_mul_64.lock().unwrap();
-        inputs64.extend(_inputs64);
-
-        while inputs64.len() >= PROVE_CHUNK_SIZE || (drain && !inputs64.is_empty()) {
-            if drain && !inputs64.is_empty() {
-                // println!("ArithSM: Draining inputs64");
-            }
-
-            let num_drained64 = std::cmp::min(PROVE_CHUNK_SIZE, inputs64.len());
-            let drained_inputs64 = inputs64.drain(..num_drained64).collect::<Vec<_>>();
-            let arith64_sm_cloned = self.arith_mul_64_sm.clone();
-
-            self.threads_controller.add_working_thread();
-            let thread_controller = self.threads_controller.clone();
-
-            scope.spawn(move |scope| {
-                arith64_sm_cloned.prove(&drained_inputs64, drain, scope);
-
-                thread_controller.remove_working_thread();
-            });
-        }
-        drop(inputs64);*/
     }
 
     fn calculate_prove(

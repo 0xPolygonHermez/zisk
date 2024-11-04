@@ -74,9 +74,9 @@ impl fmt::Debug for ArithOperation {
             f,
             "range_ab: 0x{0:X} {1}, range_cd:0x{2:X} {3}\n",
             self.range_ab,
-            AirthRangeTableHelpers::get_range_name(self.range_ab),
+            ArithRangeTableHelpers::get_range_name(self.range_ab),
             self.range_cd,
-            AirthRangeTableHelpers::get_range_name(self.range_cd)
+            ArithRangeTableHelpers::get_range_name(self.range_cd)
         )
     }
 }

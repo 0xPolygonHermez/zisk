@@ -794,9 +794,6 @@ impl ArithOperationTest {
         let bus_b_low: u64 = aop.b[0] + CHUNK_SIZE * aop.b[1];
         let bus_b_high: u64 = aop.b[2] + CHUNK_SIZE * aop.b[3];
 
-        let res2_low: u64 = aop.d[0] + CHUNK_SIZE * aop.d[1];
-        let res2_high: u64 = aop.d[2] + CHUNK_SIZE * aop.d[3];
-
         let secondary_res: u64 = if aop.main_mul || aop.main_div { 0 } else { 1 };
         /* let bus_res_low: u64 = secondary_res * res2_low
             + (1 - secondary_res)

@@ -4,7 +4,7 @@ const ROWS: usize = 1 << 22;
 const FULL: u8 = 0x00;
 const POS: u8 = 0x01;
 const NEG: u8 = 0x02;
-pub struct AirthRangeTableHelpers;
+pub struct ArithRangeTableHelpers;
 
 const RANGES: [u8; 43] = [
     FULL, FULL, FULL, POS, POS, POS, NEG, NEG, NEG, FULL, FULL, FULL, FULL, FULL, FULL, FULL, FULL,
@@ -16,7 +16,7 @@ const OFFSETS: [usize; 43] = [
     64, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 56, 57, 58, 65, 66, 67,
 ];
 
-impl AirthRangeTableHelpers {
+impl ArithRangeTableHelpers {
     pub fn get_range_name(range_index: u8) -> &'static str {
         match range_index {
             0 => "F  F  F  F",
@@ -39,22 +39,22 @@ impl AirthRangeTableHelpers {
             _ => panic!("Invalid range index"),
         }
     }
-    pub fn get_row_chunk_range_check(range_index: u8, value: i64) -> usize {
+    pub fn get_row_chunk_range_check(range_index: u8, value: u64) -> usize {
         // F F F + + + - - - F F F F F F F F F + - F + - F + - F F F F F F F F F F F + + + - - -
         let range_type = RANGES[range_index as usize];
         assert!(range_index < 43);
-        assert!(value >= if range_type == NEG { -0xFFFF } else { 0 });
+        assert!(value >= if range_type == NEG { 0x8000 } else { 0 });
         assert!(
             value
                 <= match range_type {
                     FULL => 0xFFFF,
-                    POS => -1,
-                    NEG => 0x7FFF,
+                    POS => 0x7FFF,
+                    NEG => 0xFFFF,
                     _ => panic!("Invalid range type"),
                 }
         );
         OFFSETS[range_index as usize] * 0x8000
-            + if range_type == NEG { 0x8000 + value } else { value } as usize
+            + if range_type == NEG { value - 0x8000 } else { value } as usize
     }
     pub fn get_row_carry_range_check(value: i64) -> usize {
         assert!(value >= -0xEFFFF);
@@ -69,13 +69,18 @@ impl ArithRangeTableInputs {
     pub fn new() -> Self {
         ArithRangeTableInputs { multiplicity: [0; ROWS] }
     }
-    pub fn use_chunk_range_check(&self, range_id: u8, value: i64) {
-        let row = AirthRangeTableHelpers::get_row_chunk_range_check(range_id, value);
+    pub fn use_chunk_range_check(&self, range_id: u8, value: u64) {
+        let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
         self.multiplicity[row as usize];
     }
     pub fn use_carry_range_check(&self, value: i64) {
-        let row = AirthRangeTableHelpers::get_row_carry_range_check(value);
+        let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
         self.multiplicity[row as usize];
+    }
+    pub fn update_with(&mut self, other: &Self) {
+        for i in 0..ROWS {
+            self.multiplicity[i] += other.multiplicity[i];
+        }
     }
 }
 
@@ -91,7 +96,7 @@ impl Add for ArithRangeTableInputs {
     }
 }
 
-#[cfg(generate_code_arith_range_table)]
+#[cfg(feature = "generate_code_arith_range_table")]
 fn generate_table() {
     let pattern = "FFF+++---FFFFFFFFF+-F+-F+-FFFFFFFFFFF+++---";
     // let mut ranges = [0u8; 43];

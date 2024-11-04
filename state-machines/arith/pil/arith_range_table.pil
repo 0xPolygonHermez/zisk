@@ -48,10 +48,10 @@ airtemplate ArithRangeTable(int N = 2**22) {
     //
     //    25:FULL + 9:POS + 9:NEG = 34 * 2^16 = 2^21 + 2^17
     //
-    // [range, 0] => [range]
-    // [range, 1] => [range + 26]
-    // [range, 2] => [range + 17]
-    // [range, 3] => [range + 9]
+    // a3 c3 [range, 0] => [range]
+    // a1 c1 [range, 1] => [range + 26]
+    // b3 d3 [range, 2] => [range + 17]
+    // b1 d1 [range, 3] => [range + 9]
     //
     // [-(2^19+2^18+2^16-1)...(2^19+2^18+2^16)] range check carry
 

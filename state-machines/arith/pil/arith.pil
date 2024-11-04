@@ -258,14 +258,14 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     const expr bus_a0 = div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
     const expr bus_a1 = div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
 
-    const expr bus_b0 = b[0] + CHUNK_SIZE * b[1];
-    const expr bus_b1 = b[2] + CHUNK_SIZE * b[3];
+    const expr bus_b0 = b[0] + b[1] * CHUNK_SIZE;
+    const expr bus_b1 = b[2] + b[3] * CHUNK_SIZE;
 
-    const expr bus_res0 = secondary * (d[0] + CHUNK_SIZE * d[1]) +
+    const expr bus_res0 = secondary * (d[0] + d[1] * CHUNK_SIZE) +
                           main_mul * (c[0] + c[1] * CHUNK_SIZE) +
                           main_div * (a[0] + a[1] * CHUNK_SIZE);
 
-    const expr bus_res1_64 = (secondary * (d[2] + CHUNK_SIZE * d[3]) +
+    const expr bus_res1_64 = (secondary * (d[2] + d[3] * CHUNK_SIZE) +
                               main_mul * (c[2] + c[3] * CHUNK_SIZE) +
                               main_div * (a[2] + a[3] * CHUNK_SIZE));
     col witness bus_res1;
@@ -299,19 +299,24 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     arith_table_assumes(op, m32, div, na, nb, np, nr, sext, main_mul, main_div, signed, range_ab, range_cd);
 
-    const expr range_a = range_ab;
-    const expr range_b = range_ab + 26;
-    const expr range_c = range_cd + 17;
-    const expr range_d = range_cd + 9;
+    const expr range_a3 = range_ab;
+    const expr range_a1 = range_ab + 26;
+    const expr range_b3 = range_ab + 17;
+    const expr range_b1 = range_ab + 9;
 
-    arith_range_table_assumes(range_a, a[1]);
-    arith_range_table_assumes(range_b, b[1]);
-    arith_range_table_assumes(range_c, c[1]);
-    arith_range_table_assumes(range_d, d[1]);
-    arith_range_table_assumes(range_a, a[3]);
-    arith_range_table_assumes(range_b, b[3]);
-    arith_range_table_assumes(range_c, c[3]);
-    arith_range_table_assumes(range_d, d[3]);
+    const expr range_c3 = range_cd;
+    const expr range_c1 = range_cd + 26;
+    const expr range_d3 = range_cd + 17;
+    const expr range_d1 = range_cd + 9;
+
+    arith_range_table_assumes(range_a1, a[1]);
+    arith_range_table_assumes(range_b1, b[1]);
+    arith_range_table_assumes(range_c1, c[1]);
+    arith_range_table_assumes(range_d1, d[1]);
+    arith_range_table_assumes(range_a3, a[3]);
+    arith_range_table_assumes(range_b3, b[3]);
+    arith_range_table_assumes(range_c3, c[3]);
+    arith_range_table_assumes(range_d3, d[3]);
 
     // loop for range checks index 0, 2
     for (int index = 0; index < 2; ++index) {

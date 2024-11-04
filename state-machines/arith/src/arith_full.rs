@@ -4,8 +4,7 @@ use std::sync::{
 };
 
 use crate::{
-    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithSM, ArithTableInputs,
-    ArithTableSM,
+    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
@@ -15,8 +14,17 @@ use sm_common::{OpResult, Provable, ThreadController};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::Arith0Row;
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+fn i64_to_u64_field(value: i64) -> u64 {
+    const PRIME_MINUS_ONE: u64 = 0xFFFF_FFFF_0000_0000;
+    if value >= 0 {
+        value as u64
+    } else {
+        PRIME_MINUS_ONE - (0xFFFF_FFFF_FFFF_FFFF - value as u64)
+    }
+}
 
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
+const PRIME: u64 = 0xFFFF_FFFF_0000_0001;
 pub struct ArithFullSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -81,12 +89,37 @@ impl<F: Field> ArithFullSM<F> {
         for input in input.iter() {
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: Arith0Row<F> = Default::default();
-            for i in 0..4 {
+            for i in [0, 2] {
+                t.a[i] = F::from_canonical_u64(aop.a[i]);
+                t.b[i] = F::from_canonical_u64(aop.b[i]);
+                t.c[i] = F::from_canonical_u64(aop.c[i]);
+                t.d[i] = F::from_canonical_u64(aop.d[i]);
+                range_table_inputs.use_chunk_range_check(0, aop.a[i]);
+                range_table_inputs.use_chunk_range_check(0, aop.b[i]);
+                range_table_inputs.use_chunk_range_check(0, aop.c[i]);
+                range_table_inputs.use_chunk_range_check(0, aop.d[i]);
+                // arith_operation.a[i];
+            }
+            for i in [1, 3] {
                 t.a[i] = F::from_canonical_u64(aop.a[i]);
                 t.b[i] = F::from_canonical_u64(aop.b[i]);
                 t.c[i] = F::from_canonical_u64(aop.c[i]);
                 t.d[i] = F::from_canonical_u64(aop.d[i]);
                 // arith_operation.a[i];
+            }
+            range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
+            range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
+            range_table_inputs.use_chunk_range_check(aop.range_ab + 17, aop.b[3]);
+            range_table_inputs.use_chunk_range_check(aop.range_ab + 9, aop.b[1]);
+
+            range_table_inputs.use_chunk_range_check(aop.range_cd, aop.c[3]);
+            range_table_inputs.use_chunk_range_check(aop.range_cd + 26, aop.c[1]);
+            range_table_inputs.use_chunk_range_check(aop.range_cd + 17, aop.d[3]);
+            range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
+
+            for i in 0..7 {
+                t.carry[i] = F::from_canonical_u64(i64_to_u64_field(aop.carry[i]));
+                range_table_inputs.use_carry_range_check(aop.carry[i]);
             }
             // range_table_inputs.push(0, 0);
             // table_inputs.fast_push(0, 0, 0);
@@ -101,6 +134,8 @@ impl<F: Field> ArithFullSM<F> {
             t.main_div = F::from_bool(aop.main_div);
             t.sext = F::from_bool(aop.sext);
             t.multiplicity = F::one();
+
+            table_inputs.add_use(aop.op, aop.na, aop.nb, aop.np, aop.nr, aop.sext);
 
             t.fab = if aop.na != aop.nb { F::neg_one() } else { F::one() };
             //  na * (1 - 2 * nb);
@@ -169,6 +204,9 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
                 let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
+                let mut all_arith_range_table = Mutex::new(ArithRangeTableInputs::new());
+                let mut all_arith_table = Mutex::new(ArithTableInputs::new());
+
                 scope.spawn(move |_| {
                     let mut arith_range_table = ArithRangeTableInputs::new();
                     let mut arith_table = ArithTableInputs::new();
@@ -177,6 +215,8 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
                         &mut arith_range_table,
                         &mut arith_table,
                     );
+                    all_arith_range_table.lock().unwrap().update_with(&arith_range_table);
+                    all_arith_table.lock().unwrap().update_with(&arith_table);
                     // thread_controller.remove_working_thread();
                     // TODO! Implement prove drained_inputs (a chunk of operations)
                 });

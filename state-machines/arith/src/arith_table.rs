@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::arith_constants::*;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
@@ -51,8 +52,10 @@ impl<F: Field> ArithTableSM<F> {
         }
     }
     pub fn operations() -> Vec<u8> {
-        // TODO: use constants
-        vec![0xb6, 0xb7, 0xbe, 0xbf]
+        vec![
+            MULU, MULUH, MULSUH, MUL, MULH, MUL_W, DIVU, REMU, DIV, REM, DIVU_W, REMU_W, DIV_W,
+            REM_W,
+        ]
     }
 }
 
