@@ -62,28 +62,28 @@ impl AirthRangeTableHelpers {
         (0x220000 + 0xEFFFF + value) as usize
     }
 }
-struct AirthRangeTableMultiplicity {
+pub struct ArithRangeTableInputs {
     multiplicity: [u64; ROWS],
 }
-impl AirthRangeTableMultiplicity {
-    fn new() -> Self {
-        AirthRangeTableMultiplicity { multiplicity: [0; ROWS] }
+impl ArithRangeTableInputs {
+    pub fn new() -> Self {
+        ArithRangeTableInputs { multiplicity: [0; ROWS] }
     }
-    fn use_chunk_range_check(&self, range_id: u8, value: i64) {
+    pub fn use_chunk_range_check(&self, range_id: u8, value: i64) {
         let row = AirthRangeTableHelpers::get_row_chunk_range_check(range_id, value);
         self.multiplicity[row as usize];
     }
-    fn use_carry_range_check(&self, value: i64) {
+    pub fn use_carry_range_check(&self, value: i64) {
         let row = AirthRangeTableHelpers::get_row_carry_range_check(value);
         self.multiplicity[row as usize];
     }
 }
 
-impl Add for AirthRangeTableMultiplicity {
+impl Add for ArithRangeTableInputs {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        let mut result = AirthRangeTableMultiplicity::new();
+        let mut result = ArithRangeTableInputs::new();
         for i in 0..ROWS {
             result.multiplicity[i] = self.multiplicity[i] + other.multiplicity[i];
         }

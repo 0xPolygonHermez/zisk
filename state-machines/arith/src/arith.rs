@@ -14,7 +14,6 @@ use zisk_pil::{
     ARITH_TABLE_AIRGROUP_ID, ARITH_TABLE_AIR_IDS,
 };
 
-// use crate::{Arith32SM, ArithFullSM, ArithMul32SM, ArithMul64SM, ArithRangeTableSM, ArithTableSM};
 use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -29,14 +28,6 @@ pub struct ArithSM<F> {
 
     // Inputs
     inputs: Mutex<Vec<ZiskRequiredOperation>>,
-    // inputs_32: Mutex<Vec<ZiskRequiredOperation>>,
-    // inputs_mul_32: Mutex<Vec<ZiskRequiredOperation>>,
-    // inputs_mul_64: Mutex<Vec<ZiskRequiredOperation>>,
-
-    // Secondary State machines
-    // arith_32_sm: Arc<Arith32SM<F>>,
-    // arith_mul_32_sm: Arc<ArithMul32SM<F>>,
-    // arith_mul_64_sm: Arc<ArithMul64SM<F>>,
     arith_full_sm: Arc<ArithFullSM<F>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
@@ -70,9 +61,6 @@ impl<F: Field> ArithSM<F> {
 
         wcm.register_component(arith_sm.clone(), None, None);
 
-        // arith_sm.arith_32_sm.register_predecessor();
-        // arith_sm.arith_mul_32_sm.register_predecessor();
-        // arith_sm.arith_mul_64_sm.register_predecessor();
         arith_sm.arith_full_sm.register_predecessor();
 
         arith_sm
@@ -93,9 +81,6 @@ impl<F: Field> ArithSM<F> {
 
             self.threads_controller.wait_for_threads();
 
-            // self.arith_32_sm.unregister_predecessor(scope);
-            // self.arith_mul_32_sm.unregister_predecessor(scope);
-            // self.arith_mul_64_sm.unregister_predecessor(scope);
             self.arith_full_sm.unregister_predecessor(scope);
         }
     }

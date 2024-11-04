@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use crate::{
-    arith_table_inputs, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithSM,
-    ArithTableInputs, ArithTableSM,
+    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithSM, ArithTableInputs,
+    ArithTableSM,
 };
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
@@ -73,8 +73,8 @@ impl<F: Field> ArithFullSM<F> {
     }
     pub fn process_slice(
         input: &Vec<ZiskRequiredOperation>,
-        range_table_inputs: &mut ArithRangeTableInputs<F>,
-        table_inputs: &mut ArithTableInputs<F>,
+        range_table_inputs: &mut ArithRangeTableInputs,
+        table_inputs: &mut ArithTableInputs,
     ) -> Vec<Arith0Row<F>> {
         let mut traces: Vec<Arith0Row<F>> = Vec::new();
         let mut aop = ArithOperation::new();
@@ -170,12 +170,12 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
                 let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
 
                 scope.spawn(move |_| {
-                    let mut arith_range_table_inputs = ArithRangeTableInputs::<F>::new();
-                    let mut arith_table_inputs = ArithTableInputs::<F>::new();
+                    let mut arith_range_table = ArithRangeTableInputs::new();
+                    let mut arith_table = ArithTableInputs::new();
                     let _trace = Self::process_slice(
                         &_drained_inputs,
-                        &mut arith_range_table_inputs,
-                        &mut arith_table_inputs,
+                        &mut arith_range_table,
+                        &mut arith_table,
                     );
                     // thread_controller.remove_working_thread();
                     // TODO! Implement prove drained_inputs (a chunk of operations)

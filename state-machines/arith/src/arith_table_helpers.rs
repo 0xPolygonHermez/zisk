@@ -3,10 +3,10 @@ use std::ops::Add;
 const ROWS: usize = 95;
 const FIRST_OP: u8 = 0xb0;
 
-struct AirthTableHelpers;
+pub struct AirthTableHelpers;
 
 impl AirthTableHelpers {
-    fn get_row(op: u8, na: u64, nb: u64, np: u64, nr: u64, sext: u64) -> usize {
+    pub fn get_row(op: u8, na: u64, nb: u64, np: u64, nr: u64, sext: u64) -> usize {
         static ARITH_TABLE_ROWS: [i16; 512] = [
             0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -39,30 +39,30 @@ impl AirthTableHelpers {
         assert!(row >= 0);
         row as usize
     }
-    fn get_max_row() -> usize {
+    pub fn get_max_row() -> usize {
         ROWS - 1
     }
 }
 
-struct AirthTableMultiplicity {
+pub struct ArithTableInputs {
     multiplicity: [u64; ROWS],
 }
 
-impl AirthTableMultiplicity {
-    fn new() -> Self {
-        AirthTableMultiplicity { multiplicity: [0; ROWS] }
+impl ArithTableInputs {
+    pub fn new() -> Self {
+        ArithTableInputs { multiplicity: [0; ROWS] }
     }
-    fn add_use(&self, op: u8, na: u64, nb: u64, np: u64, nr: u64, sext: u64) {
+    pub fn add_use(&self, op: u8, na: u64, nb: u64, np: u64, nr: u64, sext: u64) {
         let row = AirthTableHelpers::get_row(op, na, nb, np, nr, sext);
         self.multiplicity[row as usize];
     }
 }
 
-impl Add for AirthTableMultiplicity {
+impl Add for ArithTableInputs {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        let mut result = AirthTableMultiplicity::new();
+        let mut result = ArithTableInputs::new();
         for i in 0..ROWS {
             result.multiplicity[i] = self.multiplicity[i] + other.multiplicity[i];
         }
