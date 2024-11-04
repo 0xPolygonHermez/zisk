@@ -6,7 +6,9 @@ use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{Pilout, Rom0Row, Rom0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_AIR_IDS};
+use zisk_pil::{
+    Pilout, Rom0Row, Rom0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_AIR_IDS,
+};
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
 
@@ -100,14 +102,14 @@ impl<F: Field> RomSM<F> {
         let number_of_instructions = rom.insts.len();
 
         Self::create_rom_s(
-                sizes.0,
-                rom,
-                number_of_instructions,
-                buffer_allocator,
-                sctx,
-                pc_histogram,
-                main_trace_len,
-            )
+            sizes.0,
+            rom,
+            number_of_instructions,
+            buffer_allocator,
+            sctx,
+            pc_histogram,
+            main_trace_len,
+        )
         // match number_of_instructions {
         //     n if n <= sizes.0 => Self::create_rom_s(
         //         sizes.0,
@@ -136,8 +138,8 @@ impl<F: Field> RomSM<F> {
         //         pc_histogram,
         //         main_trace_len,
         //     ),
-        //     _ => panic!("RomSM::compute_trace() found rom too big size={}", number_of_instructions),
-        // }
+        //     _ => panic!("RomSM::compute_trace() found rom too big size={}",
+        // number_of_instructions), }
     }
 
     fn create_rom_s(
@@ -178,7 +180,8 @@ impl<F: Field> RomSM<F> {
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
                     if inst.paddr == pc_histogram.end_pc {
-                        multiplicity += main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
+                        multiplicity +=
+                            main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
                     }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
@@ -293,8 +296,8 @@ impl<F: Field> RomSM<F> {
     //             if counter.is_some() {
     //                 multiplicity = *counter.unwrap();
     //                 if inst.paddr == pc_histogram.end_pc {
-    //                     multiplicity += main_trace_len - 1 - (pc_histogram.steps % main_trace_len);
-    //                 }
+    //                     multiplicity += main_trace_len - 1 - (pc_histogram.steps %
+    // main_trace_len);                 }
     //             } else {
     //                 continue; // We skip those pc's that are not used in this execution
     //             }
@@ -328,14 +331,14 @@ impl<F: Field> RomSM<F> {
     //         };
 
     //         // Fill the rom trace row fields
-    //         rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-    //         rom_trace[i].a_offset_imm0 = a_offset_imm0;
+    //         rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc,
+    // paddr, line         rom_trace[i].a_offset_imm0 = a_offset_imm0;
     //         rom_trace[i].a_imm1 =
-    //             F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-    //         rom_trace[i].b_offset_imm0 = b_offset_imm0;
+    //             F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0
+    // });         rom_trace[i].b_offset_imm0 = b_offset_imm0;
     //         rom_trace[i].b_imm1 =
-    //             F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-    //         //rom_trace[i].b_src_ind =
+    //             F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0
+    // });         //rom_trace[i].b_src_ind =
     //         //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
     //         rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
     //         rom_trace[i].op = F::from_canonical_u8(inst.op);
@@ -392,8 +395,8 @@ impl<F: Field> RomSM<F> {
     //             if counter.is_some() {
     //                 multiplicity = *counter.unwrap();
     //                 if inst.paddr == pc_histogram.end_pc {
-    //                     multiplicity += main_trace_len - 1 - (pc_histogram.steps % main_trace_len);
-    //                 }
+    //                     multiplicity += main_trace_len - 1 - (pc_histogram.steps %
+    // main_trace_len);                 }
     //             } else {
     //                 continue; // We skip those pc's that are not used in this execution
     //             }
@@ -427,14 +430,14 @@ impl<F: Field> RomSM<F> {
     //         };
 
     //         // Fill the rom trace row fields
-    //         rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-    //         rom_trace[i].a_offset_imm0 = a_offset_imm0;
+    //         rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc,
+    // paddr, line         rom_trace[i].a_offset_imm0 = a_offset_imm0;
     //         rom_trace[i].a_imm1 =
-    //             F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-    //         rom_trace[i].b_offset_imm0 = b_offset_imm0;
+    //             F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0
+    // });         rom_trace[i].b_offset_imm0 = b_offset_imm0;
     //         rom_trace[i].b_imm1 =
-    //             F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-    //         //rom_trace[i].b_src_ind =
+    //             F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0
+    // });         //rom_trace[i].b_src_ind =
     //         //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
     //         rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
     //         rom_trace[i].op = F::from_canonical_u8(inst.op);

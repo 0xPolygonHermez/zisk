@@ -103,15 +103,24 @@ impl<F: PrimeField> MainSM<F> {
             }
         } else {
             let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
-            let mut emu = Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
+            let mut emu =
+                Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
             let row_previous = emu.step_slice_full_trace(emu_trace_previous);
 
             Main0Row::<F> {
+                set_pc: row_previous.set_pc,
+                jmp_offset1: row_previous.jmp_offset1,
+                jmp_offset2: if row_previous.flag == F::one() {
+                    row_previous.jmp_offset1
+                } else {
+                    row_previous.jmp_offset2
+                },
                 a: row_previous.a,
                 b: row_previous.c,
                 c: row_previous.c,
                 a_offset_imm0: row_previous.a[0],
                 b_offset_imm0: row_previous.c[0],
+                addr1: row_previous.c[0],
                 a_imm1: row_previous.a[1],
                 b_imm1: row_previous.c[1],
                 op: F::from_canonical_u8(ZiskOp::CopyB.code()),
@@ -121,12 +130,6 @@ impl<F: PrimeField> MainSM<F> {
                 ..Main0Row::default()
             }
         };
-
-        if segment_id == 1 {
-            // "INFO 19: 20 77 main/pil/main.pil:222 (1-Main.SEGMENT_L1)*(Main.pc-((('Main.set_pc*('Main.c[0]+'Main.jmp_offset1))+((1-'Main.set_pc)*('Main.pc+'Main.jmp_offset2)))+('Main.flag*('Main.jmp_offset1-'Main.jmp_offset2)))) == 0"
-            //row0: Main0Row { a: [27, 0], b: [452984832, 0], c: [452984832, 0], flag: 0, pc: 2147486932, a_src_imm: 1, a_src_mem: 0, a_offset_imm0: 27, a_imm1: 0, a_src_step: 0, b_src_imm: 1, b_src_mem: 0, b_offset_imm0: 452984832, b_imm1: 0, b_src_ind: 0, ind_width: 0, is_external_op: 0, op: 1, store_ra: 0, store_mem: 0, store_ind: 0, store_offset: 0, set_pc: 0, jmp_offset1: 0, jmp_offset2: 0, m32: 0, addr1: 0, __debug_operation_bus_enabled: 0 }
-            println!("row0: {:?}", row0);
-        }
 
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
 
