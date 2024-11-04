@@ -453,6 +453,7 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     #[allow(unused_variables)]
     pub fn step(&mut self, options: &EmuOptions, callback: &Option<impl Fn(EmuTrace)>) {
+        let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
@@ -495,8 +496,9 @@ impl<'a> Emu<'a> {
         #[cfg(debug_assertions)]
         if options.log_step {
             println!(
-                "step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
+                "step={} pc={} next={} op={}={} a={} b={} c={} flag={} inst={}",
                 self.ctx.inst_ctx.step,
+                pc,
                 self.ctx.inst_ctx.pc,
                 instruction.op,
                 instruction.op_str,

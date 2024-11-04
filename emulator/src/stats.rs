@@ -188,10 +188,13 @@ impl Stats {
             memory_writes,
             memory_total
         );
-        let reg_reads_percentage = (self.rops.reads * 100) / memory_reads;
-        let reg_writes_percentage = (self.rops.writes * 100) / memory_writes;
+        let reg_reads_percentage =
+            if memory_reads != 0 { (self.rops.reads * 100) / memory_reads } else { 0 };
+        let reg_writes_percentage =
+            if memory_writes != 0 { (self.rops.writes * 100) / memory_writes } else { 0 };
         let reg_total = self.rops.reads + self.rops.writes;
-        let reg_total_percentage = (reg_total * 100) / memory_total;
+        let reg_total_percentage =
+            if memory_total != 0 { (reg_total * 100) / memory_total } else { 0 };
 
         output += &format!(
             "    Registy: reads={}={}% writes={}={}% total={}={}% r/w\n",
@@ -207,9 +210,12 @@ impl Stats {
             let reads = self.reg_reads[reg];
             let writes = self.reg_writes[reg];
             let rw = reads + writes;
-            let reads_percentage = (reads * 100) / self.rops.reads;
-            let writes_percentage = (reads * 100) / self.rops.writes;
-            let rw_percentage = (rw * 100) / (self.rops.reads + self.rops.writes);
+            let reads_percentage =
+                if self.rops.reads != 0 { (reads * 100) / self.rops.reads } else { 0 };
+            let writes_percentage =
+                if self.rops.writes != 0 { (reads * 100) / self.rops.writes } else { 0 };
+            let total_rw = self.rops.reads + self.rops.writes;
+            let rw_percentage = if total_rw != 0 { (rw * 100) / total_rw } else { 0 };
             output += &format!(
                 "        Reg {} reads={}={}% writes={}={}% r/w={}={}%\n",
                 reg, reads, reads_percentage, writes, writes_percentage, rw, rw_percentage

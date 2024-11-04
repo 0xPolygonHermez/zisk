@@ -14,10 +14,10 @@ pub const STORE_IND: u64 = 2;
 
 /* Memory map:
 
-  |--------------- ROM_ENTRY first instruction (0x1000)
+  |--------------- ROM_ENTRY first instr   (    0x1000)
   | calls program at ROM_ADDR, then returns
   | kind of a BIOS
-  |--------------- ROM_EXIT last instruction   (0x4000)
+  |--------------- ROM_EXIT last instr     (0x10000000)
         ...
   |--------------- ROM_ADDR                (0x80000000)
   | (rom program)
@@ -45,7 +45,7 @@ pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
 pub const AVAILABLE_MEM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 pub const ROM_ENTRY: u64 = 0x1000;
-pub const ROM_EXIT: u64 = 0x4000;
+pub const ROM_EXIT: u64 = 0x10000000;
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 pub const UART_ADDR: u64 = SYS_ADDR + 512;
 
