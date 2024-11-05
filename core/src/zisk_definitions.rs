@@ -20,15 +20,15 @@ pub const STORE_IND: u64 = 2;
   |--------------- ROM_EXIT last instr     (0x10000000)
         ...
   |--------------- ROM_ADDR                (0x80000000)
-  | (rom program)
+  | (rom program: 256 MB)
   |--------------- INPUT_ADDR              (0x90000000)
-  | (input data)
+  | (input data: 256 MB)
   |--------------- SYS_ADDR (= RAM_ADDR)   (0xa0000000)
-  | (sys = 32 registers)
+  | (sys: 32 registers=first 256 B of 64 kB)
   |--------------- OUTPUT_ADDR             (0xa0010000)
-  | (output data)
+  | (output data: 64 kB)
   |--------------- AVAILABLE_MEM_ADDR      (0xa0020000)
-  | (program memory)
+  | (program memory: 256 MB - 128 kB)
   |---------------                         (0xb0000000)
 
 */

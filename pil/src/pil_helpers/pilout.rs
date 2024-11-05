@@ -2,25 +2,29 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"ZiskContinuations1-hash";
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 //AIRGROUP CONSTANTS
 
-pub const MAIN_AIRGROUP_ID: usize = 0;
+pub const INPUT_DATA_AIRGROUP_ID: usize = 0;
 
-pub const ROM_AIRGROUP_ID: usize = 1;
+pub const MAIN_AIRGROUP_ID: usize = 1;
 
-pub const BINARY_AIRGROUP_ID: usize = 2;
+pub const ROM_AIRGROUP_ID: usize = 2;
 
-pub const BINARY_TABLE_AIRGROUP_ID: usize = 3;
+pub const BINARY_AIRGROUP_ID: usize = 3;
 
-pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 4;
+pub const BINARY_TABLE_AIRGROUP_ID: usize = 4;
 
-pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 5;
+pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 5;
 
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 6;
+pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 6;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 7;
 
 //AIR CONSTANTS
+
+pub const INPUT_DATA_AIR_IDS: &[usize] = &[0];
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
 
@@ -40,7 +44,11 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("ZiskContinuations1", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
+
+        let air_group = pilout.add_air_group(Some("InputData"));
+
+        air_group.add_air(Some("InputData"), 2097152);
 
         let air_group = pilout.add_air_group(Some("Main"));
 

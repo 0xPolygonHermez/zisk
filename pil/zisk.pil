@@ -7,8 +7,14 @@ require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
 // require "mem/pil/mem.pil"
+require "mem/pil/input_data.pil"
 
 const int OPERATION_BUS_ID = 5000;
+
+airgroup InputData {
+    InputData(N: 2**21, RC: 2);
+}
+
 airgroup Main {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
 }

@@ -1,0 +1,40 @@
+require "std_permutation.pil"
+require "std_range_check.pil"
+
+const int MEMORY_ID = 10;
+const int INPUT_DATA_CONT_ID = 1012;
+const int MEMORY_LOAD_OP = 1;
+const int MAX_MEM_STEP_OFFSET = 3;
+
+airtemplate InputData (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MEM_BYTES = 8 ) {
+    col fixed SEGMENT_L1 = [1,0...];
+    const expr SEGMENT_LAST = SEGMENT_L1';
+
+    col witness addr;  // n-byte address, real address = addr * MEM_BYTES
+    col witness step;
+    col witness sel;
+    col witness value[2*RC];
+    col witness addr_changes;
+
+    sel * (1 - sel) === 0;
+
+    // all time first line is lost, used for continuations
+    sel * SEGMENT_L1 === 0;
+
+    addr_changes * (1 - addr_changes) === 0;
+
+    // if addr_changes == 0 means that addr and previous address are the same
+    (1 - addr_changes) * ('addr - addr) === 0;
+    // addresses are incremental
+    addr_changes * ('addr - addr + 1) === 0;
+
+    // if addr does not change, read value is the same
+    for (int index = 0; index < length(value); index = index + 1) {
+        (1 - addr_changes) * ('value[index] - value[index]) === 0;
+        range_check(sel: 1, colu: value[index], min: 0, max: 0xFFFF);
+    }
+
+    //permutation_assumes(INPUT_DATA_CONT_ID, [addr], sel: SEGMENT_L1); // first row
+
+    //permutation_proves(MEMORY_ID, cols: [0, addr * MEM_BYTES, step, MEM_BYTES, value[0] + 2**16*value[1], value[2] + 2**16*value[3]], sel: sel); 
+}
