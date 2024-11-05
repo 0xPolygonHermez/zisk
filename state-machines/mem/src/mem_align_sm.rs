@@ -12,7 +12,7 @@ use zisk_pil::{MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
-pub struct MemAlignedSM {
+pub struct MemAlignSM {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -21,7 +21,7 @@ pub struct MemAlignedSM {
 }
 
 #[allow(unused, unused_variables)]
-impl MemAlignedSM {
+impl MemAlignSM {
     pub fn new<F>(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let mem_aligned_sm =
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
@@ -42,7 +42,7 @@ impl MemAlignedSM {
 
     pub fn unregister_predecessor<F: Field>(&self, scope: &Scope) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            <MemAlignedSM as Provable<MemOp, OpResult>>::prove(self, &[], true, scope);
+            <MemAlignSM as Provable<MemOp, OpResult>>::prove(self, &[], true, scope);
         }
     }
 
@@ -62,7 +62,7 @@ impl MemAlignedSM {
     }
 }
 
-impl<F> WitnessComponent<F> for MemAlignedSM {
+impl<F> WitnessComponent<F> for MemAlignSM {
     fn calculate_witness(
         &self,
         _stage: u32,
@@ -74,7 +74,7 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
     }
 }
 
-impl Provable<MemOp, OpResult> for MemAlignedSM {
+impl Provable<MemOp, OpResult> for MemAlignSM {
     fn calculate(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {
         match operation {
             MemOp::Read(addr) => self.read(addr),

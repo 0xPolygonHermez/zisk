@@ -33,9 +33,6 @@ pub struct MainSM<F: PrimeField> {
 
     /// Binary state machine
     binary_sm: Arc<BinarySM<F>>,
-
-    /// Memory state machine
-    mem_sm: Arc<MemSM>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -56,14 +53,12 @@ impl<F: PrimeField> MainSM<F> {
         wcm: Arc<WitnessManager<F>>,
         arith_sm: Arc<ArithSM>,
         binary_sm: Arc<BinarySM<F>>,
-        mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm, mem_sm });
+        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm });
 
         wcm.register_component(main_sm.clone(), Some(MAIN_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        main_sm.mem_sm.register_predecessor();
         main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 

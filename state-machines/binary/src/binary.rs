@@ -79,13 +79,12 @@ impl<F: PrimeField> BinarySM<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            /*<BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );*/
-            //self.threads_controller.wait_for_threads();
+            // <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            //     self,
+            //     &[],
+            //     true,
+            //     scope,
+            // );
 
             self.binary_basic_sm.unregister_predecessor();
             self.binary_extension_sm.unregister_predecessor();

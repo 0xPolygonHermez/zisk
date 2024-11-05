@@ -11,8 +11,8 @@ use std::{
 };
 use sysinfo::System;
 use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
-    ZISK_OPERATION_TYPE_VARIANTS,
+    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredMemory, ZiskRequiredOperation,
+    ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 pub trait Emulator {
@@ -241,6 +241,29 @@ impl ZiskEmulator {
         }
 
         Ok((vec_traces, emu_slices))
+    }
+
+    pub fn par_process_rom_memory<F: PrimeField>(
+        rom: &ZiskRom,
+        inputs: &[u8],
+    ) -> Result<[Vec<ZiskRequiredMemory>; 2], ZiskEmulatorErr> {
+        let mut result: [Vec<ZiskRequiredMemory>; 2] = [Vec::new(), Vec::new()];
+
+        result.par_iter_mut().enumerate().for_each(|(is_aligned, result)| {
+            let is_aligned = is_aligned == 0;
+            let mut emu = Emu::new(rom);
+            let required = emu.par_run_memory::<F>(inputs.to_owned(), is_aligned);
+
+            if !emu.terminated() {
+                panic!("Emulation did not complete");
+                // TODO!
+                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
+            }
+
+            *result = required;
+        });
+
+        Ok(result)
     }
 
     #[inline]
