@@ -3,42 +3,30 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(Main0Row, Main0Trace<F> {
+trace!(MainRow, MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 });
 
-trace!(Rom0Row, Rom0Trace<F> {
+trace!(RomRow, RomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
 });
 
-trace!(Arith0Row, Arith0Trace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-});
-
-trace!(ArithTable0Row, ArithTable0Trace<F> {
- multiplicity: F,
-});
-
-trace!(ArithRangeTable0Row, ArithRangeTable0Trace<F> {
- multiplicity: F,
-});
-
-trace!(Binary0Row, Binary0Trace<F> {
+trace!(BinaryRow, BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
 
-trace!(BinaryTable0Row, BinaryTable0Trace<F> {
+trace!(BinaryTableRow, BinaryTableTrace<F> {
  multiplicity: F,
 });
 
-trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
+trace!(BinaryExtensionRow, BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
 });
 
-trace!(SpecifiedRanges1Row, SpecifiedRanges1Trace<F> {
- mul: [F; 1],
+trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
+ multiplicity: F,
 });
 
-trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
- multiplicity: F,
+trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
+ mul: [F; 1],
 });
