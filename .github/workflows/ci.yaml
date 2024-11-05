@@ -147,7 +147,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/pil2-compiler
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: feature/pilout_v2_airgroup
+          ref: develop
           path: pil2-compiler
 
       - name: Install pil2-compiler dependencies
