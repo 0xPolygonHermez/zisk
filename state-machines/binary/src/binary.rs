@@ -11,9 +11,8 @@ use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
-    BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
-    BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIRGROUP_ID,
-    BINARY_TABLE_AIR_IDS,
+    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
@@ -35,24 +34,24 @@ pub struct BinarySM<F: PrimeField> {
 impl<F: PrimeField> BinarySM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm =
-            BinaryBasicTableSM::new(wcm.clone(), BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
+            BinaryBasicTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
         let binary_basic_sm = BinaryBasicSM::new(
             wcm.clone(),
             binary_basic_table_sm,
-            BINARY_AIRGROUP_ID,
+            ZISK_AIRGROUP_ID,
             BINARY_AIR_IDS,
         );
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new(
             wcm.clone(),
-            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+            ZISK_AIRGROUP_ID,
             BINARY_EXTENSION_TABLE_AIR_IDS,
         );
         let binary_extension_sm = BinaryExtensionSM::new(
             wcm.clone(),
             std,
             binary_extension_table_sm,
-            BINARY_EXTENSION_AIRGROUP_ID,
+            ZISK_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
         );
 
@@ -79,13 +78,12 @@ impl<F: PrimeField> BinarySM<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            /*<BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );*/
-            //self.threads_controller.wait_for_threads();
+            // <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
+            //     self,
+            //     &[],
+            //     true,
+            //     scope,
+            // );
 
             self.binary_basic_sm.unregister_predecessor();
             self.binary_extension_sm.unregister_predecessor();

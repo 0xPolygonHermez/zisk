@@ -10,9 +10,9 @@ use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
+use zisk_pil::{Binary0Row, Binary0Trace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
@@ -657,9 +657,9 @@ impl<F: Field> BinaryBasicSM<F> {
     ) {
         timer_start_trace!(BINARY_TRACE);
         let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_table =
-            pctx.pilout.get_air(BINARY_TABLE_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
 
         info!(
@@ -729,7 +729,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
             inputs.extend_from_slice(operations);
 
             let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -743,7 +743,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
                 let (mut prover_buffer, offset) = create_prover_buffer(
                     &wcm.get_ectx(),
                     &wcm.get_sctx(),
-                    BINARY_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_AIR_IDS[0],
                 );
 
@@ -757,7 +757,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 let air_instance = AirInstance::new(
                     sctx,
-                    BINARY_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_AIR_IDS[0],
                     None,
                     prover_buffer,

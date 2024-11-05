@@ -15,6 +15,18 @@ trace!(Rom0Row, Rom0Trace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
 });
 
+trace!(Mem0Row, Mem0Trace<F> {
+ addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, same_value: F, first_addr_access_is_read: F,
+});
+
+trace!(MemAlign0Row, MemAlign0Trace<F> {
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], sel_prove: F, step: F,
+});
+
+trace!(MemAlignRom0Row, MemAlignRom0Trace<F> {
+ multiplicity: F,
+});
+
 trace!(Binary0Row, Binary0Trace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
@@ -32,5 +44,9 @@ trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
 });
 
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 1],
+ mul: [F; 2],
+});
+
+trace!(U8Air0Row, U8Air0Trace<F> {
+ mul: F,
 });

@@ -2,25 +2,11 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+pub const PILOUT_HASH: &[u8] = b"ZiskMem-hash";
 
 //AIRGROUP CONSTANTS
 
-pub const INPUT_DATA_AIRGROUP_ID: usize = 0;
-
-pub const MAIN_AIRGROUP_ID: usize = 1;
-
-pub const ROM_AIRGROUP_ID: usize = 2;
-
-pub const BINARY_AIRGROUP_ID: usize = 3;
-
-pub const BINARY_TABLE_AIRGROUP_ID: usize = 4;
-
-pub const BINARY_EXTENSION_AIRGROUP_ID: usize = 5;
-
-pub const BINARY_EXTENSION_TABLE_AIRGROUP_ID: usize = 6;
-
-pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 7;
+pub const ZISK_AIRGROUP_ID: usize = 0;
 
 //AIR CONSTANTS
 
@@ -28,55 +14,45 @@ pub const INPUT_DATA_AIR_IDS: &[usize] = &[0];
 
 pub const MAIN_AIR_IDS: &[usize] = &[0];
 
-pub const ROM_AIR_IDS: &[usize] = &[0];
+pub const ROM_AIR_IDS: &[usize] = &[1];
 
-pub const BINARY_AIR_IDS: &[usize] = &[0];
+pub const MEM_AIR_IDS: &[usize] = &[2];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[0];
+pub const MEM_ALIGN_AIR_IDS: &[usize] = &[3];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[0];
+pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[4];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[0];
+pub const BINARY_AIR_IDS: &[usize] = &[5];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[6];
+
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[7];
+
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[8];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[9];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[10];
 
 pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("ZiskMem", 2, PILOUT_HASH.to_vec());
 
-        let air_group = pilout.add_air_group(Some("InputData"));
-
-        air_group.add_air(Some("InputData"), 2097152);
-
-        let air_group = pilout.add_air_group(Some("Main"));
+        let air_group = pilout.add_air_group(Some("Zisk"));
 
         air_group.add_air(Some("Main"), 2097152);
-
-        let air_group = pilout.add_air_group(Some("Rom"));
-
-        air_group.add_air(Some("Rom"), 1048576);
-
-        let air_group = pilout.add_air_group(Some("Binary"));
-
+        air_group.add_air(Some("Rom"), 4194304);
+        air_group.add_air(Some("Mem"), 2097152);
+        air_group.add_air(Some("MemAlign"), 2097152);
+        air_group.add_air(Some("MemAlignRom"), 256);
         air_group.add_air(Some("Binary"), 2097152);
-
-        let air_group = pilout.add_air_group(Some("BinaryTable"));
-
         air_group.add_air(Some("BinaryTable"), 4194304);
-
-        let air_group = pilout.add_air_group(Some("BinaryExtension"));
-
         air_group.add_air(Some("BinaryExtension"), 2097152);
-
-        let air_group = pilout.add_air_group(Some("BinaryExtensionTable"));
-
         air_group.add_air(Some("BinaryExtensionTable"), 4194304);
-
-        let air_group = pilout.add_air_group(Some("SpecifiedRanges"));
-
         air_group.add_air(Some("SpecifiedRanges"), 16777216);
+        air_group.add_air(Some("U8Air"), 256);
 
         pilout
     }
