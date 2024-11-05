@@ -79,7 +79,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         col witness air.b_imm1;
     }
     col witness b_src_ind;
-    col witness ind_width;  // 8 , 4, 2, 1
+    col witness ind_width;  // 8, 4, 2, 1
 
     // Operations related
 
@@ -135,17 +135,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     // Mem.load
-    //mem_load(sel: a_src_mem,
-    //         step: addr_step,
-    //         addr: addr0,
-    //         value: a);
+    mem_load(sel: a_src_mem,
+             step: addr_step,
+             addr: addr0,
+             value: a);
 
     // Mem.load
-    //mem_load(sel: sel_mem_b,
-    //          step: addr_step + 1,
-    //          bytes: ind_width,
-    //          addr: addr1,
-    //          value: b);
+    mem_load(sel: sel_mem_b,
+             step: addr_step + 1,
+             bytes: ind_width,
+             addr: addr1,
+             value: b);
 
     const expr store_value[2];
 
@@ -153,11 +153,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     store_value[1] = (1 - store_ra) * c[1];
 
     // Mem.store
-    //mem_store(sel: store_mem + store_ind,
-    //          step: addr_step + 2,
-    //          bytes: ind_width,
-    //          addr: addr2,
-    //          value: store_value);
+    mem_store(sel: store_mem + store_ind,
+              step: addr_step + 2,
+              bytes: ind_width,
+              addr: addr2,
+              value: store_value);
 
     // Operation.assume => how organize software
     col witness __debug_operation_bus_enabled;
