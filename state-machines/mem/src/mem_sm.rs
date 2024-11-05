@@ -5,13 +5,13 @@ use std::sync::{
 
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use rayon::Scope;
-use sm_common::{MemOp, OpResult, Provable};
-use zisk_core::ZiskRequiredMemory;
-// use zisk_pil::{Mem0Trace, MEM_AIRGROUP_ID, MEM_AIR_IDS};
+use proofman_common::AirInstance;
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+use rayon::prelude::*;
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+use sm_common::{create_prover_buffer, MemOp};
+use zisk_core::ZiskRequiredMemory;
+use zisk_pil::{Mem0Trace, MEM_AIRGROUP_ID, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemSM<F: PrimeField> {
     // Witness computation manager
@@ -37,7 +37,7 @@ impl<F: PrimeField> MemSM<F> {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        // wcm.register_component(mem_sm.clone(), Some(MEM_AIRGROUP_ID), Some(MEM_AIR_IDS));
+        wcm.register_component(mem_sm.clone(), Some(MEM_AIRGROUP_ID), Some(MEM_AIR_IDS));
 
         mem_sm
     }
@@ -47,9 +47,61 @@ impl<F: PrimeField> MemSM<F> {
     }
 
     pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // <MemSM<F> as Provable<MemOp, OpResult>>::prove(self, &[], true, scope);
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {}
+    }
+
+    pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
+        // Sort the (full) aligned memory accesses
+        timer_start_debug!(MEM_SORT_2);
+        mem_accesses.sort_by_key(|mem| mem.address);
+        timer_stop_and_log_debug!(MEM_SORT_2);
+
+        let air = self.wcm.get_pctx().pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+
+        let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
+
+        let mut prover_buffers = vec![Vec::new(); num_chunks];
+        let mut offsets = vec![0; num_chunks];
+        let mut global_idxs = vec![0; num_chunks];
+
+        let pctx = self.wcm.get_pctx();
+        let ectx = self.wcm.get_ectx();
+        let sctx = self.wcm.get_sctx();
+
+        for i in 0..num_chunks {
+            if let (true, global_idx) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
+                ZISK_AIRGROUP_ID,
+                MEM_AIR_IDS[0],
+                1,
+            ) {
+                let (buffer, offset) =
+                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
+                                
+                prover_buffers.push(buffer);
+                offsets.push(offset);
+                global_idxs.push(global_idx);
+            }
         }
+
+        mem_accesses.par_chunks(air.num_rows() - 1).enumerate().for_each(
+            |(segment_id, mem_ops)| {
+                let mem_first_row = if segment_id == 0 {
+                    mem_accesses.last().unwrap().clone()
+                } else {
+                    mem_accesses[segment_id * ((air.num_rows() - 1) - 1)].clone()
+                };
+
+                self.prove_instance(
+                    mem_ops,
+                    mem_first_row,
+                    segment_id,
+                    segment_id == mem_accesses.len() - 1,
+                    prover_buffers[segment_id],
+                    offsets[segment_id],
+                    global_idxs[segment_id],
+                );
+            },
+        );
     }
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
@@ -67,146 +119,139 @@ impl<F: PrimeField> MemSM<F> {
         is_last_segment: bool,
         mut prover_buffer: Vec<F>,
         offset: u64,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        global_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let pctx = self.wcm.get_pctx();
+
         // STEP2: Process the memory inputs and convert them to AIR instances
-        // let air = pctx.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
 
-        // let max_rows_per_segment = air.num_rows() - 1;
+        let max_rows_per_segment = air.num_rows() - 1;
 
-        // assert!(mem_ops.len() > 0 && mem_ops.len() <= max_rows_per_segment);
+        assert!(mem_ops.len() > 0 && mem_ops.len() <= max_rows_per_segment);
 
-        // // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR segments
-        // // In a Memory AIR instance, the first row is reserved as a dummy row.
-        // // This dummy row is used to facilitate the continuation state between different AIR segments.
-        // // It ensures seamless transitions when multiple AIR segments are processed consecutively.
-        // // This design avoids discontinuities in memory access patterns and ensures that the memory trace is continuous,
-        // // For this reason we use AIR num_rows - 1 as the number of rows in each memory AIR instance
+        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR segments
+        // In a Memory AIR instance, the first row is reserved as a dummy row.
+        // This dummy row is used to facilitate the continuation state between different AIR segments.
+        // It ensures seamless transitions when multiple AIR segments are processed consecutively.
+        // This design avoids discontinuities in memory access patterns and ensures that the memory trace is continuous,
+        // For this reason we use AIR num_rows - 1 as the number of rows in each memory AIR instance
 
-        // // Create a vector of Mem0Row instances, one for each memory operation
-        // // Recall that first row is a dummy row used for the continuations between AIR segments
-        // // The length of the vector is the number of input memory operations plus one because
-        // // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
+        // Create a vector of Mem0Row instances, one for each memory operation
+        // Recall that first row is a dummy row used for the continuations between AIR segments
+        // The length of the vector is the number of input memory operations plus one because
+        // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
-        // let mut trace =
-        //     Mem0Trace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
-        //         .unwrap();
+        let mut trace =
+            Mem0Trace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
+                .unwrap();
 
-        // let segment_id_field = F::from_canonical_u64(segment_id as u64);
-        // let is_last_segment_field = F::from_bool(is_last_segment);
+        let segment_id_field = F::from_canonical_u64(segment_id as u64);
+        let is_last_segment_field = F::from_bool(is_last_segment);
 
-        // // STEP1. Add the first row to the output vector as equal to the last row of the previous segment
-        // // CASE: last row of segment is read
-        // //
-        // // S[n-1]    wr = 0, sel = 1, addr, step, value
-        // // S+1[0]    wr = 0, sel = 0, addr, step, value
-        // //
-        // // CASE: last row of segment is write
-        // //
-        // // S[n-1]    wr = 1, sel = 1, addr, step, value
-        // // S+1[0]    wr = 0, sel = 0, addr, step, value
+        // STEP1. Add the first row to the output vector as equal to the last row of the previous segment
+        // CASE: last row of segment is read
+        //
+        // S[n-1]    wr = 0, sel = 1, addr, step, value
+        // S+1[0]    wr = 0, sel = 0, addr, step, value
+        //
+        // CASE: last row of segment is write
+        //
+        // S[n-1]    wr = 1, sel = 1, addr, step, value
+        // S+1[0]    wr = 0, sel = 0, addr, step, value
 
+        // TODO CHECK
         // trace[0].mem_segment = segment_id_field;
         // trace[0].mem_last_segment = is_last_segment_field;
 
-        // trace[0].addr = F::from_canonical_u64(mem_first_row.address);
-        // trace[0].step = F::from_canonical_u64(mem_first_row.step);
-        // trace[0].sel = F::zero();
-        // trace[0].wr = F::zero();
+        trace[0].addr = F::from_canonical_u64(mem_first_row.address);
+        trace[0].step = F::from_canonical_u64(mem_first_row.step);
+        trace[0].sel = F::zero();
+        trace[0].wr = F::zero();
 
-        // let value = match mem_first_row.width {
-        //     1 => mem_first_row.value as u8 as u64,
-        //     2 => mem_first_row.value as u16 as u64,
-        //     4 => mem_first_row.value as u32 as u64,
-        //     8 => mem_first_row.value,
-        //     _ => panic!("Invalid width"),
-        // };
-        // let (low_val, high_val) = self.get_u32_values(value);
-        // trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
-        // trace[0].addr_changes = F::zero();
+        let value = match mem_first_row.width {
+            1 => mem_first_row.value as u8 as u64,
+            2 => mem_first_row.value as u16 as u64,
+            4 => mem_first_row.value as u32 as u64,
+            8 => mem_first_row.value,
+            _ => panic!("Invalid width"),
+        };
+        let (low_val, high_val) = self.get_u32_values(value);
+        trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+        trace[0].addr_changes = F::zero();
 
-        // trace[0].same_value = F::zero();
-        // trace[0].first_addr_access_is_read = F::zero();
+        trace[0].same_value = F::zero();
+        trace[0].first_addr_access_is_read = F::zero();
 
-        // // STEP2. Add all the memory operations to the buffer
-        // for (idx, mem_op) in mem_ops.iter().enumerate() {
-        //     let i = idx + 1;
-        //     trace[i].mem_segment = segment_id_field;
-        //     trace[i].mem_last_segment = is_last_segment_field;
+        // STEP2. Add all the memory operations to the buffer
+        for (idx, mem_op) in mem_ops.iter().enumerate() {
+            let i = idx + 1;
+            // TODO CHECK
+            // trace[i].mem_segment = segment_id_field;
+            // trace[i].mem_last_segment = is_last_segment_field;
 
-        //     trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
-        //     trace[i].step = F::from_canonical_u64(mem_op.step);
-        //     trace[i].sel = F::one();
-        //     trace[i].wr = F::from_bool(mem_op.is_write);
+            trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
+            trace[i].step = F::from_canonical_u64(mem_op.step);
+            trace[i].sel = F::one();
+            trace[i].wr = F::from_bool(mem_op.is_write);
 
-        //     let value = match mem_op.width {
-        //         1 => mem_op.value as u8 as u64,
-        //         2 => mem_op.value as u16 as u64,
-        //         4 => mem_op.value as u32 as u64,
-        //         8 => mem_op.value,
-        //         _ => panic!("Invalid width"),
-        //     };
-        //     let (low_val, high_val) = self.get_u32_values(value);
-        //     trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
-        //     if i == 66587 || i == 66586 {
-        //         println!(
-        //             "mem_op.value: {:?} value: {:?} width: {}",
-        //             mem_op.value, trace[i].value, mem_op.width
-        //         );
-        //         println!("mem_op: {:?}", mem_op);
-        //     }
-        //     let addr_changes = trace[i - 1].addr != trace[i].addr;
-        //     trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
+            let value = match mem_op.width {
+                1 => mem_op.value as u8 as u64,
+                2 => mem_op.value as u16 as u64,
+                4 => mem_op.value as u32 as u64,
+                8 => mem_op.value,
+                _ => panic!("Invalid width"),
+            };
+            let (low_val, high_val) = self.get_u32_values(value);
+            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
-        //     let same_value = trace[i - 1].value[0] == trace[i].value[0]
-        //         && trace[i - 1].value[1] == trace[i].value[1];
-        //     trace[i].same_value = if same_value { F::one() } else { F::zero() };
+            let addr_changes = trace[i - 1].addr != trace[i].addr;
+            trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
 
-        //     let first_addr_access_is_read = addr_changes && !mem_op.is_write;
-        //     trace[i].first_addr_access_is_read =
-        //         if first_addr_access_is_read { F::one() } else { F::zero() };
+            let same_value = trace[i - 1].value[0] == trace[i].value[0]
+                && trace[i - 1].value[1] == trace[i].value[1];
+            trace[i].same_value = if same_value { F::one() } else { F::zero() };
 
-        //     if i == 66587 || i == 66586 {
-        //         println!("trace[{}]: {:?}", i, trace[i]);
-        //     }
-        // }
+            let first_addr_access_is_read = addr_changes && !mem_op.is_write;
+            trace[i].first_addr_access_is_read =
+                if first_addr_access_is_read { F::one() } else { F::zero() };
+        }
 
-        // // STEP3. Add dummy rows to the output vector to fill the remaining rows
-        // //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
-        // let last_row_idx = mem_ops.len();
-        // let addr = trace[last_row_idx].addr;
-        // let mut step = trace[last_row_idx].step;
-        // let value = trace[last_row_idx].value;
+        // STEP3. Add dummy rows to the output vector to fill the remaining rows
+        //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
+        let last_row_idx = mem_ops.len();
+        let addr = trace[last_row_idx].addr;
+        let mut step = trace[last_row_idx].step;
+        let value = trace[last_row_idx].value;
 
-        // for i in (mem_ops.len() + 1)..air.num_rows() {
-        //     step += F::one();
+        for i in (mem_ops.len() + 1)..air.num_rows() {
+            step += F::one();
 
-        //     trace[i].mem_segment = segment_id_field;
-        //     trace[i].mem_last_segment = is_last_segment_field;
+            // TODO CHECK
+            // trace[i].mem_segment = segment_id_field;
+            // trace[i].mem_last_segment = is_last_segment_field;
 
-        //     trace[i].addr = addr;
-        //     trace[i].step = step;
-        //     trace[i].sel = F::zero();
-        //     trace[i].wr = F::zero();
+            trace[i].addr = addr;
+            trace[i].step = step;
+            trace[i].sel = F::zero();
+            trace[i].wr = F::zero();
 
-        //     trace[i].value = value;
+            trace[i].value = value;
 
-        //     trace[i].addr_changes = F::zero();
-        //     trace[i].same_value = F::one();
-        //     trace[i].first_addr_access_is_read = F::zero();
-        // }
+            trace[i].addr_changes = F::zero();
+            trace[i].same_value = F::one();
+            trace[i].first_addr_access_is_read = F::zero();
+        }
 
-        // let air_instance = AirInstance::new(
-        //     self.wcm.get_sctx(),
-        //     MEM_AIRGROUP_ID,
-        //     MEM_AIR_IDS[0],
-        //     Some(segment_id),
-        //     prover_buffer,
-        // );
+        let air_instance = AirInstance::new(
+            self.wcm.get_sctx(),
+            MEM_AIRGROUP_ID,
+            MEM_AIR_IDS[0],
+            Some(segment_id),
+            prover_buffer,
+        );
 
-        // pctx.air_instance_repo.add_air_instance(air_instance);
+        pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
@@ -217,23 +262,6 @@ impl<F: PrimeField> MemSM<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemSM<F> {}
-
-impl<F: PrimeField> Provable<MemOp, OpResult> for MemSM<F> {
-    fn prove(&self, operations: &[MemOp], drain: bool, scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            while inputs.len() >= PROVE_CHUNK_SIZE || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, inputs.len());
-                let _drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                scope.spawn(move |_| {
-                    // TODO! Implement prove drained_inputs (a chunk of operations)
-                });
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

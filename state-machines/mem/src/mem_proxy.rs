@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::{MemAlignSM, MemSM};
-use p3_field::{Field, PrimeField};
+use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{MemOp, MemUnalignedOp};
 use zisk_core::ZiskRequiredMemory;
@@ -57,7 +57,7 @@ impl<F: PrimeField> MemProxy<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // self.mem_sm.unregister_predecessor();
+            self.mem_sm.unregister_predecessor();
             // self.mem_align_sm.unregister_predecessor::<F>();
         }
     }
@@ -89,16 +89,9 @@ impl<F: PrimeField> MemProxy<F> {
         // Step 3. Concatenate the new aligned memory accesses with the original aligned memory accesses
         aligned.extend(new_aligned);
 
-        // Step 4. Sort the (full) aligned memory accesses
-        timer_start_debug!(MEM_SORT_2);
-        aligned.sort_by_key(|mem| mem.address);
-        timer_stop_and_log_debug!(MEM_SORT_2);
+        // Step 4. Prove the aligned memory accesses using mem state machine
+        self.mem_sm.prove(&mut aligned);
 
-        // Step 5. Prove the aligned memory accesses using mem state machine
-
-        println!("Proving MemSM");
-        println!("Aligned: {:?}", operations[0].len());
-        println!("Non aligned: {:?}", operations[1].len());
         Ok(())
     }
 

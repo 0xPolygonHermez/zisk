@@ -17,7 +17,7 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
+use zisk_pil::{BinaryExtension0Row, BinaryExtension0Trace, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -117,12 +117,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SllW |
-            ZiskOp::SrlW |
-            ZiskOp::SraW => true,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SllW
+            | ZiskOp::SrlW
+            | ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -134,12 +134,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SignExtendB |
-            ZiskOp::SignExtendH |
-            ZiskOp::SignExtendW => false,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -389,10 +389,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let pctx = wcm.get_pctx();
 
-        let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-        let air_binary_extension_table = pctx
-            .pilout
-            .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary_extension_table =
+            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
 
         info!(
@@ -467,8 +466,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
             inputs.extend_from_slice(operations);
 
             let pctx = self.wcm.get_pctx();
-            let air =
-                pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -484,7 +482,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                 let (mut prover_buffer, offset) = create_prover_buffer(
                     &wcm.get_ectx(),
                     &wcm.get_sctx(),
-                    BINARY_EXTENSION_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_EXTENSION_AIR_IDS[0],
                 );
 
@@ -499,7 +497,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let air_instance = AirInstance::new(
                     sctx,
-                    BINARY_EXTENSION_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_EXTENSION_AIR_IDS[0],
                     None,
                     prover_buffer,

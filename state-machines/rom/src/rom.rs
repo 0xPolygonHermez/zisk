@@ -7,7 +7,7 @@ use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
 use zisk_pil::{
-    Pilout, Rom0Row, Rom0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_AIR_IDS,
+    Pilout, Rom0Row, Rom0Trace, ZISK_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIR_IDS,
 };
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
@@ -22,7 +22,7 @@ impl<F: Field> RomSM<F> {
         let rom_sm = Arc::new(rom_sm);
 
         let rom_air_ids = ROM_AIR_IDS;
-        wcm.register_component(rom_sm.clone(), Some(ROM_AIRGROUP_ID), Some(rom_air_ids));
+        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(rom_air_ids));
 
         rom_sm
     }
@@ -41,13 +41,13 @@ impl<F: Field> RomSM<F> {
         let sctx = self.wcm.get_sctx();
 
         let num_rows =
-            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
+            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
 
         let prover_buffer =
             Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, num_rows as u64)?;
 
         let air_instance =
-            AirInstance::new(sctx.clone(), ROM_AIRGROUP_ID, MAIN_AIR_IDS[0], None, prover_buffer);
+            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0], None, prover_buffer);
 
         self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(instance_gid));
 
@@ -88,13 +88,13 @@ impl<F: Field> RomSM<F> {
         main_trace_len: u64,
     ) -> Result<Vec<F>, Box<dyn Error + Send>> {
         let pilout = Pilout::pilout();
-        let num_rows = pilout.get_air(ROM_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
+        let num_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
         let number_of_instructions = rom.insts.len();
 
         // Allocate a prover buffer
         let (buffer_size, offsets) = buffer_allocator
-            .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_AIR_IDS[0])
+            .get_buffer_info(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
             .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
         let mut prover_buffer = create_buffer_fast(buffer_size as usize);
 

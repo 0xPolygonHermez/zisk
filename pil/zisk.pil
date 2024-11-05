@@ -1,38 +1,25 @@
-
-require "constants.pil"
-require "rom/pil/rom.pil"
 require "main/pil/main.pil"
+require "rom/pil/rom.pil"
+require "mem/pil/mem.pil"
+require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align_rom.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
-// require "mem/pil/mem.pil"
 
 const int OPERATION_BUS_ID = 5000;
-airgroup Main {
+
+airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
-}
+    Rom(N: 2**22);
 
-airgroup Rom {
-    Rom(N: 2**20);
-}
+    Mem(N: 2**21, RC: 2);
+    MemAlign(N: 2**21);
+    MemAlignRom(disable_fixed: 0);
 
-// airgroup Mem {
-//     Mem(N: 2**21, RC: 2);
-// }
-
-airgroup Binary {
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-}
-
-airgroup BinaryTable {
     BinaryTable(disable_fixed: 0);
-}
-
-airgroup BinaryExtension {
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-}
-
-airgroup BinaryExtensionTable {
     BinaryExtensionTable(disable_fixed: 0);
 }

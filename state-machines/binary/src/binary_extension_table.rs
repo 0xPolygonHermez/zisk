@@ -10,7 +10,7 @@ use proofman_common::AirInstance;
 use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
-use zisk_pil::{BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS};
+use zisk_pil::{ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
@@ -49,7 +49,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let pctx = wcm.get_pctx();
         let air = pctx
             .pilout
-            .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
+            .get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
 
         let binary_extension_table = Self {
             wcm: wcm.clone(),
@@ -131,7 +131,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         let (is_myne, instance_global_idx) = dctx.add_instance(
-            BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+            ZISK_AIRGROUP_ID,
             BINARY_EXTENSION_TABLE_AIR_IDS[0],
             1,
         );
@@ -145,7 +145,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             let (mut prover_buffer, offset) = create_prover_buffer(
                 &self.wcm.get_ectx(),
                 &self.wcm.get_sctx(),
-                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+                ZISK_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
             );
 
@@ -162,7 +162,7 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
             let air_instance = AirInstance::new(
                 self.wcm.get_sctx(),
-                BINARY_EXTENSION_TABLE_AIRGROUP_ID,
+                ZISK_AIRGROUP_ID,
                 BINARY_EXTENSION_TABLE_AIR_IDS[0],
                 None,
                 prover_buffer,
