@@ -77,7 +77,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
             // TODO - Remove this when the ZisK ROM is able to be loaded from a file
             panic!("ROM file must be an ELF file");
         };
-        let zisk_rom = Arc::new(zisk_rom);
 
         let zisk_rom = Arc::new(zisk_rom);
 
