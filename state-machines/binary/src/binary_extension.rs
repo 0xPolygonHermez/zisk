@@ -149,7 +149,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
         range_check: &mut HashMap<u64, u64>,
-    ) -> BinaryExtension0Row<F> {
+    ) -> BinaryExtensionRow<F> {
         // Get the opcode
         let op = operation.opcode;
 
@@ -158,7 +158,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         // Create an empty trace
         let mut row =
-            BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
+            BinaryExtensionRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -389,10 +389,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let pctx = wcm.get_pctx();
 
-        let air = pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-        let air_binary_extension_table = pctx
-            .pilout
-            .get_air(BINARY_EXTENSION_TABLE_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary_extension_table =
+            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
 
         info!(
@@ -406,7 +405,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
         let mut trace_buffer =
-            BinaryExtension0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
+            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
@@ -417,7 +416,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
         let padding_row =
-            BinaryExtension0Row::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+            BinaryExtensionRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
         for i in operations.len()..air.num_rows() {
             trace_buffer[i] = padding_row;
@@ -467,8 +466,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
             inputs.extend_from_slice(operations);
 
             let pctx = self.wcm.get_pctx();
-            let air =
-                pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
             while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
                 let num_drained = std::cmp::min(air.num_rows(), inputs.len());
@@ -484,7 +482,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                 let (mut prover_buffer, offset) = create_prover_buffer(
                     &wcm.get_ectx(),
                     &wcm.get_sctx(),
-                    BINARY_EXTENSION_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_EXTENSION_AIR_IDS[0],
                 );
 
@@ -499,7 +497,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let air_instance = AirInstance::new(
                     sctx,
-                    BINARY_EXTENSION_AIRGROUP_ID,
+                    ZISK_AIRGROUP_ID,
                     BINARY_EXTENSION_AIR_IDS[0],
                     None,
                     prover_buffer,
