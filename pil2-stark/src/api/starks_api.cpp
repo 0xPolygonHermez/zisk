@@ -586,6 +586,41 @@ void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, cha
     return (void *) new nlohmann::ordered_json(zkinFinal);    
 }
 
+char *get_serialized_proof(void *zkin, uint64_t* size){
+    nlohmann::ordered_json* zkinJson = (nlohmann::ordered_json*) zkin;
+    string zkinStr = zkinJson->dump();
+    char *zkinCStr = new char[zkinStr.length() + 1];
+    strcpy(zkinCStr, zkinStr.c_str());
+    *size = zkinStr.length()+1;
+    return zkinCStr;
+}
+
+void *deserialize_zkin_proof(char* serialized_proof) {
+    nlohmann::ordered_json* zkinJson = new nlohmann::ordered_json();
+    try {
+        *zkinJson = nlohmann::ordered_json::parse(serialized_proof);
+    } catch (const nlohmann::json::parse_error& e) {
+        std::cerr << "[ERROR] JSON parse error in deserialize_zkin_proof(): " << e.what() << std::endl;
+        delete zkinJson;
+        return nullptr;
+    }
+    return (void *) zkinJson;
+}
+
+void *get_zkin_proof(char* zkin) {
+    nlohmann::ordered_json zkinJson;
+    file2json(zkin, zkinJson);
+    return (void *) new nlohmann::ordered_json(zkinJson);
+}
+
+void zkin_proof_free(void *pZkinProof) {
+    nlohmann::ordered_json* zkin = (nlohmann::ordered_json*) pZkinProof;
+    delete zkin;
+}
+
+void serialized_proof_free(char *zkinCStr) {
+    delete[] zkinCStr;
+}
 
 void setLogLevel(uint64_t level) {
     LogLevel new_level;

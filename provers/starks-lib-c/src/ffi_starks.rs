@@ -793,6 +793,41 @@ pub fn join_zkin_recursive2_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+pub fn get_serialized_proof_c(zkin: *mut c_void) -> (*mut std::os::raw::c_char, u64) {
+    unsafe {
+        let size: Box<u64> = Box::new(0);
+        let size_ptr: *mut u64 = Box::into_raw(size);
+        let ptr = get_serialized_proof(zkin, size_ptr);
+        let size: Box<u64> = Box::from_raw(size_ptr);
+        (ptr, *size)
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn deserialize_zkin_proof_c(zkin_cstr: *mut std::os::raw::c_char) -> *mut c_void {
+    unsafe { deserialize_zkin_proof(zkin_cstr) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_zkin_proof_c(zkin: *mut std::os::raw::c_char) -> *mut c_void {
+    unsafe { get_zkin_proof(zkin) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn zkin_proof_free_c(p_zkin_proof: *mut c_void) {
+    unsafe {
+        zkin_proof_free(p_zkin_proof);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn serialized_proof_free_c(zkin_cstr: *mut std::os::raw::c_char) {
+    unsafe {
+        serialized_proof_free(zkin_cstr);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn set_log_level_c(level: u64) {
     unsafe {
         setLogLevel(level);
@@ -1407,6 +1442,38 @@ pub fn join_zkin_final_c(
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "join_zkin_final: This is a mock call because there is no linked library");
     std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_serialized_proof_c(_zkin: *mut c_void, _size: *mut u64) -> *mut std::os::raw::c_char {
+    trace!("{}: ··· {}", "ffi     ", "get_serialized_proof_c: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn deserialize_zkin_proof_c(_zkin_cstr: *mut std::os::raw::c_char) -> *mut c_void {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "deserialize_zkin_proof_c: This is a mock call because there is no linked library"
+    );
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn get_zkin_proof_c(_zkin_file: *mut std::os::raw::c_char) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "get_zkin_proof_c: This is a mock call because there is no linked library");
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn zkin_proof_free_c(_p_zkin_proof: *mut c_void) {
+    trace!("{}: ··· {}", "ffi     ", "zkin_proof_free_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn serialized_proof_free_c(_zkin_cstr: *mut std::os::raw::c_char) {
+    trace!("{}: ··· {}", "ffi     ", "serialized_proof_free_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

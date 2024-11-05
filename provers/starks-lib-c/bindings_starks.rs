@@ -576,6 +576,27 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z20get_serialized_proofPvPm"]
+    pub fn get_serialized_proof(zkin: *mut ::std::os::raw::c_void, size: *mut u64) -> *mut ::std::os::raw::c_char;
+}
+
+extern "C" {
+    #[link_name = "\u{1}_Z22deserialize_zkin_proofPc"]
+    pub fn deserialize_zkin_proof(serialized_proof: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z14get_zkin_proofPc"]
+    pub fn get_zkin_proof(zkin: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15zkin_proof_freePv"]
+    pub fn zkin_proof_free(pZkinProof: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z21serialized_proof_freePc"]
+    pub fn serialized_proof_free(zkinCStr: *mut ::std::os::raw::c_char);
+}
+extern "C" {
     #[link_name = "\u{1}_Z11setLogLevelm"]
     pub fn setLogLevel(level: u64);
 }

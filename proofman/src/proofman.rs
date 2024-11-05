@@ -73,11 +73,12 @@ impl<F: Field + 'static> ProofMan<F> {
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
 
         let mut dctx = ectx.dctx.write().unwrap();
-        dctx.close();
-        if dctx.rank == 0 {
+        dctx.close(pctx.global_info.air_groups.len());
+        let mpi_rank = dctx.rank;
+        drop(dctx);
+        if mpi_rank == 0 {
             Self::print_summary(pctx.clone());
         }
-        drop(dctx);
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
         Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
@@ -126,7 +127,7 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         if options.verify_constraints {
-            verify_constraints_proof(pctx, ectx, sctx, provers, witness_lib);
+            verify_constraints_proof(pctx.clone(), ectx.clone(), sctx.clone(), provers, witness_lib);
             return Ok(());
         }
 
@@ -159,20 +160,34 @@ impl<F: Field + 'static> ProofMan<F> {
 
         timer_start_info!(GENERATING_AGGREGATION_PROOFS);
         timer_start_info!(GENERATING_COMPRESSOR_PROOFS);
-        let comp_proofs =
-            generate_recursion_proof(&pctx, &proves_out, &ProofType::Compressor, output_dir_path.clone(), false)?;
+        let comp_proofs = generate_recursion_proof(
+            &pctx,
+            &ectx,
+            &proves_out,
+            &ProofType::Compressor,
+            output_dir_path.clone(),
+            false,
+        )?;
         timer_stop_and_log_info!(GENERATING_COMPRESSOR_PROOFS);
         log::info!("{}: Compressor proofs generated successfully", Self::MY_NAME);
 
         timer_start_info!(GENERATING_RECURSIVE1_PROOFS);
-        let recursive1_proofs =
-            generate_recursion_proof(&pctx, &comp_proofs, &ProofType::Recursive1, output_dir_path.clone(), false)?;
+        let recursive1_proofs = generate_recursion_proof(
+            &pctx,
+            &ectx,
+            &comp_proofs,
+            &ProofType::Recursive1,
+            output_dir_path.clone(),
+            false,
+        )?;
         timer_stop_and_log_info!(GENERATING_RECURSIVE1_PROOFS);
         log::info!("{}: Recursive1 proofs generated successfully", Self::MY_NAME);
 
+        ectx.dctx.read().unwrap().barrier();
         timer_start_info!(GENERATING_RECURSIVE2_PROOFS);
         let recursive2_proofs = generate_recursion_proof(
             &pctx,
+            &ectx,
             &recursive1_proofs,
             &ProofType::Recursive2,
             output_dir_path.clone(),
@@ -181,14 +196,24 @@ impl<F: Field + 'static> ProofMan<F> {
         timer_stop_and_log_info!(GENERATING_RECURSIVE2_PROOFS);
         log::info!("{}: Recursive2 proofs generated successfully", Self::MY_NAME);
 
-        timer_start_info!(GENERATING_FINAL_PROOFS);
-        let _final_proof =
-            generate_recursion_proof(&pctx, &recursive2_proofs, &ProofType::Final, output_dir_path.clone(), true)?;
-        timer_stop_and_log_info!(GENERATING_FINAL_PROOFS);
-        log::info!("{}: Final proof generated successfully", Self::MY_NAME);
+        ectx.dctx.read().unwrap().barrier();
+        if mpi_rank == 0 {
+            timer_start_info!(GENERATING_FINAL_PROOFS);
+            let _final_proof = generate_recursion_proof(
+                &pctx,
+                &ectx,
+                &recursive2_proofs,
+                &ProofType::Final,
+                output_dir_path.clone(),
+                true,
+            )?;
+            timer_stop_and_log_info!(GENERATING_FINAL_PROOFS);
+            log::info!("{}: Final proof generated successfully", Self::MY_NAME);
+        }
         timer_stop_and_log_info!(GENERATING_AGGREGATION_PROOFS);
         timer_stop_and_log_info!(GENERATING_VADCOP_PROOF);
         log::info!("{}: Proofs generated successfully", Self::MY_NAME);
+        ectx.dctx.read().unwrap().barrier();
         Ok(())
     }
 

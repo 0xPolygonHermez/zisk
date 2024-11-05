@@ -5,7 +5,7 @@ use proofman_starks_lib_c::*;
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 
-use proofman_common::{ProofCtx, ProofType, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, ProofType, SetupCtx};
 
 use std::os::raw::{c_void, c_char};
 
@@ -26,7 +26,8 @@ type GenWitnessResult<F> = Result<(Vec<MaybeUninit<F>>, Vec<MaybeUninit<F>>), Bo
 
 pub fn generate_recursion_proof<F: Field>(
     pctx: &ProofCtx<F>,
-    proves: &[*mut c_void],
+    ectx: &ExecutionCtx,
+    proofs: &[*mut c_void],
     proof_type: &ProofType,
     output_dir_path: PathBuf,
     save_proof: bool,
@@ -34,14 +35,14 @@ pub fn generate_recursion_proof<F: Field>(
     const MY_NAME: &str = "AggProof";
 
     //Create setup contexts
-    let mut proves_out: Vec<*mut c_void> = Vec::new();
+    let mut proofs_out: Vec<*mut c_void> = Vec::new();
 
     let global_info_path = pctx.global_info.get_proving_key_path().join("pilout.globalInfo.json");
     let global_info_file: &str = global_info_path.to_str().unwrap();
 
     let sctx = SetupCtx::new(&pctx.global_info, proof_type);
 
-    // Run proves
+    // Run proofs
     match *proof_type {
         ProofType::Compressor | ProofType::Recursive1 => {
             for (prover_idx, air_instance) in
@@ -50,7 +51,7 @@ pub fn generate_recursion_proof<F: Field>(
                 if *proof_type == ProofType::Compressor
                     && !pctx.global_info.get_air_has_compressor(air_instance.airgroup_id, air_instance.air_id)
                 {
-                    proves_out.push(proves[prover_idx]);
+                    proofs_out.push(proofs[prover_idx]);
                 } else {
                     let air_instance_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
 
@@ -60,7 +61,7 @@ pub fn generate_recursion_proof<F: Field>(
                     let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
                     timer_stop_and_log_trace!(GET_SETUP);
 
-                    let mut zkin = proves[prover_idx];
+                    let mut zkin = proofs[prover_idx];
                     if *proof_type == ProofType::Recursive1 {
                         let recursive2_verkey = pctx
                             .global_info
@@ -112,7 +113,7 @@ pub fn generate_recursion_proof<F: Field>(
                     let mut p_prove = gen_recursive_proof_c(p_setup, p_address, p_publics, &proof_file);
                     p_prove =
                         publics2zkin_c(p_prove, p_publics, global_info_file, air_instance.airgroup_id as u64, false);
-                    proves_out.push(p_prove);
+                    proofs_out.push(p_prove);
 
                     drop(buffer);
                     log::info!("{}: ··· Proof generated.", MY_NAME);
@@ -122,32 +123,55 @@ pub fn generate_recursion_proof<F: Field>(
             }
         }
         ProofType::Recursive2 => {
+            let mut dctx = ectx.dctx.write().unwrap();
             let n_airgroups = pctx.global_info.air_groups.len();
-            let mut proves_recursive2: Vec<*mut c_void> = Vec::with_capacity(n_airgroups);
+            let mut alives = Vec::with_capacity(n_airgroups);
+            let mut airgroup_proofs: Vec<Vec<Option<*mut c_void>>> = Vec::with_capacity(n_airgroups);
+            let mut null_zkin: Option<*mut c_void> = None;
 
+            // Pre-process data before starting recursion loop
             for airgroup in 0..n_airgroups {
-                let setup_path = pctx.global_info.get_air_setup_path(airgroup, 0, proof_type);
-
-                let instances = pctx.air_instance_repo.find_airgroup_instances(airgroup);
-                if instances.is_empty() {
-                    let zkin_file = setup_path.display().to_string() + ".null_zkin.json";
-                    let null_zkin = get_zkin_ptr_c(&zkin_file);
-                    proves_recursive2.push(null_zkin);
-                } else if instances.len() == 1 {
-                    proves_recursive2.insert(airgroup, proves[instances[0]]);
-                } else {
-                    let mut proves_recursive2_airgroup: Vec<*mut c_void> = Vec::new();
-
+                let instances = &dctx.airgroup_instances[airgroup];
+                airgroup_proofs.push(Vec::with_capacity(instances.len().max(1)));
+                if !instances.is_empty() {
                     for instance in instances.iter() {
-                        proves_recursive2_airgroup.push(proves[*instance]);
+                        let local_instance = dctx.glob2loc[*instance];
+                        let proof = local_instance.map(|idx| proofs[idx]);
+                        airgroup_proofs[airgroup].push(proof);
                     }
-
+                } else {
+                    // If there are no instances, we need to add a null proof (only rank 0)
+                    if dctx.rank == 0 {
+                        if null_zkin.is_none() {
+                            let setup_path = pctx.global_info.get_air_setup_path(airgroup, 0, proof_type);
+                            let zkin_file = setup_path.display().to_string() + ".null_zkin.json";
+                            null_zkin = Some(get_zkin_ptr_c(&zkin_file));
+                        }
+                        airgroup_proofs[airgroup].push(Some(null_zkin.unwrap()));
+                    } else {
+                        airgroup_proofs[airgroup].push(None);
+                    }
+                }
+                alives.push(airgroup_proofs[airgroup].len());
+            }
+            // agregation loop
+            loop {
+                dctx.barrier();
+                dctx.distribute_recursive2_proofs(&alives, &mut airgroup_proofs);
+                let mut pending_agregations = false;
+                for airgroup in 0..n_airgroups {
                     //create a vector of sice indices length
-                    let mut alive = instances.len();
-                    while alive > 1 {
+                    let mut alive = alives[airgroup];
+                    if alive > 1 {
                         for i in 0..alive / 2 {
                             let j = i * 2;
+                            if airgroup_proofs[airgroup][j].is_none() {
+                                continue;
+                            }
                             if j + 1 < alive {
+                                if airgroup_proofs[airgroup][j + 1].is_none() {
+                                    panic!("Recursive2 proof is missing");
+                                }
                                 timer_start_trace!(GET_RECURSIVE2_SETUP);
                                 let setup = sctx.get_setup(airgroup, 0).expect("Setup not found");
                                 let p_setup: *mut c_void = (&setup.p_setup).into();
@@ -165,8 +189,8 @@ pub fn generate_recursion_proof<F: Field>(
                                     public_inputs,
                                     challenges,
                                     global_info_file,
-                                    proves_recursive2_airgroup[j],
-                                    proves_recursive2_airgroup[j + 1],
+                                    airgroup_proofs[airgroup][j].unwrap(),
+                                    airgroup_proofs[airgroup][j + 1].unwrap(),
                                     p_stark_info,
                                 );
 
@@ -205,15 +229,15 @@ pub fn generate_recursion_proof<F: Field>(
                                     format!("··· Generating recursive2 proof for instances of {}", air_instance_name)
                                 );
 
-                                proves_recursive2_airgroup[j] =
-                                    gen_recursive_proof_c(p_setup, p_address, p_publics, &proof_file);
-                                proves_recursive2_airgroup[j] = publics2zkin_c(
-                                    proves_recursive2_airgroup[j],
+                                airgroup_proofs[airgroup][j] =
+                                    Some(gen_recursive_proof_c(p_setup, p_address, p_publics, &proof_file));
+                                airgroup_proofs[airgroup][j] = Some(publics2zkin_c(
+                                    airgroup_proofs[airgroup][j].unwrap(),
                                     p_publics,
                                     global_info_file,
                                     airgroup as u64,
                                     false,
-                                );
+                                ));
                                 drop(buffer);
                                 timer_stop_and_log_trace!(GENERATE_RECURSIVE2_PROOF);
                                 log::info!("{}: ··· Proof generated.", MY_NAME);
@@ -222,40 +246,51 @@ pub fn generate_recursion_proof<F: Field>(
                         alive = (alive + 1) / 2;
                         //compact elements
                         for i in 0..alive {
-                            proves_recursive2_airgroup[i] = proves_recursive2_airgroup[i * 2];
+                            airgroup_proofs[airgroup][i] = airgroup_proofs[airgroup][i * 2];
+                        }
+                        alives[airgroup] = alive;
+                        if alive > 1 {
+                            pending_agregations = true;
                         }
                     }
-                    proves_recursive2.push(proves_recursive2_airgroup[0]);
+                }
+                if !pending_agregations {
+                    break;
                 }
             }
+            if dctx.rank == 0 {
+                let mut proofs_recursive2: Vec<*mut c_void> = Vec::with_capacity(n_airgroups);
+                for proofs in airgroup_proofs {
+                    proofs_recursive2.push(proofs[0].unwrap());
+                }
+                let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
+                let challenges_guard = pctx.challenges.challenges.read().unwrap();
+                let proof_values_guard = pctx.proof_values.values.read().unwrap();
 
-            let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
-            let challenges_guard = pctx.challenges.challenges.read().unwrap();
-            let proof_values_guard = pctx.proof_values.values.read().unwrap();
+                let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
+                let challenges = (*challenges_guard).as_ptr() as *mut c_void;
+                let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
 
-            let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
-            let challenges = (*challenges_guard).as_ptr() as *mut c_void;
-            let proof_values = (*proof_values_guard).as_ptr() as *mut c_void;
+                let mut stark_infos_recursive2 = Vec::new();
+                for (idx, _) in pctx.global_info.air_groups.iter().enumerate() {
+                    stark_infos_recursive2.push(sctx.get_setup(idx, 0).unwrap().p_setup.p_stark_info);
+                }
 
-            let mut stark_infos_recursive2 = Vec::new();
-            for (idx, _) in pctx.global_info.air_groups.iter().enumerate() {
-                stark_infos_recursive2.push(sctx.get_setup(idx, 0).unwrap().p_setup.p_stark_info);
+                let proofs_recursive2_ptr = proofs_recursive2.as_mut_ptr();
+
+                let stark_infos_recursive2_ptr = stark_infos_recursive2.as_mut_ptr();
+
+                let zkin_final = join_zkin_final_c(
+                    public_inputs,
+                    proof_values,
+                    challenges,
+                    global_info_file,
+                    proofs_recursive2_ptr,
+                    stark_infos_recursive2_ptr,
+                );
+
+                proofs_out.push(zkin_final);
             }
-
-            let proves_recursive2_ptr = proves_recursive2.as_mut_ptr();
-
-            let stark_infos_recursive2_ptr = stark_infos_recursive2.as_mut_ptr();
-
-            let zkin_final = join_zkin_final_c(
-                public_inputs,
-                proof_values,
-                challenges,
-                global_info_file,
-                proves_recursive2_ptr,
-                stark_infos_recursive2_ptr,
-            );
-
-            proves_out.push(zkin_final);
         }
         ProofType::Final => {
             timer_start_trace!(GET_FINAL_SETUP);
@@ -264,7 +299,7 @@ pub fn generate_recursion_proof<F: Field>(
             let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
             timer_stop_and_log_trace!(GET_FINAL_SETUP);
 
-            let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proves[0], proof_type)?;
+            let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proofs[0], proof_type)?;
             let p_address = buffer.as_ptr() as *mut c_void;
             let p_publics = publics.as_ptr() as *mut c_void;
 
@@ -286,7 +321,7 @@ pub fn generate_recursion_proof<F: Field>(
         }
     }
 
-    Ok(proves_out)
+    Ok(proofs_out)
 }
 
 fn generate_witness<F: Field>(

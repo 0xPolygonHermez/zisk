@@ -129,6 +129,11 @@
     void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename);
     void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2);
     void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);
+    char *get_serialized_proof(void *zkin, uint64_t* size);
+    void *deserialize_zkin_proof(char* serialized_proof);
+    void *get_zkin_proof(char* zkin);
+    void zkin_proof_free(void *pZkinProof);
+    void serialized_proof_free(char *zkinCStr);
 
     // Util calls
     // =================================================================================
