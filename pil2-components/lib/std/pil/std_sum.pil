@@ -281,7 +281,7 @@ private function piop_gsum_air(const int nTerms = 2) {
 
             @im_col{reference: im_high_degree[i], numerator: gsum_s[index], denominator: gsum_e[index] + std_gamma};
 
-            im_high_degree[i] * gsum_e[index] === gsum_s[index];
+            im_high_degree[i] * (gsum_e[index] + std_gamma) === gsum_s[index];
             sumIms += im_high_degree[i];
         }
     }
