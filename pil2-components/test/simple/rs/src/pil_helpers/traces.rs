@@ -3,10 +3,10 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(SimpleLeft0Row, SimpleLeft0Trace<F> {
+trace!(SimpleLeftRow, SimpleLeftTrace<F> {
  a: F, b: F, c: F, d: F, e: F, f: F, g: F, h: F,
 });
 
-trace!(SimpleRight1Row, SimpleRight1Trace<F> {
+trace!(SimpleRightRow, SimpleRightTrace<F> {
  a: F, b: F, c: F, d: F, mul: F,
 });

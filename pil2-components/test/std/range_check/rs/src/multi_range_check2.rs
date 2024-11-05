@@ -8,7 +8,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{MultiRangeCheck20Trace, MULTI_RANGE_CHECK_2_AIRGROUP_ID, MULTI_RANGE_CHECK_2_AIR_IDS};
+use crate::{MultiRangeCheck2Trace, MULTI_RANGE_CHECK_2_AIRGROUP_ID, MULTI_RANGE_CHECK_2_AIR_IDS};
 
 pub struct MultiRangeCheck2<F: PrimeField> {
     std_lib: Arc<Std<F>>,
@@ -88,7 +88,8 @@ where
             let num_rows =
                 pctx.pilout.get_air(MULTI_RANGE_CHECK_2_AIRGROUP_ID, MULTI_RANGE_CHECK_2_AIR_IDS[0]).num_rows();
             let mut trace =
-                MultiRangeCheck20Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                MultiRangeCheck2Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(1 << 5), BigInt::from((1 << 8) - 1), Some(false));
             let range2 = self.std_lib.get_range(BigInt::from(1 << 8), BigInt::from((1 << 9) - 1), Some(false));

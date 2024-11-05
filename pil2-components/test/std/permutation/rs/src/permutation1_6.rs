@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, seq::SliceRandom, Rng};
 
-use crate::{Permutation1_60Trace, PERMUTATION_1_6_AIR_IDS, PERMUTATION_AIRGROUP_ID};
+use crate::{Permutation1_6Trace, PERMUTATION_1_6_AIR_IDS, PERMUTATION_AIRGROUP_ID};
 
 pub struct Permutation1_6<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -93,7 +93,8 @@ where
 
             // I cannot, programatically, link the permutation trace with its air_id
             let mut trace =
-                Permutation1_60Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                Permutation1_6Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
+                    .unwrap();
 
             // TODO: Add the ability to send inputs to permutation2
             //       and consequently add random selectors

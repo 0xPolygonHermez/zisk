@@ -3,14 +3,14 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(Connection10Row, Connection10Trace<F> {
+trace!(Connection1Row, Connection1Trace<F> {
  a: F, b: F, c: F,
 });
 
-trace!(Connection21Row, Connection21Trace<F> {
+trace!(Connection2Row, Connection2Trace<F> {
  a: F, b: F, c: F,
 });
 
-trace!(ConnectionNew2Row, ConnectionNew2Trace<F> {
+trace!(ConnectionNewRow, ConnectionNewTrace<F> {
  a: [F; 6], b: [F; 6], c: [F; 6], d: [F; 6],
 });

@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution};
 
-use crate::{SimpleRight1Trace, SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS};
+use crate::{SimpleRightTrace, SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS};
 
 pub struct SimpleRight<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -33,8 +33,7 @@ where
         let buffer = vec![F::zero(); buffer_size as usize];
 
         let air_instance = AirInstance::new(sctx.clone(), SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS[0], None, buffer);
-        let (is_myne, gid) =
-            ectx.dctx.write().unwrap().add_instance(SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS[0], 1);
+        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS[0], 1);
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
         }
@@ -79,7 +78,7 @@ where
 
             // I cannot, programatically, link the permutation trace with its air_id
             let mut trace =
-                SimpleRight1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                SimpleRightTrace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // Proves
             for i in 0..num_rows {

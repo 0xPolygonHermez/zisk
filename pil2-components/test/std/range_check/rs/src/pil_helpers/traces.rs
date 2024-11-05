@@ -3,50 +3,50 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(RangeCheck30Row, RangeCheck30Trace<F> {
+trace!(RangeCheck3Row, RangeCheck3Trace<F> {
  c1: F, c2: F,
 });
 
-trace!(RangeCheck20Row, RangeCheck20Trace<F> {
+trace!(RangeCheck2Row, RangeCheck2Trace<F> {
  b1: F, b2: F, b3: F,
 });
 
-trace!(RangeCheck10Row, RangeCheck10Trace<F> {
+trace!(RangeCheck1Row, RangeCheck1Trace<F> {
  a1: F, a2: F, a3: F, a4: F, a5: F, sel1: F, sel2: F, sel3: F,
 });
 
-trace!(RangeCheck40Row, RangeCheck40Trace<F> {
+trace!(RangeCheck4Row, RangeCheck4Trace<F> {
  a1: F, a2: F, a3: F, a4: F, a5: F, a6: F, a7: F, a8: F, sel1: F, sel2: F,
 });
 
-trace!(U16Air1Row, U16Air1Trace<F> {
+trace!(U16AirRow, U16AirTrace<F> {
  mul: F,
 });
 
-trace!(MultiRangeCheck10Row, MultiRangeCheck10Trace<F> {
+trace!(MultiRangeCheck1Row, MultiRangeCheck1Trace<F> {
  a: [F; 3], sel: [F; 3], range_sel: [F; 3],
 });
 
-trace!(MultiRangeCheck20Row, MultiRangeCheck20Trace<F> {
+trace!(MultiRangeCheck2Row, MultiRangeCheck2Trace<F> {
  a: [F; 2], sel: [F; 2], range_sel: [F; 2],
 });
 
-trace!(RangeCheckDynamic10Row, RangeCheckDynamic10Trace<F> {
+trace!(RangeCheckDynamic1Row, RangeCheckDynamic1Trace<F> {
  colu: F, sel_7: F, sel_8: F, sel_16: F, sel_17: F,
 });
 
-trace!(RangeCheckDynamic20Row, RangeCheckDynamic20Trace<F> {
+trace!(RangeCheckDynamic2Row, RangeCheckDynamic2Trace<F> {
  colu: F, sel_1: F, sel_2: F, sel_3: F, sel_4: F, sel_5: F,
 });
 
-trace!(RangeCheckMix0Row, RangeCheckMix0Trace<F> {
+trace!(RangeCheckMixRow, RangeCheckMixTrace<F> {
  a: [F; 4], b: [F; 2], c: [F; 1], range_sel: [F; 5],
 });
 
-trace!(U8Air0Row, U8Air0Trace<F> {
+trace!(U8AirRow, U8AirTrace<F> {
  mul: F,
 });
 
-trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
  mul: [F; 20],
 });

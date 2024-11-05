@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Connection10Trace, CONNECTION_1_AIR_IDS, CONNECTION_AIRGROUP_ID};
+use crate::{Connection1Trace, CONNECTION_1_AIR_IDS, CONNECTION_AIRGROUP_ID};
 
 pub struct Connection1<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -82,7 +82,7 @@ where
 
             let num_rows = pctx.pilout.get_air(CONNECTION_AIRGROUP_ID, CONNECTION_1_AIR_IDS[0]).num_rows();
             let mut trace =
-                Connection10Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            Connection1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].a = rng.gen();

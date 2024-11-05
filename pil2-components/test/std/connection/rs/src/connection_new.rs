@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{ConnectionNew2Trace, CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS};
+use crate::{ConnectionNewTrace, CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS};
 
 pub struct ConnectionNew<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -39,10 +39,10 @@ where
         let air_instance =
             AirInstance::new(sctx.clone(), CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0], None, buffer);
         let (is_myne, gid) =
-            ectx.dctx.write().unwrap().add_instance(CONNECTION_AIRGROUP_ID,  CONNECTION_NEW_AIR_IDS[0], 1);
+            ectx.dctx.write().unwrap().add_instance(CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0], 1);
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
-        }        
+        }
     }
 }
 
@@ -82,7 +82,7 @@ where
 
             let num_rows = pctx.pilout.get_air(CONNECTION_AIRGROUP_ID, CONNECTION_NEW_AIR_IDS[0]).num_rows();
             let mut trace =
-                ConnectionNew2Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                ConnectionNewTrace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let mut frame = [0; 6];
             let mut conn_len = [0; 6];

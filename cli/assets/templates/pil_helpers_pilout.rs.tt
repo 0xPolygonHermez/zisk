@@ -10,7 +10,7 @@ pub const { constant.0 }_AIRGROUP_ID: usize = { constant.1 };
 {{ endfor }}
 //AIR CONSTANTS
 {{ for constant in constant_airs }}
-pub const { constant.0 }_AIR_IDS: &[usize] = &[{ constant.2 }];
+pub const { constant.0 }_AIR_IDS: &[usize] = &[{ constant.3 }];
 {{ endfor }}
 pub struct Pilout;
 

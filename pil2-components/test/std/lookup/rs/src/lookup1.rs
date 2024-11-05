@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup11Trace, LOOKUP_1_AIR_IDS, LOOKUP_AIRGROUP_ID};
+use crate::{Lookup1Trace, LOOKUP_1_AIR_IDS, LOOKUP_AIRGROUP_ID};
 
 pub struct Lookup1<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -35,11 +35,10 @@ where
 
         let air_instance = AirInstance::new(sctx.clone(), LOOKUP_AIRGROUP_ID, LOOKUP_1_AIR_IDS[0], None, buffer);
 
-        let (is_myne, gid) =
-            ectx.dctx.write().unwrap().add_instance(LOOKUP_AIRGROUP_ID,  LOOKUP_1_AIR_IDS[0], 1);
+        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(LOOKUP_AIRGROUP_ID, LOOKUP_1_AIR_IDS[0], 1);
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
-        } 
+        }
     }
 }
 
@@ -75,7 +74,8 @@ where
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_1_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup11Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace =
+                Lookup1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let num_lookups = trace[0].sel.len();
 

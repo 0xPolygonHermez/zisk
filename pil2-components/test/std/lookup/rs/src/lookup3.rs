@@ -5,7 +5,7 @@ use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 
 use p3_field::PrimeField;
 
-use crate::{Lookup35Trace, LOOKUP_3_AIR_IDS, LOOKUP_AIRGROUP_ID};
+use crate::{Lookup3Trace, LOOKUP_3_AIR_IDS, LOOKUP_AIRGROUP_ID};
 
 pub struct Lookup3<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -31,8 +31,7 @@ impl<F: PrimeField + Copy> Lookup3<F> {
 
         let air_instance = AirInstance::new(sctx.clone(), LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0], None, buffer);
 
-        let (is_myne, gid) =
-            ectx.dctx.write().unwrap().add_instance(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0], 1);
+        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0], 1);
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
         }
@@ -66,7 +65,8 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup3<F> {
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_3_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup35Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace =
+                Lookup3Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             for i in 0..num_rows {
                 trace[i].c1 = F::from_canonical_usize(i);

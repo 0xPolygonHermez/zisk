@@ -129,13 +129,7 @@ bool MerkleTreeGL::verifyGroupProof(Goldilocks::Element* root, std::vector<std::
         }
     }
 
-#ifdef __AVX512__
-    PoseidonGoldilocks::linear_hash_avx512(value, linearValues.data(), linearValues.size());
-#elif defined(__AVX2__)
-    PoseidonGoldilocks::linear_hash(value, linearValues.data(), linearValues.size());
-#else
     PoseidonGoldilocks::linear_hash_seq(value, linearValues.data(), linearValues.size());
-#endif
 
     calculateRootFromProof(value, mp, idx, 0);
     for(uint64_t i = 0; i < 4; ++i) {
@@ -167,13 +161,7 @@ void MerkleTreeGL::calculateRootFromProof(Goldilocks::Element (&value)[4], std::
         inputs[i] = Goldilocks::zero();
     }
 
-#ifdef __AVX512__
-    PoseidonGoldilocks::hash_avx512(value, inputs);
-#elif defined(__AVX2__)
-    PoseidonGoldilocks::hash(value, inputs);
-#else
     PoseidonGoldilocks::hash_seq(value, inputs);
-#endif
 
     calculateRootFromProof(value, mp, nextIdx, offset + 1);
 }

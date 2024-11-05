@@ -39,7 +39,7 @@ using namespace CPlusPlusLogging;
 Logger* Logger::m_Instance = 0;
 
 // Log file name. File name should be change from here only
-const string logFileName = "MyLogFile.log";
+const string logFileName = "";
 
 Logger::Logger(int log_type)
 {

@@ -3,7 +3,7 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 {{ for air_group in air_groups }}{{ for air in air_group.airs }}
-trace!({ air.name }{ air.id }Row, { air.name }{ air.id }Trace<F> \{
+trace!({ air.name }Row, { air.name }Trace<F> \{
 {{ for column in air.columns }} { column.name }: { column.type },{{ endfor }}
 });
 {{ endfor }}{{ endfor }}

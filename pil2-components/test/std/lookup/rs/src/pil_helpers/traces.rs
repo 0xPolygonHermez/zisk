@@ -3,26 +3,26 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(Lookup00Row, Lookup00Trace<F> {
+trace!(Lookup0Row, Lookup0Trace<F> {
  f: [F; 4], t: [F; 4], sel: [F; 2], mul: [F; 2],
 });
 
-trace!(Lookup11Row, Lookup11Trace<F> {
+trace!(Lookup1Row, Lookup1Trace<F> {
  f: [F; 2], t: F, sel: [F; 2], mul: F,
 });
 
-trace!(Lookup2_122Row, Lookup2_122Trace<F> {
+trace!(Lookup2_12Row, Lookup2_12Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
 });
 
-trace!(Lookup2_133Row, Lookup2_133Trace<F> {
+trace!(Lookup2_13Row, Lookup2_13Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
 });
 
-trace!(Lookup2_154Row, Lookup2_154Trace<F> {
+trace!(Lookup2_15Row, Lookup2_15Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
 });
 
-trace!(Lookup35Row, Lookup35Trace<F> {
+trace!(Lookup3Row, Lookup3Trace<F> {
  c1: F, d1: F, c2: F, d2: F, mul1: F, mul2: F,
 });

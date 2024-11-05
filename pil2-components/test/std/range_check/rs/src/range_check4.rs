@@ -9,7 +9,7 @@ use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{RangeCheck40Trace, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS};
+use crate::{RangeCheck4Trace, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS};
 
 pub struct RangeCheck4<F: PrimeField> {
     std_lib: Arc<Std<F>>,
@@ -79,7 +79,7 @@ where
 
             let num_rows = pctx.pilout.get_air(RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0]).num_rows();
             let mut trace =
-                RangeCheck40Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+                RangeCheck4Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), Some(true));
             let range2 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(true));

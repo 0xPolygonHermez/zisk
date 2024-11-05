@@ -5,7 +5,5 @@ require "module.pil"
 // for them to make sense and for the relationshhip to be satisfied
 airgroup FibonacciSquare {
     FibonacciSquare(N: 2**10);
-}
-airgroup Module {
     Module(N: 2**10);
 }

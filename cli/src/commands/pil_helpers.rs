@@ -33,7 +33,7 @@ struct ProofCtx {
     pilout_filename: String,
     air_groups: Vec<AirGroupsCtx>,
     constant_airgroups: Vec<(String, usize)>,
-    constant_airs: Vec<(String, Vec<usize>, String)>,
+    constant_airs: Vec<(String, usize, Vec<usize>, String)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,7 +95,7 @@ impl PilHelpersCmd {
 
         let mut wcctxs = Vec::new();
         let mut constant_airgroups: Vec<(String, usize)> = Vec::new();
-        let mut constant_airs: Vec<(String, Vec<usize>, String)> = Vec::new();
+        let mut constant_airs: Vec<(String, usize, Vec<usize>, String)> = Vec::new();
 
         for (airgroup_id, airgroup) in pilout.air_groups.iter().enumerate() {
             wcctxs.push(AirGroupsCtx {
@@ -121,18 +121,18 @@ impl PilHelpersCmd {
 
             for (air_idx, air) in airgroup.airs.iter().enumerate() {
                 let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();
-                let contains_key = constant_airs.iter().position(|(name, _, _)| name == &air_name);
+                let contains_key = constant_airs.iter().position(|(name, _, _, _)| name == &air_name);
 
                 let idx = contains_key.unwrap_or_else(|| {
-                    constant_airs.push((air_name.clone(), Vec::new(), "".to_owned()));
+                    constant_airs.push((air_name.clone(), airgroup_id, Vec::new(), "".to_owned()));
                     constant_airs.len() - 1
                 });
 
-                constant_airs[idx].1.push(air_idx);
+                constant_airs[idx].2.push(air_idx);
             }
 
             for constant in constant_airs.iter_mut() {
-                constant.2 = constant.1.iter().map(|&num| num.to_string()).collect::<Vec<String>>().join(",");
+                constant.3 = constant.2.iter().map(|&num| num.to_string()).collect::<Vec<String>>().join(",");
             }
         }
 

@@ -3,18 +3,18 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(Permutation1_60Row, Permutation1_60Trace<F> {
+trace!(Permutation1_6Row, Permutation1_6Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, sel3: F,
 });
 
-trace!(Permutation1_71Row, Permutation1_71Trace<F> {
+trace!(Permutation1_7Row, Permutation1_7Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, sel3: F,
 });
 
-trace!(Permutation1_82Row, Permutation1_82Trace<F> {
+trace!(Permutation1_8Row, Permutation1_8Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, sel3: F,
 });
 
-trace!(Permutation2_63Row, Permutation2_63Trace<F> {
+trace!(Permutation2_6Row, Permutation2_6Trace<F> {
  c1: F, d1: F, c2: F, d2: F, sel: F,
 });

@@ -5,7 +5,7 @@ use proofman::{WitnessManager, WitnessComponent};
 
 use p3_field::PrimeField;
 
-use crate::{FibonacciSquare0Trace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS};
+use crate::{FibonacciSquareTrace, FibonacciSquarePublics, Module, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS};
 
 pub struct FibonacciSquare<F: PrimeField> {
     module: Arc<Module<F>>,
@@ -53,7 +53,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
         let num_rows = pctx.global_info.airs[airgroup_id][air_id].num_rows;
-        let mut trace = FibonacciSquare0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
+        let mut trace = FibonacciSquareTrace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
 
         trace[0].a = F::from_canonical_u64(a);
         trace[0].b = F::from_canonical_u64(b);

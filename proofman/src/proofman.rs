@@ -319,15 +319,15 @@ impl<F: Field + 'static> ProofMan<F> {
             buffer.extend(values[i + 1].clone());
 
             let is_value1_zero = values[i].iter().all(|x| *x == F::zero());
-            let is_value2_zero = values[i].iter().all(|x| *x == F::zero());
+            let is_value2_zero = values[i + 1].iter().all(|x| *x == F::zero());
 
             let value;
             if is_value1_zero && is_value2_zero {
                 value = vec![F::zero(); 4];
             } else if is_value1_zero {
-                value = values[i].clone();
-            } else if is_value2_zero {
                 value = values[i + 1].clone();
+            } else if is_value2_zero {
+                value = values[i].clone();
             } else {
                 value = prover.calculate_hash(buffer);
             }

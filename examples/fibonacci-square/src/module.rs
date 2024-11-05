@@ -6,7 +6,7 @@ use pil_std_lib::Std;
 use p3_field::{AbstractField, PrimeField};
 use num_bigint::BigInt;
 
-use crate::{FibonacciSquarePublics, Module0Trace, MODULE_AIRGROUP_ID, MODULE_AIR_IDS};
+use crate::{FibonacciSquarePublics, ModuleTrace, FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS};
 
 pub struct Module<F: PrimeField> {
     inputs: Mutex<Vec<(u64, u64)>>,
@@ -19,7 +19,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
     pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
         let module = Arc::new(Module { inputs: Mutex::new(Vec::new()), std_lib });
 
-        wcm.register_component(module.clone(), Some(MODULE_AIRGROUP_ID), Some(MODULE_AIR_IDS));
+        wcm.register_component(module.clone(), Some(FIBONACCI_SQUARE_AIRGROUP_ID), Some(MODULE_AIR_IDS));
 
         // Register dependency relations
         module.std_lib.register_predecessor();
@@ -47,13 +47,16 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         let pi: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
         let module = pi.module;
 
-        let (buffer_size, offsets) =
-            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0]).unwrap();
+        let (buffer_size, offsets) = ectx
+            .buffer_allocator
+            .as_ref()
+            .get_buffer_info(&sctx, FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS[0])
+            .unwrap();
 
         let mut buffer = vec![F::zero(); buffer_size as usize];
 
-        let num_rows = pctx.global_info.airs[MODULE_AIRGROUP_ID][MODULE_AIR_IDS[0]].num_rows;
-        let mut trace = Module0Trace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
+        let num_rows = pctx.global_info.airs[FIBONACCI_SQUARE_AIRGROUP_ID][MODULE_AIR_IDS[0]].num_rows;
+        let mut trace = ModuleTrace::map_buffer(&mut buffer, num_rows, offsets[0] as usize).unwrap();
 
         //range_check(colu: mod - x_mod, min: 1, max: 2**8-1);
         let range = self.std_lib.get_range(BigInt::from(1), BigInt::from((1 << 8) - 1), None);
@@ -78,9 +81,11 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
             self.std_lib.range_check(F::from_canonical_u64(module), F::one(), range);
         }
 
-        let air_instance = AirInstance::new(sctx.clone(), MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
+        let air_instance =
+            AirInstance::new(sctx.clone(), FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS[0], Some(0), buffer);
 
-        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(MODULE_AIRGROUP_ID, MODULE_AIR_IDS[0], 1);
+        let (is_myne, gid) =
+            ectx.dctx.write().unwrap().add_instance(FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS[0], 1);
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
         }

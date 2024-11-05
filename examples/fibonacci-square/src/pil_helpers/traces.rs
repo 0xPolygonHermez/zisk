@@ -3,14 +3,14 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(FibonacciSquare0Row, FibonacciSquare0Trace<F> {
+trace!(FibonacciSquareRow, FibonacciSquareTrace<F> {
  a: F, b: F,
 });
 
-trace!(Module0Row, Module0Trace<F> {
+trace!(ModuleRow, ModuleTrace<F> {
  x: F, q: F, x_mod: F,
 });
 
-trace!(U8Air0Row, U8Air0Trace<F> {
+trace!(U8AirRow, U8AirTrace<F> {
  mul: F,
 });

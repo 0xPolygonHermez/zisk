@@ -9,7 +9,7 @@ use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{RangeCheckDynamic20Trace, RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_2_AIR_IDS};
+use crate::{RangeCheckDynamic2Trace, RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_2_AIR_IDS};
 
 pub struct RangeCheckDynamic2<F: PrimeField> {
     std_lib: Arc<Std<F>>,
@@ -53,8 +53,11 @@ where
             None,
             buffer,
         );
-        let (is_myne, gid) =
-            ectx.dctx.write().unwrap().add_instance(RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_2_AIR_IDS[0], 1);
+        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(
+            RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID,
+            RANGE_CHECK_DYNAMIC_2_AIR_IDS[0],
+            1,
+        );
         if is_myne {
             pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
         }
@@ -88,8 +91,12 @@ where
 
             let num_rows =
                 pctx.pilout.get_air(RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_2_AIR_IDS[0]).num_rows();
-            let mut trace =
-                RangeCheckDynamic20Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = RangeCheckDynamic2Trace::map_buffer(
+                buffer.as_mut_slice(),
+                num_rows,
+                offsets[0] as usize,
+            )
+            .unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(5225), BigInt::from(29023), Some(false));
             let range2 = self.std_lib.get_range(BigInt::from(-8719), BigInt::from(-7269), Some(false));
