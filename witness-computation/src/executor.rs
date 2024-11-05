@@ -18,9 +18,7 @@ use std::{
     sync::Arc,
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
-use zisk_pil::{
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID
-};
+use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {

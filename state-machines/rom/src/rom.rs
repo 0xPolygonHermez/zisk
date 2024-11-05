@@ -6,9 +6,7 @@ use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{
-    Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID
-};
+use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
 

@@ -12,7 +12,7 @@ use sm_common::{OpResult, Provable};
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
-    ZISK_AIRGROUP_ID
+    ZISK_AIRGROUP_ID,
 };
 
 const PROVE_CHUNK_SIZE: usize = 1 << 16;
