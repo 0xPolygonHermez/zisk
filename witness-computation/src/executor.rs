@@ -18,10 +18,7 @@ use std::{
     sync::Arc,
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
-use zisk_pil::{
-    BINARY_AIRGROUP_ID, BINARY_AIR_IDS, BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS,
-    MAIN_AIRGROUP_ID, MAIN_AIR_IDS,
-};
+use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {
@@ -104,7 +101,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         ectx: Arc<ExecutionCtx>,
         sctx: Arc<SetupCtx>,
     ) {
-        let air_main = pctx.pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+        let air_main = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
@@ -128,9 +125,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // machine. We aim to track the starting point of execution for every N instructions
         // across different operation types. Currently, we are only collecting data for
         // Binary and BinaryE operations.
-        let air_binary = pctx.pilout.get_air(BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_e =
-            pctx.pilout.get_air(BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
+        let air_binary_e = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
         let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
@@ -178,11 +174,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut main_segnent_id = 0;
         for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
-                ZiskOperationType::None => (MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]),
-                ZiskOperationType::Binary => (BINARY_AIRGROUP_ID, BINARY_AIR_IDS[0]),
-                ZiskOperationType::BinaryE => {
-                    (BINARY_EXTENSION_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
-                }
+                ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+                ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
                 _ => panic!("Invalid operation type"),
             };
             let segment_id = match emu_slice.op_type {

@@ -6,9 +6,7 @@ use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{
-    Pilout, Rom0Row, Rom0Trace, MAIN_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIRGROUP_ID, ROM_AIR_IDS,
-};
+use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
 
@@ -22,7 +20,7 @@ impl<F: Field> RomSM<F> {
         let rom_sm = Arc::new(rom_sm);
 
         let rom_air_ids = ROM_AIR_IDS;
-        wcm.register_component(rom_sm.clone(), Some(ROM_AIRGROUP_ID), Some(rom_air_ids));
+        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(rom_air_ids));
 
         rom_sm
     }
@@ -40,15 +38,15 @@ impl<F: Field> RomSM<F> {
         }
 
         let main_trace_len =
-            self.wcm.get_pctx().pilout.get_air(MAIN_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
 
         let (prover_buffer, _, air_id) =
             Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len)?;
 
         let air_instance =
-            AirInstance::new(sctx.clone(), ROM_AIRGROUP_ID, air_id, None, prover_buffer);
+            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, air_id, None, prover_buffer);
         let (is_mine, instance_gid) =
-            self.wcm.get_ectx().dctx.write().unwrap().add_instance(ROM_AIRGROUP_ID, air_id, 1);
+            self.wcm.get_ectx().dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1);
         if is_mine {
             self.wcm
                 .get_pctx()
@@ -94,9 +92,9 @@ impl<F: Field> RomSM<F> {
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         let pilout = Pilout::pilout();
         let sizes = (
-            pilout.get_air(ROM_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows(),
-            // pilout.get_air(ROM_AIRGROUP_ID, ROM_M_AIR_IDS[0]).num_rows(),
-            // pilout.get_air(ROM_AIRGROUP_ID, ROM_L_AIR_IDS[0]).num_rows(),
+            pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows(),
+            // pilout.get_air(ZISK_AIRGROUP_ID, ROM_M_AIR_IDS[0]).num_rows(),
+            // pilout.get_air(ZISK_AIRGROUP_ID, ROM_L_AIR_IDS[0]).num_rows(),
         );
 
         let number_of_instructions = rom.insts.len();
@@ -156,14 +154,14 @@ impl<F: Field> RomSM<F> {
 
         // Allocate a prover buffer
         let (buffer_size, offsets) = buffer_allocator
-            .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_AIR_IDS[0])
+            .get_buffer_info(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
             .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
         let mut prover_buffer = create_buffer_fast(buffer_size as usize);
 
         // Create an empty ROM trace
         let mut rom_trace =
-            Rom0Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
-                .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
+            RomTrace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
+                .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
@@ -252,7 +250,7 @@ impl<F: Field> RomSM<F> {
 
         // Padd with zeroes
         for i in number_of_instructions..trace_size {
-            rom_trace[i] = Rom0Row::default();
+            rom_trace[i] = RomRow::default();
         }
 
         Ok((prover_buffer, offsets[0], ROM_AIR_IDS[0]))
@@ -272,14 +270,14 @@ impl<F: Field> RomSM<F> {
 
     //     // Allocate a prover buffer
     //     let (buffer_size, offsets) = buffer_allocator
-    //         .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_M_AIR_IDS[0])
+    //         .get_buffer_info(sctx, ZISK_AIRGROUP_ID, ROM_M_AIR_IDS[0])
     //         .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
     //     let mut prover_buffer = create_buffer_fast(buffer_size as usize);
 
     //     // Create an empty ROM trace
     //     let mut rom_trace =
     //         RomM1Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
-    //             .expect("RomSM::compute_trace() failed mapping buffer to ROMM0Trace");
+    //             .expect("RomSM::compute_trace() failed mapping buffer to ROMMRow");
 
     //     // For every instruction in the rom, fill its corresponding ROM trace
     //     for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
@@ -371,14 +369,14 @@ impl<F: Field> RomSM<F> {
 
     //     // Allocate a prover buffer
     //     let (buffer_size, offsets) = buffer_allocator
-    //         .get_buffer_info(sctx, ROM_AIRGROUP_ID, ROM_L_AIR_IDS[0])
+    //         .get_buffer_info(sctx, ZISK_AIRGROUP_ID, ROM_L_AIR_IDS[0])
     //         .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
     //     let mut prover_buffer = create_buffer_fast(buffer_size as usize);
 
     //     // Create an empty ROM trace
     //     let mut rom_trace =
     //         RomL2Trace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
-    //             .expect("RomSM::compute_trace() failed mapping buffer to ROML0Trace");
+    //             .expect("RomSM::compute_trace() failed mapping buffer to ROMLRow");
 
     //     // For every instruction in the rom, fill its corresponding ROM trace
     //     for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
