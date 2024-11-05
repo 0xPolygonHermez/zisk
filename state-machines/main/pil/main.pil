@@ -275,5 +275,5 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
 
     direct_update(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0], bus_type: PIOP_BUS_SUM, proves: 1);
-    direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 4312, 0, 0], bus_type: PIOP_BUS_SUM, proves: 0);
+    direct_update(MAIN_CONTINUATION_ID, cols: [0, 1, 0x10000000, 0, 0], bus_type: PIOP_BUS_SUM, proves: 0);
 }
