@@ -12,7 +12,6 @@ use proofman_common::{AirInstance, ProofCtx};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_mem::MemSM;
 use zisk_pil::{
     Main0Row, Main0Trace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
 };
