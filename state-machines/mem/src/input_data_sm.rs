@@ -138,7 +138,8 @@ impl<F: PrimeField> InputDataSM<F> {
         // The length of the vector is the number of input memory operations plus one because
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
-        //println! {"InputDataSM::prove_instance() mem_ops.len={} prover_buffer.len={} air.num_rows={}", mem_ops.len(), prover_buffer.len(), air.num_rows()};
+        //println! {"InputDataSM::prove_instance() mem_ops.len={} prover_buffer.len={}
+        // air.num_rows={}", mem_ops.len(), prover_buffer.len(), air.num_rows()};
         let mut trace =
             InputDataTrace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
@@ -206,7 +207,8 @@ impl<F: PrimeField> InputDataSM<F> {
             let addr_changes = trace[i - 1].addr != trace[i].addr;
             trace[i].addr_changes = F::from_bool(addr_changes);
 
-            //println! {"InputDataSM::prove_instance() i={} mem op={} addr_changes={}", i, mem_op.to_text(), addr_changes}
+            //println! {"InputDataSM::prove_instance() i={} mem op={} addr_changes={}", i,
+            // mem_op.to_text(), addr_changes}
         }
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
