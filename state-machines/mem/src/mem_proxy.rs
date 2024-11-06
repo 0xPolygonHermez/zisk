@@ -6,7 +6,7 @@ use std::sync::{
 use crate::{MemAlignSM, MemSM};
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::ZiskRequiredMemory;
+use zisk_core::{ZiskRequiredMemory, RAM_ADDR, SYS_ADDR};
 
 use proofman::{WitnessComponent, WitnessManager};
 
@@ -89,8 +89,18 @@ impl<F: PrimeField> MemProxy<F> {
         // accesses
         aligned.extend(new_aligned);
 
+        timer_start_debug!(MEM_SORT_2);
+        aligned.sort_by_key(|mem| mem.address);
+        timer_stop_and_log_debug!(MEM_SORT_2);
+
+        let mut idx = 0;
+        while aligned[idx].address < RAM_ADDR && idx < aligned.len() {
+            idx += 1;
+        }
+        let (_input_aligned, aligned) = aligned.split_at_mut(idx);
+
         // Step 4. Prove the aligned memory accesses using mem state machine
-        self.mem_sm.prove(&mut aligned);
+        self.mem_sm.prove(aligned);
 
         Ok(())
     }

@@ -42,9 +42,6 @@ impl<F: PrimeField> MemSM<F> {
 
     pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
         // Sort the (full) aligned memory accesses
-        timer_start_debug!(MEM_SORT_2);
-        mem_accesses.sort_by_key(|mem| mem.address);
-        timer_stop_and_log_debug!(MEM_SORT_2);
 
         let pctx = self.wcm.get_pctx();
         let ectx = self.wcm.get_ectx();
