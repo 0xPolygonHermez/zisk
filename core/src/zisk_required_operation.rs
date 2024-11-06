@@ -17,6 +17,18 @@ pub struct ZiskRequiredMemory {
     pub value: u64,
 }
 
+impl ZiskRequiredMemory {
+    pub fn to_text(&self) -> String {
+        let mut s = String::new();
+        s += &(" address=".to_string() + &self.address.to_string());
+        s += &(" step=".to_string() + &self.step.to_string());
+        s += &(" value=".to_string() + &self.value.to_string());
+        s += &(" is_write=".to_string() + &self.is_write.to_string());
+        s += &(" width=".to_string() + &self.width.to_string());
+        s
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,

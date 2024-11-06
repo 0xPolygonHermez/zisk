@@ -100,10 +100,13 @@ impl<F: PrimeField> MemProxy<F> {
         while aligned[idx].address < RAM_ADDR && idx < aligned.len() {
             idx += 1;
         }
-        let (_input_aligned, aligned) = aligned.split_at_mut(idx);
+        let (input_aligned, aligned) = aligned.split_at_mut(idx);
 
         // Step 4. Prove the aligned memory accesses using mem state machine
         self.mem_sm.prove(aligned);
+
+        // Step 5. Prove the input data accesses using input data state machine
+        self.input_data_sm.prove(input_aligned);
 
         Ok(())
     }

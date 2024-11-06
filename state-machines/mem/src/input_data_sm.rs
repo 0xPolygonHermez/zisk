@@ -6,12 +6,11 @@ use std::sync::{
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::prelude::*;
 
-use sm_common::{create_prover_buffer, MemOp};
+use sm_common::create_prover_buffer;
 use zisk_core::ZiskRequiredMemory;
-use zisk_pil::{InputDataRow, InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct InputDataSM<F: PrimeField> {
     // Witness computation manager
@@ -19,27 +18,21 @@ pub struct InputDataSM<F: PrimeField> {
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<MemOp>>,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> InputDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let mem_sm = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            _phantom: std::marker::PhantomData,
-        };
-        let mem_sm = Arc::new(mem_sm);
+        let input_data_sm = Self { wcm: wcm.clone(), registered_predecessors: AtomicU32::new(0) };
+        let input_data_sm = Arc::new(input_data_sm);
 
-        wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(INPUT_DATA_AIR_IDS));
+        wcm.register_component(
+            input_data_sm.clone(),
+            Some(ZISK_AIRGROUP_ID),
+            Some(INPUT_DATA_AIR_IDS),
+        );
 
-        mem_sm
+        input_data_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -52,22 +45,18 @@ impl<F: PrimeField> InputDataSM<F> {
 
     pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
         // Sort the (full) aligned memory accesses
-        timer_start_debug!(INPUT_DATA_SORT_2);
-        mem_accesses.sort_by_key(|mem| mem.address);
-        timer_stop_and_log_debug!(INPUT_DATA_SORT_2);
 
-        let binding = self.wcm.get_pctx();
-        let air = binding.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
+        let pctx = self.wcm.get_pctx();
+        let ectx = self.wcm.get_ectx();
+        let sctx = self.wcm.get_sctx();
+
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
 
         let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
 
         let mut prover_buffers = Mutex::new(vec![Vec::new(); num_chunks]);
         let mut offsets = vec![0; num_chunks];
         let mut global_idxs = vec![0; num_chunks];
-
-        let pctx = self.wcm.get_pctx();
-        let ectx = self.wcm.get_ectx();
-        let sctx = self.wcm.get_sctx();
 
         for i in 0..num_chunks {
             if let (true, global_idx) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
@@ -81,9 +70,9 @@ impl<F: PrimeField> InputDataSM<F> {
                     ZISK_AIRGROUP_ID,
                     INPUT_DATA_AIR_IDS[0],
                 );
-                prover_buffers.lock().unwrap().push(buffer);
-                offsets.push(offset);
-                global_idxs.push(global_idx);
+                prover_buffers.lock().unwrap()[i] = buffer;
+                offsets[i] = offset;
+                global_idxs[i] = global_idx;
             }
         }
         mem_accesses.par_chunks(air.num_rows() - 1).enumerate().for_each(
@@ -93,7 +82,9 @@ impl<F: PrimeField> InputDataSM<F> {
                 } else {
                     mem_accesses[segment_id * ((air.num_rows() - 1) - 1)].clone()
                 };
+
                 let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
+
                 self.prove_instance(
                     mem_ops,
                     mem_first_row,
@@ -125,6 +116,7 @@ impl<F: PrimeField> InputDataSM<F> {
         global_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pctx = self.wcm.get_pctx();
+        let sctx = self.wcm.get_sctx();
 
         // STEP2: Process the memory inputs and convert them to AIR instances
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
@@ -133,27 +125,29 @@ impl<F: PrimeField> InputDataSM<F> {
 
         assert!(mem_ops.len() > 0 && mem_ops.len() <= max_rows_per_segment);
 
-        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR segments
-        // In a Memory AIR instance, the first row is reserved as a dummy row.
-        // This dummy row is used to facilitate the continuation state between different AIR segments.
-        // It ensures seamless transitions when multiple AIR segments are processed consecutively.
-        // This design avoids discontinuities in memory access patterns and ensures that the memory trace is continuous,
-        // For this reason we use AIR num_rows - 1 as the number of rows in each memory AIR instance
+        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
+        // segments In a Memory AIR instance, the first row is reserved as a dummy row.
+        // This dummy row is used to facilitate the continuation state between different AIR
+        // segments. It ensures seamless transitions when multiple AIR segments are
+        // processed consecutively. This design avoids discontinuities in memory access
+        // patterns and ensures that the memory trace is continuous, For this reason we use
+        // AIR num_rows - 1 as the number of rows in each memory AIR instance
 
         // Create a vector of Mem0Row instances, one for each memory operation
         // Recall that first row is a dummy row used for the continuations between AIR segments
         // The length of the vector is the number of input memory operations plus one because
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
+        //println! {"InputDataSM::prove_instance() mem_ops.len={} prover_buffer.len={} air.num_rows={}", mem_ops.len(), prover_buffer.len(), air.num_rows()};
         let mut trace =
             InputDataTrace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
 
-        let segment_id_field = F::from_canonical_u64(segment_id as u64);
-        let is_last_segment_field = F::from_bool(is_last_segment);
+        //let segment_id_field = F::from_canonical_u64(segment_id as u64);
+        //let is_last_segment_field = F::from_bool(is_last_segment);
 
-        // STEP1. Add the first row to the output vector as equal to the last row of the previous segment
-        // CASE: last row of segment is read
+        // STEP1. Add the first row to the output vector as equal to the last row of the previous
+        // segment CASE: last row of segment is read
         //
         // S[n-1]    wr = 0, sel = 1, addr, step, value
         // S+1[0]    wr = 0, sel = 0, addr, step, value
@@ -163,14 +157,9 @@ impl<F: PrimeField> InputDataSM<F> {
         // S[n-1]    wr = 1, sel = 1, addr, step, value
         // S+1[0]    wr = 0, sel = 0, addr, step, value
 
-        // TODO CHECK
-        // trace[0].mem_segment = segment_id_field;
-        // trace[0].mem_last_segment = is_last_segment_field;
-
         trace[0].addr = F::from_canonical_u64(mem_first_row.address);
         trace[0].step = F::from_canonical_u64(mem_first_row.step);
         trace[0].sel = F::zero();
-        //trace[0].wr = F::zero();
 
         let value = match mem_first_row.width {
             1 => mem_first_row.value as u8 as u64,
@@ -179,12 +168,14 @@ impl<F: PrimeField> InputDataSM<F> {
             8 => mem_first_row.value,
             _ => panic!("Invalid width"),
         };
-        let (low_val, high_val) = self.get_u32_values(value);
-        //trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+        let (val0, val1, val2, val3) = self.get_u16_values(value);
+        trace[0].value = [
+            F::from_canonical_u16(val0),
+            F::from_canonical_u16(val1),
+            F::from_canonical_u16(val2),
+            F::from_canonical_u16(val3),
+        ];
         trace[0].addr_changes = F::zero();
-
-        //trace[0].same_value = F::zero();
-        //trace[0].first_addr_access_is_read = F::zero();
 
         // STEP2. Add all the memory operations to the buffer
         for (idx, mem_op) in mem_ops.iter().enumerate() {
@@ -192,14 +183,10 @@ impl<F: PrimeField> InputDataSM<F> {
             if mem_op.is_write {
                 panic! {"InputDataSM::prove_instance() Input data operation is write"};
             }
-            // TODO CHECK
-            // trace[i].mem_segment = segment_id_field;
-            // trace[i].mem_last_segment = is_last_segment_field;
 
             trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
-            //trace[i].wr = F::from_bool(mem_op.is_write);
 
             let value = match mem_op.width {
                 1 => mem_op.value as u8 as u64,
@@ -208,23 +195,22 @@ impl<F: PrimeField> InputDataSM<F> {
                 8 => mem_op.value,
                 _ => panic!("Invalid width"),
             };
-            let (low_val, high_val) = self.get_u32_values(value);
-            //trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+            let (val0, val1, val2, val3) = self.get_u16_values(value);
+            trace[i].value = [
+                F::from_canonical_u16(val0),
+                F::from_canonical_u16(val1),
+                F::from_canonical_u16(val2),
+                F::from_canonical_u16(val3),
+            ];
 
             let addr_changes = trace[i - 1].addr != trace[i].addr;
-            trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
+            trace[i].addr_changes = F::from_bool(addr_changes);
 
-            let same_value = trace[i - 1].value[0] == trace[i].value[0]
-                && trace[i - 1].value[1] == trace[i].value[1];
-            //trace[i].same_value = if same_value { F::one() } else { F::zero() };
-
-            let first_addr_access_is_read = addr_changes && !mem_op.is_write;
-            //trace[i].first_addr_access_is_read =
-            //    if first_addr_access_is_read { F::one() } else { F::zero() };
+            //println! {"InputDataSM::prove_instance() i={} mem op={} addr_changes={}", i, mem_op.to_text(), addr_changes}
         }
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
-        //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
+        //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
         let last_row_idx = mem_ops.len();
         let addr = trace[last_row_idx].addr;
         let mut step = trace[last_row_idx].step;
@@ -249,7 +235,7 @@ impl<F: PrimeField> InputDataSM<F> {
             //trace[i].first_addr_access_is_read = F::zero();
         }
 
-        let air_instance = AirInstance::new(
+        let mut air_instance = AirInstance::new(
             self.wcm.get_sctx(),
             ZISK_AIRGROUP_ID,
             INPUT_DATA_AIR_IDS[0],
@@ -257,53 +243,25 @@ impl<F: PrimeField> InputDataSM<F> {
             prover_buffer,
         );
 
+        /*air_instance.set_airvalue(
+            &sctx,
+            "InputData.mem_segment",
+            F::from_canonical_u64(segment_id as u64),
+        );
+        air_instance.set_airvalue(
+            &sctx,
+            "ImputData.mem_last_segment",
+            F::from_bool(is_last_segment),
+        );*/
+
         pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
 
-    fn get_u32_values(&self, value: u64) -> (u32, u32) {
-        (value as u32, (value >> 32) as u32)
+    fn get_u16_values(&self, value: u64) -> (u16, u16, u16, u16) {
+        (value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16)
     }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for InputDataSM<F> {}
-/*
-fn prove(operations: &[ZiskRequiredMemory]) {
-    // TODO: order operations
-    // Get a map of the operations and a list of keys (addresses)
-    let map: Map<u64, Vec<ZiskRequiredMemory>> = Map::new();
-    let keys: Vec<u64> = Vec::default();
-    for op in operations {
-        let entry = map.entry(op.address).or_default();
-        entry.push(op);
-        keys.push(op.address);
-    }
-
-    // Sort the keys (addresses)
-    keys.sort();
-
-    // Fill the trace in order of address
-    for key in keys {
-        let ops = map.entry(key);
-        let first = true;
-        for op in ops {
-            if op.is_write {
-                panic! {"Input data operation is write"};
-            }
-            let mut row = InputData0Row::default();
-            row.addr = F::from_canonical_u64(op.address);
-            row.step = F::from_canonical_u64(op.step);
-            row.sel = F::one();
-            row.value[0] = F::from_canonical_u64(op.value & 0xffffffff);
-            row.value[1] = F::from_canonical_u64((op.value >> 32) & 0xffffffff);
-            if first {
-                row.addr_changes = F::one();
-                first = false;
-            } else {
-                row.addr_changes = F::zero();
-            }
-        }
-    }
-}
-*/
