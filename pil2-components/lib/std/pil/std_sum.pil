@@ -184,23 +184,7 @@ private function find_repeated_proves() {
 private function piop_gsum_air(const int nTerms = 2) {
     use air.std.gsum;
 
-    const int max_degree = 1;
-    int gsum_low_degree[gsum_nargs];
-    int gsum_high_degree[gsum_nargs];
-    int gsum_low_degree_len = 0;
-    int gsum_high_degree_len = 0;
-
-    for (int i = 0; i < gsum_nargs; i++) {
-        if (degree(gsum_e[i]) > max_degree || degree(gsum_s[i]) > max_degree) {
-            gsum_high_degree[gsum_high_degree_len] = i;
-            ++gsum_high_degree_len;
-        } else {
-            gsum_low_degree[gsum_low_degree_len] = i;
-            ++gsum_low_degree_len;
-        }
-    }
-
-    const int nIm = gsum_low_degree_len/nTerms;
+    const int nIm = gsum_nargs/nTerms;
 
     col witness stage(2) im[nIm];
 
@@ -230,12 +214,12 @@ private function piop_gsum_air(const int nTerms = 2) {
         expr prods = 1;
         expr sums = 0;
         for (int j = 0; j < nTerms; j++) {
-            prods *= (gsum_e[gsum_low_degree[nTerms * i + j]] + std_gamma);
+            prods *= (gsum_e[nTerms * i + j] + std_gamma);
 
-            expr _partial = gsum_s[gsum_low_degree[nTerms * i + j]];
+            expr _partial = gsum_s[nTerms * i + j];
             for (int k = 0; k < nTerms; k++) {
                 if (k == j) continue;
-                _partial *= (gsum_e[gsum_low_degree[nTerms * i + k]] + std_gamma);
+                _partial *= (gsum_e[nTerms * i + k] + std_gamma);
             }
             sums += _partial;
         }
@@ -248,21 +232,21 @@ private function piop_gsum_air(const int nTerms = 2) {
         sumIms += im[i];
     }
 
-    if (gsum_low_degree_len % nTerms != 0) {
+    if (gsum_nargs % nTerms != 0) {
         col witness stage(2) im_extra;
 
         // This col is defined with a number of terms between 1 and nTerms-1
-        const int nRemTerms = gsum_low_degree_len % nTerms;
+        const int nRemTerms = gsum_nargs % nTerms;
 
         expr prods = 1;
         expr sums = 0;
         for (int j = 0; j < nRemTerms; j++) {
-            prods *= (gsum_e[gsum_low_degree[nTerms * nIm + j]] + std_gamma);
+            prods *= (gsum_e[nTerms * nIm + j] + std_gamma);
 
-            expr _partial = gsum_s[gsum_low_degree[nTerms * nIm + j]];
+            expr _partial = gsum_s[nTerms * nIm + j];
             for (int k = 0; k < nRemTerms; k++) {
                 if (k == j) continue;
-                _partial *= (gsum_e[gsum_low_degree[nTerms * nIm + k]] + std_gamma);
+                _partial *= (gsum_e[nTerms * nIm + k] + std_gamma);
             }
             sums += _partial;
         }
@@ -271,19 +255,6 @@ private function piop_gsum_air(const int nTerms = 2) {
         im_extra * prods === sums;
 
         sumIms += im_extra;
-    }
-
-    if (gsum_high_degree_len > 0) {
-        col witness stage(2) im_high_degree[gsum_high_degree_len];
-
-        for (int i = 0; i < gsum_high_degree_len; ++i) {
-            int index = gsum_high_degree[i];
-
-            @im_col{reference: im_high_degree[i], numerator: gsum_s[index], denominator: gsum_e[index] + std_gamma};
-
-            im_high_degree[i] * (gsum_e[index] + std_gamma) === gsum_s[index];
-            sumIms += im_high_degree[i];
-        }
     }
 
     @gsum_col{reference: gsum, expression: sumIms, result: airgroup.std.gsum.gsum_result};
