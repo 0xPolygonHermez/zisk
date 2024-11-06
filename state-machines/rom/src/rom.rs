@@ -6,9 +6,7 @@ use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{
-    Pilout, Rom0Row, Rom0Trace, ZISK_AIRGROUP_ID, MAIN_AIR_IDS, ROM_AIR_IDS,
-};
+use zisk_pil::{Pilout, RomRow, RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
 
@@ -41,13 +39,13 @@ impl<F: Field> RomSM<F> {
         let sctx = self.wcm.get_sctx();
 
         let num_rows =
-            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
+            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
         let prover_buffer =
             Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, num_rows as u64)?;
 
         let air_instance =
-            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0], None, prover_buffer);
+            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
 
         self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(instance_gid));
 
@@ -100,7 +98,7 @@ impl<F: Field> RomSM<F> {
 
         // Create an empty ROM trace
         let mut rom_trace =
-            Rom0Trace::<F>::map_buffer(&mut prover_buffer, num_rows, offsets[0] as usize)
+            RomTrace::<F>::map_buffer(&mut prover_buffer, num_rows, offsets[0] as usize)
                 .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
 
         // For every instruction in the rom, fill its corresponding ROM trace
@@ -174,7 +172,7 @@ impl<F: Field> RomSM<F> {
 
         // Padd with zeroes
         for i in number_of_instructions..num_rows {
-            rom_trace[i] = Rom0Row::default();
+            rom_trace[i] = RomRow::default();
         }
 
         Ok(prover_buffer)

@@ -85,7 +85,8 @@ impl<F: PrimeField> MemProxy<F> {
             new_aligned.extend(aligned_accesses);
         });
 
-        // Step 3. Concatenate the new aligned memory accesses with the original aligned memory accesses
+        // Step 3. Concatenate the new aligned memory accesses with the original aligned memory
+        // accesses
         aligned.extend(new_aligned);
 
         // Step 4. Prove the aligned memory accesses using mem state machine
@@ -106,7 +107,8 @@ impl<F: PrimeField> MemProxy<F> {
         match mem_ops {
             MemOps::OneRead => {
                 // Look for last write to the same address
-                let last_write_addr = Self::get_last_write(addr, aligned_accesses);
+                let last_write_addr =
+                    Self::get_last_write(addr, unaligned_access.step, aligned_accesses);
                 let last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
                     step: unaligned_access.step,
                     is_write: false,
@@ -118,7 +120,8 @@ impl<F: PrimeField> MemProxy<F> {
             }
             MemOps::OneWrite => {
                 // Look for last write to the same address
-                let last_write_addr = Self::get_last_write(addr, aligned_accesses);
+                let last_write_addr =
+                    Self::get_last_write(addr, unaligned_access.step, aligned_accesses);
 
                 // Modify the value of the write to the same address
                 let mut last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
@@ -134,8 +137,10 @@ impl<F: PrimeField> MemProxy<F> {
             }
             MemOps::TwoReads => {
                 // Look for last write to the same address and same address + 8
-                let last_write_addr = Self::get_last_write(addr, aligned_accesses);
-                let last_write_addr_p = Self::get_last_write(addr + 8, aligned_accesses);
+                let last_write_addr =
+                    Self::get_last_write(addr, unaligned_access.step, aligned_accesses);
+                let last_write_addr_p =
+                    Self::get_last_write(addr + 8, unaligned_access.step, aligned_accesses);
 
                 let last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
                     step: unaligned_access.step,
@@ -157,8 +162,10 @@ impl<F: PrimeField> MemProxy<F> {
             }
             MemOps::TwoWrites => {
                 // Look for last write to the same address and same address + 8
-                let last_write_addr = Self::get_last_write(addr, aligned_accesses);
-                let last_write_addr_p = Self::get_last_write(addr + 8, aligned_accesses);
+                let last_write_addr =
+                    Self::get_last_write(addr, unaligned_access.step, aligned_accesses);
+                let last_write_addr_p =
+                    Self::get_last_write(addr + 8, unaligned_access.step, aligned_accesses);
 
                 let mut last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
                     step: unaligned_access.step,
@@ -185,16 +192,37 @@ impl<F: PrimeField> MemProxy<F> {
     #[inline(always)]
     fn get_last_write(
         addr: u64,
+        step: u64,
         aligned_accesses: &[ZiskRequiredMemory],
     ) -> Option<ZiskRequiredMemory> {
-        Some(
-            aligned_accesses
-                .iter()
-                .rev()
-                .find(|mem| mem.address == addr && mem.is_write)
-                .unwrap()
-                .clone(),
-        )
+        // Step 1: Find the start of the range for `addr`
+        let start_index =
+            match aligned_accesses.binary_search_by_key(&addr, |access| access.address) {
+                Ok(mut index) => {
+                    // Backtrack to find the first occurrence of `addr`
+                    while index > 0 && aligned_accesses[index - 1].address == addr {
+                        index -= 1;
+                    }
+                    index
+                }
+                Err(index) => index, // If no match, use the insertion point as before
+            };
+
+        // Step 2: Iterate from start_index forward, storing the last valid write
+        let mut last_write = None;
+        for access in &aligned_accesses[start_index..] {
+            if access.address != addr {
+                break; // Stop if we move past the given address
+            }
+            if access.step >= step {
+                break; // Stop if step is not less than the given step
+            }
+            if access.is_write {
+                last_write = Some(access.clone()); // Update last write if conditions are met
+            }
+        }
+
+        last_write
     }
 
     #[inline(always)]

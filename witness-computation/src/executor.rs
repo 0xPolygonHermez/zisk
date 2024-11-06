@@ -130,8 +130,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // across different operation types. Currently, we are only collecting data for
         // Binary and BinaryE operations.
         let air_binary = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_e =
-            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
+        let air_binary_e = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
         let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
@@ -229,9 +228,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
                 ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
-                ZiskOperationType::BinaryE => {
-                    (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0])
-                }
+                ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
                 _ => panic!("Invalid operation type"),
             };
             let segment_id = match emu_slice.op_type {

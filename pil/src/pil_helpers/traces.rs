@@ -3,46 +3,46 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(Main0Row, Main0Trace<F> {
+trace!(MainRow, MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 });
 
-trace!(Rom0Row, Rom0Trace<F> {
+trace!(RomRow, RomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
 });
 
-trace!(Mem0Row, Mem0Trace<F> {
+trace!(MemRow, MemTrace<F> {
  addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, same_value: F, first_addr_access_is_read: F,
 });
 
-trace!(MemAlign0Row, MemAlign0Trace<F> {
+trace!(MemAlignRow, MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], sel_prove: F, step: F,
 });
 
-trace!(MemAlignRom0Row, MemAlignRom0Trace<F> {
+trace!(MemAlignRomRow, MemAlignRomTrace<F> {
  multiplicity: F,
 });
 
-trace!(Binary0Row, Binary0Trace<F> {
+trace!(BinaryRow, BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
 
-trace!(BinaryTable0Row, BinaryTable0Trace<F> {
+trace!(BinaryTableRow, BinaryTableTrace<F> {
  multiplicity: F,
 });
 
-trace!(BinaryExtension0Row, BinaryExtension0Trace<F> {
+trace!(BinaryExtensionRow, BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
 });
 
-trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
+trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
  multiplicity: F,
 });
 
-trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
+trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
  mul: [F; 2],
 });
 
-trace!(U8Air0Row, U8Air0Trace<F> {
+trace!(U8AirRow, U8AirTrace<F> {
  mul: F,
 });
