@@ -58,8 +58,8 @@ impl<F: Field> RomSM<F> {
     }
     pub fn compute_trace(
         rom_path: PathBuf,
-        buffer_allocator: Arc<dyn BufferAllocator>,
-        sctx: &SetupCtx,
+        buffer_allocator: Arc<dyn BufferAllocator<F>>,
+        sctx: &SetupCtx<F>,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
@@ -85,8 +85,8 @@ impl<F: Field> RomSM<F> {
 
     pub fn compute_trace_rom(
         rom: &ZiskRom,
-        buffer_allocator: Arc<dyn BufferAllocator>,
-        sctx: &SetupCtx,
+        buffer_allocator: Arc<dyn BufferAllocator<F>>,
+        sctx: &SetupCtx<F>,
         pc_histogram: ZiskPcHistogram,
         main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
@@ -144,8 +144,8 @@ impl<F: Field> RomSM<F> {
         rom_s_size: usize,
         rom: &zisk_core::ZiskRom,
         number_of_instructions: usize,
-        buffer_allocator: Arc<dyn BufferAllocator>,
-        sctx: &SetupCtx,
+        buffer_allocator: Arc<dyn BufferAllocator<F>>,
+        sctx: &SetupCtx<F>,
         pc_histogram: ZiskPcHistogram,
         main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
