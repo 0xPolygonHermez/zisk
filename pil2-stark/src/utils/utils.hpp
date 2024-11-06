@@ -56,4 +56,8 @@ void * copyFile (const std::string &fileName, uint64_t size);
 // Load file in parallel
 void * loadFileParallel(const std::string &fileName, uint64_t size);
 
+void loadFileParallel(void *buffer, const std::string &fileName, uint64_t size);
+
+void writeFileParallel(const std::string &fileName, const void* buffer, uint64_t size, uint64_t offset = 0);
+
 #endif

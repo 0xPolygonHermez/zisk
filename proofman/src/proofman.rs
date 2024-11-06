@@ -18,11 +18,11 @@ use crate::{WitnessLibInitFn, WitnessLibrary};
 use crate::verify_constraints_proof;
 use crate::generate_recursion_proof;
 
-use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx, SetupsVadcop};
 
 use std::os::raw::c_void;
 
-use proofman_util::{timer_start_info, timer_start_debug, timer_stop_and_log_info, timer_stop_and_log_debug};
+use proofman_util::{timer_start_debug, timer_start_info, timer_stop_and_log_debug, timer_stop_and_log_info};
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -53,7 +53,7 @@ impl<F: Field + 'static> ProofMan<F> {
         )?;
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
         let ectx = ExecutionCtx::builder()
-            .with_rom_path(rom_path)
+            .with_rom_path(rom_path.clone())
             .with_buffer_allocator(buffer_allocator)
             .with_verbose_mode(options.verbose_mode)
             .build();
@@ -63,11 +63,12 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(ectx.clone(), public_inputs_path)?;
+        let mut witness_lib = witness_lib(rom_path, public_inputs_path)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
-        let sctx: Arc<SetupCtx> = Arc::new(SetupCtx::new(&pctx.global_info, &ProofType::Basic));
+        let setups = Arc::new(SetupsVadcop::new(&pctx.global_info, options.aggregation));
+        let sctx: Arc<SetupCtx<F>> = setups.sctx.clone();
 
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
@@ -79,6 +80,8 @@ impl<F: Field + 'static> ProofMan<F> {
         if mpi_rank == 0 {
             Self::print_summary(pctx.clone());
         }
+
+        Self::initialize_setup(setups.clone(), pctx.clone(), ectx.clone(), options.aggregation);
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
         Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
@@ -97,7 +100,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 witness_lib.calculate_witness(stage, pctx.clone(), ectx.clone(), sctx.clone());
             }
 
-            Self::calculate_stage(stage, &mut provers, pctx.clone());
+            Self::calculate_stage(stage, &mut provers, sctx.clone(), pctx.clone());
 
             if !options.verify_constraints {
                 Self::commit_stage(stage, &mut provers, pctx.clone());
@@ -127,13 +130,12 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         if options.verify_constraints {
-            verify_constraints_proof(pctx.clone(), ectx.clone(), sctx.clone(), provers, witness_lib);
-            return Ok(());
+            return verify_constraints_proof(pctx.clone(), ectx.clone(), sctx.clone(), provers, witness_lib);
         }
 
         // Compute Quotient polynomial
         Self::get_challenges(num_commit_stages + 1, &mut provers, pctx.clone(), &transcript);
-        Self::calculate_stage(num_commit_stages + 1, &mut provers, pctx.clone());
+        Self::calculate_stage(num_commit_stages + 1, &mut provers, sctx.clone(), pctx.clone());
         Self::commit_stage(num_commit_stages + 1, &mut provers, pctx.clone());
         Self::calculate_challenges(
             num_commit_stages + 1,
@@ -145,7 +147,7 @@ impl<F: Field + 'static> ProofMan<F> {
         );
 
         // Compute openings
-        Self::opening_stages(&mut provers, pctx.clone(), ectx.clone(), &mut transcript);
+        Self::opening_stages(&mut provers, pctx.clone(), sctx.clone(), ectx.clone(), &mut transcript);
 
         //Generate proves_out
         let proves_out = Self::finalize_proof(&mut provers, pctx.clone(), output_dir_path.to_string_lossy().as_ref());
@@ -163,6 +165,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let comp_proofs = generate_recursion_proof(
             &pctx,
             &ectx,
+            setups.sctx_compressor.as_ref().unwrap().clone(),
             &proves_out,
             &ProofType::Compressor,
             output_dir_path.clone(),
@@ -175,6 +178,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let recursive1_proofs = generate_recursion_proof(
             &pctx,
             &ectx,
+            setups.sctx_recursive1.as_ref().unwrap().clone(),
             &comp_proofs,
             &ProofType::Recursive1,
             output_dir_path.clone(),
@@ -185,9 +189,11 @@ impl<F: Field + 'static> ProofMan<F> {
 
         ectx.dctx.read().unwrap().barrier();
         timer_start_info!(GENERATING_RECURSIVE2_PROOFS);
+        let sctx_recursive2 = setups.sctx_recursive2.clone();
         let recursive2_proofs = generate_recursion_proof(
             &pctx,
             &ectx,
+            sctx_recursive2.as_ref().unwrap().clone(),
             &recursive1_proofs,
             &ProofType::Recursive2,
             output_dir_path.clone(),
@@ -202,6 +208,7 @@ impl<F: Field + 'static> ProofMan<F> {
             let _final_proof = generate_recursion_proof(
                 &pctx,
                 &ectx,
+                setups.sctx_final.as_ref().unwrap().clone(),
                 &recursive2_proofs,
                 &ProofType::Final,
                 output_dir_path.clone(),
@@ -220,8 +227,8 @@ impl<F: Field + 'static> ProofMan<F> {
     fn initialize_witness(
         witness_lib: &mut Box<dyn WitnessLibrary<F>>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
     ) {
         timer_start_debug!(INITIALIZE_WITNESS);
         witness_lib.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
@@ -261,10 +268,10 @@ impl<F: Field + 'static> ProofMan<F> {
     }
 
     fn initialize_provers(
-        sctx: Arc<SetupCtx>,
+        sctx: Arc<SetupCtx<F>>,
         provers: &mut Vec<Box<dyn Prover<F>>>,
         pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
+        _ectx: Arc<ExecutionCtx<F>>,
     ) {
         timer_start_debug!(INITIALIZE_PROVERS);
         info!("{}: Initializing provers", Self::MY_NAME);
@@ -286,6 +293,7 @@ impl<F: Field + 'static> ProofMan<F> {
         for prover in provers.iter_mut() {
             prover.build(pctx.clone());
         }
+
         let mut buff_helper_size = 0_usize;
         for prover in provers.iter_mut() {
             let buff_helper_prover_size = prover.get_buff_helper_size();
@@ -300,19 +308,104 @@ impl<F: Field + 'static> ProofMan<F> {
         timer_stop_and_log_debug!(INITIALIZE_PROVERS);
     }
 
-    pub fn calculate_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], proof_ctx: Arc<ProofCtx<F>>) {
+    fn initialize_setup(
+        setups: Arc<SetupsVadcop<F>>,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx<F>>,
+        aggregation: bool,
+    ) {
+        info!("{}: Initializing setup fixed pols", Self::MY_NAME);
+        timer_start_debug!(INITIALIZE_SETUP);
+        timer_start_debug!(INITIALIZE_CONST_POLS);
+
+        let mut const_pols_calculated: HashMap<(usize, usize), bool> = HashMap::new();
+
+        let dctx = ectx.dctx.read().unwrap();
+
+        for id in &dctx.my_instances {
+            let (airgroup_id, air_id) = dctx.instances[*id];
+            const_pols_calculated.entry((airgroup_id, air_id)).or_insert_with(|| {
+                let setup = setups.sctx.get_setup(airgroup_id, air_id);
+                setup.load_const_pols(&pctx.global_info, &ProofType::Basic);
+                setup.load_const_pols_tree(&pctx.global_info, &ProofType::Basic, false);
+                true
+            });
+        }
+
+        timer_stop_and_log_debug!(INITIALIZE_CONST_POLS);
+
+        if aggregation {
+            timer_start_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
+            let mut const_pols_calculated_compressor: HashMap<(usize, usize), bool> = HashMap::new();
+
+            let sctx_compressor = setups.sctx_compressor.as_ref().unwrap().clone();
+            let sctx_recursive1 = setups.sctx_recursive1.as_ref().unwrap().clone();
+            let sctx_recursive2 = setups.sctx_recursive2.as_ref().unwrap().clone();
+            let sctx_final = setups.sctx_final.as_ref().unwrap().clone();
+
+            for id in &dctx.my_instances {
+                let (airgroup_id, air_id) = dctx.instances[*id];
+                if pctx.global_info.get_air_has_compressor(airgroup_id, air_id)
+                    && !const_pols_calculated_compressor.contains_key(&(airgroup_id, air_id))
+                {
+                    let setup = sctx_compressor.get_setup(airgroup_id, air_id);
+                    setup.load_const_pols(&pctx.global_info, &ProofType::Compressor);
+                    setup.load_const_pols_tree(&pctx.global_info, &ProofType::Compressor, false);
+                    const_pols_calculated_compressor.insert((airgroup_id, air_id), true);
+                }
+            }
+            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
+
+            timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
+            let mut const_pols_calculated_recursive1: HashMap<(usize, usize), bool> = HashMap::new();
+            for id in &dctx.my_instances {
+                let (airgroup_id, air_id) = dctx.instances[*id];
+                const_pols_calculated_recursive1.entry((airgroup_id, air_id)).or_insert_with(|| {
+                    let setup = sctx_recursive1.get_setup(airgroup_id, air_id);
+                    setup.load_const_pols(&pctx.global_info, &ProofType::Recursive1);
+                    setup.load_const_pols_tree(&pctx.global_info, &ProofType::Recursive1, false);
+                    true
+                });
+            }
+            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
+
+            timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
+            for (idx, group_instances) in dctx.airgroup_instances.iter().enumerate() {
+                if !group_instances.is_empty() {
+                    let setup = sctx_recursive2.get_setup(idx, 0);
+                    setup.load_const_pols(&pctx.global_info, &ProofType::Recursive2);
+                    setup.load_const_pols_tree(&pctx.global_info, &ProofType::Recursive2, false);
+                }
+            }
+            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
+
+            timer_start_debug!(INITIALIZE_CONST_POLS_FINAL);
+            let setup = sctx_final.get_setup(0, 0);
+            setup.load_const_pols(&pctx.global_info, &ProofType::Final);
+            setup.load_const_pols_tree(&pctx.global_info, &ProofType::Final, false);
+            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_FINAL);
+        }
+        timer_stop_and_log_debug!(INITIALIZE_SETUP);
+    }
+
+    pub fn calculate_stage(
+        stage: u32,
+        provers: &mut [Box<dyn Prover<F>>],
+        setup_ctx: Arc<SetupCtx<F>>,
+        proof_ctx: Arc<ProofCtx<F>>,
+    ) {
         if stage as usize == proof_ctx.global_info.n_challenges.len() + 1 {
             info!("{}: Calculating Quotient Polynomials", Self::MY_NAME);
             timer_start_debug!(CALCULATING_QUOTIENT_POLYNOMIAL);
             for prover in provers.iter_mut() {
-                prover.calculate_stage(stage, proof_ctx.clone());
+                prover.calculate_stage(stage, setup_ctx.clone(), proof_ctx.clone());
             }
             timer_stop_and_log_debug!(CALCULATING_QUOTIENT_POLYNOMIAL);
         } else {
             info!("{}: Calculating stage {}", Self::MY_NAME, stage);
             timer_start_debug!(CALCULATING_STAGE);
             for prover in provers.iter_mut() {
-                prover.calculate_stage(stage, proof_ctx.clone());
+                prover.calculate_stage(stage, setup_ctx.clone(), proof_ctx.clone());
             }
             timer_stop_and_log_debug!(CALCULATING_STAGE);
         }
@@ -371,7 +464,7 @@ impl<F: Field + 'static> ProofMan<F> {
         stage: u32,
         provers: &mut [Box<dyn Prover<F>>],
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
+        ectx: Arc<ExecutionCtx<F>>,
         transcript: &mut FFITranscript,
         verify_constraints: bool,
     ) {
@@ -434,7 +527,8 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn opening_stages(
         provers: &mut [Box<dyn Prover<F>>],
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx<F>>,
         transcript: &mut FFITranscript,
     ) {
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
@@ -446,7 +540,7 @@ impl<F: Field + 'static> ProofMan<F> {
         for group_idx in dctx.my_air_groups.iter() {
             provers[group_idx[0]].calculate_lev(pctx.clone());
             for idx in group_idx.iter() {
-                provers[*idx].opening_stage(1, pctx.clone());
+                provers[*idx].opening_stage(1, sctx.clone(), pctx.clone());
             }
         }
         timer_stop_and_log_debug!(CALCULATING_EVALS);
@@ -459,7 +553,7 @@ impl<F: Field + 'static> ProofMan<F> {
         for group_idx in dctx.my_air_groups.iter() {
             provers[group_idx[0]].calculate_xdivxsub(pctx.clone());
             for idx in group_idx.iter() {
-                provers[*idx].opening_stage(2, pctx.clone());
+                provers[*idx].opening_stage(2, sctx.clone(), pctx.clone());
             }
         }
         timer_stop_and_log_debug!(CALCULATING_FRI_POLINOMIAL);
@@ -494,7 +588,7 @@ impl<F: Field + 'static> ProofMan<F> {
                 );
             }
             for prover in provers.iter_mut() {
-                prover.opening_stage(opening_id + 3, pctx.clone());
+                prover.opening_stage(opening_id + 3, sctx.clone(), pctx.clone());
             }
             if opening_id < num_opening_stages {
                 Self::calculate_challenges(
@@ -520,6 +614,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let mut proves = Vec::new();
         for prover in provers.iter_mut() {
             proves.push(prover.get_zkin_proof(proof_ctx.clone(), output_dir));
+            prover.free();
         }
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();

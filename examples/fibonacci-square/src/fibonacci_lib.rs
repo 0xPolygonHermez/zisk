@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::Std;
 use p3_field::PrimeField;
@@ -28,7 +28,7 @@ impl<F: PrimeField> FibonacciWitness<F> {
 }
 
 impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
-    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         let wcm = Arc::new(WitnessManager::new(pctx.clone(), ectx.clone(), sctx.clone()));
 
         let std_lib = Std::new(wcm.clone());
@@ -67,12 +67,18 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
         self.wcm.as_ref().unwrap().end_proof();
     }
 
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         self.fibonacci.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.module.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+    ) {
         self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
@@ -83,11 +89,9 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    ectx: Arc<ExecutionCtx>,
+    _: Option<PathBuf>,
     public_inputs_path: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    initialize_logger(ectx.verbose_mode);
-
     let fibonacci_witness = FibonacciWitness::new(public_inputs_path);
     Ok(Box::new(fibonacci_witness))
 }

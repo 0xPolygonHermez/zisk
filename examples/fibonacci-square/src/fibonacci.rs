@@ -22,7 +22,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         fibonacci
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         // TODO: We should create the instance here and fill the trace in calculate witness!!!
         if let Err(e) =
             Self::calculate_trace(self, FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], pctx, ectx, sctx)
@@ -36,8 +36,8 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         airgroup_id: usize,
         air_id: usize,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
@@ -101,8 +101,8 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for FibonacciSquare<F> {
         _stage: u32,
         _air_instance_id: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
     ) {
     }
 }

@@ -20,9 +20,7 @@
 
     // SetupCtx
     // ========================================================================================
-    void *setup_ctx_new(void* p_stark_info, void* p_expression_bin, void* p_const_pols);
     void *get_hint_ids_by_name(void *p_expression_bin, char* hintName);
-    void setup_ctx_free(void *pSetupCtx);
 
     // Stark Info
     // ========================================================================================
@@ -38,13 +36,18 @@
     int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airValueName);
     void stark_info_free(void *pStarkInfo);
 
+    // Prover Helpers
+    // ========================================================================================
+    void *prover_helpers_new(void *pStarkInfo);
+    void prover_helpers_free(void *pProverHelpers);
+
     // Const Pols
     // ========================================================================================
-    void *const_pols_new(char* filename, void *pStarkInfo, bool calculate_tree);
-    void *const_pols_with_tree_new(char* filename, char* treeFilename, void *pStarkInfo);
-    void load_const_tree(void *pConstPols, void *pStarkInfo, char *treeFilename);
-    void calculate_const_tree(void *pConstPols, void *pStarkInfo);
-    void const_pols_free(void *pConstPols);
+    void load_const_tree(void *pConstTree, char *treeFilename, uint64_t constTreeSize);
+    void load_const_pols(void *pConstPols, char *constFilename, uint64_t constSize);
+    uint64_t get_const_tree_size(void *pStarkInfo);
+    uint64_t get_const_size(void *pStarkInfo);
+    void calculate_const_tree(void *pStarkInfo, void *pConstPolsAddress, void *pConstTree, char *treeFilename);
 
     // Expressions Bin
     // ========================================================================================
@@ -61,13 +64,13 @@
 
     // Starks
     // ========================================================================================
-    void *starks_new(void *pSetupCtx);
+    void *starks_new(void *pSetupCtx, void *pConstTree);
     void starks_free(void *pStarks);
 
     void treesGL_get_root(void *pStarks, uint64_t index, void *root);
 
     void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub);
-    void *get_fri_pol(void *pSetupCtx, void *buffer);
+    void *get_fri_pol(void *pStarkInfo, void *buffer);
 
     void calculate_fri_polynomial(void *pStarks, void* stepsParams);
     void calculate_quotient_polynomial(void *pStarks, void* stepsParams);
@@ -76,11 +79,10 @@
     void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
     
     void compute_lev(void *pStarks, void *xiChallenge, void* LEv);
-    void compute_evals(void *pStarks, void *buffer, void *LEv, void *evals, void *pProof);
+    void compute_evals(void *pStarks, void *params, void *LEv, void *pProof);
 
     void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElements);
 
-    void set_const_tree(void *pStarks, void *pConstPols);
     
     // MerkleTree
     // =================================================================================
@@ -123,9 +125,8 @@
 
     // Recursive proof
     // =================================================================================
-    void *gen_recursive_proof(void *pSetupCtx, void* pAddress, void* pPublicInputs, char *proof_file);
+    void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* pAddress, void *pConstPols, void *pConstTree, void* pPublicInputs, char *proof_file);
     void *get_zkin_ptr(char *zkin_file);
-    void *public2zkin(void *pZkin, void* pPublics, char* globalInfoFile, uint64_t airgroupId, bool isAggregated);
     void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename);
     void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2);
     void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2);

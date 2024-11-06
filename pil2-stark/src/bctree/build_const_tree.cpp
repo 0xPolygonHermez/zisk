@@ -63,12 +63,7 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
 
         // ConstTree
         if(constTreeFile != "") {
-            ofstream fw(constTreeFile.c_str(), std::fstream::out | std::fstream::binary);
-            fw.write((const char *)&(nPols), sizeof(uint64_t));
-            fw.write((const char *)&(NExtended), sizeof(uint64_t));
-            fw.write((const char *)pConstPolsExt, nPols * NExtended * sizeof(Goldilocks::Element));
-            fw.write((const char *)mt.nodes, mt.numNodes * sizeof(Goldilocks::Element));
-            fw.close();
+           mt.writeFile(constTreeFile);
         }
 
         TimerStopAndLog(GENERATING_FILES);
@@ -95,12 +90,7 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
 
         // ConstTree
         if(constTreeFile != "") {
-            std::ofstream fw(constTreeFile.c_str(), std::fstream::out | std::fstream::binary);
-            fw.write((const char *)&(mt.width), sizeof(mt.width));
-            fw.write((const char *)&(mt.height), sizeof(mt.height));
-            fw.write((const char *)mt.source, nPols * NExtended * sizeof(Goldilocks::Element));
-            fw.write((const char *)mt.nodes, mt.numNodes * sizeof(RawFr::Element));
-            fw.close();
+            mt.writeFile(constTreeFile);
         }
         TimerStopAndLog(GENERATING_FILES);
     } else {

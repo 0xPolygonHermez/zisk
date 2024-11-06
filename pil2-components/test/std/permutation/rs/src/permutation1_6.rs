@@ -26,7 +26,7 @@ where
         permutation1_6
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         // Add two instances of this air, so that 2**6 + 2**6 = 2**7 to fit with permutation2
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -65,8 +65,8 @@ where
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
     ) {
         let mut rng = rand::thread_rng();
 

@@ -16,6 +16,8 @@ pub struct StepsParams {
     pub airvalues: *mut c_void,
     pub evals: *mut c_void,
     pub xdivxsub: *mut c_void,
+    pub p_const_pols: *mut c_void,
+    pub p_const_tree: *mut c_void,
 }
 
 impl From<&StepsParams> for *mut c_void {
@@ -45,13 +47,13 @@ pub struct AirInstance<F> {
 
 impl<F: Field> AirInstance<F> {
     pub fn new(
-        setup_ctx: Arc<SetupCtx>,
+        setup_ctx: Arc<SetupCtx<F>>,
         airgroup_id: usize,
         air_id: usize,
         air_segment_id: Option<usize>,
         buffer: Vec<F>,
     ) -> Self {
-        let ps = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+        let ps = setup_ctx.get_setup(airgroup_id, air_id);
 
         AirInstance {
             airgroup_id,
@@ -74,8 +76,8 @@ impl<F: Field> AirInstance<F> {
         self.buffer.as_ptr() as *mut u8
     }
 
-    pub fn set_airvalue(&mut self, setup_ctx: &SetupCtx, name: &str, value: F) {
-        let ps = setup_ctx.get_partial_setup(self.airgroup_id, self.air_id).expect("REASON");
+    pub fn set_airvalue(&mut self, setup_ctx: &SetupCtx<F>, name: &str, value: F) {
+        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let id = get_airval_id_by_name_c(ps.p_setup.p_stark_info, name);
         if id == -1 {
@@ -86,8 +88,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(id as usize);
     }
 
-    pub fn set_airvalue_ext(&mut self, setup_ctx: &SetupCtx, name: &str, value: Vec<F>) {
-        let ps = setup_ctx.get_partial_setup(self.airgroup_id, self.air_id).expect("REASON");
+    pub fn set_airvalue_ext(&mut self, setup_ctx: &SetupCtx<F>, name: &str, value: Vec<F>) {
+        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let id = get_airval_id_by_name_c(ps.p_setup.p_stark_info, name);
         if id == -1 {
@@ -105,8 +107,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(id as usize);
     }
 
-    pub fn set_airgroupvalue(&mut self, setup_ctx: &SetupCtx, name: &str, value: F) {
-        let ps = setup_ctx.get_partial_setup(self.airgroup_id, self.air_id).expect("REASON");
+    pub fn set_airgroupvalue(&mut self, setup_ctx: &SetupCtx<F>, name: &str, value: F) {
+        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let id = get_airgroupval_id_by_name_c(ps.p_setup.p_stark_info, name);
         if id == -1 {
@@ -117,8 +119,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airgroupvalue_calculated(id as usize);
     }
 
-    pub fn set_airgroupvalue_ext(&mut self, setup_ctx: &SetupCtx, name: &str, value: Vec<F>) {
-        let ps = setup_ctx.get_partial_setup(self.airgroup_id, self.air_id).expect("REASON");
+    pub fn set_airgroupvalue_ext(&mut self, setup_ctx: &SetupCtx<F>, name: &str, value: Vec<F>) {
+        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let id = get_airgroupval_id_by_name_c(ps.p_setup.p_stark_info, name);
         if id == -1 {

@@ -11,11 +11,11 @@ use colored::*;
 
 pub fn verify_constraints_proof<F: Field>(
     pctx: Arc<ProofCtx<F>>,
-    ectx: Arc<ExecutionCtx>,
-    sctx: Arc<SetupCtx>,
+    ectx: Arc<ExecutionCtx<F>>,
+    sctx: Arc<SetupCtx<F>>,
     provers: Vec<Box<dyn Prover<F>>>,
     mut witness_lib: Box<dyn WitnessLibrary<F>>,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     const MY_NAME: &str = "CstrVrfy";
 
     log::info!("{}: --> Checking constraints", MY_NAME);
@@ -24,7 +24,7 @@ pub fn verify_constraints_proof<F: Field>(
 
     let mut constraints = Vec::new();
     for prover in provers.iter() {
-        let constraints_prover_info = prover.verify_constraints(pctx.clone());
+        let constraints_prover_info = prover.verify_constraints(sctx.clone(), pctx.clone());
         constraints.push(constraints_prover_info);
     }
 
@@ -129,7 +129,13 @@ pub fn verify_constraints_proof<F: Field>(
 
     if valid_constraints && global_constraints_verified {
         log::info!("{}: ··· {}", MY_NAME, "\u{2713} All constraints were verified".bright_green().bold());
+        Ok(())
     } else {
         log::info!("{}: ··· {}", MY_NAME, "\u{2717} Not all constraints were verified.".bright_red().bold());
+        Err(Box::new(std::io::Error::new(
+            // <-- Return a boxed error
+            std::io::ErrorKind::Other,
+            format!("{}: Not all constraints were verified.", MY_NAME),
+        )))
     }
 }

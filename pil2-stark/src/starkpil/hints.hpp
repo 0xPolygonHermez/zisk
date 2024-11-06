@@ -44,8 +44,7 @@ void getPolynomial(SetupCtx& setupCtx, Goldilocks::Element *buffer, Goldilocks::
     uint64_t nCols = setupCtx.starkInfo.mapSectionsN[stage];
     uint64_t offset = setupCtx.starkInfo.mapOffsets[std::make_pair(stage, domainExtended)];
     offset += polInfo.stagePos;
-    Goldilocks::Element *pols = committed ? buffer : domainExtended ? setupCtx.constPols.pConstPolsAddressExtended : setupCtx.constPols.pConstPolsAddress;
-    Polinomial pol = Polinomial(&pols[offset], deg, dim, nCols, std::to_string(idPol));
+    Polinomial pol = Polinomial(&buffer[offset], deg, dim, nCols, std::to_string(idPol));
 #pragma omp parallel for
     for(uint64_t j = 0; j < deg; ++j) {
         std::memcpy(&dest[j*dim], pol[j], dim * sizeof(Goldilocks::Element));
@@ -112,11 +111,11 @@ void printRow(SetupCtx& setupCtx, Goldilocks::Element* buffer, uint64_t stage, u
     cout << "}" << endl;
 }
 
-void printColById(SetupCtx& setupCtx, Goldilocks::Element* buffer, bool committed, uint64_t polId, uint64_t firstPrintValue = 0, uint64_t lastPrintValue = 0)
+void printColById(SetupCtx& setupCtx, StepsParams &params, bool committed, uint64_t polId, uint64_t firstPrintValue = 0, uint64_t lastPrintValue = 0)
 {   
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
     PolMap polInfo = committed ? setupCtx.starkInfo.cmPolsMap[polId] : setupCtx.starkInfo.constPolsMap[polId];
-    Goldilocks::Element *pols = committed ? buffer : setupCtx.constPols.pConstPolsAddress;
+    Goldilocks::Element *pols = committed ? params.pols : params.pConstPolsAddress;
     Polinomial p;
     setupCtx.starkInfo.getPolynomial(p, pols, committed, polId, false);
 
@@ -161,7 +160,7 @@ HintFieldInfo printByName(SetupCtx& setupCtx, StepsParams& params, string name, 
             if(!lengths_match) continue;
         }
         if(cmPol.name == name) {
-            printColById(setupCtx, params.pols, true, i, firstPrintValue, lastPrintValue);
+            printColById(setupCtx, params, true, i, firstPrintValue, lastPrintValue);
             if(returnValues) {
                 hintFieldInfo.size = cmPol.dim * N;
                 hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
@@ -187,7 +186,7 @@ HintFieldInfo printByName(SetupCtx& setupCtx, StepsParams& params, string name, 
             if(!lengths_match) continue;
         }
         if(constPol.name == name) {
-            printColById(setupCtx, params.pols, false, i, firstPrintValue, lastPrintValue);
+            printColById(setupCtx, params, false, i, firstPrintValue, lastPrintValue);
             if(returnValues) {
                 hintFieldInfo.size = N;
                 hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];

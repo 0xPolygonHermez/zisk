@@ -49,5 +49,7 @@ public:
     void getGroupProof(RawFr::Element *proof, uint64_t idx);
     
     void merkelize();
+
+    void writeFile(std::string constTreeFile);
 };
 #endif

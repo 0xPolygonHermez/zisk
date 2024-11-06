@@ -32,10 +32,10 @@ public:
     MerkleTreeType **treesFRI;
 
 public:
-    Starks(SetupCtx& setupCtx_) : setupCtx(setupCtx_)                                    
+    Starks(SetupCtx& setupCtx_, Goldilocks::Element *pConstPolsExtendedTreeAddress) : setupCtx(setupCtx_)                                    
     {
         treesGL = new MerkleTreeType*[setupCtx.starkInfo.nStages + 2];
-        if(setupCtx.constPols.pConstTreeAddress != nullptr) treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, (Goldilocks::Element *)setupCtx.constPols.pConstTreeAddress);
+        treesGL[setupCtx.starkInfo.nStages + 1] = new MerkleTreeType(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom, pConstPolsExtendedTreeAddress);
         for (uint64_t i = 0; i < setupCtx.starkInfo.nStages + 1; i++)
         {
             std::string section = "cm" + to_string(i + 1);
@@ -77,7 +77,7 @@ public:
     void calculateFRIPolynomial(StepsParams& params);
 
     void computeLEv(Goldilocks::Element *xiChallenge, Goldilocks::Element *LEv);
-    void computeEvals(Goldilocks::Element *buffer, Goldilocks::Element *LEv, Goldilocks::Element *evals, FRIProof<ElementType> &proof);
+    void computeEvals(StepsParams &params, Goldilocks::Element *LEv, FRIProof<ElementType> &proof);
 
     void calculateXDivXSub(Goldilocks::Element *xiChallenge, Goldilocks::Element *xDivXSub);
 
@@ -87,12 +87,10 @@ public:
     void addTranscript(TranscriptType &transcript, ElementType* buffer, uint64_t nElements);
     void getChallenge(TranscriptType &transcript, Goldilocks::Element& challenge);
 
-    void setConstTree(ConstPols &constPols);
-    
     // Following function are created to be used by the ffi interface
     void ffi_treesGL_get_root(uint64_t index, ElementType *dst);
 
-    void evmap(Goldilocks::Element *buffer, Goldilocks::Element *evals, Goldilocks::Element *LEv);
+    void evmap(StepsParams& params, Goldilocks::Element *LEv);
 };
 
 template class Starks<Goldilocks::Element>;

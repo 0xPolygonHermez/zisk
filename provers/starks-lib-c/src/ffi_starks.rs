@@ -108,22 +108,6 @@ pub fn fri_proof_free_c(p_fri_proof: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn setup_ctx_new_c(
-    p_stark_info: *mut c_void,
-    p_expressions_bin: *mut c_void,
-    p_const_pols: *mut c_void,
-) -> *mut c_void {
-    unsafe { setup_ctx_new(p_stark_info, p_expressions_bin, p_const_pols) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn setup_ctx_free_c(p_setup_ctx: *mut c_void) {
-    unsafe {
-        setup_ctx_free(p_setup_ctx);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn stark_info_new_c(filename: &str) -> *mut c_void {
     unsafe {
         let filename = CString::new(filename).unwrap();
@@ -188,48 +172,61 @@ pub fn stark_info_free_c(p_stark_info: *mut c_void) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn const_pols_new_c(filename: &str, p_stark_info: *mut c_void, calculate_tree: bool) -> *mut c_void {
-    unsafe {
-        let filename = CString::new(filename).unwrap();
+pub fn prover_helpers_new_c(p_stark_info: *mut c_void) -> *mut c_void {
+    unsafe { prover_helpers_new(p_stark_info) }
+}
 
-        const_pols_new(filename.as_ptr() as *mut std::os::raw::c_char, p_stark_info, calculate_tree)
+#[cfg(not(feature = "no_lib_link"))]
+pub fn prover_helpers_free_c(p_prover_helpers: *mut c_void) {
+    unsafe {
+        prover_helpers_free(p_prover_helpers);
     }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn const_pols_with_tree_new_c(filename: &str, tree_filename: &str, p_stark_info: *mut c_void) -> *mut c_void {
+pub fn load_const_pols_c(pConstPolsAddress: *mut c_void, const_filename: &str, const_size: u64) {
     unsafe {
-        let filename = CString::new(filename).unwrap();
-        let tree_filename = CString::new(tree_filename).unwrap();
+        let const_filename: CString = CString::new(const_filename).unwrap();
 
-        const_pols_with_tree_new(
-            filename.as_ptr() as *mut std::os::raw::c_char,
+        load_const_pols(pConstPolsAddress, const_filename.as_ptr() as *mut std::os::raw::c_char, const_size);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_const_size_c(pStarkInfo: *mut c_void) -> u64 {
+    unsafe { get_const_size(pStarkInfo) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_const_tree_size_c(pStarkInfo: *mut c_void) -> u64 {
+    unsafe { get_const_tree_size(pStarkInfo) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn load_const_tree_c(pConstPolsTreeAddress: *mut c_void, tree_filename: &str, const_tree_size: u64) {
+    unsafe {
+        let tree_filename: CString = CString::new(tree_filename).unwrap();
+
+        load_const_tree(pConstPolsTreeAddress, tree_filename.as_ptr() as *mut std::os::raw::c_char, const_tree_size);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn calculate_const_tree_c(
+    pStarkInfo: *mut c_void,
+    pConstPols: *mut c_void,
+    pConstPolsTreeAddress: *mut c_void,
+    tree_filename: &str,
+) {
+    unsafe {
+        let tree_filename: CString = CString::new(tree_filename).unwrap();
+
+        calculate_const_tree(
+            pStarkInfo,
+            pConstPols,
+            pConstPolsTreeAddress,
             tree_filename.as_ptr() as *mut std::os::raw::c_char,
-            p_stark_info,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn load_const_tree_c(pConstPols: *mut c_void, pStarkInfo: *mut c_void, tree_filename: &str) {
-    unsafe {
-        let tree_filename = CString::new(tree_filename).unwrap();
-
-        load_const_tree(pConstPols, pStarkInfo, tree_filename.as_ptr() as *mut std::os::raw::c_char);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn calculate_const_tree_c(pConstPols: *mut c_void, pStarkInfo: *mut c_void) {
-    unsafe {
-        calculate_const_tree(pConstPols, pStarkInfo);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn const_pols_free_c(p_const_pols: *mut c_void) {
-    unsafe {
-        const_pols_free(p_const_pols);
+        );
     }
 }
 
@@ -378,8 +375,8 @@ pub fn set_hint_field_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn starks_new_c(p_setup_ctx: *mut c_void) -> *mut c_void {
-    unsafe { starks_new(p_setup_ctx) }
+pub fn starks_new_c(p_setup_ctx: *mut c_void, p_const_tree: *mut c_void) -> *mut c_void {
+    unsafe { starks_new(p_setup_ctx, p_const_tree) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -416,8 +413,8 @@ pub fn calculate_xdivxsub_c(p_stark: *mut c_void, xi_challenge: *mut c_void, xdi
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_fri_pol_c(p_setup_ctx: *mut c_void, buffer: *mut c_void) -> *mut c_void {
-    unsafe { get_fri_pol(p_setup_ctx, buffer) }
+pub fn get_fri_pol_c(p_stark_info: *mut c_void, buffer: *mut c_void) -> *mut c_void {
+    unsafe { get_fri_pol(p_stark_info, buffer) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -463,15 +460,9 @@ pub fn compute_lev_c(p_stark: *mut c_void, xi_challenge: *mut c_void, lev: *mut 
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn compute_evals_c(
-    p_stark: *mut c_void,
-    buffer: *mut c_void,
-    lev: *mut c_void,
-    evals: *mut c_void,
-    pProof: *mut c_void,
-) {
+pub fn compute_evals_c(p_stark: *mut c_void, params: *mut c_void, lev: *mut c_void, pProof: *mut c_void) {
     unsafe {
-        compute_evals(p_stark, buffer, lev, evals, pProof);
+        compute_evals(p_stark, params, lev, pProof);
     }
 }
 
@@ -541,13 +532,6 @@ pub fn set_fri_final_pol_c(p_proof: *mut c_void, buffer: *mut c_void, n_bits: u6
 pub fn calculate_hash_c(pStarks: *mut c_void, pHhash: *mut c_void, pBuffer: *mut c_void, nElements: u64) {
     unsafe {
         calculate_hash(pStarks, pHhash, pBuffer, nElements);
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn set_const_tree_c(pStarks: *mut c_void, pConstPols: *mut c_void) {
-    unsafe {
-        set_const_tree(pStarks, pConstPols);
     }
 }
 
@@ -700,16 +684,35 @@ pub fn print_row_c(p_setup_ctx: *mut c_void, buffer: *mut c_void, stage: u64, ro
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
 pub fn gen_recursive_proof_c(
     p_setup_ctx: *mut c_void,
     p_address: *mut c_void,
+    p_const_pols: *mut c_void,
+    p_const_tree: *mut c_void,
     p_public_inputs: *mut c_void,
     proof_file: &str,
+    global_info_file: &str,
+    airgroup_id: u64,
 ) -> *mut c_void {
     let proof_file_name = CString::new(proof_file).unwrap();
     let proof_file_ptr = proof_file_name.as_ptr() as *mut std::os::raw::c_char;
 
-    unsafe { gen_recursive_proof(p_setup_ctx, p_address, p_public_inputs, proof_file_ptr) }
+    let global_info_file_name = CString::new(global_info_file).unwrap();
+    let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
+
+    unsafe {
+        gen_recursive_proof(
+            p_setup_ctx,
+            global_info_file_ptr,
+            airgroup_id,
+            p_address,
+            p_const_pols,
+            p_const_tree,
+            p_public_inputs,
+            proof_file_ptr,
+        )
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -718,20 +721,6 @@ pub fn get_zkin_ptr_c(zkin_file: &str) -> *mut c_void {
     let zkin_file_ptr = zkin_file_name.as_ptr() as *mut std::os::raw::c_char;
 
     unsafe { get_zkin_ptr(zkin_file_ptr) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn publics2zkin_c(
-    p_zkin: *mut c_void,
-    p_publics: *mut c_void,
-    global_info_file: &str,
-    airgroup_id: u64,
-    is_aggregated: bool,
-) -> *mut c_void {
-    let global_info_file_name = CString::new(global_info_file).unwrap();
-    let global_info_file_ptr = global_info_file_name.as_ptr() as *mut std::os::raw::c_char;
-
-    unsafe { public2zkin(p_zkin, p_publics, global_info_file_ptr, airgroup_id, is_aggregated) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -911,32 +900,6 @@ pub fn fri_proof_free_c(_p_fri_proof: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn setup_ctx_new_c(
-    _p_stark_info: *mut c_void,
-    _p_expressions_bin: *mut c_void,
-    _p_const_pols: *mut c_void,
-) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "setup_ctx_new: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn setup_ctx_new1_c(
-    _stark_info_file: &str,
-    _expressions_bin_file: &str,
-    _const_pols_file: &str,
-    _const_tree_file: &str,
-) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "setup_ctx_new1: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn setup_ctx_free_c(_p_setup_ctx: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "starkinfo_free: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "starkinfo_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -1006,27 +969,45 @@ pub fn stark_info_free_c(_p_stark_info: *mut c_void) {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn const_pols_new_c(_filename: &str, _p_stark_info: *mut c_void, _calculate_tree: bool) -> *mut c_void {
+pub fn prover_helpers_new_c(_p_stark_info: *mut c_void) -> *mut c_void {
+    trace!("{}: ··· {}", "ffi     ", "prover_helpers_new_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn const_pols_with_tree_new_c(_filename: &str, _tree_filename: &str, _p_stark_info: *mut c_void) -> *mut c_void {
-    std::ptr::null_mut()
+pub fn prover_helpers_free_c(_p_prover_helpers: *mut c_void) {}
+
+#[cfg(feature = "no_lib_link")]
+pub fn load_const_pols_c(_pConstPolsAddress: *mut c_void, _const_filename: &str, _const_size: u64) {
+    trace!("{}: ··· {}", "ffi     ", "load_const_pols_c: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn load_const_tree_c(_pConstPols: *mut c_void, _pStarkInfo: *mut c_void, _tree_filename: &str) {
-    trace!("{}: ··· {}", "ffi     ", "load_const_tree: This is a mock call because there is no linked library");
+pub fn get_const_tree_size_c(_pStarkInfo: *mut c_void) -> u64 {
+    trace!("{}: ··· {}", "ffi     ", "get_const_tree_size_c: This is a mock call because there is no linked library");
+    1000000
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn calculate_const_tree_c(_pConstPols: *mut c_void, _pStarkInfo: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "calculate_const_tree: This is a mock call because there is no linked library");
+pub fn get_const_size_c(_pStarkInfo: *mut c_void) -> u64 {
+    trace!("{}: ··· {}", "ffi     ", "get_const_size_c: This is a mock call because there is no linked library");
+    1000000
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn const_pols_free_c(_p_const_pols: *mut c_void) {}
+pub fn load_const_tree_c(_pConstPolsTreeAddress: *mut c_void, _tree_filename: &str, _const_tree_size: u64) {
+    trace!("{}: ··· {}", "ffi     ", "load_const_tree_c: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn calculate_const_tree_c(
+    _pStarkInfo: *mut c_void,
+    _pConstPols: *mut c_void,
+    _pConstPolsTreeAddress: *mut c_void,
+    _tree_filename: &str,
+) {
+    trace!("{}: ··· {}", "ffi     ", "calculate_const_tree_c: This is a mock call because there is no linked library");
+}
 
 #[cfg(feature = "no_lib_link")]
 pub fn expressions_bin_new_c(_filename: &str, _global: bool) -> *mut c_void {
@@ -1113,7 +1094,7 @@ pub fn set_hint_field_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn starks_new_c(_p_config: *mut c_void) -> *mut c_void {
+pub fn starks_new_c(_p_config: *mut c_void, _p_const_tree: *mut c_void) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "starks_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -1176,13 +1157,7 @@ pub fn compute_lev_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _lev: *m
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn compute_evals_c(
-    _p_stark: *mut c_void,
-    _buffer: *mut c_void,
-    _lev: *mut c_void,
-    _evals: *mut c_void,
-    _pProof: *mut c_void,
-) {
+pub fn compute_evals_c(_p_stark: *mut c_void, _params: *mut c_void, _lev: *mut c_void, _pProof: *mut c_void) {
     trace!("{}: ··· {}", "ffi     ", "compute_evals: This is a mock call because there is no linked library");
 }
 
@@ -1192,7 +1167,7 @@ pub fn calculate_xdivxsub_c(_p_stark: *mut c_void, _xi_challenge: *mut c_void, _
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_fri_pol_c(_p_setup_ctx: *mut c_void, _buffer: *mut c_void) -> *mut c_void {
+pub fn get_fri_pol_c(_p_stark_info: *mut c_void, _buffer: *mut c_void) -> *mut c_void {
     trace!("ffi     : ··· {}", "get_fri_pol: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -1252,11 +1227,6 @@ pub fn set_fri_final_pol_c(_p_proof: *mut c_void, _buffer: *mut c_void, _n_bits:
 #[cfg(feature = "no_lib_link")]
 pub fn calculate_hash_c(_pStarks: *mut c_void, _pHhash: *mut c_void, _pBuffer: *mut c_void, _nElements: u64) {
     trace!("{}: ··· {}", "ffi     ", "calculate_hash: This is a mock call because there is no linked library");
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn set_const_tree_c(_pStarks: *mut c_void, _pConstPols: *mut c_void) {
-    trace!("{}: ··· {}", "ffi     ", "set_const_tree: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
@@ -1383,11 +1353,16 @@ pub fn print_row_c(_p_setup_ctx: *mut c_void, _buffer: *mut c_void, _stage: u64,
 }
 
 #[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
 pub fn gen_recursive_proof_c(
     _p_setup_ctx: *mut c_void,
     _p_address: *mut c_void,
+    _p_const_pols: *mut c_void,
+    _p_const_tree: *mut c_void,
     _p_public_inputs: *mut c_void,
     _proof_file: &str,
+    _global_info_file: &str,
+    _airgroup_id: u64,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "gen_recursive_proof_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -1396,18 +1371,6 @@ pub fn gen_recursive_proof_c(
 #[cfg(feature = "no_lib_link")]
 pub fn get_zkin_ptr_c(_zkin_file: &str) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "get_zkin_ptr_c: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn publics2zkin_c(
-    _p_zkin: *mut c_void,
-    _p_publics: *mut c_void,
-    _global_info_file: &str,
-    _airgroup_id: u64,
-    _is_aggregated: bool,
-) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "publics2zkin_c: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 

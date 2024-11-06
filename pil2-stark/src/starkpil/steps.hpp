@@ -12,6 +12,8 @@ struct StepsParams
     Goldilocks::Element *airValues;
     Goldilocks::Element *evals;
     Goldilocks::Element *xDivXSub;
+    Goldilocks::Element *pConstPolsAddress;
+    Goldilocks::Element *pConstPolsExtendedTreeAddress;
 };
 
 #endif

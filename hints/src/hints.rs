@@ -666,7 +666,7 @@ pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u
 
 #[allow(clippy::too_many_arguments)]
 pub fn mul_hint_fields<F: Field + Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -676,10 +676,13 @@ pub fn mul_hint_fields<F: Field + Field>(
     hint_field_name2: &str,
     options2: HintFieldOptions,
 ) -> u64 {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -689,6 +692,8 @@ pub fn mul_hint_fields<F: Field + Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     mul_hint_fields_c(
@@ -704,7 +709,7 @@ pub fn mul_hint_fields<F: Field + Field>(
 }
 
 pub fn acc_hint_field<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -712,10 +717,13 @@ pub fn acc_hint_field<F: Field>(
     hint_field_airgroupvalue: &str,
     hint_field_name: &str,
 ) -> (u64, u64) {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -725,6 +733,8 @@ pub fn acc_hint_field<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let raw_ptr = acc_hint_field_c(
@@ -745,7 +755,7 @@ pub fn acc_hint_field<F: Field>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn acc_mul_hint_fields<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -756,10 +766,13 @@ pub fn acc_mul_hint_fields<F: Field>(
     options1: HintFieldOptions,
     options2: HintFieldOptions,
 ) -> (u64, u64) {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -769,6 +782,8 @@ pub fn acc_mul_hint_fields<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let raw_ptr = acc_mul_hint_fields_c(
@@ -791,21 +806,20 @@ pub fn acc_mul_hint_fields<F: Field>(
 }
 
 pub fn get_hint_field<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValue<F> {
-    let setup = if options.dest {
-        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    } else {
-        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    };
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -815,6 +829,8 @@ pub fn get_hint_field<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let raw_ptr = get_hint_field_c(
@@ -836,21 +852,20 @@ pub fn get_hint_field<F: Field>(
 }
 
 pub fn get_hint_field_a<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValuesVec<F> {
-    let setup = if options.dest {
-        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    } else {
-        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    };
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -860,6 +875,8 @@ pub fn get_hint_field_a<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let raw_ptr = get_hint_field_c(
@@ -887,21 +904,20 @@ pub fn get_hint_field_a<F: Field>(
 }
 
 pub fn get_hint_field_m<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValues<F> {
-    let setup = if options.dest {
-        setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    } else {
-        setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON")
-    };
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -911,6 +927,8 @@ pub fn get_hint_field_m<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: air_instance.evals.as_ptr() as *mut c_void,
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let raw_ptr = get_hint_field_c(
@@ -943,14 +961,14 @@ pub fn get_hint_field_m<F: Field>(
 }
 
 pub fn get_hint_field_constant<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValue<F> {
-    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
         buffer: std::ptr::null_mut(),
@@ -960,6 +978,8 @@ pub fn get_hint_field_constant<F: Field>(
         airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: std::ptr::null_mut(),
+        p_const_tree: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
@@ -981,14 +1001,14 @@ pub fn get_hint_field_constant<F: Field>(
 }
 
 pub fn get_hint_field_constant_a<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> Vec<HintFieldValue<F>> {
-    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
         buffer: std::ptr::null_mut(),
@@ -998,6 +1018,8 @@ pub fn get_hint_field_constant_a<F: Field>(
         airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: std::ptr::null_mut(),
+        p_const_tree: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
@@ -1025,14 +1047,14 @@ pub fn get_hint_field_constant_a<F: Field>(
 }
 
 pub fn get_hint_field_constant_m<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
     options: HintFieldOptions,
 ) -> HintFieldValues<F> {
-    let setup = setup_ctx.get_partial_setup(airgroup_id, air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
         buffer: std::ptr::null_mut(),
@@ -1042,6 +1064,8 @@ pub fn get_hint_field_constant_m<F: Field>(
         airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: std::ptr::null_mut(),
+        p_const_tree: std::ptr::null_mut(),
     };
 
     let raw_ptr = get_hint_field_c(
@@ -1077,7 +1101,7 @@ pub fn get_hint_field_constant_m<F: Field>(
 }
 
 pub fn set_hint_field<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
@@ -1091,9 +1115,11 @@ pub fn set_hint_field<F: Field>(
         airvalues: std::ptr::null_mut(),
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: std::ptr::null_mut(),
+        p_const_tree: std::ptr::null_mut(),
     };
 
-    let setup = setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let values_ptr: *mut c_void = match values {
         HintFieldValue::Column(vec) => vec.as_ptr() as *mut c_void,
@@ -1107,7 +1133,7 @@ pub fn set_hint_field<F: Field>(
 }
 
 pub fn set_hint_field_val<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
@@ -1121,9 +1147,11 @@ pub fn set_hint_field_val<F: Field>(
         airvalues: air_instance.airvalues.as_mut_ptr() as *mut c_void,
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: std::ptr::null_mut(),
+        p_const_tree: std::ptr::null_mut(),
     };
 
-    let setup = setup_ctx.get_partial_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let mut value_array: Vec<F> = Vec::new();
 
@@ -1146,13 +1174,13 @@ pub fn set_hint_field_val<F: Field>(
 }
 
 pub fn print_expression<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     air_instance: &mut AirInstance<F>,
     expr: &HintFieldValue<F>,
     first_print_value: u64,
     last_print_value: u64,
 ) {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     match expr {
         HintFieldValue::Column(vec) => {
@@ -1183,8 +1211,8 @@ pub fn print_expression<F: Field>(
     }
 }
 
-pub fn print_row<F: Field>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+pub fn print_row<F: Field>(setup_ctx: &SetupCtx<F>, air_instance: &AirInstance<F>, stage: u64, row: u64) {
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
 
@@ -1192,7 +1220,7 @@ pub fn print_row<F: Field>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, 
 }
 
 pub fn print_by_name<F: Field>(
-    setup_ctx: &SetupCtx,
+    setup_ctx: &SetupCtx<F>,
     proof_ctx: Arc<ProofCtx<F>>,
     air_instance: &AirInstance<F>,
     name: &str,
@@ -1200,9 +1228,12 @@ pub fn print_by_name<F: Field>(
     first_print_value: u64,
     last_print_value: u64,
 ) -> Option<HintFieldValue<F>> {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id).expect("REASON");
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
     let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
     let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
         buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -1212,6 +1243,8 @@ pub fn print_by_name<F: Field>(
         airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
         evals: std::ptr::null_mut(),
         xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
     };
 
     let mut lengths_vec = lengths.unwrap_or_default();

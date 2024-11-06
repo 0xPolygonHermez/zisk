@@ -58,7 +58,7 @@ pub fn aggregate_airgroupvals<F: Field>(pctx: Arc<ProofCtx<F>>) -> Vec<Vec<F>> {
     airgroupvalues
 }
 
-pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) -> bool {
+pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) -> bool {
     const MY_NAME: &str = "GlCstVfy";
 
     log::info!("{}: --> Checking global constraints", MY_NAME);
@@ -104,7 +104,7 @@ pub fn verify_global_constraints_proof<F: Field>(pctx: Arc<ProofCtx<F>>, sctx: A
 
 pub fn get_hint_field_gc<F: Field>(
     pctx: Arc<ProofCtx<F>>,
-    sctx: Arc<SetupCtx>,
+    sctx: Arc<SetupCtx<F>>,
     hint_id: u64,
     hint_field_name: &str,
     print_expression: bool,
@@ -146,7 +146,7 @@ pub fn get_hint_field_gc<F: Field>(
 
 pub fn get_hint_field_gc_a<F: Field>(
     pctx: Arc<ProofCtx<F>>,
-    sctx: Arc<SetupCtx>,
+    sctx: Arc<SetupCtx<F>>,
     hint_id: u64,
     hint_field_name: &str,
     print_expression: bool,
@@ -194,7 +194,7 @@ pub fn get_hint_field_gc_a<F: Field>(
 
 pub fn get_hint_field_gc_m<F: Field>(
     pctx: Arc<ProofCtx<F>>,
-    sctx: Arc<SetupCtx>,
+    sctx: Arc<SetupCtx<F>>,
     hint_id: u64,
     hint_field_name: &str,
     print_expression: bool,
@@ -247,7 +247,7 @@ pub fn get_hint_field_gc_m<F: Field>(
 
 pub fn set_hint_field<F: Field>(
     pctx: Arc<ProofCtx<F>>,
-    sctx: Arc<SetupCtx>,
+    sctx: Arc<SetupCtx<F>>,
     hint_id: u64,
     hint_field_name: &str,
     value: HintFieldOutput<F>,

@@ -1,37 +1,37 @@
 use std::{path::PathBuf, sync::Arc};
-use crate::{BufferAllocator, VerboseMode, DistributionCtx};
+use crate::{BufferAllocator, DistributionCtx, VerboseMode};
 use std::sync::RwLock;
 #[allow(dead_code)]
 /// Represents the context when executing a witness computer plugin
-pub struct ExecutionCtx {
+pub struct ExecutionCtx<F> {
     pub rom_path: Option<PathBuf>,
     /// If true, the plugin must generate the public outputs
     pub public_output: bool,
-    pub buffer_allocator: Arc<dyn BufferAllocator>,
+    pub buffer_allocator: Arc<dyn BufferAllocator<F>>,
     pub verbose_mode: VerboseMode,
     pub dctx: RwLock<DistributionCtx>,
 }
 
-impl ExecutionCtx {
-    pub fn builder() -> ExecutionCtxBuilder {
+impl<F> ExecutionCtx<F> {
+    pub fn builder() -> ExecutionCtxBuilder<F> {
         ExecutionCtxBuilder::new()
     }
 }
 
-pub struct ExecutionCtxBuilder {
+pub struct ExecutionCtxBuilder<F> {
     rom_path: Option<PathBuf>,
     public_output: bool,
-    buffer_allocator: Option<Arc<dyn BufferAllocator>>,
+    buffer_allocator: Option<Arc<dyn BufferAllocator<F>>>,
     verbose_mode: VerboseMode,
 }
 
-impl Default for ExecutionCtxBuilder {
+impl<F> Default for ExecutionCtxBuilder<F> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ExecutionCtxBuilder {
+impl<F> ExecutionCtxBuilder<F> {
     pub fn new() -> Self {
         ExecutionCtxBuilder {
             rom_path: None,
@@ -46,7 +46,7 @@ impl ExecutionCtxBuilder {
         self
     }
 
-    pub fn with_buffer_allocator(mut self, buffer_allocator: Arc<dyn BufferAllocator>) -> Self {
+    pub fn with_buffer_allocator(mut self, buffer_allocator: Arc<dyn BufferAllocator<F>>) -> Self {
         self.buffer_allocator = Some(buffer_allocator);
         self
     }
@@ -56,7 +56,7 @@ impl ExecutionCtxBuilder {
         self
     }
 
-    pub fn build(self) -> ExecutionCtx {
+    pub fn build(self) -> ExecutionCtx<F> {
         if self.buffer_allocator.is_none() {
             panic!("Buffer allocator is required");
         }

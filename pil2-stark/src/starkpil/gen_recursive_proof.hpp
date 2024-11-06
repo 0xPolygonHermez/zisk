@@ -1,14 +1,14 @@
 #include "starks.hpp"
 
 template <typename ElementType>
-void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldilocks::Element *publicInputs, std::string proofFile) {
+void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupId, Goldilocks::Element *pAddress, Goldilocks::Element *pConstPols, Goldilocks::Element *pConstTree, Goldilocks::Element *publicInputs, std::string proofFile) {
     TimerStart(STARK_PROOF);
 
     FRIProof<Goldilocks::Element> proof(setupCtx.starkInfo);
 
     using TranscriptType = std::conditional_t<std::is_same<ElementType, Goldilocks::Element>::value, TranscriptGL, TranscriptBN128>;
     
-    Starks<ElementType> starks(setupCtx);
+    Starks<ElementType> starks(setupCtx, pConstTree);
 
 #ifdef __AVX512__
     ExpressionsAvx512 expressionsCtx(setupCtx);
@@ -36,6 +36,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         airgroupValues : airgroupValues,
         evals : evals,
         xDivXSub : nullptr,
+        pConstPolsAddress: pConstPols,
+        pConstPolsExtendedTreeAddress: pConstTree,
     };
 
     for (uint64_t i = 0; i < setupCtx.starkInfo.mapSectionsN["cm1"]; ++i)
@@ -51,7 +53,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     ElementType verkey[nFieldElements];
     starks.treesGL[setupCtx.starkInfo.nStages + 1]->getRoot(verkey);
     starks.addTranscript(transcript, &verkey[0], nFieldElements);
-
     if(setupCtx.starkInfo.nPublics > 0) {
         if(!setupCtx.starkInfo.starkStruct.hashCommits) {
             starks.addTranscriptGL(transcript, &publicInputs[0], setupCtx.starkInfo.nPublics);
@@ -171,7 +172,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
         }
     }
     
-    starks.calculateQuotientPolynomial(params);
+    expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
 
     for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
         if(setupCtx.starkInfo.cmPolsMap[i].stage == setupCtx.starkInfo.nStages + 1) {
@@ -199,7 +200,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     Goldilocks::Element* LEv = &pAddress[setupCtx.starkInfo.mapOffsets[make_pair("LEv", true)]];
 
     starks.computeLEv(xiChallenge, LEv);
-    starks.computeEvals(pAddress,LEv, evals, proof);
+    starks.computeEvals(params ,LEv, proof);
 
     if(!setupCtx.starkInfo.starkStruct.hashCommits) {
         starks.addTranscriptGL(transcript, evals, setupCtx.starkInfo.evMap.size() * FIELD_EXTENSION);
@@ -289,6 +290,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, Goldilocks::Element *pAddress, Goldi
     }
 
     TimerStopAndLog(STARK_PROOF);
+
+    zkin = publics2zkin(zkin, publicInputs, globalInfo, airgroupId);
 
     return (void *) new nlohmann::ordered_json(zkin);
 }

@@ -52,7 +52,7 @@ public:
             nextStrides[i] = opening * extend;
         }
 
-        Goldilocks::Element *constPols = domainExtended ? setupCtx.constPols.pConstPolsAddressExtended : setupCtx.constPols.pConstPolsAddress;
+        Goldilocks::Element *constPols = domainExtended ? &params.pConstPolsExtendedTreeAddress[2] : params.pConstPolsAddress;
 
         std::vector<bool> constPolsUsed(setupCtx.starkInfo.constPolsMap.size(), false);
         std::vector<bool> cmPolsUsed(setupCtx.starkInfo.cmPolsMap.size(), false);
@@ -107,12 +107,12 @@ public:
 
         if(dests[0].params[0].parserParams.expId == int64_t(setupCtx.starkInfo.cExpId)) {
             for(uint64_t j = 0; j < nrowsPack; ++j) {
-                bufferT[j] = setupCtx.constPols.x_2ns[row + j];
+                bufferT[j] = setupCtx.proverHelpers.x_2ns[row + j];
             }
             Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings]], &bufferT[0]);
             for(uint64_t d = 0; d < setupCtx.starkInfo.boundaries.size(); ++d) {
                 for(uint64_t j = 0; j < nrowsPack; ++j) {
-                    bufferT[j] = setupCtx.constPols.zi[row + j + d*domainSize];
+                    bufferT[j] = setupCtx.proverHelpers.zi[row + j + d*domainSize];
                 }
                 Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + 1 + d], &bufferT[0]);
             }
@@ -127,7 +127,7 @@ public:
             }
         } else {
             for(uint64_t j = 0; j < nrowsPack; ++j) {
-                bufferT[j] = setupCtx.constPols.x_n[row + j];
+                bufferT[j] = setupCtx.proverHelpers.x_n[row + j];
             }
             Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings]], &bufferT[0]);
         }

@@ -7,6 +7,7 @@
 #include "gen_recursive_proof.hpp"
 #include "logger.hpp"
 #include <filesystem>
+#include "setup_ctx.hpp"
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -137,22 +138,12 @@ void fri_proof_free(void *pFriProof)
 // SetupCtx
 // ========================================================================================
 
-void *setup_ctx_new(void* p_stark_info, void* p_expression_bin, void* p_const_pols) {
-    SetupCtx *setupCtx = new SetupCtx(*(StarkInfo*)p_stark_info, *(ExpressionsBin*)p_expression_bin, *(ConstPols *)p_const_pols);
-    return setupCtx;
-}
-
 void* get_hint_ids_by_name(void *p_expression_bin, char* hintName)
 {
     ExpressionsBin *expressionsBin = (ExpressionsBin*)p_expression_bin;
 
     VecU64Result hintIds = expressionsBin->getHintIdsByName(string(hintName));
     return new VecU64Result(hintIds);
-}
-
-void setup_ctx_free(void *pSetupCtx) {
-    SetupCtx *setupCtx = (SetupCtx *)pSetupCtx;
-    delete setupCtx;
 }
 
 // StarkInfo
@@ -218,37 +209,46 @@ void stark_info_free(void *pStarkInfo)
     delete starkInfo;
 }
 
+// Prover Helpers
+// ========================================================================================
+void *prover_helpers_new(void *pStarkInfo) {
+    auto prover_helpers = new ProverHelpers(*(StarkInfo *)pStarkInfo);
+    return prover_helpers;
+}
+
+void prover_helpers_free(void *pProverHelpers) {
+    auto proverHelpers = (ProverHelpers *)pProverHelpers;
+    delete proverHelpers;
+};
+
 // Const Pols
 // ========================================================================================
-void *const_pols_new(char* filename, void *pStarkInfo, bool calculate_tree) 
-{
-    auto const_pols = new ConstPols(*(StarkInfo *)pStarkInfo, filename, calculate_tree);
+void load_const_tree(void *pConstTree, char *treeFilename, uint64_t constTreeSize) {
+    ConstTree constTree;
+    constTree.loadConstTree((Goldilocks::Element *)pConstTree, treeFilename, constTreeSize * sizeof(Goldilocks::Element));
+};
 
-    return const_pols;
+void load_const_pols(void *pConstPols, char *constFilename, uint64_t constSize) {
+    ConstTree constTree;
+    constTree.loadConstPols((Goldilocks::Element *)pConstPols, constFilename, constSize * sizeof(Goldilocks::Element));
+};
+
+uint64_t get_const_tree_size(void *pStarkInfo) {
+    ConstTree constTree;
+    return constTree.getConstTreeSizeGL(*(StarkInfo *)pStarkInfo);
+};
+
+uint64_t get_const_size(void *pStarkInfo) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    uint64_t N = 1 << starkInfo.starkStruct.nBits;
+    return N * starkInfo.nConstants;
 }
 
-void *const_pols_with_tree_new(char* filename, char* treeFilename, void *pStarkInfo) 
-{
-    auto const_pols = new ConstPols(*(StarkInfo *)pStarkInfo, filename, treeFilename);
 
-    return const_pols;
-}
-
-void load_const_tree(void *pConstPols, void *pStarkInfo, char *treeFilename) {
-    ConstPols *constPols = (ConstPols *)pConstPols;
-    constPols->loadConstTree(*(StarkInfo *)pStarkInfo, treeFilename);
-}
-
-void calculate_const_tree(void *pConstPols, void *pStarkInfo) {
-    ConstPols *constPols = (ConstPols *)pConstPols;
-    constPols->calculateConstTree(*(StarkInfo *)pStarkInfo);
-}
-
-void const_pols_free(void *pConstPols)
-{
-    auto constPols = (ConstPols *)pConstPols;
-    delete constPols;
-}
+void calculate_const_tree(void *pStarkInfo, void *pConstPolsAddress, void *pConstTreeAddress, char *treeFilename) {
+    ConstTree constTree;
+    constTree.calculateConstTree(*(StarkInfo *)pStarkInfo, (Goldilocks::Element *)pConstPolsAddress, (Goldilocks::Element *)pConstTreeAddress, treeFilename);
+};
 
 // Expressions Bin
 // ========================================================================================
@@ -294,9 +294,9 @@ uint64_t set_hint_field(void *pSetupCtx, void* params, void *values, uint64_t hi
 // Starks
 // ========================================================================================
 
-void *starks_new(void *pSetupCtx)
+void *starks_new(void *pSetupCtx, void* pConstTree)
 {
-    return new Starks<Goldilocks::Element>(*(SetupCtx *)pSetupCtx);
+    return new Starks<Goldilocks::Element>(*(SetupCtx *)pSetupCtx, (Goldilocks::Element*) pConstTree);
 }
 
 void starks_free(void *pStarks)
@@ -350,10 +350,10 @@ void compute_lev(void *pStarks, void *xiChallenge, void* LEv) {
     starks->computeLEv((Goldilocks::Element *)xiChallenge, (Goldilocks::Element *)LEv);
 }
 
-void compute_evals(void *pStarks, void *buffer, void *LEv, void *evals, void *pProof)
+void compute_evals(void *pStarks, void *params, void *LEv, void *pProof)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->computeEvals((Goldilocks::Element *)buffer, (Goldilocks::Element *)LEv, (Goldilocks::Element *)evals, *(FRIProof<Goldilocks::Element> *)pProof);
+    starks->computeEvals(*(StepsParams *)params, (Goldilocks::Element *)LEv, *(FRIProof<Goldilocks::Element> *)pProof);
 }
 
 void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub)
@@ -362,24 +362,18 @@ void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub)
     starks->calculateXDivXSub((Goldilocks::Element *)xiChallenge, (Goldilocks::Element *)xDivXSub);
 }
 
-void *get_fri_pol(void *pSetupCtx, void *buffer)
+void *get_fri_pol(void *pStarkInfo, void *buffer)
 {
-    SetupCtx setupCtx = *(SetupCtx *)pSetupCtx;
+    StarkInfo starkInfo = *(StarkInfo *)pStarkInfo;
     auto pols = (Goldilocks::Element *)buffer;
     
-    return &pols[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]];
+    return &pols[starkInfo.mapOffsets[std::make_pair("f", true)]];
 }
 
 void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElements)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
     starks->calculateHash((Goldilocks::Element *)pHhash, (Goldilocks::Element *)pBuffer, nElements);
-}
-
-void set_const_tree(void *pStarks, void *pConstPols) 
-{
-    Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->setConstTree(*(ConstPols *)pConstPols);
 }
 
 // MerkleTree
@@ -528,8 +522,11 @@ void print_row(void *pSetupCtx, void *buffer, uint64_t stage, uint64_t row) {
 
 // Recursive proof
 // ================================================================================= 
-void *gen_recursive_proof(void *pSetupCtx, void* pAddress, void* pPublicInputs, char* proof_file) {
-    return genRecursiveProof<Goldilocks::Element>(*(SetupCtx *)pSetupCtx, (Goldilocks::Element *)pAddress,  (Goldilocks::Element *)pPublicInputs, string(proof_file));
+void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* pAddress, void *pConstPols, void *pConstTree, void* pPublicInputs, char* proof_file) {
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    return genRecursiveProof<Goldilocks::Element>(*(SetupCtx *)pSetupCtx, globalInfo, airgroupId, (Goldilocks::Element *)pAddress, (Goldilocks::Element *)pConstPols, (Goldilocks::Element *)pConstTree, (Goldilocks::Element *)pPublicInputs, string(proof_file));
 }
 
 void *get_zkin_ptr(char *zkin_file) {
@@ -537,14 +534,6 @@ void *get_zkin_ptr(char *zkin_file) {
     file2json(zkin_file, zkin);
 
     return (void *) new nlohmann::ordered_json(zkin);
-}
-
-void *public2zkin(void *pZkin, void* pPublics, char* globalInfoFile, uint64_t airgroupId, bool isAggregated) {
-    json globalInfo;
-    file2json(globalInfoFile, globalInfo);
-
-    nlohmann::ordered_json zkin = *(nlohmann::ordered_json*) pZkin;
-    return publics2zkin(zkin, (Goldilocks::Element *)pPublics, globalInfo, airgroupId, isAggregated);
 }
 
 void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename) {
@@ -557,8 +546,8 @@ void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename) {
         recursive2Verkey[i] = Goldilocks::fromU64(recursive2VerkeyJson[i]);
     }
 
-    nlohmann::ordered_json zkin = *(nlohmann::ordered_json*) pZkin;
-    return addRecursive2VerKey(zkin, recursive2Verkey);
+    ordered_json zkin = addRecursive2VerKey(*(nlohmann::ordered_json*) pZkin, recursive2Verkey);
+    return (void *) new nlohmann::ordered_json(zkin);
 }
 
 void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2) {

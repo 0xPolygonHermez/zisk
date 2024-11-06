@@ -155,11 +155,9 @@ impl<F: PrimeField> U16Air<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
-    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         // Obtain info from the mul hints
-        let setup = sctx.get_partial_setup(self.airgroup_id, self.air_id).unwrap_or_else(|_| {
-            panic!("Setup not found for airgroup_id: {}, air_id: {}", self.airgroup_id, self.air_id)
-        });
+        let setup = sctx.get_setup(self.airgroup_id, self.air_id);
         let u16air_hints = get_hint_ids_by_name(setup.p_setup.p_expressions_bin, "u16air");
         if !u16air_hints.is_empty() {
             self.hint.store(u16air_hints[0], Ordering::Release);
@@ -192,8 +190,8 @@ impl<F: PrimeField> WitnessComponent<F> for U16Air<F> {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
     ) {
     }
 }

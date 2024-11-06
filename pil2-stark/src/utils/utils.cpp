@@ -321,6 +321,44 @@ void *copyFile(const string &fileName, uint64_t size)
     return mapFileInternal(fileName, size, false, false);
 }
 
+void loadFileParallel(void* buffer, const string &fileName, uint64_t size) {
+
+    // Check file size
+    struct stat sb;
+    if (lstat(fileName.c_str(), &sb) == -1) {
+        zklog.error("loadFileParallel() failed calling lstat() of file " + fileName);
+        exitProcess();
+    }
+    if ((uint64_t)sb.st_size != size) {
+        zklog.error("loadFileParallel() found size of file " + fileName + " to be " + to_string(sb.st_size) + " B instead of " + to_string(size) + " B");
+        exitProcess();
+    }
+
+    // Determine the number of chunks and the size of each chunk
+    size_t numChunks = 8; //omp_get_max_threads()/2;
+    if(numChunks == 0 ) numChunks = 1;
+    size_t chunkSize = size / numChunks;
+    size_t remainder = size - numChunks*chunkSize;
+    
+    #pragma omp parallel for num_threads(numChunks)
+    for(size_t i=0; i<numChunks; i++){
+        // Open the file
+        FILE* file = fopen(fileName.c_str(), "rb");
+        if(file == NULL){
+            zklog.error("loadFileParallel() failed to open the file");
+            exitProcess();
+        }
+        size_t chunkSize_ = i == numChunks -1 ? chunkSize + remainder : chunkSize;
+        size_t offset = i * chunkSize;
+        fseek(file, offset, SEEK_SET);
+        size_t readed = fread((uint8_t*)buffer + offset, 1, chunkSize_, file);
+        if(readed != chunkSize_){
+            zklog.error("loadFileParallel() failed to read the file");
+        }
+        fclose(file);
+    }
+}
+
 void* loadFileParallel(const string &fileName, uint64_t size) {
 
     // Check file size
@@ -366,6 +404,40 @@ void* loadFileParallel(const string &fileName, uint64_t size) {
     }
 
     return buffer;
+}
+
+void writeFileParallel(const string &fileName, const void* buffer, uint64_t size, uint64_t offset) {
+    // Determine the number of chunks and the size of each chunk
+    size_t numChunks = 8;  // or omp_get_max_threads() / 2;
+    if (numChunks == 0) numChunks = 1;
+    size_t chunkSize = size / numChunks;
+    size_t remainder = size - numChunks * chunkSize;
+
+    #pragma omp parallel for num_threads(numChunks)
+    for (size_t i = 0; i < numChunks; i++) {
+        // Open the file in read/write binary mode to allow concurrent writing
+        FILE* file = fopen(fileName.c_str(), "r+b");
+        if (file == NULL) {
+            std::cerr << "writeFileParallel() failed to open the file" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        // Calculate the chunk size for each thread, with the last chunk handling any remainder
+        size_t chunkSize_ = (i == numChunks - 1) ? chunkSize + remainder : chunkSize;
+        size_t chunkOffset = offset + i * chunkSize;
+
+        // Seek to the position where this chunk should be written
+        fseek(file, chunkOffset, SEEK_SET);
+
+        // Write the chunk from the buffer to the file
+        size_t written = fwrite((const uint8_t*)buffer + i * chunkSize, 1, chunkSize_, file);
+        if (written != chunkSize_) {
+            std::cerr << "writeFileParallel() failed to write the file" << std::endl;
+        }
+
+        // Close the file after writing the chunk
+        fclose(file);
+    }
 }
 
 void unmapFile(void *pAddress, uint64_t size)

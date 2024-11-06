@@ -15,14 +15,14 @@ pub struct WitnessManager<F> {
     airs: RwLock<HashMap<(AirGroupId, AirId), usize>>, // First usize is the air_id, second usize is the index of the component in the components vector
 
     pctx: Arc<ProofCtx<F>>,
-    ectx: Arc<ExecutionCtx>,
-    sctx: Arc<SetupCtx>,
+    ectx: Arc<ExecutionCtx<F>>,
+    sctx: Arc<SetupCtx<F>>,
 }
 
 impl<F> WitnessManager<F> {
     const MY_NAME: &'static str = "WCMnager";
 
-    pub fn new(pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) -> Self {
+    pub fn new(pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) -> Self {
         WitnessManager { components: RwLock::new(Vec::new()), airs: RwLock::new(HashMap::new()), pctx, ectx, sctx }
     }
 
@@ -55,7 +55,7 @@ impl<F> WitnessManager<F> {
         self.airs.write().unwrap().insert((airgroup_id, air_id), component_idx);
     }
 
-    pub fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         for component in self.components.read().unwrap().iter() {
             component.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
         }
@@ -67,7 +67,13 @@ impl<F> WitnessManager<F> {
         }
     }
 
-    pub fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn calculate_witness(
+        &self,
+        stage: u32,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+    ) {
         log::info!(
             "{}: Calculating witness for stage {} / {}",
             Self::MY_NAME,
@@ -116,11 +122,11 @@ impl<F> WitnessManager<F> {
         self.pctx.clone()
     }
 
-    pub fn get_ectx(&self) -> Arc<ExecutionCtx> {
+    pub fn get_ectx(&self) -> Arc<ExecutionCtx<F>> {
         self.ectx.clone()
     }
 
-    pub fn get_sctx(&self) -> Arc<SetupCtx> {
+    pub fn get_sctx(&self) -> Arc<SetupCtx<F>> {
         self.sctx.clone()
     }
 }

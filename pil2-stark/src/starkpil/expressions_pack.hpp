@@ -50,7 +50,7 @@ public:
             nextStrides[i] = opening * extend;
         }
 
-        Goldilocks::Element *constPols = domainExtended ? setupCtx.constPols.pConstPolsAddressExtended : setupCtx.constPols.pConstPolsAddress;
+        Goldilocks::Element *constPols = domainExtended ? &params.pConstPolsExtendedTreeAddress[2] : params.pConstPolsAddress;
 
         std::vector<bool> constPolsUsed(setupCtx.starkInfo.constPolsMap.size(), false);
         std::vector<bool> cmPolsUsed(setupCtx.starkInfo.cmPolsMap.size(), false);
@@ -102,11 +102,11 @@ public:
         if(dests[0].params[0].parserParams.expId == int64_t(setupCtx.starkInfo.cExpId)) {
             for(uint64_t d = 0; d < setupCtx.starkInfo.boundaries.size(); ++d) {
                 for(uint64_t j = 0; j < nrowsPack; ++j) {
-                    bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + d + 1)*nrowsPack + j] = setupCtx.constPols.zi[row + j + d*domainSize];
+                    bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + d + 1)*nrowsPack + j] = setupCtx.proverHelpers.zi[row + j + d*domainSize];
                 }
             }
             for(uint64_t j = 0; j < nrowsPack; ++j) {
-                bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings])*nrowsPack + j] = setupCtx.constPols.x_2ns[row + j];
+                bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings])*nrowsPack + j] = setupCtx.proverHelpers.x_2ns[row + j];
             }
         } else if(dests[0].params[0].parserParams.expId == int64_t(setupCtx.starkInfo.friExpId)) {
             for(uint64_t d = 0; d < setupCtx.starkInfo.openingPoints.size(); ++d) {
@@ -118,7 +118,7 @@ public:
             }
         } else {
             for(uint64_t j = 0; j < nrowsPack; ++j) {
-                bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings])*nrowsPack + j] = setupCtx.constPols.x[row + j];
+                bufferT_[(nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings])*nrowsPack + j] = setupCtx.proverHelpers.x[row + j];
             }
         }
     }

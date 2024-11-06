@@ -247,3 +247,12 @@ void MerkleTreeBN128::merkelize()
         cursorNext = &cursor[nextN256 * arity];
     }
 }
+
+void MerkleTreeBN128::writeFile(std::string constTreeFile) {
+    std::ofstream fw(constTreeFile.c_str(), std::fstream::out | std::fstream::binary);
+    fw.write((const char *)&(width), sizeof(width));
+    fw.write((const char *)&(height), sizeof(height));
+    fw.write((const char *)source, width * height * sizeof(Goldilocks::Element));
+    fw.write((const char *)nodes, numNodes * sizeof(RawFr::Element));
+    fw.close();
+}

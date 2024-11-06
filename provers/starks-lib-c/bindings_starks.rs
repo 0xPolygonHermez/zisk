@@ -69,23 +69,11 @@ extern "C" {
     pub fn fri_proof_free(pFriProof: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13setup_ctx_newPvS_S_"]
-    pub fn setup_ctx_new(
-        p_stark_info: *mut ::std::os::raw::c_void,
-        p_expression_bin: *mut ::std::os::raw::c_void,
-        p_const_pols: *mut ::std::os::raw::c_void,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
     #[link_name = "\u{1}_Z20get_hint_ids_by_namePvPc"]
     pub fn get_hint_ids_by_name(
         p_expression_bin: *mut ::std::os::raw::c_void,
         hintName: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z14setup_ctx_freePv"]
-    pub fn setup_ctx_free(pSetupCtx: *mut ::std::os::raw::c_void);
 }
 extern "C" {
     #[link_name = "\u{1}_Z14stark_info_newPc"]
@@ -142,39 +130,47 @@ extern "C" {
     pub fn stark_info_free(pStarkInfo: *mut ::std::os::raw::c_void);
 }
 extern "C" {
-    #[link_name = "\u{1}_Z14const_pols_newPcPvb"]
-    pub fn const_pols_new(
-        filename: *mut ::std::os::raw::c_char,
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        calculate_tree: bool,
-    ) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z24const_pols_with_tree_newPcS_Pv"]
-    pub fn const_pols_with_tree_new(
-        filename: *mut ::std::os::raw::c_char,
-        treeFilename: *mut ::std::os::raw::c_char,
+    #[link_name = "\u{1}_Z18prover_helpers_newPv"]
+    pub fn prover_helpers_new(
         pStarkInfo: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z15load_const_treePvS_Pc"]
+    #[link_name = "\u{1}_Z19prover_helpers_freePv"]
+    pub fn prover_helpers_free(pProverHelpers: *mut ::std::os::raw::c_void);
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15load_const_treePvPcm"]
     pub fn load_const_tree(
+        pConstTree: *mut ::std::os::raw::c_void,
+        treeFilename: *mut ::std::os::raw::c_char,
+        constTreeSize: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z15load_const_polsPvPcm"]
+    pub fn load_const_pols(
         pConstPols: *mut ::std::os::raw::c_void,
+        constFilename: *mut ::std::os::raw::c_char,
+        constSize: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z19get_const_tree_sizePv"]
+    pub fn get_const_tree_size(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z14get_const_sizePv"]
+    pub fn get_const_size(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20calculate_const_treePvS_S_Pc"]
+    pub fn calculate_const_tree(
         pStarkInfo: *mut ::std::os::raw::c_void,
+        pConstPolsAddress: *mut ::std::os::raw::c_void,
+        pConstTree: *mut ::std::os::raw::c_void,
         treeFilename: *mut ::std::os::raw::c_char,
     );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z20calculate_const_treePvS_"]
-    pub fn calculate_const_tree(
-        pConstPols: *mut ::std::os::raw::c_void,
-        pStarkInfo: *mut ::std::os::raw::c_void,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z15const_pols_freePv"]
-    pub fn const_pols_free(pConstPols: *mut ::std::os::raw::c_void);
 }
 extern "C" {
     #[link_name = "\u{1}_Z19expressions_bin_newPcb"]
@@ -246,8 +242,11 @@ extern "C" {
     ) -> u64;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z10starks_newPv"]
-    pub fn starks_new(pSetupCtx: *mut ::std::os::raw::c_void) -> *mut ::std::os::raw::c_void;
+    #[link_name = "\u{1}_Z10starks_newPvS_"]
+    pub fn starks_new(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        pConstTree: *mut ::std::os::raw::c_void,
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z11starks_freePv"]
@@ -272,7 +271,7 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z11get_fri_polPvS_"]
     pub fn get_fri_pol(
-        pSetupCtx: *mut ::std::os::raw::c_void,
+        pStarkInfo: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
@@ -318,12 +317,11 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_S_"]
+    #[link_name = "\u{1}_Z13compute_evalsPvS_S_S_"]
     pub fn compute_evals(
         pStarks: *mut ::std::os::raw::c_void,
-        buffer: *mut ::std::os::raw::c_void,
+        params: *mut ::std::os::raw::c_void,
         LEv: *mut ::std::os::raw::c_void,
-        evals: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
     );
 }
@@ -334,13 +332,6 @@ extern "C" {
         pHhash: *mut ::std::os::raw::c_void,
         pBuffer: *mut ::std::os::raw::c_void,
         nElements: u64,
-    );
-}
-extern "C" {
-    #[link_name = "\u{1}_Z14set_const_treePvS_"]
-    pub fn set_const_tree(
-        pStarks: *mut ::std::os::raw::c_void,
-        pConstPols: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {
@@ -523,10 +514,14 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19gen_recursive_proofPvS_S_Pc"]
+    #[link_name = "\u{1}_Z19gen_recursive_proofPvPcmS_S_S_S_S0_"]
     pub fn gen_recursive_proof(
         pSetupCtx: *mut ::std::os::raw::c_void,
+        globalInfoFile: *mut ::std::os::raw::c_char,
+        airgroupId: u64,
         pAddress: *mut ::std::os::raw::c_void,
+        pConstPols: *mut ::std::os::raw::c_void,
+        pConstTree: *mut ::std::os::raw::c_void,
         pPublicInputs: *mut ::std::os::raw::c_void,
         proof_file: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;
@@ -534,16 +529,6 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z12get_zkin_ptrPc"]
     pub fn get_zkin_ptr(zkin_file: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11public2zkinPvS_Pcmb"]
-    pub fn public2zkin(
-        pZkin: *mut ::std::os::raw::c_void,
-        pPublics: *mut ::std::os::raw::c_void,
-        globalInfoFile: *mut ::std::os::raw::c_char,
-        airgroupId: u64,
-        isAggregated: bool,
-    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z21add_recursive2_verkeyPvPc"]
@@ -577,12 +562,16 @@ extern "C" {
 }
 extern "C" {
     #[link_name = "\u{1}_Z20get_serialized_proofPvPm"]
-    pub fn get_serialized_proof(zkin: *mut ::std::os::raw::c_void, size: *mut u64) -> *mut ::std::os::raw::c_char;
+    pub fn get_serialized_proof(
+        zkin: *mut ::std::os::raw::c_void,
+        size: *mut u64,
+    ) -> *mut ::std::os::raw::c_char;
 }
-
 extern "C" {
     #[link_name = "\u{1}_Z22deserialize_zkin_proofPc"]
-    pub fn deserialize_zkin_proof(serialized_proof: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
+    pub fn deserialize_zkin_proof(
+        serialized_proof: *mut ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
     #[link_name = "\u{1}_Z14get_zkin_proofPc"]

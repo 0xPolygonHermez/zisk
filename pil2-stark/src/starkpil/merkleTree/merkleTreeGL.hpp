@@ -49,6 +49,8 @@ public:
     bool verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<std::vector<Goldilocks::Element>> &v);
 
     void merkelize();
+
+    void writeFile(std::string file);
 };
 
 #endif

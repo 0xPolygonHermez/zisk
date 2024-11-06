@@ -2,7 +2,7 @@ use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
@@ -56,7 +56,7 @@ where
         }
     }
 
-    fn initialize(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn initialize(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
         let std_lib = Std::new(wcm.clone());
@@ -88,7 +88,7 @@ impl<F: PrimeField> WitnessLibrary<F> for RangeCheckWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
         self.wcm.get().unwrap().start_proof(pctx, ectx, sctx);
@@ -98,7 +98,7 @@ where
         self.wcm.get().unwrap().end_proof();
     }
 
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         // Execute those components that need to be executed
         self.range_check1.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.range_check2.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
@@ -111,7 +111,13 @@ where
         self.range_check_mix.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
     }
 
-    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn calculate_witness(
+        &mut self,
+        stage: u32,
+        pctx: Arc<ProofCtx<F>>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+    ) {
         self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 
@@ -122,11 +128,9 @@ where
 
 #[no_mangle]
 pub extern "Rust" fn init_library(
-    ectx: Arc<ExecutionCtx>,
+    _: Option<PathBuf>,
     _: Option<PathBuf>,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    initialize_logger(ectx.verbose_mode);
-
     let range_check_witness = RangeCheckWitness::new();
     Ok(Box::new(range_check_witness))
 }

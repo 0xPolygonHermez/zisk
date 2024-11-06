@@ -37,11 +37,11 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         x_mod
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         self.calculate_trace(pctx, ectx, sctx);
     }
 
-    fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let pi: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
@@ -100,8 +100,8 @@ impl<F: PrimeField + AbstractField + Copy> WitnessComponent<F> for Module<F> {
         _stage: u32,
         _air_instance_id: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
     ) {
     }
 }
