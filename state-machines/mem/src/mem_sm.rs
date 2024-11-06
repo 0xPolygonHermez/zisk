@@ -9,7 +9,7 @@ use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::prelude::*;
 
-use sm_common::{create_prover_buffer, MemOp};
+use sm_common::create_prover_buffer;
 use zisk_core::ZiskRequiredMemory;
 use zisk_pil::{Mem0Trace, MEM_AIRGROUP_ID, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -19,22 +19,12 @@ pub struct MemSM<F: PrimeField> {
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<MemOp>>,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> MemSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let mem_sm = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            _phantom: std::marker::PhantomData,
-        };
+        let mem_sm = Self { wcm: wcm.clone(), registered_predecessors: AtomicU32::new(0) };
         let mem_sm = Arc::new(mem_sm);
 
         wcm.register_component(mem_sm.clone(), Some(MEM_AIRGROUP_ID), Some(MEM_AIR_IDS));
@@ -56,17 +46,17 @@ impl<F: PrimeField> MemSM<F> {
         mem_accesses.sort_by_key(|mem| mem.address);
         timer_stop_and_log_debug!(MEM_SORT_2);
 
-        let air = self.wcm.get_pctx().pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
-
-        let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
-
-        let mut prover_buffers = vec![Vec::new(); num_chunks];
-        let mut offsets = vec![0; num_chunks];
-        let mut global_idxs = vec![0; num_chunks];
-
         let pctx = self.wcm.get_pctx();
         let ectx = self.wcm.get_ectx();
         let sctx = self.wcm.get_sctx();
+
+        let air = pctx.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+
+        let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
+
+        let mut prover_buffers = Mutex::new(vec![Vec::new(); num_chunks]);
+        let mut offsets = vec![0; num_chunks];
+        let mut global_idxs = vec![0; num_chunks];
 
         for i in 0..num_chunks {
             if let (true, global_idx) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
@@ -76,8 +66,8 @@ impl<F: PrimeField> MemSM<F> {
             ) {
                 let (buffer, offset) =
                     create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
-                                
-                prover_buffers.push(buffer);
+
+                prover_buffers.lock().unwrap().push(buffer);
                 offsets.push(offset);
                 global_idxs.push(global_idx);
             }
@@ -91,12 +81,13 @@ impl<F: PrimeField> MemSM<F> {
                     mem_accesses[segment_id * ((air.num_rows() - 1) - 1)].clone()
                 };
 
+                let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
                 self.prove_instance(
                     mem_ops,
                     mem_first_row,
                     segment_id,
                     segment_id == mem_accesses.len() - 1,
-                    prover_buffers[segment_id],
+                    prover_buffer,
                     offsets[segment_id],
                     global_idxs[segment_id],
                 );
