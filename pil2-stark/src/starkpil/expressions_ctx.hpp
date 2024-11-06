@@ -8,7 +8,9 @@
 
 struct Params {
     ParserParams parserParams;
-    PolMap polMap;
+    uint64_t stage;
+    uint64_t stagePos;
+    uint64_t polsMapId;
     bool inverse = false;
     uint64_t dim;
     opType op;
@@ -19,13 +21,15 @@ struct Params {
         op = opType::tmp;
     }
 
-    Params(PolMap& cmPolMap, bool inverse_ = false) :inverse(inverse_) {
-        dim = cmPolMap.dim;
-        op = opType::cm;
-        polMap = cmPolMap;
+    Params(PolMap& polMap, bool inverse_ = false, bool committed = true) : inverse(inverse_) {
+        dim = polMap.dim;
+        stage = polMap.stage;
+        stagePos = polMap.stagePos;
+        polsMapId = polMap.polsMapId;
+        op = committed ? opType::cm : opType::const_;
     }
 
-    Params(uint64_t value_, bool inverse_ = false) :inverse(inverse_) {
+    Params(uint64_t value_, bool inverse_ = false) : inverse(inverse_) {
         dim = 1;
         op = opType::number;
         value = value_;
@@ -43,8 +47,12 @@ struct Dest {
         params.push_back(Params(parserParams_, inverse_));
     }
 
-    void addCmPol(PolMap& cmPolMap, bool inverse_ = false) {
-        params.push_back(Params(cmPolMap, inverse_));
+    void addCmPol(PolMap& cmPol, bool inverse_ = false) {
+        params.push_back(Params(cmPol, inverse_, true));
+    }
+
+    void addConstPol(PolMap& constPol, bool inverse_ = false) {
+        params.push_back(Params(constPol, inverse_, false));
     }
 
     void addNumber(uint64_t value, bool inverse_ = false) {

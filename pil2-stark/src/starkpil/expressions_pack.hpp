@@ -58,9 +58,10 @@ public:
         for(uint64_t i = 0; i < dests.size(); ++i) {
             for(uint64_t j = 0; j < dests[i].params.size(); ++j) {
                 if(dests[i].params[j].op == opType::cm) {
-                    cmPolsUsed[dests[i].params[j].polMap.polsMapId] = true;
-                }
-                if(dests[i].params[j].op == opType::tmp) {
+                    cmPolsUsed[dests[i].params[j].polsMapId] = true;
+                } else if (dests[i].params[j].op == opType::const_) {
+                    constPolsUsed[dests[i].params[j].polsMapId] = true;
+                } else if(dests[i].params[j].op == opType::tmp) {
                     uint16_t* cmUsed = &parserArgs.cmPolsIds[dests[i].params[j].parserParams.cmPolsOffset];
                     uint16_t* constUsed = &parserArgs.constPolsIds[dests[i].params[j].parserParams.constPolsOffset];
 
@@ -297,13 +298,13 @@ public:
                 for(uint64_t k = 0; k < dests[j].params.size(); ++k) {
                     uint64_t i_args = 0;
 
-                    if(dests[j].params[k].op == opType::cm) {
+                    if(dests[j].params[k].op == opType::cm || dests[j].params[k].op == opType::const_) {
                         auto openingPointZero = std::find_if(setupCtx.starkInfo.openingPoints.begin(), setupCtx.starkInfo.openingPoints.end(), [](int p) { return p == 0; });
                         auto openingPointZeroIndex = std::distance(setupCtx.starkInfo.openingPoints.begin(), openingPointZero);
 
-                        uint64_t buffPos = (setupCtx.starkInfo.nStages + 2)*openingPointZeroIndex + dests[j].params[k].polMap.stage;
-                        uint64_t stagePos = dests[j].params[k].polMap.stagePos;
-                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].polMap.dim, &bufferT_[(nColsStagesAcc[buffPos] + stagePos)*nrowsPack]);
+                        uint64_t buffPos = (setupCtx.starkInfo.nStages + 2)*openingPointZeroIndex + dests[j].params[k].stage;
+                        uint64_t stagePos = dests[j].params[k].stagePos;
+                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION], dests[j].params[k].inverse, dests[j].params[k].dim, &bufferT_[nColsStagesAcc[buffPos] + stagePos]);
                         continue;
                     } else if(dests[j].params[k].op == opType::number) {
                         uint64_t val = dests[j].params[k].inverse ? Goldilocks::inv(Goldilocks::fromU64(dests[j].params[k].value)).fe : dests[j].params[k].value;

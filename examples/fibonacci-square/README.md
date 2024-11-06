@@ -29,28 +29,13 @@ git checkout develop
 npm install
 cd ..
 ```
-
-### 1.4 Install `zkevm-prover`
-
-Clone the `zkevm-prover` repository, switch to the `develop_rust_lib` branch, and install the necessary system dependencies:
-
-```bash
-git clone https://github.com/0xPolygonHermez/zkevm-prover.git
-cd zkevm-prover
-git checkout develop_rust_lib
-
 # Update package lists and install required system packages
 sudo apt update
 sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
 
-# Initialize and update git submodules
-git submodule init
-git submodule update
-
-# Clean previous builds and compile the starks library
-make clean
-make starks_lib -j
-cd ..
+### Compile the PIl2 Stark C++ Library (run only once):
+```bash
+(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
 ```
 
 ### 1.5 Install `pil2-proofman`
@@ -63,6 +48,7 @@ cd pil2-proofman
 ```
 
 ---
+
 
 ## 2. Execute the Fibonacci Square Example
 
@@ -95,6 +81,7 @@ cargo run --bin proofman-cli pil-helpers \
      --pilout ./examples/fibonacci-square/pil/build.pilout \
      --path ./examples/fibonacci-square/src -o
 ```
+
 
 ### 2.4 Build the Project
 

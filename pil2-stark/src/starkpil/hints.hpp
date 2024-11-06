@@ -508,12 +508,16 @@ void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* 
 
         if(hintFieldVal.operand == opType::cm) {
             destStruct.addCmPol(setupCtx.starkInfo.cmPolsMap[hintFieldVal.id], inverses[i]);
+        } else if(hintFieldVal.operand == opType::const_) {
+            destStruct.addConstPol(setupCtx.starkInfo.constPolsMap[hintFieldVal.id], inverses[i]);
         } else if(hintFieldVal.operand == opType::number) {
             destStruct.addNumber(hintFieldVal.value, inverses[i]);
         } else if(hintFieldVal.operand == opType::tmp) {
             destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[hintFieldVal.id], inverses[i]);
         } else {
+            zklog.error("Op type " + to_string(hintFieldVal.operand) + "is not considered yet.");
             exitProcess();
+            exit(-1);
         }
     }
 
@@ -525,8 +529,8 @@ void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* 
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
 
-    expressionsCtx.multiplyExpressions(params, destStruct);
-}
+        expressionsCtx.multiplyExpressions(params, destStruct);
+    }
 
 uint64_t multiplyHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldName1, std::string hintFieldName2,  HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2) {
     if(setupCtx.expressionsBin.hints.size() == 0) {
