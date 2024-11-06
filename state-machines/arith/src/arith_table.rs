@@ -56,12 +56,18 @@ impl<F: Field> ArithTableSM<F> {
             self.create_air_instance();
         }
     }
-    pub fn process_slice(&self, inputs: &mut ArithTableInputs) {
+    pub fn process_slice(&self, inputs: &ArithTableInputs) {
         // Create the trace vector
         let mut _multiplicity = self.multiplicity.lock().unwrap();
 
-        for (row, value) in inputs {
-            _multiplicity[row] += value;
+        //for (row, value) in inputs {
+        //    info!("{}: ··· Processing row {} with value {}", Self::MY_NAME, row, value);
+        //    _multiplicity[row] += value;
+        //}
+        // ONLY TO TEST VALUES IN FIXED TABLE
+        info!("{}: ··· process_slice", Self::MY_NAME);
+        for i in 0..128 {
+            _multiplicity[i] = (i + 10000) as u64;
         }
     }
     pub fn create_air_instance(&self) {

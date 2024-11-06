@@ -90,7 +90,7 @@ impl<F: Field> ArithFullSM<F> {
         let num_rows = air.num_rows();
         timer_start_trace!(ARITH_TRACE);
         info!(
-            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Arith instance KKKKK [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             input.len(),
             num_rows,
@@ -135,6 +135,7 @@ impl<F: Field> ArithFullSM<F> {
                 t.carry[i] = F::from_canonical_u64(i64_to_u64_field(aop.carry[i]));
                 range_table_inputs.use_carry_range_check(aop.carry[i]);
             }
+            t.op = F::from_canonical_u8(aop.op);
             t.m32 = F::from_bool(aop.m32);
             t.div = F::from_bool(aop.div);
             t.na = F::from_bool(aop.na);
@@ -146,6 +147,7 @@ impl<F: Field> ArithFullSM<F> {
             t.main_div = F::from_bool(aop.main_div);
             t.sext = F::from_bool(aop.sext);
             t.multiplicity = F::one();
+            t.debug_main_step = F::from_canonical_u64(input.step);
 
             table_inputs.add_use(aop.op, aop.na, aop.nb, aop.np, aop.nr, aop.sext);
 
@@ -211,6 +213,7 @@ impl<F: Field> ArithFullSM<F> {
         }
         timer_stop_and_log_trace!(ARITH_PADDING);
         timer_start_trace!(ARITH_TABLE);
+        info!("{}: ··· calling arit_table_sm", Self::MY_NAME);
         self.arith_table_sm.process_slice(&mut table_inputs);
         timer_stop_and_log_trace!(ARITH_TABLE);
         timer_start_trace!(ARITH_RANGE_TABLE);

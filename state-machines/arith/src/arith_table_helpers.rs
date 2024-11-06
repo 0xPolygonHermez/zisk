@@ -3,6 +3,7 @@ use std::ops::Add;
 const ROWS: usize = 95;
 const FIRST_OP: u8 = 0xb0;
 
+use log::info;
 pub struct ArithTableHelpers;
 
 impl ArithTableHelpers {
@@ -63,6 +64,10 @@ impl ArithTableInputs {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
         assert!(row < ROWS);
         self.multiplicity[row as usize] += 1;
+        info!(
+            "[ArithTableInputs]· add_use(op:{}, na:{}, nb:{}, np:{}, nr:{}, sext:{} row:{} multiplicity:{}",
+            op, na, nb, np, nr, sext, row, self.multiplicity[row]
+        );
     }
     pub fn multi_add_use(
         &mut self,
@@ -92,18 +97,32 @@ impl ArithTableInputs {
     }
 }
 
-impl Iterator for ArithTableInputs {
+pub struct ArithTableInputsIterator<'a> {
+    iter_row: u32,
+    inputs: &'a ArithTableInputs,
+}
+
+impl<'a> Iterator for ArithTableInputsIterator<'a> {
     type Item = (usize, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.iter_row < ROWS as u32 && self.multiplicity[self.iter_row as usize] == 0 {
+        while self.iter_row < ROWS as u32 && self.inputs.multiplicity[self.iter_row as usize] == 0 {
             self.iter_row += 1;
         }
-        if self.iter_row < ROWS as u32 {
+        let row = self.iter_row as usize;
+        if row < ROWS {
             self.iter_row += 1;
-            Some(((self.iter_row - 1) as usize, self.multiplicity[self.iter_row as usize] as u64))
-        } else {
-            None
+            return Some((row, self.inputs.multiplicity[row] as u64));
         }
+        None
+    }
+}
+
+impl<'a> IntoIterator for &'a ArithTableInputs {
+    type Item = (usize, u64);
+    type IntoIter = ArithTableInputsIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ArithTableInputsIterator { iter_row: 0, inputs: self }
     }
 }

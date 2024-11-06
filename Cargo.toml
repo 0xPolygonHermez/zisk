@@ -26,19 +26,19 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
-stark = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.8" }
+#proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
+#proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
+#proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
+#proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
+#pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
+#stark = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.7" }
 #Local development
-# proofman-common = { path = "../pil2-proofman/common" }
-# proofman-macros = { path = "../pil2-proofman/macros" }
-# proofman-util = { path = "../pil2-proofman/util" }
-# proofman = { path = "../pil2-proofman/proofman" }
-# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-# stark = { path = "../pil2-proofman/provers/stark" }
+proofman-common = { path = "../pil2-proofman/common" }
+proofman-macros = { path = "../pil2-proofman/macros" }
+proofman-util = { path = "../pil2-proofman/util" }
+proofman = { path = "../pil2-proofman/proofman" }
+pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+stark = { path = "../pil2-proofman/provers/stark" }
 
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 log = "0.4"

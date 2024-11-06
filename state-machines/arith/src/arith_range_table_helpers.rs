@@ -164,13 +164,13 @@ impl ArithRangeTableInputs {
     }
 }
 
-pub struct ArithTableInputsIterator<'a> {
+pub struct ArithRangeTableInputsIterator<'a> {
     iter_row: u32,
     iter_hash: bool,
     inputs: &'a ArithRangeTableInputs,
 }
 
-impl<'a> Iterator for ArithTableInputsIterator<'a> {
+impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
     type Item = (usize, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -203,10 +203,10 @@ impl<'a> Iterator for ArithTableInputsIterator<'a> {
 
 impl<'a> IntoIterator for &'a ArithRangeTableInputs {
     type Item = (usize, u64);
-    type IntoIter = ArithTableInputsIterator<'a>;
+    type IntoIter = ArithRangeTableInputsIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        ArithTableInputsIterator { iter_row: 0, iter_hash: false, inputs: self }
+        ArithRangeTableInputsIterator { iter_row: 0, iter_hash: false, inputs: self }
     }
 }
 

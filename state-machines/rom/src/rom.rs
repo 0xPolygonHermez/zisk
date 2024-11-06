@@ -6,7 +6,7 @@ use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{Pilout, RomRow, RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 //use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
 
@@ -38,7 +38,7 @@ impl<F: Field> RomSM<F> {
         }
 
         let main_trace_len =
-            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows() as u64;
 
         let (prover_buffer, _, air_id) =
             Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len)?;
