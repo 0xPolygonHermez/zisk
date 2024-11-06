@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use log::info;
@@ -12,7 +15,7 @@ use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_pil::{MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::MemOps;
+use crate::MemOp;
 
 const CHUNKS: usize = 8;
 const MEM_WIDTHS: [u64; 4] = [1, 2, 4, 8];
@@ -27,8 +30,7 @@ pub struct MemAlignRomSM<F> {
 
     // Rom data
     num_rows: usize,
-    line: Mutex<u64>,
-    multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Mutex<HashMap<F, u64>>, // row_num -> multiplicity
 }
 
 #[derive(Debug)]
@@ -42,13 +44,13 @@ impl<F: Field> MemAlignRomSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
+        let num_rows = air.num_rows();
 
         let mem_align_rom = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
-            num_rows: air.num_rows(),
-            line: Mutex::new(0),
-            multiplicity: Mutex::new(vec![0; air.num_rows()]),
+            num_rows,
+            multiplicity: Mutex::new(HashMap::with_capacity(num_rows)),
         };
         let mem_align_rom = Arc::new(mem_align_rom);
         wcm.register_component(mem_align_rom.clone(), Some(airgroup_id), Some(air_ids));
@@ -66,13 +68,14 @@ impl<F: Field> MemAlignRomSM<F> {
         }
     }
 
-    pub fn get_op_size(op: MemOps) -> usize {
+    pub fn get_mem_align_op_size(op: MemOp) -> usize {
         OP_SIZES[op as usize]
     }
 
-    pub fn calculate_rom_rows(opcode: MemOps, offset: usize, width: usize) -> Vec<usize> {
+    fn calculate_rom_rows(opcode: MemOp, offset: usize, width: usize) -> Vec<u64> {
+        // Calculate the ROM rows based on the requested opcode, offset, and width
         match opcode {
-            MemOps::OneRead | MemOps::OneWrite => {
+            MemOp::OneRead | MemOp::OneWrite => {
                 // Sanity check
                 assert!(offset + width <= CHUNKS);
                 let possible_widths = match offset {
@@ -81,9 +84,9 @@ impl<F: Field> MemAlignRomSM<F> {
                     x if x == 7 => vec![1],
                     _ => panic!("Invalid offset={}", offset),
                 };
-                Self::get_rows(opcode, possible_widths, offset, width)
+                Self::get_row_idxs(opcode, possible_widths, offset, width)
             }
-            MemOps::TwoReads | MemOps::TwoWrites => {
+            MemOp::TwoReads | MemOp::TwoWrites => {
                 // Sanity check
                 assert!(offset + width > CHUNKS);
                 let possible_widths = match offset {
@@ -93,58 +96,73 @@ impl<F: Field> MemAlignRomSM<F> {
                     x if x == 7 => vec![2, 4, 8],
                     _ => panic!("Invalid offset={}", offset),
                 };
-                Self::get_rows(opcode, possible_widths, offset, width)
+                Self::get_row_idxs(opcode, possible_widths, offset, width)
             }
         }
     }
 
-    fn get_rows(
-        opcode: MemOps,
+    fn get_row_idxs(
+        opcode: MemOp,
         possible_widths: Vec<usize>,
         offset: usize,
         width: usize,
-    ) -> Vec<usize> {
+    ) -> Vec<u64> {
         // Sanity check
         assert!(possible_widths.contains(&width));
 
         let width_idx = possible_widths.iter().position(|&w| w == width).unwrap();
         let opcode_idx = opcode as usize;
         match opcode {
-            MemOps::OneRead | MemOps::OneWrite => {
-                let value_row = offset * possible_widths.len() * OP_SIZES[opcode_idx]
+            MemOp::OneRead | MemOp::OneWrite => {
+                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
                     + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 1;
+                    - 1) as u64;
                 match opcode {
-                    MemOps::OneRead => vec![value_row - 1, value_row],
-                    MemOps::OneWrite => vec![value_row - 2, value_row - 1, value_row],
+                    MemOp::OneRead => vec![value_row - 1, value_row],
+                    MemOp::OneWrite => vec![value_row - 2, value_row - 1, value_row],
                     _ => unreachable!(),
                 }
             }
-            MemOps::TwoReads => {
-                let value_row = offset * possible_widths.len() * OP_SIZES[opcode_idx]
+            MemOp::TwoReads => {
+                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
                     + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 2;
+                    - 2) as u64;
                 return vec![value_row - 1, value_row, value_row + 1];
             }
-            MemOps::TwoWrites => {
-                let value_row = offset * possible_widths.len() * OP_SIZES[opcode_idx]
+            MemOp::TwoWrites => {
+                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
                     + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 3;
+                    - 3) as u64;
                 return vec![value_row - 2, value_row - 1, value_row, value_row + 1, value_row + 2];
             }
         }
     }
 
-    pub fn calculate_next_pc(op: MemOps, offset: usize, width: usize) -> usize {
+    pub fn calculate_next_pc(op: MemOp, offset: usize, width: usize) -> u64 {
         let rows = Self::calculate_rom_rows(op, offset, width);
+
+        // The "next" pc is always found on the second row of the program being executed
         rows[1]
     }
 
-    pub fn process_slice(&self, input: &[u8]) {
+    pub fn update_multiplicity_by_input(&self, opcode: MemOp, offset: usize, width: usize) {
+        let row_idxs = Self::calculate_rom_rows(opcode, offset, width);
+        self.update_multiplicity_by_idx(&row_idxs);
+    }
+
+    pub fn update_multiplicity_by_idx(&self, idxs: &[u64]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        for (i, val) in input.iter().enumerate() {
-            multiplicity[i] += *val as u64;
+        for &i in idxs {
+            *multiplicity.entry(F::from_canonical_u64(i)).or_insert(0) += 1;
+        }
+    }
+
+    pub fn update_multiplicity(&self, inputs: &[u64]) {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+
+        for (idx, mul) in inputs.iter().enumerate() {
+            *multiplicity.entry(F::from_canonical_usize(idx)).or_insert(0) += *mul;
         }
     }
 
@@ -177,7 +195,7 @@ impl<F: Field> MemAlignRomSM<F> {
                 .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
 
             info!(
-                "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
+                "{}: ··· Creating Mem Align ROM instance [{} rows filled 100%]",
                 Self::MY_NAME,
                 self.num_rows,
             );

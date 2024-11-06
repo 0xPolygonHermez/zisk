@@ -2,7 +2,7 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common::WitnessPilout;
 
-pub const PILOUT_HASH: &[u8] = b"ZiskMem-hash";
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -36,7 +36,7 @@ pub struct Pilout;
 
 impl Pilout {
     pub fn pilout() -> WitnessPilout {
-        let mut pilout = WitnessPilout::new("ZiskMem", 2, PILOUT_HASH.to_vec());
+        let mut pilout = WitnessPilout::new("Zisk", 2, PILOUT_HASH.to_vec());
 
         let air_group = pilout.add_air_group(Some("Zisk"));
 

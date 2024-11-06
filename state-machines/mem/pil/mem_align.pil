@@ -87,10 +87,10 @@ require "std_range_check.pil"
     Notice that it is enough with 8 combinations.
 */
 
-airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES = 8, const int CHUNK_BITS = 8) {
-    const int MEM_HALF_BYTES = MEM_BYTES / 2;
+airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8) {
+    const int CHUNK_NUM_HALF = CHUNK_NUM / 2;
 
-    col witness addr;           // MEM_BYTES-byte address, real address = addr * MEM_BYTES
+    col witness addr;           // CHUNK_NUM-byte address, real address = addr * CHUNK_NUM
     col witness offset;         // 0..7, position at which the operation starts
     col witness width;          // 1,2,4,8, width of the operation
     col witness wr;             // 1 if the operation is a write, 0 otherwise
@@ -98,8 +98,8 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     col witness reset;          // 1 at the beginning of the operation (indicating an address reset), 0 otherwise
     col witness sel_up_to_down; // 1 if the next value is the current value (e.g. R -> W)
     col witness sel_down_to_up; // 1 if the next value is the previous value (e.g. W -> R)
-    col witness reg[MEM_BYTES]; // Register values, 1 byte each
-    col witness sel[MEM_BYTES]; // Selectors, 1 if the value is used, 0 otherwise
+    col witness reg[CHUNK_NUM]; // Register values, 1 byte each
+    col witness sel[CHUNK_NUM]; // Selectors, 1 if the value is used, 0 otherwise
 
     // 1] Ensure the MemAlign follows the program
 
@@ -107,7 +107,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     //  - reg' == reg in transitions R -> V, R -> W, W -> V,
     //  - 'reg == reg in transitions V <- W, W <- R,
     // in any case, sel_up_to_down,sel_down_to_up are 0 in [V] steps.
-    for (int i = 0; i < MEM_BYTES; i++) { 
+    for (int i = 0; i < CHUNK_NUM; i++) { 
         range_check(reg[i], 0, 2**CHUNK_BITS-1);
 
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
@@ -118,7 +118,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     L1 * pc === 0; // The program should start at the first line
 
     // We compress selectors, so we should ensure they are binary
-    for (int i = 0; i < MEM_BYTES; i++) {
+    for (int i = 0; i < CHUNK_NUM; i++) {
         sel[i] * (1 - sel[i]) === 0;
     }
     wr * (1 - wr) === 0;
@@ -127,10 +127,10 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     sel_down_to_up * (1 - sel_down_to_up) === 0;
 
     expr flags = 0;
-    for (int i = 0; i < MEM_BYTES; i++) {
+    for (int i = 0; i < CHUNK_NUM; i++) {
         flags += sel[i] * 2**i;
     }
-    flags += wr * 2**MEM_BYTES + reset * 2**(MEM_BYTES + 1) + sel_up_to_down * 2**(MEM_BYTES + 2) + sel_down_to_up * 2**(MEM_BYTES + 3);
+    flags += wr * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3);
 
     lookup_assumes(MEM_ALIGN_ROM_ID, [pc, pc'-pc, (addr-'addr)*(1-reset), offset, width, flags]);
 
@@ -144,8 +144,8 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     expr assume_val[RC];
     for (int i = 0; i < RC; i++) {
         assume_val[i] = 0;
-        for (int j = 0; j < MEM_HALF_BYTES; j++) {
-            assume_val[i] += reg[j + i * MEM_HALF_BYTES] * 2**j;
+        for (int j = 0; j < CHUNK_NUM_HALF; j++) {
+            assume_val[i] += reg[j + i * CHUNK_NUM_HALF] * 2**j;
         }
     }
 
@@ -158,16 +158,16 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
     expr prove_val[RC];
     for (int i = 0; i < RC; i++) {
         prove_val[i] = 0;
-        for (int j = 0; j < MEM_HALF_BYTES; j++) {
+        for (int j = 0; j < CHUNK_NUM_HALF; j++) {
             expr _prove_val = 0;
-            for (int k = j; k < j + MEM_HALF_BYTES; k++) {
-                _prove_val += reg[(k + i * MEM_HALF_BYTES) % MEM_BYTES] * 2**(k-j);
+            for (int k = j; k < j + CHUNK_NUM_HALF; k++) {
+                _prove_val += reg[(k + i * CHUNK_NUM_HALF) % CHUNK_NUM] * 2**(k-j);
             }
-            prove_val[i] += sel[j + i * MEM_HALF_BYTES] * _prove_val;
+            prove_val[i] += sel[j + i * CHUNK_NUM_HALF] * _prove_val;
         }
     }
 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
     col witness step;
-    permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES + offset, step, width, ...prove_val], sel: sel_prove - sel_assume);
+    permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...prove_val], sel: sel_prove - sel_assume);
 }
