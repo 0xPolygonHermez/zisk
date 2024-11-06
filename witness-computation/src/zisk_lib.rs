@@ -6,7 +6,7 @@ use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{
-    initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout
+    initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout,
 };
 
 use crate::ZiskExecutor;
