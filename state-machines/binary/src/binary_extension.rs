@@ -17,7 +17,10 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::{BinaryExtension0Row, BinaryExtension0Trace, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    BinaryExtensionRow, BinaryExtensionTrace, BINARY_EXTENSION_AIR_IDS,
+    BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -117,12 +120,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SllW
-            | ZiskOp::SrlW
-            | ZiskOp::SraW => true,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SllW |
+            ZiskOp::SrlW |
+            ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -134,12 +137,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SignExtendB
-            | ZiskOp::SignExtendH
-            | ZiskOp::SignExtendW => false,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SignExtendB |
+            ZiskOp::SignExtendH |
+            ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -149,7 +152,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
         range_check: &mut HashMap<u64, u64>,
-    ) -> BinaryExtension0Row<F> {
+    ) -> BinaryExtensionRow<F> {
         // Get the opcode
         let op = operation.opcode;
 
@@ -158,7 +161,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         // Create an empty trace
         let mut row =
-            BinaryExtension0Row::<F> { op: F::from_canonical_u8(op), ..Default::default() };
+            BinaryExtensionRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -405,7 +408,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
         let mut trace_buffer =
-            BinaryExtension0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
+            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
@@ -416,7 +419,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
         let padding_row =
-            BinaryExtension0Row::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+            BinaryExtensionRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
         for i in operations.len()..air.num_rows() {
             trace_buffer[i] = padding_row;
