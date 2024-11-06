@@ -14,7 +14,8 @@ use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_mem::MemSM;
 use zisk_pil::{
-    MainRow, MainTrace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
+    MainRow, MainTrace, ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 use ziskemu::{Emu, EmuTrace, ZiskEmulator};
 
@@ -187,6 +188,42 @@ impl<F: PrimeField> MainSM<F> {
         air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
 
         iectx.air_instance = Some(air_instance);
+    }
+
+    pub fn prove_arith(
+        &self,
+        zisk_rom: &ZiskRom,
+        vec_traces: &[EmuTrace],
+        iectx: &mut InstanceExtensionCtx<F>,
+        pctx: &ProofCtx<F>,
+    ) {
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]);
+
+        timer_start_debug!(PROCESS_ARITH);
+        let inputs = ZiskEmulator::process_slice_required::<F>(
+            zisk_rom,
+            vec_traces,
+            iectx.op_type,
+            &iectx.emu_trace_start,
+            air.num_rows(),
+        );
+        timer_stop_and_log_debug!(PROCESS_ARITH);
+
+        timer_start_debug!(PROVE_ARITH);
+
+        self.arith_sm.prove_instance(inputs, &mut iectx.prover_buffer, iectx.offset);
+        timer_stop_and_log_debug!(PROVE_ARITH);
+
+        timer_start_debug!(CREATE_AIR_INSTANCE);
+        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        iectx.air_instance = Some(AirInstance::new(
+            self.wcm.get_sctx(),
+            ZISK_AIRGROUP_ID,
+            ARITH_AIR_IDS[0],
+            None,
+            buffer,
+        ));
+        timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
     }
 
     pub fn prove_binary(

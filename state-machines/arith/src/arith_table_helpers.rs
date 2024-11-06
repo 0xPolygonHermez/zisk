@@ -40,6 +40,7 @@ impl ArithTableHelpers {
             + np as u64 * 4
             + nr as u64 * 8
             + sext as u64 * 16;
+        assert!(index < 512);
         let row = ARITH_TABLE_ROWS[index as usize];
         assert!(row >= 0);
         row as usize
@@ -50,15 +51,17 @@ impl ArithTableHelpers {
 }
 
 pub struct ArithTableInputs {
+    iter_row: u32,
     multiplicity: [u64; ROWS],
 }
 
 impl ArithTableInputs {
     pub fn new() -> Self {
-        ArithTableInputs { multiplicity: [0; ROWS] }
+        ArithTableInputs { iter_row: 0, multiplicity: [0; ROWS] }
     }
     pub fn add_use(&mut self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
+        assert!(row < ROWS);
         self.multiplicity[row as usize] += 1;
     }
     pub fn multi_add_use(
@@ -79,16 +82,28 @@ impl ArithTableInputs {
             self.multiplicity[i] += other.multiplicity[i];
         }
     }
+    pub fn collect<F>(&self, call: F)
+    where
+        F: Fn(usize, u64),
+    {
+        for i in 0..ROWS {
+            call(i, self.multiplicity[i] as u64);
+        }
+    }
 }
 
-impl Add for ArithTableInputs {
-    type Output = Self;
+impl Iterator for ArithTableInputs {
+    type Item = (usize, u64);
 
-    fn add(self, other: Self) -> Self {
-        let mut result = ArithTableInputs::new();
-        for i in 0..ROWS {
-            result.multiplicity[i] = self.multiplicity[i] + other.multiplicity[i];
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.iter_row < ROWS as u32 && self.multiplicity[self.iter_row as usize] == 0 {
+            self.iter_row += 1;
         }
-        result
+        if self.iter_row < ROWS as u32 {
+            self.iter_row += 1;
+            Some(((self.iter_row - 1) as usize, self.multiplicity[self.iter_row as usize] as u64))
+        } else {
+            None
+        }
     }
 }

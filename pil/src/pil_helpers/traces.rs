@@ -11,6 +11,18 @@ trace!(RomRow, RomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
 });
 
+trace!(ArithRow, ArithTrace<F> {
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
+});
+
+trace!(ArithTableRow, ArithTableTrace<F> {
+ multiplicity: F,
+});
+
+trace!(ArithRangeTableRow, ArithRangeTableTrace<F> {
+ multiplicity: F,
+});
+
 trace!(BinaryRow, BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });

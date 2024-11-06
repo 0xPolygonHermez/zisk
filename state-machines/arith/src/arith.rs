@@ -9,12 +9,9 @@ use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::{
-    ARITH_AIRGROUP_ID, ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIRGROUP_ID, ARITH_RANGE_TABLE_AIR_IDS,
-    ARITH_TABLE_AIRGROUP_ID, ARITH_TABLE_AIR_IDS,
-};
+use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
+use crate::{arith_full, ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -33,25 +30,21 @@ pub struct ArithSM<F> {
 
 impl<F: Field> ArithSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let arith_table_sm =
-            ArithTableSM::new(wcm.clone(), ARITH_TABLE_AIRGROUP_ID, ARITH_TABLE_AIR_IDS);
-        let arith_range_table_sm = ArithRangeTableSM::new(
+        let arith_table_sm = ArithTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_TABLE_AIR_IDS);
+        let arith_range_table_sm =
+            ArithRangeTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_RANGE_TABLE_AIR_IDS);
+        let arith_full_sm = ArithFullSM::new(
             wcm.clone(),
-            ARITH_RANGE_TABLE_AIRGROUP_ID,
-            ARITH_RANGE_TABLE_AIR_IDS,
+            arith_table_sm.clone(),
+            arith_range_table_sm.clone(),
+            ZISK_AIRGROUP_ID,
+            ARITH_AIR_IDS,
         );
-
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
             // threads_controller: Arc::new(ThreadController::new()),
             inputs: Mutex::new(Vec::new()),
-            arith_full_sm: ArithFullSM::new(
-                wcm.clone(),
-                arith_table_sm.clone(),
-                arith_range_table_sm.clone(),
-                ARITH_AIRGROUP_ID,
-                ARITH_AIR_IDS,
-            ),
+            arith_full_sm,
             arith_table_sm,
             arith_range_table_sm,
         };
@@ -60,22 +53,25 @@ impl<F: Field> ArithSM<F> {
         wcm.register_component(arith_sm.clone(), None, None);
 
         arith_sm.arith_full_sm.register_predecessor();
-        arith_sm.arith_table_sm.register_predecessor();
-        arith_sm.arith_range_table_sm.register_predecessor();
 
         arith_sm
     }
-
     pub fn register_predecessor(&self) {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.arith_range_table_sm.unregister_predecessor(scope);
-            self.arith_table_sm.unregister_predecessor(scope);
-            self.arith_full_sm.unregister_predecessor(scope);
+            self.arith_full_sm.unregister_predecessor();
         }
+    }
+    pub fn prove_instance(
+        &self,
+        operations: Vec<ZiskRequiredOperation>,
+        prover_buffer: &mut [F],
+        offset: u64,
+    ) {
+        self.arith_full_sm.prove_instance(operations, prover_buffer, offset);
     }
 }
 

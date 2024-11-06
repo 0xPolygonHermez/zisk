@@ -70,23 +70,27 @@ impl<F: Field> ArithFullSM<F> {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn unregister_predecessor(&self, scope: &Scope) {
+    pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.arith_table_sm.unregister_predecessor(scope);
-            self.arith_range_table_sm.unregister_predecessor(scope);
+            self.arith_table_sm.unregister_predecessor();
+            self.arith_range_table_sm.unregister_predecessor();
         }
     }
-    pub fn process_slice(
-        input: &Vec<ZiskRequiredOperation>,
-        range_table_inputs: &mut ArithRangeTableInputs,
-        table_inputs: &mut ArithTableInputs,
+    pub fn prove_instance(
+        &self,
+        input: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
         offset: u64,
-        num_rows: usize,
     ) {
+        let mut range_table_inputs = ArithRangeTableInputs::new();
+        let mut table_inputs = ArithTableInputs::new();
+
+        let pctx = self.wcm.get_pctx();
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]);
+        let num_rows = air.num_rows();
         timer_start_trace!(ARITH_TRACE);
         info!(
-            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             input.len(),
             num_rows,
@@ -95,12 +99,12 @@ impl<F: Field> ArithFullSM<F> {
         assert!(input.len() <= num_rows);
 
         let mut traces =
-            Arith0Trace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
+            ArithTrace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
 
         let mut aop = ArithOperation::new();
         for (i, input) in input.iter().enumerate() {
             aop.calculate(input.opcode, input.a, input.b);
-            let mut t: Arith0Row<F> = Default::default();
+            let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {
                 t.a[i] = F::from_canonical_u64(aop.a[i]);
                 t.b[i] = F::from_canonical_u64(aop.b[i]);
@@ -110,14 +114,12 @@ impl<F: Field> ArithFullSM<F> {
                 range_table_inputs.use_chunk_range_check(0, aop.b[i]);
                 range_table_inputs.use_chunk_range_check(0, aop.c[i]);
                 range_table_inputs.use_chunk_range_check(0, aop.d[i]);
-                // arith_operation.a[i];
             }
             for i in [1, 3] {
                 t.a[i] = F::from_canonical_u64(aop.a[i]);
                 t.b[i] = F::from_canonical_u64(aop.b[i]);
                 t.c[i] = F::from_canonical_u64(aop.c[i]);
                 t.d[i] = F::from_canonical_u64(aop.d[i]);
-                // arith_operation.a[i];
             }
             range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
             range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
@@ -133,8 +135,6 @@ impl<F: Field> ArithFullSM<F> {
                 t.carry[i] = F::from_canonical_u64(i64_to_u64_field(aop.carry[i]));
                 range_table_inputs.use_carry_range_check(aop.carry[i]);
             }
-            // range_table_inputs.push(0, 0);
-            // table_inputs.fast_push(0, 0, 0);
             t.m32 = F::from_bool(aop.m32);
             t.div = F::from_bool(aop.div);
             t.na = F::from_bool(aop.na);
@@ -190,10 +190,11 @@ impl<F: Field> ArithFullSM<F> {
             if num_rows > padding_offset { (num_rows - padding_offset) as usize } else { 0 };
 
         if padding_rows > 0 {
-            let mut t: Arith0Row<F> = Default::default();
+            let mut t: ArithRow<F> = Default::default();
             let padding_opcode = MULUH;
             t.op = F::from_canonical_u8(padding_opcode);
-            for i in padding_offset..padding_rows {
+            t.fab = F::one();
+            for i in padding_offset..num_rows {
                 traces[i] = t;
             }
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 16, 0, 0);
@@ -209,68 +210,24 @@ impl<F: Field> ArithFullSM<F> {
             );
         }
         timer_stop_and_log_trace!(ARITH_PADDING);
+        timer_start_trace!(ARITH_TABLE);
+        self.arith_table_sm.process_slice(&mut table_inputs);
+        timer_stop_and_log_trace!(ARITH_TABLE);
+        timer_start_trace!(ARITH_RANGE_TABLE);
+        self.arith_range_table_sm.process_slice(range_table_inputs);
+        timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
+        // self.arith_table_sm.update(table_inputs);
+        // self.arith_range_table_sm.update(range_table_inputs);
+
+        // std::thread::spawn(move || {
+        //     drop(table_inputs);
+        //     drop(range_table_inputs);
+        // });
     }
-    /*
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_basic_table_sm,
-            operations,
-            prover_buffer,
-            offset,
-        );
-    }*/
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for ArithFullSM<F> {}
 
 impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(ARITH_AIRGROUP_ID, ARITH_AIR_IDS[0]);
-            let num_rows = air.num_rows();
-
-            let all_arith_range_table = Arc::new(Mutex::new(ArithRangeTableInputs::new()));
-            let all_arith_table = Arc::new(Mutex::new(ArithTableInputs::new()));
-
-            while inputs.len() >= num_rows || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(num_rows, inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &self.wcm.get_ectx(),
-                    &self.wcm.get_sctx(),
-                    ARITH_AIRGROUP_ID,
-                    ARITH_AIR_IDS[0],
-                );
-
-                let mut _all_arith_range_table = Arc::clone(&all_arith_range_table);
-                let mut _all_arith_table = Arc::clone(&all_arith_table);
-                scope.spawn(move |_| {
-                    let mut arith_range_table = ArithRangeTableInputs::new();
-                    let mut arith_table = ArithTableInputs::new();
-                    Self::process_slice(
-                        &drained_inputs,
-                        &mut arith_range_table,
-                        &mut arith_table,
-                        &mut prover_buffer,
-                        offset,
-                        num_rows,
-                    );
-                    _all_arith_range_table.lock().unwrap().update_with(&arith_range_table);
-                    _all_arith_table.lock().unwrap().update_with(&arith_table);
-                    // thread_controller.remove_working_thread();
-                    // TODO! Implement prove drained_inputs (a chunk of operations)
-                });
-            }
-        }
-    }
+    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {}
 }

@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ops::Add;
 
 const ROWS: usize = 1 << 22;
+// const ROWS: usize = 100;
 const FULL: u8 = 0x00;
 const POS: u8 = 0x01;
 const NEG: u8 = 0x02;
@@ -63,44 +65,148 @@ impl ArithRangeTableHelpers {
     }
 }
 pub struct ArithRangeTableInputs {
-    multiplicity: [u64; ROWS],
+    // TODO: check improvement of multiplicity[64] to reserv only chunks used
+    // with this 16 bits version, this table has aprox 8MB.
+    updated: u64,
+    multiplicity_overflow: HashMap<u32, u32>,
+    multiplicity: Vec<u16>,
 }
 impl ArithRangeTableInputs {
     pub fn new() -> Self {
-        ArithRangeTableInputs { multiplicity: [0; ROWS] }
+        ArithRangeTableInputs {
+            updated: 0,
+            multiplicity_overflow: HashMap::new(),
+            multiplicity: vec![0u16; ROWS],
+        }
+    }
+    fn incr_row_one(&mut self, row: usize) {
+        if self.multiplicity[row] > u16::MAX - 1 {
+            let count = self.multiplicity_overflow.entry(row as u32).or_insert(0);
+            *count += 1;
+            self.multiplicity[row] = 0;
+        } else {
+            self.multiplicity[row] += 1;
+        }
+        self.updated &= 1 << (row >> (22 - 6));
+    }
+    fn incr_row(&mut self, row: usize, times: usize) {
+        self.incr_row_without_update(row, times);
+        self.updated &= 1 << (row >> (22 - 6));
+    }
+    fn incr_row_without_update(&mut self, row: usize, times: usize) {
+        if (u16::MAX - self.multiplicity[row]) as usize <= times {
+            let count = self.multiplicity_overflow.entry(row as u32).or_insert(0);
+            let new_count = self.multiplicity[row] as u64 + times as u64;
+            *count += (new_count >> 16) as u32;
+            self.multiplicity[row] = (new_count & 0xFFFF) as u16;
+        } else {
+            self.multiplicity[row] += times as u16;
+        }
     }
     pub fn use_chunk_range_check(&mut self, range_id: u8, value: u64) {
         let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
-        self.multiplicity[row as usize] += 1;
+        self.incr_row_one(row);
     }
     pub fn use_carry_range_check(&mut self, value: i64) {
         let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
-        self.multiplicity[row as usize] += 1;
+        self.incr_row_one(row);
     }
     pub fn multi_use_chunk_range_check(&mut self, times: usize, range_id: u8, value: u64) {
         let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
-        self.multiplicity[row as usize] += times as u64;
+        self.incr_row(row, times);
     }
     pub fn multi_use_carry_range_check(&mut self, times: usize, value: i64) {
         let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
-        self.multiplicity[row as usize] += times as u64;
+        self.incr_row(row, times);
     }
     pub fn update_with(&mut self, other: &Self) {
-        for i in 0..ROWS {
-            self.multiplicity[i] += other.multiplicity[i];
+        let chunk_size = 1 << (22 - 6);
+        for i_chunk in 0..64 {
+            if (other.updated & (1 << i_chunk)) == 0 {
+                continue;
+            }
+            let from = chunk_size * i_chunk;
+            let to = from + chunk_size;
+            for row in from..to {
+                let count = other.multiplicity[row];
+                if count > 0 {
+                    self.incr_row_without_update(row, count as usize);
+                }
+            }
+        }
+        for (row, value) in other.multiplicity_overflow.iter() {
+            let count = self.multiplicity_overflow.entry(*row).or_insert(0);
+            *count += *value;
+        }
+        self.updated |= other.updated;
+    }
+    pub fn collect<F>(&self, call: F)
+    where
+        F: Fn(usize, u64),
+    {
+        let chunk_size = 1 << (22 - 6);
+        for i_chunk in 0..64 {
+            if (self.updated & (1 << i_chunk)) == 0 {
+                continue;
+            }
+            let from = chunk_size * i_chunk;
+            let to = from + chunk_size;
+            for row in from..to {
+                let count = self.multiplicity[row];
+                if count > 0 {
+                    call(row, count as u64);
+                }
+            }
+        }
+        for (row, value) in self.multiplicity_overflow.iter() {
+            call(*row as usize, *value as u64 * chunk_size as u64)
         }
     }
 }
 
-impl Add for ArithRangeTableInputs {
-    type Output = Self;
+pub struct ArithTableInputsIterator<'a> {
+    iter_row: u32,
+    iter_hash: bool,
+    inputs: &'a ArithRangeTableInputs,
+}
 
-    fn add(self, other: Self) -> Self {
-        let mut result = ArithRangeTableInputs::new();
-        for i in 0..ROWS {
-            result.multiplicity[i] = self.multiplicity[i] + other.multiplicity[i];
+impl<'a> Iterator for ArithTableInputsIterator<'a> {
+    type Item = (usize, u64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.iter_hash {
+            while self.iter_row < ROWS as u32
+                && self.inputs.multiplicity[self.iter_row as usize] == 0
+            {
+                self.iter_row += 1;
+            }
+            if self.iter_row < ROWS as u32 {
+                self.iter_row += 1;
+                return Some((
+                    (self.iter_row - 1) as usize,
+                    self.inputs.multiplicity[self.iter_row as usize] as u64,
+                ));
+            }
+            self.iter_hash = true;
+            self.iter_row = 0;
         }
-        result
+        let res = self.inputs.multiplicity_overflow.iter().nth(self.iter_row as usize);
+        match res {
+            Some((row, value)) => {
+                self.iter_row += 1;
+                return Some((*row as usize, *value as u64));
+            }
+            None => return None,
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a ArithRangeTableInputs {
+    type Item = (usize, u64);
+    type IntoIter = ArithTableInputsIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ArithTableInputsIterator { iter_row: 0, iter_hash: false, inputs: self }
     }
 }
 

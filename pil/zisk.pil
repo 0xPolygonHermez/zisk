@@ -14,6 +14,9 @@ airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**20);
     // Mem(N: 2**21, RC: 2);
+    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    ArithTable();
+    ArithRangeTable();
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable(disable_fixed: 0);
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);

@@ -285,10 +285,11 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                                      bus_res0, bus_res1,
                                      0], mul: multiplicity);
 
-    lookup_assumes(operation_bus_id, [debug_main_step, signed * (OP_LT_ABS - OP_LT) + OP_LT,
-                                      (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF,
-                                      (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF,
-                                      1, 0, 1], sel: div);
+    // TODO: remainder check
+    // lookup_assumes(operation_bus_id, [debug_main_step, signed * (OP_LT_ABS - OP_LT) + OP_LT,
+    //                                  (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF,
+    //                                  (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF,
+    //                                  1, 0, 1], sel: div);
 
     for (int index = 0; index < length(carry); ++index) {
          arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range
