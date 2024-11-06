@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout};
 use proofman::{WitnessLibrary, WitnessManager};
 use pil_std_lib::Std;
 use p3_field::PrimeField;
@@ -91,7 +91,10 @@ impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
 pub extern "Rust" fn init_library(
     _: Option<PathBuf>,
     public_inputs_path: Option<PathBuf>,
+    verbose_mode: VerboseMode,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
+    initialize_logger(verbose_mode);
+
     let fibonacci_witness = FibonacciWitness::new(public_inputs_path);
     Ok(Box::new(fibonacci_witness))
 }

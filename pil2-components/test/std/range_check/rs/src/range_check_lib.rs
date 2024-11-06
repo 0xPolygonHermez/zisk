@@ -2,7 +2,7 @@ use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 
 use pil_std_lib::Std;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
@@ -130,7 +130,9 @@ where
 pub extern "Rust" fn init_library(
     _: Option<PathBuf>,
     _: Option<PathBuf>,
+    verbose_mode: VerboseMode,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
+    initialize_logger(verbose_mode);
     let range_check_witness = RangeCheckWitness::new();
     Ok(Box::new(range_check_witness))
 }

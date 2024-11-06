@@ -63,7 +63,7 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let witness_lib: Symbol<WitnessLibInitFn<F>> = unsafe { library.get(b"init_library")? };
 
-        let mut witness_lib = witness_lib(rom_path, public_inputs_path)?;
+        let mut witness_lib = witness_lib(rom_path, public_inputs_path, ectx.verbose_mode)?;
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
