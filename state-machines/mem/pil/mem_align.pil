@@ -169,5 +169,5 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int MEM_BYTES 
 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
     col witness step;
-    permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES + offset, step, width, ...prove_val], sel: sel_prove - sel_assume);
+    //permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES + offset, step, width, ...prove_val], sel: sel_prove - sel_assume);
 }

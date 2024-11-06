@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemAlignSM, MemSM};
+use crate::{InputDataSM, MemAlignSM, MemSM};
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{MemOp, MemUnalignedOp};
@@ -26,12 +26,14 @@ pub struct MemProxy<F: PrimeField> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM>,
+    input_data_sm: Arc<InputDataSM<F>>,
 }
 
 impl<F: PrimeField> MemProxy<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let mem_sm = MemSM::new(wcm.clone());
         let mem_align_sm = MemAlignSM::new(wcm.clone());
+        let input_data_sm = InputDataSM::new(wcm.clone());
 
         let mem_proxy = Self {
             registered_predecessors: AtomicU32::new(0),
@@ -39,6 +41,7 @@ impl<F: PrimeField> MemProxy<F> {
             inputs_unaligned: Mutex::new(Vec::new()),
             mem_sm: mem_sm.clone(),
             mem_align_sm: mem_align_sm.clone(),
+            input_data_sm: input_data_sm.clone(),
         };
         let mem_proxy = Arc::new(mem_proxy);
 

@@ -93,7 +93,7 @@ airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID,
     // and the width to be exactly MEM_BYTES
     // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of MEM_BYTES.
     // These are handled with the Memory Align component
-    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    //permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
 
 function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {

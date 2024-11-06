@@ -11,9 +11,9 @@ use rayon::prelude::*;
 
 use sm_common::{create_prover_buffer, MemOp};
 use zisk_core::ZiskRequiredMemory;
-use zisk_pil::{Mem0Trace, MEM_AIRGROUP_ID, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{InputData0Row, InputData0Trace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
-pub struct MemSM<F: PrimeField> {
+pub struct InputDataSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
@@ -27,7 +27,7 @@ pub struct MemSM<F: PrimeField> {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField> MemSM<F> {
+impl<F: PrimeField> InputDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let mem_sm = Self {
             wcm: wcm.clone(),
@@ -37,7 +37,7 @@ impl<F: PrimeField> MemSM<F> {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_component(mem_sm.clone(), Some(MEM_AIRGROUP_ID), Some(MEM_AIR_IDS));
+        wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(INPUT_DATA_AIR_IDS));
 
         mem_sm
     }
@@ -52,13 +52,12 @@ impl<F: PrimeField> MemSM<F> {
 
     pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
         // Sort the (full) aligned memory accesses
-        timer_start_debug!(MEM_SORT_2);
+        timer_start_debug!(INPUT_DATA_SORT_2);
         mem_accesses.sort_by_key(|mem| mem.address);
-        timer_stop_and_log_debug!(MEM_SORT_2);
+        timer_stop_and_log_debug!(INPUT_DATA_SORT_2);
 
         let binding = self.wcm.get_pctx();
-        let air = binding.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
-        //let air = self.wcm.get_pctx().pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+        let air = binding.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
 
         let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
 
@@ -73,11 +72,15 @@ impl<F: PrimeField> MemSM<F> {
         for i in 0..num_chunks {
             if let (true, global_idx) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
                 ZISK_AIRGROUP_ID,
-                MEM_AIR_IDS[0],
+                INPUT_DATA_AIR_IDS[0],
                 1,
             ) {
-                let (buffer, offset) =
-                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
+                let (buffer, offset) = create_prover_buffer::<F>(
+                    &ectx,
+                    &sctx,
+                    ZISK_AIRGROUP_ID,
+                    INPUT_DATA_AIR_IDS[0],
+                );
                 prover_buffers.lock().unwrap().push(buffer);
                 offsets.push(offset);
                 global_idxs.push(global_idx);
@@ -124,7 +127,7 @@ impl<F: PrimeField> MemSM<F> {
         let pctx = self.wcm.get_pctx();
 
         // STEP2: Process the memory inputs and convert them to AIR instances
-        let air = pctx.pilout.get_air(MEM_AIRGROUP_ID, MEM_AIR_IDS[0]);
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
 
         let max_rows_per_segment = air.num_rows() - 1;
 
@@ -143,7 +146,7 @@ impl<F: PrimeField> MemSM<F> {
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
         let mut trace =
-            Mem0Trace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
+            InputData0Trace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
 
         let segment_id_field = F::from_canonical_u64(segment_id as u64);
@@ -167,7 +170,7 @@ impl<F: PrimeField> MemSM<F> {
         trace[0].addr = F::from_canonical_u64(mem_first_row.address);
         trace[0].step = F::from_canonical_u64(mem_first_row.step);
         trace[0].sel = F::zero();
-        trace[0].wr = F::zero();
+        //trace[0].wr = F::zero();
 
         let value = match mem_first_row.width {
             1 => mem_first_row.value as u8 as u64,
@@ -177,15 +180,18 @@ impl<F: PrimeField> MemSM<F> {
             _ => panic!("Invalid width"),
         };
         let (low_val, high_val) = self.get_u32_values(value);
-        trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+        //trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
         trace[0].addr_changes = F::zero();
 
-        trace[0].same_value = F::zero();
-        trace[0].first_addr_access_is_read = F::zero();
+        //trace[0].same_value = F::zero();
+        //trace[0].first_addr_access_is_read = F::zero();
 
         // STEP2. Add all the memory operations to the buffer
         for (idx, mem_op) in mem_ops.iter().enumerate() {
             let i = idx + 1;
+            if mem_op.is_write {
+                panic! {"InputDataSM::prove_instance() Input data operation is write"};
+            }
             // TODO CHECK
             // trace[i].mem_segment = segment_id_field;
             // trace[i].mem_last_segment = is_last_segment_field;
@@ -193,7 +199,7 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
-            trace[i].wr = F::from_bool(mem_op.is_write);
+            //trace[i].wr = F::from_bool(mem_op.is_write);
 
             let value = match mem_op.width {
                 1 => mem_op.value as u8 as u64,
@@ -203,18 +209,18 @@ impl<F: PrimeField> MemSM<F> {
                 _ => panic!("Invalid width"),
             };
             let (low_val, high_val) = self.get_u32_values(value);
-            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+            //trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
             let addr_changes = trace[i - 1].addr != trace[i].addr;
             trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
 
             let same_value = trace[i - 1].value[0] == trace[i].value[0]
                 && trace[i - 1].value[1] == trace[i].value[1];
-            trace[i].same_value = if same_value { F::one() } else { F::zero() };
+            //trace[i].same_value = if same_value { F::one() } else { F::zero() };
 
             let first_addr_access_is_read = addr_changes && !mem_op.is_write;
-            trace[i].first_addr_access_is_read =
-                if first_addr_access_is_read { F::one() } else { F::zero() };
+            //trace[i].first_addr_access_is_read =
+            //    if first_addr_access_is_read { F::one() } else { F::zero() };
         }
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
@@ -234,19 +240,19 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].addr = addr;
             trace[i].step = step;
             trace[i].sel = F::zero();
-            trace[i].wr = F::zero();
+            //trace[i].wr = F::zero();
 
             trace[i].value = value;
 
             trace[i].addr_changes = F::zero();
-            trace[i].same_value = F::one();
-            trace[i].first_addr_access_is_read = F::zero();
+            //trace[i].same_value = F::one();
+            //trace[i].first_addr_access_is_read = F::zero();
         }
 
         let air_instance = AirInstance::new(
             self.wcm.get_sctx(),
-            MEM_AIRGROUP_ID,
-            MEM_AIR_IDS[0],
+            ZISK_AIRGROUP_ID,
+            INPUT_DATA_AIR_IDS[0],
             Some(segment_id),
             prover_buffer,
         );
@@ -261,52 +267,43 @@ impl<F: PrimeField> MemSM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for MemSM<F> {}
+impl<F: PrimeField> WitnessComponent<F> for InputDataSM<F> {}
+/*
+fn prove(operations: &[ZiskRequiredMemory]) {
+    // TODO: order operations
+    // Get a map of the operations and a list of keys (addresses)
+    let map: Map<u64, Vec<ZiskRequiredMemory>> = Map::new();
+    let keys: Vec<u64> = Vec::default();
+    for op in operations {
+        let entry = map.entry(op.address).or_default();
+        entry.push(op);
+        keys.push(op.address);
+    }
 
-#[cfg(test)]
-mod tests {
-    // use super::*;
-    // use p3_field::AbstractField;
-    // use p3_goldilocks::Goldilocks;
-    // use zisk_core::ZiskRequiredMemory;
+    // Sort the keys (addresses)
+    keys.sort();
 
-    // type GL = Goldilocks;
-
-    // #[test]
-    // fn test_calculate_witness_rows() {
-    //     let mem_ops = vec![
-    //         ZiskRequiredMemory::new(0, true, 0, 1, 0),
-    //         ZiskRequiredMemory::new(1, false, 1, 1, 0),
-    //         ZiskRequiredMemory::new(2, true, 2, 1, 0),
-    //         ZiskRequiredMemory::new(3, false, 3, 1, 0),
-    //         ZiskRequiredMemory::new(4, true, 4, 1, 0),
-    //         ZiskRequiredMemory::new(5, false, 5, 1, 0),
-    //         ZiskRequiredMemory::new(6, true, 6, 1, 0),
-    //         ZiskRequiredMemory::new(7, false, 7, 1, 0),
-    //         ZiskRequiredMemory::new(8, true, 8, 1, 0),
-    //         ZiskRequiredMemory::new(9, false, 9, 1, 0),
-    //     ];
-
-    //     let witness_rows = MemWitness::calculate_witness_rows::<GL>(mem_ops, 10, 0, true);
-
-    //     assert_eq!(witness_rows.len(), 10);
-
-    //     // Check the dummy row
-    //     assert_eq!(witness_rows[0].mem_segment, GL::from_canonical_u64(0));
-    //     assert_eq!(witness_rows[0].mem_last_segment, GL::from_bool(true));
-    //     assert_eq!(witness_rows[0].addr, GL::default());
-    //     assert_eq!(witness_rows[0].step, GL::default());
-    //     assert_eq!(witness_rows[0].sel, GL::default());
-    //     assert_eq!(witness_rows[0].wr, GL::default());
-    //     assert_eq!(witness_rows[0].value, [GL::default(), GL::default()]);
-    //     assert_eq!(witness_rows[0].addr_changes, GL::default());
-    //     assert_eq!(witness_rows[0].same_value, GL::default());
-    //     assert_eq!(witness_rows[0].first_addr_access_is_read, GL::default());
-
-    //     // Check the remaining rows
-    //     for i in 1..10 {
-    //         assert_eq!(witness_rows[i].mem_segment, GL::from_canonical_u64(0));
-    //         // ...
-    //     }
-    // }
+    // Fill the trace in order of address
+    for key in keys {
+        let ops = map.entry(key);
+        let first = true;
+        for op in ops {
+            if op.is_write {
+                panic! {"Input data operation is write"};
+            }
+            let mut row = InputData0Row::default();
+            row.addr = F::from_canonical_u64(op.address);
+            row.step = F::from_canonical_u64(op.step);
+            row.sel = F::one();
+            row.value[0] = F::from_canonical_u64(op.value & 0xffffffff);
+            row.value[1] = F::from_canonical_u64((op.value >> 32) & 0xffffffff);
+            if first {
+                row.addr_changes = F::one();
+                first = false;
+            } else {
+                row.addr_changes = F::zero();
+            }
+        }
+    }
 }
+*/

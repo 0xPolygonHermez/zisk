@@ -1,10 +1,9 @@
 require "std_permutation.pil"
 require "std_range_check.pil"
 
-const int MEMORY_ID = 10;
+//const int MEMORY_ID = 10;
 const int INPUT_DATA_CONT_ID = 1012;
-const int MEMORY_LOAD_OP = 1;
-const int MAX_MEM_STEP_OFFSET = 3;
+//const int MEMORY_LOAD_OP = 1;
 
 airtemplate InputData (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MEM_BYTES = 8 ) {
     col fixed SEGMENT_L1 = [1,0...];
@@ -36,5 +35,5 @@ airtemplate InputData (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MEM_BY
 
     //permutation_assumes(INPUT_DATA_CONT_ID, [addr], sel: SEGMENT_L1); // first row
 
-    //permutation_proves(MEMORY_ID, cols: [0, addr * MEM_BYTES, step, MEM_BYTES, value[0] + 2**16*value[1], value[2] + 2**16*value[3]], sel: sel); 
+    //permutation_proves(MEMORY_ID, cols: [MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, value[0] + 2**16*value[1], value[2] + 2**16*value[3]], sel: sel); 
 }

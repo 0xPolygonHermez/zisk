@@ -3,10 +3,6 @@
 use proofman_common as common;
 pub use proofman_macros::trace;
 
-trace!(InputData0Row, InputData0Trace<F> {
- addr: F, step: F, sel: F, value: [F; 2], addr_changes: F,
-});
-
 trace!(Main0Row, Main0Trace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 });
@@ -27,6 +23,10 @@ trace!(MemAlignRom0Row, MemAlignRom0Trace<F> {
  multiplicity: F,
 });
 
+trace!(InputData0Row, InputData0Trace<F> {
+ addr: F, step: F, sel: F, value: [F; 4], addr_changes: F,
+});
+
 trace!(Binary0Row, Binary0Trace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
@@ -44,9 +44,13 @@ trace!(BinaryExtensionTable0Row, BinaryExtensionTable0Trace<F> {
 });
 
 trace!(SpecifiedRanges0Row, SpecifiedRanges0Trace<F> {
- mul: [F; 2],
+ mul: [F; 4],
 });
 
 trace!(U8Air0Row, U8Air0Trace<F> {
+ mul: F,
+});
+
+trace!(U16Air0Row, U16Air0Trace<F> {
  mul: F,
 });
