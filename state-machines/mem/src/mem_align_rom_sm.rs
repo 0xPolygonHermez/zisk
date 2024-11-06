@@ -17,8 +17,7 @@ use zisk_pil::{MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::MemOp;
 
-const CHUNKS: usize = 8;
-const MEM_WIDTHS: [u64; 4] = [1, 2, 4, 8];
+const CHUNK_NUM: usize = 8;
 const OP_SIZES: [usize; 4] = [2, 3, 3, 5];
 
 pub struct MemAlignRomSM<F> {
@@ -77,7 +76,7 @@ impl<F: Field> MemAlignRomSM<F> {
         match opcode {
             MemOp::OneRead | MemOp::OneWrite => {
                 // Sanity check
-                assert!(offset + width <= CHUNKS);
+                assert!(offset + width <= CHUNK_NUM);
                 let possible_widths = match offset {
                     x if x <= 4 => vec![1, 2, 4],
                     x if x <= 6 => vec![1, 2],
@@ -88,7 +87,7 @@ impl<F: Field> MemAlignRomSM<F> {
             }
             MemOp::TwoReads | MemOp::TwoWrites => {
                 // Sanity check
-                assert!(offset + width > CHUNKS);
+                assert!(offset + width > CHUNK_NUM);
                 let possible_widths = match offset {
                     x if x == 0 => panic!("Invalid offset={}", offset),
                     x if x <= 4 => vec![8],
