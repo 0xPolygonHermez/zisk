@@ -5,7 +5,9 @@ use zisk_pil::*;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, WitnessPilout};
+use proofman_common::{
+    initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout,
+};
 
 use crate::ZiskExecutor;
 
@@ -105,9 +107,12 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
 pub extern "Rust" fn init_library(
     rom_path: Option<PathBuf>,
     public_inputs_path: Option<PathBuf>,
+    verbose_mode: VerboseMode,
 ) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
     let rom_path = rom_path.clone().ok_or("ROM path is required")?;
     let public_inputs = public_inputs_path.ok_or("Public inputs path is required")?;
+
+    initialize_logger(verbose_mode);
 
     let zisk_witness = ZiskWitness::new(rom_path, public_inputs)?;
     Ok(Box::new(zisk_witness))
