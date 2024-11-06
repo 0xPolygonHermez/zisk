@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, ProofCtx};
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use zisk_pil::{
-    Main0Row, Main0Trace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
+    MainRow, MainTrace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 use ziskemu::{Emu, EmuTrace, ZiskEmulator};
 
@@ -87,12 +87,12 @@ impl<F: PrimeField> MainSM<F> {
 
         // Set Row 0 of the current segment
         let row0 = if segment_id == 0 {
-            Main0Row::<F> {
+            MainRow::<F> {
                 pc: F::from_canonical_u64(ROM_ENTRY),
                 op: F::from_canonical_u8(ZiskOp::CopyB.code()),
                 a_src_imm: F::one(),
                 b_src_imm: F::one(),
-                ..Main0Row::default()
+                ..MainRow::default()
             }
         } else {
             let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
@@ -100,7 +100,7 @@ impl<F: PrimeField> MainSM<F> {
                 Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
             let row_previous = emu.step_slice_full_trace(emu_trace_previous);
 
-            Main0Row::<F> {
+            MainRow::<F> {
                 set_pc: row_previous.set_pc,
                 jmp_offset1: row_previous.jmp_offset1,
                 jmp_offset2: if row_previous.flag == F::one() {
@@ -120,21 +120,21 @@ impl<F: PrimeField> MainSM<F> {
                 pc: row_previous.pc,
                 a_src_imm: F::one(),
                 b_src_imm: F::one(),
-                ..Main0Row::default()
+                ..MainRow::default()
             }
         };
 
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
 
-        let rng = offset as usize..(offset as usize + Main0Row::<F>::ROW_SIZE);
+        let rng = offset as usize..(offset as usize + MainRow::<F>::ROW_SIZE);
         iectx.prover_buffer[rng].copy_from_slice(row0.as_slice());
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
         let total_rows = segment_trace.steps.len();
         const SLICE_ROWS: usize = 4096;
-        let mut partial_trace = Main0Trace::<F>::new(SLICE_ROWS);
+        let mut partial_trace = MainTrace::<F>::new(SLICE_ROWS);
 
-        let mut last_row = Main0Row::<F>::default();
+        let mut last_row = MainRow::<F>::default();
         for slice in (0..(air.num_rows())).step_by(SLICE_ROWS) {
             // process the steps of the chunk
             let slice_start = std::cmp::min(slice, total_rows);
@@ -158,7 +158,7 @@ impl<F: PrimeField> MainSM<F> {
 
             //copy the chunk to the prover buffer
             let partial_buffer = partial_trace.buffer.as_ref().unwrap();
-            let buffer_offset_slice = offset as usize + (slice + 1) * Main0Row::<F>::ROW_SIZE;
+            let buffer_offset_slice = offset as usize + (slice + 1) * MainRow::<F>::ROW_SIZE;
 
             let rng = buffer_offset_slice..buffer_offset_slice + partial_buffer.len();
             iectx.prover_buffer[rng].copy_from_slice(partial_buffer);

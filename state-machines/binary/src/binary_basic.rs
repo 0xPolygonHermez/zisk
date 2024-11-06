@@ -10,9 +10,9 @@ use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
-use zisk_pil::{Binary0Row, Binary0Trace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_pil::{BinaryRow, BinaryTrace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
@@ -144,9 +144,9 @@ impl<F: Field> BinaryBasicSM<F> {
     pub fn process_slice(
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
-    ) -> Binary0Row<F> {
+    ) -> BinaryRow<F> {
         // Create an empty trace
-        let mut row: Binary0Row<F> = Default::default();
+        let mut row: BinaryRow<F> = Default::default();
 
         // Execute the opcode
         let c: u64;
@@ -658,8 +658,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_start_trace!(BINARY_TRACE);
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_table =
-            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
+        let air_binary_table = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
 
         info!(
@@ -672,7 +671,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
         let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
         let mut trace_buffer =
-            Binary0Trace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
+            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
@@ -681,7 +680,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_TRACE);
 
         timer_start_trace!(BINARY_PADDING);
-        let padding_row = Binary0Row::<F> {
+        let padding_row = BinaryRow::<F> {
             m_op: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
             main_step: F::zero(), /* TODO: remove, since main_step is just for

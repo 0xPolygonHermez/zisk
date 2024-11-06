@@ -11,7 +11,7 @@ use rayon::prelude::*;
 
 use sm_common::{create_prover_buffer, MemOp};
 use zisk_core::ZiskRequiredMemory;
-use zisk_pil::{InputData0Row, InputData0Trace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{InputDataRow, InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct InputDataSM<F: PrimeField> {
     // Witness computation manager
@@ -146,7 +146,7 @@ impl<F: PrimeField> InputDataSM<F> {
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
         let mut trace =
-            InputData0Trace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
+            InputDataTrace::<F>::map_buffer(&mut prover_buffer, air.num_rows(), offset as usize)
                 .unwrap();
 
         let segment_id_field = F::from_canonical_u64(segment_id as u64);

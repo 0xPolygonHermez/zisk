@@ -10,7 +10,7 @@ use proofman_common::AirInstance;
 use rayon::prelude::*;
 use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8};
-use zisk_pil::{ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS};
+use zisk_pil::{BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]

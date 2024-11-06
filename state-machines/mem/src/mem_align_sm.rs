@@ -8,7 +8,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
-use zisk_pil::{MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS};
+use zisk_pil::{MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -29,7 +29,7 @@ impl MemAlignSM {
 
         wcm.register_component(
             mem_aligned_sm.clone(),
-            Some(MEM_AIRGROUP_ID),
+            Some(ZISK_AIRGROUP_ID),
             Some(MEM_ALIGN_AIR_IDS),
         );
 
