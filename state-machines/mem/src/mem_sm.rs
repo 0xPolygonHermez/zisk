@@ -117,7 +117,7 @@ impl<F: PrimeField> MemSM<F> {
 
         let max_rows_per_segment = air.num_rows() - 1;
 
-        assert!(mem_ops.len() > 0 && mem_ops.len() <= max_rows_per_segment);
+        assert!(!mem_ops.is_empty() && mem_ops.len() <= max_rows_per_segment);
 
         // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
         // segments In a Memory AIR instance, the first row is reserved as a dummy row.
@@ -194,8 +194,8 @@ impl<F: PrimeField> MemSM<F> {
             let addr_changes = trace[i - 1].addr != trace[i].addr;
             trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
 
-            let same_value = trace[i - 1].value[0] == trace[i].value[0] &&
-                trace[i - 1].value[1] == trace[i].value[1];
+            let same_value = trace[i - 1].value[0] == trace[i].value[0]
+                && trace[i - 1].value[1] == trace[i].value[1];
             trace[i].same_value = if same_value { F::one() } else { F::zero() };
 
             let first_addr_access_is_read = addr_changes && !mem_op.is_write;

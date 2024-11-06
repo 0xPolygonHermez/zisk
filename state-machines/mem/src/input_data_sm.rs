@@ -123,7 +123,7 @@ impl<F: PrimeField> InputDataSM<F> {
 
         let max_rows_per_segment = air.num_rows() - 1;
 
-        assert!(mem_ops.len() > 0 && mem_ops.len() <= max_rows_per_segment);
+        assert!(!mem_ops.is_empty() && mem_ops.len() <= max_rows_per_segment);
 
         // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
         // segments In a Memory AIR instance, the first row is reserved as a dummy row.

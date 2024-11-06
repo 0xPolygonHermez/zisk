@@ -79,7 +79,7 @@ impl<F: PrimeField> MemProxy<F> {
             let mem_ops = Self::get_mem_ops(unaligned_access);
 
             // Step 2.1 Find the possible aligned memory access
-            let aligned_accesses = self.get_aligned_accesses(&unaligned_access, mem_ops, &aligned);
+            let aligned_accesses = self.get_aligned_accesses(unaligned_access, mem_ops, &aligned);
 
             // Step 2.2 Align memory access using mem_align state machine
             // self.mem_aligned_sm.align_mem_accesses(potential_aligned_mem, mem, &mut new_aligned);
@@ -148,7 +148,7 @@ impl<F: PrimeField> MemProxy<F> {
                     value: 0,
                 });
 
-                Self::write_value(&unaligned_access, &mut last_write_addr);
+                Self::write_value(unaligned_access, &mut last_write_addr);
                 vec![last_write_addr]
             }
             MemOps::TwoReads => {
@@ -199,7 +199,7 @@ impl<F: PrimeField> MemProxy<F> {
                     value: 1,
                 });
 
-                Self::write_values(&unaligned_access, &mut last_write_addr, &mut last_write_addr_p);
+                Self::write_values(unaligned_access, &mut last_write_addr, &mut last_write_addr_p);
                 vec![last_write_addr, last_write_addr_p]
             }
         }
