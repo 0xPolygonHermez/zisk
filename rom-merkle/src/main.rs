@@ -85,7 +85,7 @@ fn main() {
         Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
     let global_info = GlobalInfo::new(global_info_path);
     let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
-    
+
     if let Err(e) =
         RomSM::<Goldilocks>::compute_trace(rom_path.to_path_buf(), buffer_allocator, &sctx)
     {
