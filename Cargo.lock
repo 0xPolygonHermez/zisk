@@ -1474,7 +1474,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "log",
  "num-bigint",
@@ -1492,7 +1492,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "bytes",
  "log",
@@ -1612,7 +1612,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "colored",
  "env_logger",
@@ -1633,7 +1633,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "env_logger",
  "log",
@@ -1651,7 +1651,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -1661,7 +1661,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1671,7 +1671,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "log",
 ]
@@ -1679,7 +1679,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "colored",
  "sysinfo 0.31.4",
@@ -2313,7 +2313,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "log",
  "p3-field",
@@ -2643,7 +2643,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.7#dcecb348b3953d6f28ba4cc644b5b966335dd81e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.8#37f1f6d41d4c91c2eb20b872f2f7c5795752920d"
 dependencies = [
  "proofman-starks-lib-c",
 ]
