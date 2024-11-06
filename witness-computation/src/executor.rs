@@ -51,7 +51,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let std = Std::new(wcm.clone());
 
         let rom_sm = RomSM::new(wcm.clone());
-        let mem_proxy = MemProxy::new(wcm.clone());
+        let mem_proxy = MemProxy::new(wcm.clone(), std.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
         let arith_sm = ArithSM::new(wcm.clone());
 
