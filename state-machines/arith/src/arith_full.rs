@@ -166,6 +166,7 @@ impl<F: Field> ArithFullSM<F> {
                         aop.d[2] + (aop.d[3] << 16)
                     },
             );
+            println!("ARITH {:?}", t);
 
             traces[i] = t;
         }
