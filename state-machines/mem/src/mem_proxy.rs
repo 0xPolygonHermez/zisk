@@ -6,7 +6,7 @@ use std::sync::{
 use crate::{MemAlignSM, MemSM};
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{ZiskRequiredMemory, RAM_ADDR, SYS_ADDR};
+use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
 
 use proofman::{WitnessComponent, WitnessManager};
 
@@ -61,28 +61,11 @@ impl<F: PrimeField> MemProxy<F> {
 
     pub fn prove(
         &self,
-        mut operations: &mut [Vec<ZiskRequiredMemory>; 2],
+        operations: &mut [Vec<ZiskRequiredMemory>; 2],
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut aligned = std::mem::take(&mut operations[0]);
         let unaligned = std::mem::take(&mut operations[1]);
         let mut new_aligned = Vec::new();
-
-        //trace[63927]: MemRow { addr: 2685533720, step: 5145, sel: 1, wr: 0, value: [2685534552, 0], addr_changes: 0, same_value: 0, first_addr_access_is_read: 0 }
-        println!("-----------------");
-        println!("-- Aligned inputs:");
-        for i in 0..aligned.len() {
-            if aligned[i].address == 2685534096 {
-                println!("aligned[{}]: {:?} value: {:x}", i, aligned[i], aligned[i].value);
-            }
-        }
-        println!("-- Unaligned inputs:");
-        for i in 0..unaligned.len() {
-            if unaligned[i].address >= (2685534096 - 8) && unaligned[i].address <= (2685534096 + 8)
-            {
-                println!("unaligned[{}]: {:?} value: {:x}", i, unaligned[i], unaligned[i].value);
-            }
-        }
-        println!("-----------------");
 
         // Step 1. Sort the aligned memory accesses
         timer_start_debug!(MEM_SORT);
@@ -105,19 +88,7 @@ impl<F: PrimeField> MemProxy<F> {
             // Step 2.2 Align memory access using mem_align state machine
             // self.mem_align_sm.prove(&aligned_accesses, unaligned_access);
 
-            for access in new_aligned.iter() {
-                if access.step == 4682 {
-                    println!("new_aligned: {:?}", access);
-                }
-            }
-
             // Step 2.3 Store the new aligned memory access(es)
-            if unaligned_access.step == 5145 {
-                println!("*** mem_ops: {:?}", mem_ops);
-                println!("*** unaligned_access: {:?}", unaligned_access);
-                println!("*** aligned_accesses: {:?}", aligned_accesses);
-            }
-
             new_aligned.extend(aligned_accesses);
             new_aligned.sort_by_key(|mem| mem.address);
         });
@@ -135,17 +106,7 @@ impl<F: PrimeField> MemProxy<F> {
             idx += 1;
         }
 
-        println!("Aligned len(): {:?}", aligned.len());
-
         let (_input_aligned, aligned) = aligned.split_at_mut(idx);
-
-        // Filter where address = 2684391184
-        println!("");
-        for i in 0..aligned.len() {
-            if aligned[i].address == 2685534096 {
-                println!("OJO!!!! mem: {:?}", aligned[i]);
-            }
-        }
 
         // Step 4. Prove the aligned memory accesses using mem state machine
         self.mem_sm.prove(aligned);
@@ -382,14 +343,13 @@ impl<F: PrimeField> MemProxy<F> {
         let right_bits = (unaligned.width - bytes_to_write) * 8;
 
         // Left write
-        let left_value = unaligned.value >> right_bits;
+        let left_value = unaligned.value << right_bits;
         let left_memory =
             ZiskRequiredMemory { width: bytes_to_write, value: left_value, ..*unaligned };
         Self::write_value(&left_memory, aligned);
 
         // Right write
-        let mask = (1u64 << right_bits) - 1;
-        let right_value = unaligned.value & mask;
+        let right_value = unaligned.value >> (bytes_to_write * 8);
 
         let right_memory = ZiskRequiredMemory {
             address: 0,

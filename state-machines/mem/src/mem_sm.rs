@@ -6,7 +6,6 @@ use std::sync::{
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
