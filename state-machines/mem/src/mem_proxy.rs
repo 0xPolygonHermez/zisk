@@ -89,6 +89,7 @@ impl<F: PrimeField> MemProxy<F> {
             // self.mem_align_sm.prove(&aligned_accesses, unaligned_access);
 
             // Step 2.3 Store the new aligned memory access(es)
+            // FIXME: This must be changed because is not performant
             new_aligned.extend(aligned_accesses);
             new_aligned.sort_by_key(|mem| mem.address);
         });
