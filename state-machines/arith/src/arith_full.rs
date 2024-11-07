@@ -87,7 +87,7 @@ impl<F: Field> ArithFullSM<F> {
             ArithTrace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
 
         let mut aop = ArithOperation::new();
-        for (i, input) in input.iter().enumerate() {
+        for (irow, input) in input.iter().enumerate() {
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {
@@ -133,6 +133,8 @@ impl<F: Field> ArithFullSM<F> {
             t.sext = F::from_bool(aop.sext);
             t.multiplicity = F::one();
             t.debug_main_step = F::from_canonical_u64(input.step);
+            t.range_ab = F::from_canonical_u8(aop.range_ab);
+            t.range_cd = F::from_canonical_u8(aop.range_cd);
 
             table_inputs.add_use(aop.op, aop.na, aop.nb, aop.np, aop.nr, aop.sext);
 
@@ -168,7 +170,7 @@ impl<F: Field> ArithFullSM<F> {
             );
             println!("ARITH {:?}", t);
 
-            traces[i] = t;
+            traces[irow] = t;
         }
         timer_stop_and_log_trace!(ARITH_TRACE);
 
@@ -185,7 +187,10 @@ impl<F: Field> ArithFullSM<F> {
             for i in padding_offset..num_rows {
                 traces[i] = t;
             }
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 16, 0, 0);
+            range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
+            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
+            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 17, 0);
+            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 9, 0);
             range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
             table_inputs.multi_add_use(
                 padding_rows,

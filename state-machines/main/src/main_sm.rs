@@ -151,9 +151,6 @@ impl<F: PrimeField> MainSM<F> {
                 segment_trace.steps[slice_start..slice_end].iter().enumerate()
             {
                 partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
-                if segment_id == 0 {
-                    println!("MAIN {} {:?}", i, partial_trace[i]);
-                }
             }
             // if there are steps in the chunk update last row
             if slice_end - slice_start > 0 {

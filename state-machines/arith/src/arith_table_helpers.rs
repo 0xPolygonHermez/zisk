@@ -1,7 +1,6 @@
 const ROWS: usize = 95;
 const FIRST_OP: u8 = 0xb0;
 
-use log::info;
 pub struct ArithTableHelpers;
 
 impl ArithTableHelpers {
@@ -67,10 +66,6 @@ impl ArithTableInputs {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
         assert!(row < ROWS);
         self.multiplicity[row] += 1;
-        info!(
-            "[ArithTableInputs]· add_use(op:{}, na:{}, nb:{}, np:{}, nr:{}, sext:{} row:{} multiplicity:{}",
-            op, na, nb, np, nr, sext, row, self.multiplicity[row]
-        );
     }
     #[allow(clippy::too_many_arguments)]
     pub fn multi_add_use(
