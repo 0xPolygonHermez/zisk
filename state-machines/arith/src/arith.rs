@@ -1,6 +1,6 @@
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+    Arc,
 };
 
 use p3_field::Field;
@@ -14,9 +14,6 @@ use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 pub struct ArithSM<F> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     arith_full_sm: Arc<ArithFullSM<F>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
@@ -37,8 +34,6 @@ impl<F: Field> ArithSM<F> {
         );
         let arith_sm = Self {
             registered_predecessors: AtomicU32::new(0),
-            // threads_controller: Arc::new(ThreadController::new()),
-            inputs: Mutex::new(Vec::new()),
             arith_full_sm,
             arith_table_sm,
             arith_range_table_sm,
