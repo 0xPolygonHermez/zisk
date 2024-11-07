@@ -192,7 +192,7 @@ HintFieldInfo printByName(SetupCtx& setupCtx, StepsParams& params, string name, 
                 hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
                 hintFieldInfo.fieldType = HintFieldType::Column;
                 hintFieldInfo.offset = 1;
-                getPolynomial(setupCtx, params.pols, hintFieldInfo.values, false, i, false);
+                getPolynomial(setupCtx, params.pConstPolsAddress, hintFieldInfo.values, false, i, false);
             }
             return hintFieldInfo;
         } 
@@ -341,7 +341,7 @@ HintFieldValues getHintField(
                 cout << "]";
             }
             cout << endl;
-            getPolynomial(setupCtx, params.pols, hintFieldInfo.values, false, hintFieldVal.id, false);
+            getPolynomial(setupCtx, params.pConstPolsAddress, hintFieldInfo.values, false, hintFieldVal.id, false);
             if(hintOptions.inverse) {
                 zklog.error("Inverse not supported still for polynomials");
                 exitProcess();
