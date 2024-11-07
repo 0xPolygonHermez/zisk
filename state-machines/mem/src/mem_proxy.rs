@@ -6,7 +6,7 @@ use std::sync::{
 use crate::{InputDataSM, MemAlignSM, MemSM};
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{ZiskRequiredMemory, RAM_ADDR, SYS_ADDR};
+use zisk_core::{ZiskRequiredMemory, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, SYS_ADDR};
 
 use proofman::{WitnessComponent, WitnessManager};
 
@@ -96,17 +96,35 @@ impl<F: PrimeField> MemProxy<F> {
         aligned.sort_by_key(|mem| mem.address);
         timer_stop_and_log_debug!(MEM_SORT_2);
 
-        let mut idx = 0;
-        while aligned[idx].address < RAM_ADDR && idx < aligned.len() {
-            idx += 1;
+        let mut input_first_index = 0;
+        let mut input_first_index_found = false;
+        while input_first_index < aligned.len() {
+            if (aligned[input_first_index].address >= INPUT_ADDR) {
+                if aligned[input_first_index].address < (INPUT_ADDR + MAX_INPUT_SIZE) {
+                    input_first_index_found = true;
+                }
+                break;
+            }
+            input_first_index += 1;
         }
-        let (input_aligned, aligned) = aligned.split_at_mut(idx);
+        let mut input_last_index = input_first_index;
+        let mut input_aligned: Vec<ZiskRequiredMemory> = Vec::new();
+        if input_first_index_found {
+            while input_last_index < aligned.len() {
+                if aligned[input_last_index].address >= (INPUT_ADDR + MAX_INPUT_SIZE) {
+                    break;
+                }
+                input_last_index += 1;
+            }
+            input_aligned = (&aligned[input_first_index..input_last_index]).to_vec();
+            aligned.drain(input_first_index..input_last_index);
+        }
 
         // Step 4. Prove the aligned memory accesses using mem state machine
-        self.mem_sm.prove(aligned);
+        self.mem_sm.prove(&mut aligned);
 
         // Step 5. Prove the input data accesses using input data state machine
-        self.input_data_sm.prove(input_aligned);
+        self.input_data_sm.prove(&mut input_aligned);
 
         Ok(())
     }

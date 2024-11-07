@@ -9,7 +9,7 @@ use proofman_common::AirInstance;
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
-use zisk_core::ZiskRequiredMemory;
+use zisk_core::{ZiskRequiredMemory, INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct InputDataSM<F: PrimeField> {
@@ -181,8 +181,15 @@ impl<F: PrimeField> InputDataSM<F> {
         // STEP2. Add all the memory operations to the buffer
         for (idx, mem_op) in mem_ops.iter().enumerate() {
             let i = idx + 1;
+
             if mem_op.is_write {
                 panic! {"InputDataSM::prove_instance() Input data operation is write"};
+            }
+            if mem_op.address < INPUT_ADDR {
+                panic! {"InputDataSM::prove_instance() Input data address bellow range address={:x}", mem_op.address};
+            }
+            if mem_op.address >= (INPUT_ADDR + MAX_INPUT_SIZE) {
+                panic! {"InputDataSM::prove_instance() Input data address bellow range address={:x}", mem_op.address};
             }
 
             trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES

@@ -25,7 +25,8 @@ airtemplate InputData (int N = 2**21, int RC = 2, int id = MEMORY_ID, int MEM_BY
     // if addr_changes == 0 means that addr and previous address are the same
     (1 - addr_changes) * ('addr - addr) === 0;
     // addresses are incremental
-    addr_changes * ('addr - addr + 8) === 0;
+    const expr addr_changes_check = addr_changes * (1 - 'SEGMENT_L1);
+    addr_changes_check * ('addr - addr + 8) === 0;
 
     // if addr does not change, read value is the same
     for (int index = 0; index < length(value); index = index + 1) {
