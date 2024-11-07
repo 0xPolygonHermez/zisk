@@ -61,23 +61,6 @@ impl<F: PrimeField> MemProxy<F> {
         let unaligned = std::mem::take(&mut operations[1]);
         let mut new_aligned = Vec::new();
 
-        //trace[63927]: MemRow { addr: 2685533720, step: 5145, sel: 1, wr: 0, value: [2685534552, 0], addr_changes: 0, same_value: 0, first_addr_access_is_read: 0 }
-        // println!("-----------------");
-        // println!("-- Aligned inputs:");
-        // for i in 0..aligned.len() {
-        //     if aligned[i].address == 2685534096 {
-        //         println!("aligned[{}]: {:?} value: {:x}", i, aligned[i], aligned[i].value);
-        //     }
-        // }
-        // println!("-- Unaligned inputs:");
-        // for i in 0..unaligned.len() {
-        //     if unaligned[i].address >= (2685534096 - 8) && unaligned[i].address <= (2685534096 + 8)
-        //     {
-        //         println!("unaligned[{}]: {:?} value: {:x}", i, unaligned[i], unaligned[i].value);
-        //     }
-        // }
-        // println!("-----------------");
-
         // Step 1. Sort the aligned memory accesses
         timer_start_debug!(MEM_SORT);
         aligned.sort_by_key(|mem| mem.address);
@@ -100,19 +83,7 @@ impl<F: PrimeField> MemProxy<F> {
             // Step 2.3 Carried with the aligned memory accesses, prove the non-aligned ones
             self.mem_align_sm.prove(unaligned_access, &aligned_accesses);
 
-            for access in new_aligned.iter() {
-                if access.step == 4682 {
-                    println!("new_aligned: {:?}", access);
-                }
-            }
-
             // Step 2.4 Store the new aligned memory access(es)
-            if unaligned_access.step == 5145 {
-                println!("*** mem_op: {:?}", mem_op);
-                println!("*** unaligned_access: {:?}", unaligned_access);
-                println!("*** aligned_accesses: {:?}", aligned_accesses);
-            }
-
             new_aligned.extend(aligned_accesses);
             new_aligned.sort_by_key(|mem| mem.address);
         });
@@ -130,17 +101,7 @@ impl<F: PrimeField> MemProxy<F> {
             idx += 1;
         }
 
-        println!("Aligned len(): {:?}", aligned.len());
-
         let (_input_aligned, aligned) = aligned.split_at_mut(idx);
-
-        // Filter where address = 2684391184
-        println!("");
-        for i in 0..aligned.len() {
-            if aligned[i].address == 2685534096 {
-                println!("OJO!!!! mem: {:?}", aligned[i]);
-            }
-        }
 
         // Step 4. Prove the aligned memory accesses using mem state machine
         self.mem_sm.prove(aligned);
@@ -358,13 +319,13 @@ impl<F: PrimeField> MemProxy<F> {
 
     #[inline(always)]
     fn write_value(unaligned: &ZiskRequiredMemory, aligned: &mut ZiskRequiredMemory) {
-        let offset = 8 - (unaligned.address & 7);
+        let offset = unaligned.address & 7;
         let width_in_bits = unaligned.width * 8;
 
-        let mask = !(((1u64 << width_in_bits) - 1) << ((offset - unaligned.width) * 8));
+        let mask = !(((1u64 << width_in_bits) - 1) << (offset * 8));
 
-        aligned.value =
-            (aligned.value & mask) | (unaligned.value << ((offset - unaligned.width) * 8));
+        aligned.value = (aligned.value & mask)
+            | ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
     }
 
     #[inline(always)]
@@ -378,14 +339,13 @@ impl<F: PrimeField> MemProxy<F> {
         let right_bits = (unaligned.width - bytes_to_write) * 8;
 
         // Left write
-        let left_value = unaligned.value >> right_bits;
+        let left_value = unaligned.value << right_bits;
         let left_memory =
             ZiskRequiredMemory { width: bytes_to_write, value: left_value, ..*unaligned };
         Self::write_value(&left_memory, aligned);
 
         // Right write
-        let mask = (1u64 << right_bits) - 1;
-        let right_value = unaligned.value & mask;
+        let right_value = unaligned.value >> (bytes_to_write * 8);
 
         let right_memory = ZiskRequiredMemory {
             address: 0,

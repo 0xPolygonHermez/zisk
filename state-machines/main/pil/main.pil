@@ -112,8 +112,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     col witness jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
     col witness m32;
 
-    const expr addr_step = STEP * 3;
-
     const expr sel_mem_b;
 
     sel_mem_b = b_src_mem + b_src_ind;
@@ -136,13 +134,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // Mem.load
     mem_load(sel: a_src_mem,
-             step: addr_step,
+             step: STEP,
              addr: addr0,
              value: a);
 
     // Mem.load
     mem_load(sel: sel_mem_b,
-             step: addr_step + 1,
+             step: STEP,
+             step_offset: 1,
              bytes: ind_width,
              addr: addr1,
              value: b);
@@ -154,7 +153,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // Mem.store
     mem_store(sel: store_mem + store_ind,
-              step: addr_step + 2,
+              step: STEP,
+              step_offset: 2,
               bytes: ind_width,
               addr: addr2,
               value: store_value);
