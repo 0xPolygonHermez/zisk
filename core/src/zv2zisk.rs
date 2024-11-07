@@ -1435,15 +1435,15 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
             end
     */
 
-    // :0014 -> copyb: reg1 = c = b = mem(OUTPUT_ADDR,4), a=0
+    // :0014 -> copyb: reg1 = c = b = 64, a=0
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", OUTPUT_ADDR, false);
-    zib.src_b("ind", 0, false);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 64, false);
     zib.ind_width(4);
     zib.op("copyb").unwrap();
     zib.store("reg", 1, false, false);
     zib.j(0, 4);
-    zib.verbose("Set reg1 to output data length read at OUTPUT_ADDR");
+    zib.verbose("Set reg1 to output data length = 64");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
