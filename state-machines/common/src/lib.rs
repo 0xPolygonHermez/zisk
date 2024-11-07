@@ -13,8 +13,8 @@ pub use temp::*;
 pub use worker::*;
 
 pub fn create_prover_buffer<F>(
-    ectx: &ExecutionCtx,
-    sctx: &SetupCtx,
+    ectx: &ExecutionCtx<F>,
+    sctx: &SetupCtx<F>,
     airgroup_id: usize,
     air_id: usize,
 ) -> (Vec<F>, u64) {
