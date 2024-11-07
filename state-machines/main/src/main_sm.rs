@@ -1,5 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_mem::MemProxy;
 
 use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -26,6 +27,9 @@ pub struct MainSM<F: PrimeField> {
     /// Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
+    /// Memory state machine
+    mem_proxy_sm: Arc<MemProxy<F>>,
+
     /// Arithmetic state machine
     arith_sm: Arc<ArithSM>,
 
@@ -49,14 +53,16 @@ impl<F: PrimeField> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
+        mem_proxy_sm: Arc<MemProxy<F>>,
         arith_sm: Arc<ArithSM>,
         binary_sm: Arc<BinarySM<F>>,
     ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm });
+        let main_sm = Arc::new(Self { wcm: wcm.clone(), mem_proxy_sm, arith_sm, binary_sm });
 
         wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
+        main_sm.mem_proxy_sm.register_predecessor();
         main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 

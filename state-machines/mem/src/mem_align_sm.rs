@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::HashMap,
     sync::{
@@ -19,8 +20,6 @@ use zisk_pil::{MemAlignRow, MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{MemAlignRomSM, MemOp};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
-
 const CHUNK_NUM: usize = 8;
 const CHUNK_NUM_U64: u64 = CHUNK_NUM as u64;
 const CHUNK_BITS: usize = 8;
@@ -37,7 +36,6 @@ pub struct MemAlignSM<F: PrimeField> {
 
     // Inputs
     inputs: Mutex<Vec<(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)>>,
-    input_len: Mutex<usize>,
 
     // Secondary State machines
     mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
@@ -56,7 +54,6 @@ impl<F: PrimeField> MemAlignSM<F> {
             std: std.clone(),
             registered_predecessors: AtomicU32::new(0),
             inputs: Mutex::new(Vec::new()),
-            input_len: Mutex::new(0),
             mem_align_rom_sm,
         };
         let mem_align_sm = Arc::new(mem_align_sm);
@@ -81,7 +78,7 @@ impl<F: PrimeField> MemAlignSM<F> {
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             // TODO: Fix this...
-            self.prove_internal(&[], 0);
+            self.prove_internal(&[]);
 
             self.mem_align_rom_sm.unregister_predecessor();
             self.std.unregister_predecessor(self.wcm.get_pctx(), None);
@@ -108,20 +105,18 @@ impl<F: PrimeField> MemAlignSM<F> {
         unaligned_access: &ZiskRequiredMemory,
         aligned_accesses: &[ZiskRequiredMemory],
     ) {
-        if let (Ok(mut inputs), Ok(mut input_len)) = (self.inputs.lock(), self.input_len.lock()) {
+        if let Ok(mut inputs) = self.inputs.lock() {
             inputs.push((unaligned_access.clone(), aligned_accesses.to_vec()));
-            *input_len += 1 + aligned_accesses.len();
 
             let pctx = self.wcm.get_pctx();
             let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
 
-            while *input_len >= air_mem_align.num_rows() {
-                let num_drained = std::cmp::min(air_mem_align.num_rows(), *input_len);
+            // TODO: Fix this, I am assuming the wc
+            while inputs.len() * 5 >= air_mem_align.num_rows() {
+                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
                 let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-                let drained_len = num_drained;
-                *input_len -= num_drained;
 
-                self.prove_internal(&drained_inputs, drained_len);
+                self.prove_internal(&drained_inputs);
             }
         }
     }
@@ -129,7 +124,6 @@ impl<F: PrimeField> MemAlignSM<F> {
     fn prove_internal(
         &self,
         inputs: &[(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)],
-        input_len: usize,
     ) {
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
         let wcm = self.wcm.clone();
@@ -148,7 +142,6 @@ impl<F: PrimeField> MemAlignSM<F> {
             &mem_align_rom_sm,
             &std,
             inputs,
-            input_len,
             &mut prover_buffer,
             offset,
         );
@@ -163,10 +156,11 @@ impl<F: PrimeField> MemAlignSM<F> {
         mem_align_rom_sm: &MemAlignRomSM<F>,
         std: &Std<F>,
         inputs: &[(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)],
-        input_len: usize,
         prover_buffer: &mut [F],
         offset: u64,
     ) {
+        let input_len = inputs.len();
+
         let pctx = wcm.get_pctx();
 
         let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
@@ -191,7 +185,7 @@ impl<F: PrimeField> MemAlignSM<F> {
         // Process the inputs while saving the values to be range checked
         let mut rows_processed = 0;
         for (unaligned_input, aligned_inputs) in inputs.iter() {
-            let rows = Self::process_slice(
+            let rows = Self::process_input(
                 unaligned_input,
                 aligned_inputs,
                 mem_align_rom_sm,
@@ -201,6 +195,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 trace_buffer[rows_processed + j] = row;
             }
             rows_processed += rows.len();
+            println!("rows_processed: {}", rows_processed);
         }
 
         // Pad the remaining rows with trivailly satisfying rows
@@ -233,7 +228,7 @@ impl<F: PrimeField> MemAlignSM<F> {
     }
 
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_input(
         unaligned_input: &ZiskRequiredMemory,
         aligned_inputs: &[ZiskRequiredMemory],
         mem_align_rom_sm: &MemAlignRomSM<F>,
@@ -481,6 +476,11 @@ impl<F: PrimeField> MemAlignSM<F> {
             MemOp::TwoWrites => {
                 // RWVWR
                 // Sanity check
+                if aligned_inputs.len() != 4 {
+                    println!("opcode: {:?}", op);
+                    println!("aligned_inputs: {:?}", aligned_inputs);
+                    println!("unaligned_input: {:?}", unaligned_input);
+                }
                 assert!(aligned_inputs.len() == 4);
 
                 // Get the aligned address
@@ -488,6 +488,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let addr_second_read_write = aligned_inputs[2].address; // addr / CHUNK_NUM + CHUNK_NUM;
 
                 // Get the aligned values
+                // TODO: I do not need to establish an order, I can use the field is_write!!!
                 let value_first_read = aligned_inputs[0].value.to_be_bytes();
                 let value_first_write = aligned_inputs[1].value.to_be_bytes();
                 let value_second_read = aligned_inputs[2].value.to_be_bytes();

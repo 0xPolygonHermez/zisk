@@ -35,7 +35,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub rom_sm: Arc<RomSM<F>>,
 
     /// Memory State Machine
-    pub mem_proxy: Arc<MemProxy<F>>,
+    pub mem_proxy_sm: Arc<MemProxy<F>>,
 
     /// Binary State Machine
     pub binary_sm: Arc<BinarySM<F>>,
@@ -51,7 +51,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let std = Std::new(wcm.clone());
 
         let rom_sm = RomSM::new(wcm.clone());
-        let mem_proxy = MemProxy::new(wcm.clone(), std.clone());
+        let mem_proxy_sm = MemProxy::new(wcm.clone(), std.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
         let arith_sm = ArithSM::new(wcm.clone());
 
@@ -83,9 +83,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main_sm = MainSM::new(wcm.clone(), arith_sm.clone(), binary_sm.clone());
+        let main_sm = MainSM::new(wcm.clone(), mem_proxy_sm.clone(), arith_sm.clone(), binary_sm.clone());
 
-        Self { zisk_rom, main_sm, rom_sm, mem_proxy, binary_sm, arith_sm }
+        Self { zisk_rom, main_sm, rom_sm, mem_proxy_sm, binary_sm, arith_sm }
     }
 
     /// Executes the MainSM state machine and processes the inputs in batches when the maximum
@@ -187,7 +187,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // STEP 2. Wait until all inputs are generated
         // ==============================================
         // Join all the threads to synchronize the execution
-        let mem_required = mem_thread.join().expect("Error during Memory witness computation");
+        let mut mem_required = mem_thread.join().expect("Error during Memory witness computation");
         let rom_required = rom_thread.join().expect("Error during ROM witness computation");
 
         // STEP 3. Generate AIRs and Prove
@@ -196,8 +196,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // Memory State Machine
         // ----------------------------------------------
         let mem_thread = thread::spawn({
-            let mem_proxy = self.mem_proxy.clone();
-            move || mem_proxy.prove(mem_required).expect("Error during Memory witness computation")
+            let mem_proxy_sm = self.mem_proxy_sm.clone();
+            move || mem_proxy_sm.prove(&mut mem_required).expect("Error during Memory witness computation")
         });
 
         // ROM State Machine
@@ -286,7 +286,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             let _ = thread.join().expect("Error during ROM witness computation");
         }
 
-        self.mem_proxy.unregister_predecessor();
+        self.mem_proxy_sm.unregister_predecessor();
         self.binary_sm.unregister_predecessor();
         // self.arith_sm.register_predecessor(scope);
     }
