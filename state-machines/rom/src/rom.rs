@@ -141,8 +141,8 @@ impl<F: Field> RomSM<F> {
 
     pub fn compute_trace_root(
         rom_path: PathBuf,
-        buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        sctx: &SetupCtx<F>,
+        _buffer_allocator: Arc<dyn BufferAllocator<F>>,
+        _sctx: &SetupCtx<F>,
     ) -> Result<Vec<F>, Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
@@ -159,9 +159,9 @@ impl<F: Field> RomSM<F> {
             //return Err(ZiskEmulatorErr::Unknown(zisk_rom.err().unwrap().to_string()));
             panic!("RomSM::prover() failed converting elf to rom");
         }
-        let rom = rom_result.unwrap();
+        let _rom = rom_result.unwrap();
 
-        let empty_pc_histogram = ZiskPcHistogram::default();
+        let _empty_pc_histogram = ZiskPcHistogram::default();
 
         Ok(Vec::new())
     }
