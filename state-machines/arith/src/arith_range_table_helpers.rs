@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::ops::Add;
 
 const ROWS: usize = 1 << 22;
-// const ROWS: usize = 100;
 const FULL: u8 = 0x00;
 const POS: u8 = 0x01;
 const NEG: u8 = 0x02;
@@ -180,12 +178,10 @@ impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
             {
                 self.iter_row += 1;
             }
-            if self.iter_row < ROWS as u32 {
+            let row = self.iter_row as usize;
+            if row < ROWS {
                 self.iter_row += 1;
-                return Some((
-                    (self.iter_row - 1) as usize,
-                    self.inputs.multiplicity[self.iter_row as usize] as u64,
-                ));
+                return Some((row, self.inputs.multiplicity[row] as u64));
             }
             self.iter_hash = true;
             self.iter_row = 0;

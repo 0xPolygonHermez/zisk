@@ -1,6 +1,6 @@
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+    Arc,
 };
 
 use crate::{
@@ -10,24 +10,11 @@ use crate::{
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use sm_common::i64_to_u64_field;
+use zisk_core::ZiskRequiredOperation;
 use zisk_pil::*;
 
-fn i64_to_u64_field(value: i64) -> u64 {
-    const PRIME_MINUS_ONE: u64 = 0xFFFF_FFFF_0000_0000;
-    if value >= 0 {
-        value as u64
-    } else {
-        PRIME_MINUS_ONE - (0xFFFF_FFFF_FFFF_FFFF - value as u64)
-    }
-}
-
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
-const PRIME: u64 = 0xFFFF_FFFF_0000_0001;
 pub struct ArithFullSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
@@ -35,7 +22,6 @@ pub struct ArithFullSM<F> {
     registered_predecessors: AtomicU32,
 
     // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
 }
@@ -52,7 +38,6 @@ impl<F: Field> ArithFullSM<F> {
         let arith_full_sm = Self {
             wcm: wcm.clone(),
             registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
             arith_table_sm,
             arith_range_table_sm,
         };
@@ -219,18 +204,7 @@ impl<F: Field> ArithFullSM<F> {
         timer_start_trace!(ARITH_RANGE_TABLE);
         self.arith_range_table_sm.process_slice(range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
-        // self.arith_table_sm.update(table_inputs);
-        // self.arith_range_table_sm.update(range_table_inputs);
-
-        // std::thread::spawn(move || {
-        //     drop(table_inputs);
-        //     drop(range_table_inputs);
-        // });
     }
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for ArithFullSM<F> {}
-
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithFullSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {}
-}

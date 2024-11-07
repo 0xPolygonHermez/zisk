@@ -1,6 +1,5 @@
 use crate::{arith_constants::*, arith_range_table_helpers::*};
 use std::fmt;
-use zisk_core::zisk_ops::*;
 
 pub struct ArithOperation {
     pub op: u8,

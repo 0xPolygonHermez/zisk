@@ -5,15 +5,10 @@ use std::sync::{
 
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
-use rayon::Scope;
-use sm_common::{OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::{arith_full, ArithFullSM, ArithRangeTableSM, ArithTableSM};
-
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
+use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 #[allow(dead_code)]
 pub struct ArithSM<F> {
@@ -76,22 +71,3 @@ impl<F: Field> ArithSM<F> {
 }
 
 impl<F: Field> WitnessComponent<F> for ArithSM<F> {}
-
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for ArithSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
-        while operations.len() >= PROVE_CHUNK_SIZE || (drain && !operations.is_empty()) {
-            if drain && !operations.is_empty() {
-                // println!("ArithSM: Draining inputs");
-            }
-
-            let num_drained = std::cmp::min(PROVE_CHUNK_SIZE, operations.len());
-            let drained_inputs = operations[..num_drained].to_vec();
-            let arith_full_sm_cloned = self.arith_full_sm.clone();
-
-            // self.threads_controller.add_working_thread();
-            // let thread_controller = self.threads_controller.clone();
-
-            arith_full_sm_cloned.prove(&drained_inputs, drain, scope);
-        }
-    }
-}

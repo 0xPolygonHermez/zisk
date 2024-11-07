@@ -3,19 +3,14 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{arith_constants::*, ArithTableInputs};
+use crate::ArithTableInputs;
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use rayon::Scope;
 use sm_common::create_prover_buffer;
-use sm_common::{OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
-
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct ArithTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -60,14 +55,10 @@ impl<F: Field> ArithTableSM<F> {
         // Create the trace vector
         let mut _multiplicity = self.multiplicity.lock().unwrap();
 
-        //for (row, value) in inputs {
-        //    info!("{}: ··· Processing row {} with value {}", Self::MY_NAME, row, value);
-        //    _multiplicity[row] += value;
-        //}
-        // ONLY TO TEST VALUES IN FIXED TABLE
-        info!("{}: ··· process_slice", Self::MY_NAME);
-        for i in 0..128 {
-            _multiplicity[i] = (i + 10000) as u64;
+        info!("{}: ··· process multiplicity", Self::MY_NAME);
+        for (row, value) in inputs {
+            info!("{}: ··· Processing row {} with value {}", Self::MY_NAME, row, value);
+            _multiplicity[row] += value;
         }
     }
     pub fn create_air_instance(&self) {
@@ -125,27 +116,5 @@ impl<F: Field> WitnessComponent<F> for ArithTableSM<F> {
         _ectx: Arc<ExecutionCtx<F>>,
         _sctx: Arc<SetupCtx<F>>,
     ) {
-    }
-}
-
-impl<F> Provable<ZiskRequiredOperation, OpResult> for ArithTableSM<F> {
-    fn calculate(
-        &self,
-        operation: ZiskRequiredOperation,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result: OpResult = ZiskOp::execute(operation.opcode, operation.a, operation.b);
-        Ok(result)
-    }
-
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {}
-
-    fn calculate_prove(
-        &self,
-        operation: ZiskRequiredOperation,
-        drain: bool,
-        scope: &Scope,
-    ) -> Result<OpResult, Box<dyn std::error::Error>> {
-        let result = self.calculate(operation.clone());
-        result
     }
 }

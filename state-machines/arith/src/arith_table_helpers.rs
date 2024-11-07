@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 const ROWS: usize = 95;
 const FIRST_OP: u8 = 0xb0;
 
@@ -52,13 +50,12 @@ impl ArithTableHelpers {
 }
 
 pub struct ArithTableInputs {
-    iter_row: u32,
     multiplicity: [u64; ROWS],
 }
 
 impl ArithTableInputs {
     pub fn new() -> Self {
-        ArithTableInputs { iter_row: 0, multiplicity: [0; ROWS] }
+        ArithTableInputs { multiplicity: [0; ROWS] }
     }
     pub fn add_use(&mut self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);

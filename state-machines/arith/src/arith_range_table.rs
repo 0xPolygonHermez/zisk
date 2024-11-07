@@ -3,19 +3,14 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{arith_constants::*, ArithRangeTableInputs};
+use crate::ArithRangeTableInputs;
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use rayon::Scope;
 use sm_common::create_prover_buffer;
-use sm_common::{OpResult, Provable};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{ARITH_RANGE_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
-
-const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct ArithRangeTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
