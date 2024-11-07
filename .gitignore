@@ -2,6 +2,7 @@
 /*.tar.gz
 /riscof
 /build
+/build2
 /proofs
 *.pilout
 /tmp
