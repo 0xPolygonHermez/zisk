@@ -53,7 +53,7 @@ airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID,
 
     col witness first_addr_access_is_read;
     first_addr_access_is_read * (1 - first_addr_access_is_read) === 0;
-    (1 - first_addr_access_is_read) * rd * same_addr === 0;
+    (1 - first_addr_access_is_read) * rd * addr_changes === 0;
 
     for (int index = 0; index < length(value); index++) {
         same_value * (value[index] - 'value[index])  ===  0;
