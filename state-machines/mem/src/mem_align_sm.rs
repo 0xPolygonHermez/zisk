@@ -78,7 +78,14 @@ impl<F: PrimeField> MemAlignSM<F> {
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             // TODO: Fix this...
-            self.prove_internal(&[]);
+            if let Ok(mut inputs) = self.inputs.lock() {
+                let pctx = self.wcm.get_pctx();
+                let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                self.prove_internal(&drained_inputs);
+            }
 
             self.mem_align_rom_sm.unregister_predecessor();
             self.std.unregister_predecessor(self.wcm.get_pctx(), None);
@@ -195,7 +202,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                 trace_buffer[rows_processed + j] = row;
             }
             rows_processed += rows.len();
-            println!("rows_processed: {}", rows_processed);
         }
 
         // Pad the remaining rows with trivailly satisfying rows
@@ -238,7 +244,7 @@ impl<F: PrimeField> MemAlignSM<F> {
         let addr = unaligned_input.address;
 
         // Get the unaligned value
-        let value = unaligned_input.value.to_be_bytes();
+        let value = unaligned_input.value.to_le_bytes();
 
         // Get the unaligned step
         let step = unaligned_input.step;
@@ -280,7 +286,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let addr_read = aligned_inputs[0].address; // addr / CHUNK_NUM;
 
                 // Get the aligned values
-                let value_read = aligned_inputs[0].value.to_be_bytes();
+                let value_read = aligned_inputs[0].value.to_le_bytes();
 
                 // Get the aligned step
                 let step_read = aligned_inputs[0].step;
@@ -312,7 +318,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                     read_row.reg[i] = F::from_canonical_u8(value_read[i]);
                     read_row.sel[i] = F::from_bool(true);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[shift + i]);
+                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
                     value_row.sel[i] = F::from_bool(i == offset);
 
                     // Store the range check
@@ -333,8 +339,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let addr_read_write = aligned_inputs[0].address; // addr / CHUNK_NUM;
 
                 // Get the aligned values
-                let value_read = aligned_inputs[0].value.to_be_bytes();
-                let value_write = aligned_inputs[1].value.to_be_bytes();
+                let value_read = aligned_inputs[0].value.to_le_bytes();
+                let value_write = aligned_inputs[1].value.to_le_bytes();
 
                 // Get the aligned step
                 let step_read = aligned_inputs[0].step;
@@ -384,7 +390,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                     write_row.reg[i] = F::from_canonical_u8(value_write[i]);
                     write_row.sel[i] = F::from_bool(i >= offset);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[shift + i]);
+                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
                     value_row.sel[i] = F::from_bool(i == offset);
 
                     // Store the range check
@@ -408,8 +414,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let addr_second_read = aligned_inputs[1].address; // addr / CHUNK_NUM + CHUNK_NUM;
 
                 // Get the aligned values
-                let value_first_read = aligned_inputs[0].value.to_be_bytes();
-                let value_second_read = aligned_inputs[1].value.to_be_bytes();
+                let value_first_read = aligned_inputs[0].value.to_le_bytes();
+                let value_second_read = aligned_inputs[1].value.to_le_bytes();
 
                 // Get the aligned step
                 let step_first_read = aligned_inputs[0].step;
@@ -456,7 +462,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                     first_read_row.reg[i] = F::from_canonical_u8(value_first_read[i]);
                     first_read_row.sel[i] = F::from_bool(true);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[shift + i]);
+                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
                     value_row.sel[i] = F::from_bool(i == offset);
 
                     second_read_row.reg[i] = F::from_canonical_u8(value_second_read[i]);
@@ -476,11 +482,6 @@ impl<F: PrimeField> MemAlignSM<F> {
             MemOp::TwoWrites => {
                 // RWVWR
                 // Sanity check
-                if aligned_inputs.len() != 4 {
-                    println!("opcode: {:?}", op);
-                    println!("aligned_inputs: {:?}", aligned_inputs);
-                    println!("unaligned_input: {:?}", unaligned_input);
-                }
                 assert!(aligned_inputs.len() == 4);
 
                 // Get the aligned address
@@ -489,10 +490,10 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                 // Get the aligned values
                 // TODO: I do not need to establish an order, I can use the field is_write!!!
-                let value_first_read = aligned_inputs[0].value.to_be_bytes();
-                let value_first_write = aligned_inputs[1].value.to_be_bytes();
-                let value_second_read = aligned_inputs[2].value.to_be_bytes();
-                let value_second_write = aligned_inputs[3].value.to_be_bytes();
+                let value_first_read = aligned_inputs[0].value.to_le_bytes();
+                let value_first_write = aligned_inputs[1].value.to_le_bytes();
+                let value_second_read = aligned_inputs[2].value.to_le_bytes();
+                let value_second_write = aligned_inputs[3].value.to_le_bytes();
 
                 // Get the aligned step
                 let step_first_read = aligned_inputs[0].step;
@@ -568,7 +569,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                     first_write_row.reg[i] = F::from_canonical_u8(value_first_write[i]);
                     first_write_row.sel[i] = F::from_bool(i >= offset);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[shift + i]);
+                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
                     value_row.sel[i] = F::from_bool(i == offset);
 
                     second_write_row.reg[i] = F::from_canonical_u8(value_second_write[i]);
