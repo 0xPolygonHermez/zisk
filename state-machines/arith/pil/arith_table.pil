@@ -217,8 +217,6 @@ function arith_table_assumes( const expr op, const expr flag_m32, const expr fla
                               const expr flag_main_mul, const expr flag_main_div, const expr flag_signed,
                               const expr range_ab, const expr range_cd) {
 
-    // TODO: #pragma binary flag_m32 => check any constraint on compilation time
-    // TODO: define rule for empty rows
     lookup_assumes(ARITH_TABLE_ID, cols: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
                                            16 * flag_np + 32 * flag_nr + 64 * flag_sext +
                                            128 * flag_main_mul + 256 * flag_main_div + 512 * flag_signed,

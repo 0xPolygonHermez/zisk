@@ -177,18 +177,6 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     col witness op;
 
-    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr    sext
-    // -----------------------------------------------------------------------------
-    //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
-    //  0   0   1   0  *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   d3   =0   =0   =0  a3,      d3
-    //  0   0   1   1  mul      mulh       (0xb4,0xb5)   a3   b3   d3   =0   =0   =0  a3,b3,   d3
-    //  0   1   0   0  mul_w    *n/a*      (0xb6,0xb7)   =0   =0   =0   =0   c1   =0               a1,b1,c1
-    //  1   0   0   0  divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
-    //  1   0   1   1  div      rem        (0xba,0xbb)   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
-    //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   c1   d1                     c1,d1
-    //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   c1   d1               a1,b1,c1,d1
-
-
     // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(c)
     // -----------------------------------------------------------------------------
     //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
@@ -213,47 +201,6 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     // mul (mulh)           c       d
     // div (remu)           a       d
 
-/*
-    col witness bus_a_low;
-    bus_a_low === div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
-
-    col witness bus_a_high;
-    bus_a_high === div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
-
-    m32 * (1 - bus_a_high) === 0;
-
-    const expr bus_b_low = b[0] + CHUNK_SIZE * b[1];
-    const expr bus_b_high = b[2] + CHUNK_SIZE * b[3];
-
-    m32 * (1 - bus_b_high) === 0;
-
-    const expr res2_low  = d[0] + CHUNK_SIZE * d[1];
-    const expr res2_high = d[2] + CHUNK_SIZE * d[3];
-
-    col witness res_low;
-    res_low === secondary * res2_low + (1 - secondary)  * (a[0] + c[0] + CHUNK_SIZE * (a[1] + c[1]) - bus_a_low);
-
-    col witness res_high;
-    res_high === (1 - m32) * (secondary * res2_high + (1 - secondary)  * (a[2] + c[2] + CHUNK_SIZE * (a[3] + c[3]) - bus_a_high))
-                   + sext * 0xFFFFFFFF;
-
-    col witness multiplicity;
-
-    lookup_proves(operation_bus_id, [debug_main_step,
-                                     op + secondary,
-                                     bus_a_low, bus_a_high,
-                                     bus_b_low, bus_b_high,
-                                     res_low, res_high,
-                                     0], mul: multiplicity);
-
-
-    // TODO: review
-    lookup_assumes(operation_bus_id, [debug_main_step, sign * (OP_LT_ABS - OP_LT) + OP_LT,
-                                      res2_low, res2_high + m32 * nr * 0xFFFFFFFF,
-                                      bus_b_low, bus_b_high + m32 * nb * 0xFFFFFFFF,
-                                      1, 0, 1], sel: div);
-
-*/
     const expr secondary = 1 - main_mul - main_div;
     const expr bus_a0 = div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
     const expr bus_a1 = div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);

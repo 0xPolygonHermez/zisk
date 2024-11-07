@@ -780,10 +780,6 @@ impl ArithOperationTest {
                 res);
             }
         }
-        // println!(
-        //     "CARRY 0x{0:X}({0}),0x{1:X}({1}),0x{2:X}({2}),0x{3:X}({3}),0x{4:X}({4}),0x{5:X}({5}),0x{6:X}{6},0x{7:X}({7}) fab:{8:X}",
-        //     carrys[0], carrys[1], carrys[2], carrys[3], carrys[4], carrys[5], carrys[6], carrys[7], fab
-        // );
 
         const CHUNK_SIZE: u64 = 0x10000;
         let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
@@ -795,15 +791,6 @@ impl ArithOperationTest {
         let bus_b_high: u64 = aop.b[2] + CHUNK_SIZE * aop.b[3];
 
         let secondary_res: u64 = if aop.main_mul || aop.main_div { 0 } else { 1 };
-        /* let bus_res_low: u64 = secondary_res * res2_low
-            + (1 - secondary_res)
-                * (aop.a[0] + aop.c[0] + CHUNK_SIZE * (aop.a[1] + aop.c[1]) - bus_a_low);
-
-        let bus_res_high: u64 = (1 - aop.m32 as u64)
-            * (secondary_res * res2_high
-                + (1 - secondary_res)
-                    * ((aop.a[2] + aop.c[2] + CHUNK_SIZE * (aop.a[3] + aop.c[3])) - bus_a_high))
-            + aop.sext as u64 * 0xFFFFFFFF;*/
 
         let bus_res_low = secondary_res * (aop.d[0] + aop.d[1] * CHUNK_SIZE)
             + aop.main_mul as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)

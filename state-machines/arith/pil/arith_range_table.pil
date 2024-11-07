@@ -76,6 +76,5 @@ airtemplate ArithRangeTable(int N = 2**22) {
 }
 
 function arith_range_table_assumes(const expr range_type, const expr value, const expr sel = 1) {
-    // TODO: define rule for empty rows
     lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:sel);
 }

@@ -168,8 +168,6 @@ impl<F: Field> ArithFullSM<F> {
                         aop.d[2] + (aop.d[3] << 16)
                     },
             );
-            println!("ARITH {:?}", t);
-
             traces[irow] = t;
         }
         timer_stop_and_log_trace!(ARITH_TRACE);

@@ -141,7 +141,7 @@ impl ArithRangeTableInputs {
         }
         for (row, value) in other.multiplicity_overflow.iter() {
             let count = self.multiplicity_overflow.entry(*row).or_insert(0);
-            *count += *value;
+            *count += (*value) << 16;
         }
         self.updated |= other.updated;
     }
@@ -175,7 +175,7 @@ impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
         match res {
             Some((row, value)) => {
                 self.iter_row += 1;
-                Some((*row as usize, *value as u64))
+                Some((*row as usize, (*value as u64) << 16))
             }
             None => None,
         }
