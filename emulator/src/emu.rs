@@ -894,7 +894,8 @@ impl<'a> Emu<'a> {
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
                 inst.op_type == ZiskOperationType::Binary ||
-                    inst.op_type == ZiskOperationType::BinaryE,
+                    inst.op_type == ZiskOperationType::BinaryE ||
+                    inst.op_type == ZiskOperationType::PubOut,
             ),
         }
     }
