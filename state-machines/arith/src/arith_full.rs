@@ -159,11 +159,11 @@ impl<F: Field> ArithFullSM<F> {
             t.bus_res1 = F::from_canonical_u64(
                 if aop.sext { 0xFFFFFFFF } else { 0 }
                     + if aop.main_mul {
-                        aop.c[2] + aop.c[3] << 16
+                        aop.c[2] + (aop.c[3] << 16)
                     } else if aop.main_div {
-                        aop.a[2] + aop.a[3] << 16
+                        aop.a[2] + (aop.a[3] << 16)
                     } else {
-                        aop.d[2] + aop.d[3] << 16
+                        aop.d[2] + (aop.d[3] << 16)
                     },
             );
 
@@ -174,7 +174,7 @@ impl<F: Field> ArithFullSM<F> {
         timer_start_trace!(ARITH_PADDING);
         let padding_offset = input.len();
         let padding_rows: usize =
-            if num_rows > padding_offset { (num_rows - padding_offset) as usize } else { 0 };
+            if num_rows > padding_offset { num_rows - padding_offset } else { 0 };
 
         if padding_rows > 0 {
             let mut t: ArithRow<F> = Default::default();
@@ -199,10 +199,10 @@ impl<F: Field> ArithFullSM<F> {
         timer_stop_and_log_trace!(ARITH_PADDING);
         timer_start_trace!(ARITH_TABLE);
         info!("{}: ··· calling arit_table_sm", Self::MY_NAME);
-        self.arith_table_sm.process_slice(&mut table_inputs);
+        self.arith_table_sm.process_slice(&table_inputs);
         timer_stop_and_log_trace!(ARITH_TABLE);
         timer_start_trace!(ARITH_RANGE_TABLE);
-        self.arith_range_table_sm.process_slice(range_table_inputs);
+        self.arith_range_table_sm.process_slice(&range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
     }
 }

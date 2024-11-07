@@ -51,11 +51,11 @@ impl<F: Field> ArithRangeTableSM<F> {
             self.create_air_instance();
         }
     }
-    pub fn process_slice(&self, inputs: ArithRangeTableInputs) {
+    pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {
         // Create the trace vector
         let mut _multiplicity = self.multiplicity.lock().unwrap();
 
-        for (row, value) in &inputs {
+        for (row, value) in inputs {
             _multiplicity[row] += value;
         }
     }

@@ -53,6 +53,12 @@ pub struct ArithTableInputs {
     multiplicity: [u64; ROWS],
 }
 
+impl Default for ArithTableInputs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArithTableInputs {
     pub fn new() -> Self {
         ArithTableInputs { multiplicity: [0; ROWS] }
@@ -60,12 +66,13 @@ impl ArithTableInputs {
     pub fn add_use(&mut self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
         assert!(row < ROWS);
-        self.multiplicity[row as usize] += 1;
+        self.multiplicity[row] += 1;
         info!(
             "[ArithTableInputs]· add_use(op:{}, na:{}, nb:{}, np:{}, nr:{}, sext:{} row:{} multiplicity:{}",
             op, na, nb, np, nr, sext, row, self.multiplicity[row]
         );
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn multi_add_use(
         &mut self,
         times: usize,
@@ -77,19 +84,11 @@ impl ArithTableInputs {
         sext: bool,
     ) {
         let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
-        self.multiplicity[row as usize] += times as u64;
+        self.multiplicity[row] += times as u64;
     }
     pub fn update_with(&mut self, other: &Self) {
         for i in 0..ROWS {
             self.multiplicity[i] += other.multiplicity[i];
-        }
-    }
-    pub fn collect<F>(&self, call: F)
-    where
-        F: Fn(usize, u64),
-    {
-        for i in 0..ROWS {
-            call(i, self.multiplicity[i] as u64);
         }
     }
 }
@@ -109,9 +108,10 @@ impl<'a> Iterator for ArithTableInputsIterator<'a> {
         let row = self.iter_row as usize;
         if row < ROWS {
             self.iter_row += 1;
-            return Some((row, self.inputs.multiplicity[row] as u64));
+            Some((row, self.inputs.multiplicity[row]))
+        } else {
+            None
         }
-        None
     }
 }
 

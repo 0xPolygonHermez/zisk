@@ -69,6 +69,13 @@ pub struct ArithRangeTableInputs {
     multiplicity_overflow: HashMap<u32, u32>,
     multiplicity: Vec<u16>,
 }
+
+impl Default for ArithRangeTableInputs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArithRangeTableInputs {
     pub fn new() -> Self {
         ArithRangeTableInputs {
@@ -138,28 +145,6 @@ impl ArithRangeTableInputs {
         }
         self.updated |= other.updated;
     }
-    pub fn collect<F>(&self, call: F)
-    where
-        F: Fn(usize, u64),
-    {
-        let chunk_size = 1 << (22 - 6);
-        for i_chunk in 0..64 {
-            if (self.updated & (1 << i_chunk)) == 0 {
-                continue;
-            }
-            let from = chunk_size * i_chunk;
-            let to = from + chunk_size;
-            for row in from..to {
-                let count = self.multiplicity[row];
-                if count > 0 {
-                    call(row, count as u64);
-                }
-            }
-        }
-        for (row, value) in self.multiplicity_overflow.iter() {
-            call(*row as usize, *value as u64 * chunk_size as u64)
-        }
-    }
 }
 
 pub struct ArithRangeTableInputsIterator<'a> {
@@ -190,9 +175,9 @@ impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
         match res {
             Some((row, value)) => {
                 self.iter_row += 1;
-                return Some((*row as usize, *value as u64));
+                Some((*row as usize, *value as u64))
             }
-            None => return None,
+            None => None,
         }
     }
 }

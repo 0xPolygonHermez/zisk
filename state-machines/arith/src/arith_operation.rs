@@ -24,6 +24,11 @@ pub struct ArithOperation {
     pub range_cd: u8,
 }
 
+impl Default for ArithOperation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl fmt::Debug for ArithOperation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut flags = String::new();
@@ -57,21 +62,21 @@ impl fmt::Debug for ArithOperation {
         if self.signed {
             flags += "signed "
         };
-        write!(f, "operation 0x{:x} flags={}\n", self.op, flags)?;
-        write!(f, "input_a: 0x{0:x}({0})\n", self.input_a)?;
-        write!(f, "input_b: 0x{0:x}({0})\n", self.input_b)?;
+        writeln!(f, "operation 0x{:x} flags={}", self.op, flags)?;
+        writeln!(f, "input_a: 0x{0:x}({0})", self.input_a)?;
+        writeln!(f, "input_b: 0x{0:x}({0})", self.input_b)?;
         self.dump_chunks(f, "a", &self.a)?;
         self.dump_chunks(f, "b", &self.b)?;
         self.dump_chunks(f, "c", &self.c)?;
         self.dump_chunks(f, "d", &self.d)?;
-        write!(
+        writeln!(
             f,
-            "carry: [0x{0:X}({0}), 0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4}), 0x{5:X}({5}), 0x{6:X}({6})]\n",
+            "carry: [0x{0:X}({0}), 0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4}), 0x{5:X}({5}), 0x{6:X}({6})]",
             self.carry[0], self.carry[1], self.carry[2], self.carry[3], self.carry[4], self.carry[5], self.carry[6]
         )?;
-        write!(
+        writeln!(
             f,
-            "range_ab: 0x{0:X} {1}, range_cd:0x{2:X} {3}\n",
+            "range_ab: 0x{0:X} {1}, range_cd:0x{2:X} {3}",
             self.range_ab,
             ArithRangeTableHelpers::get_range_name(self.range_ab),
             self.range_cd,
@@ -82,9 +87,9 @@ impl fmt::Debug for ArithOperation {
 
 impl ArithOperation {
     fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u64; 4]) -> fmt::Result {
-        write!(
+        writeln!(
             f,
-            "{0}: [0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4})]\n",
+            "{0}: [0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4})]",
             name, value[0], value[1], value[2], value[3]
         )
     }
@@ -126,8 +131,8 @@ impl ArithOperation {
         self.update_carries(&chunks);
     }
     fn update_carries(&mut self, chunks: &[i64; 8]) {
-        for i in 0..8 {
-            let chunk_value = chunks[i] + if i > 0 { self.carry[i - 1] } else { 0 };
+        for (i, chunk) in chunks.iter().enumerate() {
+            let chunk_value = chunk + if i > 0 { self.carry[i - 1] } else { 0 };
             if i >= 7 {
                 continue;
             }
@@ -151,13 +156,11 @@ impl ArithOperation {
         }
     }
     fn sign128(abs_value: u128, negative: bool) -> u128 {
-        let res = if negative {
+        if negative {
             (0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF - abs_value) + 1
         } else {
             abs_value
-        };
-        // println!("sign128({:X},{})={:X}", abs_value, negative, res);
-        res
+        }
     }
     fn abs32(value: u64) -> [u64; 2] {
         let negative = if (value & 0x8000_0000) != 0 { 1 } else { 0 };
@@ -586,7 +589,7 @@ impl ArithOperation {
             - d[1] * (1 - div)
             + d[1] * 2 * np * (1 - div);
 
-        chunks[6] = fab as i64 * a[3] * b[3]    // chunk6
+        chunks[6] = fab * a[3] * b[3]    // chunk6
             + a[2] * nb_fa * (1 - m32)
             + b[2] * na_fb * (1 - m32)
             - d[2] * (1 - div)
