@@ -230,8 +230,6 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].first_addr_access_is_read = F::zero();
         }
 
-        println!("trace[66094]: {:?}", trace[66094]);
-
         let mut air_instance = AirInstance::new(
             self.wcm.get_sctx(),
             ZISK_AIRGROUP_ID,
