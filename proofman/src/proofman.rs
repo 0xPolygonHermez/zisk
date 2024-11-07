@@ -311,7 +311,7 @@ impl<F: Field + 'static> ProofMan<F> {
     fn initialize_setup(
         setups: Arc<SetupsVadcop<F>>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
+        _ectx: Arc<ExecutionCtx<F>>,
         aggregation: bool,
     ) {
         info!("{}: Initializing setup fixed pols", Self::MY_NAME);
@@ -320,10 +320,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let mut const_pols_calculated: HashMap<(usize, usize), bool> = HashMap::new();
 
-        let dctx = ectx.dctx.read().unwrap();
-
-        for id in &dctx.my_instances {
-            let (airgroup_id, air_id) = dctx.instances[*id];
+        for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
+            let (airgroup_id, air_id) = (air_instance.airgroup_id, air_instance.air_id);
             const_pols_calculated.entry((airgroup_id, air_id)).or_insert_with(|| {
                 let setup = setups.sctx.get_setup(airgroup_id, air_id);
                 setup.load_const_pols(&pctx.global_info, &ProofType::Basic);
@@ -343,8 +341,8 @@ impl<F: Field + 'static> ProofMan<F> {
             let sctx_recursive2 = setups.sctx_recursive2.as_ref().unwrap().clone();
             let sctx_final = setups.sctx_final.as_ref().unwrap().clone();
 
-            for id in &dctx.my_instances {
-                let (airgroup_id, air_id) = dctx.instances[*id];
+            for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
+                let (airgroup_id, air_id) = (air_instance.airgroup_id, air_instance.air_id);
                 if pctx.global_info.get_air_has_compressor(airgroup_id, air_id)
                     && !const_pols_calculated_compressor.contains_key(&(airgroup_id, air_id))
                 {
@@ -358,8 +356,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
             timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
             let mut const_pols_calculated_recursive1: HashMap<(usize, usize), bool> = HashMap::new();
-            for id in &dctx.my_instances {
-                let (airgroup_id, air_id) = dctx.instances[*id];
+            for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
+                let (airgroup_id, air_id) = (air_instance.airgroup_id, air_instance.air_id);
                 const_pols_calculated_recursive1.entry((airgroup_id, air_id)).or_insert_with(|| {
                     let setup = sctx_recursive1.get_setup(airgroup_id, air_id);
                     setup.load_const_pols(&pctx.global_info, &ProofType::Recursive1);
@@ -370,12 +368,11 @@ impl<F: Field + 'static> ProofMan<F> {
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
 
             timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
-            for (idx, group_instances) in dctx.airgroup_instances.iter().enumerate() {
-                if !group_instances.is_empty() {
-                    let setup = sctx_recursive2.get_setup(idx, 0);
-                    setup.load_const_pols(&pctx.global_info, &ProofType::Recursive2);
-                    setup.load_const_pols_tree(&pctx.global_info, &ProofType::Recursive2, false);
-                }
+            let n_airgroups = pctx.global_info.air_groups.len();
+            for airgroup in 0..n_airgroups {
+                let setup = sctx_recursive2.get_setup(airgroup, 0);
+                setup.load_const_pols(&pctx.global_info, &ProofType::Recursive2);
+                setup.load_const_pols_tree(&pctx.global_info, &ProofType::Recursive2, false);
             }
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
 
