@@ -77,7 +77,8 @@ impl<F: PrimeField> MemProxy<F> {
         }
         println!("-- Unaligned inputs:");
         for i in 0..unaligned.len() {
-            if unaligned[i].address >= (2685534096 - 8) && unaligned[i].address <= (2685534096 + 8) {
+            if unaligned[i].address >= (2685534096 - 8) && unaligned[i].address <= (2685534096 + 8)
+            {
                 println!("unaligned[{}]: {:?} value: {:x}", i, unaligned[i], unaligned[i].value);
             }
         }
@@ -140,7 +141,7 @@ impl<F: PrimeField> MemProxy<F> {
 
         // Filter where address = 2684391184
         println!("");
-        for i in 0.. aligned.len() {
+        for i in 0..aligned.len() {
             if aligned[i].address == 2685534096 {
                 println!("OJO!!!! mem: {:?}", aligned[i]);
             }
@@ -295,7 +296,11 @@ impl<F: PrimeField> MemProxy<F> {
                 last_write_addr_p_w.step = unaligned_access.step;
                 Self::write_value(&unaligned_access, &mut last_write_addr_p_w);
 
-                Self::write_values(&unaligned_access, &mut last_write_addr_w, &mut last_write_addr_p_w);
+                Self::write_values(
+                    &unaligned_access,
+                    &mut last_write_addr_w,
+                    &mut last_write_addr_p_w,
+                );
                 vec![last_write_addr_r, last_write_addr_w, last_write_addr_p_r, last_write_addr_p_w]
             }
         }
@@ -358,15 +363,14 @@ impl<F: PrimeField> MemProxy<F> {
 
     #[inline(always)]
     fn write_value(unaligned: &ZiskRequiredMemory, aligned: &mut ZiskRequiredMemory) {
-        let offset = 8 - (unaligned.address & 7);
+        let offset = unaligned.address & 7;
         let width_in_bits = unaligned.width * 8;
 
-        let mask = !(((1u64 << width_in_bits) - 1) << ((offset - unaligned.width) * 8));
+        let mask = !(((1u64 << width_in_bits) - 1) << (offset * 8));
 
-        aligned.value =
-            (aligned.value & mask) | (unaligned.value << ((offset - unaligned.width) * 8));
+        aligned.value = (aligned.value & mask)
+            | ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
     }
-
     #[inline(always)]
     fn write_values(
         unaligned: &ZiskRequiredMemory,
