@@ -13,7 +13,7 @@ const int MEM_ALIGN_ROM_SIZE = P2_8;
 // Note1: The offset and width are sufficient to group programs with the same number of operations.
 // Note2: The first instruction is always a read.
 
-airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 8, const int disable_fixed = 0) {
+airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 8, const int disable_fixed = 0) {
     if (N < MEM_ALIGN_ROM_SIZE) {
         error(`N must be at least ${MEM_ALIGN_ROM_SIZE}, but N=${N} was provided`);
     }
@@ -37,7 +37,7 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
                           [[0,0,1,0,0], [0,0,2,0,0], [0,0,3,0,0], [0,0,4,0,0], [0,0,5,0,0]:2, [0,0,6,0,0]:2, [0,0,7,0,0]:3]]...; // RWVWR  5*4+10+10+15 = 55 | 188 => N = 2^8
 
     col fixed WIDTH    = [[[8,1,8,2,8,4]:5, [8,1,8,2]:2, [8,1]],                                                                 // RV
-                          [[8,8,1,8,8,2,8,8,4], [8,8,1,8,8,2,8,8,4]:4, [8,8,1,8,8,2]:2, [8,8,1]],                                // RWV
+                          [[8,8,1,8,8,2,8,8,4]:5, [8,8,1,8,8,2]:2, [8,8,1]],                                                     // RWV
                           [[8,8,8]:4, [8,4,8,8,8,8]:2, [8,2,8,8,4,8,8,8,8]],                                                     // RVR
                           [[8,8,8,8,8]:4, [8,8,4,8,8,8,8,8,8,8]:2, [8,8,2,8,8,8,8,4,8,8,8,8,8,8,8]]]...;                         // RWVWR
 
@@ -83,8 +83,8 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
         int delta_addr = 0;
         int is_write = 0;
         int reset = 0;
-        int sel[MEM_BYTES];
-        for (int j = 0; j < MEM_BYTES; j++) {
+        int sel[CHUNK_NUM];
+        for (int j = 0; j < CHUNK_NUM; j++) {
             sel[j] = 0;
         }
         int sel_up_to_down = 0;
@@ -109,7 +109,7 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
                 delta_addr = 1;
                 // is_write = 0;
                 // reset = 0;
-                // sel = [0:MEM_BYTES]
+                // sel = [0:CHUNK_NUM]
                 // sel_up_to_down = 0;
                 // sel_down_to_up = 0;
             }
@@ -140,7 +140,7 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
                 // delta_addr = 0;
                 // is_write = 0;
                 // reset = 0;
-                // sel = [0:MEM_BYTES]
+                // sel = [0:CHUNK_NUM]
                 // sel_up_to_down = 0;
                 // sel_down_to_up = 0;
             }
@@ -162,7 +162,7 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
                 delta_addr = 1;
                 // is_write = 0;
                 // reset = 0;
-                // sel = [0:MEM_BYTES]
+                // sel = [0:CHUNK_NUM]
                 // sel_up_to_down = 1;
                 // sel_down_to_up = 0;
             } else {                    // R
@@ -202,7 +202,7 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
                 delta_addr = 1;
                 // is_write = 0;
                 // reset = 0;
-                // sel = [0:MEM_BYTES]
+                // sel = [0:CHUNK_NUM]
                 // sel_up_to_down = 0;
                 // sel_down_to_up = 0;
             } else if (next % 5 == 3) { // W
@@ -230,10 +230,10 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int MEM_BYTES = 
         DELTA_PC[i] = delta_pc;
         DELTA_ADDR[i] = delta_addr;
         FLAGS[i] = 0;
-        for (int j = 0; j < MEM_BYTES; j++) {
+        for (int j = 0; j < CHUNK_NUM; j++) {
             FLAGS[i] += sel[j] * 2**j;
         }
-        FLAGS[i] += is_write * 2**MEM_BYTES + reset * 2**(MEM_BYTES + 1) + sel_up_to_down * 2**(MEM_BYTES + 2) + sel_down_to_up * 2**(MEM_BYTES + 3);
+        FLAGS[i] += is_write * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3);
     }
 
     lookup_proves(MEM_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
