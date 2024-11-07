@@ -7,7 +7,7 @@ use crate::{MemAlignRomSM, MemAlignSM, MemOp, MemSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{ZiskRequiredMemory, RAM_ADDR, SYS_ADDR};
+use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
 
 use proofman::{WitnessComponent, WitnessManager};
 
@@ -55,7 +55,7 @@ impl<F: PrimeField> MemProxy<F> {
 
     pub fn prove(
         &self,
-        mut operations: &mut [Vec<ZiskRequiredMemory>; 2],
+        operations: &mut [Vec<ZiskRequiredMemory>; 2],
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut aligned = std::mem::take(&mut operations[0]);
         let unaligned = std::mem::take(&mut operations[1]);
@@ -327,7 +327,6 @@ impl<F: PrimeField> MemProxy<F> {
         aligned.value = (aligned.value & mask)
             | ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
     }
-
     #[inline(always)]
     fn write_values(
         unaligned: &ZiskRequiredMemory,
