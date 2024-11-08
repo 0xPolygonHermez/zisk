@@ -7,7 +7,9 @@ use proofman_util::create_buffer_fast;
 
 use std::error::Error;
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{Pilout, RomRomRow, RomRomTrace, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    Pilout, RomRomRow, RomRomTrace, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -23,7 +25,7 @@ impl<F: Field> RomSM<F> {
 
         rom_sm
     }
-    
+
     pub fn prove(
         &self,
         rom: &ZiskRom,
@@ -80,11 +82,12 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomRow::default();
         }
 
-        let (commit_id_rom, prover_buffer_rom) = Self::compute_trace_rom(rom, buffer_allocator, &sctx)?;
+        let (commit_id_rom, prover_buffer_rom) =
+            Self::compute_trace_rom(rom, buffer_allocator, &sctx)?;
 
         let mut air_instance =
             AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
-        
+
         air_instance.set_custom_commit_id_buffer(prover_buffer_rom, commit_id_rom);
 
         let (is_mine, instance_gid) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
@@ -102,20 +105,15 @@ impl<F: Field> RomSM<F> {
         Ok(())
     }
 
-    
     pub fn compute_trace_rom(
         rom: &ZiskRom,
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
         // Allocate a prover buffer
-        let (buffer_size_rom, offsets_rom, commit_id) =
-            buffer_allocator.get_buffer_info_custom_commit(
-                &sctx,
-                ZISK_AIRGROUP_ID,
-                ROM_AIR_IDS[0],
-                "rom",
-            ).unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        let (buffer_size_rom, offsets_rom, commit_id) = buffer_allocator
+            .get_buffer_info_custom_commit(&sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
 
         // Create an empty ROM trace
         let pilout = Pilout::pilout();
@@ -201,7 +199,6 @@ impl<F: Field> RomSM<F> {
 
         Self::compute_trace_rom(&rom, buffer_allocator, sctx)
     }
-
 }
 
 impl<F: Field> WitnessComponent<F> for RomSM<F> {}
