@@ -1420,17 +1420,17 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    /* Read output length located at first 64 bits of output data,
-       then read output data in chunks of 64 bits:
+    /* Read output data, 64 values of 64 bits, for each value use pubout opcode (2 x publics)
 
-            loadw: c(reg1) = b(mem=OUTPUT_ADDR), a=0   // TODO: check that Nx4 < OUTPUT_SIZE
+            loadw: c(reg1)=b=64, a=0   // TODO: check that Nx4 < OUTPUT_SIZE
             copyb: c(reg2)=b=0, a=0
-            copyb: c(reg3)=b=OUTPUT_ADDR+4, a=0
+            copyb: c(reg3)=b=OUTPUT_ADDR, a=0
 
             eq: if reg2==reg1 jump to end
+            copyb: c = b = mem(reg3, 8)
             pubout: c=b.mem(reg3), a = reg2
-            add: reg3 = reg3 + 4 // Increment memory address
-            add: reg2 = reg2 + 1, jump -12 // Increment index, goto eq
+            add: reg3 = reg3 + 8 // Increment memory address
+            add: reg2 = reg2 + 1, jump -16 // Increment index, goto eq
 
             end
     */
@@ -1463,11 +1463,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // :001c -> copyb: c(reg3)=b=OUTPUT_ADDR, a=0
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR + 4, false);
+    zib.src_b("imm", OUTPUT_ADDR, false);
     zib.op("copyb").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
-    zib.verbose("Set reg3 to OUTPUT_ADDR + 4");
+    zib.verbose("Set reg3 to OUTPUT_ADDR");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1497,7 +1497,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0028 -> pubout: c = last_c = mem(reg3, 4), a = reg2 = index
+    // :0028 -> pubout: c = last_c = mem(reg3, 8), a = reg2 = index
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 2, false);
     zib.src_b("lastc", 0, false);
