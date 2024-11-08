@@ -112,7 +112,7 @@ impl<F: Field> RomSM<F> {
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
         // Allocate a prover buffer
         let (buffer_size_rom, offsets_rom, commit_id) = buffer_allocator
-            .get_buffer_info_custom_commit(&sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
+            .get_buffer_info_custom_commit(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
             .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
 
         // Create an empty ROM trace
@@ -181,7 +181,7 @@ impl<F: Field> RomSM<F> {
     }
 
     pub fn compute_trace_rom_file(
-        rom_path: &PathBuf,
+        rom_path: PathBuf,
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {

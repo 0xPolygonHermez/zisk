@@ -87,7 +87,7 @@ fn main() {
     let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
     if let Err(e) = RomSM::<Goldilocks>::compute_trace_rom_file(
-        &rom_path.to_path_buf(),
+        rom_path.to_path_buf(),
         buffer_allocator,
         &sctx,
     ) {
