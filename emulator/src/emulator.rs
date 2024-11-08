@@ -166,7 +166,7 @@ impl ZiskEmulator {
     pub fn process_rom_pc_histogram(
         rom: &ZiskRom,
         inputs: &[u8],
-        outputs: &mut Vec<u8>,
+        outputs: &mut Vec<u64>,
         options: &EmuOptions,
     ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
         // Create a emulator instance with this rom and inputs
@@ -180,12 +180,9 @@ impl ZiskEmulator {
         }
 
         // Copy public output bytes into outputs
-        for i in 0..32 {
-            let value = emu.ctx.inst_ctx.mem.read(OUTPUT_ADDR + 4 + (8 * i), 8);
-            let value = value.to_le_bytes();
-            for j in 0..8 {
-                outputs.push(value[j]);
-            }
+        for i in 0..128 {
+            let value = emu.ctx.inst_ctx.mem.read(OUTPUT_ADDR + 4 + (4 * i), 4);
+            outputs.push(value);
         }
 
         Ok(pc_histogram)

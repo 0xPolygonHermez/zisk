@@ -139,7 +139,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // Run the ROM to compute the ROM witness
         let rom_sm = self.rom_sm.clone();
         let zisk_rom = self.zisk_rom.clone();
-        let mut outputs: Vec<u8> = Vec::new();
+        let mut outputs: Vec<u64> = Vec::new();
         let pc_histogram = ZiskEmulator::process_rom_pc_histogram(
             &self.zisk_rom,
             &public_inputs,
@@ -150,8 +150,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
 
         // Copy public outputs into proof context
-        pctx.public_inputs.inputs.write().unwrap().append(&mut outputs);
-        println! {"public inputs={:?}", pctx.public_inputs.inputs.read().unwrap()};
+        for p in 0..128 {
+            pctx.set_public_value_by_name(outputs[p], "inputs", Some(vec![p as u64]));
+        }
+        
 
         // Main, Binary and Arith State Machines
         // ----------------------------------------------

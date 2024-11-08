@@ -1484,11 +1484,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0024 -> copyb: c = b = mem(reg3, 4)
+    // :0024 -> copyb: c = b = mem(reg3, 8)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
     zib.src_b("ind", 0, false);
-    zib.ind_width(4);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.store("none", 0, false, false);
     zib.j(0, 4);
@@ -1509,14 +1509,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :002c -> add: reg3 = reg3 + 4
+    // :002c -> add: reg3 = reg3 + 8
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
-    zib.src_b("imm", 4, false);
+    zib.src_b("imm", 8, false);
     zib.op("add").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
-    zib.verbose("Set reg3 to reg3 + 4");
+    zib.verbose("Set reg3 to reg3 + 8");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
