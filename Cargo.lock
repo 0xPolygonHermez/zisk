@@ -2232,7 +2232,9 @@ name = "sm-mem"
 version = "0.1.0"
 dependencies = [
  "log",
+ "num-bigint",
  "p3-field",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "proofman-macros",
