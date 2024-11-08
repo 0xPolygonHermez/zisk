@@ -84,7 +84,7 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
             trace_custom_commits[i].flags = F::from_canonical_u64(2 + i as u64);
         }
 
-        pctx.set_public_value_by_name(b, "out");
+        pctx.set_public_value_by_name(b, "out", None);
 
         pctx.set_proof_value("value1", F::from_canonical_u64(5));
         pctx.set_proof_value("value2", F::from_canonical_u64(125));
