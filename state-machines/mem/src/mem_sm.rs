@@ -3,13 +3,14 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::MemModule;
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
-use zisk_core::ZiskRequiredMemory;
+use zisk_core::{Mem, ZiskRequiredMemory};
 use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemSM<F: PrimeField> {
@@ -253,6 +254,18 @@ impl<F: PrimeField> MemSM<F> {
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
     }
+}
+
+impl<F: PrimeField> MemModule<F> for MemSM<F> {
+    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]) {}
+    fn get_addr_ranges(&self) -> Vec<(u64, u64)> {
+        vec![]
+    }
+    fn get_flush_input_size(&self) -> u64 {
+        0
+    }
+    fn unregister_predecessor(&self) {}
+    fn register_predecessor(&self) {}
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemSM<F> {}

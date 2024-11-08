@@ -246,22 +246,15 @@ impl ZiskEmulator {
     pub fn par_process_rom_memory<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
-    ) -> Result<[Vec<ZiskRequiredMemory>; 2], ZiskEmulatorErr> {
-        let mut result: [Vec<ZiskRequiredMemory>; 2] = [Vec::new(), Vec::new()];
+    ) -> Result<Vec<ZiskRequiredMemory>, ZiskEmulatorErr> {
+        let mut emu = Emu::new(rom);
+        let result = emu.par_run_memory::<F>(inputs.to_owned());
 
-        result.par_iter_mut().enumerate().for_each(|(is_aligned, result)| {
-            let is_aligned = is_aligned == 0;
-            let mut emu = Emu::new(rom);
-            let required = emu.par_run_memory::<F>(inputs.to_owned(), is_aligned);
-
-            if !emu.terminated() {
-                panic!("Emulation did not complete");
-                // TODO!
-                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
-            }
-
-            *result = required;
-        });
+        if !emu.terminated() {
+            panic!("Emulation did not complete");
+            // TODO!
+            // return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
 
         Ok(result)
     }

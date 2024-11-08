@@ -1,358 +1,280 @@
+use std::collections::VecDeque;
+use std::default;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc,
 };
 
-use crate::{MemAlignRomSM, MemAlignSM, MemOp, MemSM};
+use crate::{MemAlignResponse, MemAlignRomSM, MemAlignSM, MemOp, MemSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
+use proofman_common::StepsParams;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
+use zisk_core::{elf2rom, ZiskRequiredMemory, ZiskRequiredOperation, RAM_ADDR};
 
 use proofman::{WitnessComponent, WitnessManager};
+
+const MEM_ADDR_MASK: u64 = 0xFFFF_FFFF_FFFF_FFF8;
+const MEM_BYTES: u64 = 8;
+
+const MAX_MEM_STEP_OFFSET: u64 = 2;
+const MAX_MEM_OPS_PER_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * 2;
+
+pub trait MemModule<F>: Send + Sync {
+    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]);
+    fn get_addr_ranges(&self) -> Vec<(u64, u64)>;
+    fn get_flush_input_size(&self) -> u64;
+    fn unregister_predecessor(&self);
+    fn register_predecessor(&self);
+}
+
+struct MemModuleData {
+    pub inputs: Vec<ZiskRequiredMemory>,
+    pub addr_ranges: Vec<(u64, u64)>,
+    pub flush_input_size: u64,
+}
 
 pub struct MemProxy<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
     // Secondary State machines
-    mem_sm: Arc<MemSM<F>>,
+    //  mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
+    modules: Vec<Arc<dyn MemModule<F>>>,
+    modules_data: Vec<MemModuleData>,
+}
+
+pub struct MemOperation {
+    pub step: u64,
+    pub is_write: bool,
+    pub address: u64,
+    pub width: u64,
+    pub value: u64,
+}
+
+pub struct MemAlignOperation {
+    pub address: u64,
+    pub mem_op: ZiskRequiredMemory,
+    pub mem_value: [u64; 2],
 }
 
 impl<F: PrimeField> MemProxy<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let mem_sm = MemSM::new(wcm.clone());
         let mem_align_rom_sm = MemAlignRomSM::new(wcm.clone());
         let mem_align_sm = MemAlignSM::new(wcm.clone(), std, mem_align_rom_sm);
 
+        let mut modules: Vec<Arc<dyn MemModule<F>>> = Vec::new();
+
+        modules.push(MemSM::new(wcm.clone()).clone());
+        let mut modules_data: Vec<MemModuleData> = Vec::new();
+
+        for module in modules.iter_mut() {
+            modules_data.push(Self::init_module(module));
+        }
         let mem_proxy = Self {
             registered_predecessors: AtomicU32::new(0),
-            mem_sm,
             mem_align_sm,
+            modules,
+            modules_data,
         };
         let mem_proxy = Arc::new(mem_proxy);
 
         wcm.register_component(mem_proxy.clone(), None, None);
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        mem_proxy.mem_sm.register_predecessor();
         mem_proxy.mem_align_sm.register_predecessor();
-
         mem_proxy
     }
-
+    pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
+        1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset as u64
+    }
     pub fn register_predecessor(&self) {
         self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
     }
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.mem_sm.unregister_predecessor();
+            // self.mem_sm.unregister_predecessor();
             self.mem_align_sm.unregister_predecessor();
         }
     }
 
+    pub fn init_module(module: &Arc<dyn MemModule<F>>) -> MemModuleData {
+        module.register_predecessor();
+        let ranges = module.get_addr_ranges();
+        let flush_input_size = module.get_flush_input_size();
+        MemModuleData { inputs: Vec::new(), addr_ranges: ranges, flush_input_size }
+    }
+
+    /// Static method to decide it the memory operation needs to be processed by
+    /// memAlign, because it isn't a 8-byte and 8-byte aligned memory access.
+    fn is_aligned(mem_op: &ZiskRequiredMemory) -> bool {
+        let aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
+        aligned_mem_address == mem_op.address && mem_op.width == MEM_BYTES
+    }
+    /// Process information of mem_op and mem_align_op to push mem_op operation. Only two possible situations:
+    /// 1) read, only on single mem_op is pushed
+    /// 2) read+write, two mem_op are pushed, one read and one write.
+    ///
+    /// This process is used for each aligned memory address, means that the "second part" of non aligned memory
+    /// operation is processed on addr + MEM_BYTES.
+    fn push_mem_align_op(
+        &self,
+        mem_addr: u64,
+        mem_value: u64,
+        mem_op: &ZiskRequiredMemory,
+        mem_align_op: &MemAlignResponse,
+        input: &mut Vec<ZiskRequiredMemory>,
+    ) -> u64 {
+        // Prepare aligned memory access
+        input.push(ZiskRequiredMemory {
+            step: mem_align_op.step,
+            is_write: false,
+            address: mem_addr,
+            width: MEM_BYTES,
+            value: mem_value,
+        });
+        if mem_op.is_write {
+            input.push(ZiskRequiredMemory {
+                step: mem_align_op.step + 1,
+                is_write: true,
+                address: mem_addr,
+                width: MEM_BYTES,
+                value: mem_align_op.mem_value,
+            });
+            mem_align_op.mem_value
+        } else {
+            mem_value
+        }
+    }
+    fn mem_align_call(
+        mem_op: &ZiskRequiredMemory,
+        mem_values: [u64; 2],
+        phase: u8,
+    ) -> MemAlignResponse {
+        let mem_align_res = MemAlignResponse { more_address: false, step: 0, mem_value: 0 };
+        mem_align_res
+    }
+    fn get_mem_module_id(&self, address: u64) -> (usize, u64) {
+        let mem_module_id = 0;
+        let next_addr_to_reevaluate = 0;
+        (mem_module_id, next_addr_to_reevaluate)
+    }
     pub fn prove(
         &self,
-        operations: &mut [Vec<ZiskRequiredMemory>; 2],
+        mem_operations: &mut Vec<ZiskRequiredMemory>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let mut aligned = std::mem::take(&mut operations[0]);
-        let unaligned = std::mem::take(&mut operations[1]);
-        let mut new_aligned = Vec::new();
+        let mut open_mem_align_ops: VecDeque<MemAlignOperation> = VecDeque::new();
+        let mut mem_module_inputs: [Vec<ZiskRequiredMemory>; 2] = Default::default();
 
         // Step 1. Sort the aligned memory accesses
+        // original vector is sorted by step, sort_by_key is stable, no reordering of elements with
+        // the same key.
         timer_start_debug!(MEM_SORT);
-        aligned.sort_by_key(|mem| mem.address);
+        mem_operations.sort_by_key(|mem| (mem.address & 0xFFFF_FFFF_FFFF_FFF8));
         timer_stop_and_log_debug!(MEM_SORT);
 
-        // Step 2. For each unaligned memory access
-        unaligned.iter().for_each(|unaligned_access| {
-            // Step 2.1 Ask to the Mem Align SM for the aligned memory accesses generated by the non-aligned one          
-            let mem_op = MemAlignSM::<F>::get_mem_op(unaligned_access);
+        // Initialize the last values of address and value on the sorted memory operations
+        let mut last_addr = 0xFFFF_FFFF_FFFF_FFFFu64;
+        let mut last_value = 0u64;
 
-            // Step 2.2 Ask to the Mem SM for the aligned memory accesses
-            // TODO! Remove mem_op.clone()
-            let aligned_accesses = self.get_aligned_accesses(
-                &unaligned_access,
-                mem_op.clone(),
-                &aligned,
-                &new_aligned,
-            );
-
-            // Step 2.3 Carried with the aligned memory accesses, prove the non-aligned ones
-            self.mem_align_sm.prove(unaligned_access, &aligned_accesses);
-
-            // Step 2.4 Store the new aligned memory access(es)
-            new_aligned.extend(aligned_accesses);
-            new_aligned.sort_by_key(|mem| mem.address);
+        // Add a final fake mem_op to force flush of open_mem_align_ops
+        mem_operations.push(ZiskRequiredMemory {
+            step: 0,
+            is_write: false,
+            address: MEM_ADDR_MASK,
+            width: 8,
+            value: 0,
         });
 
-        // Step 3. Concatenate the new aligned memory accesses with the original aligned memory
-        // accesses
-        aligned.extend(new_aligned);
+        let (mem_module_id, next_addr_to_reevaluate) = if mem_operations.is_empty() {
+            (0, 0)
+        } else {
+            self.get_mem_module_id(mem_operations[0].address)
+        };
 
-        timer_start_debug!(MEM_SORT_2);
-        aligned.sort_by_key(|mem| (mem.address, mem.step));
-        timer_stop_and_log_debug!(MEM_SORT_2);
+        for mem_op in mem_operations.iter_mut() {
+            let mut aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
 
-        let mut idx = 0;
-        while aligned[idx].address < RAM_ADDR && idx < aligned.len() {
-            idx += 1;
+            // Check if there are open mem align operations to be processed in this moment. Two possible
+            // conditions to process open mem align operations:
+            // 1) the address of open operation is less than the aligned address.
+            // 2) the address of open operation is equal to the aligned address, but the step of the open
+            // operation is less than the step of the current operation.
+
+            while open_mem_align_ops.len() > 0
+                || open_mem_align_ops[0].address < aligned_mem_address
+                || (open_mem_align_ops[0].address == aligned_mem_address
+                    && open_mem_align_ops[0].mem_op.step < mem_op.step)
+            {
+                let open_op = open_mem_align_ops.pop_front().unwrap();
+                let mem_value = if open_op.address == last_addr { last_value } else { 0 };
+
+                // call to mem_align to get information of the aligned memory access needed
+                // to prove the unaligned open operation.
+                let mem_align_op = Self::mem_align_call(&open_op.mem_op, [mem_value, 0], 1);
+
+                // remove element from top of queue, because we are on last phase, phase 1.
+                open_mem_align_ops.pop_front();
+
+                // push the aligned memory operations for current address (read or read+write) and
+                // update last_address and last_value.
+                last_value = self.push_mem_align_op(
+                    open_op.address,
+                    mem_value,
+                    &mem_op,
+                    &mem_align_op,
+                    &mut mem_module_inputs[mem_module_id],
+                );
+                last_addr = open_op.address;
+                // TODO: check if flush is needed
+            }
+
+            aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
+
+            // check if the aligned address is the last address to avoid processing the last fake mem_op
+            if aligned_mem_address == MEM_ADDR_MASK {
+                assert!(
+                    open_mem_align_ops.len() == 0,
+                    "open_mem_align_ops not empty, has {} elements",
+                    open_mem_align_ops.len()
+                );
+                break;
+            }
+
+            let mem_value = if aligned_mem_address == last_addr { last_value } else { 0 };
+
+            // all open mem align operations are processed, check if new mem operation is aligned
+            if !Self::is_aligned(&mem_op) {
+                // In this point found non-aligned memory access, phase-0
+                let mem_align_op = Self::mem_align_call(mem_op, [mem_value, 0], 0);
+                if mem_align_op.more_address {
+                    open_mem_align_ops.push_back(MemAlignOperation {
+                        address: aligned_mem_address + MEM_BYTES,
+                        mem_op: mem_op.clone(),
+                        mem_value: [mem_value, 0],
+                    });
+                }
+                self.push_mem_align_op(
+                    aligned_mem_address,
+                    mem_value,
+                    &mem_op,
+                    &mem_align_op,
+                    &mut mem_module_inputs[mem_module_id],
+                );
+            } else {
+                mem_module_inputs[mem_module_id].push(mem_op.clone());
+            }
+            if (mem_module_inputs[mem_module_id].len() as u64)
+                >= self.modules_data[mem_module_id].flush_input_size
+            {
+                let module = &self.modules[mem_module_id];
+                module.send_inputs(&mem_module_inputs[mem_module_id]);
+            }
         }
-
-        let (_input_aligned, aligned) = aligned.split_at_mut(idx);
-
-        // Step 4. Prove the aligned memory accesses using mem state machine
-        self.mem_sm.prove(aligned);
 
         Ok(())
-    }
-
-    #[inline(always)]
-    fn get_aligned_accesses(
-        &self,
-        unaligned_access: &ZiskRequiredMemory,
-        mem_op: MemOp,
-        aligned_accesses: &[ZiskRequiredMemory],
-        new_aligned_accesses: &[ZiskRequiredMemory],
-    ) -> Vec<ZiskRequiredMemory> {
-        // Align down to a 8 byte addres
-        let addr = unaligned_access.address & !7;
-        match mem_op {
-            MemOp::OneRead => {
-                // Look for last write to the same address
-                let last_write_addr = Self::get_last_write(
-                    addr,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-                let mut last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: 0,
-                });
-
-                last_write_addr.step = unaligned_access.step;
-
-                vec![last_write_addr]
-            }
-            MemOp::OneWrite => {
-                // Look for last write to the same address
-                let last_write_addr = Self::get_last_write(
-                    addr,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-
-                // Modify the value of the write to the same address
-                let last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: true,
-                    address: addr,
-                    width: 8,
-                    value: 0,
-                });
-
-                let mut last_write_addr_r = last_write_addr.clone();
-                last_write_addr_r.step = unaligned_access.step;
-                last_write_addr_r.is_write = false;
-
-                let mut last_write_addr_w = last_write_addr;
-                last_write_addr_w.step = unaligned_access.step;
-                Self::write_value(&unaligned_access, &mut last_write_addr_w);
-
-                vec![last_write_addr_r, last_write_addr_w]
-            }
-            MemOp::TwoReads => {
-                // Look for last write to the same address and same address + 8
-                let last_write_addr = Self::get_last_write(
-                    addr,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-                let last_write_addr_p = Self::get_last_write(
-                    addr + 8,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-
-                let mut last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: false,
-                    address: addr,
-                    width: 8,
-                    value: 0,
-                });
-
-                let mut last_write_addr_p = last_write_addr_p.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: false,
-                    address: addr + 8,
-                    width: 8,
-                    value: 0,
-                });
-
-                last_write_addr.step = unaligned_access.step;
-                last_write_addr_p.step = unaligned_access.step;
-
-                vec![last_write_addr, last_write_addr_p]
-            }
-            MemOp::TwoWrites => {
-                // Look for last write to the same address and same address + 8
-                let last_write_addr = Self::get_last_write(
-                    addr,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-                let last_write_addr_p = Self::get_last_write(
-                    addr + 8,
-                    unaligned_access.step,
-                    aligned_accesses,
-                    Some(new_aligned_accesses),
-                );
-
-                // Modify the value of the write to the same address
-                let last_write_addr = last_write_addr.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: true,
-                    address: addr,
-                    width: 8,
-                    value: 0,
-                });
-
-                let mut last_write_addr_r = last_write_addr.clone();
-                last_write_addr_r.step = unaligned_access.step;
-                last_write_addr_r.is_write = false;
-
-                let mut last_write_addr_w = last_write_addr;
-                last_write_addr_w.step = unaligned_access.step;
-                Self::write_value(&unaligned_access, &mut last_write_addr_w);
-
-                let last_write_addr_p = last_write_addr_p.unwrap_or(ZiskRequiredMemory {
-                    step: unaligned_access.step,
-                    is_write: true,
-                    address: addr + 8,
-                    width: 8,
-                    value: 0,
-                });
-
-                let mut last_write_addr_p_r = last_write_addr_p.clone();
-                last_write_addr_p_r.step = unaligned_access.step;
-                last_write_addr_p_r.is_write = false;
-
-                let mut last_write_addr_p_w = last_write_addr_p;
-                last_write_addr_p_w.step = unaligned_access.step;
-                Self::write_value(&unaligned_access, &mut last_write_addr_p_w);
-
-                Self::write_values(
-                    &unaligned_access,
-                    &mut last_write_addr_w,
-                    &mut last_write_addr_p_w,
-                );
-                vec![last_write_addr_r, last_write_addr_w, last_write_addr_p_r, last_write_addr_p_w]
-            }
-        }
-    }
-
-    #[inline(always)]
-    fn get_last_write(
-        addr: u64,
-        step: u64,
-        aligned_accesses: &[ZiskRequiredMemory],
-        new_aligned_accesses: Option<&[ZiskRequiredMemory]>,
-    ) -> Option<ZiskRequiredMemory> {
-        // Step 1: Find the start of the range for `addr`
-        let start_index =
-            match aligned_accesses.binary_search_by_key(&addr, |access| access.address) {
-                Ok(mut index) => {
-                    // Backtrack to find the first occurrence of `addr`
-                    while index > 0 && aligned_accesses[index - 1].address == addr {
-                        index -= 1;
-                    }
-                    index
-                }
-                Err(index) => index, // If no match, use the insertion point as before
-            };
-
-        // Step 2: Iterate from start_index forward, storing the last valid write
-        let mut last_write = None;
-        for access in &aligned_accesses[start_index..] {
-            if access.address != addr {
-                break; // Stop if we move past the given address
-            }
-            if access.step >= step {
-                break; // Stop if step is not less than the given step
-            }
-            if access.is_write {
-                last_write = Some(access.clone()); // Update last write if conditions are met
-            }
-        }
-
-        // Step 3: If `new_aligned_accesses` exists, check for a more recent write
-        if let None = new_aligned_accesses {
-            return last_write;
-        }
-
-        let new_aligned_accesses = new_aligned_accesses.unwrap();
-        let last_new_write = Self::get_last_write(addr, step, new_aligned_accesses, None);
-
-        if let None = last_write {
-            return last_new_write;
-        }
-
-        if let Some(last_new_write) = last_new_write {
-            if last_new_write.step > last_write.as_ref().unwrap().step {
-                return Some(last_new_write);
-            }
-        }
-
-        last_write
-    }
-
-    #[inline(always)]
-    fn write_value(unaligned: &ZiskRequiredMemory, aligned: &mut ZiskRequiredMemory) {
-        let offset = unaligned.address & 7;
-        let width_in_bits = unaligned.width * 8;
-
-        let mask = !(((1u64 << width_in_bits) - 1) << (offset * 8));
-
-        aligned.value = (aligned.value & mask)
-            | ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
-    }
-    #[inline(always)]
-    fn write_values(
-        unaligned: &ZiskRequiredMemory,
-        aligned: &mut ZiskRequiredMemory,
-        aligned_next: &mut ZiskRequiredMemory,
-    ) {
-        let offset = unaligned.address & 7;
-        let bytes_to_write = 8 - offset;
-        let right_bits = (unaligned.width - bytes_to_write) * 8;
-
-        // Left write
-        let left_value = unaligned.value << right_bits;
-        let left_memory =
-            ZiskRequiredMemory { width: bytes_to_write, value: left_value, ..*unaligned };
-        Self::write_value(&left_memory, aligned);
-
-        // Right write
-        let right_value = unaligned.value >> (bytes_to_write * 8);
-
-        let right_memory = ZiskRequiredMemory {
-            address: 0,
-            width: unaligned.width - bytes_to_write,
-            value: right_value,
-            ..*unaligned
-        };
-        Self::write_value(&right_memory, aligned_next);
     }
 }
 

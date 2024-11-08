@@ -34,6 +34,11 @@ pub struct MemAlignResponse {
     pub value: Option<u64>,
 }
 
+pub struct MemAlignResponse {
+    pub more_address: bool,
+    pub step: u64,
+    pub mem_value: u64,
+}
 pub struct MemAlignSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
@@ -682,12 +687,9 @@ impl<F: PrimeField> MemAlignSM<F> {
             create_prover_buffer(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
 
         // Create a Mem Align trace buffer
-        let mut trace_buffer = MemAlignTrace::<F>::map_buffer(
-            &mut prover_buffer,
-            air_mem_align_rows,
-            offset as usize,
-        )
-        .unwrap();
+        let mut trace_buffer =
+            MemAlignTrace::<F>::map_buffer(&mut prover_buffer, air_mem_align_rows, offset as usize)
+                .unwrap();
 
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
