@@ -11,7 +11,7 @@ use std::{
 };
 use sysinfo::System;
 use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
+    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR,
     ZISK_OPERATION_TYPE_VARIANTS,
 };
 
@@ -166,6 +166,7 @@ impl ZiskEmulator {
     pub fn process_rom_pc_histogram(
         rom: &ZiskRom,
         inputs: &[u8],
+        outputs: &mut Vec<u8>,
         options: &EmuOptions,
     ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
         // Create a emulator instance with this rom and inputs
@@ -176,6 +177,15 @@ impl ZiskEmulator {
 
         if !emu.terminated() {
             return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
+
+        // Copy public output bytes into outputs
+        for i in 0..32 {
+            let value = emu.ctx.inst_ctx.mem.read(OUTPUT_ADDR + 4 + (8 * i), 8);
+            let value = value.to_le_bytes();
+            for j in 0..8 {
+                outputs.push(value[j]);
+            }
         }
 
         Ok(pc_histogram)

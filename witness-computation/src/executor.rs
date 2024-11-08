@@ -139,12 +139,19 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // Run the ROM to compute the ROM witness
         let rom_sm = self.rom_sm.clone();
         let zisk_rom = self.zisk_rom.clone();
-        let pc_histogram =
-            ZiskEmulator::process_rom_pc_histogram(&self.zisk_rom, &public_inputs, &emu_options)
-                .expect(
-                    "MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()",
-                );
+        let mut outputs: Vec<u8> = Vec::new();
+        let pc_histogram = ZiskEmulator::process_rom_pc_histogram(
+            &self.zisk_rom,
+            &public_inputs,
+            &mut outputs,
+            &emu_options,
+        )
+        .expect("MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()");
         let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
+
+        // Copy public outputs into proof context
+        pctx.public_inputs.inputs.write().unwrap().append(&mut outputs);
+        println! {"public inputs={:?}", pctx.public_inputs.inputs.read().unwrap()};
 
         // Main, Binary and Arith State Machines
         // ----------------------------------------------
