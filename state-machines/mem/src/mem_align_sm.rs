@@ -313,7 +313,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 }
 
                 // Prove the generated rows
-                self.prove(&[read_row, value_row]);
+                self.prove(&[read_row, write_row, value_row]);
 
                 MemAlignResponse { more_address: false, step, value: Some(value_write) }
             }
@@ -417,7 +417,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         }
 
                         // Prove the generated rows
-                        self.prove(&[read_row, value_row]);
+                        self.prove(&[first_read_row, value_row, second_read_row]);
 
                         MemAlignResponse { more_address: false, step, value: None }
                     }
@@ -624,7 +624,13 @@ impl<F: PrimeField> MemAlignSM<F> {
                         // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
 
                         // Prove the generated rows
-                        self.prove(&[read_row, value_row]);
+                        self.prove(&[
+                            first_read_row,
+                            first_write_row,
+                            value_row,
+                            second_write_row,
+                            second_read_row,
+                        ]);
 
                         MemAlignResponse {
                             more_address: false,
