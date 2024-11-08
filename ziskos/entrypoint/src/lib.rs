@@ -46,7 +46,6 @@ pub fn read_input() -> Vec<u8> {
 #[cfg(target_os = "ziskos")]
 pub fn set_output(id: usize, value: u32) {
     use std::arch::asm;
-    let addr_n: *mut u32;
     let addr_v: *mut u32;
     let arch_id_zisk: usize;
 
@@ -57,24 +56,12 @@ pub fn set_output(id: usize, value: u32) {
         )
     };
 
-    assert!(id < 64, "Maximum number of public outputs: 64");
+    assert!(id < 128, "Maximum number of public outputs: 128");
 
     if arch_id_zisk == ARCH_ID_ZISK as usize {
-        addr_n = OUTPUT_ADDR as *mut u32;
-        addr_v = (OUTPUT_ADDR + 4 + 4 * (id as u64)) as *mut u32;
+        addr_v = (OUTPUT_ADDR + 4 * (id as u64)) as *mut u32;
     } else {
-        addr_n = 0x1000_0000 as *mut u32;
-        addr_v = (0x1000_0000 + 4 + 4 * (id as u64)) as *mut u32;
-    }
-
-    let n;
-
-    unsafe {
-        n = core::ptr::read(addr_n) as usize;
-    }
-
-    if id + 1 > n {
-        unsafe { core::ptr::write_volatile(addr_n, (id + 1) as u32) };
+        addr_v = (0x1000_0000 + 4 * (id as u64)) as *mut u32;
     }
 
     unsafe { core::ptr::write_volatile(addr_v, value) };
