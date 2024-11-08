@@ -23,6 +23,16 @@ use crate::{MemAlignRomSM, MemOp};
 const CHUNK_NUM: usize = 8;
 const CHUNK_NUM_U64: u64 = CHUNK_NUM as u64;
 const CHUNK_BITS: usize = 8;
+const CHUNK_BITS_U64: u64 = CHUNK_BITS as u64;
+const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
+
+const ALLOWED_WIDTHS: [u64; 4] = [1, 2, 4, 8];
+
+pub struct MemAlignResponse {
+    pub more_address: bool,
+    pub step: u64,
+    pub value: Option<u64>,
+}
 
 pub struct MemAlignSM<F: PrimeField> {
     // Witness computation manager
@@ -93,18 +103,514 @@ impl<F: PrimeField> MemAlignSM<F> {
     }
 
     #[inline(always)]
-    pub fn get_mem_op(unaligned_input: &ZiskRequiredMemory) -> MemOp {
-        let addr = unaligned_input.address;
-        let width = unaligned_input.width;
+    pub fn get_mem_op(&self, input: &ZiskRequiredMemory, mem_values: Vec<u64>, phase: usize) -> MemAlignResponse {
+        // Sanity check
+        assert!(mem_values.len() == phase + 1); // TODO: Debug mode
+        
+        let addr = input.address;
+        let width = input.width;
+        let width = if ALLOWED_WIDTHS.contains(&width) {
+            width as usize
+        } else {
+            panic!("Width={} is not allowed. Allowed widths are {:?}", width, ALLOWED_WIDTHS);
+        };
 
-        let offset = addr & (CHUNK_NUM_U64 - 1);
+        // Compute the offset
+        let offset = addr & CHUNK_BITS_MASK;
+        let offset = if offset <= usize::MAX as u64 {
+            offset as usize
+        } else {
+            panic!("Offset={} is too large", offset);
+        };
 
-        match (unaligned_input.is_write, offset + width > CHUNK_NUM_U64) {
-            (false, false) => MemOp::OneRead,
-            (true, false) => MemOp::OneWrite,
-            (false, true) => MemOp::TwoReads,
-            (true, true) => MemOp::TwoWrites,
+        // main:      [mem_op, addr, 1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset, bytes, ...value]
+        // mem:       [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value]
+        // mem_align: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...prove_val]
+        let mut result: MemAlignResponse;
+        match (input.is_write, offset + width > CHUNK_NUM) {
+            (false, false) => { // RV
+                assert!(phase == 0);  // TODO: Debug mode
+
+                // Unaligned memory op information thrown into the bus
+                let step = input.step;
+                let value = input.value;
+
+                // Compute the shift
+                let shift = ((offset + width) % CHUNK_NUM) as u64;
+
+                // Get the aligned address
+                let addr_read = addr >> CHUNK_BITS;
+
+                // Get the aligned value
+                let value_read = mem_values[phase];
+
+                // Get the next pc
+                let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::OneRead, offset, width);
+
+                let mut read_row = MemAlignRow::<F> {
+                    step: F::from_canonical_u64(step),
+                    addr: F::from_canonical_u64(addr_read),
+                    // offset: F::from_canonical_u64(0),
+                    // wr: F::from_bool(false),
+                    // pc: F::from_canonical_u64(0),
+                    reset: F::from_bool(true),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
+                };
+
+                let mut value_row = MemAlignRow::<F> {
+                    step: F::from_canonical_u64(step),
+                    addr: F::from_canonical_u64(addr),
+                    offset: F::from_canonical_usize(offset),
+                    width: F::from_canonical_usize(width),
+                    // wr: F::from_bool(false),
+                    pc: F::from_canonical_u64(next_pc),
+                    // reset: F::from_bool(false),
+                    sel_prove: F::from_bool(true),
+                    ..Default::default()
+                };
+
+                for i in 0..CHUNK_NUM {
+                    let pos = i as u64;
+
+                    read_row.reg[i] = {
+                        F::from_canonical_u64(value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                    };
+                    read_row.sel[i] = F::from_bool(true);
+
+                    value_row.reg[i] = {
+                        F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                    };
+                    value_row.sel[i] = F::from_bool(i == offset as usize);
+
+                    // Store the range check
+                    // *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
+                    // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+                }
+
+                result = MemAlignResponse {
+                    more_address: false,
+                    step,
+                    value: None,
+                };
+            },
+            (true, false) => { // RWV
+                assert!(phase == 0);  // TODO: Debug mode
+
+                // Unaligned memory op information thrown into the bus
+                let step = input.step;
+                let value = input.value;
+
+                // Compute the shift
+                let shift = ((offset + width) % CHUNK_NUM) as u64;
+
+                // Get the aligned address
+                let addr_read = addr >> CHUNK_BITS;
+
+                // Get the aligned value
+                let value_read = mem_values[phase];
+
+                // Get the next pc
+                let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::OneWrite, offset, width);
+
+                // Compute the write value
+                let value_write = {
+                    let width_bytes: u64 = (1 << (width * CHUNK_BITS)) - 1;
+
+                    // Get the first width bytes of the unaligned value
+                    let value_to_write = value & width_bytes;
+                    
+                    // Write zeroes to value_read from offset to offset + width
+                    let mask: u64 = width_bytes << (offset * CHUNK_BITS);
+
+                    // Add the value to write to the value read
+                    (value_read & !mask) | value_to_write
+                };
+
+                let mut read_row = MemAlignRow::<F> {
+                    step: F::from_canonical_u64(step),
+                    addr: F::from_canonical_u64(addr_read),
+                    // offset: F::from_canonical_u64(0),
+                    width: F::from_canonical_u64(CHUNK_NUM_U64),
+                    // wr: F::from_bool(false),
+                    // pc: F::from_canonical_u64(0),
+                    reset: F::from_bool(true),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
+                };
+
+                let mut write_row = MemAlignRow::<F> {
+                    step: F::from_canonical_u64(step + 1),
+                    addr: F::from_canonical_u64(addr_read),
+                    // offset: F::from_canonical_u64(0),
+                    width: F::from_canonical_u64(CHUNK_NUM_U64),
+                    wr: F::from_bool(true),
+                    pc: F::from_canonical_u64(next_pc),
+                    // reset: F::from_bool(false),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
+                };
+
+                let mut value_row = MemAlignRow::<F> {
+                    step: F::from_canonical_u64(step),
+                    addr: F::from_canonical_u64(addr),
+                    offset: F::from_canonical_usize(offset),
+                    width: F::from_canonical_usize(width),
+                    // wr: F::from_bool(false),
+                    pc: F::from_canonical_u64(next_pc + 1),
+                    // reset: F::from_bool(false),
+                    sel_prove: F::from_bool(true),
+                    ..Default::default()
+                };
+
+                for i in 0..CHUNK_NUM {
+                    let pos = i as u64;
+
+                    read_row.reg[i] = {
+                        F::from_canonical_u64(value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                    };
+                    read_row.sel[i] = F::from_bool(i >= width);
+
+                    write_row.reg[i] = {
+                        F::from_canonical_u64(value_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                    };
+                    write_row.sel[i] = F::from_bool(i < width);
+
+                    value_row.reg[i] = {
+                        F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                    };
+                    value_row.sel[i] = F::from_bool(i == offset as usize);
+
+                    // Store the range check
+                    // *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
+                    // *range_check.entry(write_row.reg[i]).or_insert(0) += 1;
+                    // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+                }
+
+                result = MemAlignResponse {
+                    more_address: false,
+                    step,
+                    value: Some(value_write),
+                };
+            },
+            (false, true) => { // RVR
+                assert!(phase == 0 || phase == 1);  // TODO: Debug mode
+
+                match phase {
+                    // If phase == 0, do nothing, just ask for more
+                    0 => {
+                        result = MemAlignResponse {
+                            more_address: true,
+                            step: input.step,
+                            value: None,
+                        };
+                    },
+
+                    // Otherwise, do the RVR
+                    1 => {
+                        assert!(mem_values.len() == 2);  // TODO: Debug mode
+
+                        // Unaligned memory op information thrown into the bus
+                        let step = input.step;
+                        let value = input.value;
+
+                        // Compute the shift
+                        let shift = ((offset + width) % CHUNK_NUM) as u64;
+
+                        // Get the aligned address
+                        let addr_first_read = addr >> CHUNK_BITS;
+                        let addr_second_read = addr >> CHUNK_BITS + CHUNK_BITS;
+
+                        // Get the aligned value
+                        let value_first_read = mem_values[0];
+                        let value_second_read = mem_values[1];
+
+                        // Get the next pc
+                        let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoReads, offset, width);
+
+                        let mut first_read_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr_first_read),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            // wr: F::from_bool(false),
+                            // pc: F::from_canonical_u64(0),
+                            reset: F::from_bool(true),
+                            sel_up_to_down: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut value_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr),
+                            offset: F::from_canonical_usize(offset),
+                            width: F::from_canonical_usize(width),
+                            // wr: F::from_bool(false),
+                            pc: F::from_canonical_u64(next_pc),
+                            // reset: F::from_bool(false),
+                            sel_prove: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut second_read_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr_second_read),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            // wr: F::from_bool(false),
+                            pc: F::from_canonical_u64(next_pc + 1),
+                            // reset: F::from_bool(false),
+                            sel_down_to_up: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        for i in 0..CHUNK_NUM {
+                            let pos = i as u64;
+
+                            first_read_row.reg[i] = {
+                                F::from_canonical_u64(value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            first_read_row.sel[i] = F::from_bool(true);
+
+                            value_row.reg[i] = {
+                                F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                            };
+                            value_row.sel[i] = F::from_bool(i == offset);
+
+                            second_read_row.reg[i] = {
+                                F::from_canonical_u64(value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            second_read_row.sel[i] = F::from_bool(true);
+
+                            // Store the range check
+                            // *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
+                        }
+
+                        result = MemAlignResponse {
+                            more_address: false,
+                            step,
+                            value: None,
+                        };
+                    },
+                    _ => panic!("Invalid phase={}", phase),
+                }
+            },
+            (true, true) => { // RWVWR
+                assert!(phase == 0 || phase == 1);  // TODO: Debug mode
+
+                match phase {
+                    // If phase == 0, compute the resulting write value and ask for more
+                    0 => {
+                        assert!(mem_values.len() == 1);  // TODO: Debug mode
+
+                        // Unaligned memory op information thrown into the bus
+                        let value = input.value;
+                        let step = input.step;
+
+                        // Get the aligned value
+                        let value_first_read = mem_values[0];
+
+                        // Compute the write value
+                        let value_first_write = {
+                            let width_bytes: u64 = (1 << (width * CHUNK_BITS)) - 1;
+
+                            // Get the first width bytes of the unaligned value
+                            let value_to_write = value & width_bytes;
+                            
+                            // Write zeroes to value_read from offset to offset + width
+                            let mask = width_bytes << (offset * CHUNK_BITS);
+
+                            // Add the value to write to the value read
+                            (value_first_read & !mask) | value_to_write
+                        };
+
+                        result = MemAlignResponse {
+                            more_address: true,
+                            step,
+                            value: Some(value_first_write),
+                        };
+                    },
+                    // Otherwise, do the RWVRW
+                    1 => {
+                        assert!(mem_values.len() == 2);  // TODO: Debug mode
+
+                        // Unaligned memory op information thrown into the bus
+                        let step = input.step;
+                        let value = input.value;
+
+                        // Compute the shift
+                        let shift = ((offset + width) % CHUNK_NUM) as u64;
+
+                        // Get the aligned address
+                        let addr_first_read_write = addr >> CHUNK_BITS;
+                        let addr_second_read_write = addr >> CHUNK_BITS + CHUNK_BITS;
+
+                        // Get the first aligned value
+                        let value_first_read = mem_values[0];
+
+                        // Recompute the first write value
+                        let value_first_write = {
+                            let width_bytes = (1 << (width * CHUNK_BITS)) - 1;
+
+                            // Get the first width bytes of the unaligned value
+                            let value_to_write = value & width_bytes;
+                            
+                            // Write zeroes to value_read from offset to offset + width
+                            let mask = width_bytes << (offset * CHUNK_BITS);
+
+                            // Add the value to write to the value read
+                            (value_first_read & !mask) | value_to_write
+                        };
+
+                        // Get the second aligned value
+                        let value_second_read = mem_values[1];
+
+                        // Compute the second write value
+                        let value_second_write = {
+                            let width_bytes = (1 << (width * CHUNK_BITS)) - 1;
+
+                            // Get the first width bytes of the unaligned value
+                            let value_to_write = value & width_bytes;
+                            
+                            // Write zeroes to value_read from offset to offset + width
+                            let mask = width_bytes << (offset * CHUNK_BITS);
+
+                            // Add the value to write to the value read
+                            (value_second_read & !mask) | value_to_write
+                        };
+
+                        // Get the next pc
+                        let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoWrites, offset, width);
+
+                        // RWVWR
+                        let mut first_read_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr_first_read_write),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            // wr: F::from_bool(false),
+                            // pc: F::from_canonical_u64(0),
+                            reset: F::from_bool(true),
+                            sel_up_to_down: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut first_write_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step + 1),
+                            addr: F::from_canonical_u64(addr_first_read_write),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            wr: F::from_bool(true),
+                            pc: F::from_canonical_u64(next_pc),
+                            // reset: F::from_bool(false),
+                            sel_up_to_down: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut value_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr),
+                            offset: F::from_canonical_usize(offset),
+                            width: F::from_canonical_usize(width),
+                            // wr: F::from_bool(false),
+                            pc: F::from_canonical_u64(next_pc + 1),
+                            // reset: F::from_bool(false),
+                            sel_prove: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut second_write_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step),
+                            addr: F::from_canonical_u64(addr_second_read_write),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            wr: F::from_bool(true),
+                            pc: F::from_canonical_u64(next_pc + 2),
+                            // reset: F::from_bool(false),
+                            sel_down_to_up: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        let mut second_read_row = MemAlignRow::<F> {
+                            step: F::from_canonical_u64(step + 1),
+                            addr: F::from_canonical_u64(addr_second_read_write),
+                            // offset: F::from_canonical_u64(0),
+                            width: F::from_canonical_u64(CHUNK_NUM_U64),
+                            // wr: F::from_bool(false),
+                            pc: F::from_canonical_u64(next_pc + 3),
+                            reset: F::from_bool(false),
+                            sel_down_to_up: F::from_bool(true),
+                            ..Default::default()
+                        };
+
+                        for i in 0..CHUNK_NUM {
+                            let pos = i as u64;
+
+                            first_read_row.reg[i] = {
+                                F::from_canonical_u64(value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            first_read_row.sel[i] = F::from_bool(i < offset);
+
+                            first_write_row.reg[i] = {
+                                F::from_canonical_u64(value_first_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            first_write_row.sel[i] = F::from_bool(i >= offset);
+
+                            value_row.reg[i] = {
+                                F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                            };
+                            value_row.sel[i] = F::from_bool(i == offset);
+
+                            second_write_row.reg[i] = {
+                                F::from_canonical_u64(value_second_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            second_write_row.sel[i] = F::from_bool(pos < shift);
+
+                            second_read_row.reg[i] = {
+                                F::from_canonical_u64(value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                            };
+                            second_read_row.sel[i] = F::from_bool(pos >= shift);
+
+                            // Store the range check
+                            // *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(first_write_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(second_write_row.reg[i]).or_insert(0) += 1;
+                            // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
+
+                            result = MemAlignResponse {
+                                more_address: false,
+                                step,
+                                value: Some(value_second_write),
+                            };
+                        }
+                    },
+                    _ => panic!("Invalid phase={}", phase),
+                }
+            },
         }
+
+        if let Ok(mut inputs) = self.inputs.lock() {
+            inputs.push((unaligned_access.clone(), aligned_accesses.to_vec()));
+
+            let pctx = self.wcm.get_pctx();
+            let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+
+            // TODO: Fix this, I am assuming the wc
+            while inputs.len() * 5 >= air_mem_align.num_rows() {
+                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
+                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+
+                self.prove_internal(&drained_inputs);
+            }
+        }
+        
+        // {
+        //     is_sufficient,
+        //     if write => (value, step), // the step should be the same for the two words! (the write is step + 1)
+        // }
     }
 
     pub fn prove(
@@ -273,6 +779,17 @@ impl<F: PrimeField> MemAlignSM<F> {
         let op_size = MemAlignRomSM::<F>::get_mem_align_op_size(op);
         let next_pc = MemAlignRomSM::<F>::calculate_next_pc(op, offset, width);
 
+        println!("OP: {:?}", op);
+        println!("UNALIGNED INPUT:\n  {:?}", unaligned_input);
+        println!("  OFFSET: {:?}", offset);
+        println!("  value: {:?}", unaligned_input.value.to_le_bytes());
+        println!("ALIGNED INPUTS:");
+        for aligned_input in aligned_inputs {
+            println!("  {:?}", aligned_input);
+            println!("  value: {:?}", aligned_input.value.to_le_bytes());
+        }
+        println!("");
+
         // Initialize and set the rows of the corresponding op
         let mut rows: Vec<MemAlignRow<F>> = Vec::with_capacity(op_size);
         // TODO: Can I detatch the "shape" of the program from the mem_align and do it in the mem_align_rom?
@@ -283,7 +800,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 assert!(aligned_inputs.len() == 1);
 
                 // Get the aligned address
-                let addr_read = aligned_inputs[0].address; // addr / CHUNK_NUM;
+                let addr_read = aligned_inputs[0].address;
 
                 // Get the aligned values
                 let value_read = aligned_inputs[0].value.to_le_bytes();
@@ -336,7 +853,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 assert!(aligned_inputs.len() == 2);
 
                 // Get the aligned address
-                let addr_read_write = aligned_inputs[0].address; // addr / CHUNK_NUM;
+                let addr_read_write = aligned_inputs[0].address;
 
                 // Get the aligned values
                 let value_read = aligned_inputs[0].value.to_le_bytes();
@@ -385,10 +902,10 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                 for i in 0..CHUNK_NUM {
                     read_row.reg[i] = F::from_canonical_u8(value_read[i]);
-                    read_row.sel[i] = F::from_bool(i < offset);
+                    read_row.sel[i] = F::from_bool(i >= width);
 
                     write_row.reg[i] = F::from_canonical_u8(value_write[i]);
-                    write_row.sel[i] = F::from_bool(i >= offset);
+                    write_row.sel[i] = F::from_bool(i < width);
 
                     value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
                     value_row.sel[i] = F::from_bool(i == offset);
@@ -410,8 +927,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                 assert!(aligned_inputs.len() == 2);
 
                 // Get the aligned address
-                let addr_first_read = aligned_inputs[0].address; // addr / CHUNK_NUM;
-                let addr_second_read = aligned_inputs[1].address; // addr / CHUNK_NUM + CHUNK_NUM;
+                let addr_first_read = aligned_inputs[0].address;
+                let addr_second_read = aligned_inputs[1].address;
 
                 // Get the aligned values
                 let value_first_read = aligned_inputs[0].value.to_le_bytes();
@@ -485,8 +1002,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                 assert!(aligned_inputs.len() == 4);
 
                 // Get the aligned address
-                let addr_first_read_write = aligned_inputs[0].address; // addr / CHUNK_NUM;
-                let addr_second_read_write = aligned_inputs[2].address; // addr / CHUNK_NUM + CHUNK_NUM;
+                let addr_first_read_write = aligned_inputs[0].address;
+                let addr_second_read_write = aligned_inputs[2].address;
 
                 // Get the aligned values
                 // TODO: I do not need to establish an order, I can use the field is_write!!!

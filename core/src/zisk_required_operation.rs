@@ -17,11 +17,6 @@ pub struct ZiskRequiredMemory {
     pub value: u64,
 }
 
-pub struct ZiskRequiredMemoryAlign {
-    pub mem_op: ZiskRequiredMemory,
-    pub mem_value: [u64; 2],
-}
-
 #[derive(Clone, Default)]
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,
