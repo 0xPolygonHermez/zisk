@@ -311,6 +311,8 @@ opType string2opType(const string s)
         return string_;
     if(s == "airvalue") 
         return airvalue;
+    if(s == "custom") 
+        return custom;
     zklog.error("string2opType() found invalid string=" + s);
     exitProcess();
     exit(-1);

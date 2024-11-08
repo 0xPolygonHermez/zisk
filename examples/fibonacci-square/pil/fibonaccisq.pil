@@ -41,5 +41,7 @@ airtemplate FibonacciSquare(const int N = 2**8) {
 
     line - (flags + 1) === 0;
 
+    @test_hint{ custom_col: line };
+
     permutation_assumes(MODULE_ID, [a*a + b*b, b'], 1 - L1');
 }

@@ -29,6 +29,7 @@ typedef enum
     string_ = 7,
     airvalue = 8,
     proofvalue = 9,
+    custom = 10,
 } opType;
 
 

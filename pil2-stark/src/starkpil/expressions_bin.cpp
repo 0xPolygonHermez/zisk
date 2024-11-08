@@ -281,6 +281,9 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
                 if(hintFieldValue.operand == opType::tmp) {
                     hintFieldValue.dim = expressionsBin->readU32LE();
                 }
+                if(hintFieldValue.operand == opType::custom) {
+                    hintFieldValue.commitId = expressionsBin->readU32LE();
+                }
                 uint64_t nPos = expressionsBin->readU32LE();
                 for(uint64_t p = 0; p < nPos; ++p) {
                     uint32_t pos = expressionsBin->readU32LE();
