@@ -897,6 +897,7 @@ impl<'a> Emu<'a> {
                     inst.op_type == ZiskOperationType::BinaryE ||
                     inst.op_type == ZiskOperationType::PubOut,
             ),
+            __debug_step_bus_enabled: F::from_bool(inst.op_type != ZiskOperationType::PubOut),
         }
     }
 
