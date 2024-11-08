@@ -44,8 +44,8 @@ pub struct MemAlignSM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Inputs
-    inputs: Mutex<Vec<(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)>>,
+    // Computed rows
+    rows: Mutex<Vec<MemAlignRow<F>>>,
 
     // Secondary State machines
     mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
@@ -63,7 +63,7 @@ impl<F: PrimeField> MemAlignSM<F> {
             wcm: wcm.clone(),
             std: std.clone(),
             registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
+            rows: Mutex::new(Vec::new()),
             mem_align_rom_sm,
         };
         let mem_align_sm = Arc::new(mem_align_sm);
@@ -87,26 +87,37 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // TODO: Fix this...
-            if let Ok(mut inputs) = self.inputs.lock() {
-                let pctx = self.wcm.get_pctx();
-                let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
-                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
+            let pctx = self.wcm.get_pctx();
 
-                self.prove_internal(&drained_inputs);
+            // TODO: Fix this...
+            // If there are remaining rows, generate the last instance
+            if let Ok(mut rows) = self.rows.lock() {
+                // Get the Mem Align AIR
+                let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+
+                let rows_len = rows.len();
+                assert!(rows_len <= air_mem_align.num_rows());
+
+                let drained_rows = rows.drain(..rows_len).collect::<Vec<_>>();
+
+                self.fill_new_air_instance(&drained_rows);
             }
 
             self.mem_align_rom_sm.unregister_predecessor();
-            self.std.unregister_predecessor(self.wcm.get_pctx(), None);
+            self.std.unregister_predecessor(pctx, None);
         }
     }
 
     #[inline(always)]
-    pub fn get_mem_op(&self, input: &ZiskRequiredMemory, mem_values: Vec<u64>, phase: usize) -> MemAlignResponse {
+    pub fn get_mem_op(
+        &self,
+        input: &ZiskRequiredMemory,
+        mem_values: Vec<u64>,
+        phase: usize,
+    ) -> MemAlignResponse {
         // Sanity check
         assert!(mem_values.len() == phase + 1); // TODO: Debug mode
-        
+
         let addr = input.address;
         let width = input.width;
         let width = if ALLOWED_WIDTHS.contains(&width) {
@@ -126,10 +137,10 @@ impl<F: PrimeField> MemAlignSM<F> {
         // main:      [mem_op, addr, 1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset, bytes, ...value]
         // mem:       [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value]
         // mem_align: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...prove_val]
-        let mut result: MemAlignResponse;
         match (input.is_write, offset + width > CHUNK_NUM) {
-            (false, false) => { // RV
-                assert!(phase == 0);  // TODO: Debug mode
+            (false, false) => {
+                // RV
+                assert!(phase == 0); // TODO: Debug mode
 
                 // Unaligned memory op information thrown into the bus
                 let step = input.step;
@@ -174,12 +185,18 @@ impl<F: PrimeField> MemAlignSM<F> {
                     let pos = i as u64;
 
                     read_row.reg[i] = {
-                        F::from_canonical_u64(value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                        F::from_canonical_u64(
+                            value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                        )
                     };
                     read_row.sel[i] = F::from_bool(true);
 
                     value_row.reg[i] = {
-                        F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                        F::from_canonical_u64(
+                            value
+                                & (CHUNK_BITS_MASK
+                                    << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
+                        )
                     };
                     value_row.sel[i] = F::from_bool(i == offset as usize);
 
@@ -188,14 +205,14 @@ impl<F: PrimeField> MemAlignSM<F> {
                     // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
                 }
 
-                result = MemAlignResponse {
-                    more_address: false,
-                    step,
-                    value: None,
-                };
-            },
-            (true, false) => { // RWV
-                assert!(phase == 0);  // TODO: Debug mode
+                // Prove the generated rows
+                self.prove(&[read_row, value_row]);
+
+                MemAlignResponse { more_address: false, step, value: None }
+            }
+            (true, false) => {
+                // RWV
+                assert!(phase == 0); // TODO: Debug mode
 
                 // Unaligned memory op information thrown into the bus
                 let step = input.step;
@@ -219,7 +236,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                     // Get the first width bytes of the unaligned value
                     let value_to_write = value & width_bytes;
-                    
+
                     // Write zeroes to value_read from offset to offset + width
                     let mask: u64 = width_bytes << (offset * CHUNK_BITS);
 
@@ -267,17 +284,25 @@ impl<F: PrimeField> MemAlignSM<F> {
                     let pos = i as u64;
 
                     read_row.reg[i] = {
-                        F::from_canonical_u64(value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                        F::from_canonical_u64(
+                            value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                        )
                     };
                     read_row.sel[i] = F::from_bool(i >= width);
 
                     write_row.reg[i] = {
-                        F::from_canonical_u64(value_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                        F::from_canonical_u64(
+                            value_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                        )
                     };
                     write_row.sel[i] = F::from_bool(i < width);
 
                     value_row.reg[i] = {
-                        F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                        F::from_canonical_u64(
+                            value
+                                & (CHUNK_BITS_MASK
+                                    << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
+                        )
                     };
                     value_row.sel[i] = F::from_bool(i == offset as usize);
 
@@ -287,28 +312,22 @@ impl<F: PrimeField> MemAlignSM<F> {
                     // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
                 }
 
-                result = MemAlignResponse {
-                    more_address: false,
-                    step,
-                    value: Some(value_write),
-                };
-            },
-            (false, true) => { // RVR
-                assert!(phase == 0 || phase == 1);  // TODO: Debug mode
+                // Prove the generated rows
+                self.prove(&[read_row, value_row]);
+
+                MemAlignResponse { more_address: false, step, value: Some(value_write) }
+            }
+            (false, true) => {
+                // RVR
+                assert!(phase == 0 || phase == 1); // TODO: Debug mode
 
                 match phase {
                     // If phase == 0, do nothing, just ask for more
-                    0 => {
-                        result = MemAlignResponse {
-                            more_address: true,
-                            step: input.step,
-                            value: None,
-                        };
-                    },
+                    0 => MemAlignResponse { more_address: true, step: input.step, value: None },
 
                     // Otherwise, do the RVR
                     1 => {
-                        assert!(mem_values.len() == 2);  // TODO: Debug mode
+                        assert!(mem_values.len() == 2); // TODO: Debug mode
 
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
@@ -326,7 +345,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let value_second_read = mem_values[1];
 
                         // Get the next pc
-                        let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoReads, offset, width);
+                        let next_pc =
+                            MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoReads, offset, width);
 
                         let mut first_read_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
@@ -368,17 +388,25 @@ impl<F: PrimeField> MemAlignSM<F> {
                             let pos = i as u64;
 
                             first_read_row.reg[i] = {
-                                F::from_canonical_u64(value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             first_read_row.sel[i] = F::from_bool(true);
 
                             value_row.reg[i] = {
-                                F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value
+                                        & (CHUNK_BITS_MASK
+                                            << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
+                                )
                             };
                             value_row.sel[i] = F::from_bool(i == offset);
 
                             second_read_row.reg[i] = {
-                                F::from_canonical_u64(value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             second_read_row.sel[i] = F::from_bool(true);
 
@@ -388,22 +416,22 @@ impl<F: PrimeField> MemAlignSM<F> {
                             // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
                         }
 
-                        result = MemAlignResponse {
-                            more_address: false,
-                            step,
-                            value: None,
-                        };
-                    },
+                        // Prove the generated rows
+                        self.prove(&[read_row, value_row]);
+
+                        MemAlignResponse { more_address: false, step, value: None }
+                    }
                     _ => panic!("Invalid phase={}", phase),
                 }
-            },
-            (true, true) => { // RWVWR
-                assert!(phase == 0 || phase == 1);  // TODO: Debug mode
+            }
+            (true, true) => {
+                // RWVWR
+                assert!(phase == 0 || phase == 1); // TODO: Debug mode
 
                 match phase {
                     // If phase == 0, compute the resulting write value and ask for more
                     0 => {
-                        assert!(mem_values.len() == 1);  // TODO: Debug mode
+                        assert!(mem_values.len() == 1); // TODO: Debug mode
 
                         // Unaligned memory op information thrown into the bus
                         let value = input.value;
@@ -418,7 +446,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                             // Get the first width bytes of the unaligned value
                             let value_to_write = value & width_bytes;
-                            
+
                             // Write zeroes to value_read from offset to offset + width
                             let mask = width_bytes << (offset * CHUNK_BITS);
 
@@ -426,15 +454,15 @@ impl<F: PrimeField> MemAlignSM<F> {
                             (value_first_read & !mask) | value_to_write
                         };
 
-                        result = MemAlignResponse {
+                        MemAlignResponse {
                             more_address: true,
                             step,
                             value: Some(value_first_write),
-                        };
-                    },
+                        }
+                    }
                     // Otherwise, do the RWVRW
                     1 => {
-                        assert!(mem_values.len() == 2);  // TODO: Debug mode
+                        assert!(mem_values.len() == 2); // TODO: Debug mode
 
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
@@ -456,7 +484,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                             // Get the first width bytes of the unaligned value
                             let value_to_write = value & width_bytes;
-                            
+
                             // Write zeroes to value_read from offset to offset + width
                             let mask = width_bytes << (offset * CHUNK_BITS);
 
@@ -473,7 +501,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                             // Get the first width bytes of the unaligned value
                             let value_to_write = value & width_bytes;
-                            
+
                             // Write zeroes to value_read from offset to offset + width
                             let mask = width_bytes << (offset * CHUNK_BITS);
 
@@ -482,7 +510,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         // Get the next pc
-                        let next_pc = MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoWrites, offset, width);
+                        let next_pc =
+                            MemAlignRomSM::<F>::calculate_next_pc(MemOp::TwoWrites, offset, width);
 
                         // RWVWR
                         let mut first_read_row = MemAlignRow::<F> {
@@ -549,176 +578,129 @@ impl<F: PrimeField> MemAlignSM<F> {
                             let pos = i as u64;
 
                             first_read_row.reg[i] = {
-                                F::from_canonical_u64(value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             first_read_row.sel[i] = F::from_bool(i < offset);
 
                             first_write_row.reg[i] = {
-                                F::from_canonical_u64(value_first_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_first_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             first_write_row.sel[i] = F::from_bool(i >= offset);
 
                             value_row.reg[i] = {
-                                F::from_canonical_u64(value & (CHUNK_BITS_MASK << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value
+                                        & (CHUNK_BITS_MASK
+                                            << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
+                                )
                             };
                             value_row.sel[i] = F::from_bool(i == offset);
 
                             second_write_row.reg[i] = {
-                                F::from_canonical_u64(value_second_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_second_write
+                                        & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             second_write_row.sel[i] = F::from_bool(pos < shift);
 
                             second_read_row.reg[i] = {
-                                F::from_canonical_u64(value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)))
+                                F::from_canonical_u64(
+                                    value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
+                                )
                             };
                             second_read_row.sel[i] = F::from_bool(pos >= shift);
-
-                            // Store the range check
-                            // *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
-                            // *range_check.entry(first_write_row.reg[i]).or_insert(0) += 1;
-                            // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
-                            // *range_check.entry(second_write_row.reg[i]).or_insert(0) += 1;
-                            // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
-
-                            result = MemAlignResponse {
-                                more_address: false,
-                                step,
-                                value: Some(value_second_write),
-                            };
                         }
-                    },
+
+                        // Store the range check
+                        // *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
+                        // *range_check.entry(first_write_row.reg[i]).or_insert(0) += 1;
+                        // *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+                        // *range_check.entry(second_write_row.reg[i]).or_insert(0) += 1;
+                        // *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
+
+                        // Prove the generated rows
+                        self.prove(&[read_row, value_row]);
+
+                        MemAlignResponse {
+                            more_address: false,
+                            step,
+                            value: Some(value_second_write),
+                        }
+                    }
                     _ => panic!("Invalid phase={}", phase),
                 }
-            },
-        }
-
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.push((unaligned_access.clone(), aligned_accesses.to_vec()));
-
-            let pctx = self.wcm.get_pctx();
-            let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
-
-            // TODO: Fix this, I am assuming the wc
-            while inputs.len() * 5 >= air_mem_align.num_rows() {
-                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.prove_internal(&drained_inputs);
-            }
-        }
-        
-        // {
-        //     is_sufficient,
-        //     if write => (value, step), // the step should be the same for the two words! (the write is step + 1)
-        // }
-    }
-
-    pub fn prove(
-        &self,
-        unaligned_access: &ZiskRequiredMemory,
-        aligned_accesses: &[ZiskRequiredMemory],
-    ) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.push((unaligned_access.clone(), aligned_accesses.to_vec()));
-
-            let pctx = self.wcm.get_pctx();
-            let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
-
-            // TODO: Fix this, I am assuming the wc
-            while inputs.len() * 5 >= air_mem_align.num_rows() {
-                let num_drained = std::cmp::min(air_mem_align.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                self.prove_internal(&drained_inputs);
             }
         }
     }
 
-    fn prove_internal(
-        &self,
-        inputs: &[(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)],
-    ) {
-        let mem_align_rom_sm = self.mem_align_rom_sm.clone();
+    pub fn prove(&self, computed_rows: &[MemAlignRow<F>]) {
+        if let Ok(mut rows) = self.rows.lock() {
+            rows.extend_from_slice(computed_rows);
+
+            let pctx = self.wcm.get_pctx();
+            let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+
+            while rows.len() >= air_mem_align.num_rows() {
+                let num_drained = std::cmp::min(air_mem_align.num_rows(), rows.len());
+                let drained_rows = rows.drain(..num_drained).collect::<Vec<_>>();
+
+                self.fill_new_air_instance(&drained_rows);
+            }
+        }
+    }
+
+    fn fill_new_air_instance(&self, rows: &[MemAlignRow<F>]) {
+        // Get the proof context
         let wcm = self.wcm.clone();
-        let std = self.std.clone();
-        let sctx = self.wcm.get_sctx().clone();
-
-        let (mut prover_buffer, offset) = create_prover_buffer(
-            &wcm.get_ectx(),
-            &wcm.get_sctx(),
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_AIR_IDS[0],
-        );
-
-        Self::prove_instance(
-            &wcm,
-            &mem_align_rom_sm,
-            &std,
-            inputs,
-            &mut prover_buffer,
-            offset,
-        );
-
-        let air_instance =
-            AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0], None, prover_buffer);
-        wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-    }
-
-    fn prove_instance(
-        wcm: &WitnessManager<F>,
-        mem_align_rom_sm: &MemAlignRomSM<F>,
-        std: &Std<F>,
-        inputs: &[(ZiskRequiredMemory, Vec<ZiskRequiredMemory>)],
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        let input_len = inputs.len();
-
         let pctx = wcm.get_pctx();
 
+        // Get the Mem Align AIR
         let air_mem_align = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
-        assert!(input_len <= air_mem_align.num_rows());
+        let air_mem_align_rows = air_mem_align.num_rows();
+        let rows_len = rows.len();
 
-        info!(
-            "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            input_len,
-            air_mem_align.num_rows(),
-            input_len as f64 / air_mem_align.num_rows() as f64 * 100.0
-        );
+        // You cannot feed to the AIR more rows than it has
+        assert!(rows_len <= air_mem_align_rows);
 
-        let mut reg_range_check: HashMap<F, u64> = HashMap::new();
+        // Get the execution and setup context
+        let ectx = self.wcm.get_ectx();
+        let sctx = self.wcm.get_sctx();
+
+        // Create a prover buffer
+        let (mut prover_buffer, offset) =
+            create_prover_buffer(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+
+        // Create a Mem Align trace buffer
         let mut trace_buffer = MemAlignTrace::<F>::map_buffer(
-            prover_buffer,
-            air_mem_align.num_rows(),
+            &mut prover_buffer,
+            air_mem_align_rows,
             offset as usize,
         )
         .unwrap();
 
-        // Process the inputs while saving the values to be range checked
-        let mut rows_processed = 0;
-        for (unaligned_input, aligned_inputs) in inputs.iter() {
-            let rows = Self::process_input(
-                unaligned_input,
-                aligned_inputs,
-                mem_align_rom_sm,
-                &mut reg_range_check,
-            );
-            for (j, &row) in rows.iter().enumerate() {
-                trace_buffer[rows_processed + j] = row;
-            }
-            rows_processed += rows.len();
+        // Add the input rows to the trace
+        for (i, &row) in rows.iter().enumerate() {
+            trace_buffer[i] = row;
         }
 
-        // Pad the remaining rows with trivailly satisfying rows
+        // Pad the remaining rows with trivially satisfying rows
         let padding_row = MemAlignRow::<F>::default();
-
-        for i in rows_processed..air_mem_align.num_rows() {
+        for i in rows_len..air_mem_align_rows {
             trace_buffer[i] = padding_row;
         }
 
+        // TODO: Treat the range check here of both standard and padding rows!!
+
+        // TODO: Treate the ROM multiplicity
+
         // TODO: Store the padding multiplicity
-        let _padding_size = air_mem_align.num_rows() - rows_processed;
+        // let mem_align_rom_sm = self.mem_align_rom_sm.clone();
+        // let _padding_size = air_mem_align.num_rows() - rows_processed;
         // for i in 0..8 {
         //     let multiplicity = padding_size as u64;
         //     let row = MemAlignRomSM::<F>::calculate_rom_row(
@@ -727,397 +709,406 @@ impl<F: PrimeField> MemAlignSM<F> {
         //     rom_multiplicity[row as usize] += multiplicity;
         // }
 
-        // Perform the range checks
-        let range_id = std.get_range(BigInt::from(0), BigInt::from((1 << CHUNK_BITS) - 1), None);
-        for (&value, &multiplicity) in reg_range_check.iter() {
-            std.range_check(value, F::from_canonical_u64(multiplicity), range_id);
-        }
+        // TODO: Perform the range checks
+        // let std = self.std.clone();
+        // let range_id = std.get_range(BigInt::from(0), BigInt::from((1 << CHUNK_BITS) - 1), None);
+        // for (&value, &multiplicity) in reg_range_check.iter() {
+        //     std.range_check(value, F::from_canonical_u64(multiplicity), range_id);
+        // }
 
-        // std::thread::spawn(move || {
-        //     drop(inputs);
-        //     drop(reg_range_check);
-        // });
+        info!(
+            "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            rows_len,
+            air_mem_align.num_rows(),
+            rows_len as f64 / air_mem_align.num_rows() as f64 * 100.0
+        );
+
+        // Add a new Mem Align instance
+        let air_instance =
+            AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0], None, prover_buffer);
+        wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
     }
 
-    #[inline(always)]
-    pub fn process_input(
-        unaligned_input: &ZiskRequiredMemory,
-        aligned_inputs: &[ZiskRequiredMemory],
-        mem_align_rom_sm: &MemAlignRomSM<F>,
-        range_check: &mut HashMap<F, u64>,
-    ) -> Vec<MemAlignRow<F>> {
-        // Get the unaligned address
-        let addr = unaligned_input.address;
+    // #[inline(always)]
+    // pub fn process_input(
+    //     unaligned_input: &ZiskRequiredMemory,
+    //     aligned_inputs: &[ZiskRequiredMemory],
+    //     mem_align_rom_sm: &MemAlignRomSM<F>,
+    //     range_check: &mut HashMap<F, u64>,
+    // ) -> Vec<MemAlignRow<F>> {
+    //     // Get the unaligned address
+    //     let addr = unaligned_input.address;
 
-        // Get the unaligned value
-        let value = unaligned_input.value.to_le_bytes();
+    //     // Get the unaligned value
+    //     let value = unaligned_input.value.to_le_bytes();
 
-        // Get the unaligned step
-        let step = unaligned_input.step;
+    //     // Get the unaligned step
+    //     let step = unaligned_input.step;
 
-        // Get the unaligned width
-        let width = unaligned_input.width;
-        let width = if width <= CHUNK_NUM_U64 {
-            width as usize
-        } else {
-            panic!("Invalid width={}", width);
-        };
+    //     // Get the unaligned width
+    //     let width = unaligned_input.width;
+    //     let width = if width <= CHUNK_NUM_U64 {
+    //         width as usize
+    //     } else {
+    //         panic!("Invalid width={}", width);
+    //     };
 
-        // Compute the offset
-        let offset = addr % CHUNK_NUM_U64;
-        let offset = if offset <= usize::MAX as u64 {
-            offset as usize
-        } else {
-            panic!("Invalid offset={}", offset);
-        };
+    //     // Compute the offset
+    //     let offset = addr % CHUNK_NUM_U64;
+    //     let offset = if offset <= usize::MAX as u64 {
+    //         offset as usize
+    //     } else {
+    //         panic!("Invalid offset={}", offset);
+    //     };
 
-        // Compute the shift
-        let shift = (offset + width) % CHUNK_NUM;
+    //     // Compute the shift
+    //     let shift = (offset + width) % CHUNK_NUM;
 
-        // Get the op to be executed, its size and the pc to jump to
-        let op = Self::get_mem_op(&unaligned_input);
-        let op_size = MemAlignRomSM::<F>::get_mem_align_op_size(op);
-        let next_pc = MemAlignRomSM::<F>::calculate_next_pc(op, offset, width);
+    //     // Get the op to be executed, its size and the pc to jump to
+    //     let op = Self::get_mem_op(&unaligned_input);
+    //     let op_size = MemAlignRomSM::<F>::get_mem_align_op_size(op);
+    //     let next_pc = MemAlignRomSM::<F>::calculate_next_pc(op, offset, width);
 
-        println!("OP: {:?}", op);
-        println!("UNALIGNED INPUT:\n  {:?}", unaligned_input);
-        println!("  OFFSET: {:?}", offset);
-        println!("  value: {:?}", unaligned_input.value.to_le_bytes());
-        println!("ALIGNED INPUTS:");
-        for aligned_input in aligned_inputs {
-            println!("  {:?}", aligned_input);
-            println!("  value: {:?}", aligned_input.value.to_le_bytes());
-        }
-        println!("");
+    //     println!("OP: {:?}", op);
+    //     println!("UNALIGNED INPUT:\n  {:?}", unaligned_input);
+    //     println!("  OFFSET: {:?}", offset);
+    //     println!("  value: {:?}", unaligned_input.value.to_le_bytes());
+    //     println!("ALIGNED INPUTS:");
+    //     for aligned_input in aligned_inputs {
+    //         println!("  {:?}", aligned_input);
+    //         println!("  value: {:?}", aligned_input.value.to_le_bytes());
+    //     }
+    //     println!("");
 
-        // Initialize and set the rows of the corresponding op
-        let mut rows: Vec<MemAlignRow<F>> = Vec::with_capacity(op_size);
-        // TODO: Can I detatch the "shape" of the program from the mem_align and do it in the mem_align_rom?
-        match op {
-            MemOp::OneRead => {
-                // RV
-                // Sanity check
-                assert!(aligned_inputs.len() == 1);
+    //     // Initialize and set the rows of the corresponding op
+    //     let mut rows: Vec<MemAlignRow<F>> = Vec::with_capacity(op_size);
+    //     // TODO: Can I detatch the "shape" of the program from the mem_align and do it in the mem_align_rom?
+    //     match op {
+    //         MemOp::OneRead => {
+    //             // RV
+    //             // Sanity check
+    //             assert!(aligned_inputs.len() == 1);
 
-                // Get the aligned address
-                let addr_read = aligned_inputs[0].address;
+    //             // Get the aligned address
+    //             let addr_read = aligned_inputs[0].address;
 
-                // Get the aligned values
-                let value_read = aligned_inputs[0].value.to_le_bytes();
+    //             // Get the aligned values
+    //             let value_read = aligned_inputs[0].value.to_le_bytes();
 
-                // Get the aligned step
-                let step_read = aligned_inputs[0].step;
+    //             // Get the aligned step
+    //             let step_read = aligned_inputs[0].step;
 
-                let mut read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_read),
-                    addr: F::from_canonical_u64(addr_read),
-                    // offset: F::from_canonical_u64(0),
-                    // wr: F::from_bool(false),
-                    // pc: F::from_canonical_u64(0),
-                    reset: F::from_bool(true),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_read),
+    //                 addr: F::from_canonical_u64(addr_read),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 // wr: F::from_bool(false),
+    //                 // pc: F::from_canonical_u64(0),
+    //                 reset: F::from_bool(true),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut value_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step),
-                    addr: F::from_canonical_u64(addr),
-                    offset: F::from_canonical_usize(offset),
-                    width: F::from_canonical_usize(width),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc),
-                    // reset: F::from_bool(false),
-                    sel_prove: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut value_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step),
+    //                 addr: F::from_canonical_u64(addr),
+    //                 offset: F::from_canonical_usize(offset),
+    //                 width: F::from_canonical_usize(width),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc),
+    //                 // reset: F::from_bool(false),
+    //                 sel_prove: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                for i in 0..CHUNK_NUM {
-                    read_row.reg[i] = F::from_canonical_u8(value_read[i]);
-                    read_row.sel[i] = F::from_bool(true);
+    //             for i in 0..CHUNK_NUM {
+    //                 read_row.reg[i] = F::from_canonical_u8(value_read[i]);
+    //                 read_row.sel[i] = F::from_bool(true);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
-                    value_row.sel[i] = F::from_bool(i == offset);
+    //                 value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
+    //                 value_row.sel[i] = F::from_bool(i == offset);
 
-                    // Store the range check
-                    *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
-                }
+    //                 // Store the range check
+    //                 *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+    //             }
 
-                // Store the rows
-                rows.push(read_row);
-                rows.push(value_row);
-            }
-            MemOp::OneWrite => {
-                // RWV
-                // Sanity check
-                assert!(aligned_inputs.len() == 2);
+    //             // Store the rows
+    //             rows.push(read_row);
+    //             rows.push(value_row);
+    //         }
+    //         MemOp::OneWrite => {
+    //             // RWV
+    //             // Sanity check
+    //             assert!(aligned_inputs.len() == 2);
 
-                // Get the aligned address
-                let addr_read_write = aligned_inputs[0].address;
+    //             // Get the aligned address
+    //             let addr_read_write = aligned_inputs[0].address;
 
-                // Get the aligned values
-                let value_read = aligned_inputs[0].value.to_le_bytes();
-                let value_write = aligned_inputs[1].value.to_le_bytes();
+    //             // Get the aligned values
+    //             let value_read = aligned_inputs[0].value.to_le_bytes();
+    //             let value_write = aligned_inputs[1].value.to_le_bytes();
 
-                // Get the aligned step
-                let step_read = aligned_inputs[0].step;
-                let step_write = aligned_inputs[1].step;
+    //             // Get the aligned step
+    //             let step_read = aligned_inputs[0].step;
+    //             let step_write = aligned_inputs[1].step;
 
-                // RWV
-                let mut read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_read),
-                    addr: F::from_canonical_u64(addr_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    // wr: F::from_bool(false),
-                    // pc: F::from_canonical_u64(0),
-                    reset: F::from_bool(true),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             // RWV
+    //             let mut read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_read),
+    //                 addr: F::from_canonical_u64(addr_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 // wr: F::from_bool(false),
+    //                 // pc: F::from_canonical_u64(0),
+    //                 reset: F::from_bool(true),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut write_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_write),
-                    addr: F::from_canonical_u64(addr_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    wr: F::from_bool(true),
-                    pc: F::from_canonical_u64(next_pc),
-                    // reset: F::from_bool(false),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut write_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_write),
+    //                 addr: F::from_canonical_u64(addr_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 wr: F::from_bool(true),
+    //                 pc: F::from_canonical_u64(next_pc),
+    //                 // reset: F::from_bool(false),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut value_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step),
-                    addr: F::from_canonical_u64(addr),
-                    offset: F::from_canonical_usize(offset),
-                    width: F::from_canonical_usize(width),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc + 1),
-                    // reset: F::from_bool(false),
-                    sel_prove: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut value_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step),
+    //                 addr: F::from_canonical_u64(addr),
+    //                 offset: F::from_canonical_usize(offset),
+    //                 width: F::from_canonical_usize(width),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc + 1),
+    //                 // reset: F::from_bool(false),
+    //                 sel_prove: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                for i in 0..CHUNK_NUM {
-                    read_row.reg[i] = F::from_canonical_u8(value_read[i]);
-                    read_row.sel[i] = F::from_bool(i >= width);
+    //             for i in 0..CHUNK_NUM {
+    //                 read_row.reg[i] = F::from_canonical_u8(value_read[i]);
+    //                 read_row.sel[i] = F::from_bool(i >= width);
 
-                    write_row.reg[i] = F::from_canonical_u8(value_write[i]);
-                    write_row.sel[i] = F::from_bool(i < width);
+    //                 write_row.reg[i] = F::from_canonical_u8(value_write[i]);
+    //                 write_row.sel[i] = F::from_bool(i < width);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
-                    value_row.sel[i] = F::from_bool(i == offset);
+    //                 value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
+    //                 value_row.sel[i] = F::from_bool(i == offset);
 
-                    // Store the range check
-                    *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(write_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
-                }
+    //                 // Store the range check
+    //                 *range_check.entry(read_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(write_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+    //             }
 
-                // Store the rows
-                rows.push(read_row);
-                rows.push(write_row);
-                rows.push(value_row);
-            }
-            MemOp::TwoReads => {
-                // RVR
-                // Sanity check
-                assert!(aligned_inputs.len() == 2);
+    //             // Store the rows
+    //             rows.push(read_row);
+    //             rows.push(write_row);
+    //             rows.push(value_row);
+    //         }
+    //         MemOp::TwoReads => {
+    //             // RVR
+    //             // Sanity check
+    //             assert!(aligned_inputs.len() == 2);
 
-                // Get the aligned address
-                let addr_first_read = aligned_inputs[0].address;
-                let addr_second_read = aligned_inputs[1].address;
+    //             // Get the aligned address
+    //             let addr_first_read = aligned_inputs[0].address;
+    //             let addr_second_read = aligned_inputs[1].address;
 
-                // Get the aligned values
-                let value_first_read = aligned_inputs[0].value.to_le_bytes();
-                let value_second_read = aligned_inputs[1].value.to_le_bytes();
+    //             // Get the aligned values
+    //             let value_first_read = aligned_inputs[0].value.to_le_bytes();
+    //             let value_second_read = aligned_inputs[1].value.to_le_bytes();
 
-                // Get the aligned step
-                let step_first_read = aligned_inputs[0].step;
-                let step_second_read = aligned_inputs[1].step;
+    //             // Get the aligned step
+    //             let step_first_read = aligned_inputs[0].step;
+    //             let step_second_read = aligned_inputs[1].step;
 
-                // RVR
-                let mut first_read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_first_read),
-                    addr: F::from_canonical_u64(addr_first_read),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    // wr: F::from_bool(false),
-                    // pc: F::from_canonical_u64(0),
-                    reset: F::from_bool(true),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             // RVR
+    //             let mut first_read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_first_read),
+    //                 addr: F::from_canonical_u64(addr_first_read),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 // wr: F::from_bool(false),
+    //                 // pc: F::from_canonical_u64(0),
+    //                 reset: F::from_bool(true),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut value_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step),
-                    addr: F::from_canonical_u64(addr),
-                    offset: F::from_canonical_usize(offset),
-                    width: F::from_canonical_usize(width),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc),
-                    // reset: F::from_bool(false),
-                    sel_prove: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut value_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step),
+    //                 addr: F::from_canonical_u64(addr),
+    //                 offset: F::from_canonical_usize(offset),
+    //                 width: F::from_canonical_usize(width),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc),
+    //                 // reset: F::from_bool(false),
+    //                 sel_prove: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut second_read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_second_read),
-                    addr: F::from_canonical_u64(addr_second_read),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc + 1),
-                    // reset: F::from_bool(false),
-                    sel_down_to_up: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut second_read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_second_read),
+    //                 addr: F::from_canonical_u64(addr_second_read),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc + 1),
+    //                 // reset: F::from_bool(false),
+    //                 sel_down_to_up: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = F::from_canonical_u8(value_first_read[i]);
-                    first_read_row.sel[i] = F::from_bool(true);
+    //             for i in 0..CHUNK_NUM {
+    //                 first_read_row.reg[i] = F::from_canonical_u8(value_first_read[i]);
+    //                 first_read_row.sel[i] = F::from_bool(true);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
-                    value_row.sel[i] = F::from_bool(i == offset);
+    //                 value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
+    //                 value_row.sel[i] = F::from_bool(i == offset);
 
-                    second_read_row.reg[i] = F::from_canonical_u8(value_second_read[i]);
-                    second_read_row.sel[i] = F::from_bool(true);
+    //                 second_read_row.reg[i] = F::from_canonical_u8(value_second_read[i]);
+    //                 second_read_row.sel[i] = F::from_bool(true);
 
-                    // Store the range check
-                    *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
-                }
+    //                 // Store the range check
+    //                 *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
+    //             }
 
-                // Store the rows
-                rows.push(first_read_row);
-                rows.push(value_row);
-                rows.push(second_read_row);
-            }
-            MemOp::TwoWrites => {
-                // RWVWR
-                // Sanity check
-                assert!(aligned_inputs.len() == 4);
+    //             // Store the rows
+    //             rows.push(first_read_row);
+    //             rows.push(value_row);
+    //             rows.push(second_read_row);
+    //         }
+    //         MemOp::TwoWrites => {
+    //             // RWVWR
+    //             // Sanity check
+    //             assert!(aligned_inputs.len() == 4);
 
-                // Get the aligned address
-                let addr_first_read_write = aligned_inputs[0].address;
-                let addr_second_read_write = aligned_inputs[2].address;
+    //             // Get the aligned address
+    //             let addr_first_read_write = aligned_inputs[0].address;
+    //             let addr_second_read_write = aligned_inputs[2].address;
 
-                // Get the aligned values
-                // TODO: I do not need to establish an order, I can use the field is_write!!!
-                let value_first_read = aligned_inputs[0].value.to_le_bytes();
-                let value_first_write = aligned_inputs[1].value.to_le_bytes();
-                let value_second_read = aligned_inputs[2].value.to_le_bytes();
-                let value_second_write = aligned_inputs[3].value.to_le_bytes();
+    //             // Get the aligned values
+    //             // TODO: I do not need to establish an order, I can use the field is_write!!!
+    //             let value_first_read = aligned_inputs[0].value.to_le_bytes();
+    //             let value_first_write = aligned_inputs[1].value.to_le_bytes();
+    //             let value_second_read = aligned_inputs[2].value.to_le_bytes();
+    //             let value_second_write = aligned_inputs[3].value.to_le_bytes();
 
-                // Get the aligned step
-                let step_first_read = aligned_inputs[0].step;
-                let step_first_write = aligned_inputs[1].step;
-                let step_second_read = aligned_inputs[2].step;
-                let step_second_write = aligned_inputs[3].step;
+    //             // Get the aligned step
+    //             let step_first_read = aligned_inputs[0].step;
+    //             let step_first_write = aligned_inputs[1].step;
+    //             let step_second_read = aligned_inputs[2].step;
+    //             let step_second_write = aligned_inputs[3].step;
 
-                // RWVWR
-                let mut first_read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_first_read),
-                    addr: F::from_canonical_u64(addr_first_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    // wr: F::from_bool(false),
-                    // pc: F::from_canonical_u64(0),
-                    reset: F::from_bool(true),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             // RWVWR
+    //             let mut first_read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_first_read),
+    //                 addr: F::from_canonical_u64(addr_first_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 // wr: F::from_bool(false),
+    //                 // pc: F::from_canonical_u64(0),
+    //                 reset: F::from_bool(true),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut first_write_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_first_write),
-                    addr: F::from_canonical_u64(addr_first_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    wr: F::from_bool(true),
-                    pc: F::from_canonical_u64(next_pc),
-                    // reset: F::from_bool(false),
-                    sel_up_to_down: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut first_write_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_first_write),
+    //                 addr: F::from_canonical_u64(addr_first_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 wr: F::from_bool(true),
+    //                 pc: F::from_canonical_u64(next_pc),
+    //                 // reset: F::from_bool(false),
+    //                 sel_up_to_down: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut value_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step),
-                    addr: F::from_canonical_u64(addr),
-                    offset: F::from_canonical_usize(offset),
-                    width: F::from_canonical_usize(width),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc + 1),
-                    // reset: F::from_bool(false),
-                    sel_prove: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut value_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step),
+    //                 addr: F::from_canonical_u64(addr),
+    //                 offset: F::from_canonical_usize(offset),
+    //                 width: F::from_canonical_usize(width),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc + 1),
+    //                 // reset: F::from_bool(false),
+    //                 sel_prove: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut second_write_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_second_write),
-                    addr: F::from_canonical_u64(addr_second_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    wr: F::from_bool(true),
-                    pc: F::from_canonical_u64(next_pc + 2),
-                    // reset: F::from_bool(false),
-                    sel_down_to_up: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut second_write_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_second_write),
+    //                 addr: F::from_canonical_u64(addr_second_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 wr: F::from_bool(true),
+    //                 pc: F::from_canonical_u64(next_pc + 2),
+    //                 // reset: F::from_bool(false),
+    //                 sel_down_to_up: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                let mut second_read_row = MemAlignRow::<F> {
-                    step: F::from_canonical_u64(step_second_read),
-                    addr: F::from_canonical_u64(addr_second_read_write),
-                    // offset: F::from_canonical_u64(0),
-                    width: F::from_canonical_u64(CHUNK_NUM_U64),
-                    // wr: F::from_bool(false),
-                    pc: F::from_canonical_u64(next_pc + 3),
-                    reset: F::from_bool(false),
-                    sel_down_to_up: F::from_bool(true),
-                    ..Default::default()
-                };
+    //             let mut second_read_row = MemAlignRow::<F> {
+    //                 step: F::from_canonical_u64(step_second_read),
+    //                 addr: F::from_canonical_u64(addr_second_read_write),
+    //                 // offset: F::from_canonical_u64(0),
+    //                 width: F::from_canonical_u64(CHUNK_NUM_U64),
+    //                 // wr: F::from_bool(false),
+    //                 pc: F::from_canonical_u64(next_pc + 3),
+    //                 reset: F::from_bool(false),
+    //                 sel_down_to_up: F::from_bool(true),
+    //                 ..Default::default()
+    //             };
 
-                for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = F::from_canonical_u8(value_first_read[i]);
-                    first_read_row.sel[i] = F::from_bool(i < offset);
+    //             for i in 0..CHUNK_NUM {
+    //                 first_read_row.reg[i] = F::from_canonical_u8(value_first_read[i]);
+    //                 first_read_row.sel[i] = F::from_bool(i < offset);
 
-                    first_write_row.reg[i] = F::from_canonical_u8(value_first_write[i]);
-                    first_write_row.sel[i] = F::from_bool(i >= offset);
+    //                 first_write_row.reg[i] = F::from_canonical_u8(value_first_write[i]);
+    //                 first_write_row.sel[i] = F::from_bool(i >= offset);
 
-                    value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
-                    value_row.sel[i] = F::from_bool(i == offset);
+    //                 value_row.reg[i] = F::from_canonical_u8(value[(shift + i) % CHUNK_NUM]);
+    //                 value_row.sel[i] = F::from_bool(i == offset);
 
-                    second_write_row.reg[i] = F::from_canonical_u8(value_second_write[i]);
-                    second_write_row.sel[i] = F::from_bool(i < shift);
+    //                 second_write_row.reg[i] = F::from_canonical_u8(value_second_write[i]);
+    //                 second_write_row.sel[i] = F::from_bool(i < shift);
 
-                    second_read_row.reg[i] = F::from_canonical_u8(value_second_read[i]);
-                    second_read_row.sel[i] = F::from_bool(i >= shift);
+    //                 second_read_row.reg[i] = F::from_canonical_u8(value_second_read[i]);
+    //                 second_read_row.sel[i] = F::from_bool(i >= shift);
 
-                    // Store the range check
-                    *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(first_write_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(second_write_row.reg[i]).or_insert(0) += 1;
-                    *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
-                }
+    //                 // Store the range check
+    //                 *range_check.entry(first_read_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(first_write_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(value_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(second_write_row.reg[i]).or_insert(0) += 1;
+    //                 *range_check.entry(second_read_row.reg[i]).or_insert(0) += 1;
+    //             }
 
-                // Store the rows
-                rows.push(first_read_row);
-                rows.push(first_write_row);
-                rows.push(value_row);
-                rows.push(second_write_row);
-                rows.push(second_read_row);
-            }
-        }
+    //             // Store the rows
+    //             rows.push(first_read_row);
+    //             rows.push(first_write_row);
+    //             rows.push(value_row);
+    //             rows.push(second_write_row);
+    //             rows.push(second_read_row);
+    //         }
+    //     }
 
-        // Update the ROM row multiplicity
-        mem_align_rom_sm.update_multiplicity_by_input(op, offset, width);
+    //     // Update the ROM row multiplicity
+    //     mem_align_rom_sm.update_multiplicity_by_input(op, offset, width);
 
-        // Return successfully
-        rows
-    }
+    //     // Return successfully
+    //     rows
+    // }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemAlignSM<F> {}
