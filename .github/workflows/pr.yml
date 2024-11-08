@@ -2,7 +2,7 @@ name: PR
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, pre-develop]
   pull_request:
     branches:
       - "**"

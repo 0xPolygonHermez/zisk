@@ -8,7 +8,7 @@ trace!(MainRow, MainTrace<F> {
 });
 
 trace!(RomRow, RomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
+ multiplicity: F,
 });
 
 trace!(BinaryRow, BinaryTrace<F> {
@@ -29,4 +29,8 @@ trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
 
 trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
  mul: [F; 1],
+});
+
+trace!(RomRomRow, RomRomTrace<F> {
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });
