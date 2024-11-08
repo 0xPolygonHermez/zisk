@@ -42,11 +42,11 @@ impl<F: Field> RomSM<F> {
 
         // Create an empty ROM trace
         let pilout = Pilout::pilout();
-        let trace_size = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
+        let trace_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
         let mut prover_buffer = create_buffer_fast(buffer_size as usize);
 
         let mut rom_trace =
-            RomTrace::<F>::map_buffer(&mut prover_buffer, trace_size, offsets[0] as usize)
+            RomTrace::<F>::map_buffer(&mut prover_buffer, trace_rows, offsets[0] as usize)
                 .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
 
         // For every instruction in the rom, fill its corresponding ROM trace
@@ -118,7 +118,7 @@ impl<F: Field> RomSM<F> {
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..trace_size {
+        for i in rom.insts.len()..trace_rows {
             rom_trace[i] = RomRow::default();
         }
 
@@ -141,8 +141,8 @@ impl<F: Field> RomSM<F> {
 
     pub fn compute_trace_root(
         rom_path: PathBuf,
-        _buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        _sctx: &SetupCtx<F>,
+        buffer_allocator: Arc<dyn BufferAllocator<F>>,
+        sctx: &SetupCtx<F>,
     ) -> Result<Vec<F>, Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
@@ -154,16 +154,80 @@ impl<F: Field> RomSM<F> {
         let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
 
         // Convert program to rom
-        let rom_result = riscv2zisk.run();
-        if rom_result.is_err() {
-            //return Err(ZiskEmulatorErr::Unknown(zisk_rom.err().unwrap().to_string()));
-            panic!("RomSM::prover() failed converting elf to rom");
+        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+
+        // Allocate a prover buffer
+        let (buffer_size, offsets) =
+            buffer_allocator.get_buffer_info_custom_commit(
+                &sctx,
+                ZISK_AIRGROUP_ID,
+                ROMROOT_AIR_IDS[0],
+                0,
+            ).unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+
+        // Create an empty ROM trace
+        let pilout = Pilout::pilout();
+        let trace_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROMROOT_AIR_IDS[0]).num_rows();
+        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
+
+        let mut rom_trace =
+            RomRootTrace::<F>::map_buffer(&mut prover_buffer, trace_rows, offsets[0] as usize)
+                .expect("RomRootSM::compute_trace() failed mapping buffer to ROMSRow");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+            // Get the Zisk instruction
+            let inst = inst_builder.1.i;
+
+            // Convert the i64 offsets to F
+            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+                F::from_canonical_u64(inst.jmp_offset1 as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+            };
+            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+                F::from_canonical_u64(inst.jmp_offset2 as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+            };
+            let store_offset = if inst.store_offset >= 0 {
+                F::from_canonical_u64(inst.store_offset as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+            };
+            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+                F::from_canonical_u64(inst.a_offset_imm0)
+            } else {
+                F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+            };
+            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+                F::from_canonical_u64(inst.b_offset_imm0)
+            } else {
+                F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+            };
+
+            // Fill the rom trace row fields
+            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_trace[i].a_offset_imm0 = a_offset_imm0;
+            rom_trace[i].a_imm1 =
+                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_offset_imm0 = b_offset_imm0;
+            rom_trace[i].b_imm1 =
+                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_trace[i].store_offset = store_offset;
+            rom_trace[i].jmp_offset1 = jmp_offset1;
+            rom_trace[i].jmp_offset2 = jmp_offset2;
+            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
         }
-        let _rom = rom_result.unwrap();
 
-        let _empty_pc_histogram = ZiskPcHistogram::default();
+        // Padd with zeroes
+        for i in rom.insts.len()..trace_rows {
+            rom_trace[i] = RomRootRow::default();
+        }
 
-        Ok(Vec::new())
+        Ok(prover_buffer)
     }
 }
 

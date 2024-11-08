@@ -12,6 +12,7 @@ const int OPERATION_BUS_ID = 5000;
 airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**20);
+    RomRoot(N: 2**20);
     // Mem(N: 2**21, RC: 2);
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable(disable_fixed: 0);
