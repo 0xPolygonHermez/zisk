@@ -32,6 +32,13 @@ typedef enum
 } opType;
 
 
+class CustomCommits
+{
+public:
+    std::string name;
+    vector<uint32_t> stageWidths;
+};
+
 class Boundary
 {
 public:
@@ -71,6 +78,7 @@ public:
     bool imPol;
     uint64_t stagePos;
     uint64_t stageId;
+    uint64_t commitId;
     uint64_t expId;
     uint64_t polsMapId;
 };
@@ -82,17 +90,20 @@ public:
     {
         cm = 0,
         _const = 1,
+        custom = 2,
     } eType;
 
     eType type;
     uint64_t id;
     int64_t prime;
+    uint64_t commitId;
     uint64_t openingPos;
 
     void setType (string s)
     {
         if (s == "cm") type = cm;
         else if (s == "const") type = _const;
+        else if (s == "custom") type = custom;
         else
         {
             zklog.error("EvMap::setType() found invalid type: " + s);
@@ -115,12 +126,15 @@ public:
     
     uint64_t nStages;
 
+    vector<CustomCommits> customCommits;
+
     vector<PolMap> cmPolsMap;
     vector<PolMap> constPolsMap;
     vector<PolMap> challengesMap;
     vector<PolMap> airgroupValuesMap;
     vector<PolMap> airValuesMap;
     vector<PolMap> publicsMap;
+    vector<vector<PolMap>> customCommitsMap;
 
     vector<EvMap> evMap;
     
@@ -139,6 +153,8 @@ public:
     std::map<std::pair<std::string, bool>, uint64_t> mapOffsets;
     
     uint64_t mapTotalN;
+
+    std::map<std::string, uint64_t> mapTotalNcustomCommits;
     
     /* Constructor */
     StarkInfo(string file);
@@ -149,7 +165,7 @@ public:
     void setMapOffsets();
 
     /* Returns a polynomial specified by its ID */
-    void getPolynomial(Polinomial &pol, Goldilocks::Element *pAddress, bool committed, uint64_t idPol, bool domainExtended);
+    void getPolynomial(Polinomial &pol, Goldilocks::Element *pAddress, string type, PolMap& polInfo, bool domainExtended);
 };
 
 #endif

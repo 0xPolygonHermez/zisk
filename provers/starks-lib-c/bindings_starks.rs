@@ -92,6 +92,20 @@ extern "C" {
     pub fn get_map_total_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z20get_custom_commit_idPvPc"]
+    pub fn get_custom_commit_id(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        name: *mut ::std::os::raw::c_char,
+    ) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z30get_map_total_n_custom_commitsPvm"]
+    pub fn get_map_total_n_custom_commits(
+        pStarkInfo: *mut ::std::os::raw::c_void,
+        commit_id: u64,
+    ) -> u64;
+}
+extern "C" {
     #[link_name = "\u{1}_Z15get_map_offsetsPvPcb"]
     pub fn get_map_offsets(
         pStarkInfo: *mut ::std::os::raw::c_void,
@@ -110,6 +124,10 @@ extern "C" {
 extern "C" {
     #[link_name = "\u{1}_Z11get_n_evalsPv"]
     pub fn get_n_evals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20get_n_custom_commitsPv"]
+    pub fn get_n_custom_commits(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
 }
 extern "C" {
     #[link_name = "\u{1}_Z23get_airvalue_id_by_namePvPc"]
@@ -261,6 +279,14 @@ extern "C" {
     );
 }
 extern "C" {
+    #[link_name = "\u{1}_Z16treesGL_set_rootPvmS_"]
+    pub fn treesGL_set_root(
+        pStarks: *mut ::std::os::raw::c_void,
+        index: u64,
+        pProof: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z18calculate_xdivxsubPvS_S_"]
     pub fn calculate_xdivxsub(
         pStarks: *mut ::std::os::raw::c_void,
@@ -295,6 +321,17 @@ extern "C" {
         pStarks: *mut ::std::os::raw::c_void,
         step: u64,
         stepsParams: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z34extend_and_merkelize_custom_commitPvmmS_S_S_"]
+    pub fn extend_and_merkelize_custom_commit(
+        pStarks: *mut ::std::os::raw::c_void,
+        commitId: u64,
+        step: u64,
+        buffer: *mut ::std::os::raw::c_void,
+        pProof: *mut ::std::os::raw::c_void,
+        pBuffHelper: *mut ::std::os::raw::c_void,
     );
 }
 extern "C" {

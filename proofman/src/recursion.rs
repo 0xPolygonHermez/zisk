@@ -110,8 +110,8 @@ pub fn generate_recursion_proof<F: Field>(
                         false => String::from(""),
                     };
 
-                    let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-                    let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+                    let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+                    let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
                     let p_prove = gen_recursive_proof_c(
                         p_setup,
@@ -244,10 +244,8 @@ pub fn generate_recursion_proof<F: Field>(
                                     MY_NAME,
                                     format!("··· Generating recursive2 proof for instances of {}", air_instance_name)
                                 );
-                                let const_pols_ptr =
-                                    (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-                                let const_tree_ptr =
-                                    (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+                                let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+                                let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
                                 let zkin = gen_recursive_proof_c(
                                     p_setup,
@@ -329,8 +327,8 @@ pub fn generate_recursion_proof<F: Field>(
             log::info!("{}: ··· Generating final proof", MY_NAME);
             timer_start_trace!(GENERATE_PROOF);
             // prove
-            let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-            let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+            let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+            let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
             let _p_prove = gen_recursive_proof_c(
                 p_setup,
                 p_address,

@@ -10,6 +10,7 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
     uint64_t friSteps = starkInfo.starkStruct.steps.size() - 1;
     uint64_t nQueries = starkInfo.starkStruct.nQueries;
     uint64_t nStages = starkInfo.nStages;
+    uint64_t nCustomCommits = starkInfo.customCommits.size();
    
     string valsQ = "s0_vals" + to_string(nStages + 1);
     string siblingsQ = "s0_siblings" + to_string(nStages + 1);
@@ -50,6 +51,13 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
         }
     }
 
+    for(uint64_t i = 0; i < nCustomCommits; ++i) {
+        if (proof["queries"]["polQueries"][0][i + nStages + 2][0].size()) {
+            zkinOut["s0_siblings_" + starkInfo.customCommits[i].name + "_0"] = ordered_json::array();
+            zkinOut["s0_vals_" + starkInfo.customCommits[i].name + "_0"] = ordered_json::array();
+        }
+    }
+
     for (uint64_t i = 0; i < nQueries; i++) {
         for (uint64_t j = 0; j < nStages; ++j) {
             uint64_t stage = j + 1;
@@ -57,6 +65,11 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
                 zkinOut["s0_vals" + to_string(stage)][i] = proof["queries"]["polQueries"][i][j][0];
                 zkinOut["s0_siblings" + to_string(stage)][i] = proof["queries"]["polQueries"][i][j][1];
             }
+        }
+
+        for (uint64_t j = 0; j < nCustomCommits; ++j) {
+            zkinOut["s0_vals_" + starkInfo.customCommits[j].name + "_0"][i] = proof["queries"]["polQueries"][i][j + nStages + 2][0];
+            zkinOut["s0_siblings_" + starkInfo.customCommits[j].name + "_0"][i] = proof["queries"]["polQueries"][i][j + nStages + 2][1];
         }
 
         zkinOut[valsQ][i] = proof["queries"]["polQueries"][i][nStages][0];

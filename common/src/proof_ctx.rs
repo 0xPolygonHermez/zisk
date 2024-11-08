@@ -8,11 +8,21 @@ use crate::{AirInstancesRepository, GlobalInfo, VerboseMode, WitnessPilout};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
+    pub inputs_set: RwLock<Vec<bool>>,
 }
 
 impl Default for PublicInputs {
     fn default() -> Self {
-        Self { inputs: RwLock::new(Vec::new()) }
+        Self { inputs: RwLock::new(Vec::new()), inputs_set: RwLock::new(Vec::new()) }
+    }
+}
+
+impl PublicInputs {
+    pub fn new(n_publics: usize) -> Self {
+        Self {
+            inputs: RwLock::new(vec![0; n_publics * std::mem::size_of::<u64>()]),
+            inputs_set: RwLock::new(vec![false; n_publics]),
+        }
     }
 }
 
@@ -83,11 +93,11 @@ impl<F: Field> ProofCtx<F> {
             values: RwLock::new(vec![F::zero(); global_info.n_proof_values * 3]),
             values_set: RwLock::new(HashMap::new()),
         };
-
+        let n_publics = global_info.n_publics;
         Self {
             pilout,
             global_info,
-            public_inputs: PublicInputs::default(),
+            public_inputs: PublicInputs::new(n_publics),
             proof_values,
             challenges: Challenges::default(),
             buff_helper: BuffHelper::default(),
@@ -145,5 +155,40 @@ impl<F: Field> ProofCtx<F> {
 
     pub fn set_proof_value_calculated(&self, id: usize) {
         self.proof_values.values_set.write().unwrap().insert(id, true);
+    }
+
+    pub fn set_public_value(&self, value: u64, public_id: u64) {
+        self.public_inputs.inputs.write().unwrap()[(public_id as usize) * 8..(public_id as usize + 1) * 8]
+            .copy_from_slice(&value.to_le_bytes());
+
+        self.public_inputs.inputs_set.write().unwrap()[public_id as usize] = true;
+    }
+
+    pub fn set_public_value_by_name(&self, value: u64, public_name: &str) {
+        let n_publics: usize = self.global_info.publics_map.as_ref().expect("REASON").len();
+        let public_id = (0..n_publics)
+            .find(|&i| {
+                let public = self.global_info.publics_map.as_ref().expect("REASON").get(i).unwrap();
+                public.name == public_name
+            })
+            .unwrap_or_else(|| panic!("Name {} not found in publics_map", public_name));
+
+        self.set_public_value(value, public_id as u64);
+    }
+
+    pub fn get_public_value(&self, public_name: &str) -> u64 {
+        let n_publics: usize = self.global_info.publics_map.as_ref().expect("REASON").len();
+        let public_id = (0..n_publics)
+            .find(|&i| {
+                let public = self.global_info.publics_map.as_ref().expect("REASON").get(i).unwrap();
+                public.name == public_name
+            })
+            .unwrap_or_else(|| panic!("Name {} not found in publics_map", public_name));
+
+        u64::from_le_bytes(
+            self.public_inputs.inputs.read().unwrap()[public_id * 8..(public_id + 1) * 8]
+                .try_into()
+                .expect("Expected 8 bytes for u64"),
+        )
     }
 }

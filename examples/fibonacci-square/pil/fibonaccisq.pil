@@ -4,6 +4,7 @@ require "module.pil";
 public in1;
 public in2;
 public out;
+public rom_root[4];
 
 proofval value1;
 proofval value2;
@@ -17,6 +18,7 @@ private function checkProofValues()
 on final proof checkProofValues();
 
 airtemplate FibonacciSquare(const int N = 2**8) {
+    commit stage(0) public(rom_root) rom;
 
     airval fibo1;
     airval fibo2;
@@ -24,6 +26,9 @@ airtemplate FibonacciSquare(const int N = 2**8) {
 
     col fixed L1 = [1,0...];
     col witness a,b;
+
+    col rom line;
+    col rom flags;
 
     // Inputs/Outputs
     L1 * (a - in1) === 0;
@@ -33,6 +38,8 @@ airtemplate FibonacciSquare(const int N = 2**8) {
     (a' - b) * (1 - L1') === 0;
 
     2*fibo1 - fibo2 === 0;
+
+    line - (flags + 1) === 0;
 
     permutation_assumes(MODULE_ID, [a*a + b*b, b'], 1 - L1');
 }

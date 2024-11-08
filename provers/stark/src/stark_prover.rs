@@ -65,7 +65,7 @@ impl<F: Field> StarkProver<F> {
 
         let setup = sctx.get_setup(airgroup_id, air_id);
 
-        let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+        let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let p_stark = starks_new_c((&setup.p_setup).into(), const_tree_ptr);
 
@@ -117,6 +117,16 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             air_instance.set_commit_calculated(i);
         }
 
+        for commit_id in 0..self.stark_info.custom_commits.len() {
+            if !air_instance.custom_commits[commit_id].is_empty() {
+                for idx in 0..self.stark_info.custom_commits_map[commit_id].as_ref().unwrap().len() {
+                    if self.stark_info.custom_commits_map[commit_id].as_ref().unwrap()[idx].stage <= 1 {
+                        air_instance.set_custom_commit_calculated(commit_id, idx);
+                    }
+                }
+            }
+        }
+
         self.initialized = true;
     }
 
@@ -145,8 +155,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
 
-        let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-        let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+        let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+        let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
             buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -158,6 +168,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             xdivxsub: std::ptr::null_mut(),
             p_const_pols: const_pols_ptr,
             p_const_tree: const_tree_ptr,
+            custom_commits: air_instance.get_custom_commits_ptr(),
         };
 
         let raw_ptr = verify_constraints_c((&setup.p_setup).into(), (&steps_params).into());
@@ -179,8 +190,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
 
-        let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-        let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+        let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+        let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
             buffer: air_instance.get_buffer_ptr() as *mut c_void,
@@ -192,30 +203,40 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             xdivxsub: std::ptr::null_mut(),
             p_const_pols: const_pols_ptr,
             p_const_tree: const_tree_ptr,
+            custom_commits: air_instance.get_custom_commits_ptr(),
         };
 
         if stage_id as usize <= proof_ctx.global_info.n_challenges.len() {
-            let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
-            debug!(
-                "{}: ··· Computing intermediate polynomials of instance {} of {}",
-                Self::MY_NAME,
-                self.instance_id,
-                air_name
-            );
-            for i in 0..n_commits {
-                let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
-                if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol)
-                    && !air_instance.commits_calculated.contains_key(&i)
-                {
-                    panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
+            if self
+                .stark_info
+                .cm_pols_map
+                .as_ref()
+                .expect("REASON")
+                .iter()
+                .any(|cm_pol| cm_pol.stage == stage_id as u64 && cm_pol.im_pol)
+            {
+                let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
+                debug!(
+                    "{}: ··· Computing intermediate polynomials of instance {} of {}",
+                    Self::MY_NAME,
+                    self.instance_id,
+                    air_name
+                );
+                for i in 0..n_commits {
+                    let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                    if (cm_pol.stage < stage_id as u64 || cm_pol.stage == stage_id as u64 && !cm_pol.im_pol)
+                        && !air_instance.commits_calculated.contains_key(&i)
+                    {
+                        panic!("Intermediate polynomials for stage {} cannot be calculated: Witness column {} is not calculated", stage_id, cm_pol.name);
+                    }
                 }
-            }
 
-            calculate_impols_expressions_c(self.p_stark, stage_id as u64, (&steps_params).into());
-            for i in 0..n_commits {
-                let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
-                if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
-                    air_instance.set_commit_calculated(i);
+                calculate_impols_expressions_c(self.p_stark, stage_id as u64, (&steps_params).into());
+                for i in 0..n_commits {
+                    let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                    if cm_pol.stage == stage_id as u64 && cm_pol.im_pol {
+                        air_instance.set_commit_calculated(i);
+                    }
                 }
             }
 
@@ -241,6 +262,10 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 }
             }
         }
+    }
+
+    fn check_stage(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) {
+        let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
         for i in 0..n_commits {
@@ -269,32 +294,88 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                 panic!("Stage {} cannot be committed: Airvalue {} is not calculated", stage_id, air_value.name);
             }
         }
+
+        let n_custom_commits = self.stark_info.custom_commits_map.len();
+        for i in 0..n_custom_commits {
+            let n_custom_commits = self.stark_info.custom_commits_map[i].as_ref().expect("REASON").len();
+            for j in 0..n_custom_commits {
+                let custom_pol = self.stark_info.custom_commits_map[i].as_ref().expect("REASON").get(j).unwrap();
+                if stage_id as u64 == custom_pol.stage && !air_instance.custom_commits_calculated[i].contains_key(&j) {
+                    panic!(
+                        "Stage {} cannot be committed: Custom commit of {} that is {} is not calculated",
+                        stage_id, self.stark_info.custom_commits[i].name, custom_pol.name
+                    );
+                }
+            }
+        }
     }
 
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
-        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
-        let p_stark: *mut std::ffi::c_void = self.p_stark;
 
-        let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
-        debug!(
-            "{}: ··· Committing prover {}: instance {} of {}",
-            Self::MY_NAME,
-            self.prover_idx,
-            self.instance_id,
-            air_name
-        );
-
-        timer_start_trace!(STARK_COMMIT_STAGE_, stage_id);
-
+        let p_stark = self.p_stark;
         let p_proof = self.p_proof;
-        let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
-        commit_stage_c(p_stark, element_type, stage_id as u64, buffer, p_proof, buff_helper);
 
-        timer_stop_and_log_trace!(STARK_COMMIT_STAGE_, stage_id);
+        let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
+        if stage_id >= 1 {
+            debug!(
+                "{}: ··· Committing prover {}: instance {} of {}",
+                Self::MY_NAME,
+                self.prover_idx,
+                self.instance_id,
+                air_name
+            );
+
+            timer_start_trace!(STARK_COMMIT_STAGE_, stage_id);
+
+            let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+            let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
+
+            commit_stage_c(p_stark, element_type, stage_id as u64, buffer, p_proof, buff_helper);
+            timer_stop_and_log_trace!(STARK_COMMIT_STAGE_, stage_id);
+        } else {
+            let n_custom_commits = self.stark_info.custom_commits.len();
+            for commit_id in 0..n_custom_commits {
+                let custom_commits_stage = self.stark_info.custom_commits_map[commit_id]
+                    .as_ref()
+                    .expect("REASON")
+                    .iter()
+                    .any(|custom_commit| custom_commit.stage == stage_id as u64);
+
+                if custom_commits_stage {
+                    extend_and_merkelize_custom_commit_c(
+                        p_stark,
+                        commit_id as u64,
+                        stage_id as u64,
+                        air_instance.custom_commits[commit_id].as_ptr() as *mut c_void,
+                        p_proof,
+                        buff_helper,
+                    );
+                }
+
+                let mut value = vec![Goldilocks::zero(); self.n_field_elements];
+                treesGL_get_root_c(
+                    p_stark,
+                    (self.stark_info.n_stages + 2 + commit_id as u32) as u64,
+                    value.as_mut_ptr() as *mut c_void,
+                );
+                if !self.stark_info.custom_commits[commit_id].public_values.is_empty() {
+                    assert!(
+                        self.n_field_elements == self.stark_info.custom_commits[commit_id].public_values.len(),
+                        "Invalid public values size"
+                    );
+                    for (idx, val) in value.iter().enumerate() {
+                        proof_ctx.set_public_value(
+                            val.as_canonical_u64(),
+                            self.stark_info.custom_commits[commit_id].public_values[idx].idx,
+                        );
+                    }
+                }
+            }
+        }
 
         if stage_id <= self.num_stages() + 1 {
             ProverStatus::CommitStage
@@ -665,7 +746,7 @@ impl<F: Field> StarkProver<F> {
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
         let buff_helper = (*buff_helper_guard).as_ptr() as *mut c_void;
 
-        let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+        let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
             buffer,
@@ -677,6 +758,7 @@ impl<F: Field> StarkProver<F> {
             xdivxsub: std::ptr::null_mut(),
             p_const_pols: std::ptr::null_mut(),
             p_const_tree: const_tree_ptr,
+            custom_commits: air_instance.get_custom_commits_ptr(),
         };
 
         compute_evals_c(p_stark, (&steps_params).into(), buff_helper, p_proof);
@@ -693,8 +775,8 @@ impl<F: Field> StarkProver<F> {
         let challenges_guard = proof_ctx.challenges.challenges.read().unwrap();
         let buff_helper_guard = proof_ctx.buff_helper.buff_helper.read().unwrap();
 
-        let const_pols_ptr = (*setup.const_pols.const_pols.read().unwrap()).as_ptr() as *mut c_void;
-        let const_tree_ptr = (*setup.const_tree.const_pols.read().unwrap()).as_ptr() as *mut c_void;
+        let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+        let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let p_stark = self.p_stark;
 
@@ -708,6 +790,7 @@ impl<F: Field> StarkProver<F> {
             xdivxsub: (*buff_helper_guard).as_ptr() as *mut c_void,
             p_const_pols: const_pols_ptr,
             p_const_tree: const_tree_ptr,
+            custom_commits: air_instance.get_custom_commits_ptr(),
         };
 
         calculate_fri_polynomial_c(p_stark, (&steps_params).into());
@@ -796,7 +879,8 @@ impl<F: Field> StarkProver<F> {
 
         let fri_pol = get_fri_pol_c(self.p_stark_info, buffer);
 
-        compute_queries_c(p_stark, p_proof, fri_queries.as_mut_ptr(), n_queries, (self.num_stages() + 2) as u64);
+        let n_trees = self.num_stages() + 2 + self.stark_info.custom_commits.len() as u32;
+        compute_queries_c(p_stark, p_proof, fri_queries.as_mut_ptr(), n_queries, n_trees as u64);
         for (step, _) in steps.iter().enumerate().take(self.stark_info.stark_struct.steps.len()).skip(1) {
             compute_fri_queries_c(
                 self.p_stark,
@@ -837,5 +921,19 @@ impl<F> BufferAllocator<F> for StarkBufferAllocator {
 
         let p_stark_info = ps.p_setup.p_stark_info;
         Ok((get_map_totaln_c(p_stark_info), vec![get_map_offsets_c(p_stark_info, "cm1", false)]))
+    }
+
+    fn get_buffer_info_custom_commit(
+        &self,
+        sctx: &SetupCtx<F>,
+        airgroup_id: usize,
+        air_id: usize,
+        name: &str,
+    ) -> Result<(u64, Vec<u64>, u64), Box<dyn Error>> {
+        let ps = sctx.get_setup(airgroup_id, air_id);
+
+        let p_stark_info = ps.p_setup.p_stark_info;
+        let commit_id = get_custom_commit_id_c(p_stark_info, name);
+        Ok((get_map_totaln_custom_commits_c(p_stark_info, commit_id), vec![0], commit_id))
     }
 }

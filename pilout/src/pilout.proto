@@ -87,8 +87,7 @@ message GlobalOperand {
 
     message AirGroupValue {
         uint32 airGroupId = 1;
-        uint32 stage = 2;
-        uint32 idx = 3;
+        uint32 idx = 2;
     }
 
     message PublicValue {
@@ -128,8 +127,19 @@ message Air {
     repeated uint32 stageWidths = 5;        // stage widths excluding stage 0 (fixed columns)
     repeated Expression expressions = 6;
     repeated Constraint constraints = 7;
-    repeated uint32 stageAirValues = 8;        // stage airvalues 
+    repeated AirValue airValues = 8;        // stage airvalues
     bool aggregable = 9;
+    repeated CustomCommit customCommits = 10;
+}
+
+message CustomCommit {
+    optional string name = 1;
+    repeated GlobalOperand.PublicValue publicValues = 2;
+    repeated uint32 stageWidths = 3;    // stage widths including stage 0 !!
+}
+
+message AirValue {
+    uint32 stage = 1;
 }
 
 message PeriodicCol {
@@ -186,13 +196,11 @@ message Operand {
     }
 
     message AirGroupValue {
-        uint32 stage = 1;
-        uint32 idx = 2;    
+        uint32 idx = 1;
     }
 
     message AirValue {
-        uint32 stage = 1;
-        uint32 idx = 2;
+        uint32 idx = 1;
     }
 
     message PublicValue {
@@ -215,6 +223,13 @@ message Operand {
         sint32 rowOffset = 3;
     }
 
+    message CustomCol {
+        uint32 commitId = 1;
+        uint32 stage = 2;
+        uint32 colIdx = 3;      // absolute idx relative to the stage
+        sint32 rowOffset = 4;
+    }
+
     message Expression {
         uint32 idx = 1;
     }
@@ -230,6 +245,7 @@ message Operand {
         WitnessCol witnessCol = 8;
         Expression expression = 9;
         AirValue airValue = 10;
+        CustomCol customCol = 11;
     }
 }
 
@@ -269,11 +285,12 @@ enum SymbolType {
     PERIODIC_COL = 2;
     WITNESS_COL = 3;
     PROOF_VALUE = 4;
-    AIR_GROUP_VALUE = 5;    
+    AIR_GROUP_VALUE = 5;
     PUBLIC_VALUE = 6;
     PUBLIC_TABLE = 7;
     CHALLENGE = 8;
-    AIR_VALUE = 9;    
+    AIR_VALUE = 9;
+    CUSTOM_COL = 10;
 }
 
 message Symbol {
@@ -285,7 +302,8 @@ message Symbol {
     optional uint32 stage = 6;
     uint32 dim = 7;
     repeated uint32 lengths = 8;
-    optional string debugLine = 9;
+    optional uint32 commitId = 9;
+    optional string debugLine = 10;
 }
 
 // ================ Hints ================

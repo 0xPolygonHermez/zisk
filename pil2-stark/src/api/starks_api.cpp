@@ -160,6 +160,27 @@ uint64_t get_map_total_n(void *pStarkInfo)
     return ((StarkInfo *)pStarkInfo)->mapTotalN;
 }
 
+uint64_t get_custom_commit_id(void *pStarkInfo, char* name) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+
+    auto commitId = std::find_if(starkInfo.customCommits.begin(), starkInfo.customCommits.end(), [name](const CustomCommits& customCommit) {
+        return customCommit.name == string(name);
+    });
+
+    if(commitId == starkInfo.customCommits.end()) {
+        zklog.error("Custom commit " + string(name) + " not found in custom commits.");
+        exitProcess();
+        exit(-1);
+    }
+
+    return std::distance(starkInfo.customCommits.begin(), commitId);
+};
+
+uint64_t get_map_total_n_custom_commits(void *pStarkInfo, uint64_t commit_id) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    return starkInfo.mapTotalNcustomCommits[starkInfo.customCommits[commit_id].name];
+}
+
 uint64_t get_n_airvals(void *pStarkInfo) {
     return ((StarkInfo *)pStarkInfo)->airValuesMap.size();
 }
@@ -170,6 +191,11 @@ uint64_t get_n_airgroupvals(void *pStarkInfo) {
 
 uint64_t get_n_evals(void *pStarkInfo) {
     return ((StarkInfo *)pStarkInfo)->evMap.size();
+}
+
+uint64_t get_n_custom_commits(void *pStarkInfo) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    return starkInfo.customCommitsMap.size();
 }
 
 int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName) {
@@ -312,6 +338,14 @@ void treesGL_get_root(void *pStarks, uint64_t index, void *dst)
     starks->ffi_treesGL_get_root(index, (Goldilocks::Element *)dst);
 }
 
+void treesGL_set_root(void *pStarks, uint64_t index, void *pProof)
+{
+    Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
+
+    starks->ffi_treesGL_set_root(index, *(FRIProof<Goldilocks::Element> *)pProof);
+}
+
+
 void calculate_fri_polynomial(void *pStarks, void* stepsParams)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
@@ -329,6 +363,12 @@ void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParam
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
     starks->calculateImPolsExpressions(step, *(StepsParams *)stepsParams);
+}
+
+void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper) 
+{
+    Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
+    starks->extendAndMerkelizeCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper);
 }
 
 void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper) {

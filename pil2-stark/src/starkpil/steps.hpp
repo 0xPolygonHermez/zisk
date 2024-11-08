@@ -14,6 +14,7 @@ struct StepsParams
     Goldilocks::Element *xDivXSub;
     Goldilocks::Element *pConstPolsAddress;
     Goldilocks::Element *pConstPolsExtendedTreeAddress;
+    Goldilocks::Element *customCommits[10];
 };
 
 #endif

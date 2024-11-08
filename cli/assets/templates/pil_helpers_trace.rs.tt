@@ -7,3 +7,9 @@ trace!({ air.name }Row, { air.name }Trace<F> \{
 {{ for column in air.columns }} { column.name }: { column.type },{{ endfor }}
 });
 {{ endfor }}{{ endfor }}
+
+{{ for air_group in air_groups }}{{ for air in air_group.airs }}{{ for custom_commit in air.custom_columns  }}
+trace!({ air.name }{custom_commit.name}Row, { air.name }{custom_commit.name}Trace<F> \{
+{{ for column in custom_commit.custom_columns }} { column.name }: { column.type },{{ endfor }}
+});
+{{ endfor }}{{ endfor }}{{ endfor }}

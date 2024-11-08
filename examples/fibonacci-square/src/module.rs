@@ -6,7 +6,7 @@ use pil_std_lib::Std;
 use p3_field::{AbstractField, PrimeField};
 use num_bigint::BigInt;
 
-use crate::{FibonacciSquarePublics, ModuleTrace, FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS};
+use crate::{ModuleTrace, FIBONACCI_SQUARE_AIRGROUP_ID, MODULE_AIR_IDS};
 
 pub struct Module<F: PrimeField> {
     inputs: Mutex<Vec<(u64, u64)>>,
@@ -44,8 +44,7 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
     fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
-        let pi: FibonacciSquarePublics = pctx.public_inputs.inputs.read().unwrap().as_slice().into();
-        let module = pi.module;
+        let module = pctx.get_public_value("mod");
 
         let (buffer_size, offsets) = ectx
             .buffer_allocator

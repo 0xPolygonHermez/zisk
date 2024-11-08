@@ -15,33 +15,47 @@ public:
 
     void setBufferTInfo(bool domainExtended, int64_t expId) {
         uint64_t nOpenings = setupCtx.starkInfo.openingPoints.size();
-        offsetsStages.resize((setupCtx.starkInfo.nStages + 2)*nOpenings + 1);
-        nColsStages.resize((setupCtx.starkInfo.nStages + 2)*nOpenings + 1);
-        nColsStagesAcc.resize((setupCtx.starkInfo.nStages + 2)*nOpenings + 1);
+        uint64_t ns = 2 + setupCtx.starkInfo.nStages + setupCtx.starkInfo.customCommits.size();
+        offsetsStages.resize(ns*nOpenings + 1);
+        nColsStages.resize(ns*nOpenings + 1);
+        nColsStagesAcc.resize(ns*nOpenings + 1);
 
         nCols = setupCtx.starkInfo.nConstants;
-        uint64_t ns = setupCtx.starkInfo.nStages + 2;
+
         for(uint64_t o = 0; o < nOpenings; ++o) {
-            for(uint64_t stage = 0; stage <= ns; ++stage) {
-                std::string section = stage == 0 ? "const" : "cm" + to_string(stage);
-                offsetsStages[(setupCtx.starkInfo.nStages + 2)*o + stage] = setupCtx.starkInfo.mapOffsets[std::make_pair(section, domainExtended)];
-                nColsStages[(setupCtx.starkInfo.nStages + 2)*o + stage] = setupCtx.starkInfo.mapSectionsN[section];
-                nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*o + stage] = stage == 0 && o == 0 ? 0 : nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*o + stage - 1] + nColsStages[stage - 1];
+            for(uint64_t stage = 0; stage < ns; ++stage) {
+                if(stage == 0) {
+                    offsetsStages[ns*o] = 0;
+                    nColsStages[ns*o] = setupCtx.starkInfo.mapSectionsN["const"];
+                    nColsStagesAcc[ns*o] = o == 0 ? 0 : nColsStagesAcc[ns*o + stage - 1] + nColsStages[stage - 1];
+                } else if(stage < 2 + setupCtx.starkInfo.nStages) {
+                    std::string section = "cm" + to_string(stage);
+                    offsetsStages[ns*o + stage] = setupCtx.starkInfo.mapOffsets[std::make_pair(section, domainExtended)];
+                    nColsStages[ns*o + stage] = setupCtx.starkInfo.mapSectionsN[section];
+                    nColsStagesAcc[ns*o + stage] = nColsStagesAcc[ns*o + stage - 1] + nColsStages[stage - 1];
+                } else {
+                    uint64_t index = stage - setupCtx.starkInfo.nStages - 2;
+                    std::string section = setupCtx.starkInfo.customCommits[index].name + "0";
+                    offsetsStages[ns*o + stage] = setupCtx.starkInfo.mapOffsets[std::make_pair(section, domainExtended)];
+                    nColsStages[ns*o + stage] = setupCtx.starkInfo.mapSectionsN[section];
+                    nColsStagesAcc[ns*o + stage] = nColsStagesAcc[ns*o + stage - 1] + nColsStages[stage - 1];
+                }
             }
         }
 
-        nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] = nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings - 1] + nColsStages[(setupCtx.starkInfo.nStages + 2)*nOpenings - 1];
+        nColsStagesAcc[ns*nOpenings] = nColsStagesAcc[ns*nOpenings - 1] + nColsStages[ns*nOpenings - 1];
         if(expId == int64_t(setupCtx.starkInfo.cExpId)) {
-            nCols = nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + setupCtx.starkInfo.boundaries.size() + 1;
+            nCols = nColsStagesAcc[ns*nOpenings] + setupCtx.starkInfo.boundaries.size() + 1;
         } else if(expId == int64_t(setupCtx.starkInfo.friExpId)) {
-            nCols = nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + nOpenings*FIELD_EXTENSION;
+            nCols = nColsStagesAcc[ns*nOpenings] + nOpenings*FIELD_EXTENSION;
         } else {
-            nCols = nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + 1;
+            nCols = nColsStagesAcc[ns*nOpenings] + 1;
         }
     }
 
     inline void loadPolynomials(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> &dests, __m512i *bufferT_, uint64_t row, uint64_t domainSize) {
         uint64_t nOpenings = setupCtx.starkInfo.openingPoints.size();
+        uint64_t ns = 2 + setupCtx.starkInfo.nStages + setupCtx.starkInfo.customCommits.size();
         bool domainExtended = domainSize == uint64_t(1 << setupCtx.starkInfo.starkStruct.nBitsExt) ? true : false;
 
         uint64_t extendBits = (setupCtx.starkInfo.starkStruct.nBitsExt - setupCtx.starkInfo.starkStruct.nBits);
@@ -56,6 +70,10 @@ public:
 
         std::vector<bool> constPolsUsed(setupCtx.starkInfo.constPolsMap.size(), false);
         std::vector<bool> cmPolsUsed(setupCtx.starkInfo.cmPolsMap.size(), false);
+        std::vector<std::vector<bool>> customCommitsUsed(setupCtx.starkInfo.customCommits.size());
+        for(uint64_t i = 0; i < setupCtx.starkInfo.customCommits.size(); ++i) {
+            customCommitsUsed[i] = std::vector<bool>(setupCtx.starkInfo.customCommits[i].stageWidths[0], false);
+        }
 
         for(uint64_t i = 0; i < dests.size(); ++i) {
             for(uint64_t j = 0; j < dests[i].params.size(); ++j) {
@@ -74,6 +92,13 @@ public:
                     for(uint64_t k = 0; k < dests[i].params[j].parserParams.nCmPolsUsed; ++k) {
                         cmPolsUsed[cmUsed[k]] = true;
                     }
+
+                    for(uint64_t k = 0; k < setupCtx.starkInfo.customCommits.size(); ++k) {
+                        uint16_t* customCmUsed = &parserArgs.customCommitsPolsIds[dests[i].params[j].parserParams.customCommitsOffset[k]];
+                        for(uint64_t l = 0; l < dests[i].params[j].parserParams.nCustomCommitsPolsUsed[k]; ++l) {
+                            customCommitsUsed[k][customCmUsed[l]] = true;
+                        }
+                    }
                 }
             }
         }
@@ -86,7 +111,7 @@ public:
                     uint64_t l = (row + j + nextStrides[o]) % domainSize;
                     bufferT[nrowsPack*o + j] = constPols[l * nColsStages[0] + k];
                 }
-                Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*o] + k], &bufferT[nrowsPack*o]);
+                Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*o] + k], &bufferT[nrowsPack*o]);
             }
         }
 
@@ -101,7 +126,25 @@ public:
                         uint64_t l = (row + j + nextStrides[o]) % domainSize;
                         bufferT[nrowsPack*o + j] = params.pols[offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
                     }
-                    Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*o + stage] + (stagePos + d)], &bufferT[nrowsPack*o]);
+                    Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*o + stage] + (stagePos + d)], &bufferT[nrowsPack*o]);
+                }
+            }
+        }
+
+        for(uint64_t i = 0; i < setupCtx.starkInfo.customCommits.size(); ++i) {
+            for(uint64_t j = 0; j < setupCtx.starkInfo.customCommits[i].stageWidths[0]; ++j) {
+                if(!customCommitsUsed[i][j]) continue;
+                PolMap polInfo = setupCtx.starkInfo.customCommitsMap[i][j];
+                uint64_t stage = setupCtx.starkInfo.nStages + 2 + i;
+                uint64_t stagePos = polInfo.stagePos;
+                for(uint64_t d = 0; d < polInfo.dim; ++d) {
+                    for(uint64_t o = 0; o < nOpenings; ++o) {
+                        for(uint64_t j = 0; j < nrowsPack; ++j) {
+                            uint64_t l = (row + j + nextStrides[o]) % domainSize;
+                            bufferT[nrowsPack*o + j] = params.customCommits[i][offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
+                        }
+                        Goldilocks::load_avx(bufferT_[nColsStagesAcc[ns*o + stage] + (stagePos + d)], &bufferT[nrowsPack*o]);
+                    }
                 }
             }
         }
@@ -110,12 +153,12 @@ public:
             for(uint64_t j = 0; j < nrowsPack; ++j) {
                 bufferT[j] = setupCtx.proverHelpers.x_2ns[row + j];
             }
-            Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings]], &bufferT[0]);
+            Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*nOpenings]], &bufferT[0]);
             for(uint64_t d = 0; d < setupCtx.starkInfo.boundaries.size(); ++d) {
                 for(uint64_t j = 0; j < nrowsPack; ++j) {
                     bufferT[j] = setupCtx.proverHelpers.zi[row + j + d*domainSize];
                 }
-                Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + 1 + d], &bufferT[0]);
+                Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*nOpenings] + 1 + d], &bufferT[0]);
             }
         } else if(dests[0].params[0].parserParams.expId == int64_t(setupCtx.starkInfo.friExpId)) {
             for(uint64_t d = 0; d < setupCtx.starkInfo.openingPoints.size(); ++d) {
@@ -123,14 +166,14 @@ public:
                     for(uint64_t j = 0; j < nrowsPack; ++j) {
                         bufferT[j] = params.xDivXSub[(row + j + d*domainSize)*FIELD_EXTENSION + k];
                     }
-                    Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings] + d*FIELD_EXTENSION + k], &bufferT[0]);
+                    Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*nOpenings] + d*FIELD_EXTENSION + k], &bufferT[0]);
                 }
             }
         } else {
             for(uint64_t j = 0; j < nrowsPack; ++j) {
                 bufferT[j] = setupCtx.proverHelpers.x_n[row + j];
             }
-            Goldilocks::load_avx512(bufferT_[nColsStagesAcc[(setupCtx.starkInfo.nStages + 2)*nOpenings]], &bufferT[0]);
+            Goldilocks::load_avx512(bufferT_[nColsStagesAcc[ns*nOpenings]], &bufferT[0]);
         }
     }
 
@@ -245,6 +288,7 @@ public:
 
     void calculateExpressions(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> dests, uint64_t domainSize) override {
         uint64_t nOpenings = setupCtx.starkInfo.openingPoints.size();
+        uint64_t ns = 2 + setupCtx.starkInfo.nStages + setupCtx.starkInfo.customCommits.size();
         bool domainExtended = domainSize == uint64_t(1 << setupCtx.starkInfo.starkStruct.nBitsExt) ? true : false;
 
         uint64_t expId = dests[0].params[0].op == opType::tmp ? dests[0].params[0].parserParams.destDim : 0;
@@ -306,7 +350,7 @@ public:
                         auto openingPointZero = std::find_if(setupCtx.starkInfo.openingPoints.begin(), setupCtx.starkInfo.openingPoints.end(), [](int p) { return p == 0; });
                         auto openingPointZeroIndex = std::distance(setupCtx.starkInfo.openingPoints.begin(), openingPointZero);
 
-                        uint64_t buffPos = (setupCtx.starkInfo.nStages + 2)*openingPointZeroIndex + dests[j].params[k].stage;
+                        uint64_t buffPos = ns*openingPointZeroIndex + dests[j].params[k].stage;
                         uint64_t stagePos = dests[j].params[k].stagePos;
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION], dests[j].params[k].inverse, dests[j].params[k].dim, &bufferT_[nColsStagesAcc[buffPos] + stagePos]);
                         continue;

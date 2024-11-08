@@ -30,13 +30,13 @@ impl From<&SetupC> for *mut c_void {
 }
 
 #[derive(Debug)]
-pub struct ConstPols<F> {
-    pub const_pols: RwLock<Vec<MaybeUninit<F>>>,
+pub struct Pols<F> {
+    pub values: RwLock<Vec<MaybeUninit<F>>>,
 }
 
-impl<F> Default for ConstPols<F> {
+impl<F> Default for Pols<F> {
     fn default() -> Self {
-        Self { const_pols: RwLock::new(Vec::new()) }
+        Self { values: RwLock::new(Vec::new()) }
     }
 }
 
@@ -47,8 +47,8 @@ pub struct Setup<F> {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub p_setup: SetupC,
-    pub const_pols: ConstPols<F>,
-    pub const_tree: ConstPols<F>,
+    pub const_pols: Pols<F>,
+    pub const_tree: Pols<F>,
 }
 
 impl<F> Setup<F> {
@@ -80,8 +80,8 @@ impl<F> Setup<F> {
             air_id,
             airgroup_id,
             p_setup: SetupC { p_stark_info, p_expressions_bin, p_prover_helpers },
-            const_pols: ConstPols::default(),
-            const_tree: ConstPols::default(),
+            const_pols: Pols::default(),
+            const_tree: Pols::default(),
         }
     }
 
@@ -109,7 +109,7 @@ impl<F> Setup<F> {
 
         let p_const_pols_address = const_pols.as_ptr() as *mut c_void;
         load_const_pols_c(p_const_pols_address, const_pols_path.as_str(), const_size as u64);
-        *self.const_pols.const_pols.write().unwrap() = const_pols;
+        *self.const_pols.values.write().unwrap() = const_pols;
     }
 
     pub fn load_const_pols_tree(&self, global_info: &GlobalInfo, setup_type: &ProofType, save_file: bool) {
@@ -132,11 +132,11 @@ impl<F> Setup<F> {
         if PathBuf::from(&const_pols_tree_path).exists() {
             load_const_tree_c(p_const_tree_address, const_pols_tree_path.as_str(), const_tree_size as u64);
         } else {
-            let const_pols = self.const_pols.const_pols.read().unwrap();
+            let const_pols = self.const_pols.values.read().unwrap();
             let p_const_pols_address = (*const_pols).as_ptr() as *mut c_void;
             let tree_filename = if save_file { const_pols_tree_path.as_str() } else { "" };
             calculate_const_tree_c(p_stark_info, p_const_pols_address, p_const_tree_address, tree_filename);
         };
-        *self.const_tree.const_pols.write().unwrap() = const_tree;
+        *self.const_tree.values.write().unwrap() = const_tree;
     }
 }

@@ -28,10 +28,13 @@
     uint64_t get_stark_info_n(void *pStarkInfo);
     uint64_t get_stark_info_n_publics(void *pStarkInfo);
     uint64_t get_map_total_n(void *pStarkInfo);
+    uint64_t get_custom_commit_id(void *pStarkInfo, char* name);
+    uint64_t get_map_total_n_custom_commits(void *pStarkInfo, uint64_t commit_id);
     uint64_t get_map_offsets(void *pStarkInfo, char *stage, bool flag);
     uint64_t get_n_airvals(void *pStarkInfo);
     uint64_t get_n_airgroupvals(void *pStarkInfo);
     uint64_t get_n_evals(void *pStarkInfo);
+    uint64_t get_n_custom_commits(void *pStarkInfo);
     int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName);
     int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airValueName);
     void stark_info_free(void *pStarkInfo);
@@ -68,6 +71,7 @@
     void starks_free(void *pStarks);
 
     void treesGL_get_root(void *pStarks, uint64_t index, void *root);
+    void treesGL_set_root(void *pStarks, uint64_t index, void *pProof);
 
     void calculate_xdivxsub(void *pStarks, void* xiChallenge, void *xDivXSub);
     void *get_fri_pol(void *pStarkInfo, void *buffer);
@@ -75,6 +79,8 @@
     void calculate_fri_polynomial(void *pStarks, void* stepsParams);
     void calculate_quotient_polynomial(void *pStarks, void* stepsParams);
     void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParams);
+
+    void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
 
     void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
     

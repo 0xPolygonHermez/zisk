@@ -72,6 +72,8 @@ struct ParserParams
     uint32_t airgroupValuesOffset;
     uint32_t nAirValuesUsed;
     uint32_t airValuesOffset;
+    std::vector<uint32_t> nCustomCommitsPolsUsed;
+    std::vector<uint32_t> customCommitsOffset;
     uint32_t firstRow;
     uint32_t lastRow;
     uint32_t destDim;
@@ -91,6 +93,7 @@ struct ParserArgs
     uint16_t* publicsIds;
     uint16_t* airgroupValuesIds;
     uint16_t* airValuesIds;
+    uint16_t* customCommitsPolsIds;
     uint64_t nNumbers;
 };
 
@@ -117,6 +120,7 @@ public:
         if (expressionsBinArgsExpressions.publicsIds) delete[] expressionsBinArgsExpressions.publicsIds;
         if (expressionsBinArgsExpressions.airgroupValuesIds) delete[] expressionsBinArgsExpressions.airgroupValuesIds;
         if (expressionsBinArgsExpressions.airValuesIds) delete[] expressionsBinArgsExpressions.airValuesIds;
+        if (expressionsBinArgsExpressions.customCommitsPolsIds) delete[] expressionsBinArgsExpressions.customCommitsPolsIds;
 
         if (expressionsBinArgsConstraints.ops) delete[] expressionsBinArgsConstraints.ops;
         if (expressionsBinArgsConstraints.args) delete[] expressionsBinArgsConstraints.args;
@@ -127,6 +131,7 @@ public:
         if (expressionsBinArgsConstraints.publicsIds) delete[] expressionsBinArgsConstraints.publicsIds;
         if (expressionsBinArgsConstraints.airgroupValuesIds) delete[] expressionsBinArgsConstraints.airgroupValuesIds;
         if (expressionsBinArgsConstraints.airValuesIds) delete[] expressionsBinArgsConstraints.airValuesIds;
+        if (expressionsBinArgsConstraints.customCommitsPolsIds) delete[] expressionsBinArgsConstraints.customCommitsPolsIds;
     };
 
     /* Constructor */

@@ -117,7 +117,7 @@ void printColById(SetupCtx& setupCtx, StepsParams &params, bool committed, uint6
     PolMap polInfo = committed ? setupCtx.starkInfo.cmPolsMap[polId] : setupCtx.starkInfo.constPolsMap[polId];
     Goldilocks::Element *pols = committed ? params.pols : params.pConstPolsAddress;
     Polinomial p;
-    setupCtx.starkInfo.getPolynomial(p, pols, committed, polId, false);
+    setupCtx.starkInfo.getPolynomial(p, pols, committed ? "cm" : "const", polInfo, false);
 
     Polinomial pCol;
     Goldilocks::Element *pBuffCol = new Goldilocks::Element[polInfo.dim * N];

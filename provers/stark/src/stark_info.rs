@@ -91,6 +91,23 @@ pub struct PolMap {
     pub stage_pos: u64,
     #[serde(default, rename = "stageId")]
     pub stage_id: u64,
+    #[serde(default)]
+    pub lengths: Vec<u64>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Clone, Copy)]
+pub struct PublicValues {
+    pub idx: u64,
+}
+
+#[derive(Deserialize)]
+pub struct CustomCommits {
+    pub name: String,
+    #[serde(default, rename = "stageWidths")]
+    pub stage_widths: Vec<u32>,
+    #[serde(rename = "publicValues")]
+    pub public_values: Vec<PublicValues>,
 }
 
 #[allow(dead_code)]
@@ -100,8 +117,8 @@ enum EvMapEType {
     Cm,
     #[serde(rename = "const")]
     Const,
-    #[serde(rename = "q")]
-    Q,
+    #[serde(rename = "custom")]
+    Custom,
 }
 
 fn deserialize_bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -142,6 +159,10 @@ pub struct StarkInfo {
 
     #[serde(rename = "cmPolsMap")]
     pub cm_pols_map: Option<Vec<PolMap>>,
+    #[serde(rename = "publicsMap")]
+    pub publics_map: Option<Vec<PolMap>>,
+    #[serde(rename = "customCommitsMap")]
+    pub custom_commits_map: Vec<Option<Vec<PolMap>>>,
     #[serde(rename = "challengesMap")]
     pub challenges_map: Option<Vec<PolMap>>,
     #[serde(rename = "airgroupValuesMap")]
@@ -150,6 +171,9 @@ pub struct StarkInfo {
     pub airvalues_map: Option<Vec<PolMap>>,
     #[serde(rename = "evMap")]
     pub ev_map: Vec<EvMap>,
+
+    #[serde(rename = "customCommits")]
+    pub custom_commits: Vec<CustomCommits>,
 
     #[serde(default = "default_opening_points", rename = "openingPoints")]
     pub opening_points: Vec<i64>,

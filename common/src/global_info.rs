@@ -12,6 +12,14 @@ pub struct ProofValueMap {
     #[serde(default)]
     pub id: u64,
 }
+#[derive(Clone, Deserialize)]
+pub struct PublicMap {
+    pub name: String,
+    #[serde(default)]
+    pub stage: u64,
+    #[serde(default)]
+    pub lengths: Vec<u64>,
+}
 
 #[derive(Clone, Deserialize)]
 pub struct GlobalInfo {
@@ -35,6 +43,9 @@ pub struct GlobalInfo {
 
     #[serde(rename = "proofValuesMap")]
     pub proof_values_map: Option<Vec<ProofValueMap>>,
+
+    #[serde(rename = "publicsMap")]
+    pub publics_map: Option<Vec<PublicMap>>,
 }
 
 #[derive(Clone, Deserialize)]

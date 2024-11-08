@@ -199,6 +199,7 @@ class Proofs
 {
 public:
     uint64_t nStages;
+    uint64_t nCustomCommits;
     uint64_t nFieldElements;
     uint64_t airId;
     uint64_t airgroupId;
@@ -207,25 +208,31 @@ public:
     std::vector<std::vector<Goldilocks::Element>> evals;
     std::vector<std::vector<Goldilocks::Element>> airgroupValues;
     std::vector<std::vector<Goldilocks::Element>> airValues;
+    std::vector<std::string> customCommits;
     Proofs(StarkInfo &starkInfo) :
         fri(starkInfo),
         evals(starkInfo.evMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
         airgroupValues(starkInfo.airgroupValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-        airValues(starkInfo.airValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero()))
+        airValues(starkInfo.airValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
+        customCommits(starkInfo.customCommits.size())
         {
             nStages = starkInfo.nStages + 1;
-            roots = new ElementType*[nStages];
+            nCustomCommits = starkInfo.customCommits.size();
+            roots = new ElementType*[nStages + nCustomCommits];
             nFieldElements = starkInfo.starkStruct.verificationHashType == "GL" ? HASH_SIZE : 1;
             airId = starkInfo.airId;
             airgroupId = starkInfo.airgroupId;
-            for(uint64_t i = 0; i < nStages; i++)
+            for(uint64_t i = 0; i < nStages + nCustomCommits; i++)
             {
                 roots[i] = new ElementType[nFieldElements];
+            }
+            for(uint64_t i = 0; i < nCustomCommits; ++i) {
+                customCommits[i] = starkInfo.customCommits[i].name;    
             }
         };
 
     ~Proofs() {
-        for (uint64_t i = 0; i < nStages; ++i) {
+        for (uint64_t i = 0; i < nStages + nCustomCommits; ++i) {
             delete[] roots[i];
         }
         delete[] roots;

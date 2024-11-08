@@ -81,7 +81,7 @@ impl<F: Field + 'static> ProofMan<F> {
             Self::print_summary(pctx.clone());
         }
 
-        Self::initialize_setup(setups.clone(), pctx.clone(), ectx.clone(), options.aggregation);
+        Self::initialize_fixed_pols(setups.clone(), pctx.clone(), ectx.clone(), options.aggregation);
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
         Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
@@ -92,18 +92,35 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let mut transcript: FFITranscript = provers[0].new_transcript();
 
+        Self::check_stage(0, &mut provers, pctx.clone());
+        for prover in provers.iter_mut() {
+            prover.commit_stage(0, pctx.clone());
+        }
+
         // Commit stages
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
         for stage in 1..=num_commit_stages {
             Self::get_challenges(stage, &mut provers, pctx.clone(), &transcript);
             if stage != 1 {
+                timer_start_debug!(CALCULATING_WITNESS);
+                info!("{}: Calculating witness stage {}", Self::MY_NAME, stage);
                 witness_lib.calculate_witness(stage, pctx.clone(), ectx.clone(), sctx.clone());
+                timer_stop_and_log_debug!(CALCULATING_WITNESS);
             }
 
             Self::calculate_stage(stage, &mut provers, sctx.clone(), pctx.clone());
+            Self::check_stage(stage, &mut provers, pctx.clone());
 
             if !options.verify_constraints {
                 Self::commit_stage(stage, &mut provers, pctx.clone());
+            }
+
+            let publics_set = pctx.public_inputs.inputs_set.read().unwrap();
+            for i in 0..pctx.global_info.n_publics {
+                let public = pctx.global_info.publics_map.as_ref().expect("REASON").get(i).unwrap();
+                if !publics_set[i] {
+                    panic!("Not all publics are set: Public {} is not calculated", public.name);
+                }
             }
 
             if !options.verify_constraints || stage < num_commit_stages {
@@ -308,7 +325,7 @@ impl<F: Field + 'static> ProofMan<F> {
         timer_stop_and_log_debug!(INITIALIZE_PROVERS);
     }
 
-    fn initialize_setup(
+    fn initialize_fixed_pols(
         setups: Arc<SetupsVadcop<F>>,
         pctx: Arc<ProofCtx<F>>,
         _ectx: Arc<ExecutionCtx<F>>,
@@ -333,13 +350,16 @@ impl<F: Field + 'static> ProofMan<F> {
         timer_stop_and_log_debug!(INITIALIZE_CONST_POLS);
 
         if aggregation {
-            timer_start_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
-            let mut const_pols_calculated_compressor: HashMap<(usize, usize), bool> = HashMap::new();
+            info!("{}: Initializing setup fixed pols aggregation", Self::MY_NAME);
 
             let sctx_compressor = setups.sctx_compressor.as_ref().unwrap().clone();
             let sctx_recursive1 = setups.sctx_recursive1.as_ref().unwrap().clone();
             let sctx_recursive2 = setups.sctx_recursive2.as_ref().unwrap().clone();
             let sctx_final = setups.sctx_final.as_ref().unwrap().clone();
+
+            timer_start_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
+            info!("{}: ··· Initializing setup fixed pols compressor", Self::MY_NAME);
+            let mut const_pols_calculated_compressor: HashMap<(usize, usize), bool> = HashMap::new();
 
             for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
                 let (airgroup_id, air_id) = (air_instance.airgroup_id, air_instance.air_id);
@@ -355,6 +375,7 @@ impl<F: Field + 'static> ProofMan<F> {
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
 
             timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
+            info!("{}: ··· Initializing setup fixed pols recursive1", Self::MY_NAME);
             let mut const_pols_calculated_recursive1: HashMap<(usize, usize), bool> = HashMap::new();
             for air_instance in pctx.air_instance_repo.air_instances.read().unwrap().iter() {
                 let (airgroup_id, air_id) = (air_instance.airgroup_id, air_instance.air_id);
@@ -368,6 +389,7 @@ impl<F: Field + 'static> ProofMan<F> {
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE1);
 
             timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
+            info!("{}: ··· Initializing setup fixed pols recursive2", Self::MY_NAME);
             let n_airgroups = pctx.global_info.air_groups.len();
             for airgroup in 0..n_airgroups {
                 let setup = sctx_recursive2.get_setup(airgroup, 0);
@@ -377,6 +399,7 @@ impl<F: Field + 'static> ProofMan<F> {
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
 
             timer_start_debug!(INITIALIZE_CONST_POLS_FINAL);
+            info!("{}: ··· Initializing setup fixed pols final", Self::MY_NAME);
             let setup = sctx_final.get_setup(0, 0);
             setup.load_const_pols(&pctx.global_info, &ProofType::Final);
             setup.load_const_pols_tree(&pctx.global_info, &ProofType::Final, false);
@@ -405,6 +428,13 @@ impl<F: Field + 'static> ProofMan<F> {
                 prover.calculate_stage(stage, setup_ctx.clone(), proof_ctx.clone());
             }
             timer_stop_and_log_debug!(CALCULATING_STAGE);
+        }
+    }
+
+    pub fn check_stage(stage: u32, provers: &mut [Box<dyn Prover<F>>], proof_ctx: Arc<ProofCtx<F>>) {
+        log::debug!("{}: Checking stage can be calculated", Self::MY_NAME);
+        for prover in provers.iter_mut() {
+            prover.check_stage(stage, proof_ctx.clone());
         }
     }
 
