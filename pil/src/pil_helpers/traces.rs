@@ -46,3 +46,5 @@ trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
 trace!(U8AirRow, U8AirTrace<F> {
  mul: F,
 });
+
+

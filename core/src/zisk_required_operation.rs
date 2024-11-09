@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {
@@ -15,6 +16,22 @@ pub struct ZiskRequiredMemory {
     pub address: u64,
     pub width: u64,
     pub value: u64,
+}
+
+impl fmt::Debug for ZiskRequiredMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = if self.is_write { "WR" } else { "RD" };
+        write!(
+            f,
+            "{0} addr:{1:#08X}({1}) with:{2} value:{3:#016X}({3}) step:{4} offset:{5}",
+            label,
+            self.address,
+            self.width,
+            self.value,
+            self.step,
+            self.address & 0x07
+        )
+    }
 }
 
 #[derive(Clone, Default)]

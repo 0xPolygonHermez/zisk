@@ -10,13 +10,14 @@ use proofman_common::AirInstance;
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
-use zisk_core::{Mem, ZiskRequiredMemory};
+use zisk_core::ZiskRequiredMemory;
 use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
+    num_rows: usize,
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 }
@@ -24,7 +25,13 @@ pub struct MemSM<F: PrimeField> {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> MemSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let mem_sm = Self { wcm: wcm.clone(), registered_predecessors: AtomicU32::new(0) };
+        let pctx = wcm.get_pctx();
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
+        let mem_sm = Self {
+            wcm: wcm.clone(),
+            num_rows: air.num_rows(),
+            registered_predecessors: AtomicU32::new(0),
+        };
         let mem_sm = Arc::new(mem_sm);
 
         wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MEM_AIR_IDS));
@@ -40,7 +47,7 @@ impl<F: PrimeField> MemSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {}
     }
 
-    pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
+    pub fn prove(&self, mem_accesses: &[ZiskRequiredMemory]) {
         // Sort the (full) aligned memory accesses
 
         let pctx = self.wcm.get_pctx();
@@ -202,6 +209,7 @@ impl<F: PrimeField> MemSM<F> {
             let first_addr_access_is_read = addr_changes && !mem_op.is_write;
             trace[i].first_addr_access_is_read =
                 if first_addr_access_is_read { F::one() } else { F::zero() };
+            assert!(trace[i].sel.is_zero() || trace[i].sel.is_one());
         }
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
@@ -257,12 +265,14 @@ impl<F: PrimeField> MemSM<F> {
 }
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {
-    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]) {}
+    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]) {
+        self.prove(&mem_op);
+    }
     fn get_addr_ranges(&self) -> Vec<(u64, u64)> {
         vec![]
     }
     fn get_flush_input_size(&self) -> u64 {
-        0
+        self.num_rows as u64
     }
     fn unregister_predecessor(&self) {}
     fn register_predecessor(&self) {}

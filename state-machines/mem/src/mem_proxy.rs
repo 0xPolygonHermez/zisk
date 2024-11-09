@@ -1,16 +1,15 @@
 use std::collections::VecDeque;
-use std::default;
+use std::fmt;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc,
 };
 
-use crate::{MemAlignResponse, MemAlignRomSM, MemAlignSM, MemOp, MemSM};
+use crate::{MemAlignResponse, MemAlignRomSM, MemAlignSM, MemSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman_common::StepsParams;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{elf2rom, ZiskRequiredMemory, ZiskRequiredOperation, RAM_ADDR};
+use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
 
@@ -34,6 +33,18 @@ struct MemModuleData {
     pub flush_input_size: u64,
 }
 
+impl fmt::Debug for MemAlignResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "more:{} step:{} value:{:2}({:3})",
+            self.more_address,
+            self.step,
+            format_hex(self.value.unwrap_or(0)),
+            self.value.unwrap_or(0)
+        )
+    }
+}
 pub struct MemProxy<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
@@ -95,12 +106,15 @@ impl<F: PrimeField> MemProxy<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+            for module in self.modules.iter() {
+                module.unregister_predecessor();
+            }
             // self.mem_sm.unregister_predecessor();
             self.mem_align_sm.unregister_predecessor();
         }
     }
 
-    pub fn init_module(module: &Arc<dyn MemModule<F>>) -> MemModuleData {
+    fn init_module(module: &Arc<dyn MemModule<F>>) -> MemModuleData {
         module.register_predecessor();
         let ranges = module.get_addr_ranges();
         let flush_input_size = module.get_flush_input_size();
@@ -128,37 +142,42 @@ impl<F: PrimeField> MemProxy<F> {
         input: &mut Vec<ZiskRequiredMemory>,
     ) -> u64 {
         // Prepare aligned memory access
-        input.push(ZiskRequiredMemory {
+        let read = ZiskRequiredMemory {
             step: mem_align_op.step,
             is_write: false,
             address: mem_addr,
             width: MEM_BYTES,
             value: mem_value,
-        });
+        };
+        println!("  ##SEND2## mem_op: {0:?}", read);
+        input.push(read);
+
         if mem_op.is_write {
-            input.push(ZiskRequiredMemory {
+            let mem_value = mem_align_op.value.expect("value returned by mem_align");
+            let write = ZiskRequiredMemory {
                 step: mem_align_op.step + 1,
                 is_write: true,
                 address: mem_addr,
                 width: MEM_BYTES,
-                value: mem_align_op.mem_value,
-            });
-            mem_align_op.mem_value
+                value: mem_value,
+            };
+            println!("  ##SEND2## mem_op: {0:?}", write);
+            input.push(write);
+            mem_value
         } else {
             mem_value
         }
     }
-    fn mem_align_call(
-        mem_op: &ZiskRequiredMemory,
-        mem_values: [u64; 2],
-        phase: u8,
-    ) -> MemAlignResponse {
-        let mem_align_res = MemAlignResponse { more_address: false, step: 0, mem_value: 0 };
-        mem_align_res
+    fn create_modules_inputs(&self) -> Vec<Vec<ZiskRequiredMemory>> {
+        let mut mem_module_inputs: Vec<Vec<ZiskRequiredMemory>> = Default::default();
+        for module in self.modules.iter() {
+            mem_module_inputs.push(Vec::new());
+        }
+        mem_module_inputs
     }
     fn get_mem_module_id(&self, address: u64) -> (usize, u64) {
         let mem_module_id = 0;
-        let next_addr_to_reevaluate = 0;
+        let next_addr_to_reevaluate = 0xFFFF_FFFF_FFFF;
         (mem_module_id, next_addr_to_reevaluate)
     }
     pub fn prove(
@@ -166,7 +185,7 @@ impl<F: PrimeField> MemProxy<F> {
         mem_operations: &mut Vec<ZiskRequiredMemory>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut open_mem_align_ops: VecDeque<MemAlignOperation> = VecDeque::new();
-        let mut mem_module_inputs: [Vec<ZiskRequiredMemory>; 2] = Default::default();
+        let mut mem_module_inputs = self.create_modules_inputs();
 
         // Step 1. Sort the aligned memory accesses
         // original vector is sorted by step, sort_by_key is stable, no reordering of elements with
@@ -188,13 +207,19 @@ impl<F: PrimeField> MemProxy<F> {
             value: 0,
         });
 
-        let (mem_module_id, next_addr_to_reevaluate) = if mem_operations.is_empty() {
+        // Initialize the module id and next module address to reevaluate the module id, it's done
+        // to avoid check on each loop if memory address is inside one range or other
+        let (mut mem_module_id, mut next_module_addr) = if mem_operations.is_empty() {
             (0, 0)
         } else {
             self.get_mem_module_id(mem_operations[0].address)
         };
 
         for mem_op in mem_operations.iter_mut() {
+            println!(
+                "##LOOP## mem_op: {0:?} 0x{1:#08X}({1}) 0x{2:#016X}({2})",
+                mem_op, last_addr, last_value
+            );
             let mut aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
 
             // Check if there are open mem align operations to be processed in this moment. Two possible
@@ -204,20 +229,24 @@ impl<F: PrimeField> MemProxy<F> {
             // operation is less than the step of the current operation.
 
             while open_mem_align_ops.len() > 0
-                || open_mem_align_ops[0].address < aligned_mem_address
-                || (open_mem_align_ops[0].address == aligned_mem_address
-                    && open_mem_align_ops[0].mem_op.step < mem_op.step)
+                && (open_mem_align_ops[0].address < aligned_mem_address
+                    || (open_mem_align_ops[0].address == aligned_mem_address
+                        && open_mem_align_ops[0].mem_op.step < mem_op.step))
             {
                 let open_op = open_mem_align_ops.pop_front().unwrap();
                 let mem_value = if open_op.address == last_addr { last_value } else { 0 };
 
                 // call to mem_align to get information of the aligned memory access needed
                 // to prove the unaligned open operation.
-                let mem_align_op = Self::mem_align_call(&open_op.mem_op, [mem_value, 0], 1);
+                let mem_align_op = mem_align_call(&open_op.mem_op, [mem_value, 0], 1);
 
                 // remove element from top of queue, because we are on last phase, phase 1.
                 open_mem_align_ops.pop_front();
 
+                // check if need to reevaluate the module id
+                if open_op.address >= next_module_addr {
+                    (mem_module_id, next_module_addr) = self.get_mem_module_id(open_op.address);
+                }
                 // push the aligned memory operations for current address (read or read+write) and
                 // update last_address and last_value.
                 last_value = self.push_mem_align_op(
@@ -228,7 +257,13 @@ impl<F: PrimeField> MemProxy<F> {
                     &mut mem_module_inputs[mem_module_id],
                 );
                 last_addr = open_op.address;
-                // TODO: check if flush is needed
+
+                // check if need to flush the inputs of the module
+                if (mem_module_inputs[mem_module_id].len() as u64)
+                    >= self.modules_data[mem_module_id].flush_input_size
+                {
+                    self.modules[mem_module_id].send_inputs(&mut mem_module_inputs[mem_module_id]);
+                }
             }
 
             aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
@@ -243,12 +278,17 @@ impl<F: PrimeField> MemProxy<F> {
                 break;
             }
 
+            // check if need to reevaluate the module id
+            if aligned_mem_address >= next_module_addr {
+                (mem_module_id, next_module_addr) = self.get_mem_module_id(aligned_mem_address);
+            }
+
             let mem_value = if aligned_mem_address == last_addr { last_value } else { 0 };
 
             // all open mem align operations are processed, check if new mem operation is aligned
             if !Self::is_aligned(&mem_op) {
                 // In this point found non-aligned memory access, phase-0
-                let mem_align_op = Self::mem_align_call(mem_op, [mem_value, 0], 0);
+                let mem_align_op = mem_align_call(mem_op, [mem_value, 0], 0);
                 if mem_align_op.more_address {
                     open_mem_align_ops.push_back(MemAlignOperation {
                         address: aligned_mem_address + MEM_BYTES,
@@ -256,21 +296,26 @@ impl<F: PrimeField> MemProxy<F> {
                         mem_value: [mem_value, 0],
                     });
                 }
-                self.push_mem_align_op(
+                last_value = self.push_mem_align_op(
                     aligned_mem_address,
                     mem_value,
                     &mem_op,
                     &mem_align_op,
                     &mut mem_module_inputs[mem_module_id],
                 );
+                last_addr = aligned_mem_address
             } else {
+                println!("  ##SEND1## mem_op: {0:?}", mem_op);
                 mem_module_inputs[mem_module_id].push(mem_op.clone());
+                last_value = mem_op.value;
+                last_addr = aligned_mem_address
             }
+
+            // check if need to flush the inputs of the module
             if (mem_module_inputs[mem_module_id].len() as u64)
                 >= self.modules_data[mem_module_id].flush_input_size
             {
-                let module = &self.modules[mem_module_id];
-                module.send_inputs(&mem_module_inputs[mem_module_id]);
+                self.modules[mem_module_id].send_inputs(&mut mem_module_inputs[mem_module_id]);
             }
         }
 
@@ -279,3 +324,74 @@ impl<F: PrimeField> MemProxy<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemProxy<F> {}
+
+fn format_hex(value: u64) -> String {
+    let hex_str = format!("{:016x}", value); // Format hexadecimal amb 16 dígits i padding de 0s
+    hex_str
+        .as_bytes() // Converteix a bytes per manipular fàcilment
+        .chunks(4) // Separa en grups de 4 caràcters (2 bytes)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap()) // Converteix cada chunk a &str
+        .collect::<Vec<_>>() // Recull els chunks com a un vector
+        .join("_") // Uneix amb "_"
+}
+
+fn mem_align_call(
+    mem_op: &ZiskRequiredMemory,
+    mem_values: [u64; 2],
+    phase: u8,
+) -> MemAlignResponse {
+    // DEBUG: only for testing
+    let offset = (mem_op.address & 0x7) * 8;
+    let width = (mem_op.width as u64) * 8;
+    let double_address = (offset + width) > 64;
+    let mem_value = mem_values[phase as usize];
+    let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - width);
+    /*println!("width: {} offset:{}", width, offset);
+    println!("mem_value   {}", format_hex(mem_value));
+    println!("mask        {}", format_hex(mask));*/
+    if mem_op.is_write {
+        if phase == 0 {
+            /*println!("mask1       {}", format_hex(mask << offset));
+            println!("mask2       {}", format_hex(0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset)));
+            println!(
+                "mask3       {}",
+                format_hex((mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))))
+            );
+            println!("mask4       {}", format_hex((mem_op.value & mask) << offset));*/
+            MemAlignResponse {
+                more_address: double_address,
+                step: mem_op.step + 1,
+                value: Some(
+                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset)))
+                        | ((mem_op.value & mask) << offset),
+                ),
+            }
+        } else {
+            /* println!("{} bits = {} bytes", (offset + width - 64), (offset + width - 64) >> 3);
+            println!("ph1_1       {}", format_hex(mask << offset));
+            println!(
+                "ph1_2       {}",
+                format_hex(0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64))
+            );
+            println!(
+                "ph1_3       {}",
+                format_hex(mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64)))
+            );
+            println!("ph1_4       {}", format_hex((mem_op.value & mask) >> (128 - offset - width)));*/
+            MemAlignResponse {
+                more_address: false,
+                step: mem_op.step + 1,
+                value: Some(
+                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64)))
+                        | ((mem_op.value & mask) >> (128 - offset - width)),
+                ),
+            }
+        }
+    } else {
+        MemAlignResponse {
+            more_address: double_address && phase == 0,
+            step: mem_op.step + 1,
+            value: None,
+        }
+    }
+}

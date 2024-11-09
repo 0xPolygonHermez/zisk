@@ -33,12 +33,6 @@ pub struct MemAlignResponse {
     pub step: u64,
     pub value: Option<u64>,
 }
-
-pub struct MemAlignResponse {
-    pub more_address: bool,
-    pub step: u64,
-    pub mem_value: u64,
-}
 pub struct MemAlignSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
@@ -693,11 +687,18 @@ impl<F: PrimeField> MemAlignSM<F> {
 
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
+            assert!(
+                row.sel_up_to_down.is_zero() || row.sel_down_to_up.is_zero(),
+                "sel_up_to_down:{:?} sel_down_to_up:{:?}",
+                row.sel_up_to_down,
+                row.sel_down_to_up
+            );
             trace_buffer[i] = row;
         }
 
         // Pad the remaining rows with trivially satisfying rows
         let padding_row = MemAlignRow::<F>::default();
+        assert!(padding_row.sel_up_to_down.is_zero() || padding_row.sel_down_to_up.is_zero());
         for i in rows_len..air_mem_align_rows {
             trace_buffer[i] = padding_row;
         }
