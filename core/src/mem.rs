@@ -32,9 +32,10 @@ impl Mem {
         }
         self.read_sections.push(mem_section);
         /*println!(
-            "Mem::add_read_section() start={:x}={} len={} end={:x}={}",
+            "Mem::add_read_section() start={:x}={} len={:x}={} end={:x}={}",
             start,
             start,
+            buffer.len(),
             buffer.len(),
             end,
             end
@@ -43,7 +44,7 @@ impl Mem {
 
     /// Adds a write section to the memory structure, which cannot be written twice
     pub fn add_write_section(&mut self, start: u64, size: u64) {
-        //println!("Mem::add_write_section() start={} size={}", start, size);
+        //println!("Mem::add_write_section() start={:?}={} size={}", start, start, size);
 
         // Check the start address is not zero
         if start == 0 {
@@ -146,8 +147,24 @@ impl Mem {
         //println!("Mem::write() addr={:x}={} width={} value={:x}={}", addr, addr, width, val,
         // val);
 
-        // Get a reference to the write section
-        let section = &mut self.write_section;
+        // Search for the section that contains the address using binary search (dicothomic search)
+        let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
+            if addr < section.start {
+                std::cmp::Ordering::Greater
+            } else if addr > (section.end - width) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            &mut self.read_sections[section]
+        } else {
+            /*panic!(
+                "Mem::write_silent() section not found for addr={:x}={} with width: {}",
+                addr, addr, width
+            );*/
+            &mut self.write_section
+        };
 
         // Check that the address and width fall into this section address range
         if (addr < section.start) || ((addr + width) > section.end) {

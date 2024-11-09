@@ -8,7 +8,7 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ZiskRequiredMemory {
     pub step: u64,
     pub is_write: bool,

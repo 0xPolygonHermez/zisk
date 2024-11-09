@@ -101,8 +101,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         rom_path: &Path,
         public_inputs_path: &Path,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
     ) {
         let air_main = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
@@ -187,7 +187,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // STEP 2. Wait until all inputs are generated
         // ==============================================
         // Join all the threads to synchronize the execution
-        let mem_required = mem_thread.join().expect("Error during Memory witness computation");
+        let mut mem_required = mem_thread.join().expect("Error during Memory witness computation");
         let rom_required = rom_thread.join().expect("Error during ROM witness computation");
 
         // STEP 3. Generate AIRs and Prove
@@ -197,7 +197,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // ----------------------------------------------
         let mem_thread = thread::spawn({
             let mem_proxy = self.mem_proxy.clone();
-            move || mem_proxy.prove(mem_required).expect("Error during Memory witness computation")
+            move || mem_proxy.prove(&mut mem_required).expect("Error during Memory witness computation")
         });
 
         // ROM State Machine
