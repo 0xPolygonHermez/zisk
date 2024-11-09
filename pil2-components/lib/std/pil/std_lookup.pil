@@ -19,7 +19,7 @@ function lookup_proves(const int opid, const expr cols[], const expr mul = 1, in
 function lookup(const int opid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
-    sum_proves(name, opid, cols, mul);
+    sum(name, opid, cols, sel);
 }
 
 function lookup_assumes_dynamic(const int opid[], const expr sumid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {

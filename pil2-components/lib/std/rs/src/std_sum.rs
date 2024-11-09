@@ -15,7 +15,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
     acc_hint_field, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields,
-    HintFieldOptions, HintFieldOutput, HintFieldValue,
+    HintFieldOptions, HintFieldOutput,
 };
 
 use crate::{Decider, StdMode, ModeName};
@@ -105,16 +105,6 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
             let proves =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "proves", HintFieldOptions::default());
-            let is_positive = match proves {
-                HintFieldValue::Field(proves) => {
-                    assert!(proves.is_zero() || proves.is_one(), "Proves hint must be either 0 or 1");
-                    proves.is_one()
-                }
-                _ => {
-                    log::error!("Proves hint must be a field element");
-                    panic!("Proves hint must be a field element");
-                }
-            };
 
             let mul =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "selector", HintFieldOptions::default());
@@ -148,6 +138,16 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                     let sumid = match sumid.get(j) {
                         HintFieldOutput::Field(sumid) => sumid,
                         _ => panic!("sumid must be a field element"),
+                    };
+
+                    let is_positive = match proves.get(j) {
+                        HintFieldOutput::Field(proves) => match proves {
+                            p if p.is_zero() => false,
+                            p if p.is_one() => true,
+                            p if p == F::one().neg() => false,
+                            _ => panic!("Proves hint must be either 0, 1, or -1"),
+                        },
+                        _ => panic!("Proves hint must be a field element"),
                     };
 
                     self.update_bus_vals(num_rows, sumid, expressions.get(j), j, is_positive, mul);
