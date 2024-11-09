@@ -685,25 +685,39 @@ impl<F: PrimeField> MemAlignSM<F> {
             MemAlignTrace::<F>::map_buffer(&mut prover_buffer, air_mem_align_rows, offset as usize)
                 .unwrap();
 
+        let mut reg_range_check: HashMap<F, u64> = HashMap::new();
+
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
-            assert!(
-                row.sel_up_to_down.is_zero() || row.sel_down_to_up.is_zero(),
-                "sel_up_to_down:{:?} sel_down_to_up:{:?}",
-                row.sel_up_to_down,
-                row.sel_down_to_up
-            );
+            // Store the entire row 
             trace_buffer[i] = row;
+
+            // Store the value of all reg columns so that they can be range checked
+            for j in 0..CHUNK_NUM {
+                *reg_range_check.entry(row.reg[j]).or_insert(0) += 1;
+            }
         }
 
         // Pad the remaining rows with trivially satisfying rows
         let padding_row = MemAlignRow::<F>::default();
-        assert!(padding_row.sel_up_to_down.is_zero() || padding_row.sel_down_to_up.is_zero());
+        let padding_size = air_mem_align_rows - rows_len;
+
+        // Store the padding rows
         for i in rows_len..air_mem_align_rows {
             trace_buffer[i] = padding_row;
         }
 
-        // TODO: Treat the range check here of both standard and padding rows!!
+        // Store the value of all reg columns so that they can be range checked
+        for j in 0..CHUNK_NUM {
+            *reg_range_check.entry(padding_row.reg[j]).or_insert(0) += padding_size as u64;
+        }
+
+        // Perform the range checks
+        let std = self.std.clone();
+        let range_id = std.get_range(BigInt::from(0), BigInt::from(CHUNK_BITS_MASK), None);
+        for (&value, &multiplicity) in reg_range_check.iter() {
+            std.range_check(value, F::from_canonical_u64(multiplicity), range_id);
+        }
 
         // TODO: Treate the ROM multiplicity
 
@@ -716,13 +730,6 @@ impl<F: PrimeField> MemAlignSM<F> {
         //         op, offset, width
         //     );
         //     rom_multiplicity[row as usize] += multiplicity;
-        // }
-
-        // TODO: Perform the range checks
-        // let std = self.std.clone();
-        // let range_id = std.get_range(BigInt::from(0), BigInt::from((1 << CHUNK_BITS) - 1), None);
-        // for (&value, &multiplicity) in reg_range_check.iter() {
-        //     std.range_check(value, F::from_canonical_u64(multiplicity), range_id);
         // }
 
         info!(
