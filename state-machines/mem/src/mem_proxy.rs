@@ -222,6 +222,11 @@ impl<F: PrimeField> MemProxy<F> {
             );
             let mut aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
 
+            // ONLY TO TEST
+            if aligned_mem_address < 0xA0000000 {
+                continue;
+            }
+
             // Check if there are open mem align operations to be processed in this moment. Two possible
             // conditions to process open mem align operations:
             // 1) the address of open operation is less than the aligned address.
