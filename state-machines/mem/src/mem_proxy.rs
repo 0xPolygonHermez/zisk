@@ -149,7 +149,6 @@ impl<F: PrimeField> MemProxy<F> {
             width: MEM_BYTES,
             value: mem_value,
         };
-        println!("  ##SEND2## mem_op: {0:?}", read);
         input.push(read);
 
         if mem_op.is_write {
@@ -161,7 +160,6 @@ impl<F: PrimeField> MemProxy<F> {
                 width: MEM_BYTES,
                 value: mem_value,
             };
-            println!("  ##SEND2## mem_op: {0:?}", write);
             input.push(write);
             mem_value
         } else {
@@ -216,11 +214,12 @@ impl<F: PrimeField> MemProxy<F> {
         };
 
         for mem_op in mem_operations.iter_mut() {
-            println!(
-                "##LOOP## mem_op: {0:?} 0x{1:#08X}({1}) 0x{2:#016X}({2})",
-                mem_op, last_addr, last_value
-            );
             let mut aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
+
+            // ONLY TO TEST
+            if aligned_mem_address < 0xA0000000 {
+                continue;
+            }
 
             // Check if there are open mem align operations to be processed in this moment. Two possible
             // conditions to process open mem align operations:
@@ -238,7 +237,7 @@ impl<F: PrimeField> MemProxy<F> {
 
                 // call to mem_align to get information of the aligned memory access needed
                 // to prove the unaligned open operation.
-                let mem_align_op = mem_align_call(&open_op.mem_op, [mem_value, 0], 1);
+                let mem_align_op = self.mem_align_sm.get_mem_op(&open_op.mem_op, [mem_value, 0], 1);
 
                 // remove element from top of queue, because we are on last phase, phase 1.
                 open_mem_align_ops.pop_front();
@@ -288,7 +287,7 @@ impl<F: PrimeField> MemProxy<F> {
             // all open mem align operations are processed, check if new mem operation is aligned
             if !Self::is_aligned(&mem_op) {
                 // In this point found non-aligned memory access, phase-0
-                let mem_align_op = mem_align_call(mem_op, [mem_value, 0], 0);
+                let mem_align_op = self.mem_align_sm.get_mem_op(mem_op, [mem_value, 0], 0);
                 if mem_align_op.more_address {
                     open_mem_align_ops.push_back(MemAlignOperation {
                         address: aligned_mem_address + MEM_BYTES,
@@ -305,7 +304,6 @@ impl<F: PrimeField> MemProxy<F> {
                 );
                 last_addr = aligned_mem_address
             } else {
-                println!("  ##SEND1## mem_op: {0:?}", mem_op);
                 mem_module_inputs[mem_module_id].push(mem_op.clone());
                 last_value = mem_op.value;
                 last_addr = aligned_mem_address
@@ -346,18 +344,8 @@ fn mem_align_call(
     let double_address = (offset + width) > 64;
     let mem_value = mem_values[phase as usize];
     let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - width);
-    /*println!("width: {} offset:{}", width, offset);
-    println!("mem_value   {}", format_hex(mem_value));
-    println!("mask        {}", format_hex(mask));*/
     if mem_op.is_write {
         if phase == 0 {
-            /*println!("mask1       {}", format_hex(mask << offset));
-            println!("mask2       {}", format_hex(0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset)));
-            println!(
-                "mask3       {}",
-                format_hex((mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))))
-            );
-            println!("mask4       {}", format_hex((mem_op.value & mask) << offset));*/
             MemAlignResponse {
                 more_address: double_address,
                 step: mem_op.step + 1,
@@ -367,17 +355,6 @@ fn mem_align_call(
                 ),
             }
         } else {
-            /* println!("{} bits = {} bytes", (offset + width - 64), (offset + width - 64) >> 3);
-            println!("ph1_1       {}", format_hex(mask << offset));
-            println!(
-                "ph1_2       {}",
-                format_hex(0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64))
-            );
-            println!(
-                "ph1_3       {}",
-                format_hex(mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64)))
-            );
-            println!("ph1_4       {}", format_hex((mem_op.value & mask) >> (128 - offset - width)));*/
             MemAlignResponse {
                 more_address: false,
                 step: mem_op.step + 1,
