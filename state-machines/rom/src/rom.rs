@@ -110,20 +110,30 @@ impl<F: Field> RomSM<F> {
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
+        println!("AA0");
         // Allocate a prover buffer
         let (buffer_size_rom, offsets_rom, commit_id) = buffer_allocator
             .get_buffer_info_custom_commit(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
             .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+        println!("AA1");
 
         // Create an empty ROM trace
         let pilout = Pilout::pilout();
+        println!("AA2");
         let trace_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
+        println!("AA3");
         let mut prover_buffer = create_buffer_fast(buffer_size_rom as usize);
+        println!("AA4");
 
         let mut rom_trace =
             RomRomTrace::<F>::map_buffer(&mut prover_buffer, trace_rows, offsets_rom[0] as usize)
                 .expect("RomRootSM::compute_trace() failed mapping buffer to ROMSRow");
+        println!("AA5");
 
+        println!("ROM data len:{}", rom.ro_data.len());
+        // for rom_data in rom.ro_data.iter() {
+        //     println!("ROM from:{} len:{}", rom_data.from, rom_data.data.len());
+        // }
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
             // Get the Zisk instruction
@@ -191,11 +201,14 @@ impl<F: Field> RomSM<F> {
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
+        println!("Creating Riscv2zisk");
         // Create an instance of the RISCV -> ZisK program converter
         let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+        println!("Prepare riscv2zisk compilation ....");
 
         // Convert program to rom
         let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+        println!("ROM converted");
 
         Self::compute_trace_rom(&rom, buffer_allocator, sctx)
     }

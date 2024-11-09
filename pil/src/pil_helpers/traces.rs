@@ -11,6 +11,10 @@ trace!(RomRow, RomTrace<F> {
  multiplicity: F,
 });
 
+trace!(MemRow, MemTrace<F> {
+ addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, same_value: F, first_addr_access_is_read: F,
+});
+
 trace!(BinaryRow, BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
 });
@@ -28,9 +32,11 @@ trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
 });
 
 trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
- mul: [F; 1],
+ mul: [F; 2],
 });
 
+
+
 trace!(RomRomRow, RomRomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, is_data: F, data_address: F, data_value: [F; 2],
 });

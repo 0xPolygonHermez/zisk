@@ -4,7 +4,7 @@ const int ROM_BUS_ID = 7890;
 
 public rom_root[4];
 
-airtemplate Rom(int N = 2**21, int stack_enabled = 0, const int rom_bus_id = ROM_BUS_ID) {
+airtemplate Rom(int N = 2**21, int RC = 2, int stack_enabled = 0, int enable_rom_data = 0, const int rom_bus_id = ROM_BUS_ID) {
     commit stage(0) public(rom_root) rom;
 
     col rom line;
@@ -24,4 +24,12 @@ airtemplate Rom(int N = 2**21, int stack_enabled = 0, const int rom_bus_id = ROM
 
     lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, flags], mul: multiplicity);
+
+    if (enable_rom_data) {
+        col rom is_data;
+        col rom data_address;
+        col rom data_value[2];
+
+        mem_store(sel: is_data, addr: data_address, step: 0, step_offset: 0, bytes: 8, value: data_value);
+    }
 }
