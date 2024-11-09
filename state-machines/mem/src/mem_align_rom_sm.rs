@@ -12,7 +12,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 
 use sm_common::create_prover_buffer;
-use zisk_pil::{MemAlignRomRow, MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
