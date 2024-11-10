@@ -6,25 +6,34 @@ use sm_rom::RomSM;
 use stark::StarkBufferAllocator;
 use std::{path::Path, sync::Arc};
 use sysinfo::System;
+use std::ffi::c_void;
+use proofman_starks_lib_c::{starks_new_c, fri_proof_new_c, extend_and_merkelize_custom_commit_c};
+use zisk_pil::{ ROM_AIR_IDS, ZISK_AIRGROUP_ID };
 
 fn main() {
     let matches = Command::new("ROM Handler")
         .version("1.0")
         .about("Compute the Merkle Root of a ROM file")
-        .arg(Arg::new("rom").value_name("FILE").help("The ROM file path").required(true).index(1))
+        .arg(
+            Arg::new("rom")
+                .long("rom")
+                .value_name("FILE")
+                .help("The ROM file path")
+                .required(true)
+        )
         .arg(
             Arg::new("proving_key")
+                .long("proving-key")
                 .value_name("FILE")
                 .help("The proving key folder path")
                 .required(true)
-                .index(2),
         )
         .arg(
-            Arg::new("global_info")
+            Arg::new("rom_buffer")
+                .long("rom-buffer")
                 .value_name("FILE")
-                .help("The global info file path")
+                .help("The rom buffer path")
                 .required(true)
-                .index(3),
         )
         .get_matches();
 
@@ -34,9 +43,8 @@ fn main() {
     let proving_key_path_str =
         matches.get_one::<String>("proving_key").expect("Proving key path is required");
     let proving_key_path = Path::new(proving_key_path_str);
-    let global_info_path_str =
-        matches.get_one::<String>("global_info").expect("Global info path is required");
-    let global_info_path = Path::new(global_info_path_str);
+    let rom_buffer_str =
+        matches.get_one::<String>("rom_buffer").expect("Buffer file path is required");
 
     env_logger::builder()
         .format_timestamp(None)
@@ -78,23 +86,31 @@ fn main() {
         std::process::exit(1);
     }
 
-    // If all checks pass, continue with the program
-    println!("ROM Path is valid: {}", rom_path.display());
-
     let buffer_allocator: Arc<StarkBufferAllocator> =
         Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
-    let global_info = GlobalInfo::new(global_info_path);
+    let global_info = GlobalInfo::new(&proving_key_path);
     let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
-    if let Err(e) =
-        RomSM::<Goldilocks>::compute_trace_rom_file(rom_path.to_path_buf(), buffer_allocator, &sctx)
-    {
-        log::error!("Error: {}", e);
-        std::process::exit(1);
+    let setup = sctx.get_setup(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]);
+
+    let p_stark = starks_new_c((&setup.p_setup).into(), std::ptr::null_mut());
+    let p_proof = fri_proof_new_c((&setup.p_setup).into());
+
+    match RomSM::<Goldilocks>::compute_trace_rom_buffer(rom_path.to_path_buf(), buffer_allocator, &sctx) {
+        Ok((commit_id, buffer_rom)) => {
+            extend_and_merkelize_custom_commit_c(
+                p_stark,
+                commit_id as u64,
+                0,
+                buffer_rom.as_ptr() as *mut c_void,
+                p_proof,
+                std::ptr::null_mut(),
+                rom_buffer_str.as_str(),
+            );
+        }
+        Err(e) => {
+            log::error!("Error: {}", e);
+            std::process::exit(1);
+        }
     }
-
-    // Compute LDE and Merkelize and get the root of the rom
-    // TODO: Implement the logic to compute the trace
-
-    log::info!("ROM proof successful");
 }

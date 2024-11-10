@@ -88,7 +88,7 @@ impl<F: Field> RomSM<F> {
         let mut air_instance =
             AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
 
-        air_instance.set_custom_commit_id_buffer(prover_buffer_rom, commit_id_rom);
+        air_instance.set_custom_commit_id_buffer(&sctx, prover_buffer_rom, commit_id_rom);
 
         let (is_mine, instance_gid) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
             ZISK_AIRGROUP_ID,
@@ -180,12 +180,12 @@ impl<F: Field> RomSM<F> {
         Ok((commit_id, prover_buffer))
     }
 
-    pub fn compute_trace_rom_file(
+    pub fn compute_trace_rom_buffer(
         rom_path: PathBuf,
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
-        // Get the ELF file path as a string
+        // Get the ELF file path as a string        
         let elf_filename: String = rom_path.to_str().unwrap().into();
         println!("Proving ROM for ELF file={}", elf_filename);
 
