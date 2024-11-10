@@ -82,11 +82,27 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomRow::default();
         }
 
-        let (commit_id_rom, prover_buffer_rom) =
-            Self::compute_trace_rom(rom, buffer_allocator, &sctx)?;
-
         let mut air_instance =
             AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
+
+        match self.wcm.get_ectx().cached_buffers_path.as_ref().and_then(|cached_buffers| cached_buffers.get("rom").cloned()) {
+            Some(buffer_path) => {
+                let (_, _, commit_id) = buffer_allocator.clone()
+                .get_buffer_info_custom_commit(&sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
+                .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+
+                air_instance.set_custom_commit_cached_file(&sctx, commit_id, buffer_path);
+            }
+            None => {
+                let (commit_id_rom, prover_buffer_rom) =
+                Self::compute_trace_rom(rom, buffer_allocator.clone(), &sctx)?;
+        
+                air_instance.set_custom_commit_id_buffer(&sctx, prover_buffer_rom, commit_id_rom);
+            }
+        }
+
+        let (commit_id_rom, prover_buffer_rom) =
+        Self::compute_trace_rom(rom, buffer_allocator.clone(), &sctx)?;
 
         air_instance.set_custom_commit_id_buffer(&sctx, prover_buffer_rom, commit_id_rom);
 
