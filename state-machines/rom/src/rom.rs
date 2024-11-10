@@ -131,9 +131,12 @@ impl<F: Field> RomSM<F> {
         println!("AA5");
 
         println!("ROM data len:{}", rom.ro_data.len());
-        // for rom_data in rom.ro_data.iter() {
-        //     println!("ROM from:{} len:{}", rom_data.from, rom_data.data.len());
-        // }
+        let mut rom_data_size = 0;
+        for rom_data in rom.ro_data.iter() {
+            rom_data_size += rom_data.data.len();
+            println!("ROM from:{} len:{}", rom_data.from, rom_data.data.len());
+        }
+        println!("ROM data size:{} program:{}", rom_data_size, rom.insts.len());
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
             // Get the Zisk instruction
