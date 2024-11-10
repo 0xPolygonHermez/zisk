@@ -119,7 +119,7 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
             name_cols[i] = string(cols[i]);
         }
         // proves = 2 marks that the user is responsible for the use of proves and assumes
-        @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves != 2 ? proves : sel, selector: sel, references: cols};
+        @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves == 2 ? sel : proves, selector: sel, references: cols};
     }
 
     initial_checks_sum(proves, opid, cols, is_direct);
