@@ -12,7 +12,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 
 use sm_common::create_prover_buffer;
-use zisk_pil::{MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignRomRow, MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
@@ -146,11 +146,19 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         }
     }
 
-    pub fn calculate_next_pc(op: MemOp, offset: usize, width: usize) -> u64 {
-        let rows = Self::calculate_rom_rows(op, offset, width);
+    pub fn calculate_next_pc(&self, op: MemOp, offset: usize, width: usize) -> u64 {
+        let row_idxs = Self::calculate_rom_rows(op, offset, width);
+
+        // Update the multiplicity
+        self.update_multiplicity_by_idx(&row_idxs);
 
         // The "next" pc is always found on the second row of the program being executed
-        rows[1]
+        row_idxs[1]
+    }
+
+    pub fn update_padding_row(&self, padding_len: u64) {
+        // Update entry at the padding row (pos = 0) with the given padding length
+        self.update_multiplicity(&[padding_len]);
     }
 
     pub fn update_multiplicity_by_input(&self, opcode: MemOp, offset: usize, width: usize) {
@@ -175,32 +183,34 @@ impl<F: PrimeField> MemAlignRomSM<F> {
     }
 
     pub fn create_air_instance(&self) {
-        let pctx = self.wcm.get_pctx();
+        // Get the contexts
+        let wcm = self.wcm.clone();
+        let pctx = wcm.get_pctx();
+        let ectx = wcm.get_ectx();
+        let sctx = wcm.get_sctx();
 
+        // Get the Mem Align ROM AIR
         let air_mem_align_rom = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
+        let air_mem_align_rom_rows = air_mem_align_rom.num_rows();
 
-        // Create the prover buffer
-        let (mut prover_buffer, offset) = create_prover_buffer(
-            &self.wcm.get_ectx(),
-            &self.wcm.get_sctx(),
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_ROM_AIR_IDS[0],
-        );
+        // Create a prover buffer
+        let (mut prover_buffer, offset) =
+            create_prover_buffer(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
 
+        // Create the Mem Align ROM trace buffer
         let mut trace_buffer = MemAlignRomTrace::<F>::map_buffer(
             &mut prover_buffer,
-            air_mem_align_rom.num_rows(),
+            air_mem_align_rom_rows,
             offset as usize,
         )
         .unwrap();
 
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
-        // for row_idx in multiplicity.keys() {
-        //     trace_buffer[*row_idx as usize] = MemAlignRomRow {
-        //         multiplicity: multiplicity
-        //     };
-        // }
+        if let Ok(multiplicity) = self.multiplicity.lock() {
+            for (row_idx, multiplicity) in multiplicity.iter() {
+                trace_buffer[*row_idx as usize] =
+                    MemAlignRomRow { multiplicity: F::from_canonical_u64(*multiplicity) };
+            }
+        }
 
         info!(
             "{}: ··· Creating Mem Align ROM instance [{} rows filled 100%]",
@@ -208,14 +218,9 @@ impl<F: PrimeField> MemAlignRomSM<F> {
             self.num_rows,
         );
 
-        let air_instance = AirInstance::new(
-            self.wcm.get_sctx(),
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_ROM_AIR_IDS[0],
-            None,
-            prover_buffer,
-        );
-        self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
+        let air_instance =
+            AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0], None, prover_buffer);
+        pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }
 
