@@ -867,6 +867,18 @@ impl ArithOperationTest {
         Self::check_range(ranges[1], aop.b[3]);
         Self::check_range(ranges[2], aop.c[3]);
         Self::check_range(ranges[3], aop.d[3]);
+
+        let _flags = aop.m32 as u32
+            + 2 * aop.div as u32
+            + 4 * aop.na as u32
+            + 8 * aop.nb as u32
+            + 16 * aop.np as u32
+            + 32 * aop.nr as u32
+            + 64 * aop.sext as u32
+            + 128 * aop.main_mul as u32
+            + 256 * aop.main_div as u32
+            + 512 * aop.signed as u32;
+        println!("TABLE {} {} {} {}", aop.op, _flags, aop.range_ab, aop.range_cd);
     }
     fn print_chunks(label: &str, chunks: [u64; 4]) {
         println!(
