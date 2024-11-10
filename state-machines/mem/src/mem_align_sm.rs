@@ -44,7 +44,7 @@ pub struct MemAlignSM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Computed rows
+    // Computed row information
     rows: Mutex<Vec<MemAlignRow<F>>>,
     num_computed_rows: Mutex<usize>, // TODO: DEBUG!!!
 
@@ -91,7 +91,6 @@ impl<F: PrimeField> MemAlignSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             let pctx = self.wcm.get_pctx();
 
-            // TODO: Fix this...
             // If there are remaining rows, generate the last instance
             if let Ok(mut rows) = self.rows.lock() {
                 // Get the Mem Align AIR
@@ -147,7 +146,15 @@ impl<F: PrimeField> MemAlignSM<F> {
                 println!("MEM_VALUES: {:?}", mem_values);
                 println!("PHASE: {:?}\n", phase);
 
-                // RV
+                /*  RV with offset=2, width=4
+                +----+----+====+====+====+====+----+----+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +----+----+====+====+====+====+----+----+
+                                ⇓
+                +----+----+====+====+====+====+----+----+
+                | V6 | V7 | V0 | V1 | V2 | V3 | V4 | V5 |
+                +----+----+====+====+====+====+----+----+
+                */
                 assert!(phase == 0); // TODO: Debug mode
 
                 // Unaligned memory op information thrown into the bus
@@ -158,7 +165,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let addr_read = addr >> CHUNK_BITS;
 
                 // Get the aligned value
-                let value_read = mem_values[phase];
+                let read_value = mem_values[phase];
 
                 // Get the next pc
                 let next_pc =
@@ -188,25 +195,14 @@ impl<F: PrimeField> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    let pos = i as u64;
-
-                    read_row.reg[i] = {
-                        F::from_canonical_u64(
-                            value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                        )
-                    };
+                    read_row.reg[i] = F::from_canonical_u64(Self::get_byte(read_value, i, 0));
                     println!("READ_ROW[{}]: {:?}", i, read_row.reg[i]);
-                    if i >= offset && i <= offset + width {
+                    if i >= offset && i < offset + width {
                         read_row.sel[i] = F::from_bool(true);
                     }
 
-                    value_row.reg[i] = {
-                        F::from_canonical_u64(
-                            value
-                                & (CHUNK_BITS_MASK
-                                    << (((offset as u64 + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
-                        )
-                    };
+                    value_row.reg[i] =
+                        F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
                     println!("VALUE_ROW[{}]: {:?}", i, value_row.reg[i]);
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
@@ -226,21 +222,30 @@ impl<F: PrimeField> MemAlignSM<F> {
                 println!("MEM_VALUES: {:?}", mem_values);
                 println!("PHASE: {:?}\n", phase);
 
-                // RWV
+                /* RWV with offset=3, width=4
+                +----+----+----+====+====+====+====+----+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +----+----+----+====+====+====+====+----+
+                                ⇓
+                +----+----+----+====+====+====+====+----+
+                | W0 | W1 | W2 | W3 | W4 | W5 | W6 | W7 |
+                +----+----+----+====+====+====+====+----+
+                                ⇓
+                +----+----+----+====+====+====+====+----+
+                | V5 | V6 | V7 | V0 | V1 | V2 | V3 | V4 |
+                +----+----+----+====+====+====+====+----+
+                */
                 assert!(phase == 0); // TODO: Debug mode
 
                 // Unaligned memory op information thrown into the bus
                 let step = input.step;
                 let value = input.value;
 
-                // Compute the shift
-                let shift = ((offset + width - 1) % CHUNK_NUM) as u64;
-
                 // Get the aligned address
                 let addr_read = addr >> CHUNK_BITS;
 
                 // Get the aligned value
-                let value_read = mem_values[phase];
+                let read_value = mem_values[phase];
 
                 // Get the next pc
                 let next_pc =
@@ -259,10 +264,10 @@ impl<F: PrimeField> MemAlignSM<F> {
                     let value_to_write = (value & width_bytes) << (offset * CHUNK_BITS);
                     println!("VALUE_TO_WRITE: {:#X}", value_to_write);
 
-                    // Write zeroes to value_read from offset to offset + width
+                    // Write zeroes to read_value from offset to offset + width
                     // and add the value to write to the value read
 
-                    let result = (value_read & !mask) | value_to_write;
+                    let result = (read_value & !mask) | value_to_write;
                     println!("RESULT: {:#X}", result);
                     result
                 };
@@ -304,37 +309,23 @@ impl<F: PrimeField> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    let pos = i as u64;
-
-                    read_row.reg[i] = {
-                        F::from_canonical_u64(
-                            value_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                        )
-                    };
+                    read_row.reg[i] = F::from_canonical_u64(Self::get_byte(read_value, i, 0));
                     println!("READ_ROW[{}]: {:?}", i, read_row.reg[i]);
-                    if i < offset || i > offset + width {
+                    if i < offset || i >= offset + width {
                         read_row.sel[i] = F::from_bool(true);
                     }
 
-                    write_row.reg[i] = {
-                        F::from_canonical_u64(
-                            value_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                        )
-                    };
+                    write_row.reg[i] = F::from_canonical_u64(Self::get_byte(value_write, i, 0));
                     println!("WRITE_ROW[{}]: {:?}", i, write_row.reg[i]);
-                    if i >= offset && i <= offset + width {
+                    if i >= offset && i < offset + width {
                         write_row.sel[i] = F::from_bool(true);
                     }
 
                     value_row.reg[i] = {
-                        if i >= offset && i <= offset + width {
+                        if i >= offset && i < offset + width {
                             write_row.reg[i]
                         } else {
-                            F::from_canonical_u64(
-                                value
-                                    & (CHUNK_BITS_MASK
-                                        << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
-                            )
+                            F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset))
                         }
                     };
                     println!("VALUE_ROW[{}]: {:?}", i, value_row.reg[i]);
@@ -349,7 +340,19 @@ impl<F: PrimeField> MemAlignSM<F> {
                 MemAlignResponse { more_address: false, step, value: Some(value_write) }
             }
             (false, true) => {
-                // RVR
+                /* RVR with offset=5, width=8
+                +----+----+----+----+----+====+====+====+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +----+----+----+----+----+====+====+====+
+                                ⇓
+                +====+====+====+====+====+====+====+====+
+                | V3 | V4 | V5 | V6 | V7 | V0 | V1 | V2 |
+                +====+====+====+====+====+====+====+====+
+                                ⇓
+                +====+====+====+====+====+----+----+----+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +====+====+====+====+====+----+----+----+
+                */
                 assert!(phase == 0 || phase == 1); // TODO: Debug mode
 
                 match phase {
@@ -371,8 +374,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let step = input.step;
                         let value = input.value;
 
-                        // Compute the shift
-                        let shift = ((offset + width) % CHUNK_NUM) as u64;
+                        // Compute the remaining bytes
+                        let rem_bytes = (offset + width) % CHUNK_NUM;
 
                         // Get the aligned address
                         let addr_first_read = addr >> CHUNK_BITS;
@@ -423,34 +426,21 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         for i in 0..CHUNK_NUM {
-                            let pos = i as u64;
-
-                            first_read_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
-                            if i >= offset && i <= offset + width {
+                            first_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_first_read, i, 0));
+                            if i >= offset {
                                 first_read_row.sel[i] = F::from_bool(true);
                             }
 
-                            value_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value
-                                        & (CHUNK_BITS_MASK
-                                            << (((shift + pos) % CHUNK_NUM_U64) * CHUNK_BITS_U64)),
-                                )
-                            };
+                            value_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
                             }
 
-                            second_read_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
-                            if pos < shift {
+                            second_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
+                            if i < rem_bytes {
                                 second_read_row.sel[i] = F::from_bool(true);
                             }
                         }
@@ -464,7 +454,27 @@ impl<F: PrimeField> MemAlignSM<F> {
                 }
             }
             (true, true) => {
-                // RWVWR
+                /* RWVWR with offset=6, width=4
+                +----+----+----+----+----+----+====+====+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +----+----+----+----+----+----+====+====+
+                                ⇓
+                +----+----+----+----+----+----+====+====+
+                | W0 | W1 | W2 | W3 | W4 | W5 | W6 | W7 |
+                +----+----+----+----+----+----+====+====+
+                                ⇓
+                +====+====+----+----+----+----+====+====+
+                | V2 | V3 | V4 | V5 | V6 | V7 | V0 | V1 |
+                +====+====+----+----+----+----+====+====+
+                                ⇓
+                +====+====+----+----+----+----+----+----+
+                | W0 | W1 | W2 | W3 | W4 | W5 | W6 | W7 |
+                +====+====+----+----+----+----+----+----+
+                                ⇓
+                +====+====+----+----+----+----+----+----+
+                | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                +====+====+----+----+----+----+----+----+
+                */
                 assert!(phase == 0 || phase == 1); // TODO: Debug mode
 
                 match phase {
@@ -491,7 +501,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             // Get the first width bytes of the unaligned value
                             let value_to_write = (value & width_bytes) << (offset * CHUNK_BITS);
 
-                            // Write zeroes to value_read from offset to offset + width
+                            // Write zeroes to read_value from offset to offset + width
                             // and add the value to write to the value read
                             (value_first_read & !mask) | value_to_write
                         };
@@ -504,6 +514,27 @@ impl<F: PrimeField> MemAlignSM<F> {
                     }
                     // Otherwise, do the RWVRW
                     1 => {
+                        /* RWVWR with offset=6, width=4
+                        +----+----+----+----+----+----+====+====+
+                        | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                        +----+----+----+----+----+----+====+====+
+                                        ⇓
+                        +----+----+----+----+----+----+====+====+
+                        | W0 | W1 | W2 | W3 | W4 | W5 | W6 | W7 |
+                        +----+----+----+----+----+----+====+====+
+                                        ⇓
+                        +====+====+----+----+----+----+====+====+
+                        | V2 | V3 | V4 | V5 | V6 | V7 | V0 | V1 |
+                        +====+====+----+----+----+----+====+====+
+                                        ⇓
+                        +====+====+----+----+----+----+----+----+
+                        | W0 | W1 | W2 | W3 | W4 | W5 | W6 | W7 |
+                        +====+====+----+----+----+----+----+----+
+                                        ⇓
+                        +====+====+----+----+----+----+----+----+
+                        | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 |
+                        +====+====+----+----+----+----+----+----+
+                        */
                         println!("TWO WRITES");
                         println!("NUM_ROWS: [{},{}]", num_rows, *num_rows + 4);
                         drop(num_rows);
@@ -518,7 +549,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let value = input.value;
 
                         // Compute the shift
-                        let shift = (offset + width) % CHUNK_NUM;
+                        let rem_bytes = (offset + width) % CHUNK_NUM;
 
                         // Get the aligned address
                         let addr_first_read_write = addr >> CHUNK_BITS;
@@ -539,7 +570,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             // Get the first width bytes of the unaligned value
                             let value_to_write = (value & width_bytes) << (offset * CHUNK_BITS);
 
-                            // Write zeroes to value_read from offset to offset + width
+                            // Write zeroes to read_value from offset to offset + width
                             // and add the value to write to the value read
                             (value_first_read & !mask) | value_to_write
                         };
@@ -551,14 +582,14 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let value_second_write = {
                             // TODO: Fix
                             // Normalize the width
-                            let width_bytes = (1 << (shift * CHUNK_BITS)) - 1;
+                            let width_bytes = (1 << (rem_bytes * CHUNK_BITS)) - 1;
 
                             let mask: u64 = width_bytes << (offset * CHUNK_BITS);
 
                             // Get the first width bytes of the unaligned value
                             let value_to_write = value & width_bytes;
 
-                            // Write zeroes to value_read from offset to offset + width
+                            // Write zeroes to read_value from offset to offset + width
                             // and add the value to write to the value read
                             (value_second_read & !mask) | value_to_write
                         };
@@ -632,60 +663,44 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         for i in 0..CHUNK_NUM {
-                            let pos = i as u64;
-
-                            first_read_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_first_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
+                            first_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_first_read, i, 0));
                             if i < offset {
                                 first_read_row.sel[i] = F::from_bool(true);
                             }
 
-                            first_write_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_first_write & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
+                            first_write_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_first_write, i, 0));
                             if i >= offset {
                                 first_write_row.sel[i] = F::from_bool(true);
                             }
 
                             value_row.reg[i] = {
-                                if i < shift {
+                                if i < rem_bytes {
                                     second_write_row.reg[i]
                                 } else if i >= offset {
                                     first_write_row.reg[i]
                                 } else {
-                                    F::from_canonical_u64(
-                                        value
-                                            & (CHUNK_BITS_MASK
-                                                << (((shift as u64 + pos) % CHUNK_NUM_U64)
-                                                    * CHUNK_BITS_U64)),
-                                    )
+                                    F::from_canonical_u64(Self::get_byte(
+                                        value_first_write,
+                                        i,
+                                        CHUNK_NUM - offset,
+                                    ))
                                 }
                             };
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
                             }
 
-                            second_write_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_second_write
-                                        & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
-                            if i < shift {
+                            second_write_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_write, i, 0));
+                            if i < rem_bytes {
                                 second_write_row.sel[i] = F::from_bool(true);
                             }
 
-                            second_read_row.reg[i] = {
-                                F::from_canonical_u64(
-                                    value_second_read & (CHUNK_BITS_MASK << (pos * CHUNK_BITS_U64)),
-                                )
-                            };
-                            if i >= shift {
+                            second_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
+                            if i >= rem_bytes {
                                 second_read_row.sel[i] = F::from_bool(true);
                             }
                         }
@@ -709,6 +724,11 @@ impl<F: PrimeField> MemAlignSM<F> {
                 }
             }
         }
+    }
+
+    fn get_byte(value: u64, index: usize, offset: usize) -> u64 {
+        let chunk = (offset + index) % CHUNK_NUM;
+        (value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK
     }
 
     pub fn prove(&self, computed_rows: &[MemAlignRow<F>]) {
