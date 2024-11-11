@@ -425,6 +425,10 @@ impl<F: PrimeField> MemAlignSM<F> {
                             ..Default::default()
                         };
 
+                        println!("VALUE_FIRST_READ: {:?}", value_first_read.to_le_bytes());
+                        println!("VALUE: {:?}", value.to_le_bytes());
+                        println!("VALUE_SECOND_READ: {:?}", value_second_read.to_le_bytes());
+
                         for i in 0..CHUNK_NUM {
                             first_read_row.reg[i] =
                                 F::from_canonical_u64(Self::get_byte(value_first_read, i, 0));
@@ -433,7 +437,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             }
 
                             value_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
+                                F::from_canonical_u64(Self::get_byte(value, i, offset));
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
                             }
@@ -580,16 +584,15 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                         // Compute the second write value
                         let value_second_write = {
-                            // TODO: Fix
                             // Normalize the width
-                            let width_bytes = (1 << (rem_bytes * CHUNK_BITS)) - 1;
+                            let width_norm = CHUNK_NUM - offset;
 
-                            let mask: u64 = width_bytes << (offset * CHUNK_BITS);
+                            let mask: u64 = (1 << (rem_bytes * CHUNK_BITS)) - 1;
 
                             // Get the first width bytes of the unaligned value
-                            let value_to_write = value & width_bytes;
+                            let value_to_write = (value >> width_norm * CHUNK_BITS) & mask;
 
-                            // Write zeroes to read_value from offset to offset + width
+                            // Write zeroes to read_value from 0 to offset + width
                             // and add the value to write to the value read
                             (value_second_read & !mask) | value_to_write
                         };
@@ -662,6 +665,11 @@ impl<F: PrimeField> MemAlignSM<F> {
                             ..Default::default()
                         };
 
+                        println!("VALUE_FIRST_READ: {:?}", value_first_read.to_le_bytes());
+                        println!("VALUE_FIRST_WRITE: {:?}", value_first_write.to_le_bytes());
+                        println!("VALUE: {:?}", value.to_le_bytes());
+                        println!("VALUE_SECOND_WRITE: {:?}", value_second_write.to_le_bytes());
+                        println!("VALUE_SECOND_READ: {:?}", value_second_read.to_le_bytes());
                         for i in 0..CHUNK_NUM {
                             first_read_row.reg[i] =
                                 F::from_canonical_u64(Self::get_byte(value_first_read, i, 0));
@@ -682,7 +690,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                                     first_write_row.reg[i]
                                 } else {
                                     F::from_canonical_u64(Self::get_byte(
-                                        value_first_write,
+                                        value,
                                         i,
                                         CHUNK_NUM - offset,
                                     ))
