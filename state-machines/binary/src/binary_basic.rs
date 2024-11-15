@@ -109,32 +109,32 @@ impl<F: Field> BinaryBasicSM<F> {
 
     fn opcode_is_32_bits(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Add |
-            ZiskOp::Sub |
-            ZiskOp::Ltu |
-            ZiskOp::Lt |
-            ZiskOp::Leu |
-            ZiskOp::Le |
-            ZiskOp::Eq |
-            ZiskOp::Minu |
-            ZiskOp::Min |
-            ZiskOp::Maxu |
-            ZiskOp::Max |
-            ZiskOp::And |
-            ZiskOp::Or |
-            ZiskOp::Xor => false,
+            ZiskOp::Add
+            | ZiskOp::Sub
+            | ZiskOp::Ltu
+            | ZiskOp::Lt
+            | ZiskOp::Leu
+            | ZiskOp::Le
+            | ZiskOp::Eq
+            | ZiskOp::Minu
+            | ZiskOp::Min
+            | ZiskOp::Maxu
+            | ZiskOp::Max
+            | ZiskOp::And
+            | ZiskOp::Or
+            | ZiskOp::Xor => false,
 
-            ZiskOp::AddW |
-            ZiskOp::SubW |
-            ZiskOp::LtuW |
-            ZiskOp::LtW |
-            ZiskOp::LeuW |
-            ZiskOp::LeW |
-            ZiskOp::EqW |
-            ZiskOp::MinuW |
-            ZiskOp::MinW |
-            ZiskOp::MaxuW |
-            ZiskOp::MaxW => true,
+            ZiskOp::AddW
+            | ZiskOp::SubW
+            | ZiskOp::LtuW
+            | ZiskOp::LtW
+            | ZiskOp::LeuW
+            | ZiskOp::LeW
+            | ZiskOp::EqW
+            | ZiskOp::MinuW
+            | ZiskOp::MinW
+            | ZiskOp::MaxuW
+            | ZiskOp::MaxW => true,
 
             _ => panic!("Binary basic opcode_is_32_bits() got invalid opcode={:?}", opcode),
         }
@@ -156,7 +156,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
         // Calculate result_is_a
         //let result_is_a: u64 = if operation.b == c { 0 } else { 1 };
-        let result_is_a: u64 = if operation.a == c { 1 } else { 0 };
+        //let result_is_a: u64 = if operation.a == c { 1 } else { 0 };
 
         // Set mode32
         let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
@@ -313,9 +313,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -365,9 +365,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -445,6 +445,30 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
+                let result_is_a: u64 = if operation.a == operation.b {
+                    match op {
+                        ZiskOp::MinW => {
+                            if (operation.a & 0x8000_0000) != 0 {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        ZiskOp::Min => {
+                            if (operation.a & 0x8000_0000_0000_0000) != 0 {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    }
+                } else if operation.b == c {
+                    1
+                } else {
+                    0
+                };
+
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (op == ZiskOp::Minu) || (op == ZiskOp::MinuW) {
                     BinaryBasicTableOp::Minu
@@ -475,7 +499,7 @@ impl<F: Field> BinaryBasicSM<F> {
                             cout = if (a_bytes[i] & 0x80) != 0 { 1 - cout } else { cout };
                         }
                     }
-                    if i == 7 {
+                    if mode32 && (i >= 4) {
                         cout = 0;
                     }
                     cin = cout;
@@ -508,6 +532,30 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
+                let result_is_a: u64 = if operation.a == operation.b {
+                    match op {
+                        ZiskOp::MaxW => {
+                            if (operation.a & 0x8000_0000) != 0 {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        ZiskOp::Max => {
+                            if (operation.a & 0x8000_0000_0000_0000) != 0 {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    }
+                } else if operation.b == c {
+                    1
+                } else {
+                    0
+                };
+
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (op == ZiskOp::Maxu) || (op == ZiskOp::MaxuW) {
                     BinaryBasicTableOp::Maxu
@@ -528,13 +576,14 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
-                    {
-                        cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max) && (plast[i] == 1) {
+                        if (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                            cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
+                        } else {
+                            cout = if (a_bytes[i] & 0x80) != 0 { 1 - cout } else { cout };
+                        }
                     }
-                    if i == 7 {
+                    if mode32 && (i >= 4) {
                         cout = 0;
                     }
                     cin = cout;
