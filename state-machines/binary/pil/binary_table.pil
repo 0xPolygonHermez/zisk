@@ -2,17 +2,17 @@ require "constants.pil";
 
 // PIL Binary Operations Table used by Binary
 //                                                                                                     Running Total
-// MINU/MINU_W  (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |               2^19      
-// MIN/MIN_W    (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20                   
-// MAXU/MAXU_W  (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20 + 2^19            
+// MINU/MINU_W  (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |               2^19
+// MIN/MIN_W    (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20
+// MAXU/MAXU_W  (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |        2^20 + 2^19
 // MAX/MAX_W    (OP:0x0c)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 | 2^21
 // LTU/LTU_W    (OP:0x04)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21               + 2^18
-// LT/LT_W      (OP:0x05)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21        + 2^19           
+// LT/LT_W      (OP:0x05)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21        + 2^19
 // EQ/EQ_W      (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21        + 2^19 + 2^18
 // ADD/ADD_W    (OP:0x02)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21 + 2^20
 // SUB/SUB_W    (OP:0x03)  **   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^21 + 2^20        + 2^18
 // LEU/LEU_W    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20        + 2^18 + 2^17
-// LE/LE_W      (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19      
+// LE/LE_W      (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19
 // AND/AND_W    (OP:0x20)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19        + 2^17
 // OR/OR_W      (OP:0x21)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19 + 2^18
 // XOR/XOR_W    (OP:0x22)       2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^21 + 2^20 + 2^19 + 2^18 + 2^17
@@ -53,24 +53,25 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
     col fixed LAST = [[0:P2_16, 1:P2_16]:(4*4),         // Indicator of the last byte (1 bit)
                       [0:P2_16, 1:P2_16]:(5*2),
                       [0:P2_16, 1:P2_16]:5,
-                       0:P2_16]...;
+                       0:P2_17]...;
 
     col fixed CIN = [[0:P2_17, 1:P2_17]:(4*2),          // Input carry (1 bit)
                      [0:P2_17, 1:P2_17]:5,
                       0:(P2_17*5),
-                      0:P2_16]...;
+                      0:P2_17]...;
 
     col fixed OP = [0x09:P2_19, 0x0a:P2_19, 0x0b:P2_19, 0x0c:P2_19, // MINU,MIN,MAXU,MAX
                     0x04:P2_18, 0x05:P2_18, 0x08:P2_18,             // LTU,LT,EQ
                     0x02:P2_18, 0x03:P2_18,                         // ADD,SUB
                     0x06:P2_17, 0x07:P2_17,                         // LEU,LE
                     0x20:P2_17, 0x21:P2_17, 0x22:P2_17,             // AND,OR,XOR
-                    0x23:P2_16]...;                                 // EXT_32
-    
+                    0x23:P2_17]...;                                 // EXT_32
+
     // NOTE: MINU/MINU_W, MIN/MIN_W, MAXU/MAXU_W, MAX/MAX_W has double size because
     //       the result_is_a is 0 in the first half and 1 in the second half.
 
-    const int TABLE_SIZE = P2_19 * 4 + P2_18 * 5 + P2_17 * 5 + P2_16;
+    const int TABLE_SIZE = P2_19 * 4 + P2_18 * 5 + P2_17 * 6;
+    const int TABLE_EXT32_FLAG2 = TABLE_SIZE - P2_16;
 
     #pragma timer t1 end
     #pragma timer t2 start
@@ -91,7 +92,7 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
             case 0x02: // ADD,ADD_W
                 c = (cin + a + b) & 0xFF;
                 cout = plast ? 0 : (cin + a + b) >> 8;
-                
+
             case 0x03: // SUB,SUB_W
                 sign = (a - cin) >= b ? 0 : 1;
                 c = 256 * sign + a - cin - b;
@@ -185,6 +186,10 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
 
             case 0x23: // EXT_32
                 c = (a & 0x80) ? 0xFF : 0x00;
+                if (index >= TABLE_EXT32_FLAG2) {
+                    // generate a variant of EXT32 for min_w,max_w operations
+                    op_is_min_max = 1;
+                }
 
             default:
                 error(`Invalid operation opcode: ${op} in row ${i}`);
