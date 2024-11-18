@@ -67,10 +67,18 @@ impl Riscv2ZiskContext<'_> {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "and", "copyb", 4)
             }
             "amoor.w" => self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4),
-            "amomin.w" => self.create_atomic_op(riscv_instruction, "copyb", "min_w", "copyb", 4),
-            "amomax.w" => self.create_atomic_op(riscv_instruction, "copyb", "max_w", "copyb", 4),
-            "amominu.w" => self.create_atomic_op(riscv_instruction, "copyb", "minu_w", "copyb", 4),
-            "amomaxu.w" => self.create_atomic_op(riscv_instruction, "copyb", "maxu_w", "copyb", 4),
+            "amomin.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "min_w", "copyb", 4)
+            }
+            "amomax.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "max_w", "copyb", 4)
+            }
+            "amominu.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "minu_w", "copyb", 4)
+            }
+            "amomaxu.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "maxu_w", "copyb", 4)
+            }
             "lr.d" => self.load_op(riscv_instruction, "copyb", 8),
             "sc.d" => self.sc_d(riscv_instruction),
             "amoswap.d" => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
