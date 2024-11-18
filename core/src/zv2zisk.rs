@@ -56,11 +56,17 @@ impl Riscv2ZiskContext<'_> {
             "sd" => self.store_op(riscv_instruction, "copyb", 8),
             "lr.w" => self.load_op(riscv_instruction, "signextend_w", 4),
             "sc.w" => self.sc_w(riscv_instruction),
-            "amoswap.w" => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 4),
-            "amoadd.w" => self.create_atomic_op(riscv_instruction, "copyb", "add_w", "copyb", 4),
-            "amoxor.w" => self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 4),
-            "amoand.w" => self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 4),
-            "amoor.w" => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 4),
+            "amoswap.w" => self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4),
+            "amoadd.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "add_w", "copyb", 4)
+            }
+            "amoxor.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "xor", "copyb", 4)
+            }
+            "amoand.w" => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "and", "copyb", 4)
+            }
+            "amoor.w" => self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4),
             "amomin.w" => self.create_atomic_op(riscv_instruction, "copyb", "min_w", "copyb", 4),
             "amomax.w" => self.create_atomic_op(riscv_instruction, "copyb", "max_w", "copyb", 4),
             "amominu.w" => self.create_atomic_op(riscv_instruction, "copyb", "minu_w", "copyb", 4),
