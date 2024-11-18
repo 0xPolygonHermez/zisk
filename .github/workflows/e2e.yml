@@ -9,3 +9,9 @@ on:
 jobs:
   e2e-tests:
     runs-on: self-hosted
+    steps:
+      - name: Checkout zisk-testvectors repository
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk-testvectors
+          token: ${{ secrets.TESTVECTORS_ACCESS_TOKEN }}
