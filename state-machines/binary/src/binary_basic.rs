@@ -154,10 +154,6 @@ impl<F: Field> BinaryBasicSM<F> {
         (c, flag) = ZiskOp::execute(operation.opcode, operation.a, operation.b);
         let _flag = flag;
 
-        // Calculate result_is_a
-        //let result_is_a: u64 = if operation.b == c { 0 } else { 1 };
-        //let result_is_a: u64 = if operation.a == c { 1 } else { 0 };
-
         // Set mode32
         let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
         let mode32 = Self::opcode_is_32_bits(opcode);
