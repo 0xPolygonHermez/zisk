@@ -444,13 +444,8 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 = if operation.a == operation.b {
-                    0
-                } else if operation.b == c_filtered {
-                    0
-                } else {
-                    1
-                };
+                let result_is_a: u64 =
+                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (op == ZiskOp::Minu) || (op == ZiskOp::MinuW) {
@@ -466,19 +461,24 @@ impl<F: Field> BinaryBasicSM<F> {
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
-                    if a_bytes[i] < b_bytes[i] {
-                        cout = 1;
-                    } else if a_bytes[i] == b_bytes[i] {
-                        cout = cin;
-                    } else {
-                        cout = 0;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) && (plast[i] == 1) {
-                        if (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
-                            cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
-                        }
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
                     if mode32 && (i >= 4) {
                         cout = 0;
@@ -511,13 +511,8 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 = if operation.a == operation.b {
-                    0
-                } else if operation.b == c_filtered {
-                    0
-                } else {
-                    1
-                };
+                let result_is_a: u64 =
+                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (op == ZiskOp::Maxu) || (op == ZiskOp::MaxuW) {
@@ -533,19 +528,24 @@ impl<F: Field> BinaryBasicSM<F> {
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
-                    if a_bytes[i] > b_bytes[i] {
-                        cout = 1;
-                    } else if a_bytes[i] == b_bytes[i] {
-                        cout = cin;
-                    } else {
-                        cout = 0;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) && (plast[i] == 1) {
-                        if (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
-                            cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
-                        }
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
                     if mode32 && (i >= 4) {
                         cout = 0;
