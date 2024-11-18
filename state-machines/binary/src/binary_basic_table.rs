@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::prelude::*;
 use sm_common::create_prover_buffer;
-use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::{BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -114,43 +114,54 @@ impl<F: Field> BinaryBasicTableSM<F> {
         cin: u64,
         last: u64,
         _c: u64,
-        _flags: u64,
+        flags: u64,
         _i: u64,
     ) -> u64 {
         // Calculate the different row offset contributors, according to the PIL
-        let offset_a: u64 = a;
-        let offset_b: u64 = b * P2_8;
-        let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
-        let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
-        let offset_result_is_a: u64 =
-            if Self::opcode_result_is_a(opcode) && ((_flags & 0x04) != 0) { P2_18 } else { 0 }
-                + if opcode == BinaryBasicTableOp::Ext32 && ((_flags & 0x02) != 0) {
-                    P2_16
-                } else {
-                    0
-                };
-        let offset_opcode: u64 = Self::offset_opcode(opcode);
+        if opcode == BinaryBasicTableOp::Ext32 {
+            let offset_a: u64 = a;
+            let offset_cin: u64 = cin * P2_8;
+            let offset_result_is_a: u64 = match flags {
+                0 => 0,
+                2 => P2_9,
+                6 => 3 * P2_9,
+                _ => {
+                    panic!("BinaryBasicTableSM::calculate_table_row() unexpected flags={}", flags)
+                }
+            };
+            let offset_opcode: u64 = Self::offset_opcode(opcode);
 
-        offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
-        //assert!(row < self.num_rows as u64);
+            offset_a + offset_cin + offset_result_is_a + offset_opcode
+        } else {
+            let offset_a: u64 = a;
+            let offset_b: u64 = b * P2_8;
+            let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
+            let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
+            let offset_result_is_a: u64 =
+                if Self::opcode_result_is_a(opcode) && ((flags & 0x04) != 0) { P2_18 } else { 0 };
+            let offset_opcode: u64 = Self::offset_opcode(opcode);
+
+            offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
+            //assert!(row < self.num_rows as u64);
+        }
     }
 
     fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor => true,
+            BinaryBasicTableOp::Add |
+            BinaryBasicTableOp::Sub |
+            BinaryBasicTableOp::Ltu |
+            BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Leu |
+            BinaryBasicTableOp::Le |
+            BinaryBasicTableOp::Eq |
+            BinaryBasicTableOp::Minu |
+            BinaryBasicTableOp::Min |
+            BinaryBasicTableOp::Maxu |
+            BinaryBasicTableOp::Max |
+            BinaryBasicTableOp::And |
+            BinaryBasicTableOp::Or |
+            BinaryBasicTableOp::Xor => true,
             BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_last() got invalid opcode={:?}", opcode),
         }
@@ -158,22 +169,22 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
     fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max => true,
+            BinaryBasicTableOp::Add |
+            BinaryBasicTableOp::Sub |
+            BinaryBasicTableOp::Ltu |
+            BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Eq |
+            BinaryBasicTableOp::Minu |
+            BinaryBasicTableOp::Min |
+            BinaryBasicTableOp::Maxu |
+            BinaryBasicTableOp::Max => true,
 
-            BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => false,
+            BinaryBasicTableOp::Leu |
+            BinaryBasicTableOp::Le |
+            BinaryBasicTableOp::And |
+            BinaryBasicTableOp::Or |
+            BinaryBasicTableOp::Xor |
+            BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_cin() got invalid opcode={:?}", opcode),
         }
     }
