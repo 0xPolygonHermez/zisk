@@ -122,7 +122,13 @@ impl<F: Field> BinaryBasicTableSM<F> {
         let offset_b: u64 = b * P2_8;
         let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
         let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
-        let offset_result_is_a: u64 = if Self::opcode_result_is_a(opcode) { P2_18 } else { 0 }; // TODO: Should we add it only if c == a?
+        let offset_result_is_a: u64 =
+            if Self::opcode_result_is_a(opcode) && ((_flags & 0x04) != 0) { P2_18 } else { 0 }
+                + if opcode == BinaryBasicTableOp::Ext32 && ((_flags & 0x02) != 0) {
+                    P2_16
+                } else {
+                    0
+                };
         let offset_opcode: u64 = Self::offset_opcode(opcode);
 
         offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
@@ -131,20 +137,20 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
     fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add |
-            BinaryBasicTableOp::Sub |
-            BinaryBasicTableOp::Ltu |
-            BinaryBasicTableOp::Lt |
-            BinaryBasicTableOp::Leu |
-            BinaryBasicTableOp::Le |
-            BinaryBasicTableOp::Eq |
-            BinaryBasicTableOp::Minu |
-            BinaryBasicTableOp::Min |
-            BinaryBasicTableOp::Maxu |
-            BinaryBasicTableOp::Max |
-            BinaryBasicTableOp::And |
-            BinaryBasicTableOp::Or |
-            BinaryBasicTableOp::Xor => true,
+            BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor => true,
             BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_last() got invalid opcode={:?}", opcode),
         }
@@ -152,22 +158,22 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
     fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add |
-            BinaryBasicTableOp::Sub |
-            BinaryBasicTableOp::Ltu |
-            BinaryBasicTableOp::Lt |
-            BinaryBasicTableOp::Eq |
-            BinaryBasicTableOp::Minu |
-            BinaryBasicTableOp::Min |
-            BinaryBasicTableOp::Maxu |
-            BinaryBasicTableOp::Max => true,
+            BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max => true,
 
-            BinaryBasicTableOp::Leu |
-            BinaryBasicTableOp::Le |
-            BinaryBasicTableOp::And |
-            BinaryBasicTableOp::Or |
-            BinaryBasicTableOp::Xor |
-            BinaryBasicTableOp::Ext32 => false,
+            BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor
+            | BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_cin() got invalid opcode={:?}", opcode),
         }
     }

@@ -94,11 +94,11 @@ impl<F: Field> BinaryExtensionTableSM<F> {
     //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
     pub fn calculate_table_row(opcode: BinaryExtensionTableOp, offset: u64, a: u64, b: u64) -> u64 {
         // Calculate the different row offset contributors, according to the PIL
-        assert!(a <= 0xff);
+        assert!(a <= 0xFF);
         let offset_a: u64 = a;
         assert!(offset < 0x08);
         let offset_offset: u64 = offset * P2_8;
-        assert!(b <= 0x3f);
+        assert!(b <= 0xFF);
         let offset_b: u64 = b * P2_11;
         let offset_opcode: u64 = Self::offset_opcode(opcode);
 
