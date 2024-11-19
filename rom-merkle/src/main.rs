@@ -83,7 +83,7 @@ fn main() {
 
     let buffer_allocator: Arc<StarkBufferAllocator> =
         Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
-    let global_info = GlobalInfo::new(&proving_key_path);
+    let global_info = GlobalInfo::new(proving_key_path);
     let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
     let setup = sctx.get_setup(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]);
@@ -99,7 +99,7 @@ fn main() {
         Ok((commit_id, buffer_rom)) => {
             extend_and_merkelize_custom_commit_c(
                 p_stark,
-                commit_id as u64,
+                commit_id,
                 0,
                 buffer_rom.as_ptr() as *mut c_void,
                 p_proof,
