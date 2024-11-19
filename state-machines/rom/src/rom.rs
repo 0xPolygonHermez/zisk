@@ -5,6 +5,7 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
+use itertools::Itertools;
 
 use std::error::Error;
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
@@ -152,9 +153,9 @@ impl<F: Field> RomSM<F> {
                 .expect("RomRootSM::compute_trace() failed mapping buffer to ROMSRow");
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
-            let inst = inst_builder.1.i;
+            let inst = &rom.insts[key].i;
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
