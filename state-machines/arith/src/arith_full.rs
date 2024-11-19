@@ -159,16 +159,21 @@ impl<F: Field> ArithFullSM<F> {
             } else {
                 F::zero()
             };
-            t.bus_res1 = F::from_canonical_u64(
-                if aop.sext { 0xFFFFFFFF } else { 0 }
-                    + if aop.main_mul {
+            t.bus_res1 = F::from_canonical_u64(if aop.sext {
+                0xFFFFFFFF
+            } else {
+                if aop.m32 {
+                    0
+                } else {
+                    if aop.main_mul {
                         aop.c[2] + (aop.c[3] << 16)
                     } else if aop.main_div {
                         aop.a[2] + (aop.a[3] << 16)
                     } else {
                         aop.d[2] + (aop.d[3] << 16)
-                    },
-            );
+                    }
+                }
+            });
             traces[irow] = t;
         }
         timer_stop_and_log_trace!(ARITH_TRACE);
