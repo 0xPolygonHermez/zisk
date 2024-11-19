@@ -1,9 +1,12 @@
 pub struct ArithTableHelpers;
 
-use crate::{ARITH_TABLE, ARITH_TABLE_ROWS, FIRST_OP, ROWS};
+#[cfg(debug_assertions)]
+use crate::ARITH_TABLE;
+
+use crate::{ARITH_TABLE_ROWS, FIRST_OP, ROWS};
 
 impl ArithTableHelpers {
-    pub fn get_row(op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) -> usize {
+    pub fn direct_get_row(op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) -> usize {
         let index = (op - FIRST_OP) as u64 * 32
             + na as u64
             + nb as u64 * 2
@@ -25,6 +28,61 @@ impl ArithTableHelpers {
         );
         row as usize
     }
+    #[cfg(not(debug_assertions))]
+    pub fn get_row(op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) -> usize {
+        Self::direct_get_row(op, na, nb, np, nr, sext)
+    }
+    #[cfg(debug_assertions)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn get_row(
+        op: u8,
+        na: bool,
+        nb: bool,
+        np: bool,
+        nr: bool,
+        sext: bool,
+        m32: bool,
+        div: bool,
+        main_mul: bool,
+        main_div: bool,
+        signed: bool,
+        range_ab: u16,
+        range_cd: u16,
+    ) -> usize {
+        let flags = if m32 { 1 } else { 0 }
+            + if div { 2 } else { 0 }
+            + if na { 4 } else { 0 }
+            + if nb { 8 } else { 0 }
+            + if np { 16 } else { 0 }
+            + if nr { 32 } else { 0 }
+            + if sext { 64 } else { 0 }
+            + if main_mul { 128 } else { 0 }
+            + if main_div { 256 } else { 0 }
+            + if signed { 512 } else { 0 };
+        let row = Self::direct_get_row(op, na, nb, np, nr, sext);
+        assert_eq!(
+            op as u16, ARITH_TABLE[row][0],
+            "at row {} not match op {} vs {}",
+            row, op, ARITH_TABLE[row][0]
+        );
+        assert_eq!(
+            flags, ARITH_TABLE[row][1],
+            "at row {0} op:0x{1:x}({1}) not match flags {2:b}({2}) vs {3:b}({3})",
+            row, op, flags, ARITH_TABLE[row][1]
+        );
+        assert_eq!(
+            range_ab, ARITH_TABLE[row][2],
+            "at row {} op:{} not match range_ab {} vs {}",
+            row, op, flags, ARITH_TABLE[row][2]
+        );
+        assert_eq!(
+            range_cd, ARITH_TABLE[row][3],
+            "at row {} op:{} not match range_cd {} vs {}",
+            row, op, flags, ARITH_TABLE[row][3]
+        );
+        row
+    }
+
     pub fn flags_to_string(flags: u16) -> String {
         let mut result = String::new();
         if flags & 1 != 0 {
@@ -59,54 +117,7 @@ impl ArithTableHelpers {
         }
         result
     }
-    pub fn get_row_and_check(
-        op: u8,
-        na: bool,
-        nb: bool,
-        np: bool,
-        nr: bool,
-        sext: bool,
-        m32: bool,
-        div: bool,
-        main_mul: bool,
-        main_div: bool,
-        signed: bool,
-        range_ab: u16,
-        range_cd: u16,
-    ) -> usize {
-        let flags = if m32 { 1 } else { 0 }
-            + if div { 2 } else { 0 }
-            + if na { 4 } else { 0 }
-            + if nb { 8 } else { 0 }
-            + if np { 16 } else { 0 }
-            + if nr { 32 } else { 0 }
-            + if sext { 64 } else { 0 }
-            + if main_mul { 128 } else { 0 }
-            + if main_div { 256 } else { 0 }
-            + if signed { 512 } else { 0 };
-        let row = Self::get_row(op, na, nb, np, nr, sext);
-        assert_eq!(
-            op as u16, ARITH_TABLE[row][0],
-            "at row {} not match op {} vs {}",
-            row, op, ARITH_TABLE[row][0]
-        );
-        assert_eq!(
-            flags, ARITH_TABLE[row][1],
-            "at row {0} op:0x{1:x}({1}) not match flags {2:b}({2}) vs {3:b}({3})",
-            row, op, flags, ARITH_TABLE[row][1]
-        );
-        assert_eq!(
-            range_ab, ARITH_TABLE[row][2],
-            "at row {} op:{} not match range_ab {} vs {}",
-            row, op, flags, ARITH_TABLE[row][2]
-        );
-        assert_eq!(
-            range_cd, ARITH_TABLE[row][3],
-            "at row {} op:{} not match range_cd {} vs {}",
-            row, op, flags, ARITH_TABLE[row][3]
-        );
-        row
-    }
+
     pub fn get_max_row() -> usize {
         ROWS - 1
     }
@@ -127,7 +138,7 @@ impl ArithTableInputs {
         ArithTableInputs { multiplicity: [0; ROWS] }
     }
     pub fn add_use(&mut self, op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) {
-        let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
+        let row = ArithTableHelpers::direct_get_row(op, na, nb, np, nr, sext);
         assert!(row < ROWS);
         self.multiplicity[row] += 1;
     }
@@ -142,7 +153,7 @@ impl ArithTableInputs {
         nr: bool,
         sext: bool,
     ) {
-        let row = ArithTableHelpers::get_row(op, na, nb, np, nr, sext);
+        let row = ArithTableHelpers::direct_get_row(op, na, nb, np, nr, sext);
         self.multiplicity[row] += times as u64;
     }
     pub fn update_with(&mut self, other: &Self) {

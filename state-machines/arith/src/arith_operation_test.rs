@@ -423,7 +423,7 @@ impl ArithOperationTest {
             + 256 * aop.main_div as u32
             + 512 * aop.signed as u32;
         println!("TABLE {} {} {} {}", aop.op, _flags, aop.range_ab, aop.range_cd);
-        // (op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool)
+
         let row_1 = ArithTableHelpers::get_row_and_check(
             aop.op,
             aop.na,
