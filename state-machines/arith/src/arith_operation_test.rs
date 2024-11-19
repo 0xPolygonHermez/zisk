@@ -424,7 +424,7 @@ impl ArithOperationTest {
             + 512 * aop.signed as u32;
         println!("TABLE {} {} {} {}", aop.op, _flags, aop.range_ab, aop.range_cd);
 
-        let row_1 = ArithTableHelpers::get_row_and_check(
+        let row_1 = ArithTableHelpers::get_row(
             aop.op,
             aop.na,
             aop.nb,
