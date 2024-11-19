@@ -1,37 +1,9 @@
-const ROWS: usize = 95;
-const FIRST_OP: u8 = 0xb0;
-
 pub struct ArithTableHelpers;
+
+use crate::{ARITH_TABLE, ARITH_TABLE_ROWS, FIRST_OP, ROWS};
 
 impl ArithTableHelpers {
     pub fn get_row(op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool) -> usize {
-        static ARITH_TABLE_ROWS: [i16; 512] = [
-            0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, 2, 3, -1, -1, -1, 4, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5, 6, 7, 8, -1,
-            9, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, 11, 12, 13, 14, -1, 15, 16, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 17, 18, 19, 20, -1, 21, 22,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, 23, 24, 25, 26, -1, 27, 28, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 29, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, 30, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 31, 32, 33, 34, 35, 36, 37, -1, -1, -1, -1,
-            -1, 38, 39, 40, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 41,
-            42, 43, 44, 45, 46, 47, -1, -1, -1, -1, -1, 48, 49, 50, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, 51, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, 52, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 53, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 54, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, 62, 63, 64,
-            -1, 65, 66, 67, 68, 69, 70, 71, -1, -1, -1, -1, -1, 72, 73, 74, -1, 75, 76, 77, 78, 79,
-            80, 81, -1, -1, -1, -1, -1, 82, 83, 84, -1, 85, 86, 87, 88, 89, 90, 91, -1, -1, -1, -1,
-            -1, 92, 93, 94, -1,
-        ];
-
         let index = (op - FIRST_OP) as u64 * 32
             + na as u64
             + nb as u64 * 2
@@ -40,8 +12,100 @@ impl ArithTableHelpers {
             + sext as u64 * 16;
         assert!(index < 512);
         let row = ARITH_TABLE_ROWS[index as usize];
-        assert!(row >= 0);
+        assert!(
+            row >= 0,
+            "INVALID ROW row:{} op:0x{:x} na:{} nb:{} np:{} nr:{} sext:{}",
+            row,
+            op,
+            na as u8,
+            nb as u8,
+            np as u8,
+            nr as u8,
+            sext as u8
+        );
         row as usize
+    }
+    pub fn flags_to_string(flags: u16) -> String {
+        let mut result = String::new();
+        if flags & 1 != 0 {
+            result += " m32";
+        }
+        if flags & 2 != 0 {
+            result += " div";
+        }
+        if flags & 4 != 0 {
+            result += " na";
+        }
+        if flags & 8 != 0 {
+            result += " nb";
+        }
+        if flags & 16 != 0 {
+            result += " np";
+        }
+        if flags & 32 != 0 {
+            result += " nr";
+        }
+        if flags & 64 != 0 {
+            result += " sext";
+        }
+        if flags & 128 != 0 {
+            result += " main_mul";
+        }
+        if flags & 256 != 0 {
+            result += " main_div";
+        }
+        if flags & 512 != 0 {
+            result += " signed";
+        }
+        result
+    }
+    pub fn get_row_and_check(
+        op: u8,
+        na: bool,
+        nb: bool,
+        np: bool,
+        nr: bool,
+        sext: bool,
+        m32: bool,
+        div: bool,
+        main_mul: bool,
+        main_div: bool,
+        signed: bool,
+        range_ab: u16,
+        range_cd: u16,
+    ) -> usize {
+        let flags = if m32 { 1 } else { 0 }
+            + if div { 2 } else { 0 }
+            + if na { 4 } else { 0 }
+            + if nb { 8 } else { 0 }
+            + if np { 16 } else { 0 }
+            + if nr { 32 } else { 0 }
+            + if sext { 64 } else { 0 }
+            + if main_mul { 128 } else { 0 }
+            + if main_div { 256 } else { 0 }
+            + if signed { 512 } else { 0 };
+        let row = Self::get_row(op, na, nb, np, nr, sext);
+        assert_eq!(
+            op as u16, ARITH_TABLE[row][0],
+            "at row {} not match op {} vs {}",
+            row, op, ARITH_TABLE[row][0]
+        );
+        assert_eq!(
+            flags, ARITH_TABLE[row][1],
+            "at row {0} op:0x{1:x}({1}) not match flags {2:b}({2}) vs {3:b}({3})",
+            row, op, flags, ARITH_TABLE[row][1]
+        );
+        assert_eq!(
+            range_ab, ARITH_TABLE[row][2],
+            "at row {} op:{} not match range_ab {} vs {}",
+            row, op, flags, ARITH_TABLE[row][2]
+        );
+        assert_eq!(
+            range_cd, ARITH_TABLE[row][3],
+            "at row {} op:{} not match range_cd {} vs {}",
+            row, op, flags, ARITH_TABLE[row][3]
+        );
+        row
     }
     pub fn get_max_row() -> usize {
         ROWS - 1

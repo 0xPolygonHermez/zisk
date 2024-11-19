@@ -27,6 +27,7 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
     col fixed FLAGS;
     col fixed RANGE_AB;
     col fixed RANGE_CD;
+    string code = "";
 
     int index = 0;
     int aborted = 0;
@@ -126,15 +127,21 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
             if (0x08 & icase) nr = 1;
             if (0x10 & icase) sext = 1;
 
+            const int signed = (sa || sb) ? 1 : 0;
+
             if (sext && !m32) continue;
             if (nr && !div) continue;
             if (na && !sa) continue;
             if (nb && !sb) continue;
             if (np && !sa && !sb) continue;
             if (nr && !sa && !sb) continue;
-            if (np && !na && !nb && !div) continue;
+            if (np && na == nb && !div) continue;
+            if (np && !na && !nb && !nr && div) continue;
+            if (na && !nb && !nr && !np && div) continue;
             if (np && na && nb) continue;
             if (!np & nr) continue;
+            if (m32 && signed && main_div && na != sext) continue;
+            if (m32 && signed && div && !main_div && nr != sext) continue;
 
             int range_a1 = 0;
             int range_b1 = 0;
@@ -178,7 +185,6 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
                     range_b3 = nb ? 2 : 1;
                 }
             }
-            int signed = sa * sb - sa * sb;
             const int flags = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext +
                            128 * main_mul + 256 * main_div + 512 * signed;
             int range_ab = (range_a3 + range_a1) * 3 + range_b3 + range_b1;
@@ -198,9 +204,7 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
 
             if (generate_table) {
                 op2row[(opcode - 0xb0) * 32 + icase] = index;
-                println(`range_a1:${range_a1} range_b1:${range_b1} range_c1:${range_c1} range_d1:${range_d1}`);
-                println(`range_a3:${range_a3} range_b3:${range_b3} range_c3:${range_c3} range_d3:${range_d3}`);
-                println(`TABLE row:${index} OP:${opcode} FLAGS:${flags} RANGE_AB:${range_ab} RANGE_CD:${range_cd}`);
+                code = code + `[${opcode}, ${flags}, ${range_ab}, ${range_cd}],`;
             }
             ++index;
         }
@@ -209,7 +213,9 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
 
     println("ARITH_TABLE SIZE: ", size);
     if (generate_table) {
-        println("static ARITH_TABLE_ROWS: [i16; 512] = [", op2row, "];");
+        println(`pub const ROWS: usize = ${size};`);
+        println("pub static ARITH_TABLE_ROWS: [i16; 512] = [", op2row, "];");
+        println(`pub static ARITH_TABLE: [[u16; 4]; ROWS] = [${code}];`);
     }
 
     // padding repeat first row

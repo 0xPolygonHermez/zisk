@@ -1,52 +1,15 @@
 use zisk_core::zisk_ops::*;
 
-use crate::{arith_constants::*, ArithOperation};
-
-const FLAG_NAMES: [&str; 8] = ["m32", "div", "na", "nb", "np", "nr", "sext", "sec"];
+use crate::{
+    arith_constants::*, arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers,
+};
 
 struct TestParams {
     op: u8,
     a: u64,
     b: u64,
-    flags: u64,
-    range_ab: u64,
-    range_cd: u64,
 }
-// NOTE: update TEST_COUNT with number of tests, ALL,ALL => 3*3 = 9
-const TEST_COUNT: u32 = 2510;
-
-const F_M32: u64 = 0x0001;
-const F_DIV: u64 = 0x0002;
-const F_NA: u64 = 0x0004;
-const F_NB: u64 = 0x0008;
-const F_NP: u64 = 0x0010;
-const F_NR: u64 = 0x0020;
-const F_SEXT: u64 = 0x0040;
-const F_SEC: u64 = 0x0080;
-
-// range_ab / range_cd
-//
-//     a3 a1 b3 b1
-// rid c3 c1 d3 d1 range 2^16 2^15 notes
-// --- -- -- -- -- ----- ---- ---- -------------------------
-
-const R_FF: u64 = 0; //   0  F  F  F  F ab cd    4    0
-const R_3FP: u64 = 1; //   1  F  F  +  F    cd    3    1 b3 sign => a3 sign
-const R_3FN: u64 = 2; //   2  F  F  -  F    cd    3    1 b3 sign => a3 sign
-const R_3PF: u64 = 3; //   3  +  F  F  F ab       3    1 c3 sign => d3 sign
-const R_3PP: u64 = 4; //   4  +  F  +  F ab cd    2    2
-const R_3PN: u64 = 5; //   5  +  F  -  F ab cd    2    2
-const R_3NF: u64 = 6; //   6  -  F  F  F ab       3    1 c3 sign => d3 sign
-const R_3NP: u64 = 7; //   7  -  F  +  F ab cd    2    2
-const R_3NN: u64 = 8; //   8  -  F  -  F ab cd    2    2
-const R_1FP: u64 = 9; //   9  F  F  F  +    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
-const R_1FN: u64 = 10; //  10  F  F  F  -    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
-const R_1PF: u64 = 11; //  11  F  +  F  F    cd    3    1 a1 sign <=> b1 sign
-const R_1PP: u64 = 12; //  12  F  +  F  + ab cd    2    2
-const R_1PN: u64 = 13; //  13  F  +  F  - ab cd    2    2
-const R_1NF: u64 = 14; //  14  F  -  F  F    cd    3    1 a1 sign <=> b1 sign
-const R_1NP: u64 = 15; //  15  F  -  F  + ab cd    2    2
-const R_1NN: u64 = 16; //  16  F  -  F  - ab cd    2    2
+const TEST_COUNT: u32 = 3136;
 
 const MIN_N_64: u64 = 0x8000_0000_0000_0000;
 const MIN_N_32: u64 = 0x0000_0000_8000_0000;
@@ -61,12 +24,14 @@ const ALL_NZ_64: u64 = 0x0034;
 const ALL_P_64: u64 = 0x0035;
 const ALL_NZ_P_64: u64 = 0x0036;
 const ALL_N_64: u64 = 0x0037;
+const ALL_NON_MIN_64: u64 = 0x0038;
 
 const ALL_32: u64 = 0x0043;
 const ALL_NZ_32: u64 = 0x0044;
 const ALL_P_32: u64 = 0x0045;
 const ALL_N_32: u64 = 0x0046;
 const ALL_NZ_P_32: u64 = 0x0047;
+const ALL_NON_MIN_32: u64 = 0x0048;
 
 const VALUES_END: u64 = 0x004D;
 
@@ -78,6 +43,7 @@ struct ArithOperationTest {
     fail_table: u32,
     fail_bus: u32,
     fail_by_op: [u32; 16],
+    table_rows: [u16; arith_table_data::ROWS],
 }
 
 impl ArithOperationTest {
@@ -91,6 +57,7 @@ impl ArithOperationTest {
             fail_table: 0,
             fail_bus: 0,
             fail_by_op: [0; 16],
+            table_rows: [0; arith_table_data::ROWS],
         }
     }
     fn test(&mut self) {
@@ -108,536 +75,135 @@ impl ArithOperationTest {
 
         let tests = [
             // 0 - MULU
-            TestParams {
-                op: MULU,
-                a: ALL_64,
-                b: ALL_64,
-                flags: 0x0000,
-                range_ab: R_FF,
-                range_cd: R_FF,
-            },
+            TestParams { op: MULU, a: ALL_64, b: ALL_64 },
             // 1 - MULUH
-            TestParams {
-                op: MULUH,
-                a: ALL_64,
-                b: ALL_64,
-                flags: F_SEC,
-                range_ab: R_FF,
-                range_cd: R_FF,
-            },
+            TestParams { op: MULUH, a: ALL_64, b: ALL_64 },
             // 2 - MULSUH
-            TestParams {
-                op: MULSUH,
-                a: ALL_P_64,
-                b: ALL_64,
-                flags: F_SEC,
-                range_ab: R_3PF,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULSUH, a: ALL_P_64, b: ALL_64 },
             // 3 - MULSUH
-            TestParams {
-                op: MULSUH,
-                a: ALL_N_64,
-                b: ALL_NZ_64,
-                flags: F_NA + F_NP + F_SEC,
-                range_ab: R_3NF,
-                range_cd: R_3FN,
-            },
+            TestParams { op: MULSUH, a: ALL_N_64, b: ALL_NZ_64 },
             // 4 - MULSUH
-            TestParams {
-                op: MULSUH,
-                a: ALL_N_64,
-                b: 0x0000_0000,
-                flags: F_NA + F_SEC,
-                range_ab: R_3NF,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULSUH, a: ALL_N_64, b: 0x0000_0000 },
             // 5 - MUL
-            TestParams {
-                op: MUL,
-                a: ALL_P_64,
-                b: ALL_P_64,
-                flags: 0,
-                range_ab: R_3PP,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MUL, a: ALL_P_64, b: ALL_P_64 },
             // 6 - MUL
-            TestParams {
-                op: MUL,
-                a: ALL_N_64,
-                b: ALL_N_64,
-                flags: F_NA + F_NB,
-                range_ab: R_3NN,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MUL, a: ALL_N_64, b: ALL_N_64 },
             // 7 - MUL
-            TestParams {
-                op: MUL,
-                a: ALL_N_64,
-                b: ALL_NZ_P_64,
-                flags: F_NA + F_NP,
-                range_ab: R_3NP,
-                range_cd: R_3FN,
-            },
+            TestParams { op: MUL, a: ALL_N_64, b: ALL_NZ_P_64 },
             // 8 - MUL
-            TestParams {
-                op: MUL,
-                a: ALL_N_64,
-                b: 0x0000_0000,
-                flags: F_NA,
-                range_ab: R_3NP,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MUL, a: ALL_N_64, b: 0x0000_0000 },
             // 9 - MUL
-            TestParams {
-                op: MUL,
-                a: ALL_NZ_P_64,
-                b: ALL_N_64,
-                flags: F_NB + F_NP,
-                range_ab: R_3PN,
-                range_cd: R_3FN,
-            },
+            TestParams { op: MUL, a: ALL_NZ_P_64, b: ALL_N_64 },
             // 10 - MUL
-            TestParams {
-                op: MUL,
-                a: 0x0000_0000,
-                b: ALL_N_64,
-                flags: F_NB,
-                range_ab: R_3PN,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MUL, a: 0x0000_0000, b: ALL_N_64 },
             // 11 - MULH
-            TestParams {
-                op: MULH,
-                a: ALL_P_64,
-                b: ALL_P_64,
-                flags: F_SEC,
-                range_ab: R_3PP,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULH, a: ALL_P_64, b: ALL_P_64 },
             // 12 - MULH
-            TestParams {
-                op: MULH,
-                a: ALL_N_64,
-                b: ALL_N_64,
-                flags: F_NA + F_NB + F_SEC,
-                range_ab: R_3NN,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULH, a: ALL_N_64, b: ALL_N_64 },
             // 13 - MULH
-            TestParams {
-                op: MULH,
-                a: ALL_N_64,
-                b: ALL_NZ_P_64,
-                flags: F_NA + F_NP + F_SEC,
-                range_ab: R_3NP,
-                range_cd: R_3FN,
-            },
+            TestParams { op: MULH, a: ALL_N_64, b: ALL_NZ_P_64 },
             // 14 - MULH
-            TestParams {
-                op: MULH,
-                a: ALL_N_64,
-                b: 0x0000_00000,
-                flags: F_NA + F_SEC,
-                range_ab: R_3NP,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULH, a: ALL_N_64, b: 0x0000_00000 },
             // 15 - MULH
-            TestParams {
-                op: MULH,
-                a: ALL_NZ_P_64,
-                b: ALL_N_64,
-                flags: F_NB + F_NP + F_SEC,
-                range_ab: R_3PN,
-                range_cd: R_3FN,
-            },
+            TestParams { op: MULH, a: ALL_NZ_P_64, b: ALL_N_64 },
             // 16 - MULH
-            TestParams {
-                op: MULH,
-                a: 0x0000_0000,
-                b: ALL_N_64,
-                flags: F_NB + F_SEC,
-                range_ab: R_3PN,
-                range_cd: R_3FP,
-            },
+            TestParams { op: MULH, a: 0x0000_0000, b: ALL_N_64 },
             // 17 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0x0000_0000,
-                b: 0x0000_0000,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0x0000_0000, b: 0x0000_0000 },
             // 18 - MUL_W: 0x00000002 (+/32 bits) * 0x40000000 (+/32 bits) = 0x80000000 (-/32 bits)
-            TestParams {
-                op: MUL_W,
-                a: 0x0000_0002,
-                b: 0x4000_0000,
-                flags: F_M32 + F_SEXT,
-                range_ab: R_FF,
-                range_cd: R_1NF,
-            },
+            TestParams { op: MUL_W, a: 0x0000_0002, b: 0x4000_0000 },
             // 19 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0x0000_0002,
-                b: 0x8000_0000,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0x0000_0002, b: 0x8000_0000 },
             // 20 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0xFFFF_FFFF,
-                b: 1,
-                flags: F_M32 + F_SEXT,
-                range_ab: R_FF,
-                range_cd: R_1NF,
-            },
+            TestParams { op: MUL_W, a: 0xFFFF_FFFF, b: 1 },
             // 21 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_00000,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0xFFFF_FFFF, b: 0x0000_00000 },
             // 22 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0x7FFF_FFFF,
-                b: 2,
-                flags: F_M32 + F_SEXT,
-                range_ab: R_FF,
-                range_cd: R_1NF,
-            },
+            TestParams { op: MUL_W, a: 0x7FFF_FFFF, b: 2 },
             // 23 - MUL_W
-            TestParams {
-                op: MUL_W,
-                a: 0xBFFF_FFFF,
-                b: 0x0000_0002,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0xBFFF_FFFF, b: 0x0000_0002 },
             // 24 - MUL_W: 0xFFFF_FFFF * 0xFFFF_FFFF = 0xFFFF_FFFE_0000_0001
-            TestParams {
-                op: MUL_W,
-                a: 0xFFFF_FFFF,
-                b: 0xFFFF_FFFF,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0xFFFF_FFFF, b: 0xFFFF_FFFF },
             // 25 - MUL_W: 0xFFFF_FFFF * 0x0FFF_FFFF = 0x0FFF_FFFE_F000_0001
-            TestParams {
-                op: MUL_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0FFF_FFFF,
-                flags: F_M32 + F_SEXT,
-                range_ab: R_FF,
-                range_cd: R_1NF,
-            },
+            TestParams { op: MUL_W, a: 0xFFFF_FFFF, b: 0x0FFF_FFFF },
             // 26 - MUL_W: 0x8000_0000 * 0x8000_0000 = 0x4000_0000_0000_0000
-            TestParams {
-                op: MUL_W,
-                a: 0x8000_0000,
-                b: 0x8000_0000,
-                flags: F_M32,
-                range_ab: R_FF,
-                range_cd: R_1PF,
-            },
+            TestParams { op: MUL_W, a: 0x8000_0000, b: 0x8000_0000 },
             // 27 - DIVU
-            TestParams {
-                op: DIVU,
-                a: ALL_64,
-                b: ALL_NZ_64,
-                flags: F_DIV + 0,
-                range_ab: R_FF,
-                range_cd: R_FF,
-            },
+            TestParams { op: DIVU, a: ALL_64, b: ALL_NZ_64 },
             // 28 - REMU
-            TestParams {
-                op: REMU,
-                a: ALL_64,
-                b: ALL_NZ_64,
-                flags: F_DIV + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_FF,
-            },
+            TestParams { op: REMU, a: ALL_64, b: ALL_NZ_64 },
             // 29 - DIV
-            TestParams {
-                op: DIV,
-                a: MAX_P_64,
-                b: MAX_P_64,
-                flags: F_DIV,
-                range_ab: R_3PP,
-                range_cd: R_3PP,
-            },
+            TestParams { op: DIV, a: MAX_P_64, b: MAX_P_64 },
             // 30 - DIV
-            TestParams {
-                op: DIV,
-                a: MIN_N_64,
-                b: MAX_P_64,
-                flags: F_DIV + F_NA + F_NP + F_NR,
-                range_ab: R_3NP,
-                range_cd: R_3NN,
-            },
+            TestParams { op: DIV, a: MIN_N_64, b: MAX_P_64 },
             // 31 - DIV
-            TestParams {
-                op: DIV,
-                a: MAX_P_64,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB, // a/b = 0 ➜ np = 0
-                range_ab: R_3PN,
-                range_cd: R_3PP,
-            },
+            TestParams { op: DIV, a: MAX_P_64, b: MIN_N_64 },
             // 32 - DIV
-            TestParams {
-                op: DIV,
-                a: MIN_N_64,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB + F_NP, // a/b = 1 ➜ 1 * b_neg ➜ np = 1
-                range_ab: R_3PN,
-                range_cd: R_3NP,
-            },
+            TestParams { op: DIV, a: MIN_N_64, b: MIN_N_64 },
             // 33 - DIV
-            TestParams {
-                op: DIV,
-                a: 0x0000_0000,
-                b: MAX_P_64,
-                flags: F_DIV,
-                range_ab: R_3PP,
-                range_cd: R_3PP,
-            },
+            TestParams { op: DIV, a: 0x0000_0000, b: MAX_P_64 },
             // 34 - DIV
-            TestParams {
-                op: DIV,
-                a: 0x0000_0000,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB,
-                range_ab: R_3PN,
-                range_cd: R_3PP,
-            },
+            TestParams { op: DIV, a: 0x0000_0000, b: MIN_N_64 },
             // 35 - REM
-            TestParams {
-                op: REM,
-                a: MAX_P_64,
-                b: MAX_P_64,
-                flags: F_DIV + F_SEC,
-                range_ab: R_3PP,
-                range_cd: R_3PP,
-            },
+            TestParams { op: REM, a: MAX_P_64, b: MAX_P_64 },
             // 36 - REM
-            TestParams {
-                op: REM,
-                a: MIN_N_64,
-                b: MAX_P_64,
-                flags: F_DIV + F_NA + F_NP + F_NR + F_SEC,
-                range_ab: R_3NP,
-                range_cd: R_3NN,
-            },
+            TestParams { op: REM, a: MIN_N_64, b: MAX_P_64 },
             // 37 - REM
-            TestParams {
-                op: REM,
-                a: MAX_P_64,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB + F_SEC,
-                range_ab: R_3PN,
-                range_cd: R_3PP,
-            },
+            TestParams { op: REM, a: MAX_P_64, b: MIN_N_64 },
             // 38 - REM
-            TestParams {
-                op: REM,
-                a: MIN_N_64,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB + F_NP + F_SEC,
-                range_ab: R_3PN,
-                range_cd: R_3NP,
-            },
+            TestParams { op: REM, a: MIN_N_64, b: MIN_N_64 },
             // 39 - REM
-            TestParams {
-                op: REM,
-                a: 0x0000_0000,
-                b: MAX_P_64,
-                flags: F_DIV + F_SEC,
-                range_ab: R_3PP,
-                range_cd: R_3PP,
-            },
+            TestParams { op: REM, a: 0x0000_0000, b: MAX_P_64 },
             // 40 - REM
-            TestParams {
-                op: REM,
-                a: 0x0000_0000,
-                b: MIN_N_64,
-                flags: F_DIV + F_NB + F_SEC,
-                range_ab: R_3PN,
-                range_cd: R_3PP,
-            },
+            TestParams { op: REM, a: 0x0000_0000, b: MIN_N_64 },
             // 41 - DIVU_W
-            TestParams {
-                op: DIVU_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0001,
-                flags: F_DIV + F_M32 + F_SEXT,
-                range_ab: R_1NF,
-                range_cd: R_FF,
-            },
+            TestParams { op: DIVU_W, a: 0xFFFF_FFFF, b: 0x0000_0001 },
             // 42 - DIVU_W
-            TestParams {
-                op: DIVU_W,
-                a: ALL_NZ_32,
-                b: 0x0000_00002,
-                flags: F_DIV + F_M32,
-                range_ab: R_1PF,
-                range_cd: R_FF,
-            },
+            TestParams { op: DIVU_W, a: ALL_NZ_32, b: 0x0000_00002 },
             // 43 - DIVU_W
-            TestParams {
-                op: DIVU_W,
-                a: ALL_NZ_32,
-                b: MAX_32,
-                flags: F_DIV + F_M32,
-                range_ab: R_1PF,
-                range_cd: R_FF,
-            },
+            TestParams { op: DIVU_W, a: ALL_NZ_32, b: MAX_32 },
             // 44 - DIVU_W
-            TestParams {
-                op: DIVU_W,
-                a: 0,
-                b: ALL_NZ_32,
-                flags: F_DIV + F_M32,
-                range_ab: R_1PF,
-                range_cd: R_FF,
-            },
+            TestParams { op: DIVU_W, a: 0, b: ALL_NZ_32 },
             // 45 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0001,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: 0xFFFF_FFFF, b: 0x0000_0001 },
             // 46 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: ALL_32,
-                b: 0x0000_00002,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: ALL_32, b: 0x0000_00002 },
             // 47 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: ALL_NZ_P_32,
-                b: MAX_32,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: ALL_NZ_P_32, b: MAX_32 },
             // 48 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: ALL_32,
-                b: 0x8000_0000,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: ALL_32, b: 0x8000_0000 },
             // 49 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0,
-                b: ALL_NZ_32,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: 0, b: ALL_NZ_32 },
             // 50 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0xFFFF_FFFE,
-                b: 0xFFFF_FFFF,
-                flags: F_DIV + F_M32 + F_SEXT + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FN,
-            },
+            TestParams { op: REMU_W, a: 0xFFFF_FFFE, b: 0xFFFF_FFFF },
             // 51 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0xFFFF_FFFE,
-                b: 0xFFFF_FFFE,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: 0xFFFF_FFFE, b: 0xFFFF_FFFE },
             // 52 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0x8000_0000,
-                b: 0x8000_0001,
-                flags: F_DIV + F_M32 + F_SEXT + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FN,
-            },
+            TestParams { op: REMU_W, a: 0x8000_0000, b: 0x8000_0001 },
             // 53 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0x8000_0001,
-                b: 0x8000_0000,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: 0x8000_0001, b: 0x8000_0000 },
             // 54 - REMU_W
-            TestParams {
-                op: REMU_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0003,
-                flags: F_DIV + F_M32 + F_SEC,
-                range_ab: R_FF,
-                range_cd: R_1FP,
-            },
+            TestParams { op: REMU_W, a: 0xFFFF_FFFF, b: 0x0000_0003 },
             // 55 - DIV_W (-1/1=-1 REM:0)
-            TestParams {
-                op: DIV_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0001,
-                flags: F_DIV + F_NA + F_NP + F_M32 + F_SEXT,
-                range_ab: R_1NP,
-                range_cd: R_1NP,
-            },
+            TestParams { op: DIV_W, a: 0xFFFF_FFFF, b: 0x0000_0001 },
             // 56 - REM_W !!!
-            TestParams {
-                op: REM_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0001,
-                flags: F_DIV + F_NA + F_NP + F_M32 + F_SEC,
-                range_ab: R_1NP,
-                range_cd: R_1NP,
-            },
+            TestParams { op: REM_W, a: 0xFFFF_FFFF, b: 0x0000_0001 },
             // 57 - DIV_W <======
-            TestParams {
-                op: DIV_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0002,
-                flags: F_DIV + F_NP + F_NR + F_M32,
-                range_ab: R_1PP,
-                range_cd: R_1NN,
-            },
+            TestParams { op: DIV_W, a: 0xFFFF_FFFF, b: 0x0000_0002 },
             // 58 - REM_W
-            TestParams {
-                op: REM_W,
-                a: 0xFFFF_FFFF,
-                b: 0x0000_0002,
-                flags: F_DIV + F_NP + F_NR + F_M32 + F_SEC + F_SEXT,
-                range_ab: R_1PP,
-                range_cd: R_1NN,
-            },
+            TestParams { op: REM_W, a: 0xFFFF_FFFF, b: 0x0000_0002 },
+            // 59 - DIV
+            TestParams { op: DIV, a: ALL_NON_MIN_64, b: ALL_NZ_64 },
+            // 60 - DIV_W
+            TestParams { op: DIV_W, a: ALL_NON_MIN_32, b: ALL_NZ_32 },
+            // 61 - REM
+            TestParams { op: REM, a: ALL_NON_MIN_64, b: ALL_NZ_64 },
+            // 62 - REM_W
+            TestParams { op: REM_W, a: ALL_NON_MIN_32, b: ALL_NZ_32 },
+            // 63 - DIV_W
+            TestParams { op: DIV_W, a: 0x0000_0001, b: 0xFFFF_FFFF },
+            // 64 - REM_W
+            TestParams { op: REM_W, a: 0, b: 0x8000_0000 },
         ];
 
         let mut tests_done: Vec<TestDone> = Vec::new();
@@ -674,21 +240,23 @@ impl ArithOperationTest {
                         index, test.op, _a, _b
                     );
                     let (emu_c, emu_flag) = Self::calculate_emulator_res(test.op, _a, _b);
-                    self.test_operation(
-                        test.op,
-                        _a,
-                        _b,
-                        emu_c,
-                        emu_flag,
-                        test.range_ab,
-                        test.range_cd,
-                        test.flags,
-                    );
+                    self.test_operation(test.op, _a, _b, emu_c, emu_flag);
                     offset += 1;
                     count += 1;
                 }
             }
             index += 1;
+        }
+        for index in 0..arith_table_data::ROWS {
+            if self.table_rows[index] == 0 {
+                println!(
+                    "\x1B[31mTable row {0} not tested op:0x{1:x}({1}) flags:{2}\x1B[0m",
+                    index,
+                    arith_table_data::ARITH_TABLE[index][0],
+                    ArithTableHelpers::flags_to_string(arith_table_data::ARITH_TABLE[index][1]),
+                );
+                errors += 1;
+            }
         }
         println!("TOTAL ERRORS: {}", self.fail);
         assert_eq!(count, TEST_COUNT, "Number of tests not matching");
@@ -716,24 +284,6 @@ impl ArithOperationTest {
         }
     }
 
-    fn decode_one_range(range_xy: u64) -> [u64; 4] {
-        if range_xy == 9 {
-            [0, 0, 0, 0]
-        } else if range_xy > 9 {
-            let x = (range_xy - 8) / 3;
-            let y = (range_xy - 8) % 3;
-            [0, 0, x, y]
-        } else {
-            let x = range_xy / 3;
-            let y = range_xy % 3;
-            [x, y, 0, 0]
-        }
-    }
-    fn decode_ranges(range_ab: u64, range_cd: u64) -> [u64; 8] {
-        let ab = Self::decode_one_range(range_ab);
-        let cd = Self::decode_one_range(range_cd);
-        [ab[0], ab[1], cd[0], cd[1], ab[2], ab[3], cd[2], cd[3]]
-    }
     fn dump_test(
         &mut self,
         index: u32,
@@ -749,19 +299,10 @@ impl ArithOperationTest {
     ) {
         println!("{:#?}", aop);
     }
-    fn test_operation(
-        &mut self,
-        op: u8,
-        a: u64,
-        b: u64,
-        c: u64,
-        flag: bool,
-        range_ab: u64,
-        range_cd: u64,
-        flags: u64,
-    ) {
+    fn test_operation(&mut self, op: u8, a: u64, b: u64, c: u64, flag: bool) {
         let mut aop = ArithOperation::new();
         aop.calculate(op, a, b);
+        println!("testing op:0x{:x} a:0x{:X} b:0x{:X} c:0x{:X} flag:{}", op, a, b, c, flag);
         let chunks = aop.calculate_chunks();
         for i in 0..8 {
             let carry_in = if i > 0 { aop.carry[i - 1] } else { 0 };
@@ -780,6 +321,7 @@ impl ArithOperationTest {
                 res);
             }
         }
+        println!("{:#?}", aop);
 
         const CHUNK_SIZE: u64 = 0x10000;
         let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
@@ -840,33 +382,35 @@ impl ArithOperationTest {
             bus_res_high, expected_res_high
         );
         // check all chunks and carries
-        let carry_min_value: i64 = -0xEFFFF;
-        let carry_max_value: i64 = 0xF0000;
+        // let carry_min_value: i64 = -0xEFFFF;
+        // let carry_max_value: i64 = 0xF0000;
+        // for i in 0..7 {
+        //     // assert!(aop.carry[i] >= carry_min_value);
+        //     // assert!(aop.carry[i] <= carry_max_value);
+        // }
         for i in 0..7 {
-            assert!(aop.carry[i] >= carry_min_value);
-            assert!(aop.carry[i] <= carry_max_value);
+            ArithRangeTableHelpers::get_row_carry_range_check(aop.carry[i]);
         }
 
-        let ranges = Self::decode_ranges(range_ab, range_cd);
-        Self::check_range(0, aop.a[0]);
-        Self::check_range(0, aop.b[0]);
-        Self::check_range(0, aop.c[0]);
-        Self::check_range(0, aop.d[0]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 26, aop.a[1]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 17, aop.b[3]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 9, aop.b[1]);
 
-        Self::check_range(ranges[4], aop.a[1]);
-        Self::check_range(ranges[5], aop.b[1]);
-        Self::check_range(ranges[6], aop.c[1]);
-        Self::check_range(ranges[7], aop.d[1]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd, aop.c[3]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 26, aop.c[1]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 17, aop.d[3]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 9, aop.d[1]);
 
-        Self::check_range(0, aop.a[2]);
-        Self::check_range(0, aop.b[2]);
-        Self::check_range(0, aop.c[2]);
-        Self::check_range(0, aop.d[2]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[0]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[0]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[0]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[0]);
 
-        Self::check_range(ranges[0], aop.a[3]);
-        Self::check_range(ranges[1], aop.b[3]);
-        Self::check_range(ranges[2], aop.c[3]);
-        Self::check_range(ranges[3], aop.d[3]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[2]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[2]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[2]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[2]);
 
         let _flags = aop.m32 as u32
             + 2 * aop.div as u32
@@ -879,6 +423,23 @@ impl ArithOperationTest {
             + 256 * aop.main_div as u32
             + 512 * aop.signed as u32;
         println!("TABLE {} {} {} {}", aop.op, _flags, aop.range_ab, aop.range_cd);
+        // (op: u8, na: bool, nb: bool, np: bool, nr: bool, sext: bool)
+        let row_1 = ArithTableHelpers::get_row_and_check(
+            aop.op,
+            aop.na,
+            aop.nb,
+            aop.np,
+            aop.nr,
+            aop.sext,
+            aop.m32,
+            aop.div,
+            aop.main_mul,
+            aop.main_div,
+            aop.signed,
+            aop.range_ab as u16,
+            aop.range_cd as u16,
+        );
+        self.table_rows[row_1] += 1;
     }
     fn print_chunks(label: &str, chunks: [u64; 4]) {
         println!(
@@ -887,27 +448,21 @@ impl ArithOperationTest {
         );
     }
     fn check_range(range_id: u64, value: u64) {
-        assert!(range_id != 0 || (value >= 0 && value <= 0xFFFF));
-        assert!(range_id != 1 || (value >= 0 && value <= 0x7FFF));
-        assert!(range_id != 2 || (value >= 0x8000 && value <= 0xFFFF));
-    }
-
-    fn flags_to_strings(mut flags: u64, flag_names: &[&str]) -> String {
-        let mut res = String::new();
-
-        for flag_name in flag_names {
-            if (flags & 1u64) != 0 {
-                if !res.is_empty() {
-                    res = res + ",";
-                }
-                res = res + *flag_name;
-            }
-            flags >>= 1;
-            if flags == 0 {
-                break;
-            };
-        }
-        res
+        assert!(
+            range_id != 0 || (value >= 0 && value <= 0xFFFF),
+            "0x{0:x}({0}) in [0x0000, 0xFFFF]",
+            value
+        );
+        assert!(
+            range_id != 1 || (value >= 0 && value <= 0x7FFF),
+            "0x{0:x}({0}) in [0x0000, 0x7FFF]",
+            value
+        );
+        assert!(
+            range_id != 2 || (value >= 0x8000 && value <= 0xFFFF),
+            "0x{0:x}({0}) in [0x8000, 0xFFFF]",
+            value
+        );
     }
 
     fn get_test_values(value: u64) -> [u64; 16] {
@@ -928,6 +483,24 @@ impl ArithOperationTest {
                 MAX_64 - 1,
                 MIN_N_64,
                 MIN_N_64 + 1,
+                MAX_64,
+            ],
+            ALL_NON_MIN_64 => [
+                0,
+                1,
+                2,
+                3,
+                MAX_P_32 - 1,
+                MAX_P_32,
+                MIN_N_32,
+                MAX_32 - 1,
+                MAX_32,
+                MAX_32 + 1,
+                MAX_P_64 - 1,
+                MAX_P_64,
+                MAX_64 - 1,
+                MIN_N_64 + 1,
+                MIN_N_64 + 2,
                 MAX_64,
             ],
             ALL_NZ_64 => [
@@ -1010,6 +583,24 @@ impl ArithOperationTest {
                 MAX_P_32 - 1,
                 MAX_P_32,
                 MIN_N_32,
+                MAX_32 - 1,
+                MAX_32,
+                VALUES_END,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            ALL_NON_MIN_32 => [
+                0,
+                1,
+                2,
+                3,
+                MAX_P_32 - 1,
+                MAX_P_32,
+                MIN_N_32 + 1,
                 MAX_32 - 1,
                 MAX_32,
                 VALUES_END,

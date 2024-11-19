@@ -88,6 +88,7 @@ impl<F: Field> ArithFullSM<F> {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in input.iter().enumerate() {
+            // println!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {

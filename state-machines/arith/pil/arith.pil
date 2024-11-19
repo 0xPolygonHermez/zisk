@@ -219,9 +219,8 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     bus_res1 === sext * 0xFFFFFFFF + (1 - m32) * bus_res1_64;
 
-    m32 * (1 - bus_a1) === 0;
-    m32 * (1 - bus_b1) === 0;
-
+    m32 * bus_a1 === 0;
+    m32 * bus_b1 === 0;
 
     col witness multiplicity;
 
