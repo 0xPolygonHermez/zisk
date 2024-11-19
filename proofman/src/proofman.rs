@@ -35,6 +35,7 @@ impl<F: Field + 'static> ProofMan<F> {
         witness_lib_path: PathBuf,
         rom_path: Option<PathBuf>,
         public_inputs_path: Option<PathBuf>,
+        cached_buffers_paths: Option<HashMap<String, PathBuf>>,
         proving_key_path: PathBuf,
         output_dir_path: PathBuf,
         options: ProofOptions,
@@ -47,6 +48,7 @@ impl<F: Field + 'static> ProofMan<F> {
             &witness_lib_path,
             &rom_path,
             &public_inputs_path,
+            &cached_buffers_paths,
             &proving_key_path,
             &output_dir_path,
             options.verify_constraints,
@@ -54,6 +56,7 @@ impl<F: Field + 'static> ProofMan<F> {
         let buffer_allocator: Arc<StarkBufferAllocator> = Arc::new(StarkBufferAllocator::new(proving_key_path.clone()));
         let ectx = ExecutionCtx::builder()
             .with_rom_path(rom_path.clone())
+            .with_cached_buffers_path(cached_buffers_paths.clone())
             .with_buffer_allocator(buffer_allocator)
             .with_verbose_mode(options.verbose_mode)
             .build();
@@ -710,6 +713,7 @@ impl<F: Field + 'static> ProofMan<F> {
         witness_lib_path: &PathBuf,
         rom_path: &Option<PathBuf>,
         public_inputs_path: &Option<PathBuf>,
+        cached_buffers_paths: &Option<HashMap<String, PathBuf>>,
         proving_key_path: &PathBuf,
         output_dir_path: &PathBuf,
         verify_constraints: bool,
@@ -730,6 +734,15 @@ impl<F: Field + 'static> ProofMan<F> {
         if let Some(publics_path) = public_inputs_path {
             if !publics_path.exists() {
                 return Err(format!("Public inputs file not found at path: {:?}", publics_path).into());
+            }
+        }
+
+        // Check each path in cached_buffers_paths exists
+        if let Some(cached_buffers) = cached_buffers_paths {
+            for (key, path) in cached_buffers {
+                if !path.exists() {
+                    return Err(format!("Cached buffer not found for key '{}' at path: {:?}", key, path).into());
+                }
             }
         }
 

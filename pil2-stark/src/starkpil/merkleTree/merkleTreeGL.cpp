@@ -84,6 +84,11 @@ void MerkleTreeGL::setSource(Goldilocks::Element *_source)
     source = _source;
 }
 
+void MerkleTreeGL::copyNodes(Goldilocks::Element *_nodes)
+{
+    std::memcpy(nodes, _nodes, numNodes * sizeof(Goldilocks::Element));
+}
+
 Goldilocks::Element MerkleTreeGL::getElement(uint64_t idx, uint64_t subIdx)
 {
     assert((idx > 0) || (idx < width));

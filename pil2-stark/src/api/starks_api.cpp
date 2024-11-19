@@ -214,6 +214,20 @@ int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airgroupValueName) 
     return -1;
 };
 
+void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t stage) {
+    auto starkInfo = *(StarkInfo *)pStarkInfo;
+    VecU64Result customCommitIds;
+    customCommitIds.nElements = starkInfo.customCommits[commit_id].stageWidths[stage];
+    customCommitIds.ids = new uint64_t[customCommitIds.nElements];
+    uint64_t c = 0;
+    for(uint64_t i = 0; i < starkInfo.customCommitsMap[commit_id].size(); ++i) {
+        if(starkInfo.customCommitsMap[commit_id][i].stage == stage) {
+            customCommitIds.ids[c++] = i;
+        }
+    }
+    return new VecU64Result(customCommitIds);
+}
+
 uint64_t get_stark_info_n(void *pStarkInfo) {
     uint64_t N = 1 << ((StarkInfo *)pStarkInfo)->starkStruct.nBits;
     return N;
@@ -365,10 +379,16 @@ void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParam
     starks->calculateImPolsExpressions(step, *(StepsParams *)stepsParams);
 }
 
-void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper) 
+void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper, char *bufferFile)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->extendAndMerkelizeCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper);
+    starks->extendAndMerkelizeCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper, string(bufferFile));
+}
+
+void load_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, char *bufferFile)
+{
+    Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
+    starks->loadCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, string(bufferFile));
 }
 
 void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper) {

@@ -43,6 +43,7 @@ public:
     void getRoot(Goldilocks::Element *root);
     void copySource(Goldilocks::Element *_source);
     void setSource(Goldilocks::Element *_source);
+    void copyNodes(Goldilocks::Element *_nodes);
 
     void getGroupProof(Goldilocks::Element *proof, uint64_t idx);
     

@@ -1,6 +1,6 @@
 use proofman_starks_lib_c::{
-    get_hint_field_c, get_hint_ids_by_name_c, mul_hint_fields_c, acc_hint_field_c, acc_mul_hint_fields_c,
-    print_by_name_c, print_expression_c, print_row_c, set_hint_field_c,
+    acc_hint_field_c, acc_mul_hint_fields_c, get_hint_field_c, get_hint_ids_by_name_c, mul_hint_fields_c,
+    print_by_name_c, print_expression_c, print_row_c, set_hint_field_c, VecU64Result,
 };
 
 use std::collections::HashMap;
@@ -41,12 +41,6 @@ pub struct HintFieldInfo<F: Field> {
 pub struct HintFieldInfoValues<F: Field> {
     pub n_values: u64,
     pub hint_field_values: *mut HintFieldInfo<F>,
-}
-
-#[repr(C)]
-pub struct HintIdsResult {
-    n_hints: u64,
-    pub hint_ids: *mut u64,
 }
 
 #[repr(C)]
@@ -655,9 +649,9 @@ impl HintCol {
 pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u64> {
     let raw_ptr = get_hint_ids_by_name_c(p_expressions_bin, name);
 
-    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
+    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
 
-    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.hint_ids, hint_ids_result.n_hints as usize) };
+    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.values, hint_ids_result.n_values as usize) };
 
     // Copy the contents of the slice into a Vec<u64>
 
@@ -748,9 +742,9 @@ pub fn acc_hint_field<F: Field>(
         hint_field_name,
     );
 
-    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
+    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
 
-    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.hint_ids, hint_ids_result.n_hints as usize) };
+    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.values, hint_ids_result.n_values as usize) };
 
     (slice[0], slice[1])
 }
@@ -801,9 +795,9 @@ pub fn acc_mul_hint_fields<F: Field>(
         (&options2).into(),
     );
 
-    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut HintIdsResult) };
+    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
 
-    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.hint_ids, hint_ids_result.n_hints as usize) };
+    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.values, hint_ids_result.n_values as usize) };
 
     (slice[0], slice[1])
 }

@@ -1,6 +1,7 @@
 // extern crate env_logger;
 use clap::Parser;
-use proofman_common::initialize_logger;
+use std::collections::HashMap;
+use proofman_common::{initialize_logger, parse_cached_buffers};
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -28,6 +29,10 @@ pub struct VerifyConstraintsCmd {
     #[clap(short = 'i', long)]
     pub public_inputs: Option<PathBuf>,
 
+    /// Cached buffer path
+    #[clap(short = 'c', long, value_parser = parse_cached_buffers)]
+    pub cached_buffers: Option<HashMap<String, PathBuf>>,
+
     /// Setup folder path
     #[clap(long)]
     pub proving_key: PathBuf,
@@ -52,6 +57,7 @@ impl VerifyConstraintsCmd {
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
+                self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
                 ProofOptions::new(true, self.verbose.into(), false, false),

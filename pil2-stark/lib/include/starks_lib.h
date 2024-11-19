@@ -37,6 +37,7 @@
     uint64_t get_n_custom_commits(void *pStarkInfo);
     int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName);
     int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airValueName);
+    void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t stage);
     void stark_info_free(void *pStarkInfo);
 
     // Prover Helpers
@@ -80,7 +81,8 @@
     void calculate_quotient_polynomial(void *pStarks, void* stepsParams);
     void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParams);
 
-    void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
+    void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper, char *treeFile);
+    void load_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, char *treeFile);
 
     void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *buffer, void *pProof, void *pBuffHelper);
     

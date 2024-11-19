@@ -40,7 +40,7 @@ public:
         return acc;
     }
 
-    uint64_t getConstTreeSizeBytesBN128B(StarkInfo& starkInfo)
+    uint64_t getConstTreeSizeBytesBN128(StarkInfo& starkInfo)
     {   
         uint64_t NExtended = 1 << starkInfo.starkStruct.nBitsExt;
         uint64_t acc = getNumNodes(starkInfo);

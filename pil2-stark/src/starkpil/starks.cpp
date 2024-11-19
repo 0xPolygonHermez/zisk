@@ -4,7 +4,7 @@
 #include "exit_process.hpp"
 
 template <typename ElementType>
-void Starks<ElementType>::extendAndMerkelizeCustomCommit(uint64_t commitId, uint64_t step, Goldilocks::Element *buffer, FRIProof<ElementType> &proof, Goldilocks::Element *pBuffHelper)
+void Starks<ElementType>::extendAndMerkelizeCustomCommit(uint64_t commitId, uint64_t step, Goldilocks::Element *buffer, FRIProof<ElementType> &proof, Goldilocks::Element *pBuffHelper, string bufferFile)
 {   
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
     uint64_t NExtended = 1 << setupCtx.starkInfo.starkStruct.nBitsExt;
@@ -25,6 +25,37 @@ void Starks<ElementType>::extendAndMerkelizeCustomCommit(uint64_t commitId, uint
     treesGL[pos]->setSource(pBuffExtended);
     treesGL[pos]->merkelize();
     treesGL[pos]->getRoot(&proof.proof.roots[pos - 1][0]);
+
+    if(bufferFile != "") {
+        ofstream fw(bufferFile.c_str(), std::fstream::out | std::fstream::binary);
+        writeFileParallel(bufferFile, pBuff, N * nCols * sizeof(Goldilocks::Element), 0);
+        writeFileParallel(bufferFile, pBuffExtended, NExtended * nCols * sizeof(Goldilocks::Element), N * nCols * sizeof(Goldilocks::Element));
+        writeFileParallel(bufferFile, treesGL[pos]->nodes, treesGL[pos]->numNodes * sizeof(Goldilocks::Element), (NExtended + N) * nCols * sizeof(Goldilocks::Element));
+        fw.close();
+    }
+}
+
+template <typename ElementType>
+void Starks<ElementType>::loadCustomCommit(uint64_t commitId, uint64_t step, Goldilocks::Element *buffer, FRIProof<ElementType> &proof, string bufferFile)
+{   
+    uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
+    uint64_t NExtended = 1 << setupCtx.starkInfo.starkStruct.nBitsExt;
+
+    std::string section = setupCtx.starkInfo.customCommits[commitId].name + to_string(step);
+    uint64_t nCols = setupCtx.starkInfo.mapSectionsN[section];
+    Goldilocks::Element *pBuff = &buffer[setupCtx.starkInfo.mapOffsets[make_pair(section, false)]];
+    Goldilocks::Element *pBuffExtended = &buffer[setupCtx.starkInfo.mapOffsets[make_pair(section, true)]];
+
+    uint64_t pos = setupCtx.starkInfo.nStages + 2 + commitId;
+
+    Goldilocks::Element* tmpBuff = (Goldilocks::Element *)loadFileParallel(bufferFile, ((N + NExtended) * nCols + treesGL[pos]->getNumNodes(NExtended)) * sizeof(Goldilocks::Element));
+    memcpy(pBuff, &tmpBuff[0], N * nCols * sizeof(Goldilocks::Element));
+    memcpy(pBuffExtended, &tmpBuff[N * nCols], NExtended * nCols * sizeof(Goldilocks::Element));
+
+    treesGL[pos]->setSource(pBuffExtended);
+    treesGL[pos]->copyNodes(&tmpBuff[(N + NExtended) * nCols]);
+    treesGL[pos]->getRoot(&proof.proof.roots[pos - 1][0]);
+
 }
 
 template <typename ElementType>

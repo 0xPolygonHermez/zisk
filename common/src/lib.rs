@@ -10,6 +10,7 @@ mod prover;
 mod extended_field;
 mod setup;
 mod setup_ctx;
+mod custom_commits;
 pub mod trace;
 pub mod global_info;
 
@@ -27,6 +28,7 @@ pub use extended_field::*;
 pub use global_info::*;
 pub use setup::*;
 pub use setup_ctx::*;
+pub use custom_commits::*;
 
 pub fn initialize_logger(verbose_mode: VerboseMode) {
     env_logger::builder()

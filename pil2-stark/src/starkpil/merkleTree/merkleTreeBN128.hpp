@@ -45,6 +45,7 @@ public:
     void getRoot(RawFr::Element *root);
     void copySource(Goldilocks::Element *source);
     void setSource(Goldilocks::Element *source);
+    void copyNodes(Goldilocks::Element *_nodes) {}; // This is wrong. Cannot be used
 
     void getGroupProof(RawFr::Element *proof, uint64_t idx);
     

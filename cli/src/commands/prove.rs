@@ -1,7 +1,8 @@
 // extern crate env_logger;
 use clap::Parser;
-use proofman_common::initialize_logger;
+use proofman_common::{initialize_logger, parse_cached_buffers};
 use std::path::PathBuf;
+use std::collections::HashMap;
 use colored::Colorize;
 use crate::commands::field::Field;
 
@@ -29,6 +30,10 @@ pub struct ProveCmd {
     /// Public inputs path
     #[clap(short = 'i', long)]
     pub public_inputs: Option<PathBuf>,
+
+    /// Cached buffer path
+    #[clap(short = 'c', long, value_parser = parse_cached_buffers)]
+    pub cached_buffers: Option<HashMap<String, PathBuf>>,
 
     /// Setup folder path
     #[clap(long)]
@@ -69,6 +74,7 @@ impl ProveCmd {
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
+                self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
                 ProofOptions::new(false, self.verbose.into(), self.aggregation, self.debug),

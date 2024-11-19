@@ -117,16 +117,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             air_instance.set_commit_calculated(i);
         }
 
-        for commit_id in 0..self.stark_info.custom_commits.len() {
-            if !air_instance.custom_commits[commit_id].is_empty() {
-                for idx in 0..self.stark_info.custom_commits_map[commit_id].as_ref().unwrap().len() {
-                    if self.stark_info.custom_commits_map[commit_id].as_ref().unwrap()[idx].stage <= 1 {
-                        air_instance.set_custom_commit_calculated(commit_id, idx);
-                    }
-                }
-            }
-        }
-
         self.initialized = true;
     }
 
@@ -346,14 +336,26 @@ impl<F: Field> Prover<F> for StarkProver<F> {
                     .any(|custom_commit| custom_commit.stage == stage_id as u64);
 
                 if custom_commits_stage {
-                    extend_and_merkelize_custom_commit_c(
-                        p_stark,
-                        commit_id as u64,
-                        stage_id as u64,
-                        air_instance.custom_commits[commit_id].as_ptr() as *mut c_void,
-                        p_proof,
-                        buff_helper,
-                    );
+                    if air_instance.custom_commits[commit_id].cached_file.to_str() == Some("") {
+                        extend_and_merkelize_custom_commit_c(
+                            p_stark,
+                            commit_id as u64,
+                            stage_id as u64,
+                            air_instance.custom_commits[commit_id].buffer.as_ptr() as *mut c_void,
+                            p_proof,
+                            buff_helper,
+                            "",
+                        );
+                    } else {
+                        load_custom_commit_c(
+                            p_stark,
+                            commit_id as u64,
+                            stage_id as u64,
+                            air_instance.custom_commits[commit_id].buffer.as_ptr() as *mut c_void,
+                            p_proof,
+                            air_instance.custom_commits[commit_id].cached_file.to_str().unwrap(),
+                        );
+                    }
                 }
 
                 let mut value = vec![Goldilocks::zero(); self.n_field_elements];

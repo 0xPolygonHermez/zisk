@@ -4,6 +4,12 @@
 
 use ::std::os::raw::c_void;
 
+#[repr(C)]
+pub struct VecU64Result {
+    pub n_values: u64,
+    pub values: *mut u64,
+}
+
 #[cfg(feature = "no_lib_link")]
 use log::trace;
 
@@ -173,6 +179,21 @@ pub fn get_airgroupval_id_by_name_c(p_stark_info: *mut c_void, name: &str) -> i6
 pub fn get_airval_id_by_name_c(p_stark_info: *mut c_void, name: &str) -> i64 {
     let airval_name = CString::new(name).unwrap();
     unsafe { get_airvalue_id_by_name(p_stark_info, airval_name.as_ptr() as *mut std::os::raw::c_char) }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn get_custom_commit_map_ids_c(p_stark_info: *mut c_void, commit_id: u64, stage: u64) -> Vec<u64> {
+    unsafe {
+        let raw_ptr = get_custom_commit_map_ids(p_stark_info, commit_id, stage);
+
+        let ids_result = Box::from_raw(raw_ptr as *mut VecU64Result);
+
+        let slice = std::slice::from_raw_parts(ids_result.values, ids_result.n_values as usize);
+
+        // Copy the contents of the slice into a Vec<u64>
+
+        slice.to_vec()
+    }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -470,9 +491,41 @@ pub fn extend_and_merkelize_custom_commit_c(
     buffer: *mut c_void,
     p_proof: *mut c_void,
     p_buff_helper: *mut c_void,
+    buffer_file: &str,
 ) {
+    let buffer_file_name = CString::new(buffer_file).unwrap();
     unsafe {
-        extend_and_merkelize_custom_commit(p_starks, commit_id, step, buffer, p_proof, p_buff_helper);
+        extend_and_merkelize_custom_commit(
+            p_starks,
+            commit_id,
+            step,
+            buffer,
+            p_proof,
+            p_buff_helper,
+            buffer_file_name.as_ptr() as *mut std::os::raw::c_char,
+        );
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn load_custom_commit_c(
+    p_starks: *mut c_void,
+    commit_id: u64,
+    step: u64,
+    buffer: *mut c_void,
+    p_proof: *mut c_void,
+    buffer_file: &str,
+) {
+    let buffer_file_name = CString::new(buffer_file).unwrap();
+    unsafe {
+        load_custom_commit(
+            p_starks,
+            commit_id,
+            step,
+            buffer,
+            p_proof,
+            buffer_file_name.as_ptr() as *mut std::os::raw::c_char,
+        );
     }
 }
 
@@ -1018,6 +1071,16 @@ pub fn get_airval_id_by_name_c(_p_stark_info: *mut c_void, _name: &str) -> i64 {
 }
 
 #[cfg(feature = "no_lib_link")]
+pub fn get_custom_commit_map_ids_c(_p_stark_info: *mut c_void, _commit_id: u64, _stage: u64) -> Vec<u64> {
+    trace!(
+        "{}: ··· {}",
+        "ffi     ",
+        "get_custom_commit_map_ids: This is a mock call because there is no linked library"
+    );
+    Vec::new()
+}
+
+#[cfg(feature = "no_lib_link")]
 pub fn get_map_offsets_c(_p_stark_info: *mut c_void, _stage: &str, _flag: bool) -> u64 {
     trace!("{}: ··· {}", "ffi     ", "get_map_offsets: This is a mock call because there is no linked library");
     0
@@ -1154,7 +1217,7 @@ pub fn set_hint_field_c(
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn starks_new_c(_p_config: *mut c_void, _p_const_tree: *mut c_void) -> *mut c_void {
+pub fn starks_new_c(_p_setup: *mut c_void, _p_const_tree: *mut c_void) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "starks_new: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
@@ -1212,12 +1275,25 @@ pub fn extend_and_merkelize_custom_commit_c(
     _buffer: *mut c_void,
     _p_proof: *mut c_void,
     _p_buff_helper: *mut c_void,
+    _tree_file: &str,
 ) {
     trace!(
         "{}: ··· {}",
         "ffi     ",
         "extend_and_merkelize_custom_commit: This is a mock call because there is no linked library"
     );
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn load_custom_commit_c(
+    _p_starks: *mut c_void,
+    _commit_id: u64,
+    _step: u64,
+    _buffer: *mut c_void,
+    _p_proof: *mut c_void,
+    _tree_file: &str,
+) {
+    trace!("{}: ··· {}", "ffi     ", "load_custom_commit: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]
