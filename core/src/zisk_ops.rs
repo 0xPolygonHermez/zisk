@@ -770,9 +770,9 @@ pub fn opc_min(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
     if (a as u32) < (b as u32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -783,9 +783,9 @@ pub fn opc_minu_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
     if (a as i32) < (b as i32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -823,9 +823,9 @@ pub fn opc_max(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
     if (a as u32) > (b as u32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -836,9 +836,9 @@ pub fn opc_maxu_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
     if (a as i32) > (b as i32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]

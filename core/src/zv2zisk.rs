@@ -1357,7 +1357,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 /// Add the entry/exit jump program section
 pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
-    let trap_handler: u64 = rom.next_init_inst_addr + 0x14;
+    let trap_handler: u64 = rom.next_init_inst_addr + 0x38;
 
     // :0000
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
