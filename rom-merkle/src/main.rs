@@ -5,8 +5,7 @@ use proofman_common::{GlobalInfo, ProofType, SetupCtx};
 use proofman_starks_lib_c::{extend_and_merkelize_custom_commit_c, fri_proof_new_c, starks_new_c};
 use sm_rom::RomSM;
 use stark::StarkBufferAllocator;
-use std::ffi::c_void;
-use std::{path::Path, sync::Arc};
+use std::{ffi::c_void, path::Path, sync::Arc};
 use sysinfo::System;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
