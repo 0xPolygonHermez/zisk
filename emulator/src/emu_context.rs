@@ -71,7 +71,7 @@ impl EmuContext {
 
 impl Default for EmuContext {
     fn default() -> Self {
-        let ctx = EmuContext {
+        EmuContext {
             inst_ctx: InstContext {
                 mem: Mem::new(),
                 a: 0,
@@ -93,7 +93,6 @@ impl Default for EmuContext {
             last_callback_step: 0,
             do_stats: false,
             stats: Stats::default(),
-        };
-        ctx
+        }
     }
 }
