@@ -122,7 +122,6 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
 
     lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a]);
 
-    expr _m_op = (1-mode32) * (m_op - EXT_32_OP) + EXT_32_OP;
     // More auxiliary columns
     col witness m_op_or_ext;
     col witness free_in_a_or_c[half_bytes];

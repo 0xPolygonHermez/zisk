@@ -16,6 +16,9 @@ use zisk_pil::*;
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
+const BYTES: usize = 8;
+const HALF_BYTES: usize = BYTES / 2;
+
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
@@ -109,32 +112,32 @@ impl<F: Field> BinaryBasicSM<F> {
 
     fn opcode_is_32_bits(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Add |
-            ZiskOp::Sub |
-            ZiskOp::Ltu |
-            ZiskOp::Lt |
-            ZiskOp::Leu |
-            ZiskOp::Le |
-            ZiskOp::Eq |
-            ZiskOp::Minu |
-            ZiskOp::Min |
-            ZiskOp::Maxu |
-            ZiskOp::Max |
-            ZiskOp::And |
-            ZiskOp::Or |
-            ZiskOp::Xor => false,
+            ZiskOp::Add
+            | ZiskOp::Sub
+            | ZiskOp::Ltu
+            | ZiskOp::Lt
+            | ZiskOp::Leu
+            | ZiskOp::Le
+            | ZiskOp::Eq
+            | ZiskOp::Minu
+            | ZiskOp::Min
+            | ZiskOp::Maxu
+            | ZiskOp::Max
+            | ZiskOp::And
+            | ZiskOp::Or
+            | ZiskOp::Xor => false,
 
-            ZiskOp::AddW |
-            ZiskOp::SubW |
-            ZiskOp::LtuW |
-            ZiskOp::LtW |
-            ZiskOp::LeuW |
-            ZiskOp::LeW |
-            ZiskOp::EqW |
-            ZiskOp::MinuW |
-            ZiskOp::MinW |
-            ZiskOp::MaxuW |
-            ZiskOp::MaxW => true,
+            ZiskOp::AddW
+            | ZiskOp::SubW
+            | ZiskOp::LtuW
+            | ZiskOp::LtW
+            | ZiskOp::LeuW
+            | ZiskOp::LeW
+            | ZiskOp::EqW
+            | ZiskOp::MinuW
+            | ZiskOp::MinW
+            | ZiskOp::MaxuW
+            | ZiskOp::MaxW => true,
 
             _ => panic!("Binary basic opcode_is_32_bits() got invalid opcode={:?}", opcode),
         }
@@ -158,6 +161,7 @@ impl<F: Field> BinaryBasicSM<F> {
         let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
         let mode32 = Self::opcode_is_32_bits(opcode);
         row.mode32 = F::from_bool(mode32);
+        let mode64 = F::from_bool(!mode32);
 
         // Set c_filtered
         let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
@@ -312,9 +316,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -364,9 +368,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -474,9 +478,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
@@ -541,9 +545,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
@@ -667,6 +671,33 @@ impl<F: Field> BinaryBasicSM<F> {
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", operation.opcode),
         }
 
+        // Set cout
+        let cout32 = row.carry[HALF_BYTES - 1];
+        let cout64 = row.carry[BYTES - 1];
+        row.cout = mode64 * (cout64 - cout32) + cout32;
+
+        // Set result_is_a
+        row.result_is_a = row.op_is_min_max * row.cout;
+
+        // Set use_last_carry_mode32 and use_last_carry_mode64
+        row.use_last_carry_mode32 = F::from_bool(mode32) * row.use_last_carry;
+        row.use_last_carry_mode64 = mode64 * row.use_last_carry;
+
+        // Set micro opcode
+        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
+
+        // Set m_op_or_ext
+        let ext_32_op = F::from_canonical_u8(BinaryBasicTableOp::Ext32 as u8);
+        row.m_op_or_ext = mode64 * (row.m_op - ext_32_op) + ext_32_op;
+
+        // Set free_in_a_or_c and free_in_b_or_zero
+        for i in 0..HALF_BYTES {
+            row.free_in_a_or_c[i] = mode64
+                * (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1])
+                + row.free_in_c[HALF_BYTES - 1];
+            row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
+        }
+
         if row.use_last_carry == F::one() {
             // Set first and last elements
             row.free_in_c[7] = row.free_in_c[0];
@@ -675,9 +706,6 @@ impl<F: Field> BinaryBasicSM<F> {
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::one();
-
-        // Set micro opcode
-        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
 
         // Return
         row
@@ -732,6 +760,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_start_trace!(BINARY_PADDING);
         let padding_row = BinaryRow::<F> {
             m_op: F::from_canonical_u8(0x20),
+            m_op_or_ext: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
             main_step: F::zero(), /* TODO: remove, since main_step is just for
                                    * debugging */
