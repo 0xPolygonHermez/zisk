@@ -1,11 +1,10 @@
 use clap::{Arg, Command};
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
-use proofman_common::{GlobalInfo, ProofType, SetupCtx};
-use proofman_starks_lib_c::{extend_and_merkelize_custom_commit_c, fri_proof_new_c, starks_new_c};
+use proofman_common::{get_custom_commit_trace, GlobalInfo, ProofType, SetupCtx};
 use sm_rom::RomSM;
 use stark::StarkBufferAllocator;
-use std::{ffi::c_void, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 use sysinfo::System;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -88,24 +87,13 @@ fn main() {
 
     let setup = sctx.get_setup(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]);
 
-    let p_stark = starks_new_c((&setup.p_setup).into(), std::ptr::null_mut());
-    let p_proof = fri_proof_new_c((&setup.p_setup).into());
-
     match RomSM::<Goldilocks>::compute_trace_rom_buffer(
         rom_path.to_path_buf(),
         buffer_allocator,
         &sctx,
     ) {
         Ok((commit_id, buffer_rom)) => {
-            extend_and_merkelize_custom_commit_c(
-                p_stark,
-                commit_id,
-                0,
-                buffer_rom.as_ptr() as *mut c_void,
-                p_proof,
-                std::ptr::null_mut(),
-                rom_buffer_str.as_str(),
-            );
+            get_custom_commit_trace(commit_id, 0, setup, buffer_rom, rom_buffer_str.as_str());
         }
         Err(e) => {
             log::error!("Error: {}", e);
