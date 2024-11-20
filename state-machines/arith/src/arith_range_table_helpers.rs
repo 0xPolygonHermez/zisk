@@ -45,16 +45,16 @@ impl ArithRangeTableHelpers {
         assert!(range_index < 43);
         assert!(value >= if range_type == NEG { 0x8000 } else { 0 });
         assert!(
-            value <=
-                match range_type {
+            value
+                <= match range_type {
                     FULL => 0xFFFF,
                     POS => 0x7FFF,
                     NEG => 0xFFFF,
                     _ => panic!("Invalid range type"),
                 }
         );
-        OFFSETS[range_index as usize] * 0x8000 +
-            if range_type == NEG { value - 0x8000 } else { value } as usize
+        OFFSETS[range_index as usize] * 0x8000
+            + if range_type == NEG { value - 0x8000 } else { value } as usize
     }
     pub fn get_row_carry_range_check(value: i64) -> usize {
         assert!(value >= -0xEFFFF);
@@ -158,8 +158,8 @@ impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if !self.iter_hash {
-            while self.iter_row < ROWS as u32 &&
-                self.inputs.multiplicity[self.iter_row as usize] == 0
+            while self.iter_row < ROWS as u32
+                && self.inputs.multiplicity[self.iter_row as usize] == 0
             {
                 self.iter_row += 1;
             }
@@ -192,6 +192,7 @@ impl<'a> IntoIterator for &'a ArithRangeTableInputs {
 }
 
 #[cfg(feature = "generate_code_arith_range_table")]
+#[allow(dead_code)]
 fn generate_table() {
     let pattern = "FFF+++---FFFFFFFFF+-F+-F+-FFFFFFFFFFF+++---";
     // let mut ranges = [0u8; 43];
@@ -223,7 +224,7 @@ fn generate_table() {
             }
             if range_loop == range_id {
                 offsets[index] = offset;
-                offset = offset + if range_loop == FULL { 2 } else { 1 };
+                offset += if range_loop == FULL { 2 } else { 1 };
             }
             index += 1;
         }
