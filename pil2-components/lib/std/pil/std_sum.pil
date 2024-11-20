@@ -182,12 +182,8 @@ private function find_repeated_proves() {
 /**
  * It defines the constraints for the grandsum based on the logUp protocol https://eprint.iacr.org/2022/1530.pdf
  */
-private function piop_gsum_air(const int nTerms = 2) {
+private function piop_gsum_air(const int blowupFactor = 2) {
     use air.std.gsum;
-
-    const int nIm = gsum_nargs/nTerms;
-
-    col witness stage(2) im[nIm];
 
     col fixed __L1 = [1,0...]; // TODO: Fix
     col witness stage(2) gsum;
@@ -200,62 +196,107 @@ private function piop_gsum_air(const int nTerms = 2) {
     Note: The ti and fi are not necessarily related to each other
     */
 
-    expr sumIms = 0;
-    for (int i = 0; i < nIm; i++) {
-
-        //              s[3*i]            s[3*i+1]            s[3*i+2]
-        // im[i] = --------------- + ----------------- + -----------------
-        //              e[3*i]            e[3*i+1]            e[3*i+2]
-        // where:
-        // s[x] = mul[x]  if the x-th term is a prove,
-        // s[x] = -sel[x] if the x-th term is an assume,
-        // e[x] = (t[x] + ɣ) if the x-th term is a prove,
-        // e[x] = (f[x] + ɣ) if the x-th term is an assume,
-
-        expr prods = 1;
-        expr sums = 0;
-        for (int j = 0; j < nTerms; j++) {
-            prods *= (gsum_e[nTerms * i + j] + std_gamma);
-
-            expr _partial = gsum_s[nTerms * i + j];
-            for (int k = 0; k < nTerms; k++) {
-                if (k == j) continue;
-                _partial *= (gsum_e[nTerms * i + k] + std_gamma);
-            }
-            sums += _partial;
+    /*
+      Transform the rational constraint to a polynomial one by substituting
+      all the rational terms by terms of degree 1:
+            gsum === 'gsum * (1 - L1) + ∑ᵢ imi 
+    */
+    int low_degree_term[gsum_nargs];
+    int high_degree_term[gsum_nargs];
+    int low_degree_len = 0;
+    int high_degree_len = 0;
+    for (int i = 0; i < gsum_nargs; i++) {
+        if (degree(gsum_s[i]) > 2 || degree(gsum_e[i]) > 1) { // Discriminator conditions
+            high_degree_term[high_degree_len] = i;
+            high_degree_len++;
+        } else {
+            low_degree_term[low_degree_len] = i;
+            low_degree_len++;
         }
-        @im_col{reference: im[i], numerator: sums, denominator: prods};
-
-        // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
-        //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
-        im[i] * prods === sums;
-
-        sumIms += im[i];
     }
 
-    if (gsum_nargs % nTerms != 0) {
-        col witness stage(2) im_extra;
+    expr sumIms = 0;
+    if (low_degree_len > 0) {
+        // Group terms in clusters so that the degree of the constraint
+        // is lower than the maximum allowed
+        const int nIm = low_degree_len/blowupFactor;
 
-        // This col is defined with a number of terms between 1 and nTerms-1
-        const int nRemTerms = gsum_nargs % nTerms;
+        col witness stage(2) im[nIm];
 
-        expr prods = 1;
-        expr sums = 0;
-        for (int j = 0; j < nRemTerms; j++) {
-            prods *= (gsum_e[nTerms * nIm + j] + std_gamma);
+        for (int i = 0; i < nIm; i++) {
 
-            expr _partial = gsum_s[nTerms * nIm + j];
-            for (int k = 0; k < nRemTerms; k++) {
-                if (k == j) continue;
-                _partial *= (gsum_e[nTerms * nIm + k] + std_gamma);
+            //              s[3*i]            s[3*i+1]            s[3*i+2]
+            // im[i] = --------------- + ----------------- + -----------------
+            //              e[3*i]            e[3*i+1]            e[3*i+2]
+            // where:
+            // s[x] = mul[x]  if the x-th term is a prove,
+            // s[x] = -sel[x] if the x-th term is an assume,
+            // e[x] = (t[x] + ɣ) if the x-th term is a prove,
+            // e[x] = (f[x] + ɣ) if the x-th term is an assume,
+
+            expr prods = 1;
+            expr sums = 0;
+            for (int j = 0; j < blowupFactor; j++) {
+                prods *= (gsum_e[low_degree_term[blowupFactor * i + j]] + std_gamma);
+
+                expr _partial = gsum_s[low_degree_term[blowupFactor * i + j]];
+                for (int k = 0; k < blowupFactor; k++) {
+                    if (k == j) continue;
+                    _partial *= (gsum_e[low_degree_term[blowupFactor * i + k]] + std_gamma);
+                }
+                sums += _partial;
             }
-            sums += _partial;
+            @im_col{reference: im[i], numerator: sums, denominator: prods};
+
+            // im[i] * t[3*i] * t[3*i+1] * t[3*i+2] ===
+            //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
+            im[i] * prods === sums;
+
+            sumIms += im[i];
         }
-        @im_col{reference: im_extra, numerator: sums, denominator: prods};
 
-        im_extra * prods === sums;
+        const int nRemTerms = low_degree_len % blowupFactor;
+        // If there are remaining terms, add an extra cluster
+        if (nRemTerms != 0) {
+            col witness stage(2) im_extra;
 
-        sumIms += im_extra;
+            expr prods = 1;
+            expr sums = 0;
+            for (int j = 0; j < nRemTerms; j++) {
+                prods *= (gsum_e[low_degree_term[blowupFactor * nIm + j]] + std_gamma);
+
+                expr _partial = gsum_s[low_degree_term[blowupFactor * nIm + j]];
+                for (int k = 0; k < nRemTerms; k++) {
+                    if (k == j) continue;
+                    _partial *= (gsum_e[low_degree_term[blowupFactor * nIm + k]] + std_gamma);
+                }
+                sums += _partial;
+            }
+            @im_col{reference: im_extra, numerator: sums, denominator: prods};
+
+            im_extra * prods === sums;
+
+            sumIms += im_extra;
+        }
+    }
+
+    // Create a single intermediate for all the high-degree terms
+    if (high_degree_len > 0) {
+        /*
+                      s[i]   
+           im[i] = ----------
+                    e[i] + ɣ  
+        */
+        col witness stage(2) im_high_degree[high_degree_len];
+
+        for (int i = 0; i < high_degree_len; i++) {
+            const int index = high_degree_term[i];
+
+            @im_col{reference: im_high_degree[i], numerator: gsum_s[index], denominator: gsum_e[index] + std_gamma};
+
+            im_high_degree[i] * (gsum_e[index] + std_gamma) === gsum_s[index];
+            sumIms += im_high_degree[i];
+        }
     }
 
     @gsum_col{reference: gsum, expression: sumIms, result: airgroup.std.gsum.gsum_result};
