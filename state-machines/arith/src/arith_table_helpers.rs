@@ -6,6 +6,7 @@ use crate::ARITH_TABLE;
 use crate::{ARITH_TABLE_ROWS, FIRST_OP, ROWS};
 
 impl ArithTableHelpers {
+    #[allow(clippy::too_many_arguments)]
     pub fn direct_get_row(
         op: u8,
         na: bool,
@@ -170,6 +171,7 @@ impl ArithTableInputs {
     pub fn new() -> Self {
         ArithTableInputs { multiplicity: [0; ROWS] }
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn add_use(
         &mut self,
         op: u8,

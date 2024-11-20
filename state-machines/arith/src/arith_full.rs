@@ -177,18 +177,14 @@ impl<F: Field> ArithFullSM<F> {
             };
             t.bus_res1 = F::from_canonical_u64(if aop.sext {
                 0xFFFFFFFF
+            } else if aop.m32 {
+                0
+            } else if aop.main_mul {
+                aop.c[2] + (aop.c[3] << 16)
+            } else if aop.main_div {
+                aop.a[2] + (aop.a[3] << 16)
             } else {
-                if aop.m32 {
-                    0
-                } else {
-                    if aop.main_mul {
-                        aop.c[2] + (aop.c[3] << 16)
-                    } else if aop.main_div {
-                        aop.a[2] + (aop.a[3] << 16)
-                    } else {
-                        aop.d[2] + (aop.d[3] << 16)
-                    }
-                }
+                aop.d[2] + (aop.d[3] << 16)
             });
             traces[irow] = t;
         }
