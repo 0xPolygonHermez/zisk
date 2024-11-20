@@ -161,8 +161,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // Operation.assume => how organize software
     col witness __debug_operation_bus_enabled;
+    col witness __debug_step_bus_enabled;
 
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
+    lookup_assumes(operation_bus_id, [STEP * __debug_step_bus_enabled, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
 
     const expr a_src_c;
     const expr b_src_c;

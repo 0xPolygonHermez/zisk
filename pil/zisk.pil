@@ -9,8 +9,16 @@ require "binary/pil/binary_extension_table.pil"
 // require "mem/pil/mem.pil"
 
 const int OPERATION_BUS_ID = 5000;
+
+const int PUBLIC_INPUTS_64_BITS = 64;
+public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
+const int PUBLIC_OP = 0x30;
+
 airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
+        direct_update(OPERATION_BUS_ID, cols: [0, PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0], bus_type: PIOP_BUS_SUM, proves: 1);
+    }
     Rom(N: 2**20);
     // Mem(N: 2**21, RC: 2);
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
