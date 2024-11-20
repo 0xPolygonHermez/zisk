@@ -18,7 +18,9 @@ use std::{
     sync::Arc,
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
-use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {
@@ -38,7 +40,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub binary_sm: Arc<BinarySM<F>>,
 
     /// Arithmetic State Machine
-    pub arith_sm: Arc<ArithSM>,
+    pub arith_sm: Arc<ArithSM<F>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -125,12 +127,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // machine. We aim to track the starting point of execution for every N instructions
         // across different operation types. Currently, we are only collecting data for
         // Binary and BinaryE operations.
+        let air_arith = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]);
         let air_binary = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_e = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
         let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
         op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
+        op_sizes[ZiskOperationType::Arith as usize] = air_arith.num_rows() as u64;
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
@@ -175,6 +179,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                ZiskOperationType::Arith => (ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]),
                 ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
                 ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
                 _ => panic!("Invalid operation type"),
@@ -206,6 +211,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ZiskOperationType::None => {
                 self.main_sm.prove_main(&self.zisk_rom, &emu_traces, iectx, &pctx);
             }
+            ZiskOperationType::Arith => {
+                self.main_sm.prove_arith(&self.zisk_rom, &emu_traces, iectx, &pctx);
+            }
             ZiskOperationType::Binary => {
                 self.main_sm.prove_binary(&self.zisk_rom, &emu_traces, iectx, &pctx);
             }
@@ -230,6 +238,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         // self.mem_sm.unregister_predecessor(scope);
         self.binary_sm.unregister_predecessor();
-        // self.arith_sm.register_predecessor(scope);
+        self.arith_sm.unregister_predecessor();
     }
 }

@@ -5,3 +5,4 @@
 /proofs
 *.pilout
 /tmp
+*.log

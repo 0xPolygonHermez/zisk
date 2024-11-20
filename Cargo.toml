@@ -32,7 +32,7 @@ proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", 
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.10" }
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.10" }
 stark = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.10" }
-#Local development
+# Local development
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
 # proofman-util = { path = "../pil2-proofman/util" }

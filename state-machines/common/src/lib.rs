@@ -1,9 +1,11 @@
+mod field;
 mod operations;
 mod provable;
 mod session;
 mod temp;
 mod worker;
 
+pub use field::*;
 pub use operations::*;
 use proofman_common::{ExecutionCtx, SetupCtx};
 use proofman_util::create_buffer_fast;
