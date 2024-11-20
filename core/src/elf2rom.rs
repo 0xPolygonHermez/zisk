@@ -74,6 +74,10 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
     let ro_data_len = rom.ro_data.len();
     for i in 0..ro_data_len {
         let addr = rom.ro_data[i].from;
+        if addr == 0 {
+            // TODO: Check with Jordi
+            continue;
+        }
         let mut data = Vec::new();
         data.extend(rom.ro_data[i].data.as_slice());
         add_zisk_init_data(&mut rom, addr, &data);

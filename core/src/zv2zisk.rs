@@ -1276,7 +1276,12 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
 /// Add initial data to ZisK rom
 pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
-    //print!("add_zisk_init_data() addr={:x} len={}\n", addr, data.len());
+    /*let mut s = String::new();
+    for i in 0..min(50, data.len()) {
+        s += &format!("{:02x}", data[i]);
+    }
+    print!("add_zisk_init_data() addr={:x} len={} data={}...\n", addr, data.len(), s);*/
+
     let mut o = addr;
 
     // Read 64-bit input data chunks and store them in rom
@@ -1299,7 +1304,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
     // Read remaining 32-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 4 {
-        let v = read_u32_le(data, o as usize);
+        let v = read_u32_le(data, (o - addr) as usize);
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
@@ -1316,7 +1321,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
     // Read remaining 16-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 2 {
-        let v = read_u16_le(data, o as usize);
+        let v = read_u16_le(data, (o - addr) as usize);
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
@@ -1333,7 +1338,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
     // Read remaining 8-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 1 {
-        let v = data[o as usize];
+        let v = data[(o - addr) as usize];
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);

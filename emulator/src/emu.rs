@@ -642,8 +642,13 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+        /*println!(
+            "Emu::step() executing step={} pc={:x} inst={}",
+            self.ctx.inst_ctx.step,
+            self.ctx.inst_ctx.pc,
+            instruction.to_text()
+        );*/
+        //println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a(instruction);
