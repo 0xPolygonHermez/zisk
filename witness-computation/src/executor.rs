@@ -197,7 +197,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // ----------------------------------------------
         let mem_thread = thread::spawn({
             let mem_proxy = self.mem_proxy.clone();
-            move || mem_proxy.prove(&mut mem_required).expect("Error during Memory witness computation")
+            move || {
+                mem_proxy.prove(&mut mem_required).expect("Error during Memory witness computation")
+            }
         });
 
         // ROM State Machine

@@ -193,8 +193,8 @@ impl<F: PrimeField> MemSM<F> {
             let addr_changes = trace[i - 1].addr != trace[i].addr;
             trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
 
-            let same_value = trace[i - 1].value[0] == trace[i].value[0]
-                && trace[i - 1].value[1] == trace[i].value[1];
+            let same_value = trace[i - 1].value[0] == trace[i].value[0] &&
+                trace[i - 1].value[1] == trace[i].value[1];
             trace[i].same_value = if same_value { F::one() } else { F::zero() };
 
             let first_addr_access_is_read = addr_changes && !mem_op.is_write;

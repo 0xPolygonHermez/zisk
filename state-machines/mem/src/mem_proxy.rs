@@ -353,8 +353,8 @@ impl<F: PrimeField> MemProxy<F> {
 
         let mask = !(((1u64 << width_in_bits) - 1) << (offset * 8));
 
-        aligned.value = (aligned.value & mask)
-            | ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
+        aligned.value = (aligned.value & mask) |
+            ((unaligned.value & ((1u64 << width_in_bits) - 1)) << (offset * 8));
     }
     #[inline(always)]
     fn write_values(

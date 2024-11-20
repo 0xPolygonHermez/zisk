@@ -41,8 +41,13 @@ impl<F: Field> RomSM<F> {
         let main_trace_len =
             self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
 
-        let prover_buffer =
-            Self::compute_trace_rom(rom, buffer_allocator, &sctx, pc_histogram, main_trace_len as u64)?;
+        let prover_buffer = Self::compute_trace_rom(
+            rom,
+            buffer_allocator,
+            &sctx,
+            pc_histogram,
+            main_trace_len as u64,
+        )?;
 
         let air_instance =
             AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
