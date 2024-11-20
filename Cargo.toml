@@ -44,3 +44,5 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9
 log = "0.4"
 rayon = "1.10"
 num-bigint = "0.4"
+rand = "0.8.5"
+getrandom = { version = "0.2", features = ["custom"] }

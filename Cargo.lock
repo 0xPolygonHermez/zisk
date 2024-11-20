@@ -3309,6 +3309,5 @@ name = "ziskos"
 version = "0.1.0"
 dependencies = [
  "getrandom",
- "lazy_static",
  "rand",
 ]

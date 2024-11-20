@@ -22,25 +22,51 @@ macro_rules! entrypoint {
 use crate::ziskos_definitions::ziskos_config::*;
 
 #[cfg(target_os = "ziskos")]
-pub fn read_input() -> Vec<u8> {
+pub fn read_input<'a>() -> &'a [u8] {
     // Create a slice of the first 8 bytes to get the size
     let bytes = unsafe { core::slice::from_raw_parts(INPUT_ADDR as *const u8, 8) };
     // Convert the slice to a u64 (little-endian)
     let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
 
-    let input =
-        unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) };
-    input.to_vec()
+    unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), size as usize) }
 }
 
 #[cfg(not(target_os = "ziskos"))]
-pub fn read_input() -> Vec<u8> {
-    use std::{fs::File, io::Read};
+use std::cell::RefCell;
 
-    let mut file = File::open("build/input.bin").unwrap();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
-    buffer
+#[cfg(not(target_os = "ziskos"))]
+thread_local! {
+    /// A thread-local storage to memoize the `build/input.bin` file
+    static FILE_CONTENT: RefCell<Option<&'static [u8]>> = RefCell::new(None);
+}
+
+#[cfg(not(target_os = "ziskos"))]
+pub fn read_input<'a>() -> &'static [u8] {
+    use std::{
+        fs::File,
+        io::{Error, Read},
+    };
+    FILE_CONTENT
+        .with(|file_content| {
+            // Return early if we have already memoized the file
+            if let Some(static_slice) = *file_content.borrow() {
+                return Ok::<&'static [u8], Error>(static_slice);
+            }
+
+            // Read the file into a Vec<u8>
+            let mut file = File::open("build/input.bin")?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+
+            // Leak the memory to get a 'static reference
+            let static_slice: &'static [u8] = Box::leak(buffer.into_boxed_slice());
+
+            // Memoize the result in thread-local storage
+            *file_content.borrow_mut() = Some(static_slice);
+
+            Ok(static_slice)
+        })
+        .expect("Failed to read 'build/input.bin'")
 }
 
 #[cfg(target_os = "ziskos")]
