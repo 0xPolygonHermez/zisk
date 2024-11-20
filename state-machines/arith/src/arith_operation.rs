@@ -22,6 +22,8 @@ pub struct ArithOperation {
     pub signed: bool,
     pub range_ab: u8,
     pub range_cd: u8,
+    pub div_by_zero: bool,
+    pub div_overflow: bool,
 }
 
 impl Default for ArithOperation {
@@ -52,6 +54,12 @@ impl fmt::Debug for ArithOperation {
         };
         if self.sext {
             flags += "sext "
+        };
+        if self.div_by_zero {
+            flags += "div_by_zero "
+        };
+        if self.div_overflow {
+            flags += "div_overflow "
         };
         if self.main_mul {
             flags += "main_mul "
@@ -110,6 +118,8 @@ impl ArithOperation {
             np: false,
             nr: false,
             sext: false,
+            div_by_zero: false,
+            div_overflow: false,
             main_mul: false,
             main_div: false,
             signed: false,
@@ -121,6 +131,21 @@ impl ArithOperation {
         self.op = op;
         self.input_a = input_a;
         self.input_b = input_b;
+        self.div_by_zero = input_b == 0
+            && (op == DIV
+                || op == REM
+                || op == DIV_W
+                || op == REM_W
+                || op == DIVU
+                || op == REMU
+                || op == DIVU_W
+                || op == REMU_W);
+
+        self.div_overflow = ((op == DIV || op == REM)
+            && input_a == 0x8000_0000_0000_0000
+            && input_b == 0xFFFF_FFFF_FFFF_FFFF)
+            || ((op == DIV_W || op == REM_W) && input_a == 0x8000_0000 && input_b == 0xFFFF_FFFF);
+
         let [a, b, c, d] = Self::calculate_abcd_from_ab(op, input_a, input_b);
         self.a = Self::u64_to_chunks(a);
         self.b = Self::u64_to_chunks(b);
@@ -196,33 +221,80 @@ impl ArithOperation {
     fn calculate_div(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
-        let abs_c = abs_a / abs_b;
-        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
-        Self::sign64(abs_c, nc == 1)
+        if abs_b == 0 {
+            0xFFFF_FFFF_FFFF_FFFF
+        } else {
+            let abs_c = abs_a / abs_b;
+            let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+            Self::sign64(abs_c, nc == 1)
+        }
+    }
+    fn calculate_div_w(a: u64, b: u64) -> u64 {
+        let [abs_a, na] = Self::abs32(a);
+        let [abs_b, nb] = Self::abs32(b);
+        if abs_b == 0 {
+            0xFFFF_FFFF
+        } else {
+            let abs_c = abs_a / abs_b;
+            let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
+            Self::sign32(abs_c, nc == 1)
+        }
+    }
+
+    fn calculate_divu(a: u64, b: u64) -> u64 {
+        if b == 0 {
+            0xFFFF_FFFF_FFFF_FFFF
+        } else {
+            a / b
+        }
+    }
+
+    fn calculate_divu_w(a: u64, b: u64) -> u64 {
+        if b == 0 {
+            0xFFFF_FFFF
+        } else {
+            a / b
+        }
+    }
+
+    fn calculate_remu(a: u64, b: u64) -> u64 {
+        if b == 0 {
+            a
+        } else {
+            a % b
+        }
+    }
+
+    fn calculate_remu_w(a: u64, b: u64) -> u64 {
+        if b == 0 {
+            a
+        } else {
+            a % b
+        }
     }
 
     fn calculate_rem(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, _nb] = Self::abs64(b);
-        let abs_c = abs_a % abs_b;
-        let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
-        Self::sign64(abs_c, nc == 1)
-    }
-
-    fn calculate_div_w(a: u64, b: u64) -> u64 {
-        let [abs_a, na] = Self::abs32(a);
-        let [abs_b, nb] = Self::abs32(b);
-        let abs_c = abs_a / abs_b;
-        let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
-        Self::sign32(abs_c, nc == 1)
+        if abs_b == 0 {
+            a
+        } else {
+            let abs_c = abs_a % abs_b;
+            let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
+            Self::sign64(abs_c, nc == 1)
+        }
     }
 
     fn calculate_rem_w(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs32(a);
         let [abs_b, _nb] = Self::abs32(b);
-        let abs_c = abs_a % abs_b;
-        let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
-        Self::sign32(abs_c, nc == 1)
+        if abs_b == 0 {
+            a
+        } else {
+            let abs_c = abs_a % abs_b;
+            let nc = if na == 1 && abs_c != 0 { 1 } else { 0 };
+            Self::sign32(abs_c, nc == 1)
+        }
     }
 
     fn calculate_abcd_from_ab(op: u8, a: u64, b: u64) -> [u64; 4] {
@@ -240,7 +312,8 @@ impl ArithOperation {
                 [a, b, c, d]
             }
             MUL_W => [a, b, Self::calculate_mul_w(a, b), 0],
-            DIVU | REMU | DIVU_W | REMU_W => [a / b, b, a, a % b],
+            DIVU | REMU => [Self::calculate_divu(a, b), b, a, Self::calculate_remu(a, b)],
+            DIVU_W | REMU_W => [Self::calculate_divu_w(a, b), b, a, Self::calculate_remu_w(a, b)],
             DIV | REM => [Self::calculate_div(a, b), b, a, Self::calculate_rem(a, b)],
             DIV_W | REM_W => [Self::calculate_div_w(a, b), b, a, Self::calculate_rem_w(a, b)],
             _ => {
@@ -303,7 +376,6 @@ impl ArithOperation {
             DIVU => {
                 self.div = true;
                 self.main_div = true;
-                assert!(b != 0, "Error on DIVU a:{:x}({}) b:{:x}({})", a, b, a, b);
             }
             REMU => {
                 self.div = true;

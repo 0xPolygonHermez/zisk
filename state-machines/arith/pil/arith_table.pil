@@ -4,22 +4,19 @@ const int ARITH_TABLE_ID = 331;
 
 airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
 
-    // TABLE
-    // op,m32|div|na|nb|np|nr|sext,range_ab,range_cd
+    // div m32 sa  sb  primary  secondary  opcodes             na   nb   np   nr   sext(c)
+    // -----------------------------------------------------------------------------------
+    //  0   0   0   0  mulu     muluh      0xb0 176  0xb1 177  =0   =0   =0   =0   =0   =0
+    //  0   0   1   0  *n/a*    mulsuh     0xb2  -   0xb3 179  a3   =0   d3   =0   =0   =0  a3,      d3
+    //  0   0   1   1  mul      mulh       0xb4 180  0xb5 181  a3   b3   d3   =0   =0   =0  a3,b3,   d3
+    //  0   1   0   0  mul_w    *n/a*      0xb6 182  0xb7  -   =0   =0   =0   =0   c1   =0
 
-    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(c)
-    // -----------------------------------------------------------------------------
-    //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
-    //  0   0   1   0  *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   d3   =0   =0   =0  a3,      d3
-    //  0   0   1   1  mul      mulh       (0xb4,0xb5)   a3   b3   d3   =0   =0   =0  a3,b3,   d3
-    //  0   1   0   0  mul_w    *n/a*      (0xb6,0xb7)   =0   =0   =0   =0   c1   =0
-
-    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(a,d)(*2)
-    // ------------------------------------------------------------------------------
-    //  1   0   0   0  divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
-    //  1   0   1   1  div      rem        (0xba,0xbb)   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
-    //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   a1   d1               a1      ,d1
-    //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
+    // div m32 sa  sb  primary  secondary  opcodes             na   nb   np   nr   sext(a,d)(*2)
+    // ------------------------------------------------------------------------------------
+    //  1   0   0   0  divu     remu       0xb8 184  0xb9 185  =0   =0   =0   =0   =0   =0
+    //  1   0   1   1  div      rem        0xba 186  0xbb 187  a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
+    //  1   1   0   0  divu_w   remu_w     0xbc 188  0xbd 189  =0   =0   =0   =0   a1   d1               a1      ,d1
+    //  1   1   1   1  div_w    rem_w      0xbe 190  0xbf 191  a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
 
     const int OPS[14] = [0xb0, 0xb1, 0xb3, 0xb4, 0xb5, 0xb6, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf];
 
@@ -33,9 +30,9 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
     int aborted = 0;
 
     if (generate_table) {
-        int air.op2row[512];
-        for (int i = 0; i < 512; ++i) {
-            op2row[i] = -1;
+        int air.op2row[2048];
+        for (int i = 0; i < 2048; ++i) {
+            op2row[i] = 255;
         }
     }
 
@@ -114,21 +111,44 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
                 m32 = 1;
         }
 
-        for (int icase = 0; icase < 32; ++icase) {
-            int na = 0;
-            int nb = 0;
-            int nr = 0;
-            int np = 0;
-            int sext = 0;
-
-            if (0x01 & icase) na = 1;
-            if (0x02 & icase) nb = 1;
-            if (0x04 & icase) np = 1;
-            if (0x08 & icase) nr = 1;
-            if (0x10 & icase) sext = 1;
+        for (int icase = 0; icase < 128; ++icase) {
+            const int na = (0x01 & icase) ? 1 : 0;
+            const int nb = (0x02 & icase) ? 1 : 0;
+            const int np = (0x04 & icase) ? 1 : 0;
+            const int nr = (0x08 & icase) ? 1 : 0;
+            const int sext = (0x10 & icase) ? 1 : 0;
+            const int div_by_zero = (0x20 & icase) ? 1 : 0;
+            const int div_overflow = (0x40 & icase) ? 1 : 0;
 
             const int signed = (sa || sb) ? 1 : 0;
 
+            // division by zero (dividend: x, divisor: 0)
+            //
+            // DIV,DIVU         0xFFFF_FFFF_FFFF_FFFF
+            // REM,REMU         x
+            // DIV_W,DIVU_W     0xFFFF_FFFF_FFFF_FFFF
+            // REM_W,REMU_W     x
+
+            // division overflow 64 (divend: 0x8000_0000_0000_0000, divisor: 0xFFFF_FFFF_FFFF_FFFF)
+            //
+            // DIV          0x8000_0000_0000_0000
+            // REM          0
+
+            // division overflow 32 (divend: 0x8000_0000, divisor: 0xFFFF_FFFF)
+            //
+            // DIV_W        0xFFFF_FFFF_8000_0000
+            // REM_W        0
+
+            // div_by_zero
+            //      signed:1 => na:1 nb:0 np = nr (0,1)
+            //      signed:0 => na:0 nb:0 np:0 nr:0
+
+            // div_overflow
+            //      signed:1 => na:1 nb:1 np:1 nr:0 sext:0
+
+            if (div_by_zero && (!div || nb || np != nr || signed != na)) continue;
+            if (div_by_zero && main_div && m32 && !sext) continue;
+            if (div_overflow && (!div || !signed || !na || !nb || !np || nr)) continue;
             if (sext && !m32) continue;
             if (nr && !div) continue;
             if (na && !sa) continue;
@@ -137,8 +157,8 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
             if (nr && !sa && !sb) continue;
             if (np && na == nb && !div) continue;
             if (np && !na && !nb && !nr && div) continue;
-            if (na && !nb && !nr && !np && div) continue;
-            if (np && na && nb) continue;
+            if (na && !nb && !nr && !np && div && !div_by_zero) continue;
+            if (np && na && nb && !div_overflow) continue;
             if (!np & nr) continue;
             if (m32 && signed && main_div && na != sext) continue;
             if (m32 && signed && div && !main_div && nr != sext) continue;
@@ -186,7 +206,9 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
                 }
             }
             const int flags = m32 + 2 * div + 4 * na + 8 * nb + 16 * np + 32 * nr + 64 * sext +
-                           128 * main_mul + 256 * main_div + 512 * signed;
+                           128 * div_by_zero + 256 * div_overflow + 512 * main_mul +
+                           1024 * main_div + 2048 * signed;
+
             int range_ab = (range_a3 + range_a1) * 3 + range_b3 + range_b1;
             if ((range_a1 + range_b1) > 0) {
                 range_ab = range_ab + 8;
@@ -203,7 +225,11 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
             RANGE_CD[index] = range_cd;
 
             if (generate_table) {
-                op2row[(opcode - 0xb0) * 32 + icase] = index;
+                println(`OP:${opcode} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} m32:${m32} div:${div}`,
+                        `div_by_zero:${div_by_zero} div_overflow:${div_overflow} sa:${sa} sb:${sb} main_mul:${main_mul}`,
+                        `main_div:${main_div} signed:${signed} range_ab:${range_ab} range_cd:${range_cd} index:${(opcode - 0xb0) * 128 + icase} icase:${icase}`);
+
+                op2row[(opcode - 0xb0) * 128 + icase] = index;
                 code = code + `[${opcode}, ${flags}, ${range_ab}, ${range_cd}],`;
             }
             ++index;
@@ -212,9 +238,16 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
     const int size = index;
 
     println("ARITH_TABLE SIZE: ", size);
+    assert(size < 256);
+
     if (generate_table) {
         println(`pub const ROWS: usize = ${size};`);
-        println("pub static ARITH_TABLE_ROWS: [i16; 512] = [", op2row, "];");
+        println("const __: u8 = 255;");
+        string _op2row = "";
+        for (int i = 0; i < 2048; ++i) {
+            _op2row = _op2row + ((op2row[i] == 255) ? "__":string(op2row[i])) + ",";
+        }
+        println("pub static ARITH_TABLE_ROWS: [u8; 2048] = [", _op2row, "];");
         println(`pub static ARITH_TABLE: [[u16; 4]; ROWS] = [${code}];`);
     }
 
@@ -238,11 +271,13 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
 
 function arith_table_assumes( const expr op, const expr flag_m32, const expr flag_div, const expr flag_na,
                               const expr flag_nb, const expr flag_np, const expr flag_nr, const expr flag_sext,
+                              const expr flag_div_by_zero, const expr flag_div_overflow,
                               const expr flag_main_mul, const expr flag_main_div, const expr flag_signed,
                               const expr range_ab, const expr range_cd) {
 
     lookup_assumes(ARITH_TABLE_ID, cols: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
                                            16 * flag_np + 32 * flag_nr + 64 * flag_sext +
-                                           128 * flag_main_mul + 256 * flag_main_div + 512 * flag_signed,
+                                           128 * flag_div_by_zero + 256 * flag_div_overflow +
+                                           512 * flag_main_mul + 1024 * flag_main_div + 2048 * flag_signed,
                                            range_ab, range_cd]);
 }

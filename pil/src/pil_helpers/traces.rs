@@ -12,7 +12,7 @@ trace!(RomRow, RomTrace<F> {
 });
 
 trace!(ArithRow, ArithTrace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
 });
 
 trace!(ArithTableRow, ArithTableTrace<F> {

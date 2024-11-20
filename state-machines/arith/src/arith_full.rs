@@ -88,7 +88,7 @@ impl<F: Field> ArithFullSM<F> {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in input.iter().enumerate() {
-            // println!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
+            println!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {
@@ -136,8 +136,24 @@ impl<F: Field> ArithFullSM<F> {
             t.debug_main_step = F::from_canonical_u64(input.step);
             t.range_ab = F::from_canonical_u8(aop.range_ab);
             t.range_cd = F::from_canonical_u8(aop.range_cd);
+            t.div_by_zero = F::from_bool(aop.div_by_zero);
+            t.div_overflow = F::from_bool(aop.div_overflow);
+            t.inv_sum_all_bs = if aop.div && !aop.div_by_zero {
+                F::from_canonical_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse()
+            } else {
+                F::zero()
+            };
 
-            table_inputs.add_use(aop.op, aop.na, aop.nb, aop.np, aop.nr, aop.sext);
+            table_inputs.add_use(
+                aop.op,
+                aop.na,
+                aop.nb,
+                aop.np,
+                aop.nr,
+                aop.sext,
+                aop.div_by_zero,
+                aop.div_overflow,
+            );
 
             t.fab = if aop.na != aop.nb { F::neg_one() } else { F::one() };
             //  na * (1 - 2 * nb);
@@ -199,6 +215,8 @@ impl<F: Field> ArithFullSM<F> {
             table_inputs.multi_add_use(
                 padding_rows,
                 padding_opcode,
+                false,
+                false,
                 false,
                 false,
                 false,

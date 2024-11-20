@@ -10,10 +10,6 @@ require "arith_range_table.pil"
 const int OP_LT_ABS = 0x9F;
 
 airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
-    // TODO: const int enable_div = 1, const int enable_32_bits = 1, const int enable_64_bits = 1
-
-    // NOTE:
-    // Divisions and remainders by 0 are done by QuickOps
 
     const int CHUNK_SIZE = 2**16;
     const int CHUNKS_INPUT = 4;
@@ -49,15 +45,63 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness main_div;
     col witness main_mul;
     col witness signed;
+
+    col witness div_by_zero;
+    col witness div_overflow;
+
     main_div * (main_div - 1) === 0;
     main_mul * (main_mul - 1) === 0;
     main_mul * main_div === 0;
     signed * (1 - signed) === 0;
+    div_by_zero * (1 - div_by_zero) === 0;
+    div_overflow * (1 - div_overflow) === 0;
 
     // factor ab € {-1, 1}
     fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
     na_fb === na * (1 - 2 * nb);
     nb_fa === nb * (1 - 2 * na);
+
+    expr sum_all_bs = 0;
+    for (int i = 0; i < length(b); ++i) {
+        div_by_zero * b[i] === 0;               // forces b must be zero when div_by_zero
+        sum_all_bs = sum_all_bs + b[i];                 // all b are values of 16 bits (verified by range_check)
+    }
+
+    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    div_by_zero * (a[0] - 0xFFFF) === 0;
+    div_by_zero * (a[1] - 0xFFFF) === 0;
+    div_by_zero * (a[2] - (1 - m32) * 0xFFFF) === 0;
+    div_by_zero * (a[3] - (1 - m32) * 0xFFFF) === 0;
+
+    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    div_overflow * (b[0] - 0xFFFF) === 0;
+    div_overflow * (b[1] - 0xFFFF) === 0;
+    div_overflow * (b[2] - (1 - m32) * 0xFFFF) === 0;
+    div_overflow * (b[3] - (1 - m32) * 0xFFFF) === 0;
+
+    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    div_overflow * c[0] === 0;
+    div_overflow * (c[1] - m32 * 0x8000) === 0;
+    div_overflow * c[2] === 0;
+    div_overflow * (c[3] - (1 - m32) * 0x8000) === 0;
+
+    // b != 0 <==> sum_all_bs != 0
+    col witness inv_sum_all_bs;
+
+    // div = 0 => div_by_zero must be 0 => 0 (no need calculate inverse)
+    // div = 1 and div_by_zero = 0 => 1 calculate inverse to demostrate b != 0
+    // div = 1 and div_by_zero = 1 => 0 (no need calculate inverse)
+    (div - div_by_zero) * (1 - inv_sum_all_bs * sum_all_bs) === 0;
+
+    // div_by_zero only active for divisions
+    div_by_zero * (1 - div) === 0;
+
+    // div_overflow only active for signed divisions
+    div_overflow * (1 - div) === 0;
+    div_overflow * (1 - signed) === 0;
+
+    div_overflow * div_by_zero === 0;
+    div_by_zero * div_overflow === 0;
 
     const expr eq[CHUNKS_OP];
 
@@ -177,19 +221,19 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     col witness op;
 
-    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(c)
-    // -----------------------------------------------------------------------------
-    //  0   0   0   0  mulu     muluh      (0xb0,0xb1)   =0   =0   =0   =0   =0   =0
-    //  0   0   1   0  *n/a*    mulsuh     (0xb2,0xb3)   a3   =0   d3   =0   =0   =0  a3,      d3
-    //  0   0   1   1  mul      mulh       (0xb4,0xb5)   a3   b3   d3   =0   =0   =0  a3,b3,   d3
-    //  0   1   0   0  mul_w    *n/a*      (0xb6,0xb7)   =0   =0   =0   =0   c1   =0
+    // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
+    // -------------------------------------------------------------------------------------
+    //  0   0   0   0  mulu     muluh      0xb0 176  0xb1 177   =0   =0   =0   =0   =0   =0
+    //  0   0   1   0  *n/a*    mulsuh     0xb2  -   0xb3 179   a3   =0   d3   =0   =0   =0  a3,      d3
+    //  0   0   1   1  mul      mulh       0xb4 180  0xb5 181   a3   b3   d3   =0   =0   =0  a3,b3,   d3
+    //  0   1   0   0  mul_w    *n/a*      0xb6 182  0xb7  -    =0   =0   =0   =0   c1   =0
 
-    // div m32 sa  sb  primary  secondary  opcodes       na   nb   np   nr   sext(a,d)(*2)
-    // ------------------------------------------------------------------------------
-    //  1   0   0   0  divu     remu       (0xb8,0xb9)   =0   =0   =0   =0   =0   =0
-    //  1   0   1   1  div      rem        (0xba,0xbb)   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
-    //  1   1   0   0  divu_w   remu_w     (0xbc,0xbd)   =0   =0   =0   =0   a1   d1               a1      ,d1
-    //  1   1   1   1  div_w    rem_w      (0xbe,0xbf)   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
+    // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(a,d)(*2)
+    // ------------------------------------------------------------------------------------------
+    //  1   0   0   0  divu     remu       0xb8 184  0xb9 185   =0   =0   =0   =0   =0   =0
+    //  1   0   1   1  div      rem        0xba 186  0xbb 187   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
+    //  1   1   0   0  divu_w   remu_w     0xbc 188  0xbd 189   =0   =0   =0   =0   a1   d1               a1      ,d1
+    //  1   1   1   1  div_w    rem_w      0xbe 190  0xbf 191   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
 
     // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb
     // (*2) sext affects to 32 bits result (bus), but in divisions a is used as result
@@ -217,7 +261,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                               main_div * (a[2] + a[3] * CHUNK_SIZE));
     col witness bus_res1;
 
-    bus_res1 === sext * 0xFFFFFFFF + (1 - m32) * bus_res1_64;
+    bus_res1 === sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
 
     m32 * bus_a1 === 0;
     m32 * bus_b1 === 0;
@@ -229,7 +273,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                                      bus_a0, bus_a1,
                                      bus_b0, bus_b1,
                                      bus_res0, bus_res1,
-                                     0], mul: multiplicity);
+                                     div_by_zero /*+ div_overflow*/], mul: multiplicity);
 
     // TODO: remainder check
     // lookup_assumes(operation_bus_id, [debug_main_step, signed * (OP_LT_ABS - OP_LT) + OP_LT,
@@ -244,7 +288,8 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness range_ab;
     col witness range_cd;
 
-    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, main_mul, main_div, signed, range_ab, range_cd);
+    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow, main_mul,
+                        main_div, signed, range_ab, range_cd);
 
     const expr range_a3 = range_ab;
     const expr range_a1 = range_ab + 26;
