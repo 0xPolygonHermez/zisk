@@ -25,21 +25,55 @@ impl Mem {
     /// Adds a read section to the memory structure
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
         let end = start + buffer.len() as u64;
-        let mut mem_section = MemSection { start, end, buffer: buffer.to_owned() };
-        while (mem_section.end) % 8 != 0 {
-            mem_section.buffer.push(0);
-            mem_section.end += 1;
+
+        // If there exists a read section next to this one, reuse it
+        for existing_section in self.read_sections.iter_mut() {
+            if existing_section.real_end == start {
+                // Sanity check
+                assert!(existing_section.real_end <= existing_section.end);
+                assert!((existing_section.end - existing_section.real_end) < 8);
+
+                // Pop tail zeros until end matches real_end
+                while existing_section.real_end > existing_section.end {
+                    existing_section.buffer.pop();
+                    existing_section.end -= 1;
+                }
+
+                // Append buffer
+                existing_section.buffer.extend(buffer);
+                existing_section.real_end += buffer.len() as u64;
+                existing_section.end = existing_section.real_end;
+
+                // Append zeros until end is multiple of 8, so that we can read non-alligned reads
+                while (existing_section.end & 0x07) != 0 {
+                    existing_section.buffer.push(0);
+                    existing_section.end += 1;
+                }
+
+                /*println!(
+                    "Mem::add_read_section() start={:x} len={} existing section={}",
+                    start,
+                    buffer.len(),
+                    existing_section.to_text()
+                );*/
+
+                return;
+            }
         }
-        self.read_sections.push(mem_section);
-        /*println!(
-            "Mem::add_read_section() start={:x}={} len={:x}={} end={:x}={}",
-            start,
-            start,
-            buffer.len(),
-            buffer.len(),
-            end,
-            end
-        );*/
+
+        // Create a new memory section
+        let mut new_section = MemSection { start, end, real_end: end, buffer: buffer.to_owned() };
+
+        // Append zeros until end is multiple of 8, so that we can read non-alligned reads
+        while (new_section.end & 0x07) != 0 {
+            new_section.buffer.push(0);
+            new_section.end += 1;
+        }
+
+        //println!("Mem::add_read_section() new section={}", new_section.to_text());
+
+        // Add the new section to the read sections
+        self.read_sections.push(new_section);
     }
 
     /// Adds a write section to the memory structure, which cannot be written twice

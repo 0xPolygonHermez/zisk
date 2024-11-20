@@ -52,13 +52,15 @@ impl EmuContext {
             panic!("EmuContext::new() input size too big size={}", input.len());
         }
 
-        // Create a new empty vector
-        let mut buffer: Vec<u8> = vec![0; 8];
-        write_u64_le(&mut buffer, 0, input.len() as u64);
+        // Create a new empty vector of 8 bytes and write the input data length into it
+        let mut input_buffer: Vec<u8> = vec![0; 8];
+        write_u64_le(&mut input_buffer, 0, input.len() as u64);
+
+        // Concatenate input length and data vectors
+        input_buffer.extend_from_slice(input.as_slice());
 
         // Add the length and input data read sections
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &buffer);
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &input_buffer);
 
         // Add the write section
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);

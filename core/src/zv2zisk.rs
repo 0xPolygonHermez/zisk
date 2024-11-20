@@ -1276,7 +1276,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
 /// Add initial data to ZisK rom
 pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
-    //print!("add_zisk_init_data() addr={}\n", addr);
+    //print!("add_zisk_init_data() addr={:x} len={}\n", addr, data.len());
     let mut o = addr;
 
     // Read 64-bit input data chunks and store them in rom

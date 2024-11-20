@@ -31,20 +31,50 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 
                 let addr = section_header.sh_addr;
 
+                // If this is a code section, add it to program
                 if (section_header.sh_flags & SHF_EXECINSTR as u64) != 0 {
                     add_zisk_code(&mut rom, addr, &data);
                 }
 
-                if (section_header.sh_flags & SHF_WRITE as u64) != 0 &&
-                    addr >= RAM_ADDR &&
-                    addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
+                // Add init data as a read/write memory section, initialized by code
+                if (section_header.sh_flags & SHF_WRITE as u64) != 0
+                    && addr >= RAM_ADDR
+                    && addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
                     add_zisk_init_data(&mut rom, addr, &data);
-                } else {
-                    rom.ro_data.push(RoData::new(addr, data.len(), data));
+                }
+                // Add read-only data memory section
+                else {
+                    // Search for an existing RO section previous to this one
+                    let mut found = false;
+                    for rd in rom.ro_data.iter_mut() {
+                        // Section data should be previous to this one
+                        if (rd.from + rd.length as u64) == addr {
+                            rd.length += data.len();
+                            rd.data.extend(data.clone());
+                            found = true;
+                            //println! {"elf2rom() adding RO from={:x} length={:x}={}", rd.from, rd.length, rd.length};
+                            break;
+                        }
+                    }
+
+                    // If not found, create a new RO section
+                    if !found {
+                        //println! {"elf2rom() new RO from={:x} length={:x}={}", addr, data.len(), data.len()};
+                        rom.ro_data.push(RoData::new(addr, data.len(), data));
+                    }
                 }
             }
         }
+    }
+
+    // Add RO data initialization code insctructions
+    let ro_data_len = rom.ro_data.len();
+    for i in 0..ro_data_len {
+        let addr = rom.ro_data[i].from;
+        let mut data = Vec::new();
+        data.extend(rom.ro_data[i].data.as_slice());
+        add_zisk_init_data(&mut rom, addr, &data);
     }
 
     add_entry_exit_jmp(&mut rom, elf_bytes.ehdr.e_entry);
@@ -111,6 +141,8 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
             rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
         }
     }
+
+    //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
 
     Ok(rom)
 }
