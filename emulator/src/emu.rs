@@ -335,9 +335,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some()
-                && (options.print_step.unwrap() != 0)
-                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some() &&
+                (options.print_step.unwrap() != 0) &&
+                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -520,9 +520,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end
-                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
-                    == self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end ||
+                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+                    self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -699,11 +699,11 @@ impl<'a> Emu<'a> {
 
         let mut current_box_id = 0;
         let mut current_step_idx = loop {
-            if current_box_id == vec_traces.len() - 1
-                || vec_traces[current_box_id + 1].start_state.step >= emu_trace_start.step
+            if current_box_id == vec_traces.len() - 1 ||
+                vec_traces[current_box_id + 1].start_state.step >= emu_trace_start.step
             {
-                break emu_trace_start.step as usize
-                    - vec_traces[current_box_id].start_state.step as usize;
+                break emu_trace_start.step as usize -
+                    vec_traces[current_box_id].start_state.step as usize;
             }
             current_box_id += 1;
         };
@@ -814,8 +814,8 @@ impl<'a> Emu<'a> {
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
 
-        let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+        let addr1 = (inst.b_offset_imm0 as i64 +
+            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -893,9 +893,9 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Arith
-                    || inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
+                inst.op_type == ZiskOperationType::Arith ||
+                    inst.op_type == ZiskOperationType::Binary ||
+                    inst.op_type == ZiskOperationType::BinaryE,
             ),
         }
     }

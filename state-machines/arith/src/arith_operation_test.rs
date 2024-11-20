@@ -140,26 +140,26 @@ impl ArithOperationTest {
         println!("{:#?}", aop);
 
         const CHUNK_SIZE: u64 = 0x10000;
-        let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
-            + (1 - aop.div as u64) * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
-        let bus_a_high: u64 = aop.div as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE)
-            + (1 - aop.div as u64) * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
+        let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE) +
+            (1 - aop.div as u64) * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
+        let bus_a_high: u64 = aop.div as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE) +
+            (1 - aop.div as u64) * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
 
         let bus_b_low: u64 = aop.b[0] + CHUNK_SIZE * aop.b[1];
         let bus_b_high: u64 = aop.b[2] + CHUNK_SIZE * aop.b[3];
 
         let secondary_res: u64 = if aop.main_mul || aop.main_div { 0 } else { 1 };
 
-        let bus_res_low = secondary_res * (aop.d[0] + aop.d[1] * CHUNK_SIZE)
-            + aop.main_mul as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
-            + aop.main_div as u64 * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
+        let bus_res_low = secondary_res * (aop.d[0] + aop.d[1] * CHUNK_SIZE) +
+            aop.main_mul as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE) +
+            aop.main_div as u64 * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
 
-        let bus_res_high_64 = secondary_res * (aop.d[2] + aop.d[3] * CHUNK_SIZE)
-            + aop.main_mul as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE)
-            + aop.main_div as u64 * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
+        let bus_res_high_64 = secondary_res * (aop.d[2] + aop.d[3] * CHUNK_SIZE) +
+            aop.main_mul as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE) +
+            aop.main_div as u64 * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
 
-        let bus_res_high = if aop.sext && !aop.div_overflow { 0xFFFF_FFFF } else { 0 }
-            + (1 - aop.m32 as u64) * bus_res_high_64;
+        let bus_res_high = if aop.sext && !aop.div_overflow { 0xFFFF_FFFF } else { 0 } +
+            (1 - aop.m32 as u64) * bus_res_high_64;
 
         let expected_a_low = a & 0xFFFF_FFFF;
         let expected_a_high = (a >> 32) & 0xFFFF_FFFF;

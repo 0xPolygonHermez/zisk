@@ -17,14 +17,14 @@ impl ArithTableHelpers {
         div_by_zero: bool,
         div_overflow: bool,
     ) -> usize {
-        let index = (op - FIRST_OP) as u64 * 128
-            + na as u64
-            + nb as u64 * 2
-            + np as u64 * 4
-            + nr as u64 * 8
-            + sext as u64 * 16
-            + div_by_zero as u64 * 32
-            + div_overflow as u64 * 64;
+        let index = (op - FIRST_OP) as u64 * 128 +
+            na as u64 +
+            nb as u64 * 2 +
+            np as u64 * 4 +
+            nr as u64 * 8 +
+            sext as u64 * 16 +
+            div_by_zero as u64 * 32 +
+            div_overflow as u64 * 64;
         assert!(index < ARITH_TABLE_ROWS.len() as u64);
         let row = ARITH_TABLE_ROWS[index as usize];
         assert!(
@@ -75,18 +75,18 @@ impl ArithTableHelpers {
         range_ab: u16,
         range_cd: u16,
     ) -> usize {
-        let flags = if m32 { 1 } else { 0 }
-            + if div { 2 } else { 0 }
-            + if na { 4 } else { 0 }
-            + if nb { 8 } else { 0 }
-            + if np { 16 } else { 0 }
-            + if nr { 32 } else { 0 }
-            + if sext { 64 } else { 0 }
-            + if div_by_zero { 128 } else { 0 }
-            + if div_overflow { 256 } else { 0 }
-            + if main_mul { 512 } else { 0 }
-            + if main_div { 1024 } else { 0 }
-            + if signed { 2048 } else { 0 };
+        let flags = if m32 { 1 } else { 0 } +
+            if div { 2 } else { 0 } +
+            if na { 4 } else { 0 } +
+            if nb { 8 } else { 0 } +
+            if np { 16 } else { 0 } +
+            if nr { 32 } else { 0 } +
+            if sext { 64 } else { 0 } +
+            if div_by_zero { 128 } else { 0 } +
+            if div_overflow { 256 } else { 0 } +
+            if main_mul { 512 } else { 0 } +
+            if main_div { 1024 } else { 0 } +
+            if signed { 2048 } else { 0 };
         let row = Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow);
         assert_eq!(
             op as u16, ARITH_TABLE[row][0],
