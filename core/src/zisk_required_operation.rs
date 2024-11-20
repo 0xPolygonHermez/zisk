@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {

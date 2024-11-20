@@ -1,8 +1,10 @@
-use std::collections::VecDeque;
-use std::fmt;
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
+use std::{
+    collections::VecDeque,
+    fmt,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
 };
 
 use crate::{MemAlignResponse, MemAlignRomSM, MemAlignSM, MemSM};
@@ -127,12 +129,13 @@ impl<F: PrimeField> MemProxy<F> {
         let aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
         aligned_mem_address == mem_op.address && mem_op.width == MEM_BYTES
     }
-    /// Process information of mem_op and mem_align_op to push mem_op operation. Only two possible situations:
+    /// Process information of mem_op and mem_align_op to push mem_op operation. Only two possible
+    /// situations:
     /// 1) read, only on single mem_op is pushed
     /// 2) read+write, two mem_op are pushed, one read and one write.
     ///
-    /// This process is used for each aligned memory address, means that the "second part" of non aligned memory
-    /// operation is processed on addr + MEM_BYTES.
+    /// This process is used for each aligned memory address, means that the "second part" of non
+    /// aligned memory operation is processed on addr + MEM_BYTES.
     fn push_mem_align_op(
         &self,
         mem_addr: u64,
@@ -221,16 +224,17 @@ impl<F: PrimeField> MemProxy<F> {
                 continue;
             }
 
-            // Check if there are open mem align operations to be processed in this moment. Two possible
-            // conditions to process open mem align operations:
+            // Check if there are open mem align operations to be processed in this moment. Two
+            // possible conditions to process open mem align operations:
             // 1) the address of open operation is less than the aligned address.
-            // 2) the address of open operation is equal to the aligned address, but the step of the open
+            // 2) the address of open operation is equal to the aligned address, but the step of the
+            //    open
             // operation is less than the step of the current operation.
 
-            while open_mem_align_ops.len() > 0
-                && (open_mem_align_ops[0].address < aligned_mem_address
-                    || (open_mem_align_ops[0].address == aligned_mem_address
-                        && open_mem_align_ops[0].mem_op.step < mem_op.step))
+            while open_mem_align_ops.len() > 0 &&
+                (open_mem_align_ops[0].address < aligned_mem_address ||
+                    (open_mem_align_ops[0].address == aligned_mem_address &&
+                        open_mem_align_ops[0].mem_op.step < mem_op.step))
             {
                 let open_op = open_mem_align_ops.pop_front().unwrap();
                 let mem_value = if open_op.address == last_addr { last_value } else { 0 };
@@ -258,8 +262,8 @@ impl<F: PrimeField> MemProxy<F> {
                 last_addr = open_op.address;
 
                 // check if need to flush the inputs of the module
-                if (mem_module_inputs[mem_module_id].len() as u64)
-                    >= self.modules_data[mem_module_id].flush_input_size
+                if (mem_module_inputs[mem_module_id].len() as u64) >=
+                    self.modules_data[mem_module_id].flush_input_size
                 {
                     self.modules[mem_module_id].send_inputs(&mut mem_module_inputs[mem_module_id]);
                 }
@@ -267,7 +271,8 @@ impl<F: PrimeField> MemProxy<F> {
 
             aligned_mem_address = mem_op.address & MEM_ADDR_MASK;
 
-            // check if the aligned address is the last address to avoid processing the last fake mem_op
+            // check if the aligned address is the last address to avoid processing the last fake
+            // mem_op
             if aligned_mem_address == MEM_ADDR_MASK {
                 assert!(
                     open_mem_align_ops.len() == 0,
@@ -310,8 +315,8 @@ impl<F: PrimeField> MemProxy<F> {
             }
 
             // check if need to flush the inputs of the module
-            if (mem_module_inputs[mem_module_id].len() as u64)
-                >= self.modules_data[mem_module_id].flush_input_size
+            if (mem_module_inputs[mem_module_id].len() as u64) >=
+                self.modules_data[mem_module_id].flush_input_size
             {
                 self.modules[mem_module_id].send_inputs(&mut mem_module_inputs[mem_module_id]);
             }
@@ -350,8 +355,8 @@ fn mem_align_call(
                 more_address: double_address,
                 step: mem_op.step + 1,
                 value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset)))
-                        | ((mem_op.value & mask) << offset),
+                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))) |
+                        ((mem_op.value & mask) << offset),
                 ),
             }
         } else {
@@ -359,8 +364,8 @@ fn mem_align_call(
                 more_address: false,
                 step: mem_op.step + 1,
                 value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64)))
-                        | ((mem_op.value & mask) >> (128 - offset - width)),
+                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64))) |
+                        ((mem_op.value & mask) >> (128 - offset - width)),
                 ),
             }
         }

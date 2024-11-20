@@ -83,7 +83,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main_sm = MainSM::new(wcm.clone(), mem_proxy_sm.clone(), arith_sm.clone(), binary_sm.clone());
+        let main_sm =
+            MainSM::new(wcm.clone(), mem_proxy_sm.clone(), arith_sm.clone(), binary_sm.clone());
 
         Self { zisk_rom, main_sm, rom_sm, mem_proxy_sm, binary_sm, arith_sm }
     }
@@ -197,7 +198,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // ----------------------------------------------
         let mem_thread = thread::spawn({
             let mem_proxy_sm = self.mem_proxy_sm.clone();
-            move || mem_proxy_sm.prove(&mut mem_required).expect("Error during Memory witness computation")
+            move || {
+                mem_proxy_sm
+                    .prove(&mut mem_required)
+                    .expect("Error during Memory witness computation")
+            }
         });
 
         // ROM State Machine
