@@ -53,11 +53,8 @@ impl<F: Field> RomSM<F> {
                 .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
-        let keys = rom.insts.keys();
-        let sorted_keys = keys.sorted();
-        let mut i = 0;
-        for key in sorted_keys {
+        let main_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
