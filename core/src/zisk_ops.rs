@@ -733,7 +733,7 @@ pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
         return ((a as i32) as u64, true);
     }
 
-    (((a as i32) % (b as i32)) as u64, false)
+    ((((a as i32) as i64) % ((b as i32) as i64)) as u64, false)
 }
 #[inline(always)]
 pub fn opc_rem_w(ctx: &mut InstContext) {
