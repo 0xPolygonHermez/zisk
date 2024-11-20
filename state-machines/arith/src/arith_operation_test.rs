@@ -95,20 +95,20 @@ impl ArithOperationTest {
     }
     fn calculate_emulator_res(op: u8, a: u64, b: u64) -> (u64, bool) {
         match op {
-            MULU => return op_mulu(a, b),
-            MULUH => return op_muluh(a, b),
-            MULSUH => return op_mulsuh(a, b),
-            MUL => return op_mul(a, b),
-            MULH => return op_mulh(a, b),
-            MUL_W => return op_mul_w(a, b),
-            DIVU => return op_divu(a, b),
-            REMU => return op_remu(a, b),
-            DIVU_W => return op_divu_w(a, b),
-            REMU_W => return op_remu_w(a, b),
-            DIV => return op_div(a, b),
-            REM => return op_rem(a, b),
-            DIV_W => return op_div_w(a, b),
-            REM_W => return op_rem_w(a, b),
+            MULU => op_mulu(a, b),
+            MULUH => op_muluh(a, b),
+            MULSUH => op_mulsuh(a, b),
+            MUL => op_mul(a, b),
+            MULH => op_mulh(a, b),
+            MUL_W => op_mul_w(a, b),
+            DIVU => op_divu(a, b),
+            REMU => op_remu(a, b),
+            DIVU_W => op_divu_w(a, b),
+            REMU_W => op_remu_w(a, b),
+            DIV => op_div(a, b),
+            REM => op_rem(a, b),
+            DIV_W => op_div_w(a, b),
+            REM_W => op_rem_w(a, b),
             _ => {
                 panic!("Invalid opcode");
             }
@@ -120,10 +120,10 @@ impl ArithOperationTest {
         aop.calculate(op, a, b);
         println!("testing op:0x{:x} a:0x{:X} b:0x{:X} c:0x{:X} flag:{}", op, a, b, c, flag);
         let chunks = aop.calculate_chunks();
-        for i in 0..8 {
+        for (i, chunk) in chunks.iter().enumerate() {
             let carry_in = if i > 0 { aop.carry[i - 1] } else { 0 };
             let carry_out = if i < 7 { aop.carry[i] } else { 0 };
-            let res = chunks[i] + carry_in - 0x10000 * carry_out;
+            let res = chunk + carry_in - 0x10000 * carry_out;
             if res != 0 {
                 println!("{:#?}", aop);
 
@@ -131,7 +131,7 @@ impl ArithOperationTest {
                 self.fail_by_op[(op - 0xb0) as usize] += 1;
                 println!("\x1B[31mFAIL: 0x{4:X}({4})!= 0 chunks[{0}]=0x{1:X}({1}) carry_in: 0x{2:x},{2} carry_out: 0x{3:x},{3} failed\x1B[0m",
                 i,
-                chunks[i],
+                chunk,
                 carry_in,
                 carry_out,
                 res);
