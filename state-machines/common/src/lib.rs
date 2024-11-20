@@ -1,9 +1,13 @@
+mod layout_planner;
+mod minimal_trace_start;
 mod operations;
 mod provable;
 mod session;
 mod temp;
 mod worker;
 
+pub use layout_planner::*;
+pub use minimal_trace_start::*;
 pub use operations::*;
 use proofman_common::{ExecutionCtx, SetupCtx};
 use proofman_util::create_buffer_fast;

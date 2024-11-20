@@ -2,7 +2,7 @@
 members = [
     "cli",
     "core",
-    "emulator",
+    "emulator", "executor",
     "pil",
     "riscv",
     "rom-merkle",

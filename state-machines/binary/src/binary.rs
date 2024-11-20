@@ -1,14 +1,18 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
+use std::{
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
 };
 
-use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
+use crate::{
+    BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinaryPlanner,
+};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use rayon::Scope;
-use sm_common::{OpResult, Provable};
+use sm_common::{LayoutPlanner, OpResult, PlannerProvider, Provable};
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
@@ -103,6 +107,12 @@ impl<F: PrimeField> BinarySM<F> {
         } else {
             self.binary_extension_sm.prove_instance(operations, prover_buffer, offset);
         }
+    }
+}
+
+impl<F: PrimeField> PlannerProvider for BinarySM<F> {
+    fn get_planner(&self) -> Box<dyn LayoutPlanner> {
+        Box::new(BinaryPlanner::new())
     }
 }
 

@@ -5,10 +5,13 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
+use sm_common::{LayoutPlanner, PlannerProvider};
 use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
 use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
-//use ziskemu::ZiskEmulatorErr;
+
 use std::error::Error;
+
+use crate::RomPlanner;
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -453,6 +456,12 @@ impl<F: Field> RomSM<F> {
 
     //     Ok((prover_buffer, offsets[0], ROM_L_AIR_IDS[0]))
     // }
+}
+
+impl<F: Field> PlannerProvider for RomSM<F> {
+    fn get_planner(&self) -> Box<dyn LayoutPlanner> {
+        Box::new(RomPlanner::default())
+    }
 }
 
 impl<F: Field> WitnessComponent<F> for RomSM<F> {}

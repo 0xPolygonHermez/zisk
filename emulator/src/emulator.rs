@@ -11,8 +11,8 @@ use std::{
 };
 use sysinfo::System;
 use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
-    ZISK_OPERATION_TYPE_VARIANTS,
+    EmuInstructionObserver, Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation,
+    ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 pub trait Emulator {
@@ -241,6 +241,25 @@ impl ZiskEmulator {
         }
 
         Ok((vec_traces, emu_slices))
+    }
+
+    #[inline]
+    pub fn process_slice_observer<F: PrimeField>(
+        rom: &ZiskRom,
+        vec_traces: &[EmuTrace],
+        inst_observer: &mut dyn EmuInstructionObserver,
+    ) -> Result<(), ZiskEmulatorErr> {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        emu.run_observer::<F>(vec_traces, inst_observer);
+
+        if emu.terminated() {
+            Ok(())
+        } else {
+            Err(ZiskEmulatorErr::EmulationNoCompleted)
+        }
     }
 
     #[inline]

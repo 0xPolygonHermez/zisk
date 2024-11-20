@@ -505,6 +505,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "executor"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "p3-field",
+ "pil-std-lib",
+ "proofman",
+ "proofman-common",
+ "proofman-util",
+ "rayon",
+ "sm-arith",
+ "sm-binary",
+ "sm-common",
+ "sm-main",
+ "sm-mem",
+ "sm-rom",
+ "zisk-core",
+ "zisk-pil",
+ "ziskemu",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2194,6 +2216,7 @@ dependencies = [
 name = "sm-common"
 version = "0.1.0"
 dependencies = [
+ "p3-field",
  "proofman-common",
  "proofman-util",
  "rayon",
@@ -3267,6 +3290,7 @@ name = "zisk-witness"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "executor",
  "log",
  "p3-field",
  "p3-goldilocks",

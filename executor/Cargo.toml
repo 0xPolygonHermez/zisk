@@ -1,20 +1,14 @@
 [package]
-name = "zisk-witness"
+name = "executor"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
-executor = { path = "../executor" }
 sm-arith = { path = "../state-machines/arith" }
 sm-binary = { path = "../state-machines/binary" }
 sm-common = { path = "../state-machines/common" }
-sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
-sm-quick-ops = { path = "../state-machines/quick-ops" }
 sm-rom = { path = "../state-machines/rom" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
@@ -28,10 +22,4 @@ p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
 log = { workspace = true }
 
-env_logger = "0.11"
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 rayon = { workspace = true }
-
-[features]
-default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]

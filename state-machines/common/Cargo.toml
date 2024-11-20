@@ -9,5 +9,6 @@ zisk-core = { path = "../../core" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+p3-field = { workspace = true }
 
 rayon = "1.10.0"

@@ -1,3 +1,4 @@
+use executor::ZiskExecutor;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 use zisk_pil::*;
@@ -8,8 +9,6 @@ use proofman::{WitnessLibrary, WitnessManager};
 use proofman_common::{
     initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout,
 };
-
-use crate::ZiskExecutor;
 
 pub struct ZiskWitness<F: PrimeField> {
     /// Public inputs path

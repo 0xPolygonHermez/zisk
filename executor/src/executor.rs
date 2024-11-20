@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
-use sm_common::create_prover_buffer;
+use sm_common::{create_prover_buffer, PlannerProvider};
 use sm_main::{InstanceExtensionCtx, MainSM};
 use sm_mem::MemSM;
 use sm_rom::RomSM;
@@ -20,6 +20,8 @@ use std::{
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, ZiskEmulator};
+
+use crate::PlannerRegistry;
 
 pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file that contains the ZisK program to be executed
@@ -134,6 +136,29 @@ impl<F: PrimeField> ZiskExecutor<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
+        /////////////// 1 ******************************************************
+        let mut planner_registry = PlannerRegistry::new();
+        let binary_planner = self.binary_sm.get_planner();
+        let rom_planner = self.rom_sm.get_planner();
+        planner_registry.register_planner(binary_planner);
+        planner_registry.register_planner(rom_planner);
+
+        planner_registry.new_session(&pctx.pilout);
+        /////////////// 1******************************************************
+
+        // Step 1. Fast execution to get the Minial Trace
+        // ----------------------------------------------
+        timer_start_debug!(PAR_PROCESS_ROM);
+        let (minimal_trace, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+            &self.zisk_rom,
+            &public_inputs,
+            &emu_options,
+            Self::NUM_THREADS,
+            op_sizes,
+        )
+        .expect("Error during emulator execution");
+        timer_stop_and_log_debug!(PAR_PROCESS_ROM);
+
         // ROM State Machine
         // ----------------------------------------------
         // Run the ROM to compute the ROM witness
@@ -146,22 +171,27 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 );
         let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
 
-        // Main, Binary and Arith State Machines
-        // ----------------------------------------------
-        // Run the emulator in parallel n times to collect execution traces
-        // and record the execution starting points for each AIR instance
-        timer_start_debug!(PAR_PROCESS_ROM);
-        let (emu_traces, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
-            &self.zisk_rom,
-            &public_inputs,
-            &emu_options,
-            Self::NUM_THREADS,
-            op_sizes,
-        )
-        .expect("Error during emulator execution");
-        timer_stop_and_log_debug!(PAR_PROCESS_ROM);
-
         emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+
+        /////////////// 2******************************************************
+        timer_start_debug!(PROCESS_OBSERVER);
+
+        ZiskEmulator::process_slice_observer::<F>(
+            &self.zisk_rom,
+            &minimal_trace,
+            &mut planner_registry,
+        )
+        .expect("Error emulation not completed while executing process_slice_observer()");
+
+        planner_registry.get_plans().iter().for_each(|plan| {
+            println!("Plan: {:?}", plan);
+        });
+
+        timer_stop_and_log_debug!(PROCESS_OBSERVER);
+
+        println!("emu_slices: {:?}", emu_slices);
+
+        /////////////// 2******************************************************
 
         // Join threads to synchronize the execution
         handle_rom.join().unwrap().expect("Error during ROM witness computation");
@@ -204,19 +234,19 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         instances_extension_ctx.par_iter_mut().for_each(|iectx| match iectx.op_type {
             ZiskOperationType::None => {
-                self.main_sm.prove_main(&self.zisk_rom, &emu_traces, iectx, &pctx);
+                self.main_sm.prove_main(&self.zisk_rom, &minimal_trace, iectx, &pctx);
             }
             ZiskOperationType::Binary => {
-                self.main_sm.prove_binary(&self.zisk_rom, &emu_traces, iectx, &pctx);
+                self.main_sm.prove_binary(&self.zisk_rom, &minimal_trace, iectx, &pctx);
             }
             ZiskOperationType::BinaryE => {
-                self.main_sm.prove_binary_extension(&self.zisk_rom, &emu_traces, iectx, &pctx);
+                self.main_sm.prove_binary_extension(&self.zisk_rom, &minimal_trace, iectx, &pctx);
             }
             _ => panic!("Invalid operation type"),
         });
         // Drop the emulator traces concurrently
         std::thread::spawn(move || {
-            drop(emu_traces);
+            drop(minimal_trace);
         });
 
         timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
