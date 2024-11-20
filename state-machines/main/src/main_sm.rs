@@ -5,7 +5,7 @@ use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_binary::BinarySM;
 use std::sync::Arc;
-use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType, ZiskRom, ROM_ENTRY};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
@@ -202,7 +202,7 @@ impl<F: PrimeField> MainSM<F> {
         let inputs = ZiskEmulator::process_slice_required::<F>(
             zisk_rom,
             vec_traces,
-            iectx.op_type,
+            ZiskOperationType::None,
             &iectx.emu_trace_start,
             air.num_rows(),
         );
@@ -236,7 +236,7 @@ impl<F: PrimeField> MainSM<F> {
         let inputs = ZiskEmulator::process_slice_required::<F>(
             zisk_rom,
             vec_traces,
-            iectx.op_type,
+            ZiskOperationType::None,
             &iectx.emu_trace_start,
             air.num_rows(),
         );

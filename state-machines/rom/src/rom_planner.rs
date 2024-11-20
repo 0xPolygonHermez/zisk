@@ -2,12 +2,15 @@ use proofman_common::WitnessPilout;
 use sm_common::{LayoutPlanner, OutputPlan};
 use zisk_core::{InstContext, ZiskInst, ZiskPcHistogram};
 
-#[derive(Debug)]
 pub struct RomPlan {
-    pub details: String,
+    pub histogram: ZiskPcHistogram,
 }
 
-impl OutputPlan for RomPlan {}
+impl OutputPlan for RomPlan {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 #[derive(Default)]
 pub struct RomPlanner {
@@ -36,13 +39,6 @@ impl LayoutPlanner for RomPlanner {
     }
 
     fn get_plan(&self) -> Box<dyn OutputPlan> {
-        let mut sum = 0;
-        for item in self.histogram.map.iter() {
-            sum += item.0 * item.1;
-        }
-        let xxx =
-            format!("pc_histogram: {} {} {}", sum, self.histogram.end_pc, self.histogram.steps);
-
-        Box::new(RomPlan { details: xxx })
+        Box::new(RomPlan { histogram: self.histogram.clone() })
     }
 }

@@ -31,7 +31,7 @@ impl<F: Field> RomSM<F> {
     pub fn prove(
         &self,
         rom: &ZiskRom,
-        pc_histogram: ZiskPcHistogram,
+        pc_histogram: &ZiskPcHistogram,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
         let sctx = self.wcm.get_sctx();
@@ -83,14 +83,14 @@ impl<F: Field> RomSM<F> {
 
         let empty_pc_histogram = ZiskPcHistogram::default();
 
-        Self::compute_trace_rom(&rom, buffer_allocator, sctx, empty_pc_histogram, 0)
+        Self::compute_trace_rom(&rom, buffer_allocator, sctx, &empty_pc_histogram, 0)
     }
 
     pub fn compute_trace_rom(
         rom: &ZiskRom,
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
-        pc_histogram: ZiskPcHistogram,
+        pc_histogram: &ZiskPcHistogram,
         main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         let pilout = Pilout::pilout();
@@ -149,7 +149,7 @@ impl<F: Field> RomSM<F> {
         number_of_instructions: usize,
         buffer_allocator: Arc<dyn BufferAllocator<F>>,
         sctx: &SetupCtx<F>,
-        pc_histogram: ZiskPcHistogram,
+        pc_histogram: &ZiskPcHistogram,
         main_trace_len: u64,
     ) -> Result<(Vec<F>, u64, usize), Box<dyn Error + Send>> {
         // Set trace size

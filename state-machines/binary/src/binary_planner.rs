@@ -8,7 +8,11 @@ pub struct BinaryPlan {
     pub details: String,
 }
 
-impl OutputPlan for BinaryPlan {}
+impl OutputPlan for BinaryPlan {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 #[derive(Default)]
 pub struct BinaryPlanner {

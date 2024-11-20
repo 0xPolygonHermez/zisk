@@ -11,19 +11,22 @@ use sm_binary::BinarySM;
 use sm_common::{create_prover_buffer, PlannerProvider};
 use sm_main::{InstanceExtensionCtx, MainSM};
 use sm_mem::MemSM;
-use sm_rom::RomSM;
+use sm_rom::{RomPlan, RomSM};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
-use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
-use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-use ziskemu::{EmuOptions, ZiskEmulator};
+use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 use crate::PlannerRegistry;
 
 pub struct ZiskExecutor<F: PrimeField> {
+    /// Witness Manager
+    pub wcm: Arc<WitnessManager<F>>,
+
     /// ZisK ROM, a binary file that contains the ZisK program to be executed
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -84,7 +87,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         let main_sm = MainSM::new(wcm.clone(), arith_sm.clone(), binary_sm.clone(), mem_sm.clone());
 
-        Self { zisk_rom, main_sm, rom_sm, mem_sm, binary_sm, arith_sm }
+        Self { wcm, zisk_rom, main_sm, rom_sm, mem_sm, binary_sm, arith_sm }
     }
 
     /// Executes the MainSM state machine and processes the inputs in batches when the maximum
@@ -120,23 +123,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
             fs::read(path).expect("Could not read inputs file")
         };
 
-        // During ROM processing, we gather execution data necessary for creating the AIR instances.
-        // This data is collected by the emulator and includes the minimal execution trace,
-        // along with essential state information of the processor. This ensures that the execution
-        // can be reproduced from specific points in the trace to generate the inputs for each state
-        // machine. We aim to track the starting point of execution for every N instructions
-        // across different operation types. Currently, we are only collecting data for
-        // Binary and BinaryE operations.
-        let air_binary = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_e = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-
-        let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
-        // The starting points for the Main is allocated using None operation
-        op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
-        op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
-        op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
-
-        /////////////// 1 ******************************************************
         let mut planner_registry = PlannerRegistry::new();
         let binary_planner = self.binary_sm.get_planner();
         let rom_planner = self.rom_sm.get_planner();
@@ -144,112 +130,131 @@ impl<F: PrimeField> ZiskExecutor<F> {
         planner_registry.register_planner(rom_planner);
 
         planner_registry.new_session(&pctx.pilout);
-        /////////////// 1******************************************************
 
-        // Step 1. Fast execution to get the Minial Trace
+        // STEP 1. Fast execution of the ROM to get the Minimal Trace
         // ----------------------------------------------
-        timer_start_debug!(PAR_PROCESS_ROM);
-        let (minimal_trace, mut emu_slices) = ZiskEmulator::par_process_rom::<F>(
+        timer_start_debug!(FAST_PROCESS_ROM);
+        let minimal_traces = ZiskEmulator::par_process_rom::<F>(
             &self.zisk_rom,
             &public_inputs,
             &emu_options,
             Self::NUM_THREADS,
-            op_sizes,
         )
         .expect("Error during emulator execution");
-        timer_stop_and_log_debug!(PAR_PROCESS_ROM);
+        timer_stop_and_log_debug!(FAST_PROCESS_ROM);
+        let minimal_traces = Arc::new(minimal_traces);
 
-        // ROM State Machine
+        // STEP 2. Create Instances for the Main
         // ----------------------------------------------
-        // Run the ROM to compute the ROM witness
-        let rom_sm = self.rom_sm.clone();
-        let zisk_rom = self.zisk_rom.clone();
-        let pc_histogram =
-            ZiskEmulator::process_rom_pc_histogram(&self.zisk_rom, &public_inputs, &emu_options)
-                .expect(
-                    "MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()",
-                );
-        let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
+        let iectx = Arc::new(Mutex::new({
+            let mut iectx = Vec::new();
+            self.create_main_instances(&mut iectx, &minimal_traces);
+            iectx
+        }));
 
-        emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+        let main_task = {
+            let main_sm = self.main_sm.clone();
+            let zisk_rom = self.zisk_rom.clone();
+            let minimal_traces = minimal_traces.clone();
+            let iectx = Arc::clone(&iectx);
+            let pctx = pctx.clone();
 
-        /////////////// 2******************************************************
+            std::thread::spawn(move || {
+                iectx.lock().unwrap().par_iter_mut().for_each(|iectx| {
+                    main_sm.prove_main(&zisk_rom, &minimal_traces, iectx, &pctx);
+                });
+            })
+        };
+
+        // STEP 3. Process the Slices with the Observers
+        // ----------------------------------------------
         timer_start_debug!(PROCESS_OBSERVER);
 
-        ZiskEmulator::process_slice_observer::<F>(
-            &self.zisk_rom,
-            &minimal_trace,
-            &mut planner_registry,
-        )
-        .expect("Error emulation not completed while executing process_slice_observer()");
+        let sec_task = {
+            let zisk_rom = self.zisk_rom.clone();
+            let minimal_traces = minimal_traces.clone();
+            let rom_sm = self.rom_sm.clone();
 
-        planner_registry.get_plans().iter().for_each(|plan| {
-            println!("Plan: {:?}", plan);
-        });
+            std::thread::spawn(move || {
+                ZiskEmulator::process_slice_observer::<F>(
+                    &zisk_rom,
+                    &minimal_traces,
+                    &mut planner_registry,
+                )
+                .expect("Error emulation not completed while executing process_slice_observer()");
+
+                let pc_histogram = planner_registry.planners[1].get_plan();
+                let pc_histogram = pc_histogram
+                    .as_any()
+                    .downcast_ref::<RomPlan>()
+                    .expect("Error downcasting to ZiskPcHistogram");
+
+                let _ = rom_sm.prove(&zisk_rom, &pc_histogram.histogram);
+            })
+        };
 
         timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
-        println!("emu_slices: {:?}", emu_slices);
+        // // FIXME: Move InstanceExtensionCtx form main SM to another place
+        // let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
+        //     Vec::with_capacity(emu_slices.points.len());
 
-        /////////////// 2******************************************************
+        // let mut dctx = ectx.dctx.write().unwrap();
+        // let mut main_segnent_id = 0;
+        // for emu_slice in emu_slices.points.iter() {
+        //     let (airgroup_id, air_id) = match emu_slice.op_type {
+        //         ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+        //         ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+        //         ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
+        //         _ => panic!("Invalid operation type"),
+        //     };
+        //     let segment_id = match emu_slice.op_type {
+        //         ZiskOperationType::None => {
+        //             main_segnent_id += 1;
+        //             Some(main_segnent_id - 1)
+        //         }
+        //         _ => None,
+        //     };
 
-        // Join threads to synchronize the execution
-        handle_rom.join().unwrap().expect("Error during ROM witness computation");
+        //     if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
+        //         let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
+        //         instances_extension_ctx.push(InstanceExtensionCtx::new(
+        //             buffer,
+        //             offset,
+        //             emu_slice.op_type,
+        //             emu_slice.emu_trace_start.clone(),
+        //             segment_id,
+        //             global_idx,
+        //             None,
+        //         ));
+        //     }
+        // }
+        // drop(dctx);
 
-        // FIXME: Move InstanceExtensionCtx form main SM to another place
-        let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
-            Vec::with_capacity(emu_slices.points.len());
+        // instances_extension_ctx.par_iter_mut().for_each(|iectx| match iectx.op_type {
+        //     ZiskOperationType::None => {
+        //         self.main_sm.prove_main(&self.zisk_rom, &minimal_traces, iectx, &pctx);
+        //     }
+        //     ZiskOperationType::Binary => {
+        //         self.main_sm.prove_binary(&self.zisk_rom, &minimal_traces, iectx, &pctx);
+        //     }
+        //     ZiskOperationType::BinaryE => {
+        //         self.main_sm.prove_binary_extension(&self.zisk_rom, &minimal_traces, iectx, &pctx);
+        //     }
+        //     _ => panic!("Invalid operation type"),
+        // });
 
-        let mut dctx = ectx.dctx.write().unwrap();
-        let mut main_segnent_id = 0;
-        for emu_slice in emu_slices.points.iter() {
-            let (airgroup_id, air_id) = match emu_slice.op_type {
-                ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
-                ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
-                ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
-                _ => panic!("Invalid operation type"),
-            };
-            let segment_id = match emu_slice.op_type {
-                ZiskOperationType::None => {
-                    main_segnent_id += 1;
-                    Some(main_segnent_id - 1)
-                }
-                _ => None,
-            };
-
-            if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
-                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
-                instances_extension_ctx.push(InstanceExtensionCtx::new(
-                    buffer,
-                    offset,
-                    emu_slice.op_type,
-                    emu_slice.emu_trace_start.clone(),
-                    segment_id,
-                    global_idx,
-                    None,
-                ));
-            }
-        }
-        drop(dctx);
-
-        instances_extension_ctx.par_iter_mut().for_each(|iectx| match iectx.op_type {
-            ZiskOperationType::None => {
-                self.main_sm.prove_main(&self.zisk_rom, &minimal_trace, iectx, &pctx);
-            }
-            ZiskOperationType::Binary => {
-                self.main_sm.prove_binary(&self.zisk_rom, &minimal_trace, iectx, &pctx);
-            }
-            ZiskOperationType::BinaryE => {
-                self.main_sm.prove_binary_extension(&self.zisk_rom, &minimal_trace, iectx, &pctx);
-            }
-            _ => panic!("Invalid operation type"),
-        });
-        // Drop the emulator traces concurrently
         std::thread::spawn(move || {
-            drop(minimal_trace);
+            drop(minimal_traces);
         });
+
+        main_task.join().unwrap();
+        sec_task.join().unwrap();
 
         timer_start_debug!(ADD_INSTANCES_TO_THE_REPO);
+        let mut instances_extension_ctx = iectx.lock().unwrap();
+        let instances_extension_ctx = std::mem::take(&mut *instances_extension_ctx);
+
         for iectx in instances_extension_ctx {
             if let Some(air_instance) = iectx.air_instance {
                 pctx.air_instance_repo
@@ -261,5 +266,30 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // self.mem_sm.unregister_predecessor(scope);
         self.binary_sm.unregister_predecessor();
         // self.arith_sm.register_predecessor(scope);
+    }
+
+    fn create_main_instances(
+        &self,
+        instances_extension_ctx: &mut Vec<InstanceExtensionCtx<F>>,
+        minimal_traces: &[EmuTrace],
+    ) {
+        let ectx = self.wcm.get_ectx();
+        let sctx = self.wcm.get_sctx();
+
+        let mut dctx = ectx.dctx.write().unwrap();
+        for (segment_id, minimal_trace) in minimal_traces.iter().enumerate() {
+            if let (true, global_idx) = dctx.add_instance(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0], 1) {
+                let (buffer, offset) =
+                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
+                instances_extension_ctx.push(InstanceExtensionCtx::new(
+                    buffer,
+                    offset,
+                    minimal_trace.start_state.clone(),
+                    Some(segment_id),
+                    global_idx,
+                    None,
+                ));
+            }
+        }
     }
 }

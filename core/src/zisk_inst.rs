@@ -15,8 +15,6 @@ pub enum ZiskOperationType {
     PubOut,
 }
 
-pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 6;
-
 /// ZisK instruction definition
 ///
 /// ZisK instruction defined as a binary operation with 2 results: op(a, b) -> (c, flag)

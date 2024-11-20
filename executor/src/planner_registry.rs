@@ -5,7 +5,7 @@ use zisk_core::{EmuInstructionObserver, InstContext, ZiskInst};
 /// A registry to manage all planners
 #[derive(Default)]
 pub struct PlannerRegistry {
-    planners: Vec<Box<dyn LayoutPlanner>>,
+    pub planners: Vec<Box<dyn LayoutPlanner>>,
 }
 
 impl PlannerRegistry {

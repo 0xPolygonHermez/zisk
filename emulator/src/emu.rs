@@ -1,7 +1,7 @@
 use std::mem;
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceEnd,
+    EmuContext, EmuFullTraceStep, EmuOptions,  EmuTrace, EmuTraceEnd,
     EmuTraceStart, EmuTraceStep, ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
@@ -9,10 +9,9 @@ use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    EmuInstructionObserver, InstContext, ZiskInst, ZiskOperationType,
-    ZiskPcHistogram, ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
-    ZISK_OPERATION_TYPE_VARIANTS,
+    EmuInstructionObserver, InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram,
+    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -400,7 +399,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<EmuTrace>, EmuStartingPoints) {
+    ) -> Vec<EmuTrace> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -411,9 +410,6 @@ impl<'a> Emu<'a> {
         self.ctx.do_stats = options.stats;
 
         let mut emu_traces = Vec::new();
-        let mut emu_segments = EmuStartingPoints::default();
-
-        let mut segment_count = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
 
         while !self.ctx.inst_ctx.end {
             let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
@@ -421,7 +417,7 @@ impl<'a> Emu<'a> {
                 block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
 
             if !is_my_block {
-                self.par_step_2::<F>(options, par_options, &mut emu_segments, &mut segment_count);
+                self.par_step_2();
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
@@ -437,17 +433,11 @@ impl<'a> Emu<'a> {
                         end: EmuTraceEnd { end: false },
                     });
                 }
-                self.par_step::<F>(
-                    options,
-                    par_options,
-                    emu_traces.last_mut().unwrap(),
-                    &mut emu_segments,
-                    &mut segment_count,
-                );
+                self.par_step::<F>(emu_traces.last_mut().unwrap());
             }
         }
 
-        (emu_traces, emu_segments)
+        emu_traces
     }
 
     /// Performs one single step of the emulation
@@ -554,18 +544,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    #[allow(unused_variables)]
-    pub fn par_step<F: PrimeField>(
-        &mut self,
-        options: &EmuOptions,
-        par_options: &ParEmuOptions,
-        emu_full_trace_vec: &mut EmuTrace,
-        emu_segments: &mut EmuStartingPoints,
-        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) {
-        let last_pc = self.ctx.inst_ctx.pc;
-        let last_c = self.ctx.inst_ctx.c;
-
+    pub fn par_step<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         emu_full_trace_vec.last_state = EmuTraceStart {
             pc: self.ctx.inst_ctx.pc,
             sp: self.ctx.inst_ctx.sp,
@@ -601,41 +580,13 @@ impl<'a> Emu<'a> {
             .steps
             .push(EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b });
 
-        let op_type = instruction.op_type as usize;
-        segment_count[op_type] += 1;
-        emu_segments.total_steps[op_type] += 1;
-
-        if par_options.segment_sizes[op_type] != 0 {
-            if segment_count[op_type] == 1 {
-                emu_segments.add(
-                    instruction.op_type,
-                    last_pc,
-                    self.ctx.inst_ctx.sp,
-                    last_c,
-                    self.ctx.inst_ctx.step,
-                );
-            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
-                segment_count[op_type] = 0;
-            }
-        }
-
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
     }
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    #[allow(unused_variables)]
-    pub fn par_step_2<F: PrimeField>(
-        &mut self,
-        options: &EmuOptions,
-        par_options: &ParEmuOptions,
-        emu_segments: &mut EmuStartingPoints,
-        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) {
-        let last_pc = self.ctx.inst_ctx.pc;
-        let last_c = self.ctx.inst_ctx.c;
-
+    pub fn par_step_2(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -660,23 +611,6 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
 
-        let op_type = instruction.op_type as usize;
-        segment_count[op_type] += 1;
-        emu_segments.total_steps[op_type] += 1;
-
-        if par_options.segment_sizes[op_type] != 0 {
-            if segment_count[op_type] == 1 {
-                emu_segments.add(
-                    instruction.op_type,
-                    last_pc,
-                    self.ctx.inst_ctx.sp,
-                    last_c,
-                    self.ctx.inst_ctx.step,
-                );
-            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
-                segment_count[op_type] = 0;
-            }
-        }
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
     }

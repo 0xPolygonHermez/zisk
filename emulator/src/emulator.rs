@@ -1,18 +1,16 @@
 use crate::{
-    Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
-    ZiskEmulatorErr,
+    Emu, EmuOptions, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr,
 };
 use p3_field::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
     time::Instant,
 };
 use sysinfo::System;
 use zisk_core::{
     EmuInstructionObserver, Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation,
-    ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
+    ZiskRom,
 };
 
 pub trait Emulator {
@@ -186,18 +184,12 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         num_threads: usize,
-        op_sizes: [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) -> Result<(Vec<EmuTrace>, EmuStartingPoints), ZiskEmulatorErr> {
-        let mut emu_traces = vec![Vec::new(); num_threads];
-        let emu_slices = Mutex::new(EmuStartingPoints::default());
+    ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
+        let mut minimal_traces = vec![Vec::new(); num_threads];
 
-        emu_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
-            let par_emu_options = ParEmuOptions::new(
-                num_threads,
-                thread_id,
-                options.trace_steps.unwrap() as usize,
-                op_sizes,
-            );
+        minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
+            let par_emu_options =
+                ParEmuOptions::new(num_threads, thread_id, options.trace_steps.unwrap() as usize);
 
             // Run the emulation
             let mut emu = Emu::new(rom);
@@ -209,38 +201,19 @@ impl ZiskEmulator {
                 // return Err(ZiskEmulatorErr::EmulationNoCompleted);
             }
 
-            *emu_trace = result.0;
-
-            if thread_id == 0 {
-                *emu_slices.lock().unwrap() = result.1;
-            }
+            *emu_trace = result;
         });
 
-        let capacity = emu_traces.iter().map(|trace| trace.len()).sum::<usize>();
+        let capacity = minimal_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
         for i in 0..capacity {
             let x = i % num_threads;
             let y = i / num_threads;
 
-            vec_traces.push(std::mem::take(&mut emu_traces[x][y]));
+            vec_traces.push(std::mem::take(&mut minimal_traces[x][y]));
         }
 
-        // For performance reasons we didn't collect main operation starting points because we
-        // can generate them from the execution trace.
-        let mut emu_slices = emu_slices.into_inner().unwrap();
-        emu_slices.total_steps[ZiskOperationType::None as usize] =
-            vec_traces.iter().map(|trace| trace.steps.len()).sum::<usize>() as u64;
-        for vec_trace in &vec_traces {
-            emu_slices.add(
-                ZiskOperationType::None,
-                vec_trace.start_state.pc,
-                vec_trace.start_state.sp,
-                vec_trace.start_state.c,
-                vec_trace.start_state.step,
-            );
-        }
-
-        Ok((vec_traces, emu_slices))
+        Ok(vec_traces)
     }
 
     #[inline]
