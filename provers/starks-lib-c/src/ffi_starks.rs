@@ -730,31 +730,6 @@ pub fn set_hint_field_global_constraints_c(
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn print_by_name_c(
-    p_setup_ctx: *mut c_void,
-    p_steps_params: *mut c_void,
-    name: &str,
-    lengths: *mut u64,
-    first_print_value: u64,
-    last_print_value: u64,
-    return_values: bool,
-) -> *mut c_void {
-    let name_string = CString::new(name).unwrap();
-    let name_ptr = name_string.as_ptr() as *mut std::os::raw::c_char;
-    unsafe {
-        print_by_name(
-            p_setup_ctx,
-            p_steps_params,
-            name_ptr,
-            lengths,
-            first_print_value,
-            last_print_value,
-            return_values,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn print_expression_c(
     p_setup_ctx: *mut c_void,
     pol: *mut c_void,
@@ -1477,20 +1452,6 @@ pub fn set_hint_field_global_constraints_c(
         "set_hint_field_global_constraints: This is a mock call because there is no linked library"
     );
     100000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn print_by_name_c(
-    _p_setup_ctx: *mut c_void,
-    _p_steps_params: *mut c_void,
-    _name: &str,
-    _lengths: *mut u64,
-    _first_print_value: u64,
-    _last_print_value: u64,
-    _return_values: bool,
-) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "print_by_name: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
 }
 
 #[cfg(feature = "no_lib_link")]

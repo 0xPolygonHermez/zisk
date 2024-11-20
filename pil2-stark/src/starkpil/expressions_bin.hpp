@@ -28,6 +28,7 @@ struct HintFieldValue {
     opType operand;
     uint64_t id;
     uint64_t commitId;
+    uint64_t rowOffsetIndex;
     uint64_t dim;
     uint64_t value;
     string stringValue;

@@ -1,6 +1,6 @@
 use proofman_starks_lib_c::{
     acc_hint_field_c, acc_mul_hint_fields_c, get_hint_field_c, get_hint_ids_by_name_c, mul_hint_fields_c,
-    print_by_name_c, print_expression_c, print_row_c, set_hint_field_c, VecU64Result,
+    print_expression_c, print_row_c, set_hint_field_c, VecU64Result,
 };
 
 use std::collections::HashMap;
@@ -13,7 +13,6 @@ use std::os::raw::c_void;
 use std::ops::{Add, Div, Mul, Sub, AddAssign, DivAssign, MulAssign, SubAssign};
 
 use std::fmt::{Display, Debug, Formatter, Result};
-use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
@@ -69,6 +68,10 @@ impl HintFieldOptions {
 
     pub fn inverse() -> Self {
         Self { inverse: true, ..Default::default() }
+    }
+
+    pub fn inverse_and_print_expression() -> Self {
+        Self { inverse: true, print_expression: true, ..Default::default() }
     }
 
     pub fn print_expression() -> Self {
@@ -1222,56 +1225,4 @@ pub fn print_row<F: Field>(setup_ctx: &SetupCtx<F>, air_instance: &AirInstance<F
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;
 
     print_row_c((&setup.p_setup).into(), buffer, stage, row);
-}
-
-pub fn print_by_name<F: Field>(
-    setup_ctx: &SetupCtx<F>,
-    proof_ctx: Arc<ProofCtx<F>>,
-    air_instance: &AirInstance<F>,
-    name: &str,
-    lengths: Option<Vec<u64>>,
-    first_print_value: u64,
-    last_print_value: u64,
-) -> Option<HintFieldValue<F>> {
-    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
-    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
-    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
-
-    let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
-    let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
-
-    let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
-        public_inputs: public_inputs_ptr,
-        challenges: challenges_ptr,
-        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
-        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: const_pols_ptr,
-        p_const_tree: const_tree_ptr,
-        custom_commits: air_instance.get_custom_commits_ptr(),
-    };
-
-    let mut lengths_vec = lengths.unwrap_or_default();
-    let lengths_ptr = lengths_vec.as_mut_ptr();
-
-    let _raw_ptr = print_by_name_c(
-        (&setup.p_setup).into(),
-        (&steps_params).into(),
-        name,
-        lengths_ptr,
-        first_print_value,
-        last_print_value,
-        false,
-    );
-
-    // TODO: CHECK WHAT IS WRONG WITH RETURN VALUES
-    // if return_values {
-    //     let field = unsafe { Box::from_raw(raw_ptr as *mut HintFieldInfo<F>) };
-
-    //     Some(HintCol::from_hint_field(field.as_ref()))
-    // } else {
-    None
-    // }
 }

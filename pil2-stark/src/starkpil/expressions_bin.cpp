@@ -278,6 +278,11 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
                 } else {
                     hintFieldValue.id = expressionsBin->readU32LE();
                 }
+                
+                if(hintFieldValue.operand == opType::custom || hintFieldValue.operand == opType::const_ || hintFieldValue.operand == opType::cm) {
+                    hintFieldValue.rowOffsetIndex = expressionsBin->readU32LE();
+                }
+
                 if(hintFieldValue.operand == opType::tmp) {
                     hintFieldValue.dim = expressionsBin->readU32LE();
                 }

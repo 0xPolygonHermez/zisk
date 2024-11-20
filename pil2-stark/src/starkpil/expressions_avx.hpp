@@ -347,10 +347,8 @@ public:
                     uint64_t i_args = 0;
 
                     if(dests[j].params[k].op == opType::cm || dests[j].params[k].op == opType::const_) {
-                        auto openingPointZero = std::find_if(setupCtx.starkInfo.openingPoints.begin(), setupCtx.starkInfo.openingPoints.end(), [](int p) { return p == 0; });
-                        auto openingPointZeroIndex = std::distance(setupCtx.starkInfo.openingPoints.begin(), openingPointZero);
-
-                        uint64_t buffPos = ns*openingPointZeroIndex + dests[j].params[k].stage;
+                        uint64_t openingPointIndex = dests[j].params[k].rowOffsetIndex;
+                        uint64_t buffPos = ns*openingPointIndex + dests[j].params[k].stage;
                         uint64_t stagePos = dests[j].params[k].stagePos;
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION], dests[j].params[k].inverse, dests[j].params[k].dim, &bufferT_[nColsStagesAcc[buffPos] + stagePos]);
                         continue;

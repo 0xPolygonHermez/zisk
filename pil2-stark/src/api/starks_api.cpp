@@ -567,11 +567,6 @@ uint64_t set_hint_field_global_constraints(void* p_globalinfo_bin, void *proofVa
 // Debug functions
 // =================================================================================  
 
-void *print_by_name(void *pSetupCtx, void* pStepsParams, char* name, uint64_t *lengths, uint64_t first_value, uint64_t last_value, bool return_values) {
-    HintFieldInfo hintFieldInfo = printByName(*(SetupCtx *)pSetupCtx, *(StepsParams *)pStepsParams, string(name), lengths, first_value, last_value, return_values);
-    return new HintFieldInfo(hintFieldInfo);
-}
-
 void print_expression(void *pSetupCtx, void* pol, uint64_t dim, uint64_t first_value, uint64_t last_value) {
     printExpression((Goldilocks::Element *)pol, dim, first_value, last_value);
 }

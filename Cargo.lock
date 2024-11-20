@@ -835,6 +835,7 @@ dependencies = [
  "log",
  "mpi",
  "p3-field",
+ "p3-goldilocks",
  "pilout",
  "proofman-macros",
  "proofman-starks-lib-c",
