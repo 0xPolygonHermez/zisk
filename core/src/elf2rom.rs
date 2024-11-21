@@ -22,14 +22,21 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
     if let Some(section_headers) = elf_bytes.section_headers() {
         for section_header in section_headers {
             if section_header.sh_type == SHT_PROGBITS {
+                // Get the section header address
+                let addr = section_header.sh_addr;
+
+                // Ignore sections with address = 0, as per ELF spec
+                if addr == 0 {
+                    continue;
+                }
+
+                // Get the section data
                 let (data_u8, _) = elf_bytes.section_data(&section_header)?;
                 let mut data = data_u8.to_vec();
 
                 while data.len() % 4 != 0 {
                     data.pop();
                 }
-
-                let addr = section_header.sh_addr;
 
                 // If this is a code section, add it to program
                 if (section_header.sh_flags & SHF_EXECINSTR as u64) != 0 {
@@ -41,6 +48,8 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
                     addr >= RAM_ADDR &&
                     addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
+                    //println! {"elf2rom() new RW from={:x} length={:x}={}", addr, data.len(),
+                    //data.len()};
                     add_zisk_init_data(&mut rom, addr, &data);
                 }
                 // Add read-only data memory section
@@ -74,10 +83,6 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
     let ro_data_len = rom.ro_data.len();
     for i in 0..ro_data_len {
         let addr = rom.ro_data[i].from;
-        if addr == 0 {
-            // TODO: Check with Jordi
-            continue;
-        }
         let mut data = Vec::new();
         data.extend(rom.ro_data[i].data.as_slice());
         add_zisk_init_data(&mut rom, addr, &data);
