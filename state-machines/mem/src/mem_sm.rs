@@ -158,7 +158,7 @@ impl<F: PrimeField> MemSM<F> {
         // trace[0].mem_segment = segment_id_field;
         // trace[0].mem_last_segment = is_last_segment_field;
 
-        trace[0].addr = F::from_canonical_u64(mem_first_row.address);
+        trace[0].addr = F::from_canonical_u32(mem_first_row.address);
         trace[0].step = F::from_canonical_u64(mem_first_row.step);
         trace[0].sel = F::zero();
         trace[0].wr = F::zero();
@@ -184,7 +184,7 @@ impl<F: PrimeField> MemSM<F> {
             // trace[i].mem_segment = segment_id_field;
             // trace[i].mem_last_segment = is_last_segment_field;
 
-            trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
+            trace[i].addr = F::from_canonical_u32(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
             trace[i].wr = F::from_bool(mem_op.is_write);

@@ -287,6 +287,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         mem_thread.join().expect("Error during Memory witness computation");
 
+        // match mem_thread.join() {
+        //     Ok(_) => println!("El thread ha finalitzat correctament."),
+        //     Err(e) => {
+        //         println!("El thread ha fet panic!");
+        //
+        //         // Converteix l'error en una cadena llegible (opcional)
+        //         if let Some(missatge) = e.downcast_ref::<&str>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else if let Some(missatge) = e.downcast_ref::<String>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else {
+        //             println!("No es pot determinar el tipus d'error.");
+        //         }
+        //     }
+        // }
         if let Some(thread) = rom_thread {
             let _ = thread.join().expect("Error during ROM witness computation");
         }

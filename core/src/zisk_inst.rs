@@ -15,7 +15,7 @@ pub enum ZiskOperationType {
     PubOut,
 }
 
-pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 6;
+pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 7;
 
 /// ZisK instruction definition
 ///

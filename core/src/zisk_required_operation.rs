@@ -10,10 +10,10 @@ pub struct ZiskRequiredOperation {
 
 #[derive(Clone)]
 pub struct ZiskRequiredMemory {
-    pub step: u64,
+    pub address: u32,
     pub is_write: bool,
-    pub address: u64,
-    pub width: u64,
+    pub width: u8,
+    pub step: u64,
     pub value: u64,
 }
 

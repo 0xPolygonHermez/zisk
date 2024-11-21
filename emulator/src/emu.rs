@@ -111,7 +111,7 @@ impl<'a> Emu<'a> {
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
                     is_write: false,
-                    address: addr,
+                    address: addr as u32,
                     width: 8,
                     value: self.ctx.inst_ctx.a,
                 };
@@ -185,7 +185,7 @@ impl<'a> Emu<'a> {
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
                     is_write: false,
-                    address: addr,
+                    address: addr as u32,
                     width: 8,
                     value: self.ctx.inst_ctx.b,
                 };
@@ -204,8 +204,8 @@ impl<'a> Emu<'a> {
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
                     is_write: false,
-                    address: addr,
-                    width: instruction.ind_width,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
                     value: self.ctx.inst_ctx.b,
                 };
                 emu_mem.push(required_memory);
@@ -284,7 +284,7 @@ impl<'a> Emu<'a> {
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
                     is_write: true,
-                    address: addr as u64,
+                    address: addr as u32,
                     width: 8,
                     value: val as u64,
                 };
@@ -306,8 +306,8 @@ impl<'a> Emu<'a> {
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
                     is_write: true,
-                    address: addr as u64,
-                    width: instruction.ind_width,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
                     value: val as u64,
                 };
                 emu_mem.push(required_memory);
