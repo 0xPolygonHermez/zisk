@@ -273,12 +273,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(MEM_INITIAL_ADDRESS, MEM_FINAL_ADDRESS)]
     }
-    fn get_flush_input_size(&self) -> u64 {
-        // self.num_rows as u64
-        1024
+    fn get_flush_input_size(&self) -> u32 {
+        self.num_rows as u32
     }
-    fn unregister_predecessor(&self) {}
-    fn register_predecessor(&self) {}
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemSM<F> {}

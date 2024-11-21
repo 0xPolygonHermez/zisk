@@ -20,14 +20,12 @@ impl<F: PrimeField> MemUnmapped<F> {
 }
 impl<F: PrimeField> MemModule<F> for MemUnmapped<F> {
     fn send_inputs(&self, _mem_op: &[ZiskRequiredMemory]) {
-        println!("## MemUnmapped ## access {:?}", _mem_op);
+        // panic!("[MemUnmapped] invalid access to addr {:x}", _mem_op[0].addr);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         self.ranges.to_vec()
     }
-    fn get_flush_input_size(&self) -> u64 {
-        1024
+    fn get_flush_input_size(&self) -> u32 {
+        1
     }
-    fn unregister_predecessor(&self) {}
-    fn register_predecessor(&self) {}
 }
