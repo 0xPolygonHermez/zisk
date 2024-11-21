@@ -88,8 +88,8 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
         debug_hints_data: Vec<u64>,
     ) {
         for hint in debug_hints_data.iter() {
-            let _name =
-                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "name_piop", HintFieldOptions::default());
+            // let _name =
+            //     get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "name_piop", HintFieldOptions::default());
 
             let sumid =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "sumid", HintFieldOptions::default());
@@ -129,7 +129,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
             // );
 
             (0..num_rows).into_par_iter().for_each(|j| {
-                let mul = match mul.get(j) {
+                let mut mul = match mul.get(j) {
                     HintFieldOutput::Field(mul) => mul,
                     _ => panic!("mul must be a field element"),
                 };
@@ -142,9 +142,14 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
                     let is_positive = match proves.get(j) {
                         HintFieldOutput::Field(proves) => match proves {
-                            p if p.is_zero() => false,
+                            p if p.is_zero() || p == -F::one() => {
+                                // If it's an assume, then negate its value
+                                if p == -F::one() {
+                                    mul = -mul;
+                                }
+                                false
+                            }
                             p if p.is_one() => true,
-                            p if p == F::one().neg() => false,
                             _ => panic!("Proves hint must be either 0, 1, or -1"),
                         },
                         _ => panic!("Proves hint must be a field element"),
