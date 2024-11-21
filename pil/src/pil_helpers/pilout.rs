@@ -20,17 +20,23 @@ pub const MEM_ALIGN_AIR_IDS: &[usize] = &[3];
 
 pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[4];
 
-pub const BINARY_AIR_IDS: &[usize] = &[5];
+pub const ARITH_AIR_IDS: &[usize] = &[5];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[6];
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[6];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[7];
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[7];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[8];
+pub const BINARY_AIR_IDS: &[usize] = &[8];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[9];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[9];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[10];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[10];
+
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[11];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[12];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[13];
 
 pub struct Pilout;
 
@@ -45,6 +51,9 @@ impl Pilout {
         air_group.add_air(Some("Mem"), 2097152);
         air_group.add_air(Some("MemAlign"), 2097152);
         air_group.add_air(Some("MemAlignRom"), 256);
+        air_group.add_air(Some("Arith"), 2097152);
+        air_group.add_air(Some("ArithTable"), 128);
+        air_group.add_air(Some("ArithRangeTable"), 4194304);
         air_group.add_air(Some("Binary"), 2097152);
         air_group.add_air(Some("BinaryTable"), 4194304);
         air_group.add_air(Some("BinaryExtension"), 2097152);

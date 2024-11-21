@@ -1,0 +1,80 @@
+require "std_lookup.pil"
+require "operations.pil"
+
+const int ARITH_RANGE_TABLE_ID = 330;
+const int ARITH_RANGE_CARRY = 100;
+const int ARITH_RANGE_16_BITS = 0;
+
+airtemplate ArithRangeTable(int N = 2**22) {
+
+    //     a3 a1 b3 b1
+    // rid c3 c1 d3 d1 range 2^16 2^15 notes
+    // --- -- -- -- -- ----- ---- ---- -------------------------
+    //   0  F  F  F  F ab cd    4    0
+    //   1  F  F  +  F    cd    3    1 b3 sign => a3 sign
+    //   2  F  F  -  F    cd    3    1 b3 sign => a3 sign
+    //   3  +  F  F  F ab       3    1 c3 sign => d3 sign
+    //   4  +  F  +  F ab cd    2    2
+    //   5  +  F  -  F ab cd    2    2
+    //   6  -  F  F  F ab       3    1 c3 sign => d3 sign
+    //   7  -  F  +  F ab cd    2    2
+    //   8  -  F  -  F ab cd    2    2
+    //   9  F  F  F  +    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
+    //  10  F  F  F  -    cd           a1 sign <=> b1 sign / d1 sign => c1 sign
+    //  11  F  +  F  F ab cd    3    1 *a1 for sext/divu
+    //  12  F  +  F  + ab cd    2    2
+    //  13  F  +  F  - ab cd    2    2
+    //  14  F  -  F  F ab cd    3    1 *a1 for sext/divu
+    //  15  F  -  F  + ab cd    2    2
+    //  16  F  -  F  - ab cd    2    2
+    //                       ---- ----
+
+    // COL COMPRESSION
+    //
+    //
+    //
+    // 0: F F F + + + - - - F F F F F F F F                                                       offset: 0
+    // 1:                                                     F F F F F F F F F F F + + + - - -   offset: 26
+    // 2:                                   F + - F + - F + - F F F F F F F F                     offset: 17
+    // 3:                   F F F F F F F F F + - F + - F + -                                     offset: 9
+    //    --------------------------------------------------------------------------------------
+    //    F F F + + + - - - F F F F F F F F F + - F + - F + - F F F F F F F F F F F + + + - - -
+    //
+
+    //                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3 3 3 3 3 3 3 3 3 4 4 4
+    //    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
+    //
+    //    F F F + + + - - - F F F F F F F F F + - F + - F + - F F F F F F F F F F F + + + - - -
+    //
+    //    25:FULL + 9:POS + 9:NEG = 34 * 2^16 = 2^21 + 2^17
+    //
+    // a3 c3 [range, 0] => [range]
+    // a1 c1 [range, 1] => [range + 26]
+    // b3 d3 [range, 2] => [range + 17]
+    // b1 d1 [range, 3] => [range + 9]
+    //
+    // [-(2^19+2^18+2^16-1)...(2^19+2^18+2^16)] range check carry
+
+    const int FULL = 2**16;
+    const int POS = 2**15;
+    const int NEG = 2**15;
+
+    col fixed RANGE_ID = [0:FULL..2:FULL, 9:FULL..17:FULL, 20:FULL, 23:FULL, 26:FULL..36:FULL, // 25 FULL
+                          3:POS..5:POS, 18:POS, 21:POS, 24:POS, 37:POS..39:POS,                // 9 POS
+                          6:NEG..8:NEG, 19:NEG, 22:NEG, 25:NEG, 40:NEG..42:NEG,                // 9 NEG
+                          ARITH_RANGE_CARRY...];
+
+    col fixed RANGE_VALUES = [[0x0000..0xFFFF]:25,
+                              [0x0000..0x7FFF]:9,
+                              [0x8000..0xFFFF]:9,
+                              [-0xEFFFF..0xF0000]];
+
+
+    col witness multiplicity;
+
+    lookup_proves(ARITH_RANGE_TABLE_ID, [RANGE_ID, RANGE_VALUES], multiplicity);
+}
+
+function arith_range_table_assumes(const expr range_type, const expr value, const expr sel = 1) {
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:sel);
+}
