@@ -3,6 +3,8 @@ use std::sync::{
     Arc, Mutex,
 };
 
+const MEM_INITIAL_ADDRESS: u32 = 0xA0000000;
+const MEM_FINAL_ADDRESS: u32 = MEM_INITIAL_ADDRESS + 128 * 1024 * 1024;
 use crate::MemModule;
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
@@ -268,11 +270,12 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
     fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]) {
         self.prove(&mem_op);
     }
-    fn get_addr_ranges(&self) -> Vec<(u64, u64)> {
-        vec![]
+    fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
+        vec![(MEM_INITIAL_ADDRESS, MEM_FINAL_ADDRESS)]
     }
     fn get_flush_input_size(&self) -> u64 {
-        self.num_rows as u64
+        // self.num_rows as u64
+        1024
     }
     fn unregister_predecessor(&self) {}
     fn register_predecessor(&self) {}

@@ -6,8 +6,10 @@ use std::{
     },
 };
 
+const UNMAPPED_MODULE_ID: u8 = 0xFE;
+
 use crate::{
-    mem_align_call, MemAlignResponse, MemAlignRomSM, MemAlignSM, MemSM, MAX_MEM_ADDR,
+    mem_align_call, MemAlignResponse, MemAlignRomSM, MemAlignSM, MemSM, MemUnmapped, MAX_MEM_ADDR,
     MAX_MEM_OPS_PER_MAIN_STEP, MAX_MEM_STEP, MEM_ADDR_BITS, MEM_ADDR_MASK, MEM_BYTES,
 };
 use p3_field::PrimeField;
@@ -16,11 +18,10 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
-use zisk_pil::QUICKOPS_AIRGROUP_ID;
 
 pub trait MemModule<F>: Send + Sync {
     fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]);
-    fn get_addr_ranges(&self) -> Vec<(u64, u64)>;
+    fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
     fn get_flush_input_size(&self) -> u64;
     fn unregister_predecessor(&self);
     fn register_predecessor(&self);
@@ -37,8 +38,9 @@ trait MemAlignSm {
 
 struct MemModuleData {
     pub name: String,
+    pub id: u8,
+    pub ranges: Vec<(u32, u32)>,
     pub inputs: Vec<ZiskRequiredMemory>,
-    pub addr_ranges: Vec<(u64, u64)>,
     pub flush_input_size: u64,
 }
 
@@ -58,10 +60,18 @@ pub struct MemProxy<F: PrimeField> {
     mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
 }
 
+#[derive(Debug)]
+pub struct AddressRegion {
+    from_address: u32,
+    to_address: u32,
+    module_id: u8,
+}
 pub struct MemProxyEngine<F: PrimeField> {
     modules: Vec<Arc<dyn MemModule<F>>>,
     modules_data: Vec<MemModuleData>,
     open_mem_align_ops: VecDeque<MemAlignOperation>,
+    address_map: Vec<AddressRegion>,
+    address_map_closed: bool,
     last_addr: u32,
     last_addr_value: u64,
     current_module_id: usize,
@@ -109,6 +119,7 @@ impl<F: PrimeField> MemProxy<F> {
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut engine = MemProxyEngine::<F>::new();
         engine.add_module("mem", self.mem_sm.clone());
+        engine.close_address_map();
         engine.prove(&self.mem_align_sm, mem_operations)
     }
 }
@@ -127,6 +138,8 @@ impl<F: PrimeField> MemProxyEngine<F> {
             current_module: String::new(),
             module_end_addr: 0,
             open_mem_align_ops: VecDeque::new(),
+            address_map: Vec::new(),
+            address_map_closed: false,
         }
     }
 
@@ -134,9 +147,34 @@ impl<F: PrimeField> MemProxyEngine<F> {
         if self.modules.is_empty() {
             self.current_module = String::from(name);
         }
+        let module_id = self.modules.len() as u8;
         self.modules.push(module.clone());
-        self.modules_data.push(Self::init_module(name, &module));
+
+        let ranges = module.get_addr_ranges();
+        let flush_input_size = module.get_flush_input_size();
+
+        for range in ranges.iter() {
+            println!("## PROXY adding range 0x{:X} 0x{:X} ##", range.0, range.1);
+            self.insert_address_range(range.0, range.1, module_id);
+        }
+        self.modules_data.push(MemModuleData {
+            name: String::from(name),
+            id: module_id,
+            ranges,
+            inputs: Vec::new(),
+            flush_input_size,
+        });
     }
+    /* insert in sort way the address map and verify that */
+    fn insert_address_range(&mut self, from_address: u32, to_address: u32, module_id: u8) {
+        let region = AddressRegion { from_address, to_address, module_id };
+        if let Some(index) = self.address_map.iter().position(|x| x.from_address >= from_address) {
+            self.address_map.insert(index, region);
+        } else {
+            self.address_map.push(region);
+        }
+    }
+
     pub fn prove(
         &mut self,
         mem_align_sm: &MemAlignSM<F>,
@@ -175,11 +213,6 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
             let aligned_mem_addr = Self::to_aligned_addr(mem_op.address);
             let mem_step = mem_op.step;
-
-            if aligned_mem_addr < 0xA0000000 {
-                // only for testing purposes
-                continue;
-            }
 
             // Check if there are open mem align operations to be processed in this moment, with
             // address (or step) less than the aligned of current mem_op.
@@ -250,18 +283,6 @@ impl<F: PrimeField> MemProxyEngine<F> {
         1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset as u64
     }
 
-    fn init_module(name: &str, module: &Arc<dyn MemModule<F>>) -> MemModuleData {
-        // module.register_predecessor();
-        let ranges = module.get_addr_ranges();
-        let flush_input_size = module.get_flush_input_size();
-        MemModuleData {
-            name: String::from(name),
-            inputs: Vec::new(),
-            addr_ranges: ranges,
-            flush_input_size,
-        }
-    }
-
     /// Static method to decide it the memory operation needs to be processed by
     /// memAlign, because it isn't a 8-byte and 8-byte aligned memory access.
     fn is_aligned(mem_op: &ZiskRequiredMemory) -> bool {
@@ -281,7 +302,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
             width: MEM_BYTES as u8,
             value,
         };
-        println!("  ##SEND[{0}]## mem_op: {1:?}", self.current_module, mem_op);
+        println!("## PROXY SEND {0} ## {1:?}", self.current_module, mem_op);
         self.modules_data[self.current_module_id].inputs.push(mem_op);
         self.last_addr_value = value;
         self.check_flush_inputs();
@@ -323,24 +344,46 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
         mem_module_inputs
     }
-    fn get_mem_module_id(&self, address: u32) -> (usize, u32) {
-        (0, MAX_MEM_ADDR as u32 + 1)
+    fn set_active_region(&mut self, region_id: usize) {
+        self.current_module_id = self.address_map[region_id].module_id as usize;
+        self.current_module = self.modules_data[self.current_module_id].name.clone();
+        self.module_end_addr = self.address_map[region_id].to_address;
     }
     fn update_mem_module_id(&mut self, addr: u32) {
-        (self.current_module_id, self.module_end_addr) = self.get_mem_module_id(addr);
+        println!(
+            "## \x1B[31mGET MODULE ID\x1B[0m ## 0x{0:X}  module_end_addr:0x{1:X} 0x{2:X}",
+            addr, self.module_end_addr, MAX_MEM_ADDR as u32
+        );
+        // println!("{:?}", self.address_map);
+        if let Some(index) =
+            self.address_map.iter().position(|x| x.from_address <= addr && x.to_address >= addr)
+        {
+            self.set_active_region(index);
+        } else {
+            assert!(false, "out-of-memory 0x{:X}", addr);
+        }
     }
     fn update_last_addr(&mut self, addr: u32, value: u64) {
         self.last_addr = addr;
         // check if need to reevaluate the module id
-        if addr >= self.module_end_addr {
+        if addr > self.module_end_addr {
             self.update_mem_module_id(addr);
         }
     }
-    fn check_flush_inputs(&self) {
+    fn check_flush_inputs(&mut self) {
         // check if need to flush the inputs of the module
         let mid = self.current_module_id;
+        println!(
+            "## PROXY FLUSH ## {0} {1} {2}",
+            mid,
+            self.modules_data[mid].inputs.len(),
+            self.modules_data[mid].flush_input_size
+        );
         if (self.modules_data[mid].inputs.len() as u64) >= self.modules_data[mid].flush_input_size {
+            // TODO: optimize passing ownership of inputs to module, and creating a new input
+            // object
             self.modules[mid].send_inputs(&self.modules_data[mid].inputs);
+            self.modules_data[mid].inputs.clear();
         }
     }
 
@@ -376,17 +419,17 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
     fn init_prove(&mut self, mem_operations: &Vec<ZiskRequiredMemory>) {
-        // Initialize the last values of address and value on the sorted memory operations
-        let mut last_addr = 0xFFFF_FFFF_FFFF_FFFFu64;
-        let mut last_value = 0u64;
-
-        // Initialize the module id and next module address to reevaluate the module id, it's done
-        // to avoid check on each loop if memory address is inside one range or other
-        let (mut mem_module_id, mut next_module_addr) = if mem_operations.is_empty() {
-            (0, 0)
-        } else {
-            self.get_mem_module_id(mem_operations[0].address)
-        };
+        if !self.address_map_closed {
+            self.close_address_map();
+        }
+        println!(
+            "## PROXY INIT ## {:?} {} {}",
+            self.address_map[0], self.current_module_id, self.current_module
+        );
+        self.current_module_id = self.address_map[0].module_id as usize;
+        println!("## PROXY INIT2 ## {} {}", self.current_module_id, self.modules_data.len());
+        self.current_module = self.modules_data[self.current_module_id].name.clone();
+        self.module_end_addr = self.address_map[0].to_address;
     }
     fn finish_prove(&self) {}
     fn get_mem_value(&self, addr: u32, mem_op: &ZiskRequiredMemory) -> u64 {
@@ -395,6 +438,28 @@ impl<F: PrimeField> MemProxyEngine<F> {
         } else {
             0
         }
+    }
+    fn close_address_map(&mut self) {
+        let mut next_address = 0;
+        let mut unmapped_regions: Vec<(u32, u32)> = Vec::new();
+        for address_region in self.address_map.iter() {
+            if next_address < address_region.from_address {
+                unmapped_regions.push((next_address, address_region.from_address - 1));
+            }
+            next_address = address_region.to_address + 1;
+        }
+        if !unmapped_regions.is_empty() {
+            let mut unmapped_module = MemUnmapped::<F>::new();
+            for unmapped_region in unmapped_regions.iter() {
+                println!(
+                    "\x1B[36m## PROXY UNMAPPED ## unmapped_region: 0x{0:X} 0x{1:X}\x1B[0m",
+                    unmapped_region.0, unmapped_region.1
+                );
+                unmapped_module.add_range(unmapped_region.0, unmapped_region.1);
+            }
+            self.add_module("unmapped", Arc::new(unmapped_module));
+        }
+        self.address_map_closed = true;
     }
 
     #[inline(always)]
@@ -412,7 +477,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
     fn log_mem_op(&self, mem_op: &ZiskRequiredMemory) {
         println!(
-            "##LOOP## mem_op: {0:?} 0x{1:#08X}({1}) 0x{2:#016X}({2})",
+            "## PROXY LOOP ## mem_op: {0:?} 0x{1:#08X}({1}) 0x{2:#016X}({2})",
             mem_op, self.last_addr, self.last_addr_value
         );
     }
@@ -423,54 +488,3 @@ impl<F: PrimeField> MemProxyEngine<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for MemProxy<F> {}
-/*
-fn format_hex(value: u64) -> String {
-    let hex_str = format!("{:016x}", value); // Format hexadecimal amb 16 dígits i padding de 0s
-    hex_str
-        .as_bytes() // Converteix a bytes per manipular fàcilment
-        .chunks(4) // Separa en grups de 4 caràcters (2 bytes)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap()) // Converteix cada chunk a &str
-        .collect::<Vec<_>>() // Recull els chunks com a un vector
-        .join("_") // Uneix amb "_"
-}
-
-fn mem_align_call(
-    mem_op: &ZiskRequiredMemory,
-    mem_values: [u64; 2],
-    phase: u8,
-) -> MemAlignResponse {
-    // DEBUG: only for testing
-    let offset = (mem_op.address & 0x7) * 8;
-    let width = (mem_op.width as u64) * 8;
-    let double_address = (offset + width) > 64;
-    let mem_value = mem_values[phase as usize];
-    let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - width);
-    if mem_op.is_write {
-        if phase == 0 {
-            MemAlignResponse {
-                more_address: double_address,
-                step: mem_op.step + 1,
-                value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))) |
-                        ((mem_op.value & mask) << offset),
-                ),
-            }
-        } else {
-            MemAlignResponse {
-                more_address: false,
-                step: mem_op.step + 1,
-                value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width - 64))) |
-                        ((mem_op.value & mask) >> (128 - offset - width)),
-                ),
-            }
-        }
-    } else {
-        MemAlignResponse {
-            more_address: double_address && phase == 0,
-            step: mem_op.step + 1,
-            value: None,
-        }
-    }
-}
-*/

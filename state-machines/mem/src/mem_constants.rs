@@ -9,4 +9,4 @@ pub const MEM_STEP_MASK: u64 = (1 << MEM_STEP_BITS) - 1; // 256 MB
 pub const MEM_ADDR_BITS: u64 = 64 - MEM_STEP_BITS;
 
 pub const MAX_MEM_STEP: u64 = (1 << MEM_STEP_BITS) - 1;
-pub const MAX_MEM_ADDR: u64 = (1 << MEM_ADDR_BITS) - 1;
+pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
