@@ -1,8 +1,6 @@
 use zisk_core::zisk_ops::*;
 
-use crate::{
-    arith_constants::*, arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers,
-};
+use crate::{arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers};
 
 const MIN_N_64: u64 = 0x8000_0000_0000_0000;
 const MIN_N_32: u64 = 0x0000_0000_8000_0000;
@@ -30,8 +28,22 @@ const ALL_VALUES: [u64; 16] = [
     MAX_64,
 ];
 
-const ALL_OPERATIONS: [u8; 14] =
-    [MUL, MULH, MULSUH, MULU, MULUH, DIVU, REMU, DIV, REM, MUL_W, DIVU_W, REMU_W, DIV_W, REM_W];
+const ALL_OPERATIONS: [u8; 14] = [
+    ZiskOp::Mul.code(),
+    ZiskOp::Mulh.code(),
+    ZiskOp::Mulsuh.code(),
+    ZiskOp::Mulu.code(),
+    ZiskOp::Muluh.code(),
+    ZiskOp::Divu.code(),
+    ZiskOp::Remu.code(),
+    ZiskOp::Div.code(),
+    ZiskOp::Rem.code(),
+    ZiskOp::MulW.code(),
+    ZiskOp::DivuW.code(),
+    ZiskOp::RemuW.code(),
+    ZiskOp::DivW.code(),
+    ZiskOp::RemW.code(),
+];
 
 struct ArithOperationTest {
     count: u32,
@@ -87,30 +99,40 @@ impl ArithOperationTest {
     }
 
     fn is_m32_op(op: u8) -> bool {
-        match op {
-            MUL | MULH | MULSUH | MULU | MULUH | DIVU | REMU | DIV | REM => false,
-            MUL_W | DIVU_W | REMU_W | DIV_W | REM_W => true,
-            _ => panic!("Invalid opcode"),
+        let zisk_op = ZiskOp::try_from_code(op).unwrap();
+        match zisk_op {
+            ZiskOp::Mul |
+            ZiskOp::Mulh |
+            ZiskOp::Mulsuh |
+            ZiskOp::Mulu |
+            ZiskOp::Muluh |
+            ZiskOp::Divu |
+            ZiskOp::Remu |
+            ZiskOp::Div |
+            ZiskOp::Rem => false,
+            ZiskOp::MulW | ZiskOp::DivuW | ZiskOp::RemuW | ZiskOp::DivW | ZiskOp::RemW => true,
+            _ => panic!("ArithOperationTest::is_m32_op() Invalid opcode={}", op),
         }
     }
     fn calculate_emulator_res(op: u8, a: u64, b: u64) -> (u64, bool) {
-        match op {
-            MULU => op_mulu(a, b),
-            MULUH => op_muluh(a, b),
-            MULSUH => op_mulsuh(a, b),
-            MUL => op_mul(a, b),
-            MULH => op_mulh(a, b),
-            MUL_W => op_mul_w(a, b),
-            DIVU => op_divu(a, b),
-            REMU => op_remu(a, b),
-            DIVU_W => op_divu_w(a, b),
-            REMU_W => op_remu_w(a, b),
-            DIV => op_div(a, b),
-            REM => op_rem(a, b),
-            DIV_W => op_div_w(a, b),
-            REM_W => op_rem_w(a, b),
+        let zisk_op = ZiskOp::try_from_code(op).unwrap();
+        match zisk_op {
+            ZiskOp::Mulu => op_mulu(a, b),
+            ZiskOp::Muluh => op_muluh(a, b),
+            ZiskOp::Mulsuh => op_mulsuh(a, b),
+            ZiskOp::Mul => op_mul(a, b),
+            ZiskOp::Mulh => op_mulh(a, b),
+            ZiskOp::MulW => op_mul_w(a, b),
+            ZiskOp::Divu => op_divu(a, b),
+            ZiskOp::Remu => op_remu(a, b),
+            ZiskOp::DivuW => op_divu_w(a, b),
+            ZiskOp::RemuW => op_remu_w(a, b),
+            ZiskOp::Div => op_div(a, b),
+            ZiskOp::Rem => op_rem(a, b),
+            ZiskOp::DivW => op_div_w(a, b),
+            ZiskOp::RemW => op_rem_w(a, b),
             _ => {
-                panic!("Invalid opcode");
+                panic!("ArithOperationTest::calculate_emulator_res() Invalid opcode={}", op);
             }
         }
     }

@@ -1,4 +1,6 @@
-use crate::{arith_constants::*, arith_range_table_helpers::*};
+use zisk_core::zisk_ops::ZiskOp;
+
+use crate::arith_range_table_helpers::*;
 use std::fmt;
 
 pub struct ArithOperation {
@@ -132,19 +134,21 @@ impl ArithOperation {
         self.input_a = input_a;
         self.input_b = input_b;
         self.div_by_zero = input_b == 0 &&
-            (op == DIV ||
-                op == REM ||
-                op == DIV_W ||
-                op == REM_W ||
-                op == DIVU ||
-                op == REMU ||
-                op == DIVU_W ||
-                op == REMU_W);
+            (op == ZiskOp::Div.code() ||
+                op == ZiskOp::Rem.code() ||
+                op == ZiskOp::DivW.code() ||
+                op == ZiskOp::RemW.code() ||
+                op == ZiskOp::Divu.code() ||
+                op == ZiskOp::Remu.code() ||
+                op == ZiskOp::DivuW.code() ||
+                op == ZiskOp::RemuW.code());
 
-        self.div_overflow = ((op == DIV || op == REM) &&
+        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code()) &&
             input_a == 0x8000_0000_0000_0000 &&
             input_b == 0xFFFF_FFFF_FFFF_FFFF) ||
-            ((op == DIV_W || op == REM_W) && input_a == 0x8000_0000 && input_b == 0xFFFF_FFFF);
+            ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code()) &&
+                input_a == 0x8000_0000 &&
+                input_b == 0xFFFF_FFFF);
 
         let [a, b, c, d] = Self::calculate_abcd_from_ab(op, input_a, input_b);
         self.a = Self::u64_to_chunks(a);
@@ -298,26 +302,35 @@ impl ArithOperation {
     }
 
     fn calculate_abcd_from_ab(op: u8, a: u64, b: u64) -> [u64; 4] {
-        match op {
-            MULU | MULUH => {
+        let zisk_op = ZiskOp::try_from_code(op).unwrap();
+        match zisk_op {
+            ZiskOp::Mulu | ZiskOp::Muluh => {
                 let c: u128 = a as u128 * b as u128;
                 [a, b, c as u64, (c >> 64) as u64]
             }
-            MULSUH => {
+            ZiskOp::Mulsuh => {
                 let [c, d] = Self::calculate_mulsu(a, b);
                 [a, b, c, d]
             }
-            MUL | MULH => {
+            ZiskOp::Mul | ZiskOp::Mulh => {
                 let [c, d] = Self::calculate_mul(a, b);
                 [a, b, c, d]
             }
-            MUL_W => [a, b, Self::calculate_mul_w(a, b), 0],
-            DIVU | REMU => [Self::calculate_divu(a, b), b, a, Self::calculate_remu(a, b)],
-            DIVU_W | REMU_W => [Self::calculate_divu_w(a, b), b, a, Self::calculate_remu_w(a, b)],
-            DIV | REM => [Self::calculate_div(a, b), b, a, Self::calculate_rem(a, b)],
-            DIV_W | REM_W => [Self::calculate_div_w(a, b), b, a, Self::calculate_rem_w(a, b)],
+            ZiskOp::MulW => [a, b, Self::calculate_mul_w(a, b), 0],
+            ZiskOp::Divu | ZiskOp::Remu => {
+                [Self::calculate_divu(a, b), b, a, Self::calculate_remu(a, b)]
+            }
+            ZiskOp::DivuW | ZiskOp::RemuW => {
+                [Self::calculate_divu_w(a, b), b, a, Self::calculate_remu_w(a, b)]
+            }
+            ZiskOp::Div | ZiskOp::Rem => {
+                [Self::calculate_div(a, b), b, a, Self::calculate_rem(a, b)]
+            }
+            ZiskOp::DivW | ZiskOp::RemW => {
+                [Self::calculate_div_w(a, b), b, a, Self::calculate_rem_w(a, b)]
+            }
             _ => {
-                panic!("Invalid opcode");
+                panic!("ArithOperation::calculate_abcd_from_ab() Invalid opcode={}", op);
             }
         }
     }
@@ -351,49 +364,50 @@ impl ArithOperation {
         let mut sb = false;
         let mut rem = false;
 
-        match op {
-            MULU => {
+        let zisk_op = ZiskOp::try_from_code(op).unwrap();
+        match zisk_op {
+            ZiskOp::Mulu => {
                 self.main_mul = true;
             }
-            MULUH => {}
-            MULSUH => {
+            ZiskOp::Muluh => {}
+            ZiskOp::Mulsuh => {
                 sa = true;
             }
-            MUL => {
+            ZiskOp::Mul => {
                 sa = true;
                 sb = true;
                 self.main_mul = true;
             }
-            MULH => {
+            ZiskOp::Mulh => {
                 sa = true;
                 sb = true;
             }
-            MUL_W => {
+            ZiskOp::MulW => {
                 self.m32 = true;
                 self.sext = ((a * b) & 0xFFFF_FFFF) & 0x8000_0000 != 0;
                 self.main_mul = true;
             }
-            DIVU => {
+            ZiskOp::Divu => {
                 self.div = true;
                 self.main_div = true;
             }
-            REMU => {
+            ZiskOp::Remu => {
                 self.div = true;
                 rem = true;
             }
-            DIV => {
+            ZiskOp::Div => {
                 sa = true;
                 sb = true;
                 self.div = true;
                 self.main_div = true;
             }
-            REM => {
+            ZiskOp::Rem => {
                 sa = true;
                 sb = true;
                 rem = true;
                 self.div = true;
             }
-            DIVU_W => {
+            ZiskOp::DivuW => {
                 // divu_w, remu_w
                 self.div = true;
                 self.m32 = true;
@@ -401,7 +415,7 @@ impl ArithOperation {
                 self.sext = (a & 0x8000_0000) != 0;
                 self.main_div = true;
             }
-            REMU_W => {
+            ZiskOp::RemuW => {
                 // divu_w, remu_w
                 self.div = true;
                 self.m32 = true;
@@ -409,7 +423,7 @@ impl ArithOperation {
                 // use d in bus
                 self.sext = (d & 0x8000_0000) != 0;
             }
-            DIV_W => {
+            ZiskOp::DivW => {
                 // div_w, rem_w
                 sa = true;
                 sb = true;
@@ -419,7 +433,7 @@ impl ArithOperation {
                 self.sext = (a & 0x8000_0000) != 0;
                 self.main_div = true;
             }
-            REM_W => {
+            ZiskOp::RemW => {
                 // div_w, rem_w
                 sa = true;
                 sb = true;
@@ -430,7 +444,7 @@ impl ArithOperation {
                 self.sext = (d & 0x8000_0000) != 0;
             }
             _ => {
-                panic!("Invalid opcode");
+                panic!("ArithOperation::update_flags_and_ranges() Invalid opcode={}", op);
             }
         }
         self.signed = sa || sb;

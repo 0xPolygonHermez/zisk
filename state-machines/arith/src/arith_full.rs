@@ -4,15 +4,14 @@ use std::sync::{
 };
 
 use crate::{
-    arith_constants::*, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs,
-    ArithTableSM,
+    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_common::i64_to_u64_field;
-use zisk_core::ZiskRequiredOperation;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
 pub struct ArithFullSM<F> {
@@ -197,7 +196,7 @@ impl<F: Field> ArithFullSM<F> {
 
         if padding_rows > 0 {
             let mut t: ArithRow<F> = Default::default();
-            let padding_opcode = MULUH;
+            let padding_opcode = ZiskOp::Muluh.code();
             t.op = F::from_canonical_u8(padding_opcode);
             t.fab = F::one();
             for i in padding_offset..num_rows {
