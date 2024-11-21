@@ -150,6 +150,39 @@ impl<F: PrimeField> MainSM<F> {
                 segment_trace.steps[slice_start..slice_end].iter().enumerate()
             {
                 partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
+                // if partial_trace[i].a_src_mem == F::one() {
+                //     println!(
+                //         "A=MEM_OP_RD({}) [{},{}] PC:{}",
+                //         partial_trace[i].a_offset_imm0,
+                //         partial_trace[i].a[0],
+                //         partial_trace[i].a[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind == F::one()
+                // {
+                //     println!(
+                //         "B=MEM_OP_RD({0}) [{1},{2}] PC:{3}",
+                //         partial_trace[i].addr1,
+                //         partial_trace[i].b[0],
+                //         partial_trace[i].b[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind == F::one()
+                // {
+                //     println!(
+                //         "MEM_OP_WR({}) [{}, {}] PC:{}",
+                //         partial_trace[i].store_offset
+                //             + partial_trace[i].store_ind * partial_trace[i].a[0],
+                //         partial_trace[i].store_ra
+                //             * (partial_trace[i].pc + partial_trace[i].jmp_offset2
+                //                 - partial_trace[i].c[0])
+                //             + partial_trace[i].c[0],
+                //         (F::one() - partial_trace[i].store_ra) * partial_trace[i].c[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
             }
 
             // if there are steps in the chunk update last row
