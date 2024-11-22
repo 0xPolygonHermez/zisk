@@ -2236,6 +2236,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "num-bigint",
+ "num-traits",
  "p3-field",
  "pil-std-lib",
  "proofman",
