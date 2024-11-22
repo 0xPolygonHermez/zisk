@@ -1,14 +1,12 @@
 use core::panic;
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex,
-    },
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
 };
 
 use log::info;
 use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
@@ -921,7 +919,7 @@ impl<F: PrimeField> MemAlignSM<F> {
             MemAlignTrace::<F>::map_buffer(&mut prover_buffer, air_mem_align_rows, offset as usize)
                 .unwrap();
 
-        let mut reg_range_check: HashMap<F, u64> = HashMap::new(); // TODO: HashMap to Vec of size 256
+        let mut reg_range_check: Vec<u64> = vec![0; 1 << CHUNK_BITS];
 
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
@@ -930,7 +928,9 @@ impl<F: PrimeField> MemAlignSM<F> {
 
             // Store the value of all reg columns so that they can be range checked
             for j in 0..CHUNK_NUM {
-                *reg_range_check.entry(row.reg[j]).or_insert(0) += 1;
+                let element =
+                    row.reg[j].as_canonical_biguint().to_usize().expect("Cannot convert to usize");
+                reg_range_check[element] += 1;
             }
         }
 
@@ -943,16 +943,20 @@ impl<F: PrimeField> MemAlignSM<F> {
             trace_buffer[i] = padding_row;
         }
 
-        // Store the value of all reg columns so that they can be range checked
-        for j in 0..CHUNK_NUM {
-            *reg_range_check.entry(padding_row.reg[j]).or_insert(0) += padding_size as u64;
+        // Store the value of all padding reg columns so that they can be range checked
+        for _ in 0..CHUNK_NUM {
+            reg_range_check[0] += padding_size as u64;
         }
 
         // Perform the range checks
         let std = self.std.clone();
         let range_id = std.get_range(BigInt::from(0), BigInt::from(CHUNK_BITS_MASK), None);
-        for (&value, &multiplicity) in reg_range_check.iter() {
-            std.range_check(value, F::from_canonical_u64(multiplicity), range_id);
+        for (value, &multiplicity) in reg_range_check.iter().enumerate() {
+            std.range_check(
+                F::from_canonical_usize(value),
+                F::from_canonical_u64(multiplicity),
+                range_id,
+            );
         }
 
         // Compute the padding multiplicity
