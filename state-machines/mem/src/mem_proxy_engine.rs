@@ -304,6 +304,9 @@ impl<F: PrimeField> MemProxyEngine<F> {
     fn update_last_addr(&mut self, addr: u32, value: u64) {
         self.last_addr = addr;
         self.last_addr_value = value;
+        self.update_mem_module(addr);
+    }
+    fn update_mem_module(&mut self, addr: u32) {
         // check if need to reevaluate the module id
         if addr > self.module_end_addr {
             self.update_mem_module_id(addr);
