@@ -23,7 +23,9 @@ pub enum MemOp {
 }
 
 const CHUNK_NUM: usize = 8;
-const OP_SIZES: [usize; 4] = [2, 3, 3, 5];
+const OP_SIZES: [u64; 4] = [2, 3, 3, 5];
+const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -> 5*3 + 2*2 + 1*1 = 20
+const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
 pub struct MemAlignRomSM<F> {
     // Witness computation manager
@@ -76,109 +78,129 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         }
     }
 
-    pub fn get_mem_align_op_size(op: MemOp) -> usize {
-        OP_SIZES[op as usize]
+    pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {
+        let row_idxs = Self::get_row_idxs(&self, opcode, offset, width);
+
+        // Update the multiplicity
+        let ones: Vec<u64> = vec![1; row_idxs.len()];
+        self.update_multiplicity_by_row_idx(&row_idxs, &ones);
+
+        row_idxs[0]
     }
 
-    fn calculate_rom_rows(opcode: MemOp, offset: usize, width: usize) -> Vec<u64> {
-        // Calculate the ROM rows based on the requested opcode, offset, and width
+    fn get_row_idxs(&self, opcode: MemOp, offset: usize, width: usize) -> Vec<u64> {
+        let opcode_idx = opcode as usize;
+        let op_size = OP_SIZES[opcode_idx];
         match opcode {
             MemOp::OneRead | MemOp::OneWrite => {
                 // Sanity check
                 assert!(offset + width <= CHUNK_NUM);
-                let possible_widths = match offset {
-                    x if x <= 4 => vec![1, 2, 4],
-                    x if x <= 6 => vec![1, 2],
-                    x if x == 7 => vec![1],
-                    _ => panic!("Invalid offset={}", offset),
+
+                // Go to the actual operation
+                let mut value_row = match opcode {
+                    MemOp::OneRead => 1,
+                    MemOp::OneWrite => 1 + ONE_WORD_COMBINATIONS * OP_SIZES[0],
+                    _ => unreachable!(),
                 };
-                Self::get_row_idxs(opcode, possible_widths, offset, width)
+
+                // Go to the actual offset
+                for i in 0..offset {
+                    let possible_widths = Self::calculate_possible_widths(true, i);
+                    value_row += op_size * possible_widths.len() as u64;
+                }
+
+                // Go to the right width
+                let width_idx = Self::calculate_possible_widths(true, offset)
+                    .iter()
+                    .position(|&w| w == width)
+                    .expect("Invalid width");
+                value_row += op_size * width_idx as u64;
+
+                assert!(value_row < self.num_rows as u64);
+
+                match opcode {
+                    MemOp::OneRead => vec![value_row, value_row + 1],
+                    MemOp::OneWrite => vec![value_row, value_row + 1, value_row + 2],
+                    _ => unreachable!(),
+                }
             }
             MemOp::TwoReads | MemOp::TwoWrites => {
                 // Sanity check
                 assert!(offset + width > CHUNK_NUM);
-                let possible_widths = match offset {
-                    x if x == 0 => panic!("Invalid offset={}", offset),
-                    x if x <= 4 => vec![8],
-                    x if x <= 6 => vec![4, 8],
-                    x if x == 7 => vec![2, 4, 8],
-                    _ => panic!("Invalid offset={}", offset),
+
+                // Go to the actual operation
+                let mut value_row = match opcode {
+                    MemOp::TwoReads => {
+                        1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
+                            ONE_WORD_COMBINATIONS * OP_SIZES[1]
+                    }
+                    MemOp::TwoWrites => {
+                        1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
+                            ONE_WORD_COMBINATIONS * OP_SIZES[1] +
+                            TWO_WORD_COMBINATIONS * OP_SIZES[2]
+                    }
+                    _ => unreachable!(),
                 };
-                Self::get_row_idxs(opcode, possible_widths, offset, width)
-            }
-        }
-    }
 
-    fn get_row_idxs(
-        opcode: MemOp,
-        possible_widths: Vec<usize>,
-        offset: usize,
-        width: usize,
-    ) -> Vec<u64> {
-        // Sanity check
-        assert!(possible_widths.contains(&width));
+                // Go to the actual offset
+                for i in 1..offset {
+                    let possible_widths = Self::calculate_possible_widths(false, i);
+                    value_row += op_size * possible_widths.len() as u64;
+                }
 
-        let width_idx = possible_widths.iter().position(|&w| w == width).unwrap();
-        let opcode_idx = opcode as usize;
-        match opcode {
-            MemOp::OneRead | MemOp::OneWrite => {
-                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
-                    + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 1) as u64;
+                assert!(value_row < self.num_rows as u64);
+
+                // Go to the right width
+                let width_idx = Self::calculate_possible_widths(false, offset)
+                    .iter()
+                    .position(|&w| w == width)
+                    .expect("Invalid width");
+                value_row += op_size * width_idx as u64;
+
                 match opcode {
-                    MemOp::OneRead => vec![value_row - 1, value_row],
-                    MemOp::OneWrite => vec![value_row - 2, value_row - 1, value_row],
+                    MemOp::TwoReads => vec![value_row, value_row + 1, value_row + 2],
+                    MemOp::TwoWrites => {
+                        vec![value_row, value_row + 1, value_row + 2, value_row + 3, value_row + 4]
+                    }
                     _ => unreachable!(),
                 }
             }
-            MemOp::TwoReads => {
-                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
-                    + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 2) as u64;
-                return vec![value_row - 1, value_row, value_row + 1];
-            }
-            MemOp::TwoWrites => {
-                let value_row = (offset * possible_widths.len() * OP_SIZES[opcode_idx]
-                    + (offset + width_idx + 1) * OP_SIZES[opcode_idx]
-                    - 3) as u64;
-                return vec![value_row - 2, value_row - 1, value_row, value_row + 1, value_row + 2];
-            }
         }
     }
 
-    pub fn calculate_next_pc(&self, op: MemOp, offset: usize, width: usize) -> u64 {
-        let row_idxs = Self::calculate_rom_rows(op, offset, width);
-
-        // Update the multiplicity
-        self.update_multiplicity_by_idx(&row_idxs);
-
-        // The "next" pc is always found on the second row of the program being executed
-        row_idxs[1]
+    fn calculate_possible_widths(one_word: bool, offset: usize) -> Vec<usize> {
+        // Calculate the ROM rows based on the requested opcode, offset, and width
+        match one_word {
+            true => match offset {
+                x if x <= 4 => vec![1, 2, 4],
+                x if x <= 6 => vec![1, 2],
+                x if x == 7 => vec![1],
+                _ => panic!("Invalid offset={}", offset),
+            },
+            false => match offset {
+                x if x == 0 => panic!("Invalid offset={}", offset),
+                x if x <= 4 => vec![8],
+                x if x <= 6 => vec![4, 8],
+                x if x == 7 => vec![2, 4, 8],
+                _ => panic!("Invalid offset={}", offset),
+            },
+        }
     }
 
     pub fn update_padding_row(&self, padding_len: u64) {
         // Update entry at the padding row (pos = 0) with the given padding length
-        self.update_multiplicity(&[padding_len]);
+        self.update_multiplicity_by_row_idx(&[0], &[padding_len]);
     }
 
-    pub fn update_multiplicity_by_input(&self, opcode: MemOp, offset: usize, width: usize) {
-        let row_idxs = Self::calculate_rom_rows(opcode, offset, width);
-        self.update_multiplicity_by_idx(&row_idxs);
-    }
-
-    pub fn update_multiplicity_by_idx(&self, idxs: &[u64]) {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
-        for &i in idxs {
-            *multiplicity.entry(i).or_insert(0) += 1;
+    pub fn update_multiplicity_by_row_idx(&self, row_idxs: &[u64], muls: &[u64]) {
+        if row_idxs.len() != muls.len() {
+            panic!("The number of indices and multiplicities must be the same");
         }
-    }
 
-    pub fn update_multiplicity(&self, inputs: &[u64]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        for (idx, mul) in inputs.iter().enumerate() {
-            *multiplicity.entry(idx as u64).or_insert(0) += *mul;
+        for (i, &idx) in row_idxs.iter().enumerate() {
+            *multiplicity.entry(idx).or_insert(0) += muls[i];
         }
     }
 
@@ -205,6 +227,12 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         )
         .unwrap();
 
+        // Initialize the trace buffer to zero
+        for i in 0..air_mem_align_rom_rows {
+            trace_buffer[i] = MemAlignRomRow { multiplicity: F::zero() };
+        }
+
+        // Fill the trace buffer with the multiplicity values
         if let Ok(multiplicity) = self.multiplicity.lock() {
             for (row_idx, multiplicity) in multiplicity.iter() {
                 trace_buffer[*row_idx as usize] =
