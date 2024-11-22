@@ -22,7 +22,7 @@ impl fmt::Debug for ZiskRequiredMemory {
         let label = if self.is_write { "WR" } else { "RD" };
         write!(
             f,
-            "{0} addr:{1:#08X}({1}) with:{2} value:{3:#016X}({3}) step:{4} offset:{5}",
+            "{0} addr:{1:#08X}({1}) offset:{5} with:{2} value:{3:#016X}({3}) step:{4}",
             label,
             self.address,
             self.width,

@@ -103,42 +103,10 @@ impl<F: PrimeField> MemAlignRomSM<F> {
                     _ => unreachable!(),
                 };
 
-                match opcode {
-                    MemOp::OneRead => {
-                        if offset == 7 && width == 1
-                        {
-                            println!("OneRead value_row: {}", value_row);
-                        }
-                    },
-                    MemOp::OneWrite => {
-                        if offset == 3 && width == 1
-                        {
-                            println!("OneWrite value_row: {}", value_row);
-                        }
-                    },
-                    _ => {}
-                }
-
                 // Go to the actual offset
                 for i in 0..offset {
                     let possible_widths = Self::calculate_possible_widths(true, i);
                     value_row += op_size * possible_widths.len() as u64;
-                }
-
-                match opcode {
-                    MemOp::OneRead => {
-                        if offset == 7 && width == 1
-                        {
-                            println!("OneRead value_row: {}", value_row);
-                        }
-                    },
-                    MemOp::OneWrite => {
-                        if offset == 3 && width == 1
-                        {
-                            println!("OneWrite value_row: {}", value_row);
-                        }
-                    },
-                    _ => {}
                 }
 
                 // Go to the right width
@@ -147,24 +115,6 @@ impl<F: PrimeField> MemAlignRomSM<F> {
                     .position(|&w| w == width)
                     .expect("Invalid width");
                 value_row += op_size * width_idx as u64;
-
-                match opcode {
-                    MemOp::OneRead => {
-                        if offset == 7 && width == 1
-                        {
-                            println!("OneRead value_row: {}", value_row);
-                        }
-                    },
-                    MemOp::OneWrite => {
-                        if offset == 3 && width == 1
-                        {
-                            println!("opsizes: {:?}", op_size);
-                            println!("width_idx: {:?}", width_idx);
-                            println!("OneWrite value_row: {}", value_row);
-                        }
-                    },
-                    _ => {}
-                }
 
                 assert!(value_row < self.num_rows as u64);
 
@@ -181,7 +131,8 @@ impl<F: PrimeField> MemAlignRomSM<F> {
                 // Go to the actual operation
                 let mut value_row = match opcode {
                     MemOp::TwoReads => {
-                        1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] + ONE_WORD_COMBINATIONS * OP_SIZES[1]
+                        1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
+                            ONE_WORD_COMBINATIONS * OP_SIZES[1]
                     }
                     MemOp::TwoWrites => {
                         1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
