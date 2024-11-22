@@ -110,6 +110,7 @@ impl<'a> Emu<'a> {
 
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
+                    step_offset: 0,
                     is_write: false,
                     address: addr as u32,
                     width: 8,
@@ -184,6 +185,7 @@ impl<'a> Emu<'a> {
 
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
                     is_write: false,
                     address: addr as u32,
                     width: 8,
@@ -203,6 +205,7 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
                     is_write: false,
                     address: addr as u32,
                     width: instruction.ind_width as u8,
@@ -283,6 +286,7 @@ impl<'a> Emu<'a> {
 
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
                     is_write: true,
                     address: addr as u32,
                     width: 8,
@@ -305,6 +309,7 @@ impl<'a> Emu<'a> {
 
                 let required_memory = ZiskRequiredMemory {
                     step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
                     is_write: true,
                     address: addr as u32,
                     width: instruction.ind_width as u8,

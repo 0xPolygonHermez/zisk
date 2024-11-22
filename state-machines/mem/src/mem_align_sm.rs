@@ -15,18 +15,17 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 
 use sm_common::create_prover_buffer;
-use zisk_core::ZiskRequiredMemory;
 use zisk_pil::{MemAlignRow, MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::{MemAlignRomSM, MemOp};
+use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 
 const CHUNK_NUM: usize = 8;
-const CHUNK_NUM_U64: u64 = CHUNK_NUM as u64;
 const CHUNK_BITS: usize = 8;
-const OFFSET_MASK: u64 = CHUNK_NUM_U64 - 1;
+const OFFSET_MASK: u64 = 0x07;
+const OFFSET_BITS: u64 = 3;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
 
-const ALLOWED_WIDTHS: [u64; 4] = [1, 2, 4, 8];
+const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
 
@@ -111,25 +110,19 @@ impl<F: PrimeField> MemAlignSM<F> {
     }
 
     #[inline(always)]
-    pub fn get_mem_op(
-        &self,
-        input: &ZiskRequiredMemory,
-        mem_values: [u64; 2],
-        phase: usize,
-    ) -> MemAlignResponse {
+    pub fn get_mem_op(&self, input: &MemAlignInput, phase: usize) -> MemAlignResponse {
         // Sanity check
         // assert!(mem_values.len() == phase + 1); // TODO: Debug mode
 
-        let addr = input.address;
-        let width = input.width;
-        let width = if ALLOWED_WIDTHS.contains(&width) {
-            width as usize
+        let addr = input.address as u64;
+        let width = if ALLOWED_WIDTHS.contains(&input.width) {
+            input.width as usize
         } else {
-            panic!("Width={} is not allowed. Allowed widths are {:?}", width, ALLOWED_WIDTHS);
+            panic!("Width={} is not allowed. Allowed widths are {:?}", input.width, ALLOWED_WIDTHS);
         };
 
         // Compute the offset
-        let offset = addr as u64 & OFFSET_MASK;
+        let offset = addr & OFFSET_MASK;
         let offset = if offset <= usize::MAX as u64 {
             offset as usize
         } else {
@@ -144,7 +137,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 println!("NUM_ROWS: [{},{}]", num_rows, *num_rows + 1);
                 drop(num_rows);
                 println!("INPUT: {:?}", input);
-                println!("MEM_VALUES: {:?}", mem_values);
+                println!("MEM_VALUES: {:?}", input.mem_values);
                 println!("PHASE: {:?}", phase);
 
                 /*  RV with offset=2, width=4
@@ -163,10 +156,10 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = addr >> CHUNK_BITS;
+                let addr_read = addr >> OFFSET_BITS;
 
                 // Get the aligned value
-                let value_read = mem_values[phase];
+                let value_read = input.mem_values[phase];
 
                 // Get the next pc
                 let next_pc =
@@ -249,6 +242,8 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                 // Prove the generated rows
                 self.prove(&[read_row, value_row]);
+                println!("MEM_ALIGN_PRE_ROW(R): {:?}", read_row);
+                println!("MEM_ALIGN_PRE_ROW(V): {:?}", value_row);
 
                 MemAlignResponse { more_address: false, step, value: None }
             }
@@ -257,7 +252,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                 println!("NUM_ROWS: [{},{}]", num_rows, *num_rows + 2);
                 drop(num_rows);
                 println!("INPUT: {:?}", input);
-                println!("MEM_VALUES: {:?}", mem_values);
                 println!("PHASE: {:?}", phase);
 
                 /* RWV with offset=3, width=4
@@ -280,10 +274,10 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = addr >> CHUNK_BITS;
+                let addr_read = addr >> OFFSET_BITS;
 
                 // Get the aligned value
-                let value_read = mem_values[phase];
+                let value_read = input.mem_values[phase];
 
                 // Get the next pc
                 let next_pc =
@@ -416,10 +410,9 @@ impl<F: PrimeField> MemAlignSM<F> {
                         println!("NUM_ROWS: [{},{}]", num_rows, *num_rows + 2);
                         drop(num_rows);
                         println!("INPUT: {:?}", input);
-                        println!("MEM_VALUES: {:?}", mem_values);
                         println!("PHASE: {:?}", phase);
 
-                        assert!(mem_values.len() == 2); // TODO: Debug mode
+                        assert!(input.mem_values.len() == 2); // TODO: Debug mode
 
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
@@ -429,12 +422,12 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let rem_bytes = (offset + width) % CHUNK_NUM;
 
                         // Get the aligned address
-                        let addr_first_read = addr >> CHUNK_BITS;
-                        let addr_second_read = addr >> CHUNK_BITS + CHUNK_BITS;
+                        let addr_first_read = addr >> OFFSET_BITS;
+                        let addr_second_read = addr_first_read + 1;
 
                         // Get the aligned value
-                        let value_first_read = mem_values[0];
-                        let value_second_read = mem_values[1];
+                        let value_first_read = input.mem_values[0];
+                        let value_second_read = input.mem_values[1];
 
                         // Get the next pc
                         let next_pc =
@@ -560,7 +553,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let step = input.step;
 
                         // Get the aligned value
-                        let value_first_read = mem_values[0];
+                        let value_first_read = input.mem_values[0];
 
                         // Compute the write value
                         let value_first_write = {
@@ -612,10 +605,9 @@ impl<F: PrimeField> MemAlignSM<F> {
                         println!("NUM_ROWS: [{},{}]", num_rows, *num_rows + 4);
                         drop(num_rows);
                         println!("INPUT: {:?}", input);
-                        println!("MEM_VALUES: {:?}", mem_values);
                         println!("PHASE: {:?}", phase);
 
-                        assert!(mem_values.len() == 2); // TODO: Debug mode
+                        assert!(input.mem_values.len() == 2); // TODO: Debug mode
 
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
@@ -625,11 +617,11 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let rem_bytes = (offset + width) % CHUNK_NUM;
 
                         // Get the aligned address
-                        let addr_first_read_write = addr >> CHUNK_BITS;
-                        let addr_second_read_write = addr >> CHUNK_BITS + CHUNK_BITS;
+                        let addr_first_read_write = (addr >> OFFSET_BITS) as u64;
+                        let addr_second_read_write = addr_first_read_write + 1;
 
                         // Get the first aligned value
-                        let value_first_read = mem_values[0];
+                        let value_first_read = input.mem_values[0];
 
                         // Recompute the first write value
                         let value_first_write = {
@@ -649,7 +641,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         // Get the second aligned value
-                        let value_second_read = mem_values[1];
+                        let value_second_read = input.mem_values[1];
 
                         // Compute the second write value
                         let value_second_write = {
@@ -945,7 +937,7 @@ impl<F: PrimeField> MemAlignSM<F> {
         for (i, &row) in rows.iter().enumerate() {
             // Store the entire row
             trace_buffer[i] = row;
-
+            println!("MEM_ALIGN_ROW: {:?}", row);
             // Store the value of all reg columns so that they can be range checked
             for j in 0..CHUNK_NUM {
                 *reg_range_check.entry(row.reg[j]).or_insert(0) += 1;

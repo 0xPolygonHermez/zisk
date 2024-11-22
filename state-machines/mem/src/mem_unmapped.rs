@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
 
-use crate::MemModule;
+use crate::{MemInput, MemModule};
 use p3_field::PrimeField;
-
-use zisk_core::ZiskRequiredMemory;
 
 pub struct MemUnmapped<F: PrimeField> {
     ranges: Vec<(u32, u32)>,
@@ -19,7 +17,7 @@ impl<F: PrimeField> MemUnmapped<F> {
     }
 }
 impl<F: PrimeField> MemModule<F> for MemUnmapped<F> {
-    fn send_inputs(&self, _mem_op: &[ZiskRequiredMemory]) {
+    fn send_inputs(&self, _mem_op: &[MemInput]) {
         // panic!("[MemUnmapped] invalid access to addr {:x}", _mem_op[0].addr);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {

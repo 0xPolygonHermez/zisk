@@ -5,14 +5,13 @@ use std::sync::{
 
 const MEM_INITIAL_ADDRESS: u32 = 0xA0000000;
 const MEM_FINAL_ADDRESS: u32 = MEM_INITIAL_ADDRESS + 128 * 1024 * 1024;
-use crate::MemModule;
+use crate::{MemInput, MemModule};
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
-use zisk_core::ZiskRequiredMemory;
 use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemSM<F: PrimeField> {
@@ -49,7 +48,7 @@ impl<F: PrimeField> MemSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {}
     }
 
-    pub fn prove(&self, mem_accesses: &[ZiskRequiredMemory]) {
+    pub fn prove(&self, mem_accesses: &[MemInput]) {
         // Sort the (full) aligned memory accesses
 
         let pctx = self.wcm.get_pctx();
@@ -108,11 +107,11 @@ impl<F: PrimeField> MemSM<F> {
     ///
     /// # Parameters
     ///
-    /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
+    /// - `mem_inputs`: A slice of all `MemoryInput` inputs
     pub fn prove_instance(
         &self,
-        mem_ops: &[ZiskRequiredMemory],
-        mem_first_row: ZiskRequiredMemory,
+        mem_ops: &[MemInput],
+        mem_first_row: MemInput,
         segment_id: usize,
         is_last_segment: bool,
         mut prover_buffer: Vec<F>,
@@ -165,13 +164,7 @@ impl<F: PrimeField> MemSM<F> {
         trace[0].sel = F::zero();
         trace[0].wr = F::zero();
 
-        let value = match mem_first_row.width {
-            1 => mem_first_row.value as u8 as u64,
-            2 => mem_first_row.value as u16 as u64,
-            4 => mem_first_row.value as u32 as u64,
-            8 => mem_first_row.value,
-            _ => panic!("Invalid width"),
-        };
+        let value = mem_first_row.value;
         let (low_val, high_val) = self.get_u32_values(value);
         trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
         trace[0].addr_changes = F::zero();
@@ -186,19 +179,13 @@ impl<F: PrimeField> MemSM<F> {
             // trace[i].mem_segment = segment_id_field;
             // trace[i].mem_last_segment = is_last_segment_field;
 
-            trace[i].addr = F::from_canonical_u32(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
+            let mem_addr = mem_op.address >> 3;
+            trace[i].addr = F::from_canonical_u32(mem_addr); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
             trace[i].wr = F::from_bool(mem_op.is_write);
 
-            let value = match mem_op.width {
-                1 => mem_op.value as u8 as u64,
-                2 => mem_op.value as u16 as u64,
-                4 => mem_op.value as u32 as u64,
-                8 => mem_op.value,
-                _ => panic!("Invalid width"),
-            };
-            let (low_val, high_val) = self.get_u32_values(value);
+            let (low_val, high_val) = self.get_u32_values(mem_op.value);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
             let addr_changes = trace[i - 1].addr != trace[i].addr;
@@ -267,7 +254,7 @@ impl<F: PrimeField> MemSM<F> {
 }
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {
-    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]) {
+    fn send_inputs(&self, mem_op: &[MemInput]) {
         self.prove(&mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {

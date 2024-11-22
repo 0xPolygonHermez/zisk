@@ -13,6 +13,7 @@ pub struct ZiskRequiredMemory {
     pub address: u32,
     pub is_write: bool,
     pub width: u8,
+    pub step_offset: u8,
     pub step: u64,
     pub value: u64,
 }

@@ -1,8 +1,8 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
-    mem_align_call, MemAlignResponse, MemAlignSM, MemUnmapped, MAX_MEM_ADDR,
-    MAX_MEM_OPS_PER_MAIN_STEP, MAX_MEM_STEP, MEM_ADDR_MASK, MEM_BYTES,
+    MemAlignInput, MemAlignResponse, MemAlignSM, MemHelpers, MemInput, MemUnmapped, MAX_MEM_ADDR,
+    MAX_MEM_OPS_PER_MAIN_STEP, MEM_ADDR_MASK, MEM_BYTES,
 };
 use log::info;
 use p3_field::PrimeField;
@@ -19,30 +19,24 @@ macro_rules! debug_info {
 }
 
 pub trait MemModule<F>: Send + Sync {
-    fn send_inputs(&self, mem_op: &[ZiskRequiredMemory]);
+    fn send_inputs(&self, mem_op: &[MemInput]);
     fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
     fn get_flush_input_size(&self) -> u32;
 }
 
 trait MemAlignSm {
-    fn get_mem_op(
-        &self,
-        mem_op: &ZiskRequiredMemory,
-        mem_values: [u64; 2],
-        phase: u8,
-    ) -> MemAlignResponse;
+    fn get_mem_op(&self, mem_op: &MemInput, phase: u8) -> MemAlignResponse;
 }
 
 struct MemModuleData {
     pub name: String,
-    pub inputs: Vec<ZiskRequiredMemory>,
+    pub inputs: Vec<MemInput>,
     pub flush_input_size: u32,
 }
 
 struct MemAlignOperation {
     addr: u32,
-    mem_op: ZiskRequiredMemory,
-    mem_value: [u64; 2],
+    input: MemAlignInput,
 }
 
 #[derive(Debug)]
@@ -143,18 +137,18 @@ impl<F: PrimeField> MemProxyEngine<F> {
         // be processed before current mem_op, in this case process all "previous" and after process
         // the current mem_op.
 
-        for mem_op in mem_operations.iter_mut() {
+        for mem_extern_op in mem_operations.iter_mut() {
             // self.log_mem_op(mem_op);
-
+            let mem_op = MemInput::from(mem_extern_op);
             let aligned_mem_addr = Self::to_aligned_addr(mem_op.address);
             let mem_step = mem_op.step;
 
             // Check if there are open mem align operations to be processed in this moment, with
             // address (or step) less than the aligned of current mem_op.
-            self.process_all_previous_open_mem_align_ops(aligned_mem_addr, mem_step);
+            self.process_all_previous_open_mem_align_ops(aligned_mem_addr, mem_step, mem_align_sm);
 
             // check if we are at end of loop
-            if self.check_if_end_of_memory_mark(mem_op) {
+            if self.check_if_end_of_memory_mark(&mem_op) {
                 break;
             }
 
@@ -162,30 +156,37 @@ impl<F: PrimeField> MemProxyEngine<F> {
             let mem_value = self.get_mem_value(aligned_mem_addr);
 
             // all open mem align operations are processed, check if new mem operation is aligned
-            if !Self::is_aligned(&mem_op) {
+            if !Self::is_aligned(&mem_extern_op) {
                 // In this point found non-aligned memory access, phase-0
-                let mem_align_op = mem_align_sm.get_mem_op(mem_op, [mem_value, 0], 0);
+                let mem_align_input =
+                    MemAlignInput::from(&mem_op, mem_extern_op.width, &[mem_value, 0]);
+                let mem_align_response = mem_align_sm.get_mem_op(&mem_align_input, 0);
 
                 // if operation applies to two consecutive memory addresses, add the second part
                 // is enqueued to be processed in future when processing next address on phase-1
-                if mem_align_op.more_address {
-                    self.push_open_mem_align_op(aligned_mem_addr, mem_value, mem_op);
+                if mem_align_response.more_address {
+                    self.push_open_mem_align_op(aligned_mem_addr, &mem_align_input);
                 }
                 self.push_mem_align_response_ops(
                     aligned_mem_addr,
                     mem_value,
-                    mem_op,
-                    &mem_align_op,
+                    &mem_align_input,
+                    &mem_align_response,
                 );
             } else {
-                self.push_mem_op(mem_op);
+                self.push_mem_op(&mem_op);
             }
         }
         self.finish_prove();
         Ok(())
     }
 
-    fn process_all_previous_open_mem_align_ops(&mut self, mem_addr: u32, mem_step: u64) {
+    fn process_all_previous_open_mem_align_ops(
+        &mut self,
+        mem_addr: u32,
+        mem_step: u64,
+        mem_align_sm: &MemAlignSM<F>,
+    ) {
         // Two possible situations to process open mem align operations:
         //
         // 1) the address of open operation is less than the aligned address.
@@ -193,12 +194,13 @@ impl<F: PrimeField> MemProxyEngine<F> {
         //    open operation is less than the step of the current operation.
 
         while self.has_open_mem_align_lt(mem_addr, mem_step) {
-            let open_op = self.open_mem_align_ops.pop_front().unwrap();
+            let mut open_op = self.open_mem_align_ops.pop_front().unwrap();
             let mem_value = if open_op.addr == self.last_addr { self.last_addr_value } else { 0 };
 
             // call to mem_align to get information of the aligned memory access needed
             // to prove the unaligned open operation.
-            let mem_align_op = mem_align_call(&open_op.mem_op, [mem_value, 0], 1);
+            open_op.input.mem_values[1] = mem_value;
+            let mem_align_op = mem_align_sm.get_mem_op(&open_op.input, 1);
 
             // remove element from top of queue, because we are on last phase, phase 1.
             self.open_mem_align_ops.pop_front();
@@ -208,7 +210,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
             self.push_mem_align_response_ops(
                 open_op.addr,
                 mem_value,
-                &open_op.mem_op,
+                &open_op.input,
                 &mem_align_op,
             );
         }
@@ -224,19 +226,13 @@ impl<F: PrimeField> MemProxyEngine<F> {
         let aligned_mem_address = (mem_op.address as u64 & MEM_ADDR_MASK) as u32;
         aligned_mem_address == mem_op.address && mem_op.width == MEM_BYTES as u8
     }
-    fn push_mem_op(&mut self, mem_op: &ZiskRequiredMemory) {
+    fn push_mem_op(&mut self, mem_op: &MemInput) {
         self.push_aligned_op(mem_op.is_write, mem_op.address, mem_op.value, mem_op.step);
     }
 
     fn push_aligned_op(&mut self, is_write: bool, addr: u32, value: u64, step: u64) {
         self.update_last_addr(addr, value);
-        let mem_op = ZiskRequiredMemory {
-            step,
-            is_write,
-            address: addr as u32,
-            width: MEM_BYTES as u8,
-            value,
-        };
+        let mem_op = MemInput { step, is_write, address: addr as u32, value };
         debug_info!(
             "route ==> {}[{:X}] {} {} #{}",
             self.current_module,
@@ -270,17 +266,21 @@ impl<F: PrimeField> MemProxyEngine<F> {
         &mut self,
         mem_addr: u32,
         mem_value: u64,
-        mem_op: &ZiskRequiredMemory,
-        mem_align_op: &MemAlignResponse,
+        mem_align_input: &MemAlignInput,
+        mem_align_resp: &MemAlignResponse,
     ) {
-        self.push_aligned_read(mem_addr, mem_value, mem_align_op.step);
-        if mem_op.is_write {
-            let mem_value = mem_align_op.value.expect("value returned by mem_align");
-            self.push_aligned_write(mem_addr, mem_value, mem_align_op.step + 1);
+        self.push_aligned_read(mem_addr, mem_value, mem_align_resp.step);
+        if mem_align_input.is_write {
+            // let mem_value = mem_align_resp.value.expect("value returned by mem_align");
+            self.push_aligned_write(
+                mem_addr,
+                mem_align_resp.value.unwrap(),
+                mem_align_resp.step + 1,
+            );
         }
     }
-    fn create_modules_inputs(&self) -> Vec<Vec<ZiskRequiredMemory>> {
-        let mut mem_module_inputs: Vec<Vec<ZiskRequiredMemory>> = Default::default();
+    fn create_modules_inputs(&self) -> Vec<Vec<MemInput>> {
+        let mut mem_module_inputs: Vec<Vec<MemInput>> = Default::default();
         for _module in self.modules.iter() {
             mem_module_inputs.push(Vec::new());
         }
@@ -329,14 +329,15 @@ impl<F: PrimeField> MemProxyEngine<F> {
         self.open_mem_align_ops.len() > 0 &&
             (self.open_mem_align_ops[0].addr < addr ||
                 (self.open_mem_align_ops[0].addr == addr &&
-                    self.open_mem_align_ops[0].mem_op.step < step))
+                    self.open_mem_align_ops[0].input.step < step))
     }
     // method to process open mem align operations, second part of non aligned memory operations
     // applies to two consecutive memory addresses.
 
     fn end_of_memory_mark() -> ZiskRequiredMemory {
         ZiskRequiredMemory {
-            step: MAX_MEM_STEP,
+            step: 0,
+            step_offset: 0,
             is_write: false,
             address: MAX_MEM_ADDR as u32,
             width: MEM_BYTES as u8,
@@ -344,8 +345,9 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
     #[inline(always)]
-    fn check_if_end_of_memory_mark(&self, mem_op: &ZiskRequiredMemory) -> bool {
-        if mem_op.step == MAX_MEM_STEP && mem_op.address == MAX_MEM_ADDR as u32 {
+    fn check_if_end_of_memory_mark(&self, mem_op: &MemInput) -> bool {
+        // TODO: 0xFFFF_FFFF not valid address
+        if mem_op.address == MAX_MEM_ADDR as u32 {
             assert!(
                 self.open_mem_align_ops.len() == 0,
                 "open_mem_align_ops not empty, has {} elements",
@@ -366,6 +368,11 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
     fn finish_prove(&self) {
         for (module_id, module) in self.modules.iter().enumerate() {
+            debug_info!(
+                "{}: flush all({}) inputs",
+                self.modules_data[module_id].name,
+                self.modules_data[module_id].inputs.len()
+            );
             module.send_inputs(&self.modules_data[module_id].inputs);
         }
     }
@@ -396,16 +403,11 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
 
     #[inline(always)]
-    fn push_open_mem_align_op(
-        &mut self,
-        aligned_mem_addr: u32,
-        mem_value: u64,
-        mem_op: &ZiskRequiredMemory,
-    ) {
+    fn push_open_mem_align_op(&mut self, aligned_mem_addr: u32, input: &MemAlignInput) {
+        info!("aligned_mem_addr:{:x}", aligned_mem_addr);
         self.open_mem_align_ops.push_back(MemAlignOperation {
             addr: aligned_mem_addr + MEM_BYTES as u32,
-            mem_op: mem_op.clone(),
-            mem_value: [mem_value, 0],
+            input: input.clone(),
         });
     }
     fn log_mem_op(&self, mem_op: &ZiskRequiredMemory) {
