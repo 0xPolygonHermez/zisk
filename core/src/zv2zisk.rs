@@ -1,8 +1,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, read_u16_le, read_u32_le, read_u64_le, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK,
-    INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT,
+    SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -1282,7 +1282,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
     // Read 64-bit input data chunks and store them in rom
     let nd = data.len() / 8;
     for i in 0..nd {
-        let v = read_u64_le(data, i * 8);
+        let v = u64::from_le_bytes(data[i * 8..i * 8 + 8].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v, false);
@@ -1299,7 +1299,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
     // Read remaining 32-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 4 {
-        let v = read_u32_le(data, o as usize);
+        let v = u32::from_le_bytes(data[o as usize..o as usize + 4].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
@@ -1316,7 +1316,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 
     // Read remaining 16-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 2 {
-        let v = read_u16_le(data, o as usize);
+        let v = u16::from_le_bytes(data[o as usize..o as usize + 2].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);

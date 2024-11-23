@@ -1,4 +1,4 @@
-// a and b registers source types
+/// a and b registers source types
 pub const SRC_C: u64 = 0;
 pub const SRC_MEM: u64 = 1;
 pub const SRC_IMM: u64 = 2;
@@ -7,31 +7,63 @@ pub const SRC_STEP: u64 = 3;
 // pub const SRC_SP: u64 = 4;
 pub const SRC_IND: u64 = 5;
 
-// c register store destination types
+/// c register store destination types
 pub const STORE_NONE: u64 = 0;
 pub const STORE_MEM: u64 = 1;
 pub const STORE_IND: u64 = 2;
 
-/* Memory map:
+/// # Memory map:
+///
+/// The Zisk processor memory stores data in little-endian format.
+/// The addressable memory space is divided into several regions:
+///
+/// ```
+///  |--------------- ROM_ENTRY first instruction   (    0x1000)
+///  | calls program at ROM_ADDR, then returns
+///  | kind of a BIOS
+///  |--------------- ROM_EXIT last instruction     (0x10000000)
+///        ...
+///  |--------------- ROM_ADDR                      (0x80000000)
+///  | (rom program)
+///  |--------------- INPUT_ADDR                    (0x90000000)
+///  | (input data)
+///  |--------------- SYS_ADDR (= RAM_ADDR)         (0xa0000000)
+///  | SYS_ADDR = 32 registers
+///  | UART_ADDR = standard output
+///  |--------------- OUTPUT_ADDR                   (0xa0010000)
+///  | (output data)
+///  |--------------- AVAILABLE_MEM_ADDR            (0xa0020000)
+///  | (program memory)
+///  |---------------                               (0xb0000000)
+/// ```
+/// ## ROM_ENNTRY / ROM_ADDR / ROM_EXIT
+/// The program will start executing at the program address ROM_ENTRY.
+/// The first instructions do the basic program setup, including writing the input data into memory,
+/// configuring the ecall (system call) program address, and configuring the program completion
+/// return address. After the program setup, the program counter jumps to ROM_ADDR, executing the
+/// actual program. During the execution, the program can make system calls that will jump to the
+/// configured ecall program address, and return once the task has completed.  The precompiled are
+/// implemented via ecall. After the program is completed, the program counter will jump to the
+/// configured return address, where the execution wrapup tasks will happen, inluding reading the
+/// output data from memory. The address before the last one will jump to ROM_EXIT, the last
+/// insctruction of the execution. In general, setup and wrapup instructions are located in low
+/// addresses, while the actual program insctuctions are located in high addresses.
+///
+/// ## INPUT_ADDR
+/// The input data for the program execution is copied in this memory region, beginning with
+/// INPUT_ADDR. After the data has been written by the setup process, this data can only be read by
+/// the program execution, i.e. it is a read-only (RO) memory region.
+///
+/// ## RAM_ADDR / SYS_ADDR / OUPUT_ADDR / AVAILABLE_MEM_ADDR
+/// This memory section can be written and read by the program execution, i.e. it is a read-write
+/// (RW) memory region. The first RW region from SYS_ADDR to OUTPUT_ADDR is reserved for the system
+/// operation.  The lower addresses of this region is used to store 32 registers of 8 bytes each,
+/// i.e. 256 bytes; these registers are the equivalent to the RISC-V registers.  Any data of 1 byte
+/// written to UART_ADDR will be sent to the standard output of the system. The second RW region
+/// from OUTPUT_ADDR to AVAILABLE_MEM_ADDR is reserved to copy the output data during the program
+/// execution. The third RW region from AVAILABLE_MEM_ADDR onwards can be used during the program
+/// execution.
 
-  |--------------- ROM_ENTRY first instr   (    0x1000)
-  | calls program at ROM_ADDR, then returns
-  | kind of a BIOS
-  |--------------- ROM_EXIT last instr     (0x10000000)
-        ...
-  |--------------- ROM_ADDR                (0x80000000)
-  | (rom program)
-  |--------------- INPUT_ADDR              (0x90000000)
-  | (input data)
-  |--------------- SYS_ADDR (= RAM_ADDR)   (0xa0000000)
-  | (sys = 32 registers)
-  |--------------- OUTPUT_ADDR             (0xa0010000)
-  | (output data)
-  |--------------- AVAILABLE_MEM_ADDR      (0xa0020000)
-  | (program memory)
-  |---------------                         (0xb0000000)
-
-*/
 pub const ROM_ADDR: u64 = 0x80000000;
 pub const ROM_ADDR_MAX: u64 = INPUT_ADDR - 1;
 pub const INPUT_ADDR: u64 = 0x90000000;
@@ -49,45 +81,12 @@ pub const ROM_EXIT: u64 = 0x10000000;
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 pub const UART_ADDR: u64 = SYS_ADDR + 512;
 
-// Powers of 2 definitions
-pub const P2_0: u64 = 0x1;
-pub const P2_1: u64 = 0x2;
-pub const P2_2: u64 = 0x4;
-pub const P2_3: u64 = 0x8;
-pub const P2_4: u64 = 0x10;
-pub const P2_5: u64 = 0x20;
-pub const P2_6: u64 = 0x40;
-pub const P2_7: u64 = 0x80;
-pub const P2_8: u64 = 0x100;
-pub const P2_9: u64 = 0x200;
-pub const P2_10: u64 = 0x400;
-pub const P2_11: u64 = 0x800;
-pub const P2_12: u64 = 0x1000;
-pub const P2_13: u64 = 0x2000;
-pub const P2_14: u64 = 0x4000;
-pub const P2_15: u64 = 0x8000;
-pub const P2_16: u64 = 0x10000;
-pub const P2_17: u64 = 0x20000;
-pub const P2_18: u64 = 0x40000;
-pub const P2_19: u64 = 0x80000;
-pub const P2_20: u64 = 0x100000;
-pub const P2_21: u64 = 0x200000;
-pub const P2_22: u64 = 0x400000;
-pub const P2_23: u64 = 0x800000;
-pub const P2_24: u64 = 0x1000000;
-pub const P2_25: u64 = 0x2000000;
-pub const P2_26: u64 = 0x4000000;
-pub const P2_27: u64 = 0x8000000;
-pub const P2_28: u64 = 0x10000000;
-pub const P2_29: u64 = 0x20000000;
-pub const P2_30: u64 = 0x40000000;
-pub const P2_31: u64 = 0x80000000;
-
-// Registers definitions
+/// Registers memory address definitions
 
 pub const REG_FIRST: u64 = SYS_ADDR;
 
-// The 32 registers are mapped to the first 32x8 bytes of system memory
+/// The 32 registers are mapped to the first 32x8 bytes of system memory.
+/// These are the generic register names, i.e. REG_Xn.
 pub const REG_X0: u64 = REG_FIRST;
 pub const REG_X1: u64 = REG_FIRST + 8;
 pub const REG_X2: u64 = REG_FIRST + 2_u64 * 8;
@@ -123,7 +122,7 @@ pub const REG_X31: u64 = REG_FIRST + 31_u64 * 8;
 
 pub const REG_LAST: u64 = REG_X31;
 
-// ABI register names
+/// ABI register names.
 pub const REG_ZERO: u64 = REG_X0;
 pub const REG_RA: u64 = REG_X1; // Return address
 pub const REG_SP: u64 = REG_X2; // Stack pointer
@@ -156,3 +155,40 @@ pub const REG_T3: u64 = REG_X28; // Temporary register 3
 pub const REG_T4: u64 = REG_X29; // Temporary register 4
 pub const REG_T5: u64 = REG_X30; // Temporary register 5
 pub const REG_T6: u64 = REG_X31; // Temporary register 6
+
+/// Power of 2 constant definitions, named P2_n, equivalent to 2 to the power of n, in u64 format
+pub const P2_0: u64 = 0x1;
+pub const P2_1: u64 = 0x2;
+pub const P2_2: u64 = 0x4;
+pub const P2_3: u64 = 0x8;
+pub const P2_4: u64 = 0x10;
+pub const P2_5: u64 = 0x20;
+pub const P2_6: u64 = 0x40;
+pub const P2_7: u64 = 0x80;
+pub const P2_8: u64 = 0x100;
+pub const P2_9: u64 = 0x200;
+pub const P2_10: u64 = 0x400;
+pub const P2_11: u64 = 0x800;
+pub const P2_12: u64 = 0x1000;
+pub const P2_13: u64 = 0x2000;
+pub const P2_14: u64 = 0x4000;
+pub const P2_15: u64 = 0x8000;
+pub const P2_16: u64 = 0x10000;
+pub const P2_17: u64 = 0x20000;
+pub const P2_18: u64 = 0x40000;
+pub const P2_19: u64 = 0x80000;
+pub const P2_20: u64 = 0x100000;
+pub const P2_21: u64 = 0x200000;
+pub const P2_22: u64 = 0x400000;
+pub const P2_23: u64 = 0x800000;
+pub const P2_24: u64 = 0x1000000;
+pub const P2_25: u64 = 0x2000000;
+pub const P2_26: u64 = 0x4000000;
+pub const P2_27: u64 = 0x8000000;
+pub const P2_28: u64 = 0x10000000;
+pub const P2_29: u64 = 0x20000000;
+pub const P2_30: u64 = 0x40000000;
+pub const P2_31: u64 = 0x80000000;
+
+/// Constant values used in operation functions and state machine executors
+pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;

@@ -1,7 +1,5 @@
 use crate::{EmuTrace, Stats};
-use zisk_core::{
-    write_u64_le, InstContext, Mem, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY,
-};
+use zisk_core::{InstContext, Mem, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
 /// ZisK emulator context data container, storing the state of the emulation
 pub struct EmuContext {
@@ -52,12 +50,9 @@ impl EmuContext {
             panic!("EmuContext::new() input size too big size={}", input.len());
         }
 
-        // Create a new empty vector
-        let mut buffer: Vec<u8> = vec![0; 8];
-        write_u64_le(&mut buffer, 0, input.len() as u64);
-
         // Add the length and input data read sections
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &buffer);
+        let input_len = input.len() as u64;
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &input_len.to_le_bytes());
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
 
         // Add the write section
