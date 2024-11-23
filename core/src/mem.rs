@@ -62,7 +62,8 @@ impl Mem {
             panic!("Mem::add_write_section() got invalid start={}", start);
         }
 
-        // Check the write section address has not been set before this call, since one only write section is allowed
+        // Check the write section address has not been set before this call, since one only write
+        // section is allowed
         if self.write_section.start != 0 {
             panic!(
                 "Mem::add_write_section() only one write section allowed, write_section.start={}",
@@ -79,7 +80,8 @@ impl Mem {
         self.write_section.buffer = mem;
     }
 
-    /// Reads a 1, 2, 4 or 8 bytes value from the memory read sections, based on the provided address and width
+    /// Reads a 1, 2, 4 or 8 bytes value from the memory read sections, based on the provided
+    /// address and width
     #[inline(always)]
     pub fn read(&self, addr: u64, width: u64) -> u64 {
         // First try to read from the write section
