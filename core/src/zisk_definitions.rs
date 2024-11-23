@@ -27,7 +27,7 @@ pub const STORE_IND: u64 = 2;
 ///  | (rom program)
 ///  |--------------- INPUT_ADDR                    (0x90000000)
 ///  | (input data)
-///  |--------------- SYS_ADDR (= RAM_ADDR)         (0xa0000000)
+///  |--------------- SYS_ADDR=RAM_ADDR=REG_FIRST   (0xa0000000)
 ///  | SYS_ADDR = 32 registers
 ///  | UART_ADDR = standard output
 ///  |--------------- OUTPUT_ADDR                   (0xa0010000)

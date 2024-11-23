@@ -3,34 +3,38 @@ use crate::UART_ADDR;
 use crate::MemSection;
 
 /// Memory structure, containing several read sections and one single write section
+#[derive(Default)]
 pub struct Mem {
     pub read_sections: Vec<MemSection>,
     pub write_section: MemSection,
 }
 
-/// Default constructor for Mem structure
-impl Default for Mem {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Memory structure implementation
 impl Mem {
-    /// Memory structue constructor
-    pub fn new() -> Mem {
-        Mem { read_sections: Vec::new(), write_section: MemSection::new() }
-    }
-
     /// Adds a read section to the memory structure
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
+        // Check that the start address is alligned to 8 bytes
+        if (start & 0x07) != 0 {
+            panic!(
+                "Mem::add_read_section() got a start address={:x} not alligned to 8 bytes",
+                start
+            );
+        }
+
+        // Calculate the end address
         let end = start + buffer.len() as u64;
+
+        // Create a mem section with this data
         let mut mem_section = MemSection { start, end, buffer: buffer.to_owned() };
+
+        // Add zero-value bytes until the end address is alligned to 8 bytes
         while (mem_section.end) % 8 != 0 {
             mem_section.buffer.push(0);
             mem_section.end += 1;
         }
+
+        // Push the new read section to the read sections list
         self.read_sections.push(mem_section);
+
         /*println!(
             "Mem::add_read_section() start={:x}={} len={} end={:x}={}",
             start,
@@ -45,12 +49,20 @@ impl Mem {
     pub fn add_write_section(&mut self, start: u64, size: u64) {
         //println!("Mem::add_write_section() start={} size={}", start, size);
 
+        // Check that the start address is alligned to 8 bytes
+        if (start & 0x07) != 0 {
+            panic!(
+                "Mem::add_write_section() got a start address={:x} not alligned to 8 bytes",
+                start
+            );
+        }
+
         // Check the start address is not zero
         if start == 0 {
             panic!("Mem::add_write_section() got invalid start={}", start);
         }
 
-        // Check the write section address has been set before this call
+        // Check the write section address has not been set before this call, since one only write section is allowed
         if self.write_section.start != 0 {
             panic!(
                 "Mem::add_write_section() only one write section allowed, write_section.start={}",
@@ -67,10 +79,10 @@ impl Mem {
         self.write_section.buffer = mem;
     }
 
-    /// Read a u64 value from the memory read sections, based on the provided address and width
+    /// Reads a 1, 2, 4 or 8 bytes value from the memory read sections, based on the provided address and width
     #[inline(always)]
     pub fn read(&self, addr: u64, width: u64) -> u64 {
-        // First try to read in the write section
+        // First try to read from the write section
         if (addr >= self.write_section.start) && (addr <= (self.write_section.end - width)) {
             // Calculate the read position
             let read_position: usize = (addr - self.write_section.start) as usize;
@@ -94,7 +106,8 @@ impl Mem {
             return value;
         }
 
-        // Search for the section that contains the address using binary search (dicothomic search)
+        // Search for the section that contains the address using binary search (dicothomic search).
+        // Read sections are ordered by start address to allow this search.
         let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
             if addr < section.start {
                 std::cmp::Ordering::Greater
@@ -109,7 +122,7 @@ impl Mem {
             panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
         };
 
-        // Calculate the read position
+        // Calculate the buffer relative read position
         let read_position: usize = (addr - section.start) as usize;
 
         // Read the requested data based on the provided width

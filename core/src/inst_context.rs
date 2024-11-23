@@ -18,7 +18,7 @@ impl InstContext {
     /// RisK instruction context constructor
     pub fn new() -> InstContext {
         InstContext {
-            mem: Mem::new(),
+            mem: Mem::default(),
             a: 0,
             b: 0,
             c: 0,

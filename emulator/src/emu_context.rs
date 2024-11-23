@@ -23,7 +23,7 @@ impl EmuContext {
     pub fn new(input: Vec<u8>) -> EmuContext {
         let mut ctx = EmuContext {
             inst_ctx: InstContext {
-                mem: Mem::new(),
+                mem: Mem::default(),
                 a: 0,
                 b: 0,
                 c: 0,
