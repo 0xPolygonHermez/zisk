@@ -17,7 +17,7 @@ pub const STORE_IND: u64 = 2;
 /// The Zisk processor memory stores data in little-endian format.
 /// The addressable memory space is divided into several regions:
 ///
-/// ```
+/// ```ignore
 ///  |--------------- ROM_ENTRY first instruction   (    0x1000)
 ///  | calls program at ROM_ADDR, then returns
 ///  | kind of a BIOS

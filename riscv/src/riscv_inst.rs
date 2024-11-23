@@ -10,7 +10,7 @@
 ///     J-type: unconditional jumps, a variation of U-type
 ///
 /// RV32I instruction formats showing immediate variants:
-/// ```
+/// ```ignore
 ///  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
 /// |      funct7        |      rs2     |      rs1     | funct3 |      rd      |       opcode       | R-type
 /// |               imm[11:0]           |      rs1     | funct3 |      rd      |       opcode       | I-type
