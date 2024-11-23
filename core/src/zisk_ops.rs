@@ -869,7 +869,7 @@ pub fn opc_rem(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
     if (b as u32) == 0 {
-        return ((a as i32) as u64, true);
+        return ((a as u32) as u64, true);
     }
 
     ((((a as u32) % (b as u32)) as i32) as u64, false)
