@@ -9,6 +9,9 @@ use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::ZiskRequiredMemory;
 
+#[cfg(feature = "debug_mem_proxy_engine")]
+const DEBUG_ADDR: u32 = 0xA0008F10;
+
 macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_proxy_engine")]
@@ -138,7 +141,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         // the current mem_op.
 
         for mem_extern_op in mem_operations.iter_mut() {
-            // self.log_mem_op(mem_op);
+            self.log_mem_op(mem_extern_op);
             let mem_op = MemInput::from(mem_extern_op);
             let aligned_mem_addr = Self::to_aligned_addr(mem_op.address);
             let mem_step = mem_op.step;
@@ -162,6 +165,21 @@ impl<F: PrimeField> MemProxyEngine<F> {
                     MemAlignInput::from(&mem_op, mem_extern_op.width, &[mem_value, 0]);
                 let mem_align_response = mem_align_sm.get_mem_op(&mem_align_input, 0);
 
+                #[cfg(feature = "debug_mem_proxy_engine")]
+                if mem_align_input.address >= DEBUG_ADDR - 8 &&
+                    mem_align_input.address <= DEBUG_ADDR + 8
+                {
+                    debug_info!(
+                        "mem_align_input_{:X}: phase: 0 {:?}",
+                        mem_align_input.address,
+                        mem_align_input
+                    );
+                    debug_info!(
+                        "mem_align_response_{:X}: phase: 0 {:?}",
+                        mem_align_input.address,
+                        mem_align_response
+                    );
+                }
                 // if operation applies to two consecutive memory addresses, add the second part
                 // is enqueued to be processed in future when processing next address on phase-1
                 if mem_align_response.more_address {
@@ -195,23 +213,33 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
         while self.has_open_mem_align_lt(mem_addr, mem_step) {
             let mut open_op = self.open_mem_align_ops.pop_front().unwrap();
-            let mem_value = if open_op.addr == self.last_addr { self.last_addr_value } else { 0 };
+            let mem_value = self.get_mem_value(open_op.addr);
 
             // call to mem_align to get information of the aligned memory access needed
             // to prove the unaligned open operation.
             open_op.input.mem_values[1] = mem_value;
-            let mem_align_op = mem_align_sm.get_mem_op(&open_op.input, 1);
+            let mem_align_resp = mem_align_sm.get_mem_op(&open_op.input, 1);
 
-            // remove element from top of queue, because we are on last phase, phase 1.
-            self.open_mem_align_ops.pop_front();
-
+            #[cfg(feature = "debug_mem_proxy_engine")]
+            if open_op.input.address >= DEBUG_ADDR - 8 && open_op.input.address <= DEBUG_ADDR + 8 {
+                debug_info!(
+                    "mem_align_input_{:X}: phase:1 {:?}",
+                    open_op.input.address,
+                    open_op.input
+                );
+                debug_info!(
+                    "mem_align_response_{:X}: phase:1 {:?}",
+                    open_op.input.address,
+                    mem_align_resp
+                );
+            }
             // push the aligned memory operations for current address (read or read+write) and
             // update last_address and last_value.
             self.push_mem_align_response_ops(
                 open_op.addr,
                 mem_value,
                 &open_op.input,
-                &mem_align_op,
+                &mem_align_resp,
             );
         }
     }
@@ -271,7 +299,21 @@ impl<F: PrimeField> MemProxyEngine<F> {
     ) {
         self.push_aligned_read(mem_addr, mem_value, mem_align_resp.step);
         if mem_align_input.is_write {
-            // let mem_value = mem_align_resp.value.expect("value returned by mem_align");
+            #[cfg(feature = "debug_mem_proxy_engine")]
+            if mem_addr >= DEBUG_ADDR - 8 && mem_addr <= DEBUG_ADDR - 8 {
+                debug_info!(
+                    "push_mem_align_response_ops_{:X}-A: value:{} {:?}",
+                    mem_addr,
+                    mem_align_resp.value.unwrap(),
+                    mem_align_resp
+                );
+                debug_info!(
+                    "push_mem_align_response_ops_{:X}-B: mem_value:{} {:?}",
+                    mem_addr,
+                    mem_value,
+                    mem_align_input
+                );
+            }
             self.push_aligned_write(
                 mem_addr,
                 mem_align_resp.value.unwrap(),
@@ -404,7 +446,6 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
     #[inline(always)]
     fn push_open_mem_align_op(&mut self, aligned_mem_addr: u32, input: &MemAlignInput) {
-        info!("aligned_mem_addr:{:x}", aligned_mem_addr);
         self.open_mem_align_ops.push_back(MemAlignOperation {
             addr: aligned_mem_addr + MEM_BYTES as u32,
             input: input.clone(),
@@ -412,12 +453,14 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
     fn log_mem_op(&self, mem_op: &ZiskRequiredMemory) {
         debug_info!(
-            "next input [0x{:x}] {} {} {}b #{}",
+            "next input [0x{:x}] {} {} {}b #{} [0x{:x},{}]",
             mem_op.address,
             if mem_op.is_write { "W" } else { "R" },
             mem_op.value,
             mem_op.width,
             mem_op.step,
+            self.last_addr,
+            self.last_addr_value
         );
     }
     #[inline(always)]

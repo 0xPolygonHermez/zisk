@@ -116,6 +116,7 @@ impl<'a> Emu<'a> {
                     width: 8,
                     value: self.ctx.inst_ctx.a,
                 };
+
                 emu_mem.push(required_memory);
             }
             SRC_IMM => {

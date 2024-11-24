@@ -342,7 +342,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                     addr: F::from_canonical_u32(addr_read),
                     offset: F::from_canonical_usize(offset),
                     width: F::from_canonical_usize(width),
-                    // wr: F::from_bool(false),
+                    wr: F::from_bool(true),
                     pc: F::from_canonical_u64(next_pc + 1),
                     // reset: F::from_bool(false),
                     sel_prove: F::from_bool(true),
@@ -503,8 +503,11 @@ impl<F: PrimeField> MemAlignSM<F> {
                                 first_read_row.sel[i] = F::from_bool(true);
                             }
 
+                            // value_row.reg[i] =
+                            //    F::from_canonical_u64(Self::get_byte(value, i, offset));
                             value_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value, i, offset));
+                                F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
+
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
                             }
@@ -713,7 +716,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             addr: F::from_canonical_u32(addr_first_read_write),
                             offset: F::from_canonical_usize(offset),
                             width: F::from_canonical_usize(width),
-                            // wr: F::from_bool(false),
+                            wr: F::from_bool(true),
                             pc: F::from_canonical_u64(next_pc + 1),
                             // reset: F::from_bool(false),
                             sel_prove: F::from_bool(true),
@@ -721,7 +724,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         let mut second_write_row = MemAlignRow::<F> {
-                            step: F::from_canonical_u64(step),
+                            step: F::from_canonical_u64(step + 1),
                             addr: F::from_canonical_u32(addr_second_read_write),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
@@ -733,7 +736,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         };
 
                         let mut second_read_row = MemAlignRow::<F> {
-                            step: F::from_canonical_u64(step + 1),
+                            step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_second_read_write),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
@@ -757,6 +760,18 @@ impl<F: PrimeField> MemAlignSM<F> {
                                 first_write_row.sel[i] = F::from_bool(true);
                             }
 
+                            second_write_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_write, i, 0));
+                            if i < rem_bytes {
+                                second_write_row.sel[i] = F::from_bool(true);
+                            }
+
+                            second_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
+                            if i >= rem_bytes {
+                                second_read_row.sel[i] = F::from_bool(true);
+                            }
+
                             value_row.reg[i] = {
                                 if i < rem_bytes {
                                     second_write_row.reg[i]
@@ -772,18 +787,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                             };
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
-                            }
-
-                            second_write_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value_second_write, i, 0));
-                            if i < rem_bytes {
-                                second_write_row.sel[i] = F::from_bool(true);
-                            }
-
-                            second_read_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
-                            if i >= rem_bytes {
-                                second_read_row.sel[i] = F::from_bool(true);
                             }
                         }
 
@@ -871,8 +874,12 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     pub fn prove(&self, computed_rows: &[MemAlignRow<F>]) {
         if let Ok(mut rows) = self.rows.lock() {
+            let row_index = rows.len();
             rows.extend_from_slice(computed_rows);
-
+            for (index, row) in computed_rows.iter().enumerate() {
+                let _addr = row.addr.as_canonical_biguint().to_u64().unwrap();
+                println!("MEM_ALIGN_ROW_0x{:X} => {:?} row:{}", _addr * 8, row, row_index + index);
+            }
             #[cfg(feature = "debug_mem_align")]
             {
                 let mut num_rows = self.num_computed_rows.lock().unwrap();

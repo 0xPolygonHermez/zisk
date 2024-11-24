@@ -16,7 +16,7 @@ trace!(MemRow, MemTrace<F> {
 });
 
 trace!(MemAlignRow, MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], sel_prove: F, step: F,
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, sel_prove: F,
 });
 
 trace!(MemAlignRomRow, MemAlignRomTrace<F> {

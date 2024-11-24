@@ -142,7 +142,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     mem_load(sel: sel_mem_b,
              step: STEP,
              step_offset: 1,
-             bytes: ind_width,
+             bytes: b_src_ind * (ind_width - 8) + 8,
              addr: addr1,
              value: b);
 
@@ -155,7 +155,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     mem_store(sel: store_mem + store_ind,
               step: STEP,
               step_offset: 2,
-              bytes: ind_width,
+              bytes: store_ind * (ind_width - 8) + 8,
               addr: addr2,
               value: store_value);
 
