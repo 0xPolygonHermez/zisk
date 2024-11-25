@@ -158,7 +158,7 @@ impl<F: PrimeField> InputDataSM<F> {
         // S[n-1]    wr = 1, sel = 1, addr, step, value
         // S+1[0]    wr = 0, sel = 0, addr, step, value
 
-        trace[0].addr = F::from_canonical_u64(mem_first_row.address);
+        trace[0].addr = F::from_canonical_u32(mem_first_row.address);
         trace[0].step = F::from_canonical_u64(mem_first_row.step);
         trace[0].sel = F::zero();
 
@@ -185,14 +185,14 @@ impl<F: PrimeField> InputDataSM<F> {
             if mem_op.is_write {
                 panic! {"InputDataSM::prove_instance() Input data operation is write"};
             }
-            if mem_op.address < INPUT_ADDR {
+            if mem_op.address < INPUT_ADDR as u32 {
                 panic! {"InputDataSM::prove_instance() Input data address bellow range address={:x}", mem_op.address};
             }
-            if mem_op.address >= (INPUT_ADDR + MAX_INPUT_SIZE) {
+            if mem_op.address >= (INPUT_ADDR + MAX_INPUT_SIZE) as u32 {
                 panic! {"InputDataSM::prove_instance() Input data address bellow range address={:x}", mem_op.address};
             }
 
-            trace[i].addr = F::from_canonical_u64(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
+            trace[i].addr = F::from_canonical_u32(mem_op.address); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
 
