@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use itertools::Itertools;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
@@ -107,9 +108,13 @@ impl<F: Field> RomSM<F> {
                 .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        let keys = rom.insts.keys();
+        let sorted_keys = keys.sorted();
+        let mut i = 0;
+        for key in sorted_keys {
             // Get the Zisk instruction
-            let inst = inst_builder.1.i;
+            let inst = &rom.insts[key].i;
 
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution

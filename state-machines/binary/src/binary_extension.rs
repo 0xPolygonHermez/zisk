@@ -227,7 +227,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     if j == 7 {
                         // most significant bit of most significant byte define if negative or not
                         // if negative then add b bits one on the left
-                        if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
+                        if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 && (b_low != 0) {
                             out |= MASK_64 << (64 - b_low);
                         }
                     }
@@ -242,7 +242,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     if j >= 4 {
                         out = 0;
                     } else {
-                        out = (((a_bytes[j] as u64) << b_low) + (8 * j as u64)) & MASK_32;
+                        out = (((a_bytes[j] as u64) << b_low) << (8 * j as u64)) & MASK_32;
                         if (out & SIGN_32_BIT) != 0 {
                             out |= SE_MASK_32;
                         }
@@ -308,7 +308,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         out = a_bytes[j] as u64;
                     } else if j == 1 {
                         if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
-                            out = (a_bytes[j] as u64) | SE_MASK_16;
+                            out = (a_bytes[j] as u64) << 8 | SE_MASK_16;
                         } else {
                             out = a_bytes[j] as u64;
                         }

@@ -76,12 +76,9 @@ impl ZiskEmulator {
         let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
 
         // Convert program to rom
-        let zisk_rom = riscv2zisk.run();
-        if zisk_rom.is_err() {
-            return Err(ZiskEmulatorErr::Unknown(zisk_rom.err().unwrap().to_string()));
-        }
+        let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
 
-        Self::process_rom(&zisk_rom.unwrap(), inputs, options, callback)
+        Self::process_rom(&zisk_rom, inputs, options, callback)
     }
 
     fn process_rom_file(
@@ -246,22 +243,15 @@ impl ZiskEmulator {
     pub fn par_process_rom_memory<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
-    ) -> Result<[Vec<ZiskRequiredMemory>; 2], ZiskEmulatorErr> {
-        let mut result: [Vec<ZiskRequiredMemory>; 2] = [Vec::new(), Vec::new()];
+    ) -> Result<Vec<ZiskRequiredMemory>, ZiskEmulatorErr> {
+        let mut emu = Emu::new(rom);
+        let result = emu.par_run_memory::<F>(inputs.to_owned());
 
-        result.par_iter_mut().enumerate().for_each(|(is_aligned, result)| {
-            let is_aligned = is_aligned == 0;
-            let mut emu = Emu::new(rom);
-            let required = emu.par_run_memory::<F>(inputs.to_owned(), is_aligned);
-
-            if !emu.terminated() {
-                panic!("Emulation did not complete");
-                // TODO!
-                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
-            }
-
-            *result = required;
-        });
+        if !emu.terminated() {
+            panic!("Emulation did not complete");
+            // TODO!
+            // return Err(ZiskEmulatorErr::EmulationNoCompleted);
+        }
 
         Ok(result)
     }
@@ -337,14 +327,9 @@ impl Emulator for ZiskEmulator {
         if options.rom.is_some() {
             let rom_filename = options.rom.clone().unwrap();
 
-            let metadata = fs::metadata(&rom_filename);
-            if metadata.is_err() {
-                return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                    "ROM file does not exist",
-                )));
-            }
-
-            let metadata = metadata.unwrap();
+            let metadata = fs::metadata(&rom_filename).map_err(|_| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new("ROM file does not exist"))
+            })?;
             if metadata.is_dir() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "ROM file must be a file",
@@ -355,14 +340,9 @@ impl Emulator for ZiskEmulator {
         } else {
             let elf_filename = options.elf.clone().unwrap();
 
-            let metadata = fs::metadata(&elf_filename);
-            if metadata.is_err() {
-                return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                    "ELF file does not exist",
-                )));
-            }
-
-            let metadata = metadata.unwrap();
+            let metadata = fs::metadata(&elf_filename).map_err(|_| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new("ELF file does not exist"))
+            })?;
             if metadata.is_dir() {
                 Self::process_directory(elf_filename, &inputs, options)
             } else {

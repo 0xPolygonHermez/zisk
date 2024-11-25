@@ -8,6 +8,7 @@ require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
+require "arith/pil/arith.pil"
 
 const int OPERATION_BUS_ID = 5000;
 
@@ -20,6 +21,9 @@ airgroup Zisk {
     MemAlignRom(disable_fixed: 0);
     InputData(N: 2**21, RC: 2);
 
+    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    ArithTable();
+    ArithRangeTable();
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable(disable_fixed: 0);
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);

@@ -16,7 +16,7 @@ trace!(MemRow, MemTrace<F> {
 });
 
 trace!(MemAlignRow, MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], sel_prove: F, step: F,
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, sel_prove: F,
 });
 
 trace!(MemAlignRomRow, MemAlignRomTrace<F> {
@@ -25,6 +25,18 @@ trace!(MemAlignRomRow, MemAlignRomTrace<F> {
 
 trace!(InputDataRow, InputDataTrace<F> {
  addr: F, step: F, sel: F, value: [F; 4], addr_changes: F,
+});
+
+trace!(ArithRow, ArithTrace<F> {
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
+});
+
+trace!(ArithTableRow, ArithTableTrace<F> {
+ multiplicity: F,
+});
+
+trace!(ArithRangeTableRow, ArithRangeTableTrace<F> {
+ multiplicity: F,
 });
 
 trace!(BinaryRow, BinaryTrace<F> {
@@ -48,9 +60,5 @@ trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
 });
 
 trace!(U8AirRow, U8AirTrace<F> {
- mul: F,
-});
-
-trace!(U16AirRow, U16AirTrace<F> {
  mul: F,
 });

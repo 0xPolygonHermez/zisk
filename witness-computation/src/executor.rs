@@ -20,7 +20,8 @@ use std::{
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 use zisk_pil::{
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID,
+    ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ROM_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -35,13 +36,13 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub rom_sm: Arc<RomSM<F>>,
 
     /// Memory State Machine
-    pub mem_proxy: Arc<MemProxy<F>>,
+    pub mem_proxy_sm: Arc<MemProxy<F>>,
 
     /// Binary State Machine
     pub binary_sm: Arc<BinarySM<F>>,
 
     /// Arithmetic State Machine
-    pub arith_sm: Arc<ArithSM>,
+    pub arith_sm: Arc<ArithSM<F>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -51,7 +52,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let std = Std::new(wcm.clone());
 
         let rom_sm = RomSM::new(wcm.clone());
-        let mem_proxy = MemProxy::new(wcm.clone());
+        let mem_proxy_sm = MemProxy::new(wcm.clone(), std.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
         let arith_sm = ArithSM::new(wcm.clone());
 
@@ -83,9 +84,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main_sm = MainSM::new(wcm.clone(), arith_sm.clone(), binary_sm.clone());
+        let main_sm =
+            MainSM::new(wcm.clone(), mem_proxy_sm.clone(), arith_sm.clone(), binary_sm.clone());
 
-        Self { zisk_rom, main_sm, rom_sm, mem_proxy, binary_sm, arith_sm }
+        Self { zisk_rom, main_sm, rom_sm, mem_proxy_sm, binary_sm, arith_sm }
     }
 
     /// Executes the MainSM state machine and processes the inputs in batches when the maximum
@@ -129,12 +131,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // machine. We aim to track the starting point of execution for every N instructions
         // across different operation types. Currently, we are only collecting data for
         // Binary and BinaryE operations.
+        let air_arith = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]);
         let air_binary = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_e = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
 
         let mut op_sizes = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
         // The starting points for the Main is allocated using None operation
         op_sizes[ZiskOperationType::None as usize] = air_main.num_rows() as u64;
+        op_sizes[ZiskOperationType::Arith as usize] = air_arith.num_rows() as u64;
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
@@ -196,9 +200,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // Memory State Machine
         // ----------------------------------------------
         let mem_thread = thread::spawn({
-            let mem_proxy = self.mem_proxy.clone();
+            let mem_proxy_sm = self.mem_proxy_sm.clone();
             move || {
-                mem_proxy.prove(&mut mem_required).expect("Error during Memory witness computation")
+                mem_proxy_sm
+                    .prove(&mut mem_required)
+                    .expect("Error during Memory witness computation")
             }
         });
 
@@ -229,6 +235,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         for emu_slice in emu_slices.points.iter() {
             let (airgroup_id, air_id) = match emu_slice.op_type {
                 ZiskOperationType::None => (ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]),
+                ZiskOperationType::Arith => (ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0]),
                 ZiskOperationType::Binary => (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
                 ZiskOperationType::BinaryE => (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
                 _ => panic!("Invalid operation type"),
@@ -260,6 +267,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ZiskOperationType::None => {
                 self.main_sm.prove_main(&self.zisk_rom, &emu_traces, iectx, &pctx);
             }
+            ZiskOperationType::Arith => {
+                self.main_sm.prove_arith(&self.zisk_rom, &emu_traces, iectx, &pctx);
+            }
             ZiskOperationType::Binary => {
                 self.main_sm.prove_binary(&self.zisk_rom, &emu_traces, iectx, &pctx);
             }
@@ -284,12 +294,27 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         mem_thread.join().expect("Error during Memory witness computation");
 
+        // match mem_thread.join() {
+        //     Ok(_) => println!("El thread ha finalitzat correctament."),
+        //     Err(e) => {
+        //         println!("El thread ha fet panic!");
+        //
+        //         // Converteix l'error en una cadena llegible (opcional)
+        //         if let Some(missatge) = e.downcast_ref::<&str>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else if let Some(missatge) = e.downcast_ref::<String>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else {
+        //             println!("No es pot determinar el tipus d'error.");
+        //         }
+        //     }
+        // }
         if let Some(thread) = rom_thread {
             let _ = thread.join().expect("Error during ROM witness computation");
         }
 
-        self.mem_proxy.unregister_predecessor();
+        self.mem_proxy_sm.unregister_predecessor();
         self.binary_sm.unregister_predecessor();
-        // self.arith_sm.register_predecessor(scope);
+        self.arith_sm.unregister_predecessor();
     }
 }

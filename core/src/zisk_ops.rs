@@ -247,19 +247,19 @@ define_ops! {
     (Or, "or", Binary, 77, 0x21, opc_or, op_or),
     (Xor, "xor", Binary, 77, 0x22, opc_xor, op_xor),
     (Mulu, "mulu", ArithAm32, 97, 0xb0, opc_mulu, op_mulu),
-    (Mul, "mul", ArithAm32, 97, 0xb1, opc_mul, op_mul),
-    (MulW, "mul_w", ArithAm32, 44, 0xb5, opc_mul_w, op_mul_w),
-    (Muluh, "muluh", ArithAm32, 97, 0xb8, opc_muluh, op_muluh),
-    (Mulh, "mulh", ArithAm32, 97, 0xb9, opc_mulh, op_mulh),
-    (Mulsuh, "mulsuh", ArithAm32, 97, 0xbb, opc_mulsuh, op_mulsuh),
-    (Divu, "divu", ArithAm32, 174, 0xc0, opc_divu, op_divu),
-    (Div, "div", ArithAm32, 174, 0xc1, opc_div, op_div),
-    (DivuW, "divu_w", ArithA32, 136, 0xc4, opc_divu_w, op_divu_w),
-    (DivW, "div_w", ArithA32, 136, 0xc5, opc_div_w, op_div_w),
-    (Remu, "remu", ArithAm32, 174, 0xc8, opc_remu, op_remu),
-    (Rem, "rem", ArithAm32, 174, 0xc9, opc_rem, op_rem),
-    (RemuW, "remu_w", ArithA32, 136, 0xcc, opc_remu_w, op_remu_w),
-    (RemW, "rem_w", ArithA32, 136, 0xcd, opc_rem_w, op_rem_w),
+    (Muluh, "muluh", ArithAm32, 97, 0xb1, opc_muluh, op_muluh),
+    (Mulsuh, "mulsuh", ArithAm32, 97, 0xb3, opc_mulsuh, op_mulsuh),
+    (Mul, "mul", ArithAm32, 97, 0xb4, opc_mul, op_mul),
+    (Mulh, "mulh", ArithAm32, 97, 0xb5, opc_mulh, op_mulh),
+    (MulW, "mul_w", ArithAm32, 44, 0xb6, opc_mul_w, op_mul_w),
+    (Divu, "divu", ArithAm32, 174, 0xb8, opc_divu, op_divu),
+    (Remu, "remu", ArithAm32, 174, 0xb9, opc_remu, op_remu),
+    (Div, "div", ArithAm32, 174, 0xba, opc_div, op_div),
+    (Rem, "rem", ArithAm32, 174, 0xbb, opc_rem, op_rem),
+    (DivuW, "divu_w", ArithA32, 136, 0xbc, opc_divu_w, op_divu_w),
+    (RemuW, "remu_w", ArithA32, 136, 0xbd, opc_remu_w, op_remu_w),
+    (DivW, "div_w", ArithA32, 136, 0xbe, opc_div_w, op_div_w),
+    (RemW, "rem_w", ArithA32, 136, 0xbf, opc_rem_w, op_rem_w),
     (Minu, "minu", Binary, 77, 0x09, opc_minu, op_minu),
     (Min, "min", Binary, 77, 0x0a, opc_min, op_min),
     (MinuW, "minu_w", Binary, 77, 0x19, opc_minu_w, op_minu_w),
@@ -733,7 +733,7 @@ pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
         return ((a as i32) as u64, true);
     }
 
-    (((a as i32) % (b as i32)) as u64, false)
+    ((((a as i32) as i64) % ((b as i32) as i64)) as u64, false)
 }
 #[inline(always)]
 pub fn opc_rem_w(ctx: &mut InstContext) {
@@ -770,9 +770,9 @@ pub fn opc_min(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
     if (a as u32) < (b as u32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -783,9 +783,9 @@ pub fn opc_minu_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
     if (a as i32) < (b as i32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -823,9 +823,9 @@ pub fn opc_max(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
     if (a as u32) > (b as u32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]
@@ -836,9 +836,9 @@ pub fn opc_maxu_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
     if (a as i32) > (b as i32) {
-        (a, false)
+        (a as i32 as i64 as u64, false)
     } else {
-        (b, false)
+        (b as i32 as i64 as u64, false)
     }
 }
 #[inline(always)]

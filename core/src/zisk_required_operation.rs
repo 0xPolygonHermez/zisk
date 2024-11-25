@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {
@@ -8,24 +8,29 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ZiskRequiredMemory {
-    pub step: u64,
+    pub address: u32,
     pub is_write: bool,
-    pub address: u64,
-    pub width: u64,
+    pub width: u8,
+    pub step_offset: u8,
+    pub step: u64,
     pub value: u64,
 }
 
-impl ZiskRequiredMemory {
-    pub fn to_text(&self) -> String {
-        let mut s = String::new();
-        s += &format! {" address={} = {:x}", self.address, self.address};
-        s += &(" step=".to_string() + &self.step.to_string());
-        s += &(" value=".to_string() + &self.value.to_string());
-        s += &(" is_write=".to_string() + &self.is_write.to_string());
-        s += &(" width=".to_string() + &self.width.to_string());
-        s
+impl fmt::Debug for ZiskRequiredMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = if self.is_write { "WR" } else { "RD" };
+        write!(
+            f,
+            "{0} addr:{1:#08X}({1}) offset:{5} with:{2} value:{3:#016X}({3}) step:{4}",
+            label,
+            self.address,
+            self.width,
+            self.value,
+            self.step,
+            self.address & 0x07
+        )
     }
 }
 
