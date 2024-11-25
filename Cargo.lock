@@ -1039,9 +1039,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.12"
+version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a73e9fe3c49d7afb2ace819fa181a287ce54a0983eda4e0eb05c22f82ffe534"
+checksum = "540654e97a3f4470a492cd30ff187bc95d89557a903a2bbf112e2fae98104ef2"
 
 [[package]]
 name = "jobserver"
@@ -1467,7 +1467,6 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "log",
  "num-bigint",
@@ -1485,7 +1484,6 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "bytes",
  "log",
@@ -1595,9 +1593,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.89"
+version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f139b0662de085916d1fb67d2b4169d1addddda1919e696f3252b740b629986e"
+checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
 dependencies = [
  "unicode-ident",
 ]
@@ -1605,7 +1603,6 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "colored",
  "env_logger",
@@ -1626,11 +1623,11 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "env_logger",
  "log",
  "p3-field",
+ "p3-goldilocks",
  "pilout",
  "proofman-macros",
  "proofman-starks-lib-c",
@@ -1644,7 +1641,6 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -1654,7 +1650,6 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1664,7 +1659,6 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "log",
 ]
@@ -1672,7 +1666,6 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "colored",
  "sysinfo 0.31.4",
@@ -2242,10 +2235,14 @@ name = "sm-mem"
 version = "0.1.0"
 dependencies = [
  "log",
+ "num-bigint",
+ "num-traits",
  "p3-field",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "proofman-macros",
+ "proofman-util",
  "rayon",
  "sm-common",
  "zisk-core",
@@ -2316,7 +2313,6 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "log",
  "p3-field",
@@ -2380,9 +2376,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.87"
+version = "2.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25aa4ce346d03a6dcd68dd8b4010bcb74e54e62c90c573f394c46eae99aba32d"
+checksum = "44d46482f1c1c87acd84dea20c1bf5ebff4c757009ed6bf19cfd36fb10e92c4e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2391,9 +2387,9 @@ dependencies = [
 
 [[package]]
 name = "sync_wrapper"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
+checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
 dependencies = [
  "futures-core",
 ]
@@ -2666,7 +2662,6 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.10#cb182461a9e8dc4077be76b81733b5384d640a21"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -2898,9 +2893,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "0.26.6"
+version = "0.26.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841c67bff177718f1d4dfefde8d8f0e78f9b6589319ba88312f567fc5841a958"
+checksum = "5d642ff16b7e79272ae451b7322067cdc17cadf68c23264be9d94a32319efe7e"
 dependencies = [
  "rustls-pki-types",
 ]

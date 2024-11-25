@@ -17,7 +17,10 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
+use zisk_pil::{
+    BinaryExtensionRow, BinaryExtensionTrace, BINARY_EXTENSION_AIR_IDS,
+    BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;

@@ -1,9 +1,17 @@
-mod mem;
-mod mem_aligned;
-mod mem_traces;
-mod mem_unaligned;
+mod mem_align_rom_sm;
+mod mem_align_sm;
+mod mem_constants;
+mod mem_helpers;
+mod mem_proxy;
+mod mem_proxy_engine;
+mod mem_sm;
+mod mem_unmapped;
 
-pub use mem::*;
-pub use mem_aligned::*;
-pub use mem_traces::*;
-pub use mem_unaligned::*;
+pub use mem_align_rom_sm::*;
+pub use mem_align_sm::*;
+pub use mem_constants::*;
+pub use mem_helpers::*;
+pub use mem_proxy::*;
+pub use mem_proxy_engine::*;
+pub use mem_sm::*;
+pub use mem_unmapped::*;

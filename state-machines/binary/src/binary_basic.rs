@@ -12,7 +12,7 @@ use rayon::Scope;
 use sm_common::{create_prover_buffer, OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
+use zisk_pil::{BinaryRow, BinaryTrace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 

@@ -9,9 +9,9 @@ use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
-    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
+    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredMemory,
+    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -92,6 +92,46 @@ impl<'a> Emu<'a> {
         }
     }
 
+    /// Calculate the 'a' register value based on the source specified by the current instruction
+    #[inline(always)]
+    pub fn source_a_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
+        match instruction.a_src {
+            SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                let mut addr = instruction.a_offset_imm0;
+                if instruction.a_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+                self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(addr, 8);
+
+                let required_memory = ZiskRequiredMemory {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 0,
+                    is_write: false,
+                    address: addr as u32,
+                    width: 8,
+                    value: self.ctx.inst_ctx.a,
+                };
+
+                emu_mem.push(required_memory);
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+            }
+            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            _ => panic!(
+                "Emu::source_a() Invalid a_src={} pc={}",
+                instruction.a_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
     /// Calculate the 'b' register value based on the source specified by the current instruction
     #[inline(always)]
     pub fn source_b(&mut self, instruction: &ZiskInst) {
@@ -120,6 +160,59 @@ impl<'a> Emu<'a> {
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, instruction.ind_width);
                 }
+            }
+            _ => panic!(
+                "Emu::source_b() Invalid b_src={} pc={}",
+                instruction.b_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'b' register value based on the source specified by the current instruction
+    #[inline(always)]
+    pub fn source_b_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
+        match instruction.b_src {
+            SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                let mut addr = instruction.b_offset_imm0;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
+
+                let required_memory = ZiskRequiredMemory {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
+                    is_write: false,
+                    address: addr as u32,
+                    width: 8,
+                    value: self.ctx.inst_ctx.b,
+                };
+                emu_mem.push(required_memory);
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+            }
+            SRC_IND => {
+                let mut addr =
+                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                let required_memory = ZiskRequiredMemory {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
+                    is_write: false,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
+                    value: self.ctx.inst_ctx.b,
+                };
+                emu_mem.push(required_memory);
             }
             _ => panic!(
                 "Emu::source_b() Invalid b_src={} pc={}",
@@ -169,6 +262,72 @@ impl<'a> Emu<'a> {
                 instruction.store, self.ctx.inst_ctx.pc
             ),
         }
+    }
+
+    /// Store the 'c' register value based on the storage specified by the current instruction
+    #[inline(always)]
+    pub fn store_c_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
+        match instruction.store {
+            STORE_NONE => {}
+            STORE_MEM => {
+                let val: i64 = if instruction.store_ra {
+                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.inst_ctx.c as i64
+                };
+                let mut addr: i64 = instruction.store_offset;
+                if instruction.store_use_sp {
+                    addr += self.ctx.inst_ctx.sp as i64;
+                }
+                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, 8);
+
+                let required_memory = ZiskRequiredMemory {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
+                    is_write: true,
+                    address: addr as u32,
+                    width: 8,
+                    value: val as u64,
+                };
+                emu_mem.push(required_memory);
+            }
+            STORE_IND => {
+                let val: i64 = if instruction.store_ra {
+                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.inst_ctx.c as i64
+                };
+                let mut addr = instruction.store_offset;
+                if instruction.store_use_sp {
+                    addr += self.ctx.inst_ctx.sp as i64;
+                }
+                addr += self.ctx.inst_ctx.a as i64;
+                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
+
+                let required_memory = ZiskRequiredMemory {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
+                    is_write: true,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
+                    value: val as u64,
+                };
+                emu_mem.push(required_memory);
+            }
+            _ => panic!(
+                "Emu::store_c() Invalid store={} pc={}",
+                instruction.store, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn is_8_aligned(address: u64, width: u64) -> bool {
+        address & 7 == 0 && width == 8
     }
 
     /// Store the 'c' register value based on the storage specified by the current instruction and
@@ -449,6 +608,22 @@ impl<'a> Emu<'a> {
         (emu_traces, emu_segments)
     }
 
+    pub fn par_run_memory<F: PrimeField>(&mut self, inputs: Vec<u8>) -> Vec<ZiskRequiredMemory> {
+        // Context, where the state of the execution is stored and modified at every execution step
+        self.ctx = self.create_emu_context(inputs);
+
+        // Init pc to the rom entry address
+        self.ctx.trace.start_state.pc = ROM_ENTRY;
+
+        let mut emu_mem = Vec::new();
+
+        while !self.ctx.inst_ctx.end {
+            self.par_step_memory::<F>(&mut emu_mem);
+        }
+
+        emu_mem
+    }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     #[allow(unused_variables)]
@@ -617,6 +792,41 @@ impl<'a> Emu<'a> {
                 segment_count[op_type] = 0;
             }
         }
+
+        // Increment step counter
+        self.ctx.inst_ctx.step += 1;
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    #[allow(unused_variables)]
+    pub fn par_step_memory<F: PrimeField>(&mut self, emu_mem: &mut Vec<ZiskRequiredMemory>) {
+        let last_pc = self.ctx.inst_ctx.pc;
+        let last_c = self.ctx.inst_ctx.c;
+
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a_memory(instruction, emu_mem);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b_memory(instruction, emu_mem);
+
+        // Call the operation
+        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c_memory(instruction, emu_mem);
+
+        // Set SP, if specified by the current instruction
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+
+        // Set PC, based on current PC, current flag and current instruction
+        self.set_pc(instruction);
+
+        // If this is the last instruction, stop executing
+        self.ctx.inst_ctx.end = instruction.end;
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
