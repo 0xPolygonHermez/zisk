@@ -100,7 +100,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     col witness sel_down_to_up; // 1 if the next value is the previous value (e.g. W -> R)
     col witness reg[CHUNK_NUM]; // Register values, 1 byte each
     col witness sel[CHUNK_NUM]; // Selectors, 1 if the value is used, 0 otherwise
-    col witness step;           // Step of memory
+    col witness step;           // Memory step
 
     // 1] Ensure the MemAlign follows the program
 
@@ -133,7 +133,12 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     }
     flags += wr * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3);
 
-    lookup_assumes(MEM_ALIGN_ROM_ID, [pc, pc'-pc, (addr-'addr)*(1-reset), offset, width, flags]);
+    // Perform the lookup against the program
+    expr delta_pc;
+    col witness delta_addr; // Auxiliary column
+    delta_pc = pc' - pc;
+    delta_addr === (addr - 'addr) * (1 - reset);
+    lookup_assumes(MEM_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
 
     // 2] Assume aligned memory accesses against the Memory component
     const expr sel_assume = sel_up_to_down + sel_down_to_up;
@@ -143,10 +148,12 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
 
     // On assume steps, we reconstruct the value from the registers directly
     expr assume_val[RC];
-    for (int i = 0; i < RC; i++) {
-        assume_val[i] = 0;
-        for (int j = 0; j < CHUNKS_BY_RC; j++) {
-            assume_val[i] += reg[j + i * CHUNKS_BY_RC] * 2**(j*8);
+    for (int rc_index = 0; rc_index < RC; rc_index++) {
+        assume_val[rc_index] = 0;
+        int base = 1;
+        for (int _offset = 0; _offset < CHUNKS_BY_RC; _offset++) {
+            assume_val[rc_index] += reg[_offset + rc_index * CHUNKS_BY_RC] * base;
+            base *= 256;
         }
     }
 
@@ -157,7 +164,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
 
     // On prove steps, we reconstruct the value in the correct manner chosen by the selectors
     expr prove_val[RC];
-    for (int rc_index = 0; rc_index < RC; ++rc_index) {
+    for (int rc_index = 0; rc_index < RC; rc_index++) {
         prove_val[rc_index] = 0;
     }
     for (int _offset = 0; _offset < CHUNK_NUM; _offset++) {
@@ -166,13 +173,16 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
             int base = 1;
             for (int ichunk = 0; ichunk < CHUNKS_BY_RC; ichunk++) {
                 _tmp += reg[(_offset + rc_index * CHUNKS_BY_RC + ichunk) % CHUNK_NUM] * base;
-                base = base * 256;
+                base *= 256;
             }
             prove_val[rc_index] += sel[_offset] * _tmp;
         }
     }
 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
-    permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...prove_val], sel: sel_prove);
-    permutation_assumes(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...assume_val], sel: sel_assume);
+    col witness value[RC];  // Auxiliary columns
+    for (int i = 0; i < RC; i++) {
+        value[i] === sel_prove * prove_val[i] + sel_assume * assume_val[i];
+    } 
+    permutation(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: sel_prove - sel_assume);
 }
