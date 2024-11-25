@@ -17,8 +17,12 @@ use zisk_pil::{MemAlignRow, MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 
+const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
+const CHUNKS_BY_RC: usize = CHUNK_NUM / RC;
 const CHUNK_BITS: usize = 8;
+const RC_BITS: u64 = (CHUNKS_BY_RC * CHUNK_BITS) as u64;
+const RC_MASK: u64 = (1 << RC_BITS) - 1;
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
@@ -131,13 +135,6 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     #[inline(always)]
     pub fn get_mem_op(&self, input: &MemAlignInput, phase: usize) -> MemAlignResponse {
-        debug_assert!(
-            input.mem_values.len() == phase + 1,
-            "The number of mem_values {} is not equal to phase + 1 {}",
-            input.mem_values.len(),
-            phase + 1
-        );
-
         let addr = input.address;
         let width = input.width;
 
@@ -192,6 +189,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let mut read_row = MemAlignRow::<F> {
                     step: F::from_canonical_u64(step),
                     addr: F::from_canonical_u32(addr_read),
+                    // delta_addr: F::zero(),
                     offset: F::from_canonical_u64(DEFAULT_OFFSET),
                     width: F::from_canonical_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
@@ -204,6 +202,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let mut value_row = MemAlignRow::<F> {
                     step: F::from_canonical_u64(step),
                     addr: F::from_canonical_u32(addr_read),
+                    // delta_addr: F::zero(),
                     offset: F::from_canonical_usize(offset),
                     width: F::from_canonical_usize(width),
                     // wr: F::from_bool(false),
@@ -224,6 +223,15 @@ impl<F: PrimeField> MemAlignSM<F> {
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
+                }
+
+                let mut _value_read = value_read;
+                let mut _value = value;
+                for i in 0..RC {
+                    read_row.value[i] = F::from_canonical_u64(_value_read & RC_MASK);
+                    value_row.value[i] = F::from_canonical_u64(_value & RC_MASK);
+                    _value_read >>= RC_BITS;
+                    _value >>= RC_BITS;
                 }
 
                 #[rustfmt::skip]
@@ -309,6 +317,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let mut read_row = MemAlignRow::<F> {
                     step: F::from_canonical_u64(step),
                     addr: F::from_canonical_u32(addr_read),
+                    // delta_addr: F::zero(),
                     offset: F::from_canonical_u64(DEFAULT_OFFSET),
                     width: F::from_canonical_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
@@ -321,6 +330,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let mut write_row = MemAlignRow::<F> {
                     step: F::from_canonical_u64(step + 1),
                     addr: F::from_canonical_u32(addr_read),
+                    // delta_addr: F::zero(),
                     offset: F::from_canonical_u64(DEFAULT_OFFSET),
                     width: F::from_canonical_u64(DEFAULT_WIDTH),
                     wr: F::from_bool(true),
@@ -333,6 +343,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 let mut value_row = MemAlignRow::<F> {
                     step: F::from_canonical_u64(step),
                     addr: F::from_canonical_u32(addr_read),
+                    // delta_addr: F::zero(),
                     offset: F::from_canonical_usize(offset),
                     width: F::from_canonical_usize(width),
                     wr: F::from_bool(true),
@@ -363,6 +374,18 @@ impl<F: PrimeField> MemAlignSM<F> {
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
+                }
+
+                let mut _value_read = value_read;
+                let mut _value_write = value_write;
+                let mut _value = value;
+                for i in 0..RC {
+                    read_row.value[i] = F::from_canonical_u64(_value_read & RC_MASK);
+                    write_row.value[i] = F::from_canonical_u64(_value_write & RC_MASK);
+                    value_row.value[i] = F::from_canonical_u64(_value & RC_MASK);
+                    _value_read >>= RC_BITS;
+                    _value_write >>= RC_BITS;
+                    _value >>= RC_BITS;
                 }
 
                 #[rustfmt::skip]
@@ -454,6 +477,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut first_read_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_first_read),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             // wr: F::from_bool(false),
@@ -466,6 +490,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut value_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_first_read),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_usize(offset),
                             width: F::from_canonical_usize(width),
                             // wr: F::from_bool(false),
@@ -478,6 +503,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut second_read_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_second_read),
+                            delta_addr: F::one(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             // wr: F::from_bool(false),
@@ -506,6 +532,20 @@ impl<F: PrimeField> MemAlignSM<F> {
                             if i < rem_bytes {
                                 second_read_row.sel[i] = F::from_bool(true);
                             }
+                        }
+
+                        let mut _value_first_read = value_first_read;
+                        let mut _value = value;
+                        let mut _value_second_read = value_second_read;
+                        for i in 0..RC {
+                            first_read_row.value[i] =
+                                F::from_canonical_u64(_value_first_read & RC_MASK);
+                            value_row.value[i] = F::from_canonical_u64(_value & RC_MASK);
+                            second_read_row.value[i] =
+                                F::from_canonical_u64(_value_second_read & RC_MASK);
+                            _value_first_read >>= RC_BITS;
+                            _value >>= RC_BITS;
+                            _value_second_read >>= RC_BITS;
                         }
 
                         #[rustfmt::skip]
@@ -677,6 +717,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut first_read_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_first_read_write),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             // wr: F::from_bool(false),
@@ -689,6 +730,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut first_write_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step + 1),
                             addr: F::from_canonical_u32(addr_first_read_write),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             wr: F::from_bool(true),
@@ -701,6 +743,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut value_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_first_read_write),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_usize(offset),
                             width: F::from_canonical_usize(width),
                             wr: F::from_bool(true),
@@ -713,6 +756,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut second_write_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step + 1),
                             addr: F::from_canonical_u32(addr_second_read_write),
+                            delta_addr: F::one(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             wr: F::from_bool(true),
@@ -725,6 +769,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         let mut second_read_row = MemAlignRow::<F> {
                             step: F::from_canonical_u64(step),
                             addr: F::from_canonical_u32(addr_second_read_write),
+                            // delta_addr: F::zero(),
                             offset: F::from_canonical_u64(DEFAULT_OFFSET),
                             width: F::from_canonical_u64(DEFAULT_WIDTH),
                             // wr: F::from_bool(false),
@@ -775,6 +820,28 @@ impl<F: PrimeField> MemAlignSM<F> {
                             if i >= rem_bytes {
                                 second_read_row.sel[i] = F::from_bool(true);
                             }
+                        }
+
+                        let mut _value_first_read = value_first_read;
+                        let mut _value_first_write = value_first_write;
+                        let mut _value = value;
+                        let mut _value_second_write = value_second_write;
+                        let mut _value_second_read = value_second_read;
+                        for i in 0..RC {
+                            first_read_row.value[i] =
+                                F::from_canonical_u64(_value_first_read & RC_MASK);
+                            first_write_row.value[i] =
+                                F::from_canonical_u64(_value_first_write & RC_MASK);
+                            value_row.value[i] = F::from_canonical_u64(_value & RC_MASK);
+                            second_write_row.value[i] =
+                                F::from_canonical_u64(_value_second_write & RC_MASK);
+                            second_read_row.value[i] =
+                                F::from_canonical_u64(_value_second_read & RC_MASK);
+                            _value_first_read >>= RC_BITS;
+                            _value_first_write >>= RC_BITS;
+                            _value >>= RC_BITS;
+                            _value_second_write >>= RC_BITS;
+                            _value_second_read >>= RC_BITS;
                         }
 
                         #[rustfmt::skip]
@@ -945,7 +1012,7 @@ impl<F: PrimeField> MemAlignSM<F> {
             );
         }
 
-        // Compute the padding multiplicity
+        // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
         mem_align_rom_sm.update_padding_row(padding_size as u64);
 
@@ -953,8 +1020,8 @@ impl<F: PrimeField> MemAlignSM<F> {
             "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             rows_len,
-            air_mem_align.num_rows(),
-            rows_len as f64 / air_mem_align.num_rows() as f64 * 100.0
+            air_mem_align_rows,
+            rows_len as f64 / air_mem_align_rows as f64 * 100.0
         );
 
         // Add a new Mem Align instance

@@ -79,22 +79,22 @@ impl<F: PrimeField> MemAlignRomSM<F> {
 
     pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {
         // Get the table offset
-        let (table_offset, one_word) = match  opcode {
-            MemOp::OneRead => {
-                (1, true)
-            }
+        let (table_offset, one_word) = match opcode {
+            MemOp::OneRead => (1, true),
 
-            MemOp::OneWrite => {
-                (1 + ONE_WORD_COMBINATIONS * OP_SIZES[0], true)
-            }
+            MemOp::OneWrite => (1 + ONE_WORD_COMBINATIONS * OP_SIZES[0], true),
 
-            MemOp::TwoReads => {
-                (1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] + ONE_WORD_COMBINATIONS * OP_SIZES[1], false)
-            }
+            MemOp::TwoReads => (
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] + ONE_WORD_COMBINATIONS * OP_SIZES[1],
+                false,
+            ),
 
-            MemOp::TwoWrites => {
-                (1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] + ONE_WORD_COMBINATIONS * OP_SIZES[1] + TWO_WORD_COMBINATIONS * OP_SIZES[2], false)
-            }
+            MemOp::TwoWrites => (
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
+                    ONE_WORD_COMBINATIONS * OP_SIZES[1] +
+                    TWO_WORD_COMBINATIONS * OP_SIZES[2],
+                false,
+            ),
         };
 
         // Get the first row index
@@ -114,7 +114,13 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         first_row_idx
     }
 
-    fn get_first_row_idx(opcode: MemOp, offset: usize, width: usize, table_offset: u64, one_word: bool) -> u64 {
+    fn get_first_row_idx(
+        opcode: MemOp,
+        offset: usize,
+        width: usize,
+        table_offset: u64,
+        one_word: bool,
+    ) -> u64 {
         let opcode_idx = opcode as usize;
         let op_size = OP_SIZES[opcode_idx];
 
@@ -203,11 +209,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
             }
         }
 
-        info!(
-            "{}: ··· Creating Mem Align ROM instance [{} rows filled 100%]",
-            Self::MY_NAME,
-            self.num_rows,
-        );
+        info!("{}: ··· Creating Mem Align Rom instance", Self::MY_NAME,);
 
         let air_instance =
             AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0], None, prover_buffer);
