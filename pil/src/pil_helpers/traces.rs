@@ -66,5 +66,3 @@ trace!(U8AirRow, U8AirTrace<F> {
 trace!(U16AirRow, U16AirTrace<F> {
  mul: F,
 });
-
-

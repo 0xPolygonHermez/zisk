@@ -29,8 +29,8 @@ pub struct Emu<'a> {
 /// - run -> step -> source_a, source_b, store_c (full functionality, called by main state machine,
 ///   calls callback with trace)
 /// - run -> run_fast -> step_fast -> source_a, source_b, store_c (maximum speed, for benchmarking)
-/// - run_slice -> step_slice -> source_a_slice, source_b_slice, store_c_slice (generates full trace
-///   and required input data for secondary state machines)
+/// - run_slice -> step_slice -> source_a_slice, source_b_slice (generates full trace and required
+///   input data for secondary state machines)
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu {
         Emu { rom, ctx: EmuContext::default() }
@@ -328,44 +328,6 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     fn is_8_aligned(address: u64, width: u64) -> bool {
         address & 7 == 0 && width == 8
-    }
-
-    /// Store the 'c' register value based on the storage specified by the current instruction and
-    /// log memory access if required
-    #[inline(always)]
-    pub fn store_c_slice(&mut self, instruction: &ZiskInst) {
-        match instruction.store {
-            STORE_NONE => {}
-            STORE_MEM => {
-                let val: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let mut addr: i64 = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
-                }
-                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, 8);
-            }
-            STORE_IND => {
-                let val: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let mut addr = instruction.store_offset;
-                if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
-                }
-                addr += self.ctx.inst_ctx.a as i64;
-                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
-            }
-            _ => panic!(
-                "Emu::store_c_slice() Invalid store={} pc={}",
-                instruction.store, self.ctx.inst_ctx.pc
-            ),
-        }
     }
 
     /// Set SP, if specified by the current instruction
@@ -957,7 +919,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.a = trace_step.a;
         self.ctx.inst_ctx.b = trace_step.b;
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice(instruction);
+        // No need to store c
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1003,7 +965,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.a = trace_step.a;
         self.ctx.inst_ctx.b = trace_step.b;
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice(instruction);
+        // No need to store c
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);

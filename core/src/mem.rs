@@ -19,6 +19,7 @@ impl Default for Mem {
 impl Mem {
     /// Memory structue constructor
     pub fn new() -> Mem {
+        //println!("Mem::new()");
         Mem { read_sections: Vec::new(), write_section: MemSection::new() }
     }
 
@@ -78,7 +79,8 @@ impl Mem {
 
     /// Adds a write section to the memory structure, which cannot be written twice
     pub fn add_write_section(&mut self, start: u64, size: u64) {
-        //println!("Mem::add_write_section() start={:?}={} size={}", start, start, size);
+        //println!("Mem::add_write_section() start={:x}={} size={:x}={}", start, start, size,
+        // size);
 
         // Check the start address is not zero
         if start == 0 {

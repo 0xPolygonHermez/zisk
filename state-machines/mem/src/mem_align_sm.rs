@@ -423,8 +423,6 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                     // Otherwise, do the RVR
                     1 => {
-                        debug_assert!(input.mem_values.len() == 2);
-
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
                         let value = input.value;
@@ -574,8 +572,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                 match phase {
                     // If phase == 0, compute the resulting write value and ask for more
                     0 => {
-                        debug_assert!(input.mem_values.len() == 1);
-
                         // Unaligned memory op information thrown into the bus
                         let value = input.value;
                         let step = input.step;
@@ -608,8 +604,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                     }
                     // Otherwise, do the RWVRW
                     1 => {
-                        debug_assert!(input.mem_values.len() == 2);
-
                         // Unaligned memory op information thrown into the bus
                         let step = input.step;
                         let value = input.value;
