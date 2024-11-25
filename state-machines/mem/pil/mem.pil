@@ -6,12 +6,12 @@ const int MEMORY_CONT_ID = 11;
 
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
-const int MEMORY_MAX_DIFF = 2**22;
+const int MEMORY_MAX_DIFF = 2**24;
 
 const int MAX_MEM_STEP_OFFSET = 2;
 const int MAX_MEM_OPS_PER_MAIN_STEP = (MAX_MEM_STEP_OFFSET + 1) * 2;
 
-airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID, const int MAX_STEP = 2 ** 23, const int MEM_BYTES = 8) {
+airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int MEM_BYTES = 8, const int INITIAL_ADDRESS = 0xA0000000) {
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
@@ -38,7 +38,9 @@ airtemplate Mem(const int N = 2**21, const int RC = 2, const int id = MEMORY_ID,
     addr_changes * (1 - addr_changes) === 0;
 
     // check increment of memory
-    range_check(sel: (1 - SEGMENT_L1), colu: addr_changes * (addr - 'addr - step + 'step) + step - 'step, min: 1, max: MEMORY_MAX_DIFF);
+    col witness increment;
+    increment === SEGMENT_L1 * (addr - 1 - INITIAL_ADDRESS) + (1 - SEGMENT_L1) * (addr_changes * (addr - 'addr - step + 'step) + step - 'step);
+    range_check(colu: increment, min: 1, max: MEMORY_MAX_DIFF);
 
     // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
     //          setting mem_last_segment = 1
