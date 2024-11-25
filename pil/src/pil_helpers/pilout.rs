@@ -22,23 +22,25 @@ pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[4];
 
 pub const INPUT_DATA_AIR_IDS: &[usize] = &[5];
 
-pub const ARITH_AIR_IDS: &[usize] = &[5];
+pub const ARITH_AIR_IDS: &[usize] = &[6];
 
-pub const ARITH_TABLE_AIR_IDS: &[usize] = &[6];
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[7];
 
-pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[7];
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[8];
 
-pub const BINARY_AIR_IDS: &[usize] = &[8];
+pub const BINARY_AIR_IDS: &[usize] = &[9];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[9];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[10];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[10];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[11];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[11];
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[12];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[12];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[13];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[13];
+pub const U_8_AIR_AIR_IDS: &[usize] = &[14];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[15];
 
 pub struct Pilout;
 

@@ -8,14 +8,15 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::prelude::*;
 
+use crate::{MemInput, MemModule};
 use sm_common::create_prover_buffer;
-use zisk_core::{ZiskRequiredMemory, INPUT_ADDR, MAX_INPUT_SIZE};
+use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct InputDataSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
-
+    num_rows: usize,
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 }
@@ -23,7 +24,13 @@ pub struct InputDataSM<F: PrimeField> {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> InputDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let input_data_sm = Self { wcm: wcm.clone(), registered_predecessors: AtomicU32::new(0) };
+        let pctx = wcm.get_pctx();
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
+        let input_data_sm = Self {
+            wcm: wcm.clone(),
+            num_rows: air.num_rows(),
+            registered_predecessors: AtomicU32::new(0),
+        };
         let input_data_sm = Arc::new(input_data_sm);
 
         wcm.register_component(
@@ -43,7 +50,7 @@ impl<F: PrimeField> InputDataSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {}
     }
 
-    pub fn prove(&self, mem_accesses: &mut [ZiskRequiredMemory]) {
+    pub fn prove(&self, mem_accesses: &[MemInput]) {
         // Sort the (full) aligned memory accesses
 
         let pctx = self.wcm.get_pctx();
@@ -107,8 +114,8 @@ impl<F: PrimeField> InputDataSM<F> {
     /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
     pub fn prove_instance(
         &self,
-        mem_ops: &[ZiskRequiredMemory],
-        mem_first_row: ZiskRequiredMemory,
+        mem_ops: &[MemInput],
+        mem_first_row: MemInput,
         segment_id: usize,
         is_last_segment: bool,
         mut prover_buffer: Vec<F>,
@@ -162,13 +169,7 @@ impl<F: PrimeField> InputDataSM<F> {
         trace[0].step = F::from_canonical_u64(mem_first_row.step);
         trace[0].sel = F::zero();
 
-        let value = match mem_first_row.width {
-            1 => mem_first_row.value as u8 as u64,
-            2 => mem_first_row.value as u16 as u64,
-            4 => mem_first_row.value as u32 as u64,
-            8 => mem_first_row.value,
-            _ => panic!("Invalid width"),
-        };
+        let value = mem_first_row.value;
         let (val0, val1, val2, val3) = self.get_u16_values(value);
         trace[0].value = [
             F::from_canonical_u16(val0),
@@ -196,13 +197,7 @@ impl<F: PrimeField> InputDataSM<F> {
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
 
-            let value = match mem_op.width {
-                1 => mem_op.value as u8 as u64,
-                2 => mem_op.value as u16 as u64,
-                4 => mem_op.value as u32 as u64,
-                8 => mem_op.value,
-                _ => panic!("Invalid width"),
-            };
+            let value = mem_op.value;
             let (val0, val1, val2, val3) = self.get_u16_values(value);
             trace[i].value = [
                 F::from_canonical_u16(val0),
@@ -274,3 +269,15 @@ impl<F: PrimeField> InputDataSM<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for InputDataSM<F> {}
+
+impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
+    fn send_inputs(&self, mem_op: &[MemInput]) {
+        self.prove(&mem_op);
+    }
+    fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
+        vec![(0x90000000, 0x90000000 + (1 << 24) - 1)]
+    }
+    fn get_flush_input_size(&self) -> u32 {
+        self.num_rows as u32
+    }
+}

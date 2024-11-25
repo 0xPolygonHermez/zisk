@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{MemAlignRomSM, MemAlignSM, MemProxyEngine, MemSM};
+use crate::{InputDataSM, MemAlignRomSM, MemAlignSM, MemProxyEngine, MemSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use zisk_core::ZiskRequiredMemory;
@@ -18,6 +18,7 @@ pub struct MemProxy<F: PrimeField> {
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
     mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
+    input_data_sm: Arc<InputDataSM<F>>,
 }
 
 impl<F: PrimeField> MemProxy<F> {
@@ -25,12 +26,14 @@ impl<F: PrimeField> MemProxy<F> {
         let mem_align_rom_sm = MemAlignRomSM::new(wcm.clone());
         let mem_align_sm = MemAlignSM::new(wcm.clone(), std, mem_align_rom_sm.clone());
         let mem_sm = MemSM::new(wcm.clone());
+        let input_data_sm = InputDataSM::new(wcm.clone());
 
         let mem_proxy = Self {
             registered_predecessors: AtomicU32::new(0),
             mem_align_sm,
             mem_align_rom_sm,
             mem_sm,
+            input_data_sm,
         };
         let mem_proxy = Arc::new(mem_proxy);
 
@@ -40,6 +43,7 @@ impl<F: PrimeField> MemProxy<F> {
         mem_proxy.mem_align_rom_sm.register_predecessor();
         mem_proxy.mem_align_sm.register_predecessor();
         mem_proxy.mem_sm.register_predecessor();
+        mem_proxy.input_data_sm.register_predecessor();
         mem_proxy
     }
     pub fn register_predecessor(&self) {
@@ -51,6 +55,7 @@ impl<F: PrimeField> MemProxy<F> {
             self.mem_align_rom_sm.unregister_predecessor();
             self.mem_align_sm.unregister_predecessor();
             self.mem_sm.unregister_predecessor();
+            self.input_data_sm.unregister_predecessor();
         }
     }
 
@@ -60,6 +65,7 @@ impl<F: PrimeField> MemProxy<F> {
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut engine = MemProxyEngine::<F>::new();
         engine.add_module("mem", self.mem_sm.clone());
+        engine.add_module("input_data", self.input_data_sm.clone());
         engine.prove(&self.mem_align_sm, mem_operations)
     }
 }
