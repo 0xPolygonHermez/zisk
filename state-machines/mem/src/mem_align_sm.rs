@@ -131,9 +131,6 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     #[inline(always)]
     pub fn get_mem_op(&self, input: &MemAlignInput, phase: usize) -> MemAlignResponse {
-        // Sanity check
-        // assert!(mem_values.len() == phase + 1); // TODO: Debug mode
-
         debug_assert!(
             input.mem_values.len() == phase + 1,
             "The number of mem_values {} is not equal to phase + 1 {}",
@@ -234,7 +231,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                     "\nOne Word Read\n\
                      Num Rows: {:?}\n\
                      Input: {:?}\n\
-                     Mem Values: {:?}\n\
                      Phase: {:?}\n\
                      Value Read: {:?}\n\
                      Value: {:?}\n\
@@ -242,7 +238,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                      Flags Value: {:?}",
                     [*num_rows, *num_rows + 1],
                     input,
-                    mem_values,
                     phase,
                     value_read.to_le_bytes(),
                     value.to_le_bytes(),
@@ -263,8 +258,6 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                 // Prove the generated rows
                 self.prove(&[read_row, value_row]);
-                println!("MEM_ALIGN_PRE_ROW(R): {:?}", read_row);
-                println!("MEM_ALIGN_PRE_ROW(V): {:?}", value_row);
 
                 MemAlignResponse { more_address: false, step, value: None }
             }
@@ -377,7 +370,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                     "\nOne Word Write\n\
                      Num Rows: {:?}\n\
                      Input: {:?}\n\
-                     Mem Values: {:?}\n\
                      Phase: {:?}\n\
                      Value Read: {:?}\n\
                      Value Write: {:?}\n\
@@ -387,7 +379,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                      Flags Value: {:?}",
                     [*num_rows, *num_rows + 2],
                     input,
-                    mem_values,
                     phase,
                     value_read.to_le_bytes(),
                     value_write.to_le_bytes(),
@@ -503,8 +494,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                                 first_read_row.sel[i] = F::from_bool(true);
                             }
 
-                            // value_row.reg[i] =
-                            //    F::from_canonical_u64(Self::get_byte(value, i, offset));
                             value_row.reg[i] =
                                 F::from_canonical_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
 
@@ -524,7 +513,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                             "\nTwo Words Read\n\
                              Num Rows: {:?}\n\
                              Input: {:?}\n\
-                             Mem Values: {:?}\n\
                              Phase: {:?}\n\
                              Value First Read: {:?}\n\
                              Value: {:?}\n\
@@ -534,7 +522,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                              Flags Second Read: {:?}",
                             [*num_rows, *num_rows + 2],
                             input,
-                            mem_values,
                             phase,
                             value_first_read.to_le_bytes(),
                             value.to_le_bytes(),
@@ -760,18 +747,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                                 first_write_row.sel[i] = F::from_bool(true);
                             }
 
-                            second_write_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value_second_write, i, 0));
-                            if i < rem_bytes {
-                                second_write_row.sel[i] = F::from_bool(true);
-                            }
-
-                            second_read_row.reg[i] =
-                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
-                            if i >= rem_bytes {
-                                second_read_row.sel[i] = F::from_bool(true);
-                            }
-
                             value_row.reg[i] = {
                                 if i < rem_bytes {
                                     second_write_row.reg[i]
@@ -788,6 +763,18 @@ impl<F: PrimeField> MemAlignSM<F> {
                             if i == offset {
                                 value_row.sel[i] = F::from_bool(true);
                             }
+
+                            second_write_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_write, i, 0));
+                            if i < rem_bytes {
+                                second_write_row.sel[i] = F::from_bool(true);
+                            }
+
+                            second_read_row.reg[i] =
+                                F::from_canonical_u64(Self::get_byte(value_second_read, i, 0));
+                            if i >= rem_bytes {
+                                second_read_row.sel[i] = F::from_bool(true);
+                            }
                         }
 
                         #[rustfmt::skip]
@@ -795,7 +782,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                             "\nTwo Words Write\n\
                              Num Rows: {:?}\n\
                              Input: {:?}\n\
-                             Mem Values: {:?}\n\
                              Phase: {:?}\n\
                              Value First Read: {:?}\n\
                              Value First Write: {:?}\n\
@@ -809,7 +795,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                              Flags Second Read: {:?}",
                             [*num_rows, *num_rows + 4],
                             input,
-                            mem_values,
                             phase,
                             value_first_read.to_le_bytes(),
                             value_first_write.to_le_bytes(),
@@ -874,12 +859,8 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     pub fn prove(&self, computed_rows: &[MemAlignRow<F>]) {
         if let Ok(mut rows) = self.rows.lock() {
-            let row_index = rows.len();
             rows.extend_from_slice(computed_rows);
-            for (index, row) in computed_rows.iter().enumerate() {
-                let _addr = row.addr.as_canonical_biguint().to_u64().unwrap();
-                println!("MEM_ALIGN_ROW_0x{:X} => {:?} row:{}", _addr * 8, row, row_index + index);
-            }
+
             #[cfg(feature = "debug_mem_align")]
             {
                 let mut num_rows = self.num_computed_rows.lock().unwrap();
@@ -931,7 +912,6 @@ impl<F: PrimeField> MemAlignSM<F> {
         for (i, &row) in rows.iter().enumerate() {
             // Store the entire row
             trace_buffer[i] = row;
-            println!("MEM_ALIGN_ROW: {:?}", row);
             // Store the value of all reg columns so that they can be range checked
             for j in 0..CHUNK_NUM {
                 let element =
