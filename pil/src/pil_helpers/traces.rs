@@ -12,11 +12,11 @@ trace!(RomRow, RomTrace<F> {
 });
 
 trace!(MemRow, MemTrace<F> {
- addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, same_value: F, first_addr_access_is_read: F,
+ addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, increment: F, same_value: F, first_addr_access_is_read: F,
 });
 
 trace!(MemAlignRow, MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, sel_prove: F,
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
 });
 
 trace!(MemAlignRomRow, MemAlignRomTrace<F> {

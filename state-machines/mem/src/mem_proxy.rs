@@ -24,8 +24,8 @@ pub struct MemProxy<F: PrimeField> {
 impl<F: PrimeField> MemProxy<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let mem_align_rom_sm = MemAlignRomSM::new(wcm.clone());
-        let mem_align_sm = MemAlignSM::new(wcm.clone(), std, mem_align_rom_sm.clone());
-        let mem_sm = MemSM::new(wcm.clone());
+        let mem_align_sm = MemAlignSM::new(wcm.clone(), std.clone(), mem_align_rom_sm.clone());
+        let mem_sm = MemSM::new(wcm.clone(), std);
         let input_data_sm = InputDataSM::new(wcm.clone());
 
         let mem_proxy = Self {
