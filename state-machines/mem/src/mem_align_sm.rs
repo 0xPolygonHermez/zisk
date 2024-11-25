@@ -131,13 +131,6 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     #[inline(always)]
     pub fn get_mem_op(&self, input: &MemAlignInput, phase: usize) -> MemAlignResponse {
-        debug_assert!(
-            input.mem_values.len() == phase + 1,
-            "The number of mem_values {} is not equal to phase + 1 {}",
-            input.mem_values.len(),
-            phase + 1
-        );
-
         let addr = input.address;
         let width = input.width;
 
