@@ -3,6 +3,10 @@ use crate::{
     STORE_MEM,
 };
 
+/// Describes the type of the Zisk opcode.  This type determines how the operation result will be
+/// proven. Internal operations are proven as part of the main state machine itself, given their
+/// simplicity. External operations (rest of types) are proven in their corresponding secondary
+/// state machine.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum ZiskOperationType {
@@ -17,12 +21,11 @@ pub enum ZiskOperationType {
 
 pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 7;
 
-/// ZisK instruction definition
-///
-/// ZisK instruction defined as a binary operation with 2 results: op(a, b) -> (c, flag)
+/// ZisK instruction are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
+/// a, b and c are u64 registers; flag is a boolean
 /// a and b are loaded from the respective sources specified in the instruction
 /// c is stored according to the destination specified in the instruction
-/// flag can only be 0 or 1
+/// flag meaning is operation-dependant
 #[derive(Debug, Clone)]
 pub struct ZiskInst {
     pub paddr: u64,
@@ -90,9 +93,9 @@ impl Default for ZiskInst {
     }
 }
 
-/// ZisK instruction implementation
 impl ZiskInst {
-    /// Creates a human-readable string containing the ZisK instruction fields that are not zero
+    /// Creates a human-readable string containing the ZisK instruction fields that are not zero.
+    /// Used only for debugging.
     pub fn to_text(&self) -> String {
         let mut s = String::new();
         if self.paddr != 0 {
@@ -166,6 +169,8 @@ impl ZiskInst {
         s
     }
 
+    /// Constructs a `flags`` bitmap made of combinations of fields of the Zisk instruction.  This
+    /// field is used by the PIL to proof some of the operations.
     pub fn get_flags(&self) -> u64 {
         let flags: u64 = 1 |
             (((self.a_src == SRC_IMM) as u64) << 1) |
