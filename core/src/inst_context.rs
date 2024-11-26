@@ -29,6 +29,8 @@ impl InstContext {
             end: false,
         }
     }
+
+    /// Creates a human-readable string describing the instruction context, for debugging purposes
     pub fn to_text(&self) -> String {
         let s = format! {"a={:x} b={:x} c={:x} flag={} sp={} pc={} step={} end={}", self.a, self.b, self.c, self.flag, self.sp, self.pc, self.step, self.end};
         s
@@ -36,6 +38,7 @@ impl InstContext {
 }
 
 impl Default for InstContext {
+    /// Default instruction context constructor
     fn default() -> Self {
         Self::new()
     }

@@ -92,7 +92,7 @@ impl ZiskEmulator {
         }
 
         // TODO: load from file
-        let rom: ZiskRom = ZiskRom::new();
+        let rom: ZiskRom = ZiskRom::default();
         Self::process_rom(&rom, inputs, options, callback)
     }
 
