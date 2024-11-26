@@ -682,9 +682,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a9bfc1af68b1726ea47d3d5109de126281def866b33970e10fbab11b5dafab3"
+checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 
 [[package]]
 name = "heck"
@@ -1039,9 +1039,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.12"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a73e9fe3c49d7afb2ace819fa181a287ce54a0983eda4e0eb05c22f82ffe534"
+checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "jobserver"
@@ -1075,9 +1075,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.164"
+version = "0.2.165"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "433bfe06b8c75da9b2e3fbea6e5329ff87748f0b144ef75306e674c3f6f7c13f"
+checksum = "fcb4d3d38eab6c5239a362fa8bae48c03baf980a6e7079f063942d563ef3533e"
 
 [[package]]
 name = "libgit2-sys"
@@ -1131,9 +1131,9 @@ checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
 name = "litemap"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "643cb0b8d4fcc284004d5fd0d67ccf61dfffadb7f75e1e71bc420f4688a3a704"
+checksum = "4ee93343901ab17bd981295f2cf0026d4ad018c7c31ba84549a4ddbb47a45104"
 
 [[package]]
 name = "lock_api"
@@ -1467,7 +1467,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "log",
  "num-bigint",
@@ -1485,7 +1485,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "bytes",
  "log",
@@ -1542,9 +1542,9 @@ dependencies = [
 
 [[package]]
 name = "portable-atomic"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc9c68a3f6da06753e9335d63e27f6b9754dd1920d941135b7ea8224f141adb2"
+checksum = "280dc24453071f1b63954171985a0b0d30058d287960968b9b2aca264c8d4ee6"
 
 [[package]]
 name = "powerfmt"
@@ -1595,9 +1595,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.89"
+version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f139b0662de085916d1fb67d2b4169d1addddda1919e696f3252b740b629986e"
+checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
 dependencies = [
  "unicode-ident",
 ]
@@ -1605,7 +1605,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "colored",
  "env_logger",
@@ -1626,7 +1626,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "env_logger",
  "log",
@@ -1645,7 +1645,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -1655,7 +1655,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1665,7 +1665,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "log",
 ]
@@ -1673,7 +1673,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "colored",
  "sysinfo 0.31.4",
@@ -2021,9 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.17"
+version = "0.23.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f1a745511c54ba6d4465e8d5dfbd81b45791756de28d4981af70d6dca128f1e"
+checksum = "9c9cc1d47e243d655ace55ed38201c19ae02c148ae56412ab8750e8f0166ab7f"
 dependencies = [
  "once_cell",
  "ring",
@@ -2318,7 +2318,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "log",
  "p3-field",
@@ -2382,9 +2382,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.87"
+version = "2.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25aa4ce346d03a6dcd68dd8b4010bcb74e54e62c90c573f394c46eae99aba32d"
+checksum = "44d46482f1c1c87acd84dea20c1bf5ebff4c757009ed6bf19cfd36fb10e92c4e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2658,9 +2658,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.32"
+version = "0.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
+checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
 dependencies = [
  "once_cell",
 ]
@@ -2668,7 +2668,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.13#5a35a04c9144bc9f3af760adda0626afb83ff9db"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?rev=0.0.14#7d9bf98f0eaf3230399d22ad1e06b67fe864d16b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -2715,9 +2715,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "2.5.3"
+version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d157f1b96d14500ffdc1f10ba712e780825526c03d9a49b4d0324b0d9113ada"
+checksum = "32f8b686cadd1473f4bd0117a5d28d36b1ade384ea9b5069a1c40aefed7fda60"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -2900,9 +2900,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "0.26.6"
+version = "0.26.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841c67bff177718f1d4dfefde8d8f0e78f9b6589319ba88312f567fc5841a958"
+checksum = "5d642ff16b7e79272ae451b7322067cdc17cadf68c23264be9d94a32319efe7e"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -3189,9 +3189,9 @@ checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yoke"
-version = "0.7.4"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c5b1314b079b0930c31e3af543d8ee1757b1951ae1e1565ec704403a7240ca5"
+checksum = "120e6aef9aa629e3d4f52dc8cc43a015c7724194c97dfaf45180d2daf2b77f40"
 dependencies = [
  "serde",
  "stable_deref_trait",
@@ -3201,9 +3201,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.7.4"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28cc31741b18cb6f1d5ff12f5b7523e3d6eb0852bbbad19d73905511d9849b95"
+checksum = "2380878cad4ac9aac1e2435f3eb4020e8374b5f13c296cb75b4620ff8e229154"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3234,18 +3234,18 @@ dependencies = [
 
 [[package]]
 name = "zerofrom"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91ec111ce797d0e0784a1116d0ddcdbea84322cd79e5d5ad173daeba4f93ab55"
+checksum = "cff3ee08c995dee1859d998dea82f7374f2826091dd9cd47def953cae446cd2e"
 dependencies = [
  "zerofrom-derive",
 ]
 
 [[package]]
 name = "zerofrom-derive"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ea7b4a3637ea8669cedf0f1fd5c286a17f3de97b8dd5a70a6c167a1730e63a5"
+checksum = "595eed982f7d355beb85837f651fa22e90b3c044842dc7f2c2842c086f295808"
 dependencies = [
  "proc-macro2",
  "quote",
