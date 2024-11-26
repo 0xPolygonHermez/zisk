@@ -48,6 +48,18 @@ jobs:
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: cargo fmt
         run: cargo fmt -- --check
+  markdown-book:
+    name: markdown book
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: install mdbook
+        run: cargo install mdbook
+      - name: mdbook build
+        run: mdbook build
   cargo-fix:
     name: cargo fix
     runs-on: ubuntu-latest

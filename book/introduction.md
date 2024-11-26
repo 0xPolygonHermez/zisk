@@ -1,9 +1,21 @@
 
 # PIL2 Proofman
 
-PIL2 Proofman is a versatile framework designed to help the development, orchestration and validation of zero-knowledge proofs. Powered by PIL2, a robust and easy-to-audit language adept at expressing polynomial identities, it is essential for describing from basic statements to the integration of multiple coprocessors within custom zkVMs. The PIL2 toolkit provides a the ['PIL2 compiler'](https://github.com/0xPolygonHermez/pilcom), a library of reusable ['PIL2 components'](https://github.com/0xPolygonHermez/pil2-components), and other debugging tools to ensure the correctness of your PIL2 project. Upon compiling a PIL2 project a binary file named PILOUT is generated. The PILOUT files encapsulate arithmetization, public inputsm constraints, constant values and other proof-generation-specific details described by a PIL2 project.
+PIL2 Proofman is a versatile framework designed to help the development, orchestration and
+validation of zero-knowledge proofs. Powered by PIL2, a robust and easy-to-audit language adept
+at expressing polynomial identities, it enables building up from basic statements to the
+integration of multiple coprocessors within custom zkVMs. The PIL2 toolkit provides the
+[PIL2 compiler](https://github.com/0xPolygonHermez/pilcom), a library of reusable
+[components](https://github.com/0xPolygonHermez/pil2-proofman/tree/develop/pil2-components),
+and other debugging tools to ensure the correctness of your PIL2 project. Upon compiling a PIL2
+project a binary file named PILOUT is generated. The PILOUT files encapsulate arithmetization,
+public inputs and constraints, constant values and other proof-generation-specific details
+described by a PIL2 project.
 
-PIL2 Proofman is the framework to be used when generate the zero-knowledge proofs. PIL2 Proofman requires a PILOUT file, some Rust code snippets to fille the witnesses (for all the subprofs) and a prover. While PIL2 Proofman includes a library of provers, users can also develop and integrate their own. The current provided provers includes STARK and FFLONK.
+PIL2 Proofman is the go-to framework when generating zero-knowledge proofs. PIL2 Proofman
+requires a `PILOUT` file, some Rust code snippets to generate the witnesses (for all the
+subprofs) and a prover. While PIL2 Proofman includes a library of provers, users can also
+develop and integrate their own. The current provided provers include `STARK` and `FFLONK`.
 
 |[PIL2 toolkit](./pil2/...)|[PIL2 Proofman](./pil2/...)|[Quickstart](./pil2/...)|[Examples](./pil2/...)|[Docs](./pil2/...)|
 
@@ -11,16 +23,22 @@ PIL2 Proofman is the framework to be used when generate the zero-knowledge proof
 
 ## PIL2 Proofman system requirements
 
-Before start, make sure you have [Rust](https://www.rust-lang.org/tools/install) installed in your system.
+Before getting started, make sure you have [Rust](https://www.rust-lang.org/) installed on your
+system via:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
 
-Optional recommendations:
+Recommended Optional Tools:
 
-- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension if you are using VS Code to assist you when writing Rust code.
-- [PIL2 Highlight syntax code](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) if you are using VS Code to highlight your code when writing PIL2 code.
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+  extension if you are using VS Code to assist you when writing Rust code.
+- [PIL2 Highlight syntax code](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+  if you are using VS Code to highlight your code when writing PIL2 code.
 
 ## License
 
-PIL2 Proofman has a XXX license. Please check the [COPYING](TODO) file for more details.
+PIL2 Proofman is licensed under the XXX license. Please check the [COPYING](TODO) file for more details.
 <!--
 Provided provers:
 
