@@ -452,6 +452,7 @@ impl Riscv2ZiskContext<'_> {
     // sc.w rd, rs2, (rs1)
     //    copyb_d([%rs1], [%rs2]) -> [a]
     //    copyb_d(0,0) -> [%rd]
+    /// Implements the RISC-V store-conditional instruction of a 32-bits value
     pub fn sc_w(&mut self, i: &RiscvInstruction) {
         if i.rd > 0 {
             {
@@ -496,6 +497,7 @@ impl Riscv2ZiskContext<'_> {
     // sc.d rd, rs2, (rs1)
     //    copyb([%rs1], [%rs2]) -> [a]
     //    copyb(0,0) -> [%rd]
+    /// Implements the RISC-V store-conditional instruction of a 64-bits value
     pub fn sc_d(&mut self, i: &RiscvInstruction) {
         if i.rd > 0 {
             {
@@ -538,6 +540,7 @@ impl Riscv2ZiskContext<'_> {
 
     // lui rd, imm
     //      copyb_b(0, imm) -> [rd]
+    /// Implementes the RISC-V load-upper-immediate instruction to load a 32-bits constant
     pub fn lui(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -553,6 +556,7 @@ impl Riscv2ZiskContext<'_> {
 
     //     jalr rd, rs1, imm
     //          copyb_d(0, [%rs1]), j(c + imm) -> [rd]
+    /// Implements the RISC-V jump-and-link-register inconditional jump instruction
     pub fn jalr(&mut self, i: &RiscvInstruction) {
         if (i.imm % 4) == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
@@ -596,6 +600,7 @@ impl Riscv2ZiskContext<'_> {
 
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
+    /// Implements the RISC-V jump-and-link inconditional jump instruction
     pub fn jal(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -609,6 +614,7 @@ impl Riscv2ZiskContext<'_> {
         self.s += 4;
     }
 
+    /// Makes a system call
     pub fn ecall(&mut self, _i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -622,6 +628,9 @@ impl Riscv2ZiskContext<'_> {
         self.insts.insert(self.s, zib);
         self.s += 4;
     }
+
+    /// RISC-V defines a separate address space of 4096 Control and Status registers associated with
+    /// each hart. All CSR instructions atomically read-modify-write a single CSR,
 
     /*
     csrrw rd, csr, rs1
@@ -643,6 +652,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRW (Atomic Read/Write CSR) instruction atomically swaps values in the CSRs and
+    /// integer registers. CSRRW reads the old value of the CSR, zero-extends the value to XLEN
+    /// bits, then writes it to integer register rd. The initial value in rs1 is written to the CSR.
+    /// If rd=x0, then the instruction shall not read the CSR and shall not cause any of the side
+    /// effects that might occur on a CSR read.
     pub fn csrrw(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -758,6 +772,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRS (Atomic Read and Set Bits in CSR) instruction reads the value of the CSR,
+    /// zero-extends the value to XLEN bits, and writes it to integer register rd. The initial value
+    /// in integer register rs1 is treated as a bit mask that specifies bit positions to be set in
+    /// the CSR. Any bit that is high in rs1 will cause the corresponding bit to be set in the CSR,
+    /// if that CSR bit is writable.
     pub fn csrrs(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -883,6 +902,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRC (Atomic Read and Clear Bits in CSR) instruction reads the value of the CSR,
+    /// zero-extends the value to XLEN bits, and writes it to integer register rd. The initial value
+    /// in integer register rs1 is treated as a bit mask that specifies bit positions to be cleared
+    /// in the CSR. Any bit that is high in rs1 will cause the corresponding bit to be cleared in
+    /// the CSR, if that CSR bit is writable.
     pub fn csrrc(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -1015,6 +1039,11 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     }
+
+    /// The CSRRWI, CSRRSI, and CSRRCI variants are similar to CSRRW, CSRRS, and CSRRC respectively,
+    /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
+    /// unsigned immediate (uimm[4:0]) field encoded in the rs1 field instead of a value from an
+    /// integer register.
 
     /*
     csrrci rd, csr
