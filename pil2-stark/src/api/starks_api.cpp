@@ -8,10 +8,10 @@
 #include "logger.hpp"
 #include <filesystem>
 #include "setup_ctx.hpp"
+#include "exec_file.hpp"
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
 
 using namespace CPlusPlusLogging;
 
@@ -22,7 +22,7 @@ void save_challenges(void *pChallenges, char* globalInfoFile, char *fileDir) {
 
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
     
-    ordered_json challengesJson = challenges2proof(globalInfo, challenges);
+    json challengesJson = challenges2proof(globalInfo, challenges);
 
     json2file(challengesJson, string(fileDir) + "/challenges.json");
 }
@@ -33,7 +33,7 @@ void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *file
     Goldilocks::Element* publicInputs = (Goldilocks::Element *)pPublicInputs;
 
     // Generate publics
-    ordered_json publicStarkJson;
+    json publicStarkJson;
     for (uint64_t i = 0; i < numPublicInputs; i++)
     {
         publicStarkJson[i] = Goldilocks::toString(publicInputs[i]);
@@ -46,9 +46,9 @@ void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *file
 void save_proof_values(unsigned long numProofValues, void *pProofValues, char *fileDir) {
     Goldilocks::Element* proofValues = (Goldilocks::Element *)pProofValues;
 
-    ordered_json proofValuesJson;
+    json proofValuesJson;
     for(uint64_t i = 0; i < numProofValues; i++) {
-        proofValuesJson[i] = ordered_json::array();
+        proofValuesJson[i] = json::array();
         for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
             proofValuesJson[i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
         }
@@ -95,8 +95,8 @@ void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics
     
     auto starkInfo = *((StarkInfo *)pStarkInfo);
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
-    nlohmann::ordered_json jProof = friProof->proof.proof2json();
-    nlohmann::ordered_json zkin = proof2zkinStark(jProof, starkInfo);
+    nlohmann::json jProof = friProof->proof.proof2json();
+    nlohmann::json zkin = proof2zkinStark(jProof, starkInfo);
 
     Goldilocks::Element *publics = (Goldilocks::Element *)pPublics;
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
@@ -106,7 +106,7 @@ void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics
         zkin["publics"][i] = Goldilocks::toString(publics[i]);
     }
 
-    ordered_json challengesJson = challenges2zkin(globalInfo, challenges);
+    json challengesJson = challenges2zkin(globalInfo, challenges);
     zkin["challenges"] = challengesJson["challenges"];
     zkin["challengesFRISteps"] = challengesJson["challengesFRISteps"];
 
@@ -122,10 +122,10 @@ void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics
         json2file(zkin, string(fileDir) + "/zkin/proof_" + to_string(proof_id) + "_zkin.json");
     }
 
-    return (void *) new nlohmann::ordered_json(zkin);    
+    return (void *) new nlohmann::json(zkin);    
 }
 void fri_proof_free_zkinproof(void *pZkinProof){
-    nlohmann::ordered_json* zkin = (nlohmann::ordered_json*) pZkinProof;
+    nlohmann::json* zkin = (nlohmann::json*) pZkinProof;
     delete zkin;
 }
 
@@ -588,7 +588,7 @@ void *get_zkin_ptr(char *zkin_file) {
     json zkin;
     file2json(zkin_file, zkin);
 
-    return (void *) new nlohmann::ordered_json(zkin);
+    return (void *) new nlohmann::json(zkin);
 }
 
 void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename) {
@@ -601,8 +601,8 @@ void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename) {
         recursive2Verkey[i] = Goldilocks::fromU64(recursive2VerkeyJson[i]);
     }
 
-    ordered_json zkin = addRecursive2VerKey(*(nlohmann::ordered_json*) pZkin, recursive2Verkey);
-    return (void *) new nlohmann::ordered_json(zkin);
+    json zkin = addRecursive2VerKey(*(nlohmann::json*) pZkin, recursive2Verkey);
+    return (void *) new nlohmann::json(zkin);
 }
 
 void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2) {
@@ -612,9 +612,9 @@ void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPub
     Goldilocks::Element *publics = (Goldilocks::Element *)pPublics;
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
 
-    ordered_json zkinRecursive2 = joinzkinrecursive2(globalInfo, airgroupId, publics, challenges, *(nlohmann::ordered_json *)zkin1, *(nlohmann::ordered_json *)zkin2, *(StarkInfo *)starkInfoRecursive2);
+    json zkinRecursive2 = joinzkinrecursive2(globalInfo, airgroupId, publics, challenges, *(nlohmann::json *)zkin1, *(nlohmann::json *)zkin2, *(StarkInfo *)starkInfoRecursive2);
 
-    return (void *) new nlohmann::ordered_json(zkinRecursive2);
+    return (void *) new nlohmann::json(zkinRecursive2);
 }
 
 void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, void **zkinRecursive2, void **starkInfoRecursive2) {
@@ -625,13 +625,13 @@ void *join_zkin_final(void* pPublics, void *pProofValues, void* pChallenges, cha
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
     Goldilocks::Element *proofValues = (Goldilocks::Element *)pProofValues;
 
-    ordered_json zkinFinal = joinzkinfinal(globalInfo, publics, proofValues, challenges, zkinRecursive2, starkInfoRecursive2);
+    json zkinFinal = joinzkinfinal(globalInfo, publics, proofValues, challenges, zkinRecursive2, starkInfoRecursive2);
 
-    return (void *) new nlohmann::ordered_json(zkinFinal);    
+    return (void *) new nlohmann::json(zkinFinal);    
 }
 
 char *get_serialized_proof(void *zkin, uint64_t* size){
-    nlohmann::ordered_json* zkinJson = (nlohmann::ordered_json*) zkin;
+    nlohmann::json* zkinJson = (nlohmann::json*) zkin;
     string zkinStr = zkinJson->dump();
     char *zkinCStr = new char[zkinStr.length() + 1];
     strcpy(zkinCStr, zkinStr.c_str());
@@ -640,9 +640,9 @@ char *get_serialized_proof(void *zkin, uint64_t* size){
 }
 
 void *deserialize_zkin_proof(char* serialized_proof) {
-    nlohmann::ordered_json* zkinJson = new nlohmann::ordered_json();
+    nlohmann::json* zkinJson = new nlohmann::json();
     try {
-        *zkinJson = nlohmann::ordered_json::parse(serialized_proof);
+        *zkinJson = nlohmann::json::parse(serialized_proof);
     } catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[ERROR] JSON parse error in deserialize_zkin_proof(): " << e.what() << std::endl;
         delete zkinJson;
@@ -652,18 +652,22 @@ void *deserialize_zkin_proof(char* serialized_proof) {
 }
 
 void *get_zkin_proof(char* zkin) {
-    nlohmann::ordered_json zkinJson;
+    nlohmann::json zkinJson;
     file2json(zkin, zkinJson);
-    return (void *) new nlohmann::ordered_json(zkinJson);
+    return (void *) new nlohmann::json(zkinJson);
 }
 
 void zkin_proof_free(void *pZkinProof) {
-    nlohmann::ordered_json* zkin = (nlohmann::ordered_json*) pZkinProof;
+    nlohmann::json* zkin = (nlohmann::json*) pZkinProof;
     delete zkin;
 }
 
 void serialized_proof_free(char *zkinCStr) {
     delete[] zkinCStr;
+}
+
+void get_committed_pols(void *pWitness, char* execFile, void *pAddress, void* pPublics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t offsetCm1, uint64_t nCommitedPols) {
+    getCommitedPols((Goldilocks::Element *)pWitness, string(execFile), (Goldilocks::Element *)pAddress, (Goldilocks::Element *)pPublics, sizeWitness, N, nPublics, offsetCm1, nCommitedPols);
 }
 
 void setLogLevel(uint64_t level) {

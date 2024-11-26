@@ -631,6 +631,20 @@ extern "C" {
     pub fn serialized_proof_free(zkinCStr: *mut ::std::os::raw::c_char);
 }
 extern "C" {
+    #[link_name = "\u{1}_Z18get_committed_polsPvPcS_S_mmmmm"]
+    pub fn get_committed_pols(
+        pWitness: *mut ::std::os::raw::c_void,
+        execFile: *mut ::std::os::raw::c_char,
+        pAddress: *mut ::std::os::raw::c_void,
+        pPublics: *mut ::std::os::raw::c_void,
+        sizeWitness: u64,
+        N: u64,
+        nPublics: u64,
+        offsetCm1: u64,
+        nCols: u64,
+    );
+}
+extern "C" {
     #[link_name = "\u{1}_Z11setLogLevelm"]
     pub fn setLogLevel(level: u64);
 }

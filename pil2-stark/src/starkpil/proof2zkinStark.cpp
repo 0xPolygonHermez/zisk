@@ -5,7 +5,7 @@
 #include "proof2zkinStark.hpp"
 using namespace std;
 
-ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
+json proof2zkinStark(json &proof, StarkInfo &starkInfo)
 {
     uint64_t friSteps = starkInfo.starkStruct.steps.size() - 1;
     uint64_t nQueries = starkInfo.starkStruct.nQueries;
@@ -16,7 +16,7 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
     string siblingsQ = "s0_siblings" + to_string(nStages + 1);
     string rootQ = "root" + to_string(nStages + 1);
 
-    ordered_json zkinOut = ordered_json::object();
+    json zkinOut = json::object();
 
     for(uint64_t stage = 1; stage <= nStages; stage++) {
         zkinOut["root" + to_string(stage)] = proof["root" + to_string(stage)];
@@ -28,8 +28,8 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
     for (uint64_t i = 0; i < friSteps; i++)
     {
         zkinOut["s" + std::to_string(i + 1) + "_root"] = proof["fri"][i]["root"];
-        zkinOut["s" + std::to_string(i + 1) + "_vals"] = ordered_json::array();
-        zkinOut["s" + std::to_string(i + 1) + "_siblings"] = ordered_json::array();
+        zkinOut["s" + std::to_string(i + 1) + "_vals"] = json::array();
+        zkinOut["s" + std::to_string(i + 1) + "_siblings"] = json::array();
         for (uint q = 0; q < nQueries; q++)
         {
             zkinOut["s" + std::to_string(i + 1) + "_vals"][q] = proof["fri"][i]["polQueries"][q][0];
@@ -37,24 +37,24 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
         }
     }
   
-    zkinOut["s0_valsC"] = ordered_json::array();
-    zkinOut["s0_siblingsC"] = ordered_json::array();
+    zkinOut["s0_valsC"] = json::array();
+    zkinOut["s0_siblingsC"] = json::array();
     
-    zkinOut[valsQ] = ordered_json::array();
-    zkinOut[siblingsQ] = ordered_json::array();
+    zkinOut[valsQ] = json::array();
+    zkinOut[siblingsQ] = json::array();
 
     for(uint64_t i = 0; i < nStages; ++i) {
         uint64_t stage = i + 1;
         if (proof["queries"]["polQueries"][0][i][0].size()) {
-            zkinOut["s0_siblings" + to_string(stage)] = ordered_json::array();
-            zkinOut["s0_vals" + to_string(stage)] = ordered_json::array();
+            zkinOut["s0_siblings" + to_string(stage)] = json::array();
+            zkinOut["s0_vals" + to_string(stage)] = json::array();
         }
     }
 
     for(uint64_t i = 0; i < nCustomCommits; ++i) {
         if (proof["queries"]["polQueries"][0][i + nStages + 2][0].size()) {
-            zkinOut["s0_siblings_" + starkInfo.customCommits[i].name + "_0"] = ordered_json::array();
-            zkinOut["s0_vals_" + starkInfo.customCommits[i].name + "_0"] = ordered_json::array();
+            zkinOut["s0_siblings_" + starkInfo.customCommits[i].name + "_0"] = json::array();
+            zkinOut["s0_vals_" + starkInfo.customCommits[i].name + "_0"] = json::array();
         }
     }
 
@@ -92,7 +92,7 @@ ordered_json proof2zkinStark(ordered_json &proof, StarkInfo &starkInfo)
     return zkinOut;
 };
 
-ordered_json joinzkin(ordered_json &zkin1, ordered_json &zkin2, ordered_json &verKey, StarkInfo &starkInfo)
+json joinzkin(json &zkin1, json &zkin2, json &verKey, StarkInfo &starkInfo)
 {
 
     uint64_t friSteps = starkInfo.starkStruct.steps.size();
@@ -102,7 +102,7 @@ ordered_json joinzkin(ordered_json &zkin1, ordered_json &zkin2, ordered_json &ve
     string siblingsQ = "s0_siblings" + to_string(nStages + 1);
     string rootQ = "root" + to_string(nStages + 1);
 
-    ordered_json zkinOut = ordered_json::object();
+    json zkinOut = json::object();
 
     // Load oldStateRoot
     for (int i = 0; i < 8; i++)
@@ -193,7 +193,7 @@ ordered_json joinzkin(ordered_json &zkin1, ordered_json &zkin2, ordered_json &ve
     }
     zkinOut["b_finalPol"] = zkin2["finalPol"];
 
-    zkinOut["rootC"] = ordered_json::array();
+    zkinOut["rootC"] = json::array();
     for (int i = 0; i < 4; i++)
     {
         zkinOut["rootC"][i] = to_string(verKey["constRoot"][i]);
@@ -202,51 +202,51 @@ ordered_json joinzkin(ordered_json &zkin1, ordered_json &zkin2, ordered_json &ve
     return zkinOut;
 }
 
-ordered_json challenges2proof(json& globalInfo, Goldilocks::Element* challenges) {
+json challenges2proof(json& globalInfo, Goldilocks::Element* challenges) {
     
-    ordered_json challengesJson;
+    json challengesJson;
 
     uint64_t nStages = globalInfo["numChallenges"].size();
 
     uint64_t c = 0;
 
-    challengesJson["challenges"] = ordered_json::array();
+    challengesJson["challenges"] = json::array();
     for(uint64_t i = 0; i < nStages; ++i) {
-        challengesJson["challenges"][i] = ordered_json::array();
+        challengesJson["challenges"][i] = json::array();
         for(uint64_t j = 0; j < globalInfo["numChallenges"][i]; ++j) {
-            challengesJson["challenges"][i][j] = ordered_json::array();
+            challengesJson["challenges"][i][j] = json::array();
             for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
                 challengesJson["challenges"][i][j][k] = Goldilocks::toString(challenges[c++]);
             }
         }
     }
 
-    challengesJson["challenges"][nStages] = ordered_json::array();
-    challengesJson["challenges"][nStages][0] = ordered_json::array();
+    challengesJson["challenges"][nStages] = json::array();
+    challengesJson["challenges"][nStages][0] = json::array();
     for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
         challengesJson["challenges"][nStages][0][k] = Goldilocks::toString(challenges[c++]);
     }
     
-    challengesJson["challenges"][nStages + 1] = ordered_json::array();
-    challengesJson["challenges"][nStages + 1][0] = ordered_json::array();
+    challengesJson["challenges"][nStages + 1] = json::array();
+    challengesJson["challenges"][nStages + 1][0] = json::array();
     for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
         challengesJson["challenges"][nStages + 1][0][k] = Goldilocks::toString(challenges[c++]);
     }
 
-    challengesJson["challenges"][nStages + 2] = ordered_json::array();
-    challengesJson["challenges"][nStages + 2][0] = ordered_json::array();
+    challengesJson["challenges"][nStages + 2] = json::array();
+    challengesJson["challenges"][nStages + 2][0] = json::array();
     for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
         challengesJson["challenges"][nStages + 2][0][k] = Goldilocks::toString(challenges[c++]);
     }
     
-    challengesJson["challenges"][nStages + 2][1] = ordered_json::array();
+    challengesJson["challenges"][nStages + 2][1] = json::array();
     for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
         challengesJson["challenges"][nStages + 2][1][k] = Goldilocks::toString(challenges[c++]);
     }
 
-    challengesJson["challengesFRISteps"] = ordered_json::array();
+    challengesJson["challengesFRISteps"] = json::array();
     for(uint64_t i = 0; i < globalInfo["stepsFRI"].size() + 1; ++i) {
-        challengesJson["challengesFRISteps"][i] = ordered_json::array();
+        challengesJson["challengesFRISteps"][i] = json::array();
         for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
             challengesJson["challengesFRISteps"][i][k] = Goldilocks::toString(challenges[c++]);
         }
@@ -255,9 +255,9 @@ ordered_json challenges2proof(json& globalInfo, Goldilocks::Element* challenges)
     return challengesJson;
 }
 
-ordered_json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges) {
+json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges) {
     
-    ordered_json challengesJson;
+    json challengesJson;
 
     uint64_t nStages = globalInfo["numChallenges"].size();
 
@@ -267,17 +267,17 @@ ordered_json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges) 
     }
     nChallenges += 4;
 
-    challengesJson["challenges"] = ordered_json::array();
+    challengesJson["challenges"] = json::array();
     for(uint64_t i = 0; i < nChallenges; ++i) {
-        challengesJson["challenges"][i] = ordered_json::array();
+        challengesJson["challenges"][i] = json::array();
         for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
             challengesJson["challenges"][i][k] = Goldilocks::toString(challenges[i*FIELD_EXTENSION + k]);
         }
     }
     
-    challengesJson["challengesFRISteps"] = ordered_json::array();
+    challengesJson["challengesFRISteps"] = json::array();
     for(uint64_t i = 0; i < globalInfo["stepsFRI"].size() + 1; ++i) {
-        challengesJson["challengesFRISteps"][i] = ordered_json::array();
+        challengesJson["challengesFRISteps"][i] = json::array();
         for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
             challengesJson["challengesFRISteps"][i][k] = Goldilocks::toString(challenges[nChallenges*FIELD_EXTENSION + i*FIELD_EXTENSION + k]);
         }
@@ -286,21 +286,21 @@ ordered_json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges) 
     return challengesJson;
 }
 
-ordered_json publics2zkin(ordered_json &zkin_, Goldilocks::Element* publics, json& globalInfo, uint64_t airgroupId) {
-    ordered_json zkin = ordered_json::object();
+json publics2zkin(json &zkin_, Goldilocks::Element* publics, json& globalInfo, uint64_t airgroupId) {
+    json zkin = json::object();
     zkin = zkin_;
 
     uint64_t p = 0;
     zkin["sv_circuitType"] = Goldilocks::toString(publics[p++]);
     if(globalInfo["aggTypes"][airgroupId].size() > 0) {
-        zkin["sv_aggregationTypes"] = ordered_json::array();
+        zkin["sv_aggregationTypes"] = json::array();
         for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
             zkin["sv_aggregationTypes"][i] = Goldilocks::toString(publics[p++]);
         }
 
-        zkin["sv_airgroupvalues"] = ordered_json::array();
+        zkin["sv_airgroupvalues"] = json::array();
         for(uint64_t i = 0; i < globalInfo["aggTypes"][airgroupId].size(); ++i) {
-            zkin["sv_airgroupvalues"][i] = ordered_json::array();
+            zkin["sv_airgroupvalues"][i] = json::array();
             for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
                 zkin["sv_airgroupvalues"][i][k] = Goldilocks::toString(publics[p++]);
             }
@@ -309,38 +309,38 @@ ordered_json publics2zkin(ordered_json &zkin_, Goldilocks::Element* publics, jso
 
     for(uint64_t i = 0; i < globalInfo["numChallenges"].size() + 1; ++i) {
         std::string sv_root = "sv_root" + to_string(i + 1);
-        zkin[sv_root] = ordered_json::array();
+        zkin[sv_root] = json::array();
         for(uint64_t j = 0; j < 4; ++j) {
             zkin[sv_root][j] = Goldilocks::toString(publics[p++]);
         }
     }
 
-    zkin["sv_evalsHash"] = ordered_json::array();
+    zkin["sv_evalsHash"] = json::array();
     for(uint64_t j = 0; j < 4; ++j) {
         zkin["sv_evalsHash"][j] = Goldilocks::toString(publics[p++]);
     }
 
     for(uint64_t i = 0; i < globalInfo["stepsFRI"].size() - 1; ++i) {
         std::string sv_si_root = "sv_s" + to_string(i + 1) + "_root"; 
-        zkin[sv_si_root] = ordered_json::array();
+        zkin[sv_si_root] = json::array();
         for(uint64_t j = 0; j < 4; ++j) {
             zkin[sv_si_root][j] = Goldilocks::toString(publics[p++]);
         }
     }
 
-    zkin["sv_finalPolHash"] = ordered_json::array();
+    zkin["sv_finalPolHash"] = json::array();
     for(uint64_t j = 0; j < 4; ++j) {
         zkin["sv_finalPolHash"][j] = Goldilocks::toString(publics[p++]);
     }
 
     if(uint64_t(globalInfo["nPublics"]) > 0) {
-        zkin["publics"] = ordered_json::array();
+        zkin["publics"] = json::array();
         for(uint64_t i = 0; i < uint64_t(globalInfo["nPublics"]); ++i) {
             zkin["publics"][i] = Goldilocks::toString(publics[p++]);
         }
     }
 
-    zkin["challenges"] = ordered_json::array();
+    zkin["challenges"] = json::array();
     
     uint64_t nChallenges = 0;
     for(uint64_t i = 0; i < globalInfo["numChallenges"].size(); ++i) {
@@ -348,15 +348,15 @@ ordered_json publics2zkin(ordered_json &zkin_, Goldilocks::Element* publics, jso
     }
     nChallenges += 4;
     for(uint64_t i = 0; i < nChallenges; ++i) {
-        zkin["challenges"][i] = ordered_json::array();
+        zkin["challenges"][i] = json::array();
         for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
             zkin["challenges"][i][k] = Goldilocks::toString(publics[p++]);
         }
     }
 
-    zkin["challengesFRISteps"] = ordered_json::array();
+    zkin["challengesFRISteps"] = json::array();
     for(uint64_t i = 0; i < globalInfo["stepsFRI"].size() + 1; ++i) {
-        zkin["challengesFRISteps"][i] = ordered_json::array();
+        zkin["challengesFRISteps"][i] = json::array();
         for(uint64_t k = 0; k < FIELD_EXTENSION; ++k) {
             zkin["challengesFRISteps"][i][k] = Goldilocks::toString(publics[p++]);
         }
@@ -366,10 +366,10 @@ ordered_json publics2zkin(ordered_json &zkin_, Goldilocks::Element* publics, jso
     return zkin;
 }
 
-ordered_json addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recursive2VerKey) {
-    ordered_json zkinUpdated = ordered_json::object();
+json addRecursive2VerKey(json &zkin, Goldilocks::Element* recursive2VerKey) {
+    json zkinUpdated = json::object();
     zkinUpdated = zkin;
-    zkinUpdated["rootCAgg"] = ordered_json::array();
+    zkinUpdated["rootCAgg"] = json::array();
     for(uint64_t i = 0; i < 4; ++i) {
         zkinUpdated["rootCAgg"][i] = Goldilocks::toString(recursive2VerKey[i]);
     }
@@ -377,8 +377,8 @@ ordered_json addRecursive2VerKey(ordered_json &zkin, Goldilocks::Element* recurs
     return zkinUpdated;
 }
 
-ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* proofValues, Goldilocks::Element* challenges, void **zkin_vec, void **starkInfo_vec) {
-    ordered_json zkinFinal = ordered_json::object();
+json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::Element* proofValues, Goldilocks::Element* challenges, void **zkin_vec, void **starkInfo_vec) {
+    json zkinFinal = json::object();
     
     if(globalInfo["nPublics"] > 0) {
         for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
@@ -388,22 +388,22 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
     }
 
     if(globalInfo["numProofValues"] > 0) {
-        zkinFinal["proofValues"] = ordered_json::array();
+        zkinFinal["proofValues"] = json::array();
         for (uint64_t i = 0; i < globalInfo["numProofValues"]; i++)
         {
-            zkinFinal["proofValues"][i] = ordered_json::array();
+            zkinFinal["proofValues"][i] = json::array();
             for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
                 zkinFinal["proofValues"][i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
             }
         }
     }
 
-    ordered_json challengesJson = challenges2zkin(globalInfo, challenges);
+    json challengesJson = challenges2zkin(globalInfo, challenges);
     zkinFinal["challenges"] = challengesJson["challenges"];
     zkinFinal["challengesFRISteps"] = challengesJson["challengesFRISteps"];
 
     for(uint64_t i = 0; i < globalInfo["air_groups"].size(); ++i) {
-        ordered_json zkin = *(ordered_json *)zkin_vec[i];
+        json zkin = *(json *)zkin_vec[i];
         StarkInfo &starkInfo = *(StarkInfo *)starkInfo_vec[i];
 
         uint64_t nStages = starkInfo.nStages + 1;
@@ -455,8 +455,8 @@ ordered_json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldi
     return zkinFinal;
 }
 
-ordered_json joinzkinrecursive2(json& globalInfo, uint64_t airgroupId, Goldilocks::Element* publics, Goldilocks::Element* challenges, ordered_json &zkin1, ordered_json &zkin2, StarkInfo &starkInfo) {
-    ordered_json zkinRecursive2 = ordered_json::object();
+json joinzkinrecursive2(json& globalInfo, uint64_t airgroupId, Goldilocks::Element* publics, Goldilocks::Element* challenges, json &zkin1, json &zkin2, StarkInfo &starkInfo) {
+    json zkinRecursive2 = json::object();
 
     uint64_t nStages = starkInfo.nStages + 1;
 
@@ -465,7 +465,7 @@ ordered_json joinzkinrecursive2(json& globalInfo, uint64_t airgroupId, Goldilock
         zkinRecursive2["publics"][i] = Goldilocks::toString(publics[i]);
     }
 
-    ordered_json challengesJson = challenges2zkin(globalInfo, challenges);
+    json challengesJson = challenges2zkin(globalInfo, challenges);
     zkinRecursive2["challenges"] = challengesJson["challenges"];
     zkinRecursive2["challengesFRISteps"] = challengesJson["challengesFRISteps"];
 

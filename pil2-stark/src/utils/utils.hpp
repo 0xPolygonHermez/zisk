@@ -10,7 +10,6 @@
 #include "exit_process.hpp"
 
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
 
 struct MemoryInfo {
     uint64_t total;
@@ -38,7 +37,6 @@ std::string getTimestampWithPeriod(void);
 // // Converts a json into/from a file
 void json2file(const json &j, const std::string &fileName);
 void file2json(const std::string &fileName, json &j);
-void file2json(const std::string &fileName, ordered_json &j);
 
 // Returns if file exists
 bool fileExists (const std::string &fileName);

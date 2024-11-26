@@ -1,10 +1,12 @@
 use libloading::{Library, Symbol};
 use p3_field::Field;
 use std::ffi::CString;
+use std::fs::File;
 use std::sync::Arc;
 use proofman_starks_lib_c::*;
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
+use std::io::Read;
 
 use proofman_common::{ExecutionCtx, ProofCtx, ProofType, SetupCtx};
 
@@ -12,16 +14,10 @@ use std::os::raw::{c_void, c_char};
 
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-type GetCommitedPolsFunc = unsafe extern "C" fn(
-    p_address: *mut c_void,
-    p_publics: *mut c_void,
-    zkin: *mut c_void,
-    n: u64,
-    n_publics: u64,
-    offset_cm1: u64,
-    dat_file: *const c_char,
-    exec_file: *const c_char,
-);
+type GetWitnessFunc =
+    unsafe extern "C" fn(zkin: *mut c_void, dat_file: *const c_char, witness: *mut c_void, n_mutexes: u64);
+
+type GetSizeWitnessFunc = unsafe extern "C" fn() -> u64;
 
 type GenWitnessResult<F> = Result<(Vec<MaybeUninit<F>>, Vec<MaybeUninit<F>>), Box<dyn std::error::Error>>;
 
@@ -78,6 +74,7 @@ pub fn generate_recursion_proof<F: Field>(
                         p_stark_info,
                         zkin,
                         proof_type,
+                        18,
                     )?;
 
                     let p_publics = publics.as_ptr() as *mut c_void;
@@ -219,6 +216,7 @@ pub fn generate_recursion_proof<F: Field>(
                                     p_stark_info,
                                     zkin_recursive2_updated,
                                     proof_type,
+                                    18,
                                 )?;
                                 let p_publics = publics.as_ptr() as *mut c_void;
                                 let p_address = buffer.as_ptr() as *mut c_void;
@@ -320,7 +318,7 @@ pub fn generate_recursion_proof<F: Field>(
             let p_setup: *mut c_void = (&setup.p_setup).into();
             let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
 
-            let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proofs[0], proof_type)?;
+            let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proofs[0], proof_type, 18)?;
             let p_address = buffer.as_ptr() as *mut c_void;
             let p_publics = publics.as_ptr() as *mut c_void;
 
@@ -358,6 +356,7 @@ fn generate_witness<F: Field>(
     p_stark_info: *mut c_void,
     zkin: *mut c_void,
     proof_type: &ProofType,
+    n_cols: usize,
 ) -> GenWitnessResult<F> {
     // Load the symbol (function) from the library
     timer_start_trace!(CALCULATE_WITNESS);
@@ -387,8 +386,6 @@ fn generate_witness<F: Field>(
 
     let library: Library = unsafe { Library::new(rust_lib_path)? };
     unsafe {
-        let get_commited_pols: Symbol<GetCommitedPolsFunc> = library.get(b"getCommitedPols\0")?;
-
         // Call the function
         let dat_filename = setup_path.display().to_string() + ".dat";
         let dat_filename_str = CString::new(dat_filename.as_str()).unwrap();
@@ -398,15 +395,32 @@ fn generate_witness<F: Field>(
         let exec_filename_str = CString::new(exec_filename.as_str()).unwrap();
         let exec_filename_ptr = exec_filename_str.as_ptr() as *mut std::os::raw::c_char;
 
-        get_commited_pols(
+        let get_size_witness: Symbol<GetSizeWitnessFunc> = library.get(b"getSizeWitness\0")?;
+        let size_witness = get_size_witness();
+
+        let mut file = File::open(exec_filename)?; // Open the file
+
+        let mut n_adds = [0u8; 8]; // Buffer for nAdds (u64 is 8 bytes)
+        file.read_exact(&mut n_adds)?;
+        let n_adds = u64::from_le_bytes(n_adds);
+
+        let witness: Vec<MaybeUninit<F>> = Vec::with_capacity((size_witness + n_adds) as usize);
+        let witness_ptr = witness.as_ptr() as *mut c_void;
+
+        let get_witness: Symbol<GetWitnessFunc> = library.get(b"getWitness\0")?;
+
+        get_witness(zkin, dat_filename_ptr, witness_ptr, 128);
+
+        get_committed_pols_c(
+            witness_ptr,
+            exec_filename_ptr,
             p_address,
             p_publics,
-            zkin,
+            size_witness,
             n,
             n_publics as u64,
             offset_cm1,
-            dat_filename_ptr,
-            exec_filename_ptr,
+            n_cols as u64,
         );
     }
     timer_stop_and_log_trace!(CALCULATE_WITNESS);

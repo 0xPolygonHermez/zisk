@@ -170,27 +170,6 @@ void json2file(const json &j, const string &fileName)
 
 void file2json(const string &fileName, json &j)
 {
-    // zklog.info("file2json() loading JSON file " + fileName);
-    std::ifstream inputStream(fileName);
-    if (!inputStream.good())
-    {
-        zklog.error("file2json() failed loading input JSON file " + fileName + "; does this file exist?");
-        exitProcess();
-    }
-    try
-    {
-        inputStream >> j;
-    }
-    catch (exception &e)
-    {
-        zklog.error("file2json() failed parsing input JSON file " + fileName + " exception=" + e.what());
-        exitProcess();
-    }
-    inputStream.close();
-}
-
-void file2json(const string &fileName, ordered_json &j)
-{
     // zklog.info("file2json() (ordered) loading JSON file " + fileName);
     std::ifstream inputStream(fileName);
     if (!inputStream.good())

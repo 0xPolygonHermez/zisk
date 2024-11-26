@@ -8,7 +8,7 @@
 #include <vector>
 #include "nlohmann/json.hpp"
 
-using ordered_json = nlohmann::ordered_json;
+using json = nlohmann::json;
 
 template <typename ElementType>
 std::string toString(const ElementType& element);
@@ -43,15 +43,15 @@ public:
         }
     }
 
-    ordered_json merkleProof2json()
+    json merkleProof2json()
     {
-        ordered_json j = ordered_json::array();
-        ordered_json json_v = ordered_json::array();
+        json j = json::array();
+        json json_v = json::array();
         for (uint i = 0; i < v.size(); i++)
         {
             if (v[i].size() > 1)
             {
-                ordered_json element = ordered_json::array();
+                json element = json::array();
                 for (uint j = 0; j < v[i].size(); j++)
                 {
                     element.push_back(Goldilocks::toString(v[i][j]));
@@ -65,10 +65,10 @@ public:
         }
         j.push_back(json_v);
 
-        ordered_json json_mp = ordered_json::array();
+        json json_mp = json::array();
         for (uint i = 0; i < mp.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             for (uint j = 0; j < mp[i].size(); j++)
             {
                 element.push_back(toString(mp[i][j]));
@@ -96,12 +96,12 @@ public:
         std::memcpy(&root[0], &_root[0], nFieldElements * sizeof(ElementType));
     };
 
-    ordered_json ProofTree2json(bool friQueries = true)
+    json ProofTree2json(bool friQueries = true)
     {
-        ordered_json j_ProofTree2json = ordered_json::object();
+        json j_ProofTree2json = json::object();
 
         if(friQueries) {
-             ordered_json json_root = ordered_json::array();
+             json json_root = json::array();
             if(root.size() == 1) {
                 j_ProofTree2json["root"] = toString(root[0]);
             } else {
@@ -113,10 +113,10 @@ public:
             }
         }
 
-        ordered_json json_polQueries = ordered_json::array();
+        json json_polQueries = json::array();
         for (uint i = 0; i < polQueries.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             if (polQueries[i].size() != 1)
             {
                 for (uint j = 0; j < polQueries[i].size(); j++)
@@ -165,24 +165,24 @@ public:
             std::memcpy(&pol[i][0], &pPol[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
         }
     }
-    ordered_json QueriesP2json()
+    json QueriesP2json()
     {
         return trees.ProofTree2json(false);
     }
 
-    ordered_json FriQueriesP2json()
+    json FriQueriesP2json()
     {
-        ordered_json j = ordered_json::array();
+        json j = json::array();
 
         for (uint i = 0; i < treesFRI.size(); i++)
         {
             j.push_back((treesFRI[i].ProofTree2json()));
         }
 
-        ordered_json json_pol = ordered_json::array();
+        json json_pol = json::array();
         for (uint i = 0; i < pol.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             for (uint j = 0; j < pol[i].size(); j++)
             {
                 element.push_back(Goldilocks::toString(pol[i][j]));
@@ -260,15 +260,15 @@ public:
         }
     }
 
-    ordered_json proof2json()
+    json proof2json()
     {
-        ordered_json j = ordered_json::object();
+        json j = json::object();
 
         j["airId"] = airId;
         j["airgroupId"] = airgroupId;
         
         for(uint64_t i = 0; i < nStages; i++) {
-            ordered_json json_root = ordered_json::array();
+            json json_root = json::array();
             if(nFieldElements == 1) {
                 j["root" + to_string(i + 1)] = toString(roots[i][0]);
             } else {
@@ -280,10 +280,10 @@ public:
             }
         }
 
-        ordered_json json_evals = ordered_json::array();
+        json json_evals = json::array();
         for (uint i = 0; i < evals.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             for (uint j = 0; j < evals[i].size(); j++)
             {
                 element.push_back(Goldilocks::toString(evals[i][j]));
@@ -292,10 +292,10 @@ public:
         }
         j["evals"] = json_evals;
 
-        ordered_json json_airgroupValues = ordered_json::array();
+        json json_airgroupValues = json::array();
         for (uint i = 0; i < airgroupValues.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             for (uint j = 0; j < airgroupValues[i].size(); j++)
             {
                 element.push_back(Goldilocks::toString(airgroupValues[i][j]));
@@ -305,10 +305,10 @@ public:
 
         j["airgroupValues"] = json_airgroupValues;
 
-        ordered_json json_airValues = ordered_json::array();
+        json json_airValues = json::array();
         for (uint i = 0; i < airValues.size(); i++)
         {
-            ordered_json element = ordered_json::array();
+            json element = json::array();
             for (uint j = 0; j < airValues[i].size(); j++)
             {
                 element.push_back(Goldilocks::toString(airValues[i][j]));

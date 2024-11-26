@@ -883,6 +883,24 @@ pub fn serialized_proof_free_c(zkin_cstr: *mut std::os::raw::c_char) {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
+#[allow(clippy::too_many_arguments)]
+pub fn get_committed_pols_c(
+    pWitness: *mut ::std::os::raw::c_void,
+    execFile: *mut ::std::os::raw::c_char,
+    pAddress: *mut ::std::os::raw::c_void,
+    pPublics: *mut ::std::os::raw::c_void,
+    sizeWitness: u64,
+    N: u64,
+    nPublics: u64,
+    offsetCm1: u64,
+    nCols: u64,
+) {
+    unsafe {
+        get_committed_pols(pWitness, execFile, pAddress, pPublics, sizeWitness, N, nPublics, offsetCm1, nCols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
 pub fn set_log_level_c(level: u64) {
     unsafe {
         setLogLevel(level);
@@ -1551,6 +1569,22 @@ pub fn zkin_proof_free_c(_p_zkin_proof: *mut c_void) {
 #[cfg(feature = "no_lib_link")]
 pub fn serialized_proof_free_c(_zkin_cstr: *mut std::os::raw::c_char) {
     trace!("{}: ··· {}", "ffi     ", "serialized_proof_free: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+#[allow(clippy::too_many_arguments)]
+pub fn get_committed_pols_c(
+    _pWitness: *mut ::std::os::raw::c_void,
+    _execFile: *mut ::std::os::raw::c_char,
+    _pAddress: *mut ::std::os::raw::c_void,
+    _pPublics: *mut ::std::os::raw::c_void,
+    _sizeWitness: u64,
+    _N: u64,
+    _nPublics: u64,
+    _offsetCm1: u64,
+    _nCols: u64,
+) {
+    trace!("{}: ··· {}", "ffi     ", "get_committed_pols: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

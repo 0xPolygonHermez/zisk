@@ -1,6 +1,6 @@
 #ifndef LIB_API_H
 #define LIB_API_H
-    #include <stdint.h>
+#include <stdint.h>
 
     // Save Proof
     // ========================================================================================
@@ -142,6 +142,7 @@
     void *get_zkin_proof(char* zkin);
     void zkin_proof_free(void *pZkinProof);
     void serialized_proof_free(char *zkinCStr);
+    void get_committed_pols(void *pWitness, char* execFile, void *pAddress, void* pPublics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t offsetCm1, uint64_t nCols);
 
     // Util calls
     // =================================================================================

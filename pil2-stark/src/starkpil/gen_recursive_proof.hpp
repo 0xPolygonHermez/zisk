@@ -283,8 +283,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     delete evals;
     delete airgroupValues;
     
-    nlohmann::ordered_json jProof = proof.proof.proof2json();
-    nlohmann::ordered_json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);
+    nlohmann::json jProof = proof.proof.proof2json();
+    nlohmann::json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);
 
     if(!proofFile.empty()) {
         json2file(jProof, proofFile);
@@ -294,5 +294,5 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     zkin = publics2zkin(zkin, publicInputs, globalInfo, airgroupId);
 
-    return (void *) new nlohmann::ordered_json(zkin);
+    return (void *) new nlohmann::json(zkin);
 }
