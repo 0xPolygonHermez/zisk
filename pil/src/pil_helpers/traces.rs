@@ -42,5 +42,3 @@ trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
 trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
  mul: [F; 1],
 });
-
-
