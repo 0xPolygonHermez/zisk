@@ -1,6 +1,8 @@
 require "goldilocks.pil";
 
 /*
+Available PIOPs:
+
     name     | code | note
 -------------|------|----------------------------------------------------------------------------
  Default     |  0   | default name set by the library
@@ -40,6 +42,8 @@ function get_piop_name(const int name): string {
 }
 
 /*
+Available bus types:
+
     name    | code | note
 ------------|------|----------------------------------------------------------------------------
  Default    |  0   | default bus set by the library
@@ -50,6 +54,20 @@ function get_piop_name(const int name): string {
 const int PIOP_BUS_DEFAULT = 0;
 const int PIOP_BUS_SUM = 1;
 const int PIOP_BUS_PROD = 2;
+
+/*
+Available direct types:
+
+    name    | code | note
+------------|------|----------------------------------------------------------------------------
+ Default    |  0   | default constraint behavior set by the library
+ AIR        |  1   | update the air constraint directly
+ Global     |  2   | update the global constraint directly
+*/
+
+const int PIOP_DIRECT_TYPE_DEFAULT = 0;
+const int PIOP_DIRECT_TYPE_AIR = 1;
+const int PIOP_DIRECT_TYPE_GLOBAL = 2;
 
 /*
     name    | code

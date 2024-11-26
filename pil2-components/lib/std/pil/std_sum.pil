@@ -1,17 +1,18 @@
+require "std_constants.pil";
 require "std_tools.pil";
 
 // Note: When name is "isolated" we don't check if the number of columns is the same for all the PIOPs
 
-function sum_assumes(const int name, const int opid, const expr cols[], const expr sel = 1, const int is_direct = 0) {
-    update_piop_sum(name, 0, [opid], opid, sel, cols, is_direct);
+function sum_assumes(const int name, const int opid, const expr cols[], const expr sel = 1, const int direct_type = PIOP_DIRECT_TYPE_DEFAULT) {
+    update_piop_sum(name, 0, [opid], opid, sel, cols, direct_type);
 }
 
-function sum_proves(const int name, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
-    update_piop_sum(name, 1, [opid], opid, mul, cols, is_direct);
+function sum_proves(const int name, const int opid, const expr cols[], const expr mul = 1, const int direct_type = PIOP_DIRECT_TYPE_DEFAULT) {
+    update_piop_sum(name, 1, [opid], opid, mul, cols, direct_type);
 }
 
-function sum(const int name, const int opid, const expr cols[], const expr mul = 1, const int is_direct = 0) {
-    update_piop_sum(name, 2, [opid], opid, mul, cols, is_direct);
+function sum(const int name, const int opid, const expr cols[], const expr mul = 1, const int direct_type = PIOP_DIRECT_TYPE_DEFAULT) {
+    update_piop_sum(name, 2, [opid], opid, mul, cols, direct_type);
 }
 
 function sum_assumes_dynamic(const int name, const int opid[], const expr sumid, const expr cols[], const expr sel = 1) {
@@ -30,7 +31,7 @@ private function init_proof_containers_sum(int name, int opid[]) {
         expr gsum = 0;
 
         // Direct shortcut to the previous sum
-        int direct_gsum_count = 0;
+        int direct_gsum_nargs = 0;
         expr direct_gsum_s[100];
         expr direct_gsum_e[100];
     }
@@ -56,14 +57,19 @@ private function init_containers_sum(int name, int opid[]) {
         expr gsum_s[100];
         expr gsum_e[100];
         int gsum_t[100]; // Used for optimization
+
+        // Direct shortcut to the previous sum
+        int direct_gsum_nargs = 0;
+        expr direct_gsum_s[100];
+        expr direct_gsum_e[100];
     }
 }
 
-private function initial_checks_sum(int proves, int opid[], expr cols[], int is_direct) {
+private function initial_checks_sum(int proves, int opid[], expr cols[], int direct_type) {
     const int cols_count = length(cols);
 
     for (int i = 0; i < length(opid); i++) {
-        // Assumes and proves of the same opid must have the same number of columns (except for the is_direct case)
+        // Assumes and proves of the same opid must have the same number of columns (except for the direct_type case)
         if (proof.std.gsum.`id${opid[i]}`.cols == 0) {
             // first time called
             proof.std.gsum.`id${opid[i]}`.cols = cols_count;
@@ -71,7 +77,7 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int is_
             // add opid on a list to verify at final
             proof.std.gsum.opids[proof.std.gsum.opids_count] = opid[i];
             proof.std.gsum.opids_count++;
-        } else if (!is_direct && cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
+        } else if (direct_type == PIOP_DIRECT_TYPE_DEFAULT && cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
             const int expected_cols = proof.std.gsum.`id${opid[i]}`.cols;
             error(`The number of columns of PIOP #${opid[i]} must be ${expected_cols} but was ${cols_count}`);
         }
@@ -100,7 +106,7 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int is_
  * @param sel selector of the PIOP
  * @param cols columns of the PIOP
  */
-private function update_piop_sum(int name, int proves, int opid[], expr sumid, expr sel, expr cols[], int is_direct = 0) {
+private function update_piop_sum(int name, int proves, int opid[], expr sumid, expr sel, expr cols[], int direct_type = PIOP_DIRECT_TYPE_DEFAULT) {
     const int cols_count = length(cols);
     if (cols_count < 1) {
         string side = proves ? "proves" : "assumes";
@@ -109,9 +115,11 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
 
     init_proof_containers_sum(name, opid);
 
-    if (!is_direct) {
+    if (direct_type == PIOP_DIRECT_TYPE_AIR || direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
         init_containers_sum(name, opid);
+    }
 
+    if (direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
         // Create debug hints for the witness computation
         const int ncols = length(cols);
         string name_cols[ncols];
@@ -122,42 +130,60 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
         @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves == 2 ? sel : proves, selector: sel, references: cols};
     }
 
-    initial_checks_sum(proves, opid, cols, is_direct);
+    initial_checks_sum(proves, opid, cols, direct_type);
 
     init_challenges();
 
     // selected vector to simple column reduction
     expr cols_compressed = compress_cols(sumid, cols);
 
-    if (is_direct) {
-        use proof.std.gsum;
+    switch (direct_type) {
+        case PIOP_DIRECT_TYPE_GLOBAL:
+            gsum_update_global_constraint_data(proves, sel, cols_compressed);
+        case PIOP_DIRECT_TYPE_AIR, PIOP_DIRECT_TYPE_DEFAULT:
+            gsum_update_air_constraint_data(proves, sel, cols_compressed, direct_type);
+        default:
+            error("Invalid direct_type: ${direct_type}");
+    }
 
-        direct_gsum_s[direct_gsum_count] = proves ? sel : 0-sel;
-        direct_gsum_e[direct_gsum_count] = cols_compressed;
-        direct_gsum_count++;
+    // Update global constraints
+    on final proof piop_gsum_proof();
+}
+
+private function gsum_update_global_constraint_data(int proves, expr sel, expr cols_compressed) {
+    use proof.std.gsum;
+
+    direct_gsum_s[direct_gsum_nargs] = proves ? sel : 0 - sel;
+    direct_gsum_e[direct_gsum_nargs] = cols_compressed;
+    direct_gsum_nargs++;
+}
+
+private function gsum_update_air_constraint_data(int proves, expr sel, expr cols_compressed, int direct_type) {
+    use air.std.gsum;
+
+    if (direct_type == PIOP_DIRECT_TYPE_AIR) {
+        direct_gsum_s[direct_gsum_nargs] = proves ? sel : 0 - sel;
+        direct_gsum_e[direct_gsum_nargs] = cols_compressed;
+        direct_gsum_nargs++;
     } else {
-        use air.std.gsum;
-
-        gsum_s[gsum_nargs] = proves ? sel : 0-sel;
+        gsum_s[gsum_nargs] = proves ? sel : 0 - sel;
         gsum_e[gsum_nargs] = cols_compressed;
         gsum_t[gsum_nargs] = proves;
         gsum_nargs++;
 
+        // Additional processing for air constraints
         // TODO: Uncomment when expression comparison is implemented
         // on final air find_repeated_proves();
-
-        // define constraints at the air level
-        on final air piop_gsum_air();
-
-        // update the contributions at the airgroup level
-        on final airgroup piop_gsum_airgroup();
 
         // at the end, check consistency of all the opids
         on final proof check_opids_were_completed_sum();
     }
 
-    // adds the global constraint
-    on final proof piop_gsum_proof();
+    // Define and update constraints at the air level
+    on final air piop_gsum_air();
+
+    // Define and update constraints at the airgroup level
+    on final airgroup piop_gsum_airgroup();
 }
 
 /**
@@ -215,7 +241,7 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         }
     }
 
-    expr sumIms = 0;
+    expr sum_ims = 0;
     if (low_degree_len > 0) {
         // Group terms in clusters so that the degree of the constraint
         // is lower than the maximum allowed
@@ -252,7 +278,7 @@ private function piop_gsum_air(const int blowupFactor = 2) {
             //                    mul[3*i]*t[3*i+1]*t[3*i+2] + mul[3*i+1]*t[3*i]*t[3*i+2] + mul[3*i+2]*t[3*i]*t[3*i+1];
             im[i] * prods === sums;
 
-            sumIms += im[i];
+            sum_ims += im[i];
         }
 
         const int nRemTerms = low_degree_len % blowupFactor;
@@ -276,7 +302,7 @@ private function piop_gsum_air(const int blowupFactor = 2) {
 
             im_extra * prods === sums;
 
-            sumIms += im_extra;
+            sum_ims += im_extra;
         }
     }
 
@@ -295,13 +321,37 @@ private function piop_gsum_air(const int blowupFactor = 2) {
             @im_col{reference: im_high_degree[i], numerator: gsum_s[index], denominator: gsum_e[index] + std_gamma};
 
             im_high_degree[i] * (gsum_e[index] + std_gamma) === gsum_s[index];
-            sumIms += im_high_degree[i];
+            sum_ims += im_high_degree[i];
         }
     }
 
-    @gsum_col{reference: gsum, expression: sumIms, result: airgroup.std.gsum.gsum_result};
+    /*
+     At this point, the constraint has been transformed to:
+          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ
 
-    gsum === 'gsum * (1 - __L1) + sumIms;
+     Now, we whould add the direct terms to the constraint:
+          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + ∑ⱼ sⱼ / (eⱼ + ɣ)
+     where both sⱼ and eⱼ are field elements, for all j.
+
+     We rewrite it as:
+          (gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·∏ⱼ (eⱼ + ɣ) - ∑ⱼ sⱼ · ∏ₖ≠ⱼ (eₖ + ɣ)  === 0
+    */
+
+    expr direct_num = 0;
+    expr direct_den = 1;
+    for (int i = 0; i < direct_gsum_nargs; i++) {
+        direct_den *= (direct_gsum_e[i] + std_gamma);
+
+        expr _tmp = direct_gsum_s[i];
+        for (int j = 0; j < direct_gsum_nargs; j++) {
+            if (j != i) tmp *= (direct_gsum_e[j] + std_gamma);
+        }
+        direct_num += _tmp;
+    }
+
+    @gsum_col{reference: gsum, direct_num: direct_num, direct_den: direct_den, sum_ims: sum_ims, result: airgroup.std.gsum.gsum_result};
+
+    (gsum - 'gsum * (1 - __L1) - sum_ims) * direct_den - direct_num === 0;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
 
@@ -338,19 +388,19 @@ private function piop_gsum_proof() {
     // Note: We cannot update this constraint directly if some of the elements
     //       are not globally defined: constants, public inputs, airgroupvalues, ...
 
-    expr LHS = 1;
-    expr RHS = 0;
-    for (int i = 0; i < direct_gsum_count; i++) {
-        LHS *= (direct_gsum_e[i] + std_gamma);
+    expr global_num = 0;
+    expr global_den = 1;
+    for (int i = 0; i < direct_gsum_nargs; i++) {
+        global_den *= (direct_gsum_e[i] + std_gamma);
 
         expr tmp = direct_gsum_s[i];
-        for (int j = 0; j < direct_gsum_count; j++) {
+        for (int j = 0; j < direct_gsum_nargs; j++) {
             if (j != i) tmp *= (direct_gsum_e[j] + std_gamma);
         }
-        RHS += tmp;
+        global_num += tmp;
     }
 
-    gsum * LHS + RHS === 0;
+    gsum * global_den + global_num === 0;
 }
 
 /**

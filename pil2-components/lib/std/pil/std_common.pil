@@ -5,13 +5,23 @@ require "std_prod.pil";
 const int DEFAULT_DIRECT_NAME = PIOP_NAME_DIRECT;
 const int DEFAULT_DIRECT_BUS_TYPE = PIOP_BUS_SUM;
 
-// Updates the global constraint directly
-// We allow any expression as inputs to this function, but if some of it is not a global element
-// the PIL will throw an error
-function direct_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, int bus_type = PIOP_BUS_DEFAULT, int name = PIOP_NAME_DEFAULT) {
+// Updates either the air or global constraint directly
+function direct_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
     if (AIRGROUP_ID == -1) {
         error("A direct update has to be performed inside an airgroup");
     }
+
+    for (int i = 0; i < length(cols); i++) {
+        if (degree(cols[i]) > 0) {
+            error(`Only field elements can be used for a direct update. The column[${i}] = ${cols[i]} is not a field element`);
+        }
+    }
+
+    if (degree(sel) > 0) {
+        error(`Only field elements can be used for a direct update. The selector = ${sel} is not a field element`);
+    }
+
+    const int direct_type = AIR_ID == -1 ? PIOP_DIRECT_TYPE_GLOBAL : PIOP_DIRECT_TYPE_AIR;
 
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_DIRECT_NAME;
 
@@ -20,15 +30,15 @@ function direct_update(const int opid, const expr cols[], const expr sel = 1, co
     switch (bus_type) {
         case PIOP_BUS_SUM:
             if (proves) {
-                sum_proves(name, opid, cols, sel, is_direct: 1);
+                sum_proves(name, opid, cols, sel, direct_type);
             } else {
-                sum_assumes(name, opid, cols, sel, is_direct: 1);
+                sum_assumes(name, opid, cols, sel, direct_type);
             }
         case PIOP_BUS_PROD:
             if (proves) {
-                prod_proves(name, opid, cols, sel, is_direct: 1);
+                prod_proves(name, opid, cols, sel, direct_type);
             } else {
-                prod_assumes(name, opid, cols, sel, is_direct: 1);
+                prod_assumes(name, opid, cols, sel, direct_type);
             }
         default:
             error(`Unknown bus type: ${bus_type} for opid: ${opid}`);
