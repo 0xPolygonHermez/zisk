@@ -234,6 +234,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                         "denominator",
                         HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
+                        false,
                     );
 
                     air_instance.set_commit_calculated(pol_id as usize);

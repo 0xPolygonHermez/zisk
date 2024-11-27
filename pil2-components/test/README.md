@@ -11,6 +11,7 @@ mkdir -p ./pil2-components/test/simple/build/ \
 && node ../pil2-proofman-js/src/main_setup.js \
      -a ./pil2-components/test/simple/build/build.pilout \
      -b ./pil2-components/test/simple/build \
+     -t ./pil2-stark/build/bctree \
 && cargo run --bin proofman-cli pil-helpers \
      --pilout ./pil2-components/test/simple/build/build.pilout \
      --path ./pil2-components/test/simple/rs/src -o \
@@ -35,6 +36,7 @@ mkdir -p ./pil2-components/test/std/connection/build/ \
 && node ../pil2-proofman-js/src/main_setup.js \
      -a ./pil2-components/test/std/connection/build/build.pilout \
      -b ./pil2-components/test/std/connection/build \
+     -t ./pil2-stark/build/bctree \
 && cargo run --bin proofman-cli pil-helpers \
      --pilout ./pil2-components/test/std/connection/build/build.pilout \
      --path ./pil2-components/test/std/connection/rs/src -o \
@@ -59,6 +61,7 @@ mkdir -p ./pil2-components/test/std/lookup/build/ \
 && node ../pil2-proofman-js/src/main_setup.js \
      -a ./pil2-components/test/std/lookup/build/build.pilout \
      -b ./pil2-components/test/std/lookup/build \
+     -t ./pil2-stark/build/bctree \
 && cargo run --bin proofman-cli pil-helpers \
      --pilout ./pil2-components/test/std/lookup/build/build.pilout \
      --path ./pil2-components/test/std/lookup/rs/src -o \
@@ -83,6 +86,7 @@ mkdir -p ./pil2-components/test/std/permutation/build/ \
 && node ../pil2-proofman-js/src/main_setup.js \
      -a ./pil2-components/test/std/permutation/build/build.pilout \
      -b ./pil2-components/test/std/permutation/build \
+     -t ./pil2-stark/build/bctree \
 && cargo run --bin proofman-cli pil-helpers \
      --pilout ./pil2-components/test/std/permutation/build/build.pilout \
      --path ./pil2-components/test/std/permutation/rs/src -o \
@@ -107,6 +111,7 @@ mkdir -p ./pil2-components/test/std/range_check/build/ \
 && node ../pil2-proofman-js/src/main_setup.js \
      -a ./pil2-components/test/std/range_check/build/build.pilout \
      -b ./pil2-components/test/std/range_check/build \
+     -t ./pil2-stark/build/bctree \
 && cargo run --bin proofman-cli pil-helpers \
      --pilout ./pil2-components/test/std/range_check/build/build.pilout \
      --path ./pil2-components/test/std/range_check/rs/src -o \

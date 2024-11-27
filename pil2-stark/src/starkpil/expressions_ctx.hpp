@@ -81,12 +81,6 @@ public:
         std::vector<Dest> dests = {destStruct};
         calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, domainSize);
     }
-
-    void multiplyExpressions(StepsParams &params, Dest &dest) {
-        uint64_t domainSize = 1 << setupCtx.starkInfo.starkStruct.nBits;
-        std::vector<Dest> dests = {dest};
-        calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, domainSize);
-    }
 };
 
 #endif

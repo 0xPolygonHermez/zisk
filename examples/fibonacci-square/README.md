@@ -70,7 +70,10 @@ After compiling the PIL files, generate the setup:
 node ../pil2-proofman-js/src/main_setup.js \
      -a ./examples/fibonacci-square/pil/build.pilout \
      -b ./examples/fibonacci-square/build
+     -t ./pil2-stark/build/bctree
 ```
+
+To run the aggregated proof, need to add -r to the previous command
 
 ### 2.3 Generate PIL Helpers
 
@@ -122,7 +125,8 @@ node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/prov
 
 ### 2.6 Generate Final Proof
 
-Finally, generate the proof using the following command:
+This will only work if setup is generated with -r
+Finally, generate the final proof using the following command:
 
 ```bash
 cargo run --bin proofman-cli prove \
@@ -136,5 +140,42 @@ cargo run --bin proofman-cli prove \
 ### 2.8 Verify final proof
 
 ```bash
-node ../pil2-stark-js/src/main_verifier.js -v examples/fibonacci-square/build/provingKey/build/final/final.verkey.json -s examples/fibonacci-square/build/provingKey/build/final/final.starkinfo.json -i examples/fibonacci-square/build/provingKey/build/final/final.verifierinfo.json -o examples/fibonacci-square/build/proofs/proofs/final_proof.json -b examples/fibonacci-square/build/proofs/publics.json
+node ../pil2-stark-js/src/main_verifier.js \
+     -v examples/fibonacci-square/build/provingKey/build/final/final.verkey.json \
+     -s examples/fibonacci-square/build/provingKey/build/final/final.starkinfo.json \
+     -i examples/fibonacci-square/build/provingKey/build/final/final.verifierinfo.json \
+     -o examples/fibonacci-square/build/proofs/proofs/final_proof.json \
+     -b examples/fibonacci-square/build/proofs/publics.json
+```
+
+### 2.9 All at once
+
+```bash
+node ../pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil \
+     -I ./pil2-components/lib/std/pil \
+     -o ./examples/fibonacci-square/pil/build.pilout \
+&& node ../pil2-proofman-js/src/main_setup.js \
+     -a ./examples/fibonacci-square/pil/build.pilout \
+     -b ./examples/fibonacci-square/build \
+     -t ./pil2-stark/build/bctree \
+&& cargo run --bin proofman-cli pil-helpers \
+     --pilout ./examples/fibonacci-square/pil/build.pilout \
+     --path ./examples/fibonacci-square/src -o \
+&& cargo build \
+&& cargo run --bin proofman-cli verify-constraints \
+     --witness-lib ./target/debug/libfibonacci_square.so \
+     --proving-key examples/fibonacci-square/build/provingKey/ \
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+&& cargo run --bin proofman-cli prove \
+     --witness-lib ./target/debug/libfibonacci_square.so \
+     --proving-key examples/fibonacci-square/build/provingKey/ \
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+     --output-dir examples/fibonacci-square/build/proofs -d \
+&& node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs \
+&& node ../pil2-stark-js/src/main_verifier.js \
+     -v examples/fibonacci-square/build/provingKey/build/final/final.verkey.json \
+     -s examples/fibonacci-square/build/provingKey/build/final/final.starkinfo.json \
+     -i examples/fibonacci-square/build/provingKey/build/final/final.verifierinfo.json \
+     -o examples/fibonacci-square/build/proofs/proofs/final_proof.json \
+     -b examples/fibonacci-square/build/proofs/publics.json
 ```
