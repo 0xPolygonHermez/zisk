@@ -73,8 +73,7 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
 
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
             let mut trace =
-                Permutation2_6Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+                Permutation2_6Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // Note: Here it is assumed that num_rows of permutation2 is equal to
             //       the sum of num_rows of each variant of permutation1.

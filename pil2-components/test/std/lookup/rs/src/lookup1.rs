@@ -74,8 +74,7 @@ where
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_1_AIR_IDS[0]).num_rows();
-            let mut trace =
-                Lookup1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Lookup1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let num_lookups = trace[0].sel.len();
 

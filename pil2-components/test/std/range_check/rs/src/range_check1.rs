@@ -77,8 +77,7 @@ where
             let mut buffer = vec![F::zero(); buffer_size as usize];
 
             let num_rows = pctx.pilout.get_air(RANGE_CHECK_1_AIRGROUP_ID, RANGE_CHECK_1_AIR_IDS[0]).num_rows();
-            let mut trace =
-                RangeCheck1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = RangeCheck1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
             let range2 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 4) - 1), Some(false));

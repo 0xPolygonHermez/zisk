@@ -77,8 +77,7 @@ where
             let buffer = &mut air_instance.buffer;
 
             let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_2_15_AIR_IDS[0]).num_rows();
-            let mut trace =
-                Lookup2_15Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Lookup2_15Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // TODO: Add the ability to send inputs to lookup3
             //       and consequently add random selectors

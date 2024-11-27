@@ -83,8 +83,7 @@ where
 
             // I cannot, programatically, link the permutation trace with its air_id
             let mut trace =
-                Permutation1_7Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize)
-                    .unwrap();
+                Permutation1_7Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
 
             // TODO: Add the ability to send inputs to permutation2
             //       and consequently add random selectors
