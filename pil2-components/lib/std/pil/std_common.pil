@@ -44,3 +44,11 @@ function direct_update(const int opid, const expr cols[], const expr sel = 1, co
             error(`Unknown bus type: ${bus_type} for opid: ${opid}`);
     }
 }
+
+function direct_update_assumes(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, cols, sel, 0, bus_type, name);
+}
+
+function direct_update_proves(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, cols, sel, 1, bus_type, name);
+}
