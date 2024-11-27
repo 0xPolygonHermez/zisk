@@ -224,13 +224,14 @@ private function piop_gsum_air(const int blowupFactor = 2) {
 
     /*
       Transform the rational constraint to a polynomial one by substituting
-      all the rational terms by terms of degree 1:
-            gsum === 'gsum * (1 - L1) + ∑ᵢ imi 
+      all the rational terms by terms of degree 1 (except for one to optimize):
+            gsum === 'gsum * (1 - L1) + ∑ᵢ imi + num / den
     */
     int low_degree_term[gsum_nargs];
     int high_degree_term[gsum_nargs];
     int low_degree_len = 0;
     int high_degree_len = 0;
+    int isolated_term = -1;
     for (int i = 0; i < gsum_nargs; i++) {
         // In the case that both the numerator and the denominator are constants, 
         // we can directly add them through the direct terms
@@ -242,15 +243,20 @@ private function piop_gsum_air(const int blowupFactor = 2) {
             high_degree_term[high_degree_len] = i;
             high_degree_len++;
         } else {
-            low_degree_term[low_degree_len] = i;
-            low_degree_len++;
+            // The first low-degree term is isolated
+            if (isolated_term == -1) {
+                isolated_term = i;
+            } else {
+                low_degree_term[low_degree_len] = i;
+                low_degree_len++;
+            }
         }
     }
 
     expr sum_ims = 0;
+    // Create an intermediate for clusters of low-degree terms so that
+    // the degree of the constraint is lower than the maximum allowed
     if (low_degree_len > 0) {
-        // Group terms in clusters so that the degree of the constraint
-        // is lower than the maximum allowed
         const int nIm = low_degree_len/blowupFactor;
 
         col witness stage(2) im[nIm];
@@ -333,15 +339,17 @@ private function piop_gsum_air(const int blowupFactor = 2) {
 
     /*
      At this point, the constraint has been transformed to:
-          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ
+          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + num / den
 
      Now, we whould add the direct terms to the constraint:
-          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + ∑ⱼ sⱼ / (eⱼ + ɣ)
+          gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + num / den + ∑ⱼ sⱼ / (eⱼ + ɣ)
      where both sⱼ and eⱼ are field elements, for all j.
 
      We rewrite it as:
-          (gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·∏ⱼ (eⱼ + ɣ) - ∑ⱼ sⱼ · ∏ₖ≠ⱼ (eₖ + ɣ)  === 0
+          ((gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·den - num)·∏ⱼ (eⱼ + ɣ)  - ∑ⱼ sⱼ·∏ₖ≠ⱼ (eₖ + ɣ)  === 0
     */
+
+    // Compute the direct terms numerator and denominator
     expr direct_num = 0;
     expr direct_den = 1;
     for (int i = 0; i < direct_gsum_nargs; i++) {
@@ -354,9 +362,17 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         direct_num += _tmp;
     }
 
-    @gsum_col{reference: gsum, direct_num: direct_num, direct_den: direct_den, sum_ims: sum_ims, result: airgroup.std.gsum.gsum_result};
+    // Compute the isolated term numerator and denominator
+    expr isolated_num = 0;
+    expr isolated_den = 1;
+    if (isolated_term != -1) {
+        isolated_den = (gsum_e[isolated_term] + std_gamma);
+        isolated_num = gsum_s[isolated_term];
+    }
 
-    (gsum - 'gsum * (1 - __L1) - sum_ims) * direct_den - direct_num === 0;
+    @gsum_col{reference: gsum, direct_num: direct_num, direct_den: direct_den, isolated_num: isolated_num, isolated_den: isolated_den, sum_ims: sum_ims, result: airgroup.std.gsum.gsum_result};
+
+    ((gsum - 'gsum * (1 - __L1) - sum_ims) * isolated_den - isolated_num) * direct_den - direct_num === 0;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
 

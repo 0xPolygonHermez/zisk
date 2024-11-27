@@ -1,0 +1,34 @@
+require "std_constants.pil";
+require "std_lookup.pil"
+
+const int OP_ID = 333;
+const int TABLE_ID = 666;
+
+airtemplate Example(const int N = 2**10) {    
+    col witness a[2];
+    col witness b[2];
+    col witness sel[2];
+
+    a[0] * a[1] * b[0] === 3;
+
+    lookup_assumes(OP_ID, [...a], sel[0], name: PIOP_NAME_ISOLATED);
+}
+
+airtemplate Table(const int N = 2**10) {    
+    col witness multiplicity;
+
+    col fixed A = [0..255]...;
+    col fixed B = [0..255]...;
+
+    lookup_proves(TABLE_ID, [A, B], multiplicity, name: PIOP_NAME_ISOLATED);
+}
+
+airgroup Table {
+    Example();
+    Table();
+}
+
+// (Table.gsum - 'Table.gsum * (1 - Table.__L1)) * ((Table.B * std_alpha + Table.A) * std_alpha + 666 + std_gamma) - Table.multiplicity === 0
+
+// Table.im_extra * ((Table.B * std_alpha + Table.A) * std_alpha + 666 + std_gamma) - Table.multiplicity === 0
+// (Table.gsum - 'Table.gsum * (1 - Table.__L1)) - Table.im_extra === 0
