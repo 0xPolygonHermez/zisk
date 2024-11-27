@@ -220,7 +220,7 @@ public:
                     Goldilocks::copy_avx(vals3[2], destVals[i][2]);
                     dim = FIELD_EXTENSION;
                 }
-            } else if(dests[i].params.size() == 2) {
+            } else if(dests[i].params.size() == 2 || dests[i].params.size() == 3) {
                 if(dests[i].params[0].dim == FIELD_EXTENSION && dests[i].params[1].dim == FIELD_EXTENSION) {
                     Goldilocks3::op_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][0], (Goldilocks3::Element_avx &)destVals[i][FIELD_EXTENSION]);
                     dim = FIELD_EXTENSION;
@@ -234,8 +234,24 @@ public:
                     Goldilocks::op_avx(2, vals1, destVals[i][0], destVals[i][FIELD_EXTENSION]);
                     dim = 1;
                 }
+
+                if(dests[i].params.size() == 3) {
+                    if(dim == FIELD_EXTENSION && dests[i].params[2].dim == FIELD_EXTENSION) {
+                        Goldilocks3::op_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][2*FIELD_EXTENSION]);
+                        dim = FIELD_EXTENSION;
+                    } else if(dim == FIELD_EXTENSION && dests[i].params[2].dim == 1) {
+                        Goldilocks3::op_31_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)vals3, destVals[i][2*FIELD_EXTENSION]);
+                        dim = FIELD_EXTENSION;
+                    } else if(dim == 1 && dests[i].params[2].dim == FIELD_EXTENSION) {
+                        Goldilocks3::op_31_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][2*FIELD_EXTENSION], vals1);
+                        dim = FIELD_EXTENSION;
+                    } else {
+                        Goldilocks::op_avx(0, vals1, vals1, destVals[i][2*FIELD_EXTENSION]);
+                        dim = 1;
+                    }
+                }
             } else {
-                zklog.error("Currently only length 1 and 2 are supported");
+                zklog.error("Currently only length 1 and 2 and 3 are supported");
                 exitProcess();
             }
             if(dim == 1) {

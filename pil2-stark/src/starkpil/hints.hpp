@@ -388,16 +388,13 @@ uint64_t setHintField(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Eleme
     return hintFieldVal.id;
 }
 
-void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* dest, uint64_t offset, uint64_t hintId, std::string hintFieldName1, std::string hintFieldName2,  HintFieldOptions& hintOptions1, HintFieldOptions& hintOptions2) {
+void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* dest, uint64_t offset, uint64_t hintId, std::vector<string> hintFieldNames, std::vector<HintFieldOptions> hintFieldOptions) {
     Hint hint = setupCtx.expressionsBin.hints[hintId];
 
     Dest destStruct(dest, offset);
 
-    std::vector<std::string> names = {hintFieldName1,hintFieldName2};
-    std::vector<bool> inverses = {hintOptions1.inverse, hintOptions2.inverse};
-    std::vector<bool> print_expressions = {hintOptions1.print_expression, hintOptions2.print_expression};
-    for(uint64_t i = 0; i < names.size(); ++i) {
-        std::string name = names[i];
+    for(uint64_t i = 0; i < hintFieldNames.size(); ++i) {
+        std::string name = hintFieldNames[i];
         auto hintField = std::find_if(hint.fields.begin(), hint.fields.end(), [name](const HintField& hintField) {
             return hintField.name == name;
         });
@@ -409,17 +406,17 @@ void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* 
             exit(-1);
         }
 
-        if(print_expressions[i]) {
-            printExpressionDebug(setupCtx, hintId, names[i], hintFieldVal);
+        if(hintFieldOptions[i].print_expression) {
+            printExpressionDebug(setupCtx, hintId, hintFieldNames[i], hintFieldVal);
         }
         if(hintFieldVal.operand == opType::cm) {
-            destStruct.addCmPol(setupCtx.starkInfo.cmPolsMap[hintFieldVal.id], hintFieldVal.rowOffsetIndex, inverses[i]);
+            destStruct.addCmPol(setupCtx.starkInfo.cmPolsMap[hintFieldVal.id], hintFieldVal.rowOffsetIndex, hintFieldOptions[i].inverse);
         } else if(hintFieldVal.operand == opType::const_) {
-            destStruct.addConstPol(setupCtx.starkInfo.constPolsMap[hintFieldVal.id], hintFieldVal.rowOffsetIndex, inverses[i]);
+            destStruct.addConstPol(setupCtx.starkInfo.constPolsMap[hintFieldVal.id], hintFieldVal.rowOffsetIndex, hintFieldOptions[i].inverse);
         } else if(hintFieldVal.operand == opType::number) {
-            destStruct.addNumber(hintFieldVal.value, inverses[i]);
+            destStruct.addNumber(hintFieldVal.value, hintFieldOptions[i].inverse);
         } else if(hintFieldVal.operand == opType::tmp) {
-            destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[hintFieldVal.id], inverses[i]);
+            destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[hintFieldVal.id], hintFieldOptions[i].inverse);
         } else {
             zklog.error("Op type " + to_string(hintFieldVal.operand) + "is not considered yet.");
             exitProcess();
@@ -435,8 +432,10 @@ void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* 
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
 
-        expressionsCtx.multiplyExpressions(params, destStruct);
-    }
+    uint64_t domainSize = 1 << setupCtx.starkInfo.starkStruct.nBits;
+    std::vector<Dest> dests = {destStruct};
+    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, {destStruct}, domainSize);
+}
 
 uint64_t multiplyHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldName1, std::string hintFieldName2,  HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2) {
     if(setupCtx.expressionsBin.hints.size() == 0) {
@@ -455,12 +454,12 @@ uint64_t multiplyHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hi
     uint64_t offset = setupCtx.starkInfo.mapSectionsN["cm" + to_string(setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].stage)];
     Goldilocks::Element *buff = &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("cm" + to_string(setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].stage), false)] + setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].stagePos];
     
-    opHintFields(setupCtx, params, buff, offset, hintId, hintFieldName1, hintFieldName2, hintOptions1, hintOptions2);
+    opHintFields(setupCtx, params, buff, offset, hintId, {hintFieldName1, hintFieldName2}, {hintOptions1, hintOptions2});
 
     return hintFieldDestVal.id;
 }
 
-VecU64Result accHintField(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldNameAirgroupVal, std::string hintFieldName) {
+VecU64Result accHintField(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldNameAirgroupVal, std::string hintFieldName, bool add) {
     Hint hint = setupCtx.expressionsBin.hints[hintId];
 
     auto hintFieldDest = std::find_if(hint.fields.begin(), hint.fields.end(), [hintFieldNameDest](const HintField& hintField) {
@@ -473,9 +472,23 @@ VecU64Result accHintField(SetupCtx& setupCtx, StepsParams &params, uint64_t hint
 
     Goldilocks::Element *vals = &hintValues.values[0].values[0];
 
+    uint64_t dim = setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].dim;
+
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
     for(uint64_t i = 1; i < N; ++i) {
-        Goldilocks3::add((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+        if(add) {
+            if(dim == 1) {
+                Goldilocks::add(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::add((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        } else {
+            if(dim == 1) {
+                Goldilocks::mul(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::mul((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        }
     }
 
     VecU64Result hintIds;
@@ -489,7 +502,7 @@ VecU64Result accHintField(SetupCtx& setupCtx, StepsParams &params, uint64_t hint
     return hintIds;
 }
 
-VecU64Result accMulHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldNameAirgroupVal, std::string hintFieldName1, std::string hintFieldName2, HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2) {
+VecU64Result accMulHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldNameAirgroupVal, std::string hintFieldName1, std::string hintFieldName2, HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2, bool add) {
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
 
     Hint hint = setupCtx.expressionsBin.hints[hintId];
@@ -499,12 +512,68 @@ VecU64Result accMulHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t 
     });
     HintFieldValue hintFieldDestVal = hintFieldDest->values[0];
 
-    Goldilocks::Element *vals = new Goldilocks::Element[setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].dim * N];
+    uint64_t dim = setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].dim;
+    Goldilocks::Element *vals = new Goldilocks::Element[dim * N];
     uint64_t offset = 0;
-    opHintFields(setupCtx, params, vals, offset, hintId, hintFieldName1, hintFieldName2, hintOptions1, hintOptions2);
+    opHintFields(setupCtx, params, vals, offset, hintId, {hintFieldName1, hintFieldName2}, {hintOptions1, hintOptions2});
 
     for(uint64_t i = 1; i < N; ++i) {
-        Goldilocks3::mul((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+        if(add) {
+            if(dim == 1) {
+                Goldilocks::add(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::add((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        } else {
+            if(dim == 1) {
+                Goldilocks::mul(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::mul((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        }
+    }
+
+    VecU64Result hintIds;
+    hintIds.nElements = 2;
+    hintIds.ids = new uint64_t[hintIds.nElements];
+    hintIds.ids[0] = setHintField(setupCtx, params, vals, hintId, hintFieldNameDest);
+    hintIds.ids[1] = setHintField(setupCtx, params, &vals[(N - 1)*FIELD_EXTENSION], hintId, hintFieldNameAirgroupVal);
+
+    delete[] vals;
+
+    return hintIds;
+}
+
+VecU64Result accMulAddHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldNameAirgroupVal, std::string hintFieldName1, std::string hintFieldName2, std::string hintFieldName3, HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2, HintFieldOptions &hintOptions3, bool add) {
+    uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
+
+    Hint hint = setupCtx.expressionsBin.hints[hintId];
+
+    auto hintFieldDest = std::find_if(hint.fields.begin(), hint.fields.end(), [hintFieldNameDest](const HintField& hintField) {
+        return hintField.name == hintFieldNameDest;
+    });
+    HintFieldValue hintFieldDestVal = hintFieldDest->values[0];
+
+    uint64_t dim = setupCtx.starkInfo.cmPolsMap[hintFieldDestVal.id].dim;
+
+    Goldilocks::Element *vals = new Goldilocks::Element[dim * N];
+    uint64_t offset = 0;
+    opHintFields(setupCtx, params, vals, offset, hintId, {hintFieldName1, hintFieldName2, hintFieldName3}, {hintOptions1, hintOptions2, hintOptions3});
+
+    for(uint64_t i = 1; i < N; ++i) {
+        if(add) {
+            if(dim == 1) {
+                Goldilocks::add(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::add((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        } else {
+            if(dim == 1) {
+                Goldilocks::mul(vals[i], vals[i], vals[(i - 1)]);
+            } else {
+                Goldilocks3::mul((Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[i * FIELD_EXTENSION], (Goldilocks3::Element &)vals[(i - 1) * FIELD_EXTENSION]);
+            }
+        }
     }
 
     VecU64Result hintIds;

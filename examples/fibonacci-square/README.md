@@ -73,6 +73,8 @@ node ../pil2-proofman-js/src/main_setup.js \
      -t ./pil2-stark/build/bctree
 ```
 
+To run the aggregated proof, need to add -r to the previous command
+
 ### 2.3 Generate PIL Helpers
 
 Generate the corresponding PIL helpers by running the following command:
@@ -123,6 +125,7 @@ node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/prov
 
 ### 2.6 Generate Final Proof
 
+This will only work if setup is generated with -r
 Finally, generate the final proof using the following command:
 
 ```bash
