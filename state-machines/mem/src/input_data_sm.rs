@@ -50,16 +50,18 @@ impl<F: PrimeField> InputDataSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {}
     }
 
-    pub fn prove(&self, mem_accesses: &[MemInput]) {
+    pub fn prove(&self, inputs: &[MemInput]) {
         // Sort the (full) aligned memory accesses
 
         let pctx = self.wcm.get_pctx();
         let ectx = self.wcm.get_ectx();
         let sctx = self.wcm.get_sctx();
 
+        println!("INPUT-DATA: {} inputs", inputs.len());
+
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
 
-        let num_chunks = (mem_accesses.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
+        let num_chunks = (inputs.len() as f64 / (air.num_rows() - 1) as f64).ceil() as usize;
 
         let mut prover_buffers = Mutex::new(vec![Vec::new(); num_chunks]);
         let mut offsets = vec![0; num_chunks];
@@ -82,27 +84,25 @@ impl<F: PrimeField> InputDataSM<F> {
                 global_idxs[i] = global_idx;
             }
         }
-        mem_accesses.par_chunks(air.num_rows() - 1).enumerate().for_each(
-            |(segment_id, mem_ops)| {
-                let mem_first_row = if segment_id == 0 {
-                    mem_accesses.last().unwrap().clone()
-                } else {
-                    mem_accesses[segment_id * ((air.num_rows() - 1) - 1)].clone()
-                };
+        inputs.par_chunks(air.num_rows() - 1).enumerate().for_each(|(segment_id, mem_ops)| {
+            let mem_first_row = if segment_id == 0 {
+                inputs.last().unwrap().clone()
+            } else {
+                inputs[segment_id * ((air.num_rows() - 1) - 1)].clone()
+            };
 
-                let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
+            let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
 
-                self.prove_instance(
-                    mem_ops,
-                    mem_first_row,
-                    segment_id,
-                    segment_id == mem_accesses.len() - 1,
-                    prover_buffer,
-                    offsets[segment_id],
-                    global_idxs[segment_id],
-                );
-            },
-        );
+            self.prove_instance(
+                mem_ops,
+                mem_first_row,
+                segment_id,
+                segment_id == inputs.len() - 1,
+                prover_buffer,
+                offsets[segment_id],
+                global_idxs[segment_id],
+            );
+        });
     }
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
@@ -171,7 +171,7 @@ impl<F: PrimeField> InputDataSM<F> {
 
         let value = mem_first_row.value;
         let (val0, val1, val2, val3) = self.get_u16_values(value);
-        trace[0].value = [
+        trace[0].value_word = [
             F::from_canonical_u16(val0),
             F::from_canonical_u16(val1),
             F::from_canonical_u16(val2),
@@ -199,7 +199,7 @@ impl<F: PrimeField> InputDataSM<F> {
 
             let value = mem_op.value;
             let (val0, val1, val2, val3) = self.get_u16_values(value);
-            trace[i].value = [
+            trace[i].value_word = [
                 F::from_canonical_u16(val0),
                 F::from_canonical_u16(val1),
                 F::from_canonical_u16(val2),
@@ -218,7 +218,6 @@ impl<F: PrimeField> InputDataSM<F> {
         let last_row_idx = mem_ops.len();
         let addr = trace[last_row_idx].addr;
         let mut step = trace[last_row_idx].step;
-        let value = trace[last_row_idx].value;
 
         for i in (mem_ops.len() + 1)..air.num_rows() {
             step += F::one();
@@ -231,8 +230,6 @@ impl<F: PrimeField> InputDataSM<F> {
             trace[i].step = step;
             trace[i].sel = F::zero();
             //trace[i].wr = F::zero();
-
-            trace[i].value = value;
 
             trace[i].addr_changes = F::zero();
             //trace[i].same_value = F::one();
@@ -247,16 +244,16 @@ impl<F: PrimeField> InputDataSM<F> {
             prover_buffer,
         );
 
-        /*air_instance.set_airvalue(
+        air_instance.set_airvalue(
             &sctx,
             "InputData.mem_segment",
             F::from_canonical_u64(segment_id as u64),
         );
         air_instance.set_airvalue(
             &sctx,
-            "ImputData.mem_last_segment",
+            "InputData.mem_last_segment",
             F::from_bool(is_last_segment),
-        );*/
+        );
 
         pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
@@ -275,7 +272,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         self.prove(&mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(0x90000000, 0x90000000 + (1 << 24) - 1)]
+        vec![(INPUT_ADDR as u32, (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32)]
     }
     fn get_flush_input_size(&self) -> u32 {
         self.num_rows as u32

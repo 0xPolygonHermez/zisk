@@ -13,13 +13,13 @@ use proofman_common::AirInstance;
 use rayon::prelude::*;
 
 use sm_common::create_prover_buffer;
-use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomDataTrace, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
-const MEM_INITIAL_ADDRESS: u32 = 0xA0000000;
+const MEM_INITIAL_ADDRESS: u32 = 0x80000000;
 const MEM_FINAL_ADDRESS: u32 = MEM_INITIAL_ADDRESS + 128 * 1024 * 1024;
 const MEMORY_MAX_DIFF: u32 = 0x1000000;
 
-pub struct MemSM<F: PrimeField> {
+pub struct RomDataSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
@@ -31,30 +31,24 @@ pub struct MemSM<F: PrimeField> {
     registered_predecessors: AtomicU32,
 }
 
-enum MemType {
-    Mutable,
-    Immutable,
-    FreeInput,
-}
-
 #[allow(unused, unused_variables)]
-impl<F: PrimeField> MemSM<F> {
+impl<F: PrimeField> RomDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
-        let mem_sm = Self {
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
+        let rom_data_sm = Self {
             wcm: wcm.clone(),
             std,
             num_rows: air.num_rows(),
             registered_predecessors: AtomicU32::new(0),
         };
-        let mem_sm = Arc::new(mem_sm);
+        let rom_data_sm = Arc::new(rom_data_sm);
 
-        wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MEM_AIR_IDS));
+        wcm.register_component(rom_data_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(ROM_DATA_AIR_IDS));
 
-        mem_sm.register_predecessor();
+        rom_data_sm.register_predecessor();
 
-        mem_sm
+        rom_data_sm
     }
 
     pub fn register_predecessor(&self) {
@@ -74,9 +68,8 @@ impl<F: PrimeField> MemSM<F> {
         let ectx = wcm.get_ectx();
         let sctx = wcm.get_sctx();
 
-        println!("MEM: {} inputs", inputs.len());
-
-        let air_mem = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
+        println!("ROM-DATA: {} inputs", inputs.len());
+        let air_mem = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
         let air_mem_rows = air_mem.num_rows();
 
         let inputs_len = inputs.len();
@@ -88,10 +81,10 @@ impl<F: PrimeField> MemSM<F> {
 
         for i in 0..num_chunks {
             if let (true, global_idx) =
-                ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0], 1)
+                ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0], 1)
             {
                 let (buffer, offset) =
-                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
+                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
 
                 prover_buffers.lock().unwrap()[i] = buffer;
                 offsets[i] = offset;
@@ -172,9 +165,12 @@ impl<F: PrimeField> MemSM<F> {
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
         let mut trace =
-            MemTrace::<F>::map_buffer(&mut prover_buffer, air_mem_rows, offset as usize).unwrap();
+            RomDataTrace::<F>::map_buffer(&mut prover_buffer, air_mem_rows, offset as usize)
+                .unwrap();
 
         let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
+
+        // Fill the first row
         const MEM_INITIAL_64_ADDRESS: u32 = MEM_INITIAL_ADDRESS >> 3;
 
         // Fill the first row
@@ -186,13 +182,14 @@ impl<F: PrimeField> MemSM<F> {
         trace[0].addr = F::from_canonical_u32(addr);
         trace[0].step = F::from_canonical_u64(first_mem_op.step);
         trace[0].sel = F::zero();
-        trace[0].wr = F::zero();
 
         let value = first_mem_op.value;
         let (low_val, high_val) = self.get_u32_values(value);
         trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
         trace[0].addr_changes = F::zero();
 
+        // Store the value of incremenet so it can be range checked
+        println!("addr: {:#X}, initial: {:#X}", addr, MEM_INITIAL_64_ADDRESS);
         let increment = addr - MEM_INITIAL_64_ADDRESS + 1;
         trace[0].increment = F::from_canonical_u32(increment);
 
@@ -211,7 +208,6 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].addr = F::from_canonical_u32(mem_addr); // n-byte address, real address = addr * MEM_BYTES
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
-            trace[i].wr = F::from_bool(mem_op.is_write);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
@@ -255,7 +251,6 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].addr = addr;
             trace[i].step = step;
             trace[i].sel = F::zero();
-            trace[i].wr = F::zero();
 
             trace[i].value = value;
 
@@ -286,17 +281,17 @@ impl<F: PrimeField> MemSM<F> {
         let mut air_instance = AirInstance::new(
             sctx.clone(),
             ZISK_AIRGROUP_ID,
-            MEM_AIR_IDS[0],
+            ROM_DATA_AIR_IDS[0],
             Some(segment_id),
             prover_buffer,
         );
 
         air_instance.set_airvalue(
             &sctx,
-            "Mem.mem_segment",
+            "RomData.mem_segment",
             F::from_canonical_u64(segment_id as u64),
         );
-        air_instance.set_airvalue(&sctx, "Mem.mem_last_segment", F::from_bool(is_last_segment));
+        air_instance.set_airvalue(&sctx, "RomData.mem_last_segment", F::from_bool(is_last_segment));
 
         pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
@@ -308,7 +303,7 @@ impl<F: PrimeField> MemSM<F> {
     }
 }
 
-impl<F: PrimeField> MemModule<F> for MemSM<F> {
+impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
     fn send_inputs(&self, mem_op: &[MemInput]) {
         self.prove(&mem_op);
     }
@@ -320,4 +315,4 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for MemSM<F> {}
+impl<F: PrimeField> WitnessComponent<F> for RomDataSM<F> {}

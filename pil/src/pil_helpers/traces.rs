@@ -12,7 +12,15 @@ trace!(RomRow, RomTrace<F> {
 });
 
 trace!(MemRow, MemTrace<F> {
- addr: F, step: F, sel: F, wr: F, value: [F; 2], addr_changes: F, increment: F, same_value: F, first_addr_access_is_read: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+});
+
+trace!(RomDataRow, RomDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], increment: F,
+});
+
+trace!(InputDataRow, InputDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
 });
 
 trace!(MemAlignRow, MemAlignTrace<F> {
@@ -21,10 +29,6 @@ trace!(MemAlignRow, MemAlignTrace<F> {
 
 trace!(MemAlignRomRow, MemAlignRomTrace<F> {
  multiplicity: F,
-});
-
-trace!(InputDataRow, InputDataTrace<F> {
- addr: F, step: F, sel: F, value: [F; 4], addr_changes: F,
 });
 
 trace!(ArithRow, ArithTrace<F> {
@@ -66,3 +70,5 @@ trace!(U8AirRow, U8AirTrace<F> {
 trace!(U16AirRow, U16AirTrace<F> {
  mul: F,
 });
+
+

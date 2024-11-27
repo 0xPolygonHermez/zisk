@@ -1,3 +1,4 @@
+use std::fmt;
 /// Memory section data, including a buffer vector, and start and end addresses
 pub struct MemSection {
     pub start: u64,
@@ -13,6 +14,12 @@ impl Default for MemSection {
     }
 }
 
+impl fmt::Debug for MemSection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.to_text())
+    }
+}
+
 /// Memory section structure implementation
 impl MemSection {
     /// Memory section constructor
@@ -20,7 +27,7 @@ impl MemSection {
         MemSection { start: 0, end: 0, real_end: 0, buffer: Vec::new() }
     }
     pub fn to_text(&self) -> String {
-        let s = format!(
+        format!(
             "start={:x} real_end={:x} end={:x} diff={:x}={} buffer.len={:x}={}",
             self.start,
             self.real_end,
@@ -29,7 +36,6 @@ impl MemSection {
             self.end - self.start,
             self.buffer.len(),
             self.buffer.len()
-        );
-        s
+        )
     }
 }
