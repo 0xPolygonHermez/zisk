@@ -1,14 +1,16 @@
+//! Contains basic structures and functionality used by several other modules: opcodes, instructions
+//! and transpilation
 mod elf2rom;
 mod inst_context;
-mod mem;
-mod mem_section;
+pub mod mem;
 mod riscv2zisk;
 mod utils;
-mod zisk_definitions;
-mod zisk_inst;
+pub mod zisk_definitions;
+pub mod zisk_inst;
 mod zisk_inst_builder;
-mod zisk_required_operation;
-mod zisk_rom;
+pub mod zisk_registers;
+pub mod zisk_required_operation;
+pub mod zisk_rom;
 mod zv2zisk;
 
 pub mod zisk_ops;
@@ -16,12 +18,12 @@ pub mod zisk_ops;
 pub use elf2rom::*;
 pub use inst_context::*;
 pub use mem::*;
-pub use mem_section::*;
 pub use riscv2zisk::*;
 pub use utils::*;
 pub use zisk_definitions::*;
 pub use zisk_inst::*;
 pub use zisk_inst_builder::*;
+pub use zisk_registers::*;
 pub use zisk_required_operation::*;
 pub use zisk_rom::*;
 pub use zv2zisk::*;
