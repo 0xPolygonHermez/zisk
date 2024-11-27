@@ -232,7 +232,13 @@ private function piop_gsum_air(const int blowupFactor = 2) {
     int low_degree_len = 0;
     int high_degree_len = 0;
     for (int i = 0; i < gsum_nargs; i++) {
-        if (degree(gsum_s[i]) > 2 || degree(gsum_e[i]) > 1) { // Discriminator conditions
+        // In the case that both the numerator and the denominator are constants, 
+        // we can directly add them through the direct terms
+        if (degree(gsum_s[i]) == 0 && degree(gsum_e[i]) == 0) {
+            direct_gsum_s[direct_gsum_nargs] = gsum_s[i];
+            direct_gsum_e[direct_gsum_nargs] = gsum_e[i];
+            direct_gsum_nargs++;
+        } else if (degree(gsum_s[i]) > 2 || degree(gsum_e[i]) > 1) { // Discriminator conditions
             high_degree_term[high_degree_len] = i;
             high_degree_len++;
         } else {
@@ -336,7 +342,6 @@ private function piop_gsum_air(const int blowupFactor = 2) {
      We rewrite it as:
           (gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·∏ⱼ (eⱼ + ɣ) - ∑ⱼ sⱼ · ∏ₖ≠ⱼ (eₖ + ɣ)  === 0
     */
-
     expr direct_num = 0;
     expr direct_den = 1;
     for (int i = 0; i < direct_gsum_nargs; i++) {
@@ -344,7 +349,7 @@ private function piop_gsum_air(const int blowupFactor = 2) {
 
         expr _tmp = direct_gsum_s[i];
         for (int j = 0; j < direct_gsum_nargs; j++) {
-            if (j != i) tmp *= (direct_gsum_e[j] + std_gamma);
+            if (j != i) _tmp *= (direct_gsum_e[j] + std_gamma);
         }
         direct_num += _tmp;
     }
@@ -393,11 +398,11 @@ private function piop_gsum_proof() {
     for (int i = 0; i < direct_gsum_nargs; i++) {
         global_den *= (direct_gsum_e[i] + std_gamma);
 
-        expr tmp = direct_gsum_s[i];
+        expr _tmp = direct_gsum_s[i];
         for (int j = 0; j < direct_gsum_nargs; j++) {
-            if (j != i) tmp *= (direct_gsum_e[j] + std_gamma);
+            if (j != i) _tmp *= (direct_gsum_e[j] + std_gamma);
         }
-        global_num += tmp;
+        global_num += _tmp;
     }
 
     gsum * global_den + global_num === 0;
