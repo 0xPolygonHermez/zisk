@@ -1,5 +1,6 @@
 require "std_permutation.pil";
 require "std_lookup.pil";
+require "std_range_check.pil";
 require "std_common.pil";
 
 const int OP_BUS_ID1 = 100;
@@ -46,6 +47,8 @@ airtemplate DirectUpdateLookupAir(const int N = 2**5) {
     airval d[6];
 
     lookup_assumes(OP_BUS_ID2, [OPID2, ...a, ...b, ...c, flag], sel: perform_operation);
+
+    range_check(d[0], 0, 2**21-1);
 
     direct_update_proves(OP_BUS_ID2, [OPID2, ...d, 0]);
 }
