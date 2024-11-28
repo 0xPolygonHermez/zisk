@@ -44,40 +44,40 @@
 //! ## ROM_ENTRY / ROM_ADDR / ROM_EXIT
 //! * The program will start executing at the first BIOS address `ROM_ENTRY`.
 //! * The first instructions do the basic program setup, including writing the input data into
-//! memory, configuring the ecall (system call) program address, and configuring the program
-//! completion return address.  
+//!   memory, configuring the ecall (system call) program address, and configuring the program
+//!   completion return address.
 //! * After the program setup, the program counter jumps to `ROM_ADDR`, executing the actual
-//! program.
+//!   program.
 //! * During the execution, the program can make system calls that will jump to the configured ecall
-//! program address, and return once the task has completed. The precompiled are implemented via
-//! ecall.  
+//!   program address, and return once the task has completed. The precompiled are implemented via
+//!   ecall.
 //! * After the program is completed, the program counter will jump to the configured return
-//!   address,
-//! where the finalization tasks will happen, inluding reading the output data from memory.  
+//!   address, where the finalization tasks will happen, inluding reading the output data from
+//!   memory.
 //! * The address before the last one will jump to `ROM_EXIT`, the last insctruction of the
 //!   execution.
 //! * In general, setup and finalization instructions are located in low addresses, while the actual
-//! program insctuctions are located in high addresses.
+//!   program insctuctions are located in high addresses.
 //!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this
-//! memory region, beginning with `INPUT_ADDR`.  
-//! * After the data has been written by the setup process, this data can only be read by
-//! the program execution, i.e. it becomes a read-only (RO) memory region.
+//!   memory region, beginning with `INPUT_ADDR`.
+//! * After the data has been written by the setup process, this data can only be read by the
+//!   program execution, i.e. it becomes a read-only (RO) memory region.
 //!
 //! ## SYS_ADDR / OUPUT_ADDR / AVAILABLE_MEM_ADDR
 //! * This memory section can be written and read by the program execution many times, i.e. it is a
-//! read-write (RW) memory region.  
+//!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
-//! operation.  
-//! * The lower addresses of this region is used to store 32 registers of 8 bytes each,
-//! i.e. 256 bytes in total.  These registers are the equivalent to the RISC-V registers.  
+//!   operation.
+//! * The lower addresses of this region is used to store 32 registers of 8 bytes each, i.e. 256
+//!   bytes in total.  These registers are the equivalent to the RISC-V registers.
 //! * Any data of exactly 1-byte length written to UART_ADDR will be sent to the standard output of
-//! the system.  
+//!   the system.
 //! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
-//! copy the output data during the program execution.  
+//!   copy the output data during the program execution.
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//! program execution a general purpose memory.
+//!   program execution a general purpose memory.
 
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x90000000;

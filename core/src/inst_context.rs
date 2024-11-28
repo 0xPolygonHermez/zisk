@@ -1,8 +1,8 @@
 //! * Provides a context to execute a set of Zisk instructions.
 //! * The context contains the state of the Zisk processor, modified by the execution of every
-//! instruction.  
+//!   instruction.
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
-//! flag to mark the end of the program execution.
+//!   flag to mark the end of the program execution.
 
 use crate::{Mem, ROM_ENTRY};
 

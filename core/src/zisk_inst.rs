@@ -1,11 +1,11 @@
 //! Zisk instruction
 //!
-//! * A Zisk instruction performs an operation defined by its opcode (u8) over 2 input parameters
-//! a (u64) and b (u64) that gives as a result a dupla of c (u64) and flag (boolean).  
+//! * A Zisk instruction performs an operation defined by its opcode (u8) over 2 input parameters a
+//!   (u64) and b (u64) that gives as a result a dupla of c (u64) and flag (boolean).
 //! * The a and b registers have their corresponding source, a procedure to build their value before
-//! calling the operation function.
+//!   calling the operation function.
 //! * The c register has a store, a procedure to store its value after having called the operation
-//! function.
+//!   function.
 //! * Only one Zisk instruction is executed at every step of the program execution.
 //! * In essence, a Zisk instruction is an execution step such that `(c,flag) = op(a,b)`.
 //!

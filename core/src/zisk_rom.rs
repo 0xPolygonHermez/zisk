@@ -9,41 +9,39 @@
 //! ## Zisk instructions
 //!
 //! * Created by transpiling the RISC-V instructions
-//! * Every RISC-V instruction can generate a different number of Zisk instructions: 1 (in most
-//! of the cases), 2, 3 or 4 (e.g. in instruction containing some atomic operations).
+//! * Every RISC-V instruction can generate a different number of Zisk instructions: 1 (in most of
+//!   the cases), 2, 3 or 4 (e.g. in instruction containing some atomic operations).
 //! * For this reason, Zisk instructions addresses are normally spaced 4 units (e.g. 4096, 4100,
-//! 4104...) leaving room for up to 3 additional Zisk instructions if needed to fulfill the original
-//! RISC-V instruction they represent.
-//! * This way, RISC-V jumps can conveniently be mapped to Zisk jumps by multiplying their
-//! relative offsets by 4.
+//!   4104...) leaving room for up to 3 additional Zisk instructions if needed to fulfill the
+//!   original RISC-V instruction they represent.
+//! * This way, RISC-V jumps can conveniently be mapped to Zisk jumps by multiplying their relative
+//!   offsets by 4.
 //! * The Zisk instructions are stored in a map using the pc as the key
 //!
 //! ## Read-only (RO) data
 //!
 //! * RISC-V programs can contain some data that is required to execute the program, e.g. constants.
-//! * There can be several sections of RO memory-mapped data in the same RISC-V program, so we
-//! need to store a list of them as part of the ROM.
+//! * There can be several sections of RO memory-mapped data in the same RISC-V program, so we need
+//!   to store a list of them as part of the ROM.
 //! * There can be none, one, or several.
 //!
 //! # Fetching instructions
 //!
 //! * During the Zisk program execution, the Zisk Emulator must fetch the Zisk instruction
-//! corresponding to the current pc for every execution step.  
+//!   corresponding to the current pc for every execution step.
 //! * This fetch can be expensive in terms of computational time if done directly using the map.
 //! * For this reason, the original map of instructions is split into 3 different containers that
-//! allow to speed-up the process of finding the Zisk instruction that matches a specific pc
-//! addresss.
+//!   allow to speed-up the process of finding the Zisk instruction that matches a specific pc
+//!   addresss.
 //! * The logic of this fetch procedure can be seen in the method `get_instruction()`.  This method
-//! searches for the Zisk instruction in 3 different containers:
+//!   searches for the Zisk instruction in 3 different containers:
 //!   * If the address is >= `ROM_ADDR`, there can be 2 cases:
 //!     * If the address is alligned to 4 bytes, then get it from the vector `rom_instructions`,
-//!       using
-//! as index `(pc-ROM_ADDR)/4`
+//!       using as index `(pc-ROM_ADDR)/4`
 //!     * If the address is not allgined, then get it from the vector `rom_na_instructions`, using
-//!       as
-//! index `(pc-ROM_ADDR)`
+//!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
-//! index `(pc-ROM_ENTRY)/4`
+//!     index `(pc-ROM_ENTRY)/4`
 use std::collections::HashMap;
 
 use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IND, SRC_STEP};
