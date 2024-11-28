@@ -59,9 +59,7 @@ require "std_lookup.pil"
       0      XOR                0x22     0x22
 */
 
-const int BINARY_ID = 20;
-
-airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) {
+airtemplate Binary(const int N = 2**21, const int operation_bus_id) {
     // Default values
     const int bits = 64;
     const int bytes = bits / 8;
