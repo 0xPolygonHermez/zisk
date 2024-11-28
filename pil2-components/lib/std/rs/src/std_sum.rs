@@ -10,8 +10,8 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    acc_mul_hint_fields, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields,
-    HintFieldOptions, HintFieldOutput,
+    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions,
+    HintFieldOutput,
 };
 
 use crate::{print_debug_info, BusValue, DebugData, Decider, ModeName, StdMode};
