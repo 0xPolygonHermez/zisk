@@ -1,4 +1,5 @@
-require "constants.pil";
+require "std_constants.pil";
+require "std_lookup.pil"
 
 // PIL Binary Operations Table used by Binary
 //                                                                                                     Running Total
@@ -65,7 +66,7 @@ airtemplate BinaryTable(const int N = 2**22, const int disable_fixed = 0) {
                     0x02:P2_18, 0x03:P2_18,                         // ADD,SUB
                     0x06:P2_17, 0x07:P2_17,                         // LEU,LE
                     0x20:P2_17, 0x21:P2_17, 0x22:P2_17,             // AND,OR,XOR
-                    0x23:P2_11]...;                                 // EXT_32
+                    EXT_32_OP:P2_11]...;                            // EXT_32
 
     // NOTE: MINU/MINU_W, MIN/MIN_W, MAXU/MAXU_W, MAX/MAX_W has double size because
     //       the result_is_a is 0 in the first half and 1 in the second half.

@@ -1,4 +1,5 @@
 require "std_lookup.pil"
+require "std_permutation.pil"
 require "std_common.pil"
 
 const int BOOT_ADDR = 0x1000;
