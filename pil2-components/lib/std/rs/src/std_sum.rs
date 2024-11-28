@@ -10,8 +10,8 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, acc_mul_add_hint_fields, HintFieldOptions,
-    HintFieldOutput,
+    acc_mul_hint_fields, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields,
+    HintFieldOptions, HintFieldOutput,
 };
 
 use crate::{print_debug_info, BusValue, DebugData, Decider, ModeName, StdMode};
@@ -257,83 +257,22 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and doing the accumulation in Rust,
                     // TODO: GENERALIZE CALLS
 
-                    let direct_num = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "direct_num",
-                        HintFieldOptions::default(),
-                    );
-                    let direct_den_inv = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "direct_den",
-                        HintFieldOptions::inverse(),
-                    );
-                    let isolated_num = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "isolated_num",
-                        HintFieldOptions::default(),
-                    );
-                    let isolated_den = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "isolated_den",
-                        HintFieldOptions::default(),
-                    );
-                    let isolated_den_inv = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "isolated_den",
-                        HintFieldOptions::inverse(),
-                    );
-                    let sum_ims = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "sum_ims",
-                        HintFieldOptions::default(),
-                    );
-                    let mut gsum = get_hint_field::<F>(
+                    let (pol_id, airgroupvalue_id) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gsum_hint,
                         "reference",
+                        "result",
+                        "numerator",
+                        "denominator",
                         HintFieldOptions::default(),
+                        HintFieldOptions::inverse(),
+                        true,
                     );
-                    gsum.set(
-                        0,
-                        (isolated_den.get(0) * direct_num.get(0) * direct_den_inv.get(0) + isolated_num.get(0))
-                            * isolated_den_inv.get(0)
-                            + sum_ims.get(0),
-                    );
-                    for i in 1..num_rows {
-                        gsum.set(
-                            i,
-                            gsum.get(i - 1)
-                                + (isolated_den.get(i) * direct_num.get(i) * direct_den_inv.get(i)
-                                    + isolated_num.get(i))
-                                    * isolated_den_inv.get(i)
-                                + sum_ims.get(i),
-                        );
-                    }
 
-                    let result = gsum.get(num_rows - 1);
-
-                    set_hint_field::<F>(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
-                    set_hint_field_val::<F>(&sctx, air_instance, gsum_hint as u64, "result", result);
+                    air_instance.set_commit_calculated(pol_id as usize);
+                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }
         }
