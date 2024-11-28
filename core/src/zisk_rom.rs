@@ -85,10 +85,9 @@ pub struct ZiskRom {
     /// List of RO sections as found in the ELF file
     pub ro_data: Vec<RoData>,
 
-    /// The following vectors are to store subsets of the ROM instructions in order to improve the
-    /// program execution performance while fetching the instruction for the current step pc
-    /// address
-
+    // The following vectors are to store subsets of the ROM instructions in order to improve the
+    // program execution performance while fetching the instruction for the current step pc
+    // address
     /// Vector of ROM instructions with address < ROM_ADDR
     pub rom_entry_instructions: Vec<ZiskInst>,
 

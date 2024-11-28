@@ -634,8 +634,8 @@ impl Riscv2ZiskContext<'_> {
         self.s += 4;
     }
 
-    /// RISC-V defines a separate address space of 4096 Control and Status registers associated with
-    /// each hart. All CSR instructions atomically read-modify-write a single CSR,
+    // RISC-V defines a separate address space of 4096 Control and Status registers associated with
+    // each hart. All CSR instructions atomically read-modify-write a single CSR,
 
     /*
     csrrw rd, csr, rs1
@@ -1045,11 +1045,6 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// The CSRRWI, CSRRSI, and CSRRCI variants are similar to CSRRW, CSRRS, and CSRRC respectively,
-    /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
-    /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
-    /// integer register.
-
     /*
     csrrci rd, csr
         {
@@ -1061,6 +1056,10 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     */
+    /// The CSRRWI, CSRRSI, and CSRRCI variants are similar to CSRRW, CSRRS, and CSRRC respectively,
+    /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
+    /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
+    /// integer register.
     pub fn csrrwi(&mut self, i: &RiscvInstruction) {
         if i.rd == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
