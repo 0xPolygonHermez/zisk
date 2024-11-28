@@ -1,3 +1,5 @@
+//! Parses a 32-bits RISC-V instruction
+
 use crate::{RiscvInstruction, Rvd, RvdOperation};
 
 /// Convert 32-bits data chunk that contains a signed integer of a specified size in bits to a
@@ -67,7 +69,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Create a RISCV instruction instance to be filled with data from the instruction and from
         // the RVD info data
-        let mut i = RiscvInstruction::new();
+        let mut i = RiscvInstruction::default();
 
         // Copy the original RISCV 32-bit instruction
         i.rvinst = inst;

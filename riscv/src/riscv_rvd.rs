@@ -1,3 +1,5 @@
+//! RISC-V RVD
+
 use std::collections::HashMap;
 
 /// RVD operation, including a map to store nested operations, if any
