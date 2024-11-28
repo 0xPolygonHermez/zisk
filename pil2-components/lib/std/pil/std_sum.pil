@@ -380,9 +380,11 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         }
         direct_num += _tmp;
     }
-    expr numerator = direct_num*isolated_den + (isolated_num + sum_ims*isolated_den)*direct_den;
-    expr denominator = direct_den * isolated_den;
-    @gsum_col{reference: gsum, numerator: numerator, denominator: denominator, result: airgroup.std.gsum.gsum_result};
+
+    expr hint_den = direct_den * isolated_den;
+    expr hint_num = sum_ims * hint_den + direct_num * isolated_den + isolated_num * direct_den;
+    @gsum_col{reference: gsum, numerator: hint_num, denominator: hint_den, result: airgroup.std.gsum.gsum_result};
+
     ((gsum - 'gsum * (1 - __L1) - sum_ims) * isolated_den - isolated_num) * direct_den - isolated_den * direct_num === 0;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
