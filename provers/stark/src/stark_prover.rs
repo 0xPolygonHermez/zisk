@@ -9,13 +9,12 @@ use std::sync::Arc;
 
 use proofman_common::{
     BufferAllocator, ConstraintInfo, ConstraintsResults, ProofCtx, ProofType, Prover, ProverInfo, ProverStatus,
-    StepsParams, SetupCtx,
+    StepsParams, SetupCtx, StarkInfo,
 };
 use log::{debug, trace};
 use transcript::FFITranscript;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use proofman_starks_lib_c::*;
-use crate::stark_info::StarkInfo;
 use p3_goldilocks::Goldilocks;
 use p3_field::AbstractField;
 use p3_field::Field;
@@ -55,24 +54,18 @@ impl<F: Field> StarkProver<F> {
 
     pub fn new(
         sctx: Arc<SetupCtx<F>>,
-        pctx: Arc<ProofCtx<F>>,
         airgroup_id: usize,
         air_id: usize,
         instance_id: usize,
         prover_idx: usize,
     ) -> Self {
-        let air_setup_path = pctx.global_info.get_air_setup_path(airgroup_id, air_id, &ProofType::Basic);
-
         let setup = sctx.get_setup(airgroup_id, air_id);
 
         let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let p_stark = starks_new_c((&setup.p_setup).into(), const_tree_ptr);
 
-        let stark_info_path = air_setup_path.display().to_string() + ".starkinfo.json";
-        let stark_info_json = std::fs::read_to_string(&stark_info_path)
-            .unwrap_or_else(|_| panic!("Failed to read file {}", &stark_info_path));
-        let stark_info: StarkInfo = StarkInfo::from_json(&stark_info_json);
+        let stark_info = setup.stark_info.clone();
 
         let (n_field_elements, merkle_tree_arity, merkle_tree_custom) =
             if stark_info.stark_struct.verification_hash_type == "BN128" {
@@ -245,8 +238,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
             );
             calculate_quotient_polynomial_c(self.p_stark, (&steps_params).into());
             for i in 0..n_commits {
-                let cm_pol: &crate::stark_info::PolMap =
-                    self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
+                let cm_pol = self.stark_info.cm_pols_map.as_ref().expect("REASON").get(i).unwrap();
                 if cm_pol.stage == (proof_ctx.global_info.n_challenges.len() + 1) as u64 {
                     air_instance.set_commit_calculated(i);
                 }
@@ -934,8 +926,13 @@ impl<F> BufferAllocator<F> for StarkBufferAllocator {
     ) -> Result<(u64, Vec<u64>, u64), Box<dyn Error>> {
         let ps = sctx.get_setup(airgroup_id, air_id);
 
-        let p_stark_info = ps.p_setup.p_stark_info;
-        let commit_id = get_custom_commit_id_c(p_stark_info, name);
-        Ok((get_map_totaln_custom_commits_c(p_stark_info, commit_id), vec![0], commit_id))
+        let commit_id = match ps.stark_info.custom_commits.iter().position(|custom_commit| custom_commit.name == name) {
+            Some(commit_id) => commit_id as u64,
+            None => {
+                eprintln!("Custom commit '{}' not found in custom commits.", name);
+                std::process::exit(1);
+            }
+        };
+        Ok((get_map_totaln_custom_commits_c(ps.p_setup.p_stark_info, commit_id), vec![0], commit_id))
     }
 }

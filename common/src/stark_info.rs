@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Deserializer};
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Boundary {
     #[serde(rename = "name")]
     pub name: String,
@@ -14,14 +14,14 @@ pub struct Boundary {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy)]
 pub struct StepStruct {
     #[serde(rename = "nBits")]
     pub n_bits: u64,
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Debug, Clone)]
 pub struct StarkStruct {
     #[serde(rename = "nBits")]
     pub n_bits: u64,
@@ -78,7 +78,7 @@ impl OpType {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Default, Debug, Clone, Deserialize)]
 pub struct PolMap {
     pub name: String,
     #[serde(default)]
@@ -96,12 +96,12 @@ pub struct PolMap {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy)]
 pub struct PublicValues {
     pub idx: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Debug, Clone)]
 pub struct CustomCommits {
     pub name: String,
     #[serde(default, rename = "stageWidths")]
@@ -111,9 +111,10 @@ pub struct CustomCommits {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Debug, Clone)]
 enum EvMapEType {
     #[serde(rename = "cm")]
+    #[default]
     Cm,
     #[serde(rename = "const")]
     Const,
@@ -130,7 +131,7 @@ where
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Debug, Clone)]
 pub struct EvMap {
     #[serde(rename = "type")]
     type_: EvMapEType,
@@ -140,7 +141,7 @@ pub struct EvMap {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Debug, Clone)]
 pub struct StarkInfo {
     #[serde(rename = "starkStruct")]
     pub stark_struct: StarkStruct,

@@ -22,7 +22,7 @@ mkdir -p ./pil2-components/test/simple/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libsimple.so \
      --proving-key ./pil2-components/test/simple/build/provingKey \
-     --output-dir ./pil2-components/test/simple/build/proofs -d \
+     --output-dir ./pil2-components/test/simple/build/proofs \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/simple/build/provingKey -p ./pil2-components/test/simple/build/proofs
 
 ------------------------------------
@@ -47,7 +47,7 @@ mkdir -p ./pil2-components/test/std/connection/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libconnection.so \
      --proving-key ./pil2-components/test/std/connection/build/provingKey \
-     --output-dir ./pil2-components/test/std/connection/build/proofs -d \
+     --output-dir ./pil2-components/test/std/connection/build/proofs \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/connection/build/provingKey -p ./pil2-components/test/std/connection/build/proofs
 
 ------------------------------------
@@ -72,7 +72,7 @@ mkdir -p ./pil2-components/test/std/lookup/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/liblookup.so \
      --proving-key ./pil2-components/test/std/lookup/build/provingKey \
-     --output-dir ./pil2-components/test/std/lookup/build/proofs -d \
+     --output-dir ./pil2-components/test/std/lookup/build/proofs \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/lookup/build/provingKey -p ./pil2-components/test/std/lookup/build/proofs
 
 ------------------------------------
@@ -97,7 +97,7 @@ mkdir -p ./pil2-components/test/std/permutation/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/libpermutation.so \
      --proving-key ./pil2-components/test/std/permutation/build/provingKey \
-     --output-dir ./pil2-components/test/std/permutation/build/proofs -d \
+     --output-dir ./pil2-components/test/std/permutation/build/proofs \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/permutation/build/provingKey -p ./pil2-components/test/std/permutation/build/proofs
 
 ------------------------------------
@@ -122,5 +122,5 @@ mkdir -p ./pil2-components/test/std/range_check/build/ \
 && cargo run --bin proofman-cli prove \
      --witness-lib ./target/debug/librange_check.so \
      --proving-key ./pil2-components/test/std/range_check/build/provingKey \
-     --output-dir ./pil2-components/test/std/range_check/build/proofs -d \
+     --output-dir ./pil2-components/test/std/range_check/build/proofs \
 && node ../pil2-proofman-js/src/main_verify -k ./pil2-components/test/std/range_check/build/provingKey -p ./pil2-components/test/std/range_check/build/proofs

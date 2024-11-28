@@ -36,20 +36,25 @@ struct Params {
 struct Dest {
     Goldilocks::Element *dest = nullptr;
     uint64_t offset = 0;
+    uint64_t dim = 1;
     std::vector<Params> params;
 
     Dest(Goldilocks::Element *dest_, uint64_t offset_ = false) : dest(dest_), offset(offset_) {}
 
     void addParams(ParserParams& parserParams_, bool inverse_ = false) {
         params.push_back(Params(parserParams_, inverse_));
+        uint64_t dimExp = parserParams_.destDim;
+        dim = std::max(dim, dimExp);
     }
 
     void addCmPol(PolMap& cmPol, uint64_t rowOffsetIndex, bool inverse_ = false) {
         params.push_back(Params(cmPol, rowOffsetIndex, inverse_, true));
+        dim = std::max(dim, cmPol.dim);
     }
 
     void addConstPol(PolMap& constPol, uint64_t rowOffsetIndex, bool inverse_ = false) {
         params.push_back(Params(constPol, rowOffsetIndex, inverse_, false));
+        dim = std::max(dim, constPol.dim);
     }
 
     void addNumber(uint64_t value, bool inverse_ = false) {

@@ -1,27 +1,39 @@
 use std::fmt::Display;
 
+pub const DEFAULT_PRINT_VALS: usize = 10;
+
 // TODO: It would be awesome to be able to filter by other field, like the type of operations
 //       which is in a column distinct from the opid.
 #[derive(Clone)]
 pub struct StdMode {
     pub name: ModeName,
     pub opids: Option<Vec<u64>>,
-    pub vals_to_print: usize,
+    pub n_vals: usize,
 }
 
 impl StdMode {
-    pub const fn new(name: ModeName, opids: Option<Vec<u64>>, vals_to_print: usize) -> Self {
-        if vals_to_print == 0 {
-            panic!("vals_to_print must be greater than 0");
+    pub const fn new(name: ModeName, opids: Option<Vec<u64>>, n_vals: usize) -> Self {
+        if n_vals == 0 {
+            panic!("n_vals must be greater than 0");
         }
 
-        Self { name, opids, vals_to_print }
+        Self { name, opids, n_vals }
+    }
+}
+
+impl From<u8> for StdMode {
+    fn from(v: u8) -> Self {
+        match v {
+            0 => StdMode::new(ModeName::Standard, None, DEFAULT_PRINT_VALS),
+            1 => StdMode::new(ModeName::Debug, None, DEFAULT_PRINT_VALS),
+            _ => panic!("Invalid mode"),
+        }
     }
 }
 
 impl Default for StdMode {
     fn default() -> Self {
-        StdMode::new(ModeName::Standard, None, 10)
+        StdMode::new(ModeName::Standard, None, DEFAULT_PRINT_VALS)
     }
 }
 

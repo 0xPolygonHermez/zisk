@@ -110,8 +110,122 @@ jobs:
         run: cargo install cargo-audit
       - name: cargo audit
         run: cargo audit
-  tests:
-    name: Test fibonacci square && std
+  test-fibo:
+    name: Test Fibonacci Square (with aggregation)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "18"
+      - name: Install npm
+        run: npm install -g npm
+      - name: Check npm version
+        run: npm --version
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install z3-solver
+        run: |
+          python -m pip install z3-solver
+
+      - name: Check out circom
+        uses: actions/checkout@v4
+        with:
+          repository: iden3/circom
+          path: circom-repo
+
+      - name: Build and install Circom
+        working-directory: circom-repo
+        run: |
+          cargo build --release --workspace
+          cargo install --path circom
+
+      - name: Check out pil2-proofman-js
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-proofman-js
+          ref: 0.0.15
+          path: pil2-proofman-js
+
+      - name: Install pil2-proofman-js dependencies
+        working-directory: pil2-proofman-js
+        run: npm install
+
+      - name: Check out pil2-compiler
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-compiler
+          ref: feature/custom-cols
+          path: pil2-compiler
+
+      - name: Install pil2-compiler dependencies
+        working-directory: pil2-compiler
+        run: npm install
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
+
+      - name: Install pil2-stark
+        working-directory: pil2-stark
+        run: |
+          git submodule update --init --recursive
+          make clean
+          make starks_lib -j
+          make -j bctree
+
+      - name: Modify Cargo.toml std
+        run: |
+          sed -i 's/# *"pil2-components\/lib\/std\/rs"/"pil2-components\/lib\/std\/rs"/' ./Cargo.toml
+          
+      - name: Modify Cargo.toml Fibonacci Square
+        run: |
+          sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
+
+      - name: Compile PIL Fibonacci Square
+        run: |
+          node pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil -I ./pil2-components/lib/std/pil -o ./examples/fibonacci-square/pil/build.pilout
+
+      - name: Generate setup Fibonacci Square
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./examples/fibonacci-square/pil/build.pilout -b ./examples/fibonacci-square/build -t pil2-stark/build/bctree -r
+
+      - name: Generate PIL Helpers Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
+
+      - name: Cargo build
+        run: RUST_BACKTRACE=1 cargo build -v
+
+      - name: Verify constraints Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json
+
+      - name: Generate proof Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs -a
+
+      - name: Verify proof Fibonacci Square
+        run: |
+          node pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey -p examples/fibonacci-square/build/proofs -f
+  test-std:
+    name: Test STD
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -146,8 +260,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/pil2-proofman-js
-          token: ${{ secrets.ZISK_CI_TOKEN }}
-          ref: 0.0.14
+          ref: 0.0.15
           path: pil2-proofman-js
 
       - name: Install pil2-proofman-js dependencies
@@ -158,7 +271,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/pil2-compiler
-          token: ${{ secrets.GITHUB_TOKEN }}
           ref: feature/custom-cols
           path: pil2-compiler
 
@@ -203,22 +315,6 @@ jobs:
       - name: Modify Cargo.toml std simple
         run: |
           sed -i 's/# *"pil2-components\/test\/simple\/rs"/"pil2-components\/test\/simple\/rs"/' ./Cargo.toml
-
-      - name: Modify Cargo.toml Fibonacci Square
-        run: |
-          sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
-
-      - name: Compile PIL Fibonacci Square
-        run: |
-          node pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil -I ./pil2-components/lib/std/pil -o ./examples/fibonacci-square/pil/build.pilout
-
-      - name: Generate setup Fibonacci Square
-        run: |
-          node pil2-proofman-js/src/main_setup.js -a ./examples/fibonacci-square/pil/build.pilout -b ./examples/fibonacci-square/build -t pil2-stark/build/bctree
-
-      - name: Generate PIL Helpers Fibonacci Square
-        run: |
-          cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
 
       - name: Create dir build lookup
         run: |
@@ -303,25 +399,13 @@ jobs:
       - name: Cargo build
         run: RUST_BACKTRACE=1 cargo build -v
 
-      - name: Verify constraints Fibonacci Square
-        run: |
-          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json
-
-      - name: Generate proof Fibonacci Square
-        run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs -d
-
-      - name: Verify proof Fibonacci Square
-        run: |
-          node pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey -p examples/fibonacci-square/build/proofs
-
       - name: Verify constraints Lookup
         run: |
           cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey
 
       - name: Generate proof Lookup
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey --output-dir ./pil2-components/test/std/lookup/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey --output-dir ./pil2-components/test/std/lookup/build
 
       - name: Verify proof Lookup
         run: |
@@ -333,7 +417,7 @@ jobs:
 
       - name: Generate proof permutation
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey --output-dir ./pil2-components/test/std/permutation/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey --output-dir ./pil2-components/test/std/permutation/build
 
       - name: Verify proof permutation
         run: |
@@ -345,7 +429,7 @@ jobs:
 
       - name: Generate proof connection
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey --output-dir ./pil2-components/test/std/connection/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey --output-dir ./pil2-components/test/std/connection/build
 
       - name: Verify proof connection
         run: |
@@ -357,7 +441,7 @@ jobs:
 
       - name: Generate proof range-check
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey --output-dir ./pil2-components/test/std/range_check/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey --output-dir ./pil2-components/test/std/range_check/build
 
       - name: Verify proof range-check
         run: |
@@ -369,7 +453,7 @@ jobs:
 
       - name: Generate proof simple
         run: |
-          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey --output-dir ./pil2-components/test/simple/build -d
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey --output-dir ./pil2-components/test/simple/build
 
       - name: Verify proof simple
         run: |

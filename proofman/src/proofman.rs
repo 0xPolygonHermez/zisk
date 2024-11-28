@@ -59,6 +59,7 @@ impl<F: Field + 'static> ProofMan<F> {
             .with_cached_buffers_path(cached_buffers_paths.clone())
             .with_buffer_allocator(buffer_allocator)
             .with_verbose_mode(options.verbose_mode)
+            .with_std_mode(options.std_mode)
             .build();
         let ectx = Arc::new(ectx);
         // Load the witness computation dynamic library
@@ -307,7 +308,6 @@ impl<F: Field + 'static> ProofMan<F> {
             log::debug!("{}: Initializing prover for air instance {}", Self::MY_NAME, air_name);
             let prover = Box::new(StarkProver::new(
                 sctx.clone(),
-                pctx.clone(),
                 air_instance.airgroup_id,
                 air_instance.air_id,
                 air_instance.air_instance_id.unwrap(),

@@ -38,12 +38,11 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         }
 
         for (i, (val, data)) in overassumed_values.iter_mut().enumerate() {
-            print_diffs(val, max_values_to_print, data.num_assumes, data.num_proves, &mut data.row_assumes, false);
-
             if i == max_values_to_print {
                 println!("\t      ...");
                 break;
             }
+            print_diffs(val, max_values_to_print, data.num_assumes, data.num_proves, &mut data.row_assumes, false);
         }
 
         if len_overassumed > 0 {
@@ -60,12 +59,11 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         }
 
         for (i, (val, data)) in overproven_values.iter_mut().enumerate() {
-            print_diffs(val, max_values_to_print, data.num_proves, data.num_assumes, &mut data.row_proves, true);
-
             if i == max_values_to_print {
                 println!("\t      ...");
                 break;
             }
+            print_diffs(val, max_values_to_print, data.num_proves, data.num_assumes, &mut data.row_proves, true);
         }
 
         if len_overproven > 0 {

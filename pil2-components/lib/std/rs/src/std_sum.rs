@@ -8,13 +8,13 @@ use p3_field::PrimeField;
 use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx, StdMode, ModeName};
 use proofman_hints::{
     acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions,
     HintFieldOutput,
 };
 
-use crate::{print_debug_info, BusValue, DebugData, Decider, ModeName, StdMode};
+use crate::{print_debug_info, BusValue, DebugData, Decider};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
 
@@ -280,7 +280,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
     fn end_proof(&self) {
         if self.mode.name == ModeName::Debug {
             let name = Self::MY_NAME;
-            let max_values_to_print = self.mode.vals_to_print;
+            let max_values_to_print = self.mode.n_vals;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
             print_debug_info(name, max_values_to_print, debug_data);
         }

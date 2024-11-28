@@ -10,9 +10,11 @@ mod prover;
 mod extended_field;
 mod setup;
 mod setup_ctx;
+mod std_mode;
 mod custom_commits;
 pub mod trace;
 pub mod global_info;
+pub mod stark_info;
 
 pub use air_instance::*;
 pub use air_instances_repository::*;
@@ -29,6 +31,8 @@ pub use global_info::*;
 pub use setup::*;
 pub use setup_ctx::*;
 pub use custom_commits::*;
+pub use stark_info::*;
+pub use std_mode::*;
 
 pub fn initialize_logger(verbose_mode: VerboseMode) {
     env_logger::builder()

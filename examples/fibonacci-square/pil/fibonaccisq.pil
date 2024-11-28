@@ -20,8 +20,7 @@ on final proof checkProofValues();
 airtemplate FibonacciSquare(const int N = 2**8) {
     commit stage(0) public(rom_root) rom;
 
-    airval fibo1;
-    airval fibo2;
+    airval fibo1[2];
     airval stage(2) fibo3;
 
     col fixed L1 = [1,0...];
@@ -37,7 +36,7 @@ airtemplate FibonacciSquare(const int N = 2**8) {
 
     (a' - b) * (1 - L1') === 0;
 
-    2*fibo1 - fibo2 === 0;
+    2*fibo1[0] - fibo1[1] === 0;
 
     line - (flags + 1) === 0;
 

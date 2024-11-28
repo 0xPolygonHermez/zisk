@@ -98,9 +98,9 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
 
         let mut air_instance =
             AirInstance::new(sctx.clone(), FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], Some(0), buffer);
-        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", F::from_canonical_u64(1));
-        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo2", F::from_canonical_u64(2));
-        air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", vec![F::from_canonical_u64(5); 3]);
+        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", Some(vec![0]), F::from_canonical_u64(1));
+        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", Some(vec![1]), F::from_canonical_u64(2));
+        air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", None, vec![F::from_canonical_u64(5); 3]);
         match ectx.cached_buffers_path.as_ref().and_then(|cached_buffers| cached_buffers.get("rom").cloned()) {
             Some(buffer_path) => air_instance.set_custom_commit_cached_file(&sctx, commit_id, buffer_path),
             None => air_instance.set_custom_commit_id_buffer(&sctx, buffer_rom, commit_id),

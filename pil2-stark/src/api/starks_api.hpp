@@ -25,18 +25,9 @@
     // Stark Info
     // ========================================================================================
     void *stark_info_new(char* filename);
-    uint64_t get_stark_info_n(void *pStarkInfo);
-    uint64_t get_stark_info_n_publics(void *pStarkInfo);
     uint64_t get_map_total_n(void *pStarkInfo);
-    uint64_t get_custom_commit_id(void *pStarkInfo, char* name);
     uint64_t get_map_total_n_custom_commits(void *pStarkInfo, uint64_t commit_id);
     uint64_t get_map_offsets(void *pStarkInfo, char *stage, bool flag);
-    uint64_t get_n_airvals(void *pStarkInfo);
-    uint64_t get_n_airgroupvals(void *pStarkInfo);
-    uint64_t get_n_evals(void *pStarkInfo);
-    uint64_t get_n_custom_commits(void *pStarkInfo);
-    int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName);
-    int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airValueName);
     void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t stage);
     void stark_info_free(void *pStarkInfo);
 
@@ -64,7 +55,6 @@
     uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2); 
     void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName, bool add);
     void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2,  void* hintOptions1, void *hintOptions2, bool add);
-    void *acc_mul_add_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, char *hintFieldName3, void* hintOptions1, void *hintOptions2, void *hintOptions3, bool add);
     uint64_t set_hint_field(void *pSetupCtx, void* stepsParams, void *values, uint64_t hintId, char* hintFieldName);
 
     // Starks

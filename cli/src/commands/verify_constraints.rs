@@ -1,7 +1,7 @@
 // extern crate env_logger;
 use clap::Parser;
 use std::collections::HashMap;
-use proofman_common::{initialize_logger, parse_cached_buffers};
+use proofman_common::{initialize_logger, parse_cached_buffers, StdMode, DEFAULT_PRINT_VALS};
 use std::path::PathBuf;
 use colored::Colorize;
 use crate::commands::field::Field;
@@ -43,6 +43,15 @@ pub struct VerifyConstraintsCmd {
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'd', long, action = clap::ArgAction::Count)]
+    pub debug: u8,
+
+    #[clap(long)]
+    pub print: Option<usize>,
+
+    #[clap(long, action = clap::ArgAction::Append)]
+    pub opids: Option<Vec<String>>,
 }
 
 impl VerifyConstraintsCmd {
@@ -52,6 +61,24 @@ impl VerifyConstraintsCmd {
 
         initialize_logger(self.verbose.into());
 
+        let std_mode: StdMode = if self.debug == 1 {
+            let op_ids = self.opids.as_ref().map(|ids| {
+                ids.iter()
+                    .flat_map(|id| {
+                        id.split(',')
+                            .map(|s| s.trim()) // Trim any surrounding whitespace
+                            .filter_map(|s| s.parse::<u64>().ok()) // Try parsing as u64
+                            .collect::<Vec<u64>>() // Collect into a Vec<u64>
+                    })
+                    .collect::<Vec<u64>>() // Collect the entire iterator into a Vec<u64>
+            });
+
+            let n_values = self.print.unwrap_or(DEFAULT_PRINT_VALS);
+            StdMode::new(proofman_common::ModeName::Debug, op_ids, n_values)
+        } else {
+            self.debug.into()
+        };
+
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
                 self.witness_lib.clone(),
@@ -60,7 +87,7 @@ impl VerifyConstraintsCmd {
                 self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                ProofOptions::new(true, self.verbose.into(), false, false),
+                ProofOptions::new(true, self.verbose.into(), std_mode, false),
             )?,
         };
 

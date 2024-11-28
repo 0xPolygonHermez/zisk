@@ -160,59 +160,10 @@ uint64_t get_map_total_n(void *pStarkInfo)
     return ((StarkInfo *)pStarkInfo)->mapTotalN;
 }
 
-uint64_t get_custom_commit_id(void *pStarkInfo, char* name) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-
-    auto commitId = std::find_if(starkInfo.customCommits.begin(), starkInfo.customCommits.end(), [name](const CustomCommits& customCommit) {
-        return customCommit.name == string(name);
-    });
-
-    if(commitId == starkInfo.customCommits.end()) {
-        zklog.error("Custom commit " + string(name) + " not found in custom commits.");
-        exitProcess();
-        exit(-1);
-    }
-
-    return std::distance(starkInfo.customCommits.begin(), commitId);
-};
-
 uint64_t get_map_total_n_custom_commits(void *pStarkInfo, uint64_t commit_id) {
     auto starkInfo = *(StarkInfo *)pStarkInfo;
     return starkInfo.mapTotalNcustomCommits[starkInfo.customCommits[commit_id].name];
 }
-
-uint64_t get_n_airvals(void *pStarkInfo) {
-    return ((StarkInfo *)pStarkInfo)->airValuesMap.size();
-}
-
-uint64_t get_n_airgroupvals(void *pStarkInfo) {
-    return ((StarkInfo *)pStarkInfo)->airgroupValuesMap.size();
-}
-
-uint64_t get_n_evals(void *pStarkInfo) {
-    return ((StarkInfo *)pStarkInfo)->evMap.size();
-}
-
-uint64_t get_n_custom_commits(void *pStarkInfo) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-    return starkInfo.customCommitsMap.size();
-}
-
-int64_t get_airvalue_id_by_name(void *pStarkInfo, char* airValueName) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-    for(uint64_t i = 0; i < starkInfo.airValuesMap.size(); ++i) {
-        if(starkInfo.airValuesMap[i].name == string(airValueName)) return i;
-    }
-    return -1;
-}
-
-int64_t get_airgroupvalue_id_by_name(void *pStarkInfo, char* airgroupValueName) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-    for(uint64_t i = 0; i < starkInfo.airgroupValuesMap.size(); ++i) {
-        if(starkInfo.airgroupValuesMap[i].name == string(airgroupValueName)) return i;
-    }
-    return -1;
-};
 
 void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t stage) {
     auto starkInfo = *(StarkInfo *)pStarkInfo;
@@ -226,15 +177,6 @@ void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t s
         }
     }
     return new VecU64Result(customCommitIds);
-}
-
-uint64_t get_stark_info_n(void *pStarkInfo) {
-    uint64_t N = 1 << ((StarkInfo *)pStarkInfo)->starkStruct.nBits;
-    return N;
-}
-
-uint64_t get_stark_info_n_publics(void *pStarkInfo) {
-    return ((StarkInfo *)pStarkInfo)->nPublics;
 }
 
 uint64_t get_map_offsets(void *pStarkInfo, char *stage, bool flag)
@@ -323,10 +265,6 @@ void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *
 
 void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
     return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add));
-}
-
-void *acc_mul_add_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, char *hintFieldName3, void* hintOptions1, void *hintOptions2, void *hintOptions3, bool add) {
-    return new VecU64Result(accMulAddHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2), string(hintFieldName3),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, *(HintFieldOptions *)hintOptions3, add));
 }
 
 

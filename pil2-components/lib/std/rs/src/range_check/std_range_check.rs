@@ -8,11 +8,11 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx, StdMode, ModeName};
 use proofman_hints::{get_hint_field_constant, get_hint_ids_by_name, HintFieldOptions, HintFieldValue};
 use rayon::Scope;
 
-use crate::{Decider, Range, SpecifiedRanges, StdMode, ModeName, U16Air, U8Air};
+use crate::{Decider, Range, SpecifiedRanges, U16Air, U8Air};
 
 const BYTE: u8 = 255;
 const TWOBYTES: u16 = 65535;

@@ -80,24 +80,10 @@ extern "C" {
     pub fn stark_info_new(filename: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z16get_stark_info_nPv"]
-    pub fn get_stark_info_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z24get_stark_info_n_publicsPv"]
-    pub fn get_stark_info_n_publics(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
     #[link_name = "\u{1}_Z15get_map_total_nPv"]
     pub fn get_map_total_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
 }
-extern "C" {
-    #[link_name = "\u{1}_Z20get_custom_commit_idPvPc"]
-    pub fn get_custom_commit_id(
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        name: *mut ::std::os::raw::c_char,
-    ) -> u64;
-}
+
 extern "C" {
     #[link_name = "\u{1}_Z30get_map_total_n_custom_commitsPvm"]
     pub fn get_map_total_n_custom_commits(
@@ -113,36 +99,7 @@ extern "C" {
         flag: bool,
     ) -> u64;
 }
-extern "C" {
-    #[link_name = "\u{1}_Z13get_n_airvalsPv"]
-    pub fn get_n_airvals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z18get_n_airgroupvalsPv"]
-    pub fn get_n_airgroupvals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z11get_n_evalsPv"]
-    pub fn get_n_evals(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z20get_n_custom_commitsPv"]
-    pub fn get_n_custom_commits(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z23get_airvalue_id_by_namePvPc"]
-    pub fn get_airvalue_id_by_name(
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        airValueName: *mut ::std::os::raw::c_char,
-    ) -> i64;
-}
-extern "C" {
-    #[link_name = "\u{1}_Z28get_airgroupvalue_id_by_namePvPc"]
-    pub fn get_airgroupvalue_id_by_name(
-        pStarkInfo: *mut ::std::os::raw::c_void,
-        airValueName: *mut ::std::os::raw::c_char,
-    ) -> i64;
-}
+
 extern "C" {
     #[link_name = "\u{1}_Z25get_custom_commit_map_idsPvmm"]
     pub fn get_custom_commit_map_ids(
@@ -259,23 +216,7 @@ extern "C" {
         add: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
-extern "C" {
-    #[link_name = "\u{1}_Z23acc_mul_add_hint_fieldsPvS_mPcS0_S0_S0_S0_S_S_S_b"]
-    pub fn acc_mul_add_hint_fields(
-        pSetupCtx: *mut ::std::os::raw::c_void,
-        stepsParams: *mut ::std::os::raw::c_void,
-        hintId: u64,
-        hintFieldNameDest: *mut ::std::os::raw::c_char,
-        hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
-        hintFieldName1: *mut ::std::os::raw::c_char,
-        hintFieldName2: *mut ::std::os::raw::c_char,
-        hintFieldName3: *mut ::std::os::raw::c_char,
-        hintOptions1: *mut ::std::os::raw::c_void,
-        hintOptions2: *mut ::std::os::raw::c_void,
-        hintOptions3: *mut ::std::os::raw::c_void,
-        add: bool,
-    ) -> *mut ::std::os::raw::c_void;
-}
+
 extern "C" {
     #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
     pub fn set_hint_field(

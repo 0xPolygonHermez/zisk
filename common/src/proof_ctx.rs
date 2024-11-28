@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use p3_field::Field;
 
-use crate::{AirInstancesRepository, GlobalInfo, VerboseMode, WitnessPilout};
+use crate::{AirInstancesRepository, GlobalInfo, StdMode, VerboseMode, WitnessPilout};
 
 pub struct PublicInputs {
     pub inputs: RwLock<Vec<u8>>,
@@ -60,13 +60,13 @@ impl<F> Default for BuffHelper<F> {
 pub struct ProofOptions {
     pub verify_constraints: bool,
     pub verbose_mode: VerboseMode,
+    pub std_mode: StdMode,
     pub aggregation: bool,
-    pub verify_proof: bool,
 }
 
 impl ProofOptions {
-    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, aggregation: bool, verify_proof: bool) -> Self {
-        Self { verify_constraints, verbose_mode, aggregation, verify_proof }
+    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, std_mode: StdMode, aggregation: bool) -> Self {
+        Self { verify_constraints, verbose_mode, std_mode, aggregation }
     }
 }
 

@@ -191,61 +191,34 @@ public:
         }
     }
 
+    inline void multiplyPolynomials(Dest &dest, Goldilocks::Element* destVals) {
+        if(dest.dim == 1) {
+            Goldilocks::op_pack(nrowsPack, 2, &destVals[0], &destVals[0], &destVals[FIELD_EXTENSION*nrowsPack]);
+        } else {
+            Goldilocks::Element vals[FIELD_EXTENSION*nrowsPack];
+            if(dest.params[0].dim == FIELD_EXTENSION && dest.params[1].dim == FIELD_EXTENSION) {
+                Goldilocks3::op_pack(nrowsPack, 2, &vals[0], &destVals[0], &destVals[FIELD_EXTENSION*nrowsPack]);
+            } else if(dest.params[0].dim == FIELD_EXTENSION && dest.params[1].dim == 1) {
+                Goldilocks3::op_31_pack(nrowsPack, 2, &vals[0], &destVals[0], &destVals[FIELD_EXTENSION*nrowsPack]);
+            } else {
+                Goldilocks3::op_31_pack(nrowsPack, 2, &vals[0], &destVals[FIELD_EXTENSION*nrowsPack], &destVals[0]);
+            } 
+            Goldilocks::copy_pack(nrowsPack, &destVals[0], &vals[0]);
+            Goldilocks::copy_pack(nrowsPack, &destVals[nrowsPack], &vals[nrowsPack]);
+            Goldilocks::copy_pack(nrowsPack, &destVals[2*nrowsPack], &vals[2*nrowsPack]);
+        }
+    }
+
     inline void storePolynomial(std::vector<Dest> dests, Goldilocks::Element** destVals, uint64_t row) {
         for(uint64_t i = 0; i < dests.size(); ++i) {
-            Goldilocks::Element vals[FIELD_EXTENSION*nrowsPack];
-            uint64_t dim = 1;
-            if(dests[i].params.size() == 1) {
-                dim = dests[i].params[0].dim;
-                if(dim == 1) {
-                    Goldilocks::copy_pack(nrowsPack, &vals[0], &destVals[i][0]);
-                } else {
-                    Goldilocks::copy_pack(nrowsPack, &vals[0], &destVals[i][0]);
-                    Goldilocks::copy_pack(nrowsPack, &vals[nrowsPack], &destVals[i][nrowsPack]);
-                    Goldilocks::copy_pack(nrowsPack, &vals[2*nrowsPack], &destVals[i][2*nrowsPack]);
-                }
-            } else if(dests[i].params.size() == 2 || dests[i].params.size() == 3) {
-                if(dests[i].params[0].dim == FIELD_EXTENSION && dests[i].params[1].dim == FIELD_EXTENSION) {
-                    Goldilocks3::op_pack(nrowsPack, 2, &vals[0], &destVals[i][0], &destVals[i][FIELD_EXTENSION*nrowsPack]);
-                    dim = FIELD_EXTENSION;
-                } else if(dests[i].params[0].dim == FIELD_EXTENSION && dests[i].params[1].dim == 1) {
-                    Goldilocks3::op_31_pack(nrowsPack, 2, &vals[0], &destVals[i][0], &destVals[i][FIELD_EXTENSION*nrowsPack]);
-                    dim = FIELD_EXTENSION;
-                } else if(dests[i].params[0].dim == 1 && dests[i].params[1].dim == FIELD_EXTENSION) {
-                    Goldilocks3::op_31_pack(nrowsPack, 2, &vals[0], &destVals[i][FIELD_EXTENSION*nrowsPack], &destVals[i][0]);
-                    dim = FIELD_EXTENSION;
-                } else {
-                    Goldilocks::op_pack(nrowsPack, 2, &vals[0], &destVals[i][0], &destVals[i][FIELD_EXTENSION*nrowsPack]);
-                    dim = 1;
-                }
-
-                if(dests[i].params.size() == 3) {
-                    if(dim == FIELD_EXTENSION && dests[i].params[2].dim == FIELD_EXTENSION) {
-                        Goldilocks3::op_pack(nrowsPack, 0, &vals[0], &vals[0], &destVals[i][2*FIELD_EXTENSION*nrowsPack]);
-                        dim = FIELD_EXTENSION;
-                    } else if(dim == FIELD_EXTENSION && dests[i].params[2].dim == 1) {
-                        Goldilocks3::op_31_pack(nrowsPack, 0, &vals[0], &vals[0], &destVals[i][2*FIELD_EXTENSION*nrowsPack]);
-                        dim = FIELD_EXTENSION;
-                    } else if(dim == 1 && dests[i].params[2].dim == FIELD_EXTENSION) {
-                        Goldilocks3::op_31_pack(nrowsPack, 0, &vals[0], &destVals[i][2*FIELD_EXTENSION*nrowsPack], &vals[0]);
-                        dim = FIELD_EXTENSION;
-                    } else {
-                        Goldilocks::op_pack(nrowsPack, 0, &vals[0], &vals[0], &destVals[i][2*FIELD_EXTENSION*nrowsPack]);
-                        dim = 1;
-                    }
-                }
-            } else {
-                zklog.error("Currently only length 1 and 2 and 3 are supported");
-                exitProcess();
-            }
-            if(dim == 1) {
+            if(dests[i].dim == 1) {
                 uint64_t offset = dests[i].offset != 0 ? dests[i].offset : 1;
-                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset], uint64_t(offset), &vals[0]);
+                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset], uint64_t(offset), &destVals[i][0]);
             } else {
                 uint64_t offset = dests[i].offset != 0 ? dests[i].offset : FIELD_EXTENSION;
-                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset], uint64_t(offset), &vals[0]);
-                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset + 1], uint64_t(offset), &vals[nrowsPack]);
-                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset + 2], uint64_t(offset), &vals[2*nrowsPack]);
+                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset], uint64_t(offset), &destVals[i][0]);
+                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset + 1], uint64_t(offset), &destVals[i][nrowsPack]);
+                Goldilocks::copy_pack(nrowsPack, &dests[i].dest[row*offset + 2], uint64_t(offset), &destVals[i][2*nrowsPack]);
             }
         }
     }
@@ -819,6 +792,10 @@ public:
                     } else {
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].parserParams.destDim, &tmp3[dests[j].params[k].parserParams.destId*FIELD_EXTENSION*nrowsPack]);
                     }
+                }
+
+                if(dests[j].params.size() == 2) {
+                    multiplyPolynomials(dests[j], destVals[j]);
                 }
             }
             storePolynomial(dests, destVals, i);

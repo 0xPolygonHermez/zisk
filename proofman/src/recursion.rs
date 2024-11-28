@@ -8,7 +8,7 @@ use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::io::Read;
 
-use proofman_common::{ExecutionCtx, ProofCtx, ProofType, SetupCtx};
+use proofman_common::{ExecutionCtx, ProofCtx, ProofType, Setup, SetupCtx};
 
 use std::os::raw::{c_void, c_char};
 
@@ -52,8 +52,6 @@ pub fn generate_recursion_proof<F: Field>(
                     let air_instance_name = &pctx.global_info.airs[air_instance.airgroup_id][air_instance.air_id].name;
 
                     let setup = sctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
-                    let p_setup: *mut c_void = (&setup.p_setup).into();
-                    let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
 
                     let zkin = if *proof_type == ProofType::Recursive1 {
                         let recursive2_verkey = pctx
@@ -71,7 +69,7 @@ pub fn generate_recursion_proof<F: Field>(
                         pctx,
                         air_instance.airgroup_id,
                         air_instance.air_id,
-                        p_stark_info,
+                        setup,
                         zkin,
                         proof_type,
                         18,
@@ -111,7 +109,7 @@ pub fn generate_recursion_proof<F: Field>(
                     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
                     let p_prove = gen_recursive_proof_c(
-                        p_setup,
+                        (&setup.p_setup).into(),
                         p_address,
                         const_pols_ptr,
                         const_tree_ptr,
@@ -181,7 +179,6 @@ pub fn generate_recursion_proof<F: Field>(
                                     panic!("Recursive2 proof is missing");
                                 }
                                 let setup = sctx.get_setup(airgroup, 0);
-                                let p_setup: *mut c_void = (&setup.p_setup).into();
                                 let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
 
                                 let public_inputs_guard = pctx.public_inputs.inputs.read().unwrap();
@@ -213,7 +210,7 @@ pub fn generate_recursion_proof<F: Field>(
                                     pctx,
                                     airgroup,
                                     0,
-                                    p_stark_info,
+                                    setup,
                                     zkin_recursive2_updated,
                                     proof_type,
                                     18,
@@ -246,7 +243,7 @@ pub fn generate_recursion_proof<F: Field>(
                                 let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
                                 let zkin = gen_recursive_proof_c(
-                                    p_setup,
+                                    (&setup.p_setup).into(),
                                     p_address,
                                     const_pols_ptr,
                                     const_tree_ptr,
@@ -315,10 +312,8 @@ pub fn generate_recursion_proof<F: Field>(
         }
         ProofType::Final => {
             let setup = sctx.get_setup(0, 0);
-            let p_setup: *mut c_void = (&setup.p_setup).into();
-            let p_stark_info: *mut c_void = setup.p_setup.p_stark_info;
 
-            let (buffer, publics) = generate_witness(pctx, 0, 0, p_stark_info, proofs[0], proof_type, 18)?;
+            let (buffer, publics) = generate_witness(pctx, 0, 0, setup, proofs[0], proof_type, 18)?;
             let p_address = buffer.as_ptr() as *mut c_void;
             let p_publics = publics.as_ptr() as *mut c_void;
 
@@ -328,7 +323,7 @@ pub fn generate_recursion_proof<F: Field>(
             let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
             let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
             let _p_prove = gen_recursive_proof_c(
-                p_setup,
+                (&setup.p_setup).into(),
                 p_address,
                 const_pols_ptr,
                 const_tree_ptr,
@@ -353,7 +348,7 @@ fn generate_witness<F: Field>(
     pctx: &ProofCtx<F>,
     airgroup_id: usize,
     air_id: usize,
-    p_stark_info: *mut c_void,
+    setup: &Setup<F>,
     zkin: *mut c_void,
     proof_type: &ProofType,
     n_cols: usize,
@@ -361,14 +356,16 @@ fn generate_witness<F: Field>(
     // Load the symbol (function) from the library
     timer_start_trace!(CALCULATE_WITNESS);
 
+    let p_stark_info = setup.p_setup.p_stark_info;
+
     let total_n = get_map_totaln_c(p_stark_info) as usize;
     let buffer: Vec<MaybeUninit<F>> = Vec::with_capacity(total_n);
     let p_address = buffer.as_ptr() as *mut c_void;
 
-    let n = get_stark_info_n_c(p_stark_info);
+    let n = 1 << (setup.stark_info.stark_struct.n_bits);
     let offset_cm1 = get_map_offsets_c(p_stark_info, "cm1", false);
 
-    let n_publics = get_stark_info_n_publics_c(p_stark_info) as usize;
+    let n_publics = setup.stark_info.n_publics as usize;
     let publics: Vec<MaybeUninit<F>> = Vec::with_capacity(n_publics);
     let p_publics = publics.as_ptr() as *mut c_void;
 

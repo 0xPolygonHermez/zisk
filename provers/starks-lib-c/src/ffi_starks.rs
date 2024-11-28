@@ -123,16 +123,6 @@ pub fn stark_info_new_c(filename: &str) -> *mut c_void {
 }
 
 #[cfg(not(feature = "no_lib_link"))]
-pub fn get_stark_info_n_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_stark_info_n(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_stark_info_n_publics_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_stark_info_n_publics(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
 pub fn get_map_totaln_c(p_stark_info: *mut c_void) -> u64 {
     unsafe { get_map_total_n(p_stark_info) }
 }
@@ -140,45 +130,6 @@ pub fn get_map_totaln_c(p_stark_info: *mut c_void) -> u64 {
 #[cfg(not(feature = "no_lib_link"))]
 pub fn get_map_totaln_custom_commits_c(p_stark_info: *mut c_void, commit_id: u64) -> u64 {
     unsafe { get_map_total_n_custom_commits(p_stark_info, commit_id) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_n_airvals_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_n_airvals(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_n_airgroupvals_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_n_airgroupvals(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_n_evals_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_n_evals(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_n_custom_commits_c(p_stark_info: *mut c_void) -> u64 {
-    unsafe { get_n_custom_commits(p_stark_info) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_custom_commit_id_c(p_stark_info: *mut c_void, name: &str) -> u64 {
-    let name = CString::new(name).unwrap();
-
-    unsafe { get_custom_commit_id(p_stark_info, name.as_ptr() as *mut std::os::raw::c_char) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_airgroupval_id_by_name_c(p_stark_info: *mut c_void, name: &str) -> i64 {
-    let airgroupval_name = CString::new(name).unwrap();
-    unsafe { get_airgroupvalue_id_by_name(p_stark_info, airgroupval_name.as_ptr() as *mut std::os::raw::c_char) }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-pub fn get_airval_id_by_name_c(p_stark_info: *mut c_void, name: &str) -> i64 {
-    let airval_name = CString::new(name).unwrap();
-    unsafe { get_airvalue_id_by_name(p_stark_info, airval_name.as_ptr() as *mut std::os::raw::c_char) }
 }
 
 #[cfg(not(feature = "no_lib_link"))]
@@ -397,46 +348,6 @@ pub fn acc_mul_hint_fields_c(
             field_name2.as_ptr() as *mut std::os::raw::c_char,
             hint_options1,
             hint_options2,
-            add,
-        )
-    }
-}
-
-#[cfg(not(feature = "no_lib_link"))]
-#[allow(clippy::too_many_arguments)]
-pub fn acc_mul_add_hint_fields_c(
-    p_setup_ctx: *mut c_void,
-    p_steps_params: *mut c_void,
-    hint_id: u64,
-    hint_field_dest: &str,
-    hint_field_airgroupvalue: &str,
-    hint_field_name1: &str,
-    hint_field_name2: &str,
-    hint_field_name3: &str,
-    hint_options1: *mut c_void,
-    hint_options2: *mut c_void,
-    hint_options3: *mut c_void,
-    add: bool,
-) -> *mut c_void {
-    let field_dest = CString::new(hint_field_dest).unwrap();
-    let field_airgroupvalue = CString::new(hint_field_airgroupvalue).unwrap();
-    let field_name1 = CString::new(hint_field_name1).unwrap();
-    let field_name2: CString = CString::new(hint_field_name2).unwrap();
-    let field_name3: CString = CString::new(hint_field_name3).unwrap();
-
-    unsafe {
-        acc_mul_add_hint_fields(
-            p_setup_ctx,
-            p_steps_params,
-            hint_id,
-            field_dest.as_ptr() as *mut std::os::raw::c_char,
-            field_airgroupvalue.as_ptr() as *mut std::os::raw::c_char,
-            field_name1.as_ptr() as *mut std::os::raw::c_char,
-            field_name2.as_ptr() as *mut std::os::raw::c_char,
-            field_name3.as_ptr() as *mut std::os::raw::c_char,
-            hint_options1,
-            hint_options2,
-            hint_options3,
             add,
         )
     }
@@ -1034,18 +945,6 @@ pub fn stark_info_new_c(_filename: &str) -> *mut c_void {
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_stark_info_n_publics_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_stark_info_n: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_stark_info_n_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_stark_info_n: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn get_map_totaln_c(_p_stark_info: *mut c_void) -> u64 {
     trace!("{}: ··· {}", "ffi     ", "get_map_totaln: This is a mock call because there is no linked library");
     100000000
@@ -1062,48 +961,8 @@ pub fn get_map_totaln_custom_commits_c(_p_stark_info: *mut c_void, _commit_id: u
 }
 
 #[cfg(feature = "no_lib_link")]
-pub fn get_n_airvals_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_n_airvals: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_n_airgroupvals_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_n_airgroupvals: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_n_evals_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_n_evals: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_n_custom_commits_c(_p_stark_info: *mut c_void) -> u64 {
-    trace!("{}: ··· {}", "ffi     ", "get_n_custom_commits: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
 pub fn get_custom_commit_id_c(_p_stark_info: *mut c_void, _name: &str) -> u64 {
     trace!("{}: ··· {}", "ffi     ", "get_custom_commit_id: This is a mock call because there is no linked library");
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_airgroupval_id_by_name_c(_p_stark_info: *mut c_void, _name: &str) -> i64 {
-    trace!(
-        "{}: ··· {}",
-        "ffi     ",
-        "get_airgroupval_id_by_name: This is a mock call because there is no linked library"
-    );
-    100000000
-}
-
-#[cfg(feature = "no_lib_link")]
-pub fn get_airval_id_by_name_c(_p_stark_info: *mut c_void, _name: &str) -> i64 {
-    trace!("{}: ··· {}", "ffi     ", "get_airval_id_by_name: This is a mock call because there is no linked library");
     100000000
 }
 
@@ -1240,26 +1099,6 @@ pub fn acc_mul_hint_fields_c(
     _add: bool,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "acc_mul_hint_fields: This is a mock call because there is no linked library");
-    std::ptr::null_mut()
-}
-
-#[cfg(feature = "no_lib_link")]
-#[allow(clippy::too_many_arguments)]
-pub fn acc_mul_add_hint_fields_c(
-    _p_setup_ctx: *mut c_void,
-    _p_steps_params: *mut c_void,
-    _hint_id: u64,
-    _hint_field_dest: &str,
-    _hint_field_airgroupvalue: &str,
-    _hint_field_name1: &str,
-    _hint_field_name2: &str,
-    _hint_field_name3: &str,
-    _hint_options1: *mut c_void,
-    _hint_options2: *mut c_void,
-    _hint_options3: *mut c_void,
-    _add: bool,
-) -> *mut c_void {
-    trace!("{}: ··· {}", "ffi     ", "acc_mul_add_hint_fields: This is a mock call because there is no linked library");
     std::ptr::null_mut()
 }
 

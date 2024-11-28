@@ -10,7 +10,7 @@ use rayon::Scope;
 use proofman::WitnessManager;
 use proofman_common::ProofCtx;
 
-use crate::{StdMode, ModeName, StdProd, StdRangeCheck, StdSum};
+use crate::{StdProd, StdRangeCheck, StdSum};
 
 pub struct Std<F: PrimeField> {
     range_check: Arc<StdRangeCheck<F>>,
@@ -21,7 +21,7 @@ impl<F: PrimeField> Std<F> {
     const MY_NAME: &'static str = "STD     ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let mode = StdMode::new(ModeName::Standard, None, 10);
+        let mode = wcm.get_ectx().std_mode.clone();
 
         log::info!("{}: ··· The PIL2 STD library has been initialized on mode {}", Self::MY_NAME, mode.name);
 

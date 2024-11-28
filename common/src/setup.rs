@@ -11,6 +11,7 @@ use proofman_starks_lib_c::{
 
 use crate::GlobalInfo;
 use crate::ProofType;
+use crate::StarkInfo;
 
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -47,6 +48,7 @@ pub struct Setup<F> {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub p_setup: SetupC,
+    pub stark_info: StarkInfo,
     pub const_pols: Pols<F>,
     pub const_tree: Pols<F>,
 }
@@ -63,22 +65,26 @@ impl<F> Setup<F> {
         let stark_info_path = setup_path.display().to_string() + ".starkinfo.json";
         let expressions_bin_path = setup_path.display().to_string() + ".bin";
 
-        let (p_stark_info, p_expressions_bin, p_prover_helpers) =
+        let (stark_info, p_stark_info, p_expressions_bin, p_prover_helpers) =
             if setup_type == &ProofType::Compressor && !global_info.get_air_has_compressor(airgroup_id, air_id) {
                 // If the condition is met, use None for each pointer
-                (std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
+                (StarkInfo::default(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
             } else {
                 // Otherwise, initialize the pointers with their respective values
-                let stark_info = stark_info_new_c(stark_info_path.as_str());
+                let stark_info_json = std::fs::read_to_string(&stark_info_path)
+                    .unwrap_or_else(|_| panic!("Failed to read file {}", &stark_info_path));
+                let stark_info = StarkInfo::from_json(&stark_info_json);
+                let p_stark_info = stark_info_new_c(stark_info_path.as_str());
                 let expressions_bin = expressions_bin_new_c(expressions_bin_path.as_str(), false);
-                let prover_helpers = prover_helpers_new_c(stark_info);
+                let prover_helpers = prover_helpers_new_c(p_stark_info);
 
-                (stark_info, expressions_bin, prover_helpers)
+                (stark_info, p_stark_info, expressions_bin, prover_helpers)
             };
 
         Self {
             air_id,
             airgroup_id,
+            stark_info,
             p_setup: SetupC { p_stark_info, p_expressions_bin, p_prover_helpers },
             const_pols: Pols::default(),
             const_tree: Pols::default(),

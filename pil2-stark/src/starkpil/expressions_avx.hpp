@@ -205,63 +205,34 @@ public:
         }
     }
 
+    inline void multiplyPolynomials(Dest &dest, __m256i* destVals) {
+        if(dest.dim == 1) {
+            Goldilocks::op_avx(2, destVals[0], destVals[0], destVals[FIELD_EXTENSION]);
+        } else {
+            __m256i vals3[FIELD_EXTENSION];
+            if(dest.params[0].dim == FIELD_EXTENSION && dest.params[1].dim == FIELD_EXTENSION) {
+                Goldilocks3::op_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[0], (Goldilocks3::Element_avx &)destVals[FIELD_EXTENSION]);
+            } else if(dest.params[0].dim == FIELD_EXTENSION && dest.params[1].dim == 1) {
+                Goldilocks3::op_31_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[0], destVals[FIELD_EXTENSION]);
+            } else {
+                Goldilocks3::op_31_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[FIELD_EXTENSION], destVals[0]);
+            } 
+            Goldilocks::copy_avx(destVals[0], vals3[0]);
+            Goldilocks::copy_avx(destVals[1], vals3[1]);
+            Goldilocks::copy_avx(destVals[2], vals3[2]);
+        }
+    }
+
     inline void storePolynomial(std::vector<Dest> dests, __m256i** destVals, uint64_t row) {
         for(uint64_t i = 0; i < dests.size(); ++i) {
-            __m256i vals1;
-            __m256i vals3[FIELD_EXTENSION];
-            uint64_t dim = 1;
-            if(dests[i].params.size() == 1) {
-                if(dests[i].params[0].dim == 1) {
-                    Goldilocks::copy_avx(vals1, destVals[i][0]);
-                    dim = 1;
-                } else {
-                    Goldilocks::copy_avx(vals3[0], destVals[i][0]);
-                    Goldilocks::copy_avx(vals3[1], destVals[i][1]);
-                    Goldilocks::copy_avx(vals3[2], destVals[i][2]);
-                    dim = FIELD_EXTENSION;
-                }
-            } else if(dests[i].params.size() == 2 || dests[i].params.size() == 3) {
-                if(dests[i].params[0].dim == FIELD_EXTENSION && dests[i].params[1].dim == FIELD_EXTENSION) {
-                    Goldilocks3::op_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][0], (Goldilocks3::Element_avx &)destVals[i][FIELD_EXTENSION]);
-                    dim = FIELD_EXTENSION;
-                } else if(dests[i].params[0].dim == FIELD_EXTENSION && dests[i].params[1].dim == 1) {
-                    Goldilocks3::op_31_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][0], destVals[i][FIELD_EXTENSION]);
-                    dim = FIELD_EXTENSION;
-                } else if(dests[i].params[0].dim == 1 && dests[i].params[1].dim == FIELD_EXTENSION) {
-                    Goldilocks3::op_31_avx(2, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][FIELD_EXTENSION], destVals[i][0]);
-                    dim = FIELD_EXTENSION;
-                } else {
-                    Goldilocks::op_avx(2, vals1, destVals[i][0], destVals[i][FIELD_EXTENSION]);
-                    dim = 1;
-                }
-
-                if(dests[i].params.size() == 3) {
-                    if(dim == FIELD_EXTENSION && dests[i].params[2].dim == FIELD_EXTENSION) {
-                        Goldilocks3::op_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][2*FIELD_EXTENSION]);
-                        dim = FIELD_EXTENSION;
-                    } else if(dim == FIELD_EXTENSION && dests[i].params[2].dim == 1) {
-                        Goldilocks3::op_31_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)vals3, destVals[i][2*FIELD_EXTENSION]);
-                        dim = FIELD_EXTENSION;
-                    } else if(dim == 1 && dests[i].params[2].dim == FIELD_EXTENSION) {
-                        Goldilocks3::op_31_avx(0, (Goldilocks3::Element_avx &)vals3, (Goldilocks3::Element_avx &)destVals[i][2*FIELD_EXTENSION], vals1);
-                        dim = FIELD_EXTENSION;
-                    } else {
-                        Goldilocks::op_avx(0, vals1, vals1, destVals[i][2*FIELD_EXTENSION]);
-                        dim = 1;
-                    }
-                }
-            } else {
-                zklog.error("Currently only length 1 and 2 and 3 are supported");
-                exitProcess();
-            }
-            if(dim == 1) {
+            if(dests[i].dim == 1) {
                 uint64_t offset = dests[i].offset != 0 ? dests[i].offset : 1;
-                Goldilocks::store_avx(&dests[i].dest[row*offset], uint64_t(offset), vals1);
+                Goldilocks::store_avx(&dests[i].dest[row*offset], uint64_t(offset), destVals[i][0]);
             } else {
                 uint64_t offset = dests[i].offset != 0 ? dests[i].offset : FIELD_EXTENSION;
-                Goldilocks::store_avx(&dests[i].dest[row*offset], uint64_t(offset), vals3[0]);
-                Goldilocks::store_avx(&dests[i].dest[row*offset + 1], uint64_t(offset),vals3[1]);
-                Goldilocks::store_avx(&dests[i].dest[row*offset + 2], uint64_t(offset), vals3[2]);
+                Goldilocks::store_avx(&dests[i].dest[row*offset], uint64_t(offset), destVals[i][0]);
+                Goldilocks::store_avx(&dests[i].dest[row*offset + 1], uint64_t(offset),destVals[i][1]);
+                Goldilocks::store_avx(&dests[i].dest[row*offset + 2], uint64_t(offset), destVals[i][2]);
             }
         }
     }
@@ -822,6 +793,10 @@ public:
                     } else {
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION], dests[j].params[k].inverse, dests[j].params[k].parserParams.destDim, tmp3[dests[j].params[k].parserParams.destId]);
                     }
+                }
+
+                if(dests[j].params.size() == 2) {
+                    multiplyPolynomials(dests[j], destVals[j]);
                 }
             }
             storePolynomial(dests, destVals, i);

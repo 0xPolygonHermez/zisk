@@ -1,5 +1,5 @@
 use std::{path::PathBuf, sync::Arc};
-use crate::{BufferAllocator, DistributionCtx, VerboseMode};
+use crate::{BufferAllocator, DistributionCtx, StdMode, VerboseMode};
 use std::sync::RwLock;
 use std::collections::HashMap;
 #[allow(dead_code)]
@@ -12,6 +12,7 @@ pub struct ExecutionCtx<F> {
     pub buffer_allocator: Arc<dyn BufferAllocator<F>>,
     pub verbose_mode: VerboseMode,
     pub dctx: RwLock<DistributionCtx>,
+    pub std_mode: StdMode,
 }
 
 impl<F> ExecutionCtx<F> {
@@ -26,6 +27,7 @@ pub struct ExecutionCtxBuilder<F> {
     public_output: bool,
     buffer_allocator: Option<Arc<dyn BufferAllocator<F>>>,
     verbose_mode: VerboseMode,
+    std_mode: StdMode,
 }
 
 impl<F> Default for ExecutionCtxBuilder<F> {
@@ -42,6 +44,7 @@ impl<F> ExecutionCtxBuilder<F> {
             public_output: true,
             buffer_allocator: None,
             verbose_mode: VerboseMode::Info,
+            std_mode: StdMode::default(),
         }
     }
 
@@ -65,6 +68,11 @@ impl<F> ExecutionCtxBuilder<F> {
         self
     }
 
+    pub fn with_std_mode(mut self, std_mode: StdMode) -> Self {
+        self.std_mode = std_mode;
+        self
+    }
+
     pub fn build(self) -> ExecutionCtx<F> {
         if self.buffer_allocator.is_none() {
             panic!("Buffer allocator is required");
@@ -77,6 +85,7 @@ impl<F> ExecutionCtxBuilder<F> {
             buffer_allocator: self.buffer_allocator.unwrap(),
             verbose_mode: self.verbose_mode,
             dctx: RwLock::new(DistributionCtx::new()),
+            std_mode: self.std_mode,
         }
     }
 }
