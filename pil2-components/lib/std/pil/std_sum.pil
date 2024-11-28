@@ -233,18 +233,29 @@ private function piop_gsum_air(const int blowupFactor = 2) {
     int high_degree_len = 0;
     int isolated_term = -1;
     for (int i = 0; i < gsum_nargs; i++) {
-        // In the case that both the numerator and the denominator are constants, 
-        // we can directly add them through the direct terms
-        if (degree(gsum_s[i]) == 0 && degree(gsum_e[i]) == 0) {
+        const int gsum_s_degree = degree(gsum_s[i]);
+        const int gsum_e_degree = degree(gsum_e[i]);
+        if (gsum_s_degree == 0 && gsum_e_degree == 0) {
+            // In the case that both the numerator and the denominator are constants, 
+            // we can directly add them through the direct terms
             direct_gsum_s[direct_gsum_nargs] = gsum_s[i];
             direct_gsum_e[direct_gsum_nargs] = gsum_e[i];
             direct_gsum_nargs++;
-        } else if (degree(gsum_s[i]) > 2 || degree(gsum_e[i]) > 1) { // Discriminator conditions
+        } 
+        else if ((gsum_s_degree == 3 && gsum_e_degree == 1) ||
+                (gsum_s_degree == 2 && gsum_e_degree == 1)) {
+            // Identify isolated terms of specific degrees
+            isolated_term = i;
+        } 
+        else if (gsum_s_degree > 2 || gsum_e_degree > 1) {
+            // Track high-degree terms
             high_degree_term[high_degree_len] = i;
             high_degree_len++;
-        } else {
-            // The first low-degree term is isolated
+        } 
+        else {
+            // Handle low-degree terms
             if (isolated_term == -1) {
+                // The first low-degree term is isolated
                 isolated_term = i;
             } else {
                 low_degree_term[low_degree_len] = i;
@@ -337,6 +348,14 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         }
     }
 
+    // Compute the isolated term numerator and denominator
+    expr isolated_num = 0;
+    expr isolated_den = 1;
+    if (isolated_term != -1) {
+        isolated_den = (gsum_e[isolated_term] + std_gamma);
+        isolated_num = gsum_s[isolated_term];
+    }
+
     /*
      At this point, the constraint has been transformed to:
           gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + num / den
@@ -346,7 +365,7 @@ private function piop_gsum_air(const int blowupFactor = 2) {
      where both sⱼ and eⱼ are field elements, for all j.
 
      We rewrite it as:
-          ((gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·den - num)·∏ⱼ (eⱼ + ɣ)  - ∑ⱼ sⱼ·∏ₖ≠ⱼ (eₖ + ɣ)  === 0
+          ((gsum - 'gsum * (1 - L1) - ∑ᵢ imᵢ)·den - num)·∏ⱼ (eⱼ + ɣ) - den·∑ⱼ sⱼ·∏ₖ≠ⱼ (eₖ + ɣ) === 0
     */
 
     // Compute the direct terms numerator and denominator
@@ -362,17 +381,9 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         direct_num += _tmp;
     }
 
-    // Compute the isolated term numerator and denominator
-    expr isolated_num = 0;
-    expr isolated_den = 1;
-    if (isolated_term != -1) {
-        isolated_den = (gsum_e[isolated_term] + std_gamma);
-        isolated_num = gsum_s[isolated_term];
-    }
-
     @gsum_col{reference: gsum, direct_num: direct_num, direct_den: direct_den, isolated_num: isolated_num, isolated_den: isolated_den, sum_ims: sum_ims, result: airgroup.std.gsum.gsum_result};
 
-    ((gsum - 'gsum * (1 - __L1) - sum_ims) * isolated_den - isolated_num) * direct_den - direct_num === 0;
+    ((gsum - 'gsum * (1 - __L1) - sum_ims) * isolated_den - isolated_num) * direct_den - isolated_den * direct_num === 0;
     __L1' * (gsum - airgroup.std.gsum.gsum_result) === 0;
 }
 
