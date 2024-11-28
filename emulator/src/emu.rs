@@ -209,7 +209,7 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Set SP, if specified by the current instruction
+    // Set SP, if specified by the current instruction
     // #[cfg(feature = "sp")]
     // #[inline(always)]
     // pub fn set_sp(&mut self, instruction: &ZiskInst) {
