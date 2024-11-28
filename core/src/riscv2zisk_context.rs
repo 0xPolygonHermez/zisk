@@ -1,3 +1,7 @@
+//! Provides an interface to convert a RISC-V instruction into one or more Zisk instructions using
+//! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
+//! attribute.
+
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
@@ -13,8 +17,9 @@ const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
-/// Context to store the list of converted ZisK instructions, including their program address
-struct Riscv2ZiskContext<'a> {
+/// Context to store the list of converted ZisK instructions, including their program address and a
+/// map to store the instructions
+pub struct Riscv2ZiskContext<'a> {
     /// Next program address to assign
     s: u64,
     /// Map of program address to ZisK instructions
@@ -1042,7 +1047,7 @@ impl Riscv2ZiskContext<'_> {
 
     /// The CSRRWI, CSRRSI, and CSRRCI variants are similar to CSRRW, CSRRS, and CSRRC respectively,
     /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
-    /// unsigned immediate (uimm[4:0]) field encoded in the rs1 field instead of a value from an
+    /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
     /// integer register.
 
     /*
@@ -1275,7 +1280,8 @@ impl Riscv2ZiskContext<'_> {
     }
 } // impl Riscv2ZiskContext
 
-/// Converts a buffer with RISCV data into a vector of Zisk instructions
+/// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
+/// Riscv2ZiskContext to perform the instruction transpilation
 pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
     //print!("add_zisk_code() addr={}\n", addr);
 
