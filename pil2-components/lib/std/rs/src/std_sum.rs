@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, acc_mul_add_hint_fields, HintFieldOptions,
+    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions,
     HintFieldOutput,
 };
 
@@ -256,20 +256,17 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     // This call accumulates "expression" into "reference" expression and stores its last value to "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and doing the accumulation in Rust,
                     // TODO: GENERALIZE CALLS
-
-                    let (pol_id, airgroupvalue_id) = acc_mul_add_hint_fields::<F>(
+                    let (pol_id, airgroupvalue_id) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gsum_hint,
                         "reference",
                         "result",
-                        "direct_num",
-                        "direct_den",
-                        "sum_ims",
+                        "numerator",
+                        "denominator",
                         HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
-                        HintFieldOptions::default(),
                         true,
                     );
 
