@@ -1,42 +1,30 @@
-use core::panic;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    fmt::Display,
 };
 
 use num_traits::ToPrimitive;
-use p3_field::{Field, PrimeField};
+use p3_field::PrimeField;
 use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    acc_mul_hint_fields, format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, HintFieldOptions,
-    HintFieldOutput, HintFieldValue,
+    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, HintFieldOptions, HintFieldOutput,
+    HintFieldValue,
 };
 
-use crate::{Decider, StdMode, ModeName};
+use crate::{print_debug_info, BusValue, DebugData, Decider, ModeName, StdMode};
 
 type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
 
-pub struct StdProd<F: Copy + Display> {
+pub struct StdProd<F: PrimeField> {
     mode: StdMode,
     prod_airs: Mutex<Vec<ProdAirsItem>>, // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
     debug_data: Option<DebugData<F>>,
 }
 
-struct BusValue<F: Copy> {
-    num_proves: F,
-    num_assumes: F,
-    // meta data
-    row_proves: Vec<usize>,
-    row_assumes: Vec<usize>,
-}
-
-type DebugData<F> = Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>; // opid -> val -> BusValue
-
-impl<F: Field> Decider<F> for StdProd<F> {
+impl<F: PrimeField> Decider<F> for StdProd<F> {
     fn decide(&self, sctx: Arc<SetupCtx<F>>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have prod-related hints
         for airgroup in pctx.pilout.air_groups() {
@@ -246,120 +234,10 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
     fn end_proof(&self) {
         if self.mode.name == ModeName::Debug {
+            let name = Self::MY_NAME;
             let max_values_to_print = self.mode.vals_to_print;
-
-            let mut there_are_errors = false;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-            let mut bus_vals = debug_data.lock().expect("Bus values missing");
-            for (opid, bus) in bus_vals.iter_mut() {
-                if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
-                    if !there_are_errors {
-                        there_are_errors = true;
-                        log::error!("{}: Some bus values do not match.", Self::MY_NAME);
-                    }
-                    println!("\t► Mismatched bus values for opid {}:", opid);
-                } else {
-                    continue;
-                }
-
-                // TODO: Sort unmatching values by the row
-                let mut unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
-                    bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
-                let len2 = unmatching_values2.len();
-
-                if len2 > 0 {
-                    println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
-                }
-
-                for (i, (val, data)) in unmatching_values2.iter_mut().enumerate() {
-                    let num_proves = data.num_proves;
-                    let num_assumes = data.num_assumes;
-                    let diff = num_assumes - num_proves;
-                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-                    let row_assumes = &mut data.row_assumes;
-
-                    row_assumes.sort();
-                    let row_assumes = if max_values_to_print < diff {
-                        row_assumes[..max_values_to_print].to_vec()
-                    } else {
-                        row_assumes[..diff].to_vec()
-                    };
-                    let row_assumes = row_assumes.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
-
-                    let name_str = if row_assumes.len() == 1 {
-                        format!("at row {}.", row_assumes)
-                    } else if max_values_to_print < row_assumes.len() {
-                        format!("at rows {},...", row_assumes)
-                    } else {
-                        format!("at rows {}.", row_assumes)
-                    };
-                    let diff_str = if diff == 1 { "time" } else { "times" };
-                    println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
-                        format_vec(val),
-                        diff,
-                        diff_str,
-                        name_str,
-                        num_assumes,
-                        num_proves
-                    );
-
-                    if i == max_values_to_print {
-                        println!("\t      ...");
-                        break;
-                    }
-                }
-
-                println!();
-
-                // TODO: Sort unmatching values by the row
-                let mut unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
-                    bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
-                let len1 = unmatching_values1.len();
-
-                if len1 > 0 {
-                    println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len1);
-                }
-
-                for (i, (val, data)) in unmatching_values1.iter_mut().enumerate() {
-                    let num_proves = data.num_proves;
-                    let num_assumes = data.num_assumes;
-                    let diff = num_proves - num_assumes;
-                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-                    let row_proves = &mut data.row_proves;
-
-                    row_proves.sort();
-                    let row_proves = if max_values_to_print < diff {
-                        row_proves[..max_values_to_print].to_vec()
-                    } else {
-                        row_proves[..diff].to_vec()
-                    };
-                    let row_proves = row_proves.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
-
-                    let name_str = if row_proves.len() == 1 {
-                        format!("at row {}.", row_proves)
-                    } else if max_values_to_print < row_proves.len() {
-                        format!("at rows {},...", row_proves)
-                    } else {
-                        format!("at rows {}.", row_proves)
-                    };
-                    println!(
-                        "\t    • Value\n\t        {}\n\t      Appears {} times {}\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
-                        format_vec(val),
-                        diff,
-                        name_str,
-                        num_assumes,
-                        num_proves
-                    );
-
-                    if i == max_values_to_print {
-                        println!("\t      ...");
-                        break;
-                    }
-                }
-
-                println!();
-            }
+            print_debug_info(name, max_values_to_print, debug_data);
         }
     }
 }

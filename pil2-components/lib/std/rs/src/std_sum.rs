@@ -1,44 +1,30 @@
 use std::{
-    hash::Hash,
     collections::HashMap,
-    fmt::{Display, Debug},
     sync::{Arc, Mutex},
 };
 
 use num_traits::ToPrimitive;
-use p3_field::{Field, PrimeField};
+use p3_field::PrimeField;
 use rayon::prelude::*;
-
-use log::debug;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use proofman_hints::{
-    format_vec, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, acc_mul_add_hint_fields,
-    HintFieldOptions, HintFieldOutput,
+    get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, acc_mul_add_hint_fields, HintFieldOptions,
+    HintFieldOutput,
 };
 
-use crate::{Decider, StdMode, ModeName};
+use crate::{print_debug_info, BusValue, DebugData, Decider, ModeName, StdMode};
 
 type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
 
-pub struct StdSum<F: Copy + Display + Hash> {
+pub struct StdSum<F: PrimeField> {
     mode: StdMode,
     sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
     debug_data: Option<DebugData<F>>,
 }
 
-struct BusValue<F: Copy> {
-    num_proves: F,
-    num_assumes: F,
-    // meta data
-    row_proves: usize,       // Note: For now, we assume that a value in proves is unique
-    row_assumes: Vec<usize>, //       Also, multiplicity in assumes can only be one or zero
-}
-
-type DebugData<F> = Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>; // opid -> val -> BusValue
-
-impl<F: Field> Decider<F> for StdSum<F> {
+impl<F: PrimeField> Decider<F> for StdSum<F> {
     fn decide(&self, sctx: Arc<SetupCtx<F>>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
@@ -64,7 +50,7 @@ impl<F: Field> Decider<F> for StdSum<F> {
     }
 }
 
-impl<F: Copy + Debug + PrimeField> StdSum<F> {
+impl<F: PrimeField> StdSum<F> {
     const MY_NAME: &'static str = "STD Sum ";
 
     pub fn new(mode: StdMode, wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
@@ -154,6 +140,7 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
                         },
                         _ => panic!("Proves hint must be a field element"),
                     };
+                    // println!("expressions[{j}]: {:?}, mul[{j}]: {}, is_positive[{j}]: {}", expressions.get(j), mul, is_positive);
 
                     self.update_bus_vals(num_rows, sumid, expressions.get(j), j, is_positive, mul);
                 }
@@ -175,20 +162,31 @@ impl<F: Copy + Debug + PrimeField> StdSum<F> {
 
         let bus_opid = bus.entry(opid).or_default();
 
-        let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
+        let bus_val = bus_opid.entry(val.clone()).or_insert_with(|| BusValue {
             num_proves: F::zero(),
             num_assumes: F::zero(),
-            row_proves: 0,
+            row_proves: Vec::with_capacity(num_rows),
             row_assumes: Vec::with_capacity(num_rows),
         });
 
         if is_positive {
-            bus_val.num_proves = times;
-            bus_val.row_proves = row;
+            bus_val.num_proves += times;
+            bus_val.row_proves.push(row);
         } else {
-            assert!(times.is_one());
+            assert!(times.is_one(), "The selector value is invalid: expected 1, but received {:?}.", times);
             bus_val.num_assumes += times;
             bus_val.row_assumes.push(row);
+        }
+        if val
+            == vec![
+                HintFieldOutput::Field(F::from_canonical_u8(200)),
+                HintFieldOutput::Field(F::from_canonical_u8(201)),
+            ]
+        {
+            // println!(
+            //     "bus_val_proves: {}, bus_val_assumes: {}, row_proves: {:?}, row_assumes: {:?}",
+            //     bus_val.num_proves, bus_val.num_assumes, bus_val.row_proves, bus_val.row_assumes
+            // );
         }
     }
 }
@@ -223,7 +221,7 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                     let air = pctx.pilout.get_air(airgroup_id, air_id);
                     let air_name = air.name().unwrap_or("unknown");
 
-                    debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
+                    log::debug!("{}: ··· Computing witness for AIR '{}' at stage {}", Self::MY_NAME, air_name, stage);
 
                     let num_rows = air.num_rows();
 
@@ -284,108 +282,10 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
     fn end_proof(&self) {
         if self.mode.name == ModeName::Debug {
+            let name = Self::MY_NAME;
             let max_values_to_print = self.mode.vals_to_print;
-
-            let mut there_are_errors = false;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-            let mut bus_vals = debug_data.lock().expect("Bus values missing");
-            for (opid, bus) in bus_vals.iter_mut() {
-                if bus.iter().any(|(_, v)| v.num_proves != v.num_assumes) {
-                    if !there_are_errors {
-                        there_are_errors = true;
-                        log::error!("{}: Some bus values do not match.", Self::MY_NAME);
-                    }
-                    println!("\t► Mismatched bus values for opid {}:", opid);
-                } else {
-                    continue;
-                }
-
-                let mut unmatching_values2: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
-                    bus.iter_mut().filter(|(_, v)| v.num_proves < v.num_assumes).collect();
-                let len2 = unmatching_values2.len();
-
-                if len2 > 0 {
-                    println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len2);
-                }
-
-                for (i, (val, data)) in unmatching_values2.iter_mut().enumerate() {
-                    let num_proves = data.num_proves;
-                    let num_assumes = data.num_assumes;
-                    let diff = num_assumes - num_proves;
-                    let diff = diff.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-                    let row_assumes = &mut data.row_assumes;
-
-                    row_assumes.sort();
-                    let row_assumes = if max_values_to_print < diff {
-                        row_assumes[..max_values_to_print].to_vec()
-                    } else {
-                        row_assumes[..diff].to_vec()
-                    };
-                    let row_assumes = row_assumes.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
-
-                    let diff = num_assumes - num_proves;
-                    let name_str = if row_assumes.len() == 1 {
-                        format!("at row {}.", row_assumes)
-                    } else if max_values_to_print < row_assumes.len() {
-                        format!("at rows {},...", row_assumes)
-                    } else {
-                        format!("at rows {}.", row_assumes)
-                    };
-                    let diff_str = if diff.is_one() { "time" } else { "times" };
-                    println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} {}\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
-                        format_vec(val),
-                        diff,
-                        diff_str,
-                        name_str,
-                        num_assumes,
-                        num_proves
-                    );
-
-                    if i == max_values_to_print {
-                        println!("\t      ...");
-                        break;
-                    }
-                }
-
-                if len2 > 0 {
-                    println!();
-                }
-
-                let unmatching_values1: Vec<(&Vec<HintFieldOutput<F>>, &mut BusValue<F>)> =
-                    bus.iter_mut().filter(|(_, v)| v.num_proves > v.num_assumes).collect();
-                let len1 = unmatching_values1.len();
-
-                if len1 > 0 {
-                    println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len1);
-                }
-
-                for (i, (val, data)) in unmatching_values1.iter().enumerate() {
-                    let num_proves = data.num_proves;
-                    let num_assumes = data.num_assumes;
-                    let row_proves = data.row_proves;
-
-                    let diff = num_proves - num_assumes;
-
-                    let diff_str = if diff.is_one() { "time" } else { "times" };
-                    println!(
-                        "\t    • Value:\n\t        {}\n\t      Appears {} {} at row {}.\n\t      Num Assumes: {}.\n\t      Num Proves: {}.",
-                        format_vec(val),
-                        diff,
-                        diff_str,
-                        row_proves,
-                        num_assumes,
-                        num_proves,
-                    );
-
-                    if i == max_values_to_print {
-                        println!("\t      ...");
-                        break;
-                    }
-                }
-
-                println!();
-            }
+            print_debug_info(name, max_values_to_print, debug_data);
         }
     }
 }
