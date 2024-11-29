@@ -1,17 +1,16 @@
 use crate::{
-    Emu, EmuOptions, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr,
+    Emu, EmuOptions, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
+    ZiskEmulatorErr,
 };
 use p3_field::PrimeField;
+use zisk_common::InstObserver;
 use std::{
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{
-    EmuInstructionObserver, Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation,
-    ZiskRom,
-};
+use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -217,10 +216,10 @@ impl ZiskEmulator {
     }
 
     #[inline]
-    pub fn process_slice_observer<F: PrimeField>(
+    pub fn process_observer<F: PrimeField>(
         rom: &ZiskRom,
         vec_traces: &[EmuTrace],
-        inst_observer: &mut dyn EmuInstructionObserver,
+        inst_observer: &mut dyn InstObserver,
     ) -> Result<(), ZiskEmulatorErr> {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
@@ -233,6 +232,34 @@ impl ZiskEmulator {
         } else {
             Err(ZiskEmulatorErr::EmulationNoCompleted)
         }
+    }
+
+    #[inline]
+    pub fn process_slice_observer<F: PrimeField>(
+        rom: &ZiskRom,
+        vec_traces: &[EmuTrace],
+        emu_trace_start: &EmuTraceStart,
+        step_end: u64,
+        inst_observer: &mut dyn InstObserver,
+    ) {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        emu.run_slice_observer::<F>(vec_traces, emu_trace_start, step_end, inst_observer);
+    }
+
+        #[inline]
+    pub fn process_slice_observer2<F: PrimeField>(
+        rom: &ZiskRom,
+        emu_trace: &EmuTrace,
+        inst_observer: &mut dyn InstObserver,
+    ) {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        emu.run_slice_observer2::<F>(emu_trace, inst_observer);
     }
 
     #[inline]

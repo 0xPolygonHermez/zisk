@@ -15,6 +15,7 @@ path = "src/bin/ziskemu.rs"
 zisk-core = { path = "../core" }
 riscv = { path="../riscv" }
 zisk-pil = { path="../pil" }
+zisk-common = { path="../common" }
 rayon = { workspace = true }
 
 p3-field = { workspace=true }

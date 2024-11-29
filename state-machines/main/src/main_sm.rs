@@ -2,10 +2,8 @@ use log::info;
 use p3_field::PrimeField;
 
 use crate::InstanceExtensionCtx;
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_binary::BinarySM;
 use std::sync::Arc;
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType, ZiskRom, ROM_ENTRY};
+use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
@@ -13,10 +11,8 @@ use proofman_common::{AirInstance, ProofCtx};
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
 use sm_mem::MemSM;
-use zisk_pil::{
-    MainRow, MainTrace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
-};
-use ziskemu::{Emu, EmuTrace, ZiskEmulator};
+use zisk_pil::{MainRow, MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use ziskemu::{Emu, EmuTrace};
 
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
 ///
@@ -29,9 +25,6 @@ pub struct MainSM<F: PrimeField> {
 
     /// Arithmetic state machine
     arith_sm: Arc<ArithSM>,
-
-    /// Binary state machine
-    binary_sm: Arc<BinarySM<F>>,
 
     /// Memory state machine
     mem_sm: Arc<MemSM>,
@@ -54,25 +47,23 @@ impl<F: PrimeField> MainSM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         arith_sm: Arc<ArithSM>,
-        binary_sm: Arc<BinarySM<F>>,
         mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm, mem_sm });
+        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, mem_sm });
 
         wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
         main_sm.mem_sm.register_predecessor();
-        main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 
         main_sm
     }
 
-    pub fn prove_main(
+    pub fn prove_main<'a>(
         &self,
         zisk_rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
+        vec_traces: &'a [EmuTrace],
         iectx: &mut InstanceExtensionCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
@@ -187,70 +178,6 @@ impl<F: PrimeField> MainSM<F> {
         air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
 
         iectx.air_instance = Some(air_instance);
-    }
-
-    pub fn prove_binary(
-        &self,
-        zisk_rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        iectx: &mut InstanceExtensionCtx<F>,
-        pctx: &ProofCtx<F>,
-    ) {
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-
-        timer_start_debug!(PROCESS_BINARY);
-        let inputs = ZiskEmulator::process_slice_required::<F>(
-            zisk_rom,
-            vec_traces,
-            ZiskOperationType::None,
-            &iectx.emu_trace_start,
-            air.num_rows(),
-        );
-        timer_stop_and_log_debug!(PROCESS_BINARY);
-
-        timer_start_debug!(PROVE_BINARY);
-        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
-        timer_stop_and_log_debug!(PROVE_BINARY);
-
-        timer_start_debug!(CREATE_AIR_INSTANCE);
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
-        iectx.air_instance = Some(AirInstance::new(
-            self.wcm.get_sctx(),
-            ZISK_AIRGROUP_ID,
-            BINARY_AIR_IDS[0],
-            None,
-            buffer,
-        ));
-        timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
-    }
-
-    pub fn prove_binary_extension(
-        &self,
-        zisk_rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        iectx: &mut InstanceExtensionCtx<F>,
-        pctx: &ProofCtx<F>,
-    ) {
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-
-        let inputs = ZiskEmulator::process_slice_required::<F>(
-            zisk_rom,
-            vec_traces,
-            ZiskOperationType::None,
-            &iectx.emu_trace_start,
-            air.num_rows(),
-        );
-
-        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
-
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
-        iectx.air_instance = Some(AirInstance::new(
-            self.wcm.get_sctx(),
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_AIR_IDS[0],
-            None,
-            buffer,
-        ));
     }
 }
 

@@ -221,14 +221,14 @@ impl<F: Field> BinaryBasicTableSM<F> {
             ectx.dctx.write().unwrap();
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        let (is_myne, instance_global_idx) =
+        let (is_mine, instance_global_idx) =
             dctx.add_instance(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], 1);
         let owner: usize = dctx.owner(instance_global_idx);
 
         let mut multiplicity_ = std::mem::take(&mut *multiplicity);
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
 
-        if is_myne {
+        if is_mine {
             // Create the prover buffer
             let (mut prover_buffer, offset) = create_prover_buffer(
                 &self.wcm.get_ectx(),

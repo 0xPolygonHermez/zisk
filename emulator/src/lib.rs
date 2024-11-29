@@ -1,3 +1,4 @@
+mod emu;
 mod emu_context;
 mod emu_full_trace;
 mod emu_options;
@@ -5,11 +6,11 @@ mod emu_par_options;
 mod emu_segment;
 mod emu_slice;
 mod emu_trace;
-mod emu;
-mod emulator_errors;
 mod emulator;
+mod emulator_errors;
 mod stats;
 
+pub use emu::*;
 pub use emu_context::*;
 pub use emu_full_trace::*;
 pub use emu_options::*;
@@ -17,7 +18,6 @@ pub use emu_par_options::*;
 pub use emu_segment::*;
 pub use emu_slice::*;
 pub use emu_trace::*;
-pub use emu::*;
-pub use emulator_errors::*;
 pub use emulator::*;
+pub use emulator_errors::*;
 pub use stats::*;

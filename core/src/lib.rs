@@ -1,6 +1,5 @@
 mod elf2rom;
 mod inst_context;
-mod inst_observer;
 mod mem;
 mod mem_section;
 mod riscv2zisk;
@@ -16,7 +15,6 @@ pub mod zisk_ops;
 
 pub use elf2rom::*;
 pub use inst_context::*;
-pub use inst_observer::*;
 pub use mem::*;
 pub use mem_section::*;
 pub use riscv2zisk::*;

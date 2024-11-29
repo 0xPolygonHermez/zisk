@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "cli",
+    "cli", "common",
     "core",
     "emulator", "executor",
     "pil",

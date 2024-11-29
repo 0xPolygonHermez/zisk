@@ -1,20 +1,9 @@
-use proofman_common::WitnessPilout;
-use sm_common::{LayoutPlanner, OutputPlan};
+use zisk_common::InstObserver;
 use zisk_core::{InstContext, ZiskInst, ZiskPcHistogram};
-
-pub struct RomPlan {
-    pub histogram: ZiskPcHistogram,
-}
-
-impl OutputPlan for RomPlan {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
 
 #[derive(Default)]
 pub struct RomPlanner {
-    histogram: ZiskPcHistogram,
+    pub histogram: ZiskPcHistogram,
 }
 
 impl RomPlanner {
@@ -23,22 +12,26 @@ impl RomPlanner {
     }
 }
 
-impl LayoutPlanner for RomPlanner {
-    fn new_session(&mut self, _: &WitnessPilout) {
-        self.histogram = ZiskPcHistogram::default();
-    }
+// impl LayoutPlanner for RomPlanner {
+//     fn get_plan(&self) -> Vec<InstMetricEnum> {
+//         // vec![Plan {
+//         //     airgroup_id: ZISK_AIRGROUP_ID,
+//         //     air_id: ROM_AIR_IDS[0],
+//         //     segment_id: None,
+//         //     emu_trace_start: None,
+//         // }]
+//         Vec::new()
+//     }
+// }
 
-    fn on_instruction(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
-        let count = self.histogram.map.entry(inst_ctx.pc).or_default();
-        *count += 1;
+// impl InstObserver for RomPlanner {
+//     fn on_instruction(&mut self, chunk_id: usize, instruction: &ZiskInst, inst_ctx: &InstContext) {
+//         let count = self.histogram.map.entry(inst_ctx.pc).or_default();
+//         *count += 1;
 
-        if instruction.end {
-            self.histogram.end_pc = inst_ctx.pc;
-            self.histogram.steps = inst_ctx.step + 1;
-        }
-    }
-
-    fn get_plan(&self) -> Box<dyn OutputPlan> {
-        Box::new(RomPlan { histogram: self.histogram.clone() })
-    }
-}
+//         if instruction.end {
+//             self.histogram.end_pc = inst_ctx.pc;
+//             self.histogram.steps = inst_ctx.step + 1;
+//         }
+//     }
+// }

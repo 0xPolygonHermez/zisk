@@ -1,6 +1,10 @@
 use executor::ZiskExecutor;
+use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use sm_binary::BinarySM;
+use sm_rom::RomSM;
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
+use zisk_core::Riscv2zisk;
 use zisk_pil::*;
 
 use p3_field::PrimeField;
@@ -56,7 +60,40 @@ impl<F: PrimeField> ZiskWitness<F> {
         let wcm = Arc::new(wcm);
 
         self.wcm.set(wcm.clone()).ok();
-        self.executor.set(ZiskExecutor::new(wcm, self.rom_path.clone())).ok();
+
+        // If rom_path has an .elf extension it must be converted to a ZisK ROM
+        let zisk_rom = if self.rom_path.extension().unwrap() == "elf" {
+            // Create an instance of the RISCV -> ZisK program converter
+            let rv2zk = Riscv2zisk::new(
+                self.rom_path.display().to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
+
+            // Convert program to rom
+            match rv2zk.run() {
+                Ok(rom) => rom,
+                Err(e) => {
+                    panic!("Application error: {}", e);
+                }
+            }
+        } else {
+            // TODO - Remove this when the ZisK ROM is able to be loaded from a file
+            panic!("ROM file must be an ELF file");
+        };
+        let zisk_rom = Arc::new(zisk_rom);
+
+        // Create the secondary state machines
+        let std = Std::new(wcm.clone());
+        let rom_sm = RomSM::new(wcm.clone(), zisk_rom.clone());
+        let binary_sm = BinarySM::new(wcm.clone(), std.clone());
+
+        let mut executor = ZiskExecutor::new(wcm.clone(), zisk_rom);
+        executor.register_sm(rom_sm);
+        executor.register_sm(binary_sm);
+
+        self.executor.set(executor).ok();
     }
 }
 

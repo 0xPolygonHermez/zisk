@@ -1,25 +1,32 @@
 use std::{path::PathBuf, sync::Arc};
 
-use p3_field::Field;
+use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
-use sm_common::{LayoutPlanner, PlannerProvider};
-use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
+use sm_common::{
+    CheckPoint, ChunkId, ComponentProvider, Expander, Plan, Planner, StateMachine, Survey,
+    SurveyCounter, SurveyStats, Surveyor, WitnessBuffer,
+};
+use zisk_common::InstObserver;
+use zisk_core::{InstContext, Riscv2zisk, ZiskInst, ZiskPcHistogram, ZiskRom, SRC_IMM};
 use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use ziskemu::EmuTrace;
 
 use std::error::Error;
 
-use crate::RomPlanner;
+use crate::RomSurveyor;
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
+
+    zisk_rom: Arc<ZiskRom>,
 }
 
 impl<F: Field> RomSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let rom_sm = Self { wcm: wcm.clone() };
+    pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
+        let rom_sm = Self { wcm: wcm.clone(), zisk_rom };
         let rom_sm = Arc::new(rom_sm);
 
         let rom_air_ids = ROM_AIR_IDS;
@@ -458,10 +465,84 @@ impl<F: Field> RomSM<F> {
     // }
 }
 
-impl<F: Field> PlannerProvider for RomSM<F> {
-    fn get_planner(&self) -> Box<dyn LayoutPlanner> {
-        Box::new(RomPlanner::default())
+pub struct RomPlanner {}
+
+impl Planner for RomPlanner {
+    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Surveyor>)>) -> Vec<Plan> {
+        if surveys.len() == 0 {
+            panic!("RomPlanner::plan() found no surveys");
+        }
+
+        let mut total = RomSurveyor::default();
+
+        for (_, survey) in surveys {
+            let survey = survey.as_any().downcast_ref::<RomSurveyor>().unwrap();
+            total.add(survey);
+        }
+
+        println!("Total rowm surveyor: {:?}", total);
+        vec![Plan {
+            airgroup_id: ZISK_AIRGROUP_ID,
+            air_id: ROM_AIR_IDS[0],
+            segment_id: None,
+            checkpoint: CheckPoint::new(0, 0),
+        }]
     }
+}
+
+pub struct RomExpander {}
+
+impl<'a, F: PrimeField> Expander<'a, F> for RomExpander {
+    fn expand(
+        &self,
+        plan: &Plan,
+        min_traces: Arc<[EmuTrace]>,
+        buffer: WitnessBuffer<'a, F>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        Ok(())
+    }
+}
+
+impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
+    fn get_surveyor(&self) -> Box<dyn Surveyor> {
+        Box::new(RomSurveyor::default())
+    }
+
+    fn get_planner(&self) -> Box<dyn Planner> {
+        Box::new(RomPlanner {})
+    }
+
+    fn get_expander(&self) -> Box<dyn Expander<F>> {
+        Box::new(RomExpander {})
+    }
+}
+
+impl<F: PrimeField> StateMachine for RomSM<F> {
+    //     fn prove_x(
+    //         &self,
+    //         layout_planner: &dyn LayoutPlanner,
+    //     ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    //         // if let Some(rom_planner) = layout_planner.as_any().downcast_ref::<RomPlanner>() {
+    //         //     self.prove(&self.zisk_rom, &rom_planner.histogram).unwrap();
+    //         //     Ok(())
+    //         // } else {
+    //         //     Err(Box::new(std::io::Error::new(
+    //         //         std::io::ErrorKind::Other,
+    //         //         "Failed to downcast layout planner to BinaryPlanner",
+    //         //     )))
+    //         // }
+    //         Ok(())
+    //     }
+    // }
+
+    // impl<F: PrimeField> ObserverProvider<F> for RomSM<F> {
+    //     fn get_planner(&self) -> Box<dyn LayoutPlanner> {
+    //         Box::new(RomPlanner::default())
+    //     }
+
+    //     fn get_expander(&self, _: &[F], _: usize) -> Option<Box<dyn Expander>> {
+    //         None
+    //     }
 }
 
 impl<F: Field> WitnessComponent<F> for RomSM<F> {}

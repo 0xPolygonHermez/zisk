@@ -1,5 +1,5 @@
 mod executor;
-mod planner_registry;
+mod surveyor_proxy;
 
 pub use executor::*;
-pub use planner_registry::*;
+pub use surveyor_proxy::*;

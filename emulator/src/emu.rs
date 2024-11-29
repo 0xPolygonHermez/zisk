@@ -1,17 +1,18 @@
 use std::mem;
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions,  EmuTrace, EmuTraceEnd,
-    EmuTraceStart, EmuTraceStep, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceStep,
+    ParEmuOptions,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
+use zisk_common::InstObserver;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    EmuInstructionObserver, InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram,
-    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR,
+    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
+    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, SYS_ADDR,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -620,7 +621,7 @@ impl<'a> Emu<'a> {
     pub fn run_observer<F: PrimeField>(
         &mut self,
         traces: &[EmuTrace],
-        inst_observer: &mut dyn EmuInstructionObserver,
+        inst_observer: &mut dyn InstObserver,
     ) {
         // Set initial state
         self.ctx.inst_ctx.pc = traces[0].start_state.pc;
@@ -644,7 +645,7 @@ impl<'a> Emu<'a> {
     pub fn step_observer<F: PrimeField>(
         &mut self,
         trace_step: &EmuTraceStep,
-        inst_observer: &mut dyn EmuInstructionObserver,
+        inst_observer: &mut dyn InstObserver,
     ) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.ctx.inst_ctx.a = trace_step.a;
@@ -660,6 +661,75 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
+    }
+
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn run_slice_observer2<F: PrimeField>(
+        &mut self,
+        emu_trace: &EmuTrace,
+        inst_observer: &mut dyn InstObserver,
+    ) {
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
+        self.ctx.inst_ctx.sp = emu_trace.start_state.sp;
+        self.ctx.inst_ctx.step = emu_trace.start_state.step;
+        self.ctx.inst_ctx.c = emu_trace.start_state.c;
+
+        for step in emu_trace.steps.iter() {
+            self.step_observer::<F>(step, inst_observer);
+        }
+    }
+
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn run_slice_observer<F: PrimeField>(
+        &mut self,
+        vec_traces: &[EmuTrace],
+        emu_trace_start: &EmuTraceStart,
+        step_end: u64,
+        inst_observer: &mut dyn InstObserver,
+    ) {
+        println!("Step end = {}", step_end);
+
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace_start.pc;
+        self.ctx.inst_ctx.sp = emu_trace_start.sp;
+        self.ctx.inst_ctx.step = emu_trace_start.step;
+        self.ctx.inst_ctx.c = emu_trace_start.c;
+
+        let mut current_box_id = 0;
+        let mut current_step_idx = loop {
+            if current_box_id == vec_traces.len() - 1
+                || vec_traces[current_box_id + 1].start_state.step >= emu_trace_start.step
+            {
+                break emu_trace_start.step as usize
+                    - vec_traces[current_box_id].start_state.step as usize;
+            }
+            current_box_id += 1;
+        };
+
+        let last_trace = vec_traces.last().unwrap();
+        let last_step = last_trace.start_state.step + last_trace.steps.len() as u64;
+        let mut current_step = emu_trace_start.step;
+
+        while current_step < last_step && self.ctx.inst_ctx.step <= step_end {
+            println!(
+                "self.ctx.inst_ctx.step {} <= {}  Current step idx {}",
+                self.ctx.inst_ctx.step, step_end, current_step_idx
+            );
+            let step = &vec_traces[current_box_id].steps[current_step_idx];
+
+            self.step_observer::<F>(step, inst_observer);
+
+            current_step_idx += 1;
+            if current_step_idx == vec_traces[current_box_id].steps.len() {
+                current_box_id += 1;
+                current_step_idx = 0;
+            }
+
+            current_step += 1;
+        }
     }
 
     /// Run a slice of the program to generate full traces

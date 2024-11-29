@@ -1,35 +1,19 @@
-mod layout_planner;
-mod minimal_trace_start;
+mod component_provider;
+mod expander;
 mod operations;
+mod planner_helpers;
+mod planner;
 mod provable;
-mod session;
-mod temp;
-mod worker;
+mod state_machine;
+mod surveyor;
+mod witness_buffer;
 
-pub use layout_planner::*;
-pub use minimal_trace_start::*;
+pub use component_provider::*;
+pub use expander::*;
 pub use operations::*;
-use proofman_common::{ExecutionCtx, SetupCtx};
-use proofman_util::create_buffer_fast;
+pub use planner_helpers::*;
+pub use planner::*;
 pub use provable::*;
-pub use session::*;
-pub use temp::*;
-pub use worker::*;
-
-pub fn create_prover_buffer<F>(
-    ectx: &ExecutionCtx<F>,
-    sctx: &SetupCtx<F>,
-    airgroup_id: usize,
-    air_id: usize,
-) -> (Vec<F>, u64) {
-    // Compute buffer size using the BufferAllocator
-    let (buffer_size, offsets) = ectx
-        .buffer_allocator
-        .as_ref()
-        .get_buffer_info(sctx, airgroup_id, air_id)
-        .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
-
-    let buffer = create_buffer_fast(buffer_size as usize);
-
-    (buffer, offsets[0])
-}
+pub use state_machine::*;
+pub use surveyor::*;
+pub use witness_buffer::*;

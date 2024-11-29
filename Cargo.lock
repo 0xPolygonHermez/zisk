@@ -521,6 +521,7 @@ dependencies = [
  "sm-main",
  "sm-mem",
  "sm-rom",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2208,8 +2209,10 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
+ "ziskemu",
 ]
 
 [[package]]
@@ -2220,6 +2223,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rayon",
+ "zisk-common",
  "zisk-core",
  "ziskemu",
 ]
@@ -2300,6 +2304,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -3264,6 +3269,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-common"
+version = "0.1.0"
+dependencies = [
+ "zisk-core",
+]
+
+[[package]]
 name = "zisk-core"
 version = "0.1.0"
 dependencies = [
@@ -3324,6 +3336,7 @@ dependencies = [
  "riscv",
  "sysinfo 0.31.4",
  "vergen",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
