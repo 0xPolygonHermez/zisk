@@ -191,7 +191,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.in2[1] = F::from_canonical_u64(in2_1);
 
         // Set main SM step
-        row.main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(operation.step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
