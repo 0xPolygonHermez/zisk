@@ -84,13 +84,13 @@ impl Stats {
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
-        if (address & M3) == 0 {
+        if ((address & M3) == 0) && (width == 8) {
             self.mops.mread_a += 1;
         } else {
             // If the memory read operation requires reading 2 aligned chunks of 8 bytes to build
             // the requested width, i.e. the requested slice crosses an 8-bytes boundary, then
             // increase the non-aligned counter number 2
-            if ((address + width) / 8) > (address / 8) {
+            if ((address + width - 1) >> 3) > (address >> 3) {
                 self.mops.mread_na2 += 1;
             }
             // Otherwise increase the non-aligned counter number 1
@@ -113,13 +113,13 @@ impl Stats {
     pub fn on_memory_write(&mut self, address: u64, width: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
-        if (address % M3) != 0 {
+        if ((address & M3) == 0) && (width == 8) {
             self.mops.mwrite_a += 1;
         } else {
             // If the memory write operation requires writing 2 aligned chunks of 8 bytes to build
             // the requested width, i.e. the requested slice crosses an 8-bytes boundary, then
             // increase the non-aligned counter number 2
-            if ((address + width) / 8) > (address / 8) {
+            if ((address + width - 1) >> 3) > (address >> 3) {
                 self.mops.mwrite_na2 += 1;
             }
             // Otherwise increase the non-aligned counter number 1
