@@ -8,7 +8,7 @@ pub mod emu_slice;
 pub mod emu_trace;
 mod emulator;
 mod emulator_errors;
-mod stats;
+pub mod stats;
 
 pub use emu::*;
 pub use emu_context::*;
