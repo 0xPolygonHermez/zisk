@@ -5,7 +5,6 @@ use std::{
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
-use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ModeName, ProofCtx, SetupCtx, StdMode};
@@ -122,7 +121,7 @@ impl<F: PrimeField> StdProd<F> {
             //     HintFieldOptions::default(),
             // );
 
-            (0..num_rows).into_par_iter().for_each(|j| {
+            (0..num_rows).for_each(|j| {
                 let sel = if let HintFieldOutput::Field(selector) = selector.get(j) {
                     if !selector.is_zero() && !selector.is_one() {
                         log::error!("Selector must be either 0 or 1");
@@ -135,13 +134,13 @@ impl<F: PrimeField> StdProd<F> {
                 };
 
                 if sel {
-                    self.update_bus_vals(num_rows, opid, expressions.get(j), j, proves);
+                    self.update_bus_vals(opid, expressions.get(j), j, proves);
                 }
             });
         }
     }
 
-    fn update_bus_vals(&self, num_rows: usize, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
+    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
         let debug_data = self.debug_data.as_ref().expect("Debug data missing");
         let mut bus = debug_data.lock().expect("Bus values missing");
 
@@ -150,8 +149,8 @@ impl<F: PrimeField> StdProd<F> {
         let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
             num_proves: F::zero(),
             num_assumes: F::zero(),
-            row_proves: Vec::with_capacity(num_rows),
-            row_assumes: Vec::with_capacity(num_rows),
+            row_proves: Vec::new(),
+            row_assumes: Vec::new(),
         });
 
         if is_num {

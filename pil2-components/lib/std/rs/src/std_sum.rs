@@ -5,7 +5,6 @@ use std::{
 
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
-use rayon::prelude::*;
 
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx, StdMode, ModeName};
@@ -114,7 +113,7 @@ impl<F: PrimeField> StdSum<F> {
             //     HintFieldOptions::default(),
             // );
 
-            (0..num_rows).into_par_iter().for_each(|j| {
+            (0..num_rows).for_each(|j| {
                 let mut mul = match mul.get(j) {
                     HintFieldOutput::Field(mul) => mul,
                     _ => panic!("mul must be a field element"),
@@ -142,21 +141,13 @@ impl<F: PrimeField> StdSum<F> {
                     };
                     // println!("expressions[{j}]: {:?}, mul[{j}]: {}, is_positive[{j}]: {}", expressions.get(j), mul, is_positive);
 
-                    self.update_bus_vals(num_rows, sumid, expressions.get(j), j, is_positive, mul);
+                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
                 }
             });
         }
     }
 
-    fn update_bus_vals(
-        &self,
-        num_rows: usize,
-        opid: F,
-        val: Vec<HintFieldOutput<F>>,
-        row: usize,
-        is_positive: bool,
-        times: F,
-    ) {
+    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
         let debug_data = self.debug_data.as_ref().expect("Debug data missing");
         let mut bus = debug_data.lock().expect("Bus values missing");
 
@@ -165,8 +156,8 @@ impl<F: PrimeField> StdSum<F> {
         let bus_val = bus_opid.entry(val.clone()).or_insert_with(|| BusValue {
             num_proves: F::zero(),
             num_assumes: F::zero(),
-            row_proves: Vec::with_capacity(num_rows),
-            row_assumes: Vec::with_capacity(num_rows),
+            row_proves: Vec::new(),
+            row_assumes: Vec::new(),
         });
 
         if is_positive {
@@ -176,17 +167,6 @@ impl<F: PrimeField> StdSum<F> {
             assert!(times.is_one(), "The selector value is invalid: expected 1, but received {:?}.", times);
             bus_val.num_assumes += times;
             bus_val.row_assumes.push(row);
-        }
-        if val
-            == vec![
-                HintFieldOutput::Field(F::from_canonical_u8(200)),
-                HintFieldOutput::Field(F::from_canonical_u8(201)),
-            ]
-        {
-            // println!(
-            //     "bus_val_proves: {}, bus_val_assumes: {}, row_proves: {:?}, row_assumes: {:?}",
-            //     bus_val.num_proves, bus_val.num_assumes, bus_val.row_proves, bus_val.row_assumes
-            // );
         }
     }
 }
