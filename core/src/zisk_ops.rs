@@ -20,6 +20,7 @@ use tiny_keccak::keccakf;
 use crate::{InstContext, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0, SYS_ADDR};
 
 /// Determines the type of a [`ZiskOp`].  
+///
 /// The type will be used to assign the proof generation of a main state machine operation result to
 /// the corresponding secondary state machine.  
 /// The type can be: internal (no proof required), arith, binary, etc.
@@ -314,6 +315,8 @@ pub fn opc_copyb(ctx: &mut InstContext) {
 
 /* SIGN EXTEND operations for different data widths (i8, i16 and i32) --> i64 --> u64 */
 
+/// Sign extends an i8.
+///
 /// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
 /// the same value, adding 0xFFFFFFFFFFFFFF00 if negative, and stores the result in c as a u64 (and
 /// sets flag to false)
@@ -328,6 +331,8 @@ pub fn opc_signextend_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
+/// Sign extends an i16.  
+///
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
 /// (and sets flag to false)
@@ -342,6 +347,8 @@ pub fn opc_signextend_h(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
+/// Sign extends an i32.  
+///
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
 /// c as a u64 (and sets flag to false)
@@ -786,10 +793,11 @@ pub fn opc_divu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
-/// Sets c to a / b, as 64-bits signed values, and flag to false.
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+/// Sets c to a / b, as 64-bits signed values, and flag to false.  
+///
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.  
 /// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-/// which cannot be represented with 64 bits (overflow) and it returns c=a
+/// which cannot be represented with 64 bits (overflow) and it returns c=a.
 #[inline(always)]
 pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {

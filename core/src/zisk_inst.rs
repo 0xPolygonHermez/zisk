@@ -55,8 +55,10 @@ pub const STORE_MEM: u64 = 1;
 /// c register value is stored in memory at an indirect address a + offset
 pub const STORE_IND: u64 = 2;
 
-/// Describes the type of the Zisk opcode.  This type determines how the operation result will be
-/// proven. Internal operations are proven as part of the main state machine itself, given their
+/// Describes the type of the Zisk opcode.  
+///
+/// This type determines how the operation result will be proven.  
+/// Internal operations are proven as part of the main state machine itself, given their
 /// simplicity. External operations (rest of types) are proven in their corresponding secondary
 /// state machine.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -75,11 +77,13 @@ pub enum ZiskOperationType {
 /// store data splitted by operation type.
 pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 7;
 
-/// ZisK instruction are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
-/// a, b and c are u64 registers; flag is a boolean
-/// a and b are loaded from the respective sources specified in the instruction
-/// c is stored according to the destination specified in the instruction
-/// flag meaning is operation-dependant
+/// Zisk instruction structure.   
+///
+/// ZisK instructions are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
+/// a, b and c are u64 registers; flag is a boolean.  
+/// a and b are loaded from the respective sources specified in the instruction.  
+/// c is stored according to the destination specified in the instruction.  
+/// flag meaning is operation-dependant.
 #[derive(Debug, Clone)]
 pub struct ZiskInst {
     pub paddr: u64,

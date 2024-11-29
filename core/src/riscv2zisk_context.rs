@@ -1305,6 +1305,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 }
 
 /// Add initial data to ZisK rom.
+///
 /// The initial data is copied in chunks of 8 bytes for efficiency, until less than 8 bytes are left
 /// to copy.  The remaining bytes are copied in additional chunks of 4, 2 and 1 byte, if required.
 pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
