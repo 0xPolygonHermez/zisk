@@ -1,11 +1,11 @@
 mod emu;
 mod emu_context;
 mod emu_full_trace;
-mod emu_options;
+pub mod emu_options;
 mod emu_par_options;
 mod emu_segment;
-mod emu_slice;
-mod emu_trace;
+pub mod emu_slice;
+pub mod emu_trace;
 mod emulator;
 mod emulator_errors;
 mod stats;

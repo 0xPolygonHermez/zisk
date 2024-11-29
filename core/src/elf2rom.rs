@@ -1,6 +1,7 @@
-//use core::num;
+//! Reads RISC-V data from and ELF file and converts it to a ZiskRom
+
 use crate::{
-    zv2zisk::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
+    riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use elf::{

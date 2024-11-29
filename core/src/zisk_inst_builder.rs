@@ -1,3 +1,7 @@
+//! Builds a Zisk instruction.  
+//! The ZiskInstBuilder structure contains one ZiskInst structure, and provides a set of helper
+//! methods to modify its attributes
+
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
     ZiskInst, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
@@ -10,6 +14,7 @@ use crate::{
 /// Helps building a Zisk instruction during the transpilation process
 #[derive(Debug, Clone, Default)]
 pub struct ZiskInstBuilder {
+    /// Zisk instruction
     pub i: ZiskInst,
 }
 

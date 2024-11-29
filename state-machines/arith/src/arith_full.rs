@@ -191,8 +191,7 @@ impl<F: Field> ArithFullSM<F> {
 
         timer_start_trace!(ARITH_PADDING);
         let padding_offset = input.len();
-        let padding_rows: usize =
-            if num_rows > padding_offset { num_rows - padding_offset } else { 0 };
+        let padding_rows: usize = num_rows.saturating_sub(padding_offset);
 
         if padding_rows > 0 {
             let mut t: ArithRow<F> = Default::default();

@@ -153,7 +153,7 @@ pub struct ArithRangeTableInputsIterator<'a> {
     inputs: &'a ArithRangeTableInputs,
 }
 
-impl<'a> Iterator for ArithRangeTableInputsIterator<'a> {
+impl Iterator for ArithRangeTableInputsIterator<'_> {
     type Item = (usize, u64);
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -1,4 +1,11 @@
-//! Defines the instructions that can be executed in Zisk
+//! * Defines the operations that can be executed in Zisk as part of an instruction.
+//! * The macro `define_ops` is used to define every operation, including its opcode, human-readable
+//!   name, type, etc.
+//! * The opcode operation functions are called `op_<opcode>`, they accept 2 input parameters a and
+//!   b, and return 2 output results c and flag.
+//! * The `opc_<opcode>` functions are wrappers over the `op_<opcode>` functions that accept an
+//!   `InstContext` (instruction context) as input/output parameter, containg a, b, c and flag
+//!   attributes.
 
 #![allow(unused)]
 
@@ -12,7 +19,11 @@ use tiny_keccak::keccakf;
 
 use crate::{InstContext, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0, SYS_ADDR};
 
-/// Determines the type of a [`ZiskOp`]
+/// Determines the type of a [`ZiskOp`].  
+///
+/// The type will be used to assign the proof generation of a main state machine operation result to
+/// the corresponding secondary state machine.  
+/// The type can be: internal (no proof required), arith, binary, etc.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum OpType {
     Internal,
@@ -276,9 +287,7 @@ define_ops! {
     (PubOut, "pubout", PubOut, 77, 0x30, opc_pubout, op_pubout), // TODO: New type
 }
 
-/// # OPCODE operation functions, called `op_<opcode>`.  The `opc_<opcode>` functions are wrappers over the `op_<opcode>` functions that accept an instruction context as input/output parameter containg a, b, c and flag attributes.
-
-/// ## INTERNAL operations
+/* INTERNAL operations */
 
 /// Sets flag to true (and c to 0)
 #[inline(always)]
@@ -304,8 +313,10 @@ pub fn opc_copyb(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_copyb(ctx.a, ctx.b);
 }
 
-/// ## SIGN EXTEND operations for different data widths (i8, i16 and i32) --> i64 --> u64
+/* SIGN EXTEND operations for different data widths (i8, i16 and i32) --> i64 --> u64 */
 
+/// Sign extends an i8.
+///
 /// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
 /// the same value, adding 0xFFFFFFFFFFFFFF00 if negative, and stores the result in c as a u64 (and
 /// sets flag to false)
@@ -320,6 +331,8 @@ pub fn opc_signextend_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
+/// Sign extends an i16.  
+///
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
 /// (and sets flag to false)
@@ -334,6 +347,8 @@ pub fn opc_signextend_h(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
+/// Sign extends an i32.  
+///
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
 /// c as a u64 (and sets flag to false)
@@ -348,7 +363,7 @@ pub fn opc_signextend_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
 }
 
-/// ## ADD AND SUB operations for different data widths (i32 and u64)
+/* ADD AND SUB operations for different data widths (i32 and u64) */
 
 /// Adds a and b as 64-bit unsigned values, and stores the result in c (and sets flag to false)
 #[inline(always)]
@@ -398,7 +413,7 @@ pub fn opc_sub_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_sub_w(ctx.a, ctx.b);
 }
 
-/// ## SHIFT operations
+/* SHIFT operations */
 
 /// Shifts a as a 64-bits unsigned value to the left b mod 64 bits, and stores the result in c (and
 /// sets flag to false)
@@ -478,7 +493,7 @@ pub fn opc_srl_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_srl_w(ctx.a, ctx.b);
 }
 
-/// ## COMPARISON operations
+/* COMPARISON operations */
 
 /// If a and b are equal, it returns c=1, flag=true; otherwise it returns c=0, flag=false
 #[inline(always)]
@@ -649,7 +664,7 @@ pub fn opc_le_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_le_w(ctx.a, ctx.b);
 }
 
-/// ## LOGICAL operations
+/* LOGICAL operations */
 
 /// Sets c to a AND b, and flag to false
 #[inline(always)]
@@ -687,7 +702,7 @@ pub fn opc_xor(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_xor(ctx.a, ctx.b);
 }
 
-/// ## ARITHMETIC operations: div / mul / rem
+/* ARITHMETIC operations: div / mul / rem */
 
 /// Sets c to a x b, as 64-bits unsigned values, and flag to false
 #[inline(always)]
@@ -778,10 +793,11 @@ pub fn opc_divu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
-/// Sets c to a / b, as 64-bits signed values, and flag to false.
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+/// Sets c to a / b, as 64-bits signed values, and flag to false.  
+///
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.  
 /// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-/// which cannot be represented with 64 bits (overflow) and it returns c=a
+/// which cannot be represented with 64 bits (overflow) and it returns c=a.
 #[inline(always)]
 pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
     if b == 0 {
@@ -898,7 +914,7 @@ pub fn opc_rem_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_rem_w(ctx.a, ctx.b);
 }
 
-/// ## MIN / MAX operations
+/* MIN / MAX operations */
 
 /// Sets c to the minimum of a and b as 64-bits unsigned values (and flag to false)
 #[inline(always)]
@@ -1028,7 +1044,7 @@ pub fn opc_max_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
 
-/// ## PRECOMPILED operations
+/* PRECOMPILED operations */
 
 /// Performs a Keccak-f hash over a 1600-bits input state stored in memory at the address
 /// specified by register A0, and stores the output state in the same memory address
