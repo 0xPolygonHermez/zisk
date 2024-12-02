@@ -169,7 +169,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/pil2-compiler
-          ref: feature/custom-cols
+          ref: feature/on-final-priority
           path: pil2-compiler
 
       - name: Install pil2-compiler dependencies
@@ -271,7 +271,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/pil2-compiler
-          ref: feature/custom-cols
+          ref: feature/on-final-priority
           path: pil2-compiler
 
       - name: Install pil2-compiler dependencies

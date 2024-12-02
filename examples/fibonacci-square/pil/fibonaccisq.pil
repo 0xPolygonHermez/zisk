@@ -26,8 +26,8 @@ airtemplate FibonacciSquare(const int N = 2**8) {
     col fixed L1 = [1,0...];
     col witness a,b;
 
-    col rom line;
-    col rom flags;
+    col rom stage(0) line;
+    col rom stage(0) flags;
 
     // Inputs/Outputs
     L1 * (a - in1) === 0;

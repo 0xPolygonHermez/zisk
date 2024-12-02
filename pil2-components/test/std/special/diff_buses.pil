@@ -23,8 +23,8 @@ airtemplate Air2(const int N = 2**5) {
 airtemplate Air3(const int N = 2**4) {
     col witness a,b,c,d;
 
-    permutation_assumes(3, [a]);
-    permutation_proves(3, [b]);
+    permutation_assumes(3, [a], bus_type: PIOP_BUS_PROD);
+    permutation_proves(3, [b], bus_type: PIOP_BUS_PROD);
 
     lookup_assumes(4, [c]);
     lookup_proves(4, [d]);
