@@ -161,7 +161,7 @@ public:
             }
         } else {
             for(uint64_t j = 0; j < nrowsPack; ++j) {
-                bufferT_[(nColsStagesAcc[ns*nOpenings])*nrowsPack + j] = setupCtx.proverHelpers.x[row + j];
+                bufferT_[(nColsStagesAcc[ns*nOpenings])*nrowsPack + j] = setupCtx.proverHelpers.x_n[row + j];
             }
         }
     }
@@ -232,12 +232,8 @@ public:
     }
 
     inline void printTmp3(uint64_t row, Goldilocks::Element* tmp) {
-        Goldilocks::Element buff[FIELD_EXTENSION*nrowsPack];
-        Goldilocks::copy_pack(nrowsPack,&buff[0], uint64_t(FIELD_EXTENSION), &tmp[0]);
-        Goldilocks::copy_pack(nrowsPack,&buff[1], uint64_t(FIELD_EXTENSION), &tmp[1]);
-        Goldilocks::copy_pack(nrowsPack,&buff[2], uint64_t(FIELD_EXTENSION), &tmp[2]);
-        for(uint64_t i = 0; i < 1; ++i) {
-            cout << "Value at row " << row + i << " is [" << Goldilocks::toString(buff[FIELD_EXTENSION*i]) << ", " << Goldilocks::toString(buff[FIELD_EXTENSION*i + 1]) << ", " << Goldilocks::toString(buff[FIELD_EXTENSION*i + 2]) << "]" << endl;
+        for(uint64_t i = 0; i < nrowsPack; ++i) {
+            cout << "Value at row " << row + i << " is [" << Goldilocks::toString(tmp[i]) << ", " << Goldilocks::toString(tmp[nrowsPack + i]) << ", " << Goldilocks::toString(tmp[2*nrowsPack + i]) << "]" << endl;
         }
     }
 
