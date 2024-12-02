@@ -16,7 +16,7 @@ trace!(MemRow, MemTrace<F> {
 });
 
 trace!(RomDataRow, RomDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], increment: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
 });
 
 trace!(InputDataRow, InputDataTrace<F> {
@@ -70,5 +70,3 @@ trace!(U8AirRow, U8AirTrace<F> {
 trace!(U16AirRow, U16AirTrace<F> {
  mul: F,
 });
-
-

@@ -1275,7 +1275,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
 }
 
 /// Add initial data to ZisK rom
-pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
+pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_aligned: bool) {
     /*let mut s = String::new();
     for i in 0..min(50, data.len()) {
         s += &format!("{:02x}", data[i]);
@@ -1301,7 +1301,27 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         rom.next_init_inst_addr += 4;
         o += 8;
     }
-
+    let bytes = addr + data.len() as u64 - o;
+    // Read remaining 32-bit input data chunk, if any, and store them in rom
+    if force_aligned && bytes > 0 {
+        let mut v: u64 = 0;
+        let from = (o - addr + bytes - 1) as usize;
+        for i in 0..bytes {
+            v = v * 256 + data[from - i as usize] as u64;
+        }
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", o, false);
+        zib.src_b("imm", v as u64, false);
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.store("ind", 0, false, false);
+        zib.j(4, 4);
+        zib.verbose(&format!("Init Data {:08x}: {:04x}", o, v));
+        zib.build();
+        rom.insts.insert(rom.next_init_inst_addr, zib);
+        rom.next_init_inst_addr += 4;
+        o += bytes;
+    }
     // Read remaining 32-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 4 {
         let v = read_u32_le(data, (o - addr) as usize);
@@ -1352,7 +1372,21 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
         rom.next_init_inst_addr += 4;
         o += 1;
     }
-
+    /*
+        if force_aligned {
+            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+            zib.src_a("imm", o, false);
+            zib.src_b("imm", 0, false);
+            zib.op("copyb").unwrap();
+            zib.ind_width(8);
+            zib.store("ind", 0, false, false);
+            zib.j(4, 4);
+            zib.verbose(&format!("Init Data {:08x}: {:04x}", o, 0));
+            zib.build();
+            rom.insts.insert(rom.next_init_inst_addr, zib);
+            rom.next_init_inst_addr += 4;
+        }
+    */
     // Check resulting length
     if o != addr + data.len() as u64 {
         panic!("add_zisk_init_data() invalid length o={} addr={} data.len={}", o, addr, data.len());

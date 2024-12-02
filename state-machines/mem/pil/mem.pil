@@ -15,9 +15,16 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
+    // in this air the address in a mem-bytes address (internal), when this address is pushed in BUS must be multiplied
+    // by MEM_BYTES to get the real address.
     const expr internal_base_address = base_address / MEM_BYTES;
-    airval mem_segment;
-    airval mem_last_segment;
+    airval segment_id;
+    airval is_first_segment;
+    airval is_last_segment;
+
+    is_first_segment * (1 - is_first_segment) === 0;
+    is_last_segment * (1 - is_last_segment) === 0;
+    is_first_segment * segment_id === 0;
 
     col witness addr;        // n-byte address, real address = addr * MEM_BYTES
     col witness step;
@@ -43,51 +50,18 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         col witness air.wr;
         const expr air.rd = 1 - wr;
         wr * (1 - wr) === 0;
-        // if wr is 1, sel must be 1 (not allowed writes)
-        wr * (1 - sel) === 0;
+    } else {
+        // a free input memory must be read-only, an immutable memory must be write
+        // on first row of new address (addr_changes = 1)
+        const expr air.wr = free_input_mem ? 0 : addr_changes;
     }
+    // if wr is 1, sel must be 1 (not allowed writes)
+    wr * (1 - sel) === 0;
 
     sel * (1 - sel) === 0;
 
-    // all time first line is lost, used for continuations
-    sel * SEGMENT_L1 === 0;
-
     addr_changes * (1 - addr_changes) === 0;
 
-    // check increment of memory
-    if (free_input_mem) {
-        // addresses are incremental, to save range check, increment, etc, address must be consecutive.
-        addr_changes * (addr - 'addr - 1) === 0;
-    } else {
-        col witness air.increment;
-        increment === SEGMENT_L1 * (addr - internal_base_address + 1) + (1 - SEGMENT_L1) * (addr_changes * (addr - 'addr - step + 'step) + step - 'step);
-        range_check(colu: increment, min: 1, max: MEMORY_MAX_DIFF);
-    }
-
-    // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
-    //          setting mem_last_segment = 1
-
-    // if addr_changes == 0 means that addr and previous address are the same
-    const expr same_addr = 1 - SEGMENT_L1 - addr_changes;
-    same_addr * ('addr - addr) === 0;
-
-    for (int index = 0; index < length(value); index++) {
-        if (immutable) {
-            // if address not change value must be equal to previous value
-            (1 - addr_changes) * (value[index] - 'value[index])  ===  0;
-
-            if (!free_input_mem) {
-                // if address changes => write, and it must be inserted on bus
-                addr_changes * (1 - sel)  ===  0;
-            }
-        } else {
-            // if address not change and it isn't write, value must be equal to previous value
-            (1 - addr_changes) * (1 - wr) * (value[index] - 'value[index])  ===  0;
-
-            // if address changes, and it isn't a write, value must be 0.
-            addr_changes * (1 - wr) * value[index]  ===  0;
-        }
-    }
 
     // CONTINUATIONS
     //
@@ -95,13 +69,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     //
     // CASE: last row of segment is read
     //
-    // S[n-1]    wr = 0, sel = 1, addr, step, value  => BUS.proves(MEM_CONT_ID, S+1, addr, step-1, value)
-    // S+1[0]    wr = 0, sel = 0, addr, step, value  => BUS.assumes(MEM_CONT_ID, S, addr, step, value)
+    // S[n-1]    wr = 0, sel = 1, addr, step, value  => BUS.proves(MEM_CONT_ID, BASE_ADDR, S+1, addr, step-1, value)
+    // S+1[0]    wr = 0, sel = 0, addr, step, value  => BUS.assumes(MEM_CONT_ID, BASE_ADDR, S, addr, step, value)
     //
     // CASE: last row of segment is write
     //
-    // S[n-1]    wr = 1, sel = 1, addr, step, value  => BUS.proves(MEM_CONT_ID, S+1, addr, step-1, value)
-    // S+1[0]    wr = 0, sel = 0, addr, step, value  => BUS.assumes(MEM_CONT_ID, S, addr, step, value)
+    // S[n-1]    wr = 1, sel = 1, addr, step, value  => BUS.proves(MEM_CONT_ID, BASE_ADDR, S+1, addr, step-1, value)
+    // S+1[0]    wr = 0, sel = 0, addr, step, value  => BUS.assumes(MEM_CONT_ID, BASE_ADDR, S, addr, step, value)
     //
     // NOTES: from row = 1 all constraints could be reference previous row, without problems
     //        on row = 0 forced by constraint that sel = 0 => wr = 0.
@@ -116,21 +90,129 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // the last not used rows are filled with last addr and value and sel = 0 and wr = 0 incrementing steps.
     // last BUS.proves not it's generated to avoid generate more than one memory cycle.
 
-    // permutation_proves(MEMORY_CONT_ID, [(mem_segment + 1), addr, step, ...value], sel: mem_last_segment * 'SEGMENT_L1); // last row
-    // permutation_assumes(MEMORY_CONT_ID, [mem_segment, 0, addr, step, ...value], sel: SEGMENT_L1); // first row
+
+    // continuation with previous segment, these are relevant values that must match with
+    // beggining of current segment. These values are like as virtual row, mirror of last row of
+    // previous segment but only with relevant values.
+
+    airval previous_segment_value[RC];
+    airval previous_segment_step, previous_segment_addr;
+
+    // continuation for next segment, these values used on direct update to air bus, and after
+    // with constraints force that these values are the same as last row of current segment.
+
+    airval segment_last_value[RC];
+    airval segment_last_step, segment_last_addr;
+
+    for (int i = 0; i < RC; i++) {
+        SEGMENT_LAST * (value[i] - segment_last_value[i]) === 0;
+    }
+
+    SEGMENT_LAST * (addr - segment_last_addr) === 0;
+    SEGMENT_LAST * (step - segment_last_step) === 0;
+
+    // add base_address to the columns to avoid collisions between different memories
+    // for security send is_last_segment to avoid reuse end of last segment as start of new cycle of segments
+    direct_update(MEMORY_CONT_ID,
+                  [
+                    base_address,                               // identify area of memory
+                    segment_id,                                 // current segment_id
+                    0,                                          // security check, to avoid open a new cycle with
+                                                                // proves of last segment
+                    previous_segment_addr,
+                    previous_segment_step,
+                    ...previous_segment_value
+                  ],
+                  proves: 0);
+
+    direct_update(MEMORY_CONT_ID,
+                  [
+                    base_address,                               // identify area of memory
+                    (1 - is_last_segment) * (segment_id + 1),   // next segment_id, for last segment
+                                                                // this value is forced to 0 to match global constraint
+                    is_last_segment,                            // to force mismatch with assume
+                                                                // (avoid attack repeat cycle)
+                    segment_last_addr,
+                    segment_last_step,
+                    ...segment_last_value
+                  ],
+                  proves: 1);
+
+    // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
+    range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+
+
+    // check increment of memory
+    if (immutable) {
+        // addresses are incremental, to save range check, increment, etc, address must be consecutive.
+        const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - is_first_segment - 'addr) + 'addr;
+        const expr delta_addr = addr - previous_addr;
+        addr_changes * (delta_addr - 1) === 0;
+        (1 - addr_changes) * (addr - previous_addr) === 0;
+    } else {
+        const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - 'addr) + 'addr;
+        const expr delta_addr = addr - previous_addr;
+
+        // on first row of first segment could be the same and address_change = 1 because it's as a new addr
+        // SEGMENT_L1 * (x + is_first_segment * SEGMENT_L1) === SEGMENT_L1 * (x + is_first_segment)
+
+        const expr previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
+        const expr delta_step = step - previous_step;
+
+        col witness increment;
+        increment === addr_changes * (delta_addr - delta_step) + delta_step;
+
+        is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
+
+        range_check(colu: increment, min: 1, max: MEMORY_MAX_DIFF);
+    }
+
+    (1 - addr_changes) * (addr - previous_addr) === 0;
+
+    // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
+    //          setting is_last_segment = 1
+
+    // if addr_changes == 0 means that addr and previous address are the same
+    // TODO:
+
+    for (int index = 0; index < length(value); index++) {
+        const expr previous_value = SEGMENT_L1 * (previous_segment_value[index] - 'value[index]) + 'value[index];
+        if (immutable) {
+            // if address not change value must be equal to previous value
+            (1 - addr_changes) * (value[index] - previous_value)  ===  0;
+
+            if (!free_input_mem) {
+                // if address changes => write, and it must be inserted on bus
+                addr_changes * (1 - sel)  ===  0;
+            }
+        } else {
+            // if address not change and it isn't write, value must be equal to previous value
+            // TODO: boundary constraints
+            (1 - addr_changes) * (1 - wr) * (value[index] - previous_value)  ===  0;
+
+            // if address changes, and it isn't a write, value must be 0.
+            addr_changes * (1 - wr) * value[index]  ===  0;
+        }
+    }
+
 
     // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of MEM_BYTES
     // and the width to be exactly MEM_BYTES
     // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of MEM_BYTES.
     // These are handled with the Memory Align component
 
-    if (free_input_mem) {
-        permutation_proves(MEMORY_ID, cols: [MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    } else if (immutable) {
-        permutation_proves(MEMORY_ID, cols: [addr_changes * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    } else {
-        permutation_proves(MEMORY_ID, cols: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    }
+    // if (free_input_mem) {
+    //     const expr mem_op = MEMORY_LOAD_OP;
+    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    // } else if (immutable) {
+    //     const expr mem_op = addr_changes * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    // } else {
+    //     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
+    // }
+    const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
 
 function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {

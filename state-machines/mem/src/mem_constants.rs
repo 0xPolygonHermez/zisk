@@ -1,5 +1,6 @@
-pub const MEM_ADDR_MASK: u64 = 0xFFFF_FFFF_FFFF_FFF8;
-pub const MEM_BYTES: u64 = 8;
+pub const MEM_ADDR_MASK: u32 = 0xFFFF_FFF8;
+pub const MEM_BYTES_BITS: u32 = 3;
+pub const MEM_BYTES: u32 = 1 << MEM_BYTES_BITS;
 
 pub const MAX_MEM_STEP_OFFSET: u64 = 2;
 pub const MAX_MEM_OPS_PER_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * 2;

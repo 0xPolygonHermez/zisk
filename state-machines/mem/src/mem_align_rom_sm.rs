@@ -138,7 +138,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         let width_idx = Self::calculate_possible_widths(one_word, offset)
             .iter()
             .position(|&w| w == width)
-            .expect("Invalid width");
+            .expect(&format!("Invalid width offset:{} width:{}", offset, width));
         first_row_idx += op_size * width_idx as u64;
 
         first_row_idx

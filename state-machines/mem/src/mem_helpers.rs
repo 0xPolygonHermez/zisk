@@ -17,7 +17,7 @@ const MAX_MEM_OPS_PER_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * 2;
 
 #[derive(Debug, Clone)]
 pub struct MemAlignInput {
-    pub address: u32,
+    pub addr: u32,
     pub is_write: bool,
     pub width: u8,
     pub step: u64,
@@ -27,21 +27,23 @@ pub struct MemAlignInput {
 
 #[derive(Debug, Clone)]
 pub struct MemInput {
-    pub address: u32,
-    pub is_write: bool,
-    pub step: u64,
-    pub value: u64,
+    pub addr: u32,         // address in word native format means byte_address / MEM_BYTES
+    pub is_write: bool,    // it's a write operation
+    pub is_internal: bool, // internal operation, don't send this operation to bus
+    pub step: u64,         // mem_step = f(main_step, main_step_offset)
+    pub value: u64,        // value to read or write
 }
 
 impl MemInput {
-    pub fn new(address: u32, is_write: bool, step: u64, value: u64) -> Self {
-        MemInput { address, is_write, step, value }
+    pub fn new(addr: u32, is_write: bool, step: u64, value: u64, is_internal: bool) -> Self {
+        MemInput { addr, is_write, step, value, is_internal }
     }
     pub fn from(mem_op: &ZiskRequiredMemory) -> Self {
-        // debug_assert_eq!(mem_op.width, MEM_BYTES as u8);
+        debug_assert_eq!(mem_op.width, MEM_BYTES as u8);
         MemInput {
-            address: mem_op.address,
+            addr: mem_op.address >> 3,
             is_write: mem_op.is_write,
+            is_internal: false,
             step: MemHelpers::main_step_to_address_step(mem_op.step, mem_op.step_offset),
             value: mem_op.value,
         }
@@ -50,22 +52,25 @@ impl MemInput {
 
 impl MemAlignInput {
     pub fn new(
-        address: u32,
+        addr: u32,
         is_write: bool,
         width: u8,
         step: u64,
         value: u64,
         mem_values: [u64; 2],
     ) -> Self {
-        MemAlignInput { address, is_write, width, step, value, mem_values }
+        MemAlignInput { addr, is_write, width, step, value, mem_values }
     }
-    pub fn from(mem_op: &MemInput, width: u8, mem_values: &[u64; 2]) -> Self {
+    pub fn from(mem_external_op: &ZiskRequiredMemory, mem_values: &[u64; 2]) -> Self {
         MemAlignInput {
-            address: mem_op.address,
-            is_write: mem_op.is_write,
-            step: mem_op.step,
-            width,
-            value: mem_op.value,
+            addr: mem_external_op.address,
+            is_write: mem_external_op.is_write,
+            step: MemHelpers::main_step_to_address_step(
+                mem_external_op.step,
+                mem_external_op.step_offset,
+            ),
+            width: mem_external_op.width,
+            value: mem_external_op.value,
             mem_values: [mem_values[0], mem_values[1]],
         }
     }
@@ -84,7 +89,7 @@ impl fmt::Debug for MemAlignResponse {
         write!(
             f,
             "more:{0} step:{1} value:{2:016X}({2:})",
-            self.more_address,
+            self.more_addr,
             self.step,
             self.value.unwrap_or(0)
         )
@@ -105,7 +110,7 @@ pub fn mem_align_call(
     if mem_op.is_write {
         if phase == 0 {
             MemAlignResponse {
-                more_address: double_address,
+                more_addr: double_address,
                 step: mem_op.step + 1,
                 value: Some(
                     (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))) |
@@ -114,7 +119,7 @@ pub fn mem_align_call(
             }
         } else {
             MemAlignResponse {
-                more_address: false,
+                more_addr: false,
                 step: mem_op.step + 1,
                 value: Some(
                     (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width as u32 - 64))) |
@@ -124,7 +129,7 @@ pub fn mem_align_call(
         }
     } else {
         MemAlignResponse {
-            more_address: double_address && phase == 0,
+            more_addr: double_address && phase == 0,
             step: mem_op.step + 1,
             value: None,
         }

@@ -43,7 +43,7 @@ const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
 
 pub struct MemAlignResponse {
-    pub more_address: bool,
+    pub more_addr: bool,
     pub step: u64,
     pub value: Option<u64>,
 }
@@ -135,7 +135,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
     #[inline(always)]
     pub fn get_mem_op(&self, input: &MemAlignInput, phase: usize) -> MemAlignResponse {
-        let addr = input.address;
+        let addr = input.addr;
         let width = input.width;
 
         // Compute the width
@@ -267,7 +267,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 // Prove the generated rows
                 self.prove(&[read_row, value_row]);
 
-                MemAlignResponse { more_address: false, step, value: None }
+                MemAlignResponse { more_addr: false, step, value: None }
             }
             (true, false) => {
                 /* RWV with offset=3, width=4
@@ -429,7 +429,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                 // Prove the generated rows
                 self.prove(&[read_row, write_row, value_row]);
 
-                MemAlignResponse { more_address: false, step, value: Some(value_write) }
+                MemAlignResponse { more_addr: false, step, value: Some(value_write) }
             }
             (false, true) => {
                 /* RVR with offset=5, width=8
@@ -449,7 +449,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
                 match phase {
                     // If phase == 0, do nothing, just ask for more
-                    0 => MemAlignResponse { more_address: true, step: input.step, value: None },
+                    0 => MemAlignResponse { more_addr: true, step: input.step, value: None },
 
                     // Otherwise, do the RVR
                     1 => {
@@ -587,7 +587,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                         // Prove the generated rows
                         self.prove(&[first_read_row, value_row, second_read_row]);
 
-                        MemAlignResponse { more_address: false, step, value: None }
+                        MemAlignResponse { more_addr: false, step, value: None }
                     }
                     _ => panic!("Invalid phase={}", phase),
                 }
@@ -643,11 +643,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             (value_first_read & !mask) | value_to_write
                         };
 
-                        MemAlignResponse {
-                            more_address: true,
-                            step,
-                            value: Some(value_first_write),
-                        }
+                        MemAlignResponse { more_addr: true, step, value: Some(value_first_write) }
                     }
                     // Otherwise, do the RWVRW
                     1 => {
@@ -901,11 +897,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             second_read_row,
                         ]);
 
-                        MemAlignResponse {
-                            more_address: false,
-                            step,
-                            value: Some(value_second_write),
-                        }
+                        MemAlignResponse { more_addr: false, step, value: Some(value_second_write) }
                     }
                     _ => panic!("Invalid phase={}", phase),
                 }
@@ -968,7 +960,8 @@ impl<F: PrimeField> MemAlignSM<F> {
                 .unwrap();
 
         let mut reg_range_check: Vec<u64> = vec![0; 1 << CHUNK_BITS];
-
+        println!("ROW 0 mem_align {:?}", rows[0]);
+        println!("ROW 1 mem_align {:?}", rows[1]);
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
             // Store the entire row
@@ -979,11 +972,16 @@ impl<F: PrimeField> MemAlignSM<F> {
                     row.reg[j].as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                 reg_range_check[element] += 1;
             }
+            if i < 2 {
+                println!("ROW_{} mem_align {:?}", i, trace_buffer[i]);
+            }
         }
 
         // Pad the remaining rows with trivially satisfying rows
         let padding_row = MemAlignRow::<F> { reset: F::from_bool(true), ..Default::default() };
         let padding_size = air_mem_align_rows - rows_len;
+
+        println!("ROW PADDING mem_align {:?}", padding_row);
 
         // Store the padding rows
         for i in rows_len..air_mem_align_rows {

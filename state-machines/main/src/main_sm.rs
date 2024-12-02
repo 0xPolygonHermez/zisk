@@ -216,8 +216,8 @@ impl<F: PrimeField> MainSM<F> {
         let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
         let main_segment = F::from_canonical_usize(segment_id);
 
-        air_instance.set_airvalue(&sctx, "Main.main_last_segment", main_last_segment);
-        air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
+        air_instance.set_airvalue(&sctx, "Main.main_last_segment", None, main_last_segment);
+        air_instance.set_airvalue(&sctx, "Main.main_segment", None, main_segment);
 
         iectx.air_instance = Some(air_instance);
     }

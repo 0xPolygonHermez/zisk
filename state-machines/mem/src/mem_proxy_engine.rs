@@ -2,7 +2,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
     MemAlignInput, MemAlignResponse, MemAlignSM, MemHelpers, MemInput, MemUnmapped, MAX_MEM_ADDR,
-    MAX_MEM_OPS_PER_MAIN_STEP, MEM_ADDR_MASK, MEM_BYTES,
+    MAX_MEM_OPS_PER_MAIN_STEP, MEM_ADDR_MASK, MEM_BYTES, MEM_BYTES_BITS,
 };
 use log::info;
 use p3_field::PrimeField;
@@ -10,7 +10,7 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::ZiskRequiredMemory;
 
 #[cfg(feature = "debug_mem_proxy_engine")]
-const DEBUG_ADDR: u32 = 0xA0008F10;
+const DEBUG_ADDR: u32 = 0x90000008;
 
 macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
@@ -44,16 +44,16 @@ struct MemAlignOperation {
 
 #[derive(Debug)]
 pub struct AddressRegion {
-    from_address: u32,
-    to_address: u32,
+    from_addr: u32,
+    to_addr: u32,
     module_id: u8,
 }
 pub struct MemProxyEngine<F: PrimeField> {
     modules: Vec<Arc<dyn MemModule<F>>>,
     modules_data: Vec<MemModuleData>,
     open_mem_align_ops: VecDeque<MemAlignOperation>,
-    address_map: Vec<AddressRegion>,
-    address_map_closed: bool,
+    addr_map: Vec<AddressRegion>,
+    addr_map_closed: bool,
     last_addr: u32,
     last_addr_value: u64,
     current_module_id: usize,
@@ -72,8 +72,8 @@ impl<F: PrimeField> MemProxyEngine<F> {
             current_module: String::new(),
             module_end_addr: 0,
             open_mem_align_ops: VecDeque::new(),
-            address_map: Vec::new(),
-            address_map_closed: false,
+            addr_map: Vec::new(),
+            addr_map_closed: false,
         }
     }
 
@@ -88,7 +88,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         let flush_input_size = module.get_flush_input_size();
 
         for range in ranges.iter() {
-            debug_info!("adding range 0x{:X} 0x{:X}", range.0, range.1);
+            debug_info!("adding range 0x{:X} 0x{:X} to {}", range.0, range.1, name);
             self.insert_address_range(range.0, range.1, module_id);
         }
         self.modules_data.push(MemModuleData {
@@ -98,12 +98,12 @@ impl<F: PrimeField> MemProxyEngine<F> {
         });
     }
     /* insert in sort way the address map and verify that */
-    fn insert_address_range(&mut self, from_address: u32, to_address: u32, module_id: u8) {
-        let region = AddressRegion { from_address, to_address, module_id };
-        if let Some(index) = self.address_map.iter().position(|x| x.from_address >= from_address) {
-            self.address_map.insert(index, region);
+    fn insert_address_range(&mut self, from_addr: u32, to_addr: u32, module_id: u8) {
+        let region = AddressRegion { from_addr, to_addr, module_id };
+        if let Some(index) = self.addr_map.iter().position(|x| x.from_addr >= from_addr) {
+            self.addr_map.insert(index, region);
         } else {
-            self.address_map.push(region);
+            self.addr_map.push(region);
         }
     }
 
@@ -142,16 +142,19 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
         for mem_extern_op in mem_operations.iter_mut() {
             self.log_mem_op(mem_extern_op);
-            let mem_op = MemInput::from(mem_extern_op);
-            let aligned_mem_addr = Self::to_aligned_addr(mem_op.address);
-            let mem_step = mem_op.step;
+            let mem_op_aligned = Self::is_aligned(&mem_extern_op);
+            let mem_step = MemHelpers::main_step_to_address_step(
+                mem_extern_op.step,
+                mem_extern_op.step_offset,
+            );
+            let aligned_mem_addr = Self::to_aligned_addr(mem_extern_op.address);
 
             // Check if there are open mem align operations to be processed in this moment, with
             // address (or step) less than the aligned of current mem_op.
             self.process_all_previous_open_mem_align_ops(aligned_mem_addr, mem_step, mem_align_sm);
 
             // check if we are at end of loop
-            if self.check_if_end_of_memory_mark(&mem_op) {
+            if self.check_if_end_of_memory_mark(&mem_extern_op) {
                 break;
             }
 
@@ -159,30 +162,28 @@ impl<F: PrimeField> MemProxyEngine<F> {
             let mem_value = self.get_mem_value(aligned_mem_addr);
 
             // all open mem align operations are processed, check if new mem operation is aligned
-            if !Self::is_aligned(&mem_extern_op) {
+            if !mem_op_aligned {
                 // In this point found non-aligned memory access, phase-0
-                let mem_align_input =
-                    MemAlignInput::from(&mem_op, mem_extern_op.width, &[mem_value, 0]);
+                let mem_align_input = MemAlignInput::from(&mem_extern_op, &[mem_value, 0]);
                 let mem_align_response = mem_align_sm.get_mem_op(&mem_align_input, 0);
 
                 #[cfg(feature = "debug_mem_proxy_engine")]
-                if mem_align_input.address >= DEBUG_ADDR - 8 &&
-                    mem_align_input.address <= DEBUG_ADDR + 8
+                if mem_align_input.addr >= DEBUG_ADDR - 8 && mem_align_input.addr <= DEBUG_ADDR + 8
                 {
                     debug_info!(
                         "mem_align_input_{:X}: phase: 0 {:?}",
-                        mem_align_input.address,
+                        mem_align_input.addr,
                         mem_align_input
                     );
                     debug_info!(
                         "mem_align_response_{:X}: phase: 0 {:?}",
-                        mem_align_input.address,
+                        mem_align_input.addr,
                         mem_align_response
                     );
                 }
                 // if operation applies to two consecutive memory addresses, add the second part
                 // is enqueued to be processed in future when processing next address on phase-1
-                if mem_align_response.more_address {
+                if mem_align_response.more_addr {
                     self.push_open_mem_align_op(aligned_mem_addr, &mem_align_input);
                 }
                 self.push_mem_align_response_ops(
@@ -192,6 +193,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
                     &mem_align_response,
                 );
             } else {
+                let mem_op = MemInput::from(mem_extern_op);
                 self.push_mem_op(&mem_op);
             }
         }
@@ -221,15 +223,15 @@ impl<F: PrimeField> MemProxyEngine<F> {
             let mem_align_resp = mem_align_sm.get_mem_op(&open_op.input, 1);
 
             #[cfg(feature = "debug_mem_proxy_engine")]
-            if open_op.input.address >= DEBUG_ADDR - 8 && open_op.input.address <= DEBUG_ADDR + 8 {
+            if open_op.input.addr >= DEBUG_ADDR - 8 && open_op.input.addr <= DEBUG_ADDR + 8 {
                 debug_info!(
                     "mem_align_input_{:X}: phase:1 {:?}",
-                    open_op.input.address,
+                    open_op.input.addr,
                     open_op.input
                 );
                 debug_info!(
                     "mem_align_response_{:X}: phase:1 {:?}",
-                    open_op.input.address,
+                    open_op.input.addr,
                     mem_align_resp
                 );
             }
@@ -251,20 +253,21 @@ impl<F: PrimeField> MemProxyEngine<F> {
     /// Static method to decide it the memory operation needs to be processed by
     /// memAlign, because it isn't a 8-byte and 8-byte aligned memory access.
     fn is_aligned(mem_op: &ZiskRequiredMemory) -> bool {
-        let aligned_mem_address = (mem_op.address as u64 & MEM_ADDR_MASK) as u32;
-        aligned_mem_address == mem_op.address && mem_op.width == MEM_BYTES as u8
+        let aligned_mem_addr = mem_op.address & MEM_ADDR_MASK;
+        aligned_mem_addr == mem_op.address && mem_op.width == MEM_BYTES as u8
     }
     fn push_mem_op(&mut self, mem_op: &MemInput) {
-        self.push_aligned_op(mem_op.is_write, mem_op.address, mem_op.value, mem_op.step);
+        self.push_aligned_op(mem_op.is_write, mem_op.addr, mem_op.value, mem_op.step, true);
     }
 
-    fn push_aligned_op(&mut self, is_write: bool, addr: u32, value: u64, step: u64) {
-        self.update_last_addr(addr, value);
-        let mem_op = MemInput { step, is_write, address: addr as u32, value };
+    fn push_aligned_op(&mut self, is_write: bool, addr: u32, value: u64, step: u64, w_addr: bool) {
+        let addr = if w_addr { addr } else { Self::to_aligned_word_addr(addr) };
+        self.update_last_addr(addr * MEM_BYTES, value);
+        let mem_op = MemInput { step, is_write, is_internal: false, addr, value };
         debug_info!(
             "route ==> {}[{:X}] {} {} #{}",
             self.current_module,
-            mem_op.address,
+            mem_op.addr << MEM_BYTES_BITS,
             if is_write { "W" } else { "R" },
             value,
             step,
@@ -276,12 +279,12 @@ impl<F: PrimeField> MemProxyEngine<F> {
     // method to add aligned read operation
     #[inline(always)]
     fn push_aligned_read(&mut self, addr: u32, value: u64, step: u64) {
-        self.push_aligned_op(false, addr, value, step);
+        self.push_aligned_op(false, addr, value, step, false);
     }
     // method to add aligned write operation
     #[inline(always)]
     fn push_aligned_write(&mut self, addr: u32, value: u64, step: u64) {
-        self.push_aligned_op(true, addr, value, step);
+        self.push_aligned_op(true, addr, value, step, false);
     }
     /// Process information of mem_op and mem_align_op to push mem_op operation. Only two possible
     /// situations:
@@ -300,7 +303,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         self.push_aligned_read(mem_addr, mem_value, mem_align_resp.step);
         if mem_align_input.is_write {
             #[cfg(feature = "debug_mem_proxy_engine")]
-            if mem_addr >= DEBUG_ADDR - 8 && mem_addr <= DEBUG_ADDR - 8 {
+            if mem_addr >= DEBUG_ADDR - 8 && mem_addr <= DEBUG_ADDR + 8 {
                 debug_info!(
                     "push_mem_align_response_ops_{:X}-A: value:{} {:?}",
                     mem_addr,
@@ -329,14 +332,14 @@ impl<F: PrimeField> MemProxyEngine<F> {
         mem_module_inputs
     }
     fn set_active_region(&mut self, region_id: usize) {
-        self.current_module_id = self.address_map[region_id].module_id as usize;
+        self.current_module_id = self.addr_map[region_id].module_id as usize;
         self.current_module = self.modules_data[self.current_module_id].name.clone();
-        self.module_end_addr = self.address_map[region_id].to_address;
+        self.module_end_addr = self.addr_map[region_id].to_addr;
     }
     fn update_mem_module_id(&mut self, addr: u32) {
         debug_info!("search module for address 0x{:X}", addr);
         if let Some(index) =
-            self.address_map.iter().position(|x| x.from_address <= addr && x.to_address >= addr)
+            self.addr_map.iter().position(|x| x.from_addr <= addr && x.to_addr >= addr)
         {
             self.set_active_region(index);
         } else {
@@ -346,7 +349,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     fn update_last_addr(&mut self, addr: u32, value: u64) {
         self.last_addr = addr;
         self.last_addr_value = value;
-        self.update_mem_module(addr);
+        self.update_mem_module_id(addr);
     }
     fn update_mem_module(&mut self, addr: u32) {
         // check if need to reevaluate the module id
@@ -387,7 +390,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
     #[inline(always)]
-    fn check_if_end_of_memory_mark(&self, mem_op: &MemInput) -> bool {
+    fn check_if_end_of_memory_mark(&self, mem_op: &ZiskRequiredMemory) -> bool {
         // TODO: 0xFFFF_FFFF not valid address
         if mem_op.address == MAX_MEM_ADDR as u32 {
             assert!(
@@ -401,12 +404,12 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
     fn init_prove(&mut self) {
-        if !self.address_map_closed {
+        if !self.addr_map_closed {
             self.close_address_map();
         }
-        self.current_module_id = self.address_map[0].module_id as usize;
+        self.current_module_id = self.addr_map[0].module_id as usize;
         self.current_module = self.modules_data[self.current_module_id].name.clone();
-        self.module_end_addr = self.address_map[0].to_address;
+        self.module_end_addr = self.addr_map[0].to_addr;
     }
     fn finish_prove(&self) {
         for (module_id, module) in self.modules.iter().enumerate() {
@@ -426,13 +429,13 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
     fn close_address_map(&mut self) {
-        let mut next_address = 0;
+        let mut next_addr = 0;
         let mut unmapped_regions: Vec<(u32, u32)> = Vec::new();
-        for address_region in self.address_map.iter() {
-            if next_address < address_region.from_address {
-                unmapped_regions.push((next_address, address_region.from_address - 1));
+        for addr_region in self.addr_map.iter() {
+            if next_addr < addr_region.from_addr {
+                unmapped_regions.push((next_addr, addr_region.from_addr - 1));
             }
-            next_address = address_region.to_address + 1;
+            next_addr = addr_region.to_addr + 1;
         }
         if !unmapped_regions.is_empty() {
             let mut unmapped_module = MemUnmapped::<F>::new();
@@ -441,7 +444,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
             }
             self.add_module("unmapped", Arc::new(unmapped_module));
         }
-        self.address_map_closed = true;
+        self.addr_map_closed = true;
     }
 
     #[inline(always)]
@@ -465,6 +468,9 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
     #[inline(always)]
     fn to_aligned_addr(addr: u32) -> u32 {
-        (addr as u64 & MEM_ADDR_MASK) as u32
+        addr & MEM_ADDR_MASK
+    }
+    fn to_aligned_word_addr(addr: u32) -> u32 {
+        addr >> MEM_BYTES_BITS
     }
 }

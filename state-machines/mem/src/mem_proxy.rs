@@ -27,7 +27,7 @@ impl<F: PrimeField> MemProxy<F> {
         let mem_align_rom_sm = MemAlignRomSM::new(wcm.clone());
         let mem_align_sm = MemAlignSM::new(wcm.clone(), std.clone(), mem_align_rom_sm.clone());
         let mem_sm = MemSM::new(wcm.clone(), std.clone());
-        let input_data_sm = InputDataSM::new(wcm.clone());
+        let input_data_sm = InputDataSM::new(wcm.clone(), std.clone());
         let rom_data_sm = RomDataSM::new(wcm.clone(), std.clone());
 
         let mem_proxy = Self {

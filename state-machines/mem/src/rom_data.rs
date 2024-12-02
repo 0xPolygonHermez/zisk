@@ -3,21 +3,19 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemInput, MemModule};
+use crate::{MemAirValues, MemInput, MemModule, MemPreviousSegment, MEM_BYTES, MEM_BYTES_BITS};
 use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
-use rayon::prelude::*;
+use proofman_common::{AirInstance, SetupCtx};
 
 use sm_common::create_prover_buffer;
 use zisk_pil::{RomDataTrace, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
-const MEM_INITIAL_ADDRESS: u32 = 0x80000000;
-const MEM_FINAL_ADDRESS: u32 = MEM_INITIAL_ADDRESS + 128 * 1024 * 1024;
-const MEMORY_MAX_DIFF: u32 = 0x1000000;
+const MEMORY_MAX_DIFF: u32 = 1 << 24;
+const MEM_INITIAL_W_ADDRESS: u32 = 0x8000_0000 >> 3;
+const MEM_FINAL_W_ADDRESS: u32 = MEM_INITIAL_W_ADDRESS + MEMORY_MAX_DIFF;
 
 pub struct RomDataSM<F: PrimeField> {
     // Witness computation manager
@@ -68,23 +66,30 @@ impl<F: PrimeField> RomDataSM<F> {
         let ectx = wcm.get_ectx();
         let sctx = wcm.get_sctx();
 
-        println!("ROM-DATA: {} inputs", inputs.len());
-        let air_mem = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
-        let air_mem_rows = air_mem.num_rows();
+        // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
+        // memory only need to process these special inputs, but inputs no change. At end of
+        // inputs proxy add an extra internal input to jump to last address
 
-        let inputs_len = inputs.len();
-        let num_chunks = (inputs_len as f64 / air_mem_rows as f64).ceil() as usize;
+        let air_id = ROM_DATA_AIR_IDS[0];
+        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, air_id);
+        let air_rows = air.num_rows();
 
-        let mut prover_buffers = Mutex::new(vec![Vec::new(); num_chunks]);
-        let mut offsets = vec![0; num_chunks];
-        let mut global_idxs = vec![0; num_chunks];
+        // at least one row to go
+        let count = inputs.len();
+        let count_rem = count % air_rows;
+        let num_segments = (count / air_rows) + if count_rem > 0 { 1 } else { 0 };
 
-        for i in 0..num_chunks {
+        let mut prover_buffers = Mutex::new(vec![Vec::new(); num_segments]);
+        let mut offsets = vec![0; num_segments];
+        let mut global_idxs = vec![0; num_segments];
+
+        for i in 0..num_segments {
+            // TODO: Review
             if let (true, global_idx) =
-                ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0], 1)
+                ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1)
             {
                 let (buffer, offset) =
-                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
+                    create_prover_buffer::<F>(&ectx, &sctx, ZISK_AIRGROUP_ID, air_id);
 
                 prover_buffers.lock().unwrap()[i] = buffer;
                 offsets[i] = offset;
@@ -92,42 +97,35 @@ impl<F: PrimeField> RomDataSM<F> {
             }
         }
 
-        for (segment_id, mem_ops) in inputs.chunks(air_mem_rows).enumerate() {
-            let is_last_segment = segment_id == num_chunks - 1;
-
+        // for (segment_id, mem_ops) in inputs.chunks(air_mem_available_rows).enumerate() {
+        for segment_id in 0..num_segments {
+            let is_last_segment = segment_id == num_segments - 1;
+            let input_offset = segment_id * air_rows;
+            let previous_segment = if (segment_id == 0) {
+                MemPreviousSegment { addr: MEM_INITIAL_W_ADDRESS, step: 0, value: 0 }
+            } else {
+                MemPreviousSegment {
+                    addr: inputs[input_offset - 1].addr,
+                    step: inputs[input_offset - 1].step,
+                    value: inputs[input_offset - 1].value,
+                }
+            };
+            let input_end =
+                if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
+            let mem_ops = &inputs[input_offset..input_end];
             let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
 
             self.prove_instance(
                 mem_ops,
                 segment_id,
                 is_last_segment,
+                &previous_segment,
                 prover_buffer,
                 offsets[segment_id],
-                air_mem_rows,
+                air_rows,
                 global_idxs[segment_id],
             );
         }
-
-        // TODO: Uncomment when sequential works
-        // inputs.par_chunks(air_mem_rows - 1).enumerate().for_each(|(segment_id, mem_ops)| {
-        //     let mem_first_row = if segment_id == 0 {
-        //         inputs.last().unwrap().clone()
-        //     } else {
-        //         inputs[segment_id * ((air_mem_rows - 1) - 1)].clone()
-        //     };
-
-        //     let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
-
-        //     self.prove_instance(
-        //         mem_ops,
-        //         mem_first_row,
-        //         segment_id,
-        //         segment_id == inputs.len() - 1,
-        //         prover_buffer,
-        //         offsets[segment_id],
-        //         global_idxs[segment_id],
-        //     );
-        // });
     }
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
@@ -142,6 +140,7 @@ impl<F: PrimeField> RomDataSM<F> {
         mem_ops: &[MemInput],
         segment_id: usize,
         is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
         mut prover_buffer: Vec<F>,
         offset: u64,
         air_mem_rows: usize,
@@ -168,111 +167,72 @@ impl<F: PrimeField> RomDataSM<F> {
             RomDataTrace::<F>::map_buffer(&mut prover_buffer, air_mem_rows, offset as usize)
                 .unwrap();
 
-        let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
+        let mut air_values = MemAirValues {
+            segment_id: segment_id as u32,
+            is_first_segment: segment_id == 0,
+            is_last_segment,
+            previous_segment_addr: previous_segment.addr,
+            previous_segment_step: previous_segment.step,
+            previous_segment_value: [
+                previous_segment.value as u32,
+                (previous_segment.value >> 32) as u32,
+            ],
+            ..MemAirValues::default()
+        };
 
-        // Fill the first row
-        const MEM_INITIAL_64_ADDRESS: u32 = MEM_INITIAL_ADDRESS >> 3;
-
-        // Fill the first row
-        let first_mem_op = mem_ops.first().unwrap();
-
-        debug_assert!(first_mem_op.address >= MEM_INITIAL_ADDRESS);
-        let addr = first_mem_op.address >> 3;
-
-        trace[0].addr = F::from_canonical_u32(addr);
-        trace[0].step = F::from_canonical_u64(first_mem_op.step);
-        trace[0].sel = F::zero();
-
-        let value = first_mem_op.value;
-        let (low_val, high_val) = self.get_u32_values(value);
-        trace[0].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
-        trace[0].addr_changes = F::zero();
-
-        // Store the value of incremenet so it can be range checked
-        println!("addr: {:#X}, initial: {:#X}", addr, MEM_INITIAL_64_ADDRESS);
-        let increment = addr - MEM_INITIAL_64_ADDRESS + 1;
-        trace[0].increment = F::from_canonical_u32(increment);
-
-        // Store the value of incremenet so it can be range checked
-        println!(
-            "addr: {:#X}, initial: {:#X}, increment: {:#X}",
-            addr, MEM_INITIAL_64_ADDRESS, increment
+        // range of instance
+        let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        self.std.range_check(
+            F::from_canonical_u32(previous_segment.addr - MEM_INITIAL_W_ADDRESS + 1),
+            F::one(),
+            range_id,
         );
-        range_check_data[increment as usize] += 1; // TODO
 
         // Fill the remaining rows
-        for (idx, mem_op) in mem_ops.iter().enumerate() {
-            let i = idx + 1;
+        let mut last_addr: u32 = previous_segment.addr;
+        let mut last_step: u64 = previous_segment.step;
+        let mut last_value: u64 = previous_segment.value;
 
-            let mem_addr = mem_op.address >> 3;
-            trace[i].addr = F::from_canonical_u32(mem_addr); // n-byte address, real address = addr * MEM_BYTES
+        for (i, mem_op) in mem_ops.iter().enumerate() {
+            trace[i].addr = F::from_canonical_u32(mem_op.addr);
             trace[i].step = F::from_canonical_u64(mem_op.step);
-            trace[i].sel = F::one();
+            trace[i].sel = F::from_bool(!mem_op.is_internal);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
-            let addr_changes = trace[i - 1].addr != trace[i].addr;
-            trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
+            let addr_changes = last_addr != mem_op.addr;
+            trace[i].addr_changes =
+                if addr_changes || (i == 0 && segment_id == 0) { F::one() } else { F::zero() };
 
-            let same_value = trace[i - 1].value[0] == trace[i].value[0] &&
-                trace[i - 1].value[1] == trace[i].value[1];
-
-            let increment = if addr_changes {
-                trace[i].addr - trace[i - 1].addr
-            } else {
-                trace[i].step - trace[i - 1].step
-            };
-            trace[i].increment = increment;
-
-            // Store the value of incremenet so it can be range checked
-            let element =
-                increment.as_canonical_biguint().to_usize().expect("Cannot convert to usize");
-            // range_check_data[element] += 1; // TODO:
+            last_addr = mem_op.addr;
+            last_step = mem_op.step;
+            last_value = mem_op.value;
         }
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
-        let last_row_idx = mem_ops.len();
+        let last_row_idx = mem_ops.len() - 1;
         let addr = trace[last_row_idx].addr;
-        let mut step = trace[last_row_idx].step;
         let value = trace[last_row_idx].value;
 
-        let padding_size = air_mem_rows - (mem_ops.len() + 1);
-
-        for i in (mem_ops.len() + 1)..air_mem_rows {
-            step += F::one();
-
-            // TODO CHECK
-            // trace[i].mem_segment = segment_id_field;
-            // trace[i].mem_last_segment = is_last_segment_field;
-
+        let padding_size = air_mem_rows - mem_ops.len();
+        for i in mem_ops.len()..air_mem_rows {
+            last_step += 1;
             trace[i].addr = addr;
-            trace[i].step = step;
+            trace[i].step = F::from_canonical_u64(last_step);
             trace[i].sel = F::zero();
 
             trace[i].value = value;
 
             trace[i].addr_changes = F::zero();
-
-            // Set increment to the minimum value so the range check passes
-            trace[i].increment = F::one();
         }
 
-        // Store the value of trivial increment so that they can be range checked
-        range_check_data[1] += padding_size as u64;
-
-        // TODO: Perform the range checks
-        // let std = self.std.clone();
-        // let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
-        // for (value, &multiplicity) in range_check_data.iter().enumerate() {
-        //     std.range_check(
-        //         F::from_canonical_usize(value),
-        //         F::from_canonical_u64(multiplicity),
-        //         range_id,
-        //     );
-        // }
+        air_values.segment_last_addr = last_addr;
+        air_values.segment_last_step = last_step;
+        air_values.segment_last_value[0] = last_value as u32;
+        air_values.segment_last_value[1] = (last_value >> 32) as u32;
 
         let wcm = self.wcm.clone();
         let pctx = wcm.get_pctx();
@@ -286,12 +246,7 @@ impl<F: PrimeField> RomDataSM<F> {
             prover_buffer,
         );
 
-        air_instance.set_airvalue(
-            &sctx,
-            "RomData.mem_segment",
-            F::from_canonical_u64(segment_id as u64),
-        );
-        air_instance.set_airvalue(&sctx, "RomData.mem_last_segment", F::from_bool(is_last_segment));
+        self.set_airvalues("RomData", &sctx, &mut air_instance, &air_values);
 
         pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
@@ -301,6 +256,71 @@ impl<F: PrimeField> RomDataSM<F> {
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
     }
+    fn set_airvalues(
+        &self,
+        prefix: &str,
+        setup_ctx: &SetupCtx<F>,
+        air_instance: &mut AirInstance<F>,
+        air_values: &MemAirValues,
+    ) {
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.segment_id", prefix).as_str(),
+            None,
+            F::from_canonical_u32(air_values.segment_id),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.is_first_segment", prefix).as_str(),
+            None,
+            F::from_bool(air_values.is_first_segment),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.is_last_segment", prefix).as_str(),
+            None,
+            F::from_bool(air_values.is_last_segment),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.previous_segment_addr", prefix).as_str(),
+            None,
+            F::from_canonical_u32(air_values.previous_segment_addr),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.previous_segment_step", prefix).as_str(),
+            None,
+            F::from_canonical_u64(air_values.previous_segment_step),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.segment_last_addr", prefix).as_str(),
+            None,
+            F::from_canonical_u32(air_values.segment_last_addr),
+        );
+        air_instance.set_airvalue(
+            &setup_ctx,
+            format!("{}.segment_last_step", prefix).as_str(),
+            None,
+            F::from_canonical_u64(air_values.segment_last_step),
+        );
+        let count = air_values.previous_segment_value.len();
+        for i in 0..count {
+            air_instance.set_airvalue(
+                &setup_ctx,
+                format!("{}.previous_segment_value", prefix).as_str(),
+                Some(vec![i as u64]),
+                F::from_canonical_u32(air_values.previous_segment_value[i]),
+            );
+            air_instance.set_airvalue(
+                &setup_ctx,
+                format!("{}.segment_last_value", prefix).as_str(),
+                Some(vec![i as u64]),
+                F::from_canonical_u32(air_values.segment_last_value[i]),
+            );
+        }
+    }
 }
 
 impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
@@ -308,10 +328,10 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         self.prove(&mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(MEM_INITIAL_ADDRESS, MEM_FINAL_ADDRESS)]
+        vec![(MEM_INITIAL_W_ADDRESS * MEM_BYTES, (MEM_FINAL_W_ADDRESS - 1) * MEM_BYTES)]
     }
     fn get_flush_input_size(&self) -> u32 {
-        (self.num_rows - 1) as u32
+        self.num_rows as u32
     }
 }
 
