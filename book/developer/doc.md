@@ -37,4 +37,4 @@ Some basic hints:
 `//! ...`
 * Documentation for a public element must be placed right before it, starting with `/// ...`
 * Wrap code with triple spike: `//! \`\`\``
-* To avoid cargo doc to compile the code, use ignore after the priple spike: `//! \`\`\` ignore`
+* To avoid cargo doc to compile the code, use `text` after the priple spike: `//! \`\`\`text`
