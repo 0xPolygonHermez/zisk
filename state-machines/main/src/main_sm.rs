@@ -1,7 +1,7 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_common::InstanceExpanderCtx;
 
-use crate::InstanceExtensionCtx;
 use std::sync::Arc;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 
@@ -48,13 +48,13 @@ impl<F: PrimeField> MainSM<F> {
         &self,
         zisk_rom: &ZiskRom,
         vec_traces: &'a [EmuTrace],
-        iectx: &mut InstanceExtensionCtx<F>,
+        iectx: &mut InstanceExpanderCtx<F>,
         pctx: &ProofCtx<F>,
     ) {
-        let segment_id = iectx.segment_id.unwrap();
+        let segment_id = iectx.plan.segment_id.unwrap();
         let segment_trace = &vec_traces[segment_id];
 
-        let offset = iectx.offset;
+        let offset = iectx.buffer.offset;
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         let filled = segment_trace.steps.len() + 1;
         info!(
@@ -108,7 +108,7 @@ impl<F: PrimeField> MainSM<F> {
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
 
         let rng = offset as usize..(offset as usize + MainRow::<F>::ROW_SIZE);
-        iectx.prover_buffer[rng].copy_from_slice(row0.as_slice());
+        iectx.buffer.buffer[rng].copy_from_slice(row0.as_slice());
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
         let total_rows = segment_trace.steps.len();
@@ -142,10 +142,10 @@ impl<F: PrimeField> MainSM<F> {
             let buffer_offset_slice = offset as usize + (slice + 1) * MainRow::<F>::ROW_SIZE;
 
             let rng = buffer_offset_slice..buffer_offset_slice + partial_buffer.len();
-            iectx.prover_buffer[rng].copy_from_slice(partial_buffer);
+            iectx.buffer.buffer[rng].copy_from_slice(partial_buffer);
         }
 
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        let buffer = std::mem::take(&mut iectx.buffer.buffer);
         let sctx = self.wcm.get_sctx();
         let mut air_instance = AirInstance::new(
             sctx.clone(),
@@ -161,7 +161,10 @@ impl<F: PrimeField> MainSM<F> {
         air_instance.set_airvalue(&sctx, "Main.main_last_segment", main_last_segment);
         air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
 
-        iectx.air_instance = Some(air_instance);
+        self.wcm
+            .get_pctx()
+            .air_instance_repo
+            .add_air_instance(air_instance, Some(iectx.instance_global_idx));
     }
 }
 

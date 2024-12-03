@@ -1,15 +1,9 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
+use std::sync::Arc;
 
 use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -18,12 +12,6 @@ use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
-
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
 
     // Secondary State machines
     binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
@@ -43,36 +31,12 @@ impl<F: Field> BinaryBasicSM<F> {
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
-        let binary_basic = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            binary_basic_table_sm,
-        };
+        let binary_basic = Self { wcm: wcm.clone(), binary_basic_table_sm };
         let binary_basic = Arc::new(binary_basic);
 
         wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
 
-        binary_basic.binary_basic_table_sm.register_predecessor();
-
         binary_basic
-    }
-
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            /*<BinaryBasicSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );*/
-
-            self.binary_basic_table_sm.unregister_predecessor();
-        }
     }
 
     pub fn operations() -> Vec<u8> {
@@ -721,48 +685,3 @@ impl<F: Field> BinaryBasicSM<F> {
 }
 
 impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}
-
-impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, _scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                let binary_basic_table_sm = self.binary_basic_table_sm.clone();
-                let wcm = self.wcm.clone();
-
-                let sctx = self.wcm.get_sctx().clone();
-
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &wcm.get_ectx(),
-                    &wcm.get_sctx(),
-                    ZISK_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                );
-
-                Self::prove_internal(
-                    &wcm,
-                    &binary_basic_table_sm,
-                    drained_inputs,
-                    &mut prover_buffer,
-                    offset,
-                );
-
-                let air_instance = AirInstance::new(
-                    sctx,
-                    ZISK_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                    None,
-                    prover_buffer,
-                );
-                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-            }
-        }
-    }
-}

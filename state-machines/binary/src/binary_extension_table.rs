@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 use log::info;
 use p3_field::Field;
@@ -29,9 +26,6 @@ pub enum BinaryExtensionTableOp {
 pub struct BinaryExtensionTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
 
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
     // Row multiplicity table
     num_rows: usize,
     multiplicity: Mutex<Vec<u64>>,
@@ -51,7 +45,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
         let binary_extension_table = Self {
             wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
         };
@@ -59,16 +52,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         wcm.register_component(binary_extension_table.clone(), Some(airgroup_id), Some(air_ids));
 
         binary_extension_table
-    }
-
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.create_air_instance();
-        }
     }
 
     pub fn operations() -> Vec<u8> {

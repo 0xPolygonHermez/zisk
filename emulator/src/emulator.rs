@@ -1,6 +1,4 @@
-use crate::{
-    Emu, EmuOptions, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr,
-};
+use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 use p3_field::PrimeField;
 use std::{
     fs,
@@ -9,7 +7,7 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::InstObserver;
-use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -159,25 +157,7 @@ impl ZiskEmulator {
         Ok(output)
     }
 
-    pub fn process_rom_pc_histogram(
-        rom: &ZiskRom,
-        inputs: &[u8],
-        options: &EmuOptions,
-    ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
-        // Create a emulator instance with this rom and inputs
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        let pc_histogram = emu.run_pc_histogram(inputs.to_owned(), options);
-
-        if !emu.terminated() {
-            return Err(ZiskEmulatorErr::EmulationNoCompleted);
-        }
-
-        Ok(pc_histogram)
-    }
-
-    pub fn par_process_rom<F: PrimeField>(
+    pub fn process_rom_min_trace<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
@@ -215,41 +195,7 @@ impl ZiskEmulator {
     }
 
     #[inline]
-    pub fn process_observer<F: PrimeField>(
-        rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        inst_observer: &mut dyn InstObserver,
-    ) -> Result<(), ZiskEmulatorErr> {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        emu.run_observer::<F>(vec_traces, inst_observer);
-
-        if emu.terminated() {
-            Ok(())
-        } else {
-            Err(ZiskEmulatorErr::EmulationNoCompleted)
-        }
-    }
-
-    #[inline]
-    pub fn process_slice_observer<F: PrimeField>(
-        rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        emu_trace_start: &EmuTraceStart,
-        step_end: u64,
-        inst_observer: &mut dyn InstObserver,
-    ) {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        emu.run_slice_observer::<F>(vec_traces, emu_trace_start, step_end, inst_observer);
-    }
-
-    #[inline]
-    pub fn process_slice_observer2<F: PrimeField>(
+    pub fn process_rom_slice_counters<F: PrimeField>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         inst_observer: &mut dyn InstObserver,
@@ -262,7 +208,7 @@ impl ZiskEmulator {
     }
 
     #[inline]
-    pub fn process_slice_plan<F: PrimeField>(
+    pub fn process_rom_slice_plan<F: PrimeField>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
@@ -273,20 +219,6 @@ impl ZiskEmulator {
 
         // Run the emulation
         emu.run_slice_plan::<F>(min_traces, chunk_id, inst_observer);
-    }
-
-    #[inline]
-    pub fn process_slice_required<F: PrimeField>(
-        rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        op_type: ZiskOperationType,
-        emu_trace_start: &EmuTraceStart,
-        num_rows: usize,
-    ) -> Vec<ZiskRequiredOperation> {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-        // Run the emulation
-        emu.run_slice_required::<F>(vec_traces, op_type, emu_trace_start, num_rows)
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {

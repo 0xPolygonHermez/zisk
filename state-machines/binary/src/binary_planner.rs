@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use sm_common::{plan, ChunkId, InstCount, Plan, Planner, Metrics};
+use sm_common::{plan, ChunkId, InstCount, Metrics, Plan, Planner};
 use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::BinarySurveyor;
+use crate::BinaryCounter;
 
 pub struct BinaryPlanner<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
@@ -23,7 +23,7 @@ impl<F: PrimeField> Planner for BinaryPlanner<F> {
         let (count_binary, count_binary_e): (Vec<_>, Vec<_>) = surveys
             .iter()
             .map(|(chunk_id, surveyor)| {
-                let binary_surveyor = surveyor.as_any().downcast_ref::<BinarySurveyor>().unwrap();
+                let binary_surveyor = surveyor.as_any().downcast_ref::<BinaryCounter>().unwrap();
                 (
                     InstCount::new(*chunk_id, binary_surveyor.binary.inst_count as u64),
                     InstCount::new(*chunk_id, binary_surveyor.binary_extension.inst_count as u64),

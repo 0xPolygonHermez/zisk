@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex,
-    },
-};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 use log::info;
@@ -12,10 +6,7 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
@@ -39,12 +30,6 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
-
     // Secondary State machines
     binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
@@ -64,41 +49,15 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
-        let binary_extension_sm = Self {
-            wcm: wcm.clone(),
-            std: std.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            binary_extension_table_sm,
-        };
+        let binary_extension_sm =
+            Self { wcm: wcm.clone(), std: std.clone(), binary_extension_table_sm };
         let binary_extension_sm = Arc::new(binary_extension_sm);
 
         wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         std.register_predecessor();
 
-        binary_extension_sm.binary_extension_table_sm.register_predecessor();
-
         binary_extension_sm
-    }
-
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            /*<BinaryExtensionSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );*/
-
-            self.binary_extension_table_sm.unregister_predecessor();
-
-            self.std.unregister_predecessor(self.wcm.get_pctx(), None);
-        }
     }
 
     pub fn operations() -> Vec<u8> {
@@ -459,51 +418,3 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
-
-impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, _scope: &Scope) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
-                let wcm = self.wcm.clone();
-
-                let std = self.std.clone();
-
-                let sctx = self.wcm.get_sctx().clone();
-
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &wcm.get_ectx(),
-                    &wcm.get_sctx(),
-                    ZISK_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                );
-
-                Self::prove_internal(
-                    &wcm,
-                    &binary_extension_table_sm,
-                    &std,
-                    drained_inputs,
-                    &mut prover_buffer,
-                    offset,
-                );
-
-                let air_instance = AirInstance::new(
-                    sctx,
-                    ZISK_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                    None,
-                    prover_buffer,
-                );
-                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-            }
-        }
-    }
-}

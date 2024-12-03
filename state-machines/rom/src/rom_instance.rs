@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 use proofman::WitnessManager;
 use proofman_common::AirInstance;
-use sm_common::{InstanceExpanderCtx, InstanceXXXX};
+use sm_common::{Instance, InstanceExpanderCtx};
 use zisk_core::ZiskRom;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
@@ -25,7 +25,7 @@ impl<F: PrimeField> RomInstance<F> {
         Self { wcm, zisk_rom, iectx }
     }
 }
-impl<F: PrimeField> InstanceXXXX for RomInstance<F> {
+impl<F: PrimeField> Instance for RomInstance<F> {
     fn expand(
         &mut self,
         _zisk_rom: &ZiskRom,

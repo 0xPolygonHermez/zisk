@@ -8,11 +8,11 @@ use zisk_core::{InstContext, ZiskInst};
 
 #[derive(Debug)]
 pub enum CounterType {
-    SurveyCounter(Counter),
-    SurveyStats(CounterStats),
+    Counter(Counter),
+    CounterStats(CounterStats),
 }
 
-pub trait Metrics: Debug + Send + Sync + Any {
+pub trait Metrics: Send + Sync + Any {
     fn measure(&mut self, inst: &ZiskInst, inst_ctx: &InstContext);
     fn add(&mut self, other: &dyn Metrics);
 

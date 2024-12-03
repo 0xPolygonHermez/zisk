@@ -4,7 +4,7 @@ use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
 
 use sm_common::{
-    ComponentProvider, InstanceExpanderCtx, InstanceXXXX, Metrics, Plan, Planner, WitnessBuffer,
+    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner, WitnessBuffer,
 };
 
 use zisk_core::{ZiskRom, SRC_IMM};
@@ -57,7 +57,6 @@ impl<F: PrimeField> RomSM<F> {
                 let counter = pc_histogram.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
-                    //TODO! UNCOMMENT
                     // if inst.paddr == pc_histogram.end_pc {
                     //     multiplicity +=
                     //         main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
@@ -147,7 +146,7 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
         Box::new(RomPlanner {})
     }
 
-    fn get_instance(self: Arc<Self>, iectx: InstanceExpanderCtx<F>) -> Box<dyn InstanceXXXX> {
+    fn get_instance(self: Arc<Self>, iectx: InstanceExpanderCtx<F>) -> Box<dyn Instance> {
         Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
     }
 }

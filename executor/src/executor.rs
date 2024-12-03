@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use sm_common::{
     create_prover_buffer, CheckPoint, ComponentProvider, InstanceExpanderCtx, Plan, WitnessBuffer,
 };
-use sm_main::{InstanceExtensionCtx, MainSM};
+use sm_main::MainSM;
 
 use std::{
     fs,
@@ -73,8 +73,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         // PATH A PHASE 2. Count & Reduce the Minimal Traces to get the Plans
         // ---------------------------------------------------------------------------------
-        let main_planning = self.create_main_plans(&min_traces);
-        let mut main_layouts = self.create_main_layouts(&main_planning);
+        let mut main_planning = self.create_main_plans(&min_traces);
+        let mut main_layouts = self.create_main_layouts(&mut main_planning);
 
         // PATH A PHASE 3. Expand the Minimal Traces to fill the Main Traces
         // ---------------------------------------------------------------------------------
@@ -132,14 +132,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         });
 
         // Wait for the main task to finish
-        let iectx_main = main_task.join().unwrap();
-
-        for iectx in iectx_main {
-            if let Some(air_instance) = iectx.air_instance {
-                pctx.air_instance_repo
-                    .add_air_instance(air_instance, Some(iectx.instance_global_idx));
-            }
-        }
+        main_task.join().unwrap();
     }
 
     fn compute_plans(&self, min_traces: Arc<Vec<EmuTrace>>) -> Vec<Vec<Plan>> {
@@ -151,7 +144,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 self.secondary_sm.iter().for_each(|sm| {
                     metrics_proxy.register_metrics(sm.get_counter());
                 });
-                ZiskEmulator::process_slice_observer2::<F>(
+                ZiskEmulator::process_rom_slice_counters::<F>(
                     &self.zisk_rom,
                     &minimal_trace,
                     &mut metrics_proxy,
@@ -191,7 +184,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        let min_traces = ZiskEmulator::par_process_rom::<F>(
+        let min_traces = ZiskEmulator::process_rom_min_trace::<F>(
             &self.zisk_rom,
             &public_inputs,
             &emu_options,
@@ -219,26 +212,22 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    fn create_main_layouts(&self, main_planning: &[Plan]) -> Vec<InstanceExtensionCtx<F>> {
-        let mut iectx = Vec::new();
+    fn create_main_layouts(&self, main_planning: &mut Vec<Plan>) -> Vec<InstanceExpanderCtx<F>> {
+        let mut main_instances = Vec::new();
         let ectx = self.wcm.get_ectx();
         let sctx = self.wcm.get_sctx();
 
         let mut dctx = ectx.dctx.write().unwrap();
-        for (segment_id, plan) in main_planning.iter().enumerate() {
+        for plan in main_planning.drain(..) {
             if let (true, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1) {
                 let (buffer, offset) =
                     create_prover_buffer::<F>(&ectx, &sctx, plan.airgroup_id, plan.air_id);
-                iectx.push(InstanceExtensionCtx::new(
-                    buffer,
-                    offset,
-                    Some(segment_id),
-                    global_idx,
-                    None,
-                ));
+
+                let witness_buffer = WitnessBuffer::new(buffer, offset);
+                main_instances.push(InstanceExpanderCtx::new(witness_buffer, global_idx, plan));
             }
         }
 
-        iectx
+        main_instances
     }
 }

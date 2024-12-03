@@ -26,11 +26,3 @@ impl Metrics for RomCounter {
         self
     }
 }
-
-impl std::fmt::Debug for RomCounter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "RomSurveyor {{ rom entries: {:?} }}", self.rom.inst_count.len())
-        // write dummy
-        write!(f, "RomSurveyor {{ rom entries: {} }}", self.rom.inst_count.len())
-    }
-}

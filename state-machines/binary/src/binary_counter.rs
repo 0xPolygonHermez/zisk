@@ -1,13 +1,13 @@
-use sm_common::{Metrics, Counter};
+use sm_common::{Counter, Metrics};
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 #[derive(Default)]
-pub struct BinarySurveyor {
+pub struct BinaryCounter {
     pub binary: Counter,
     pub binary_extension: Counter,
 }
 
-impl Metrics for BinarySurveyor {
+impl Metrics for BinaryCounter {
     fn measure(&mut self, inst: &ZiskInst, _: &InstContext) {
         match inst.op_type {
             ZiskOperationType::Binary => {
@@ -21,7 +21,7 @@ impl Metrics for BinarySurveyor {
     }
 
     fn add(&mut self, other: &dyn Metrics) {
-        if let Some(other) = other.as_any().downcast_ref::<BinarySurveyor>() {
+        if let Some(other) = other.as_any().downcast_ref::<BinaryCounter>() {
             self.binary.update(other.binary.inst_count);
             self.binary_extension.update(other.binary_extension.inst_count);
         }
@@ -29,15 +29,5 @@ impl Metrics for BinarySurveyor {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-impl std::fmt::Debug for BinarySurveyor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "BinarySurveyor {{ binary: {:?}, binary_extension: {:?} }}",
-            self.binary, self.binary_extension
-        )
     }
 }

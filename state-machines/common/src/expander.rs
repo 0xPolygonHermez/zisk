@@ -3,7 +3,7 @@ use std::sync::Arc;
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
-pub trait InstanceXXXX: Send + Sync {
+pub trait Instance: Send + Sync {
     fn expand(
         &mut self,
         zisk_rom: &ZiskRom,
