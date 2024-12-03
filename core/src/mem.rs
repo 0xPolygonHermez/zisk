@@ -186,12 +186,14 @@ impl Mem {
     #[inline(always)]
     pub fn read_required(&self, addr: u64, width: u64) -> (u64, Vec<u64>) {
         // Calculate how aligned this operation is
-        let addr_req_1 = addr >> 3; // Aligned address of the first 8-bytes chunk
-        let addr_req_2 = (addr + width - 1) >> 3; // Aligned address of the second 8-bytes chunk, if needed
+        let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
+        let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
         let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
+        println!("Mem::read_required() addr=0x{:x} addr_req_1=0x{:x} addr_req_2=0x{:x} width={} is_full_aligned={} is_single_not_aligned={} is_double_not_aligned={}",
+            addr, addr_req_1, addr_req_2, width, is_full_aligned, is_single_not_aligned, is_double_not_aligned);
         // First try to read in the write section
         if (addr >= self.write_section.start) && (addr <= (self.write_section.end - width)) {
             // Calculate the read position
@@ -212,6 +214,7 @@ impl Mem {
                 _ => panic!("Mem::read() invalid width={}", width),
             };
 
+            println!("I'm here");
             // If is a single not aligned operation, return the aligned address value
             if is_single_not_aligned {
                 let mut additional_data: Vec<u64> = Vec::new();
@@ -262,7 +265,7 @@ impl Mem {
         let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
             if addr < section.start {
                 std::cmp::Ordering::Greater
-            } else if addr > section.end - width {
+            } else if (addr + width) > section.end {
                 std::cmp::Ordering::Less
             } else {
                 std::cmp::Ordering::Equal
@@ -270,6 +273,7 @@ impl Mem {
         }) {
             &self.read_sections[section]
         } else {
+            println!("sections: {:?}", self.read_sections);
             panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
         };
 
@@ -288,7 +292,10 @@ impl Mem {
             8 => u64::from_le_bytes(
                 section.buffer[read_position..read_position + 8].try_into().unwrap(),
             ),
-            _ => panic!("Mem::read() invalid width={}", width),
+            _ => panic!(
+                "Mem::read() invalid addr:0x{:X} read_position:{} width:{}",
+                addr, read_position, width
+            ),
         };
 
         // If is a single not aligned operation, return the aligned address value
@@ -433,8 +440,8 @@ impl Mem {
         }
 
         // Calculate how aligned this operation is
-        let addr_req_1 = addr >> 3; // Aligned address of the first 8-bytes chunk
-        let addr_req_2 = (addr + width - 1) >> 3; // Aligned address of the second 8-bytes chunk, if needed
+        let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
+        let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
         let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
@@ -444,7 +451,12 @@ impl Mem {
 
         // If is a single not aligned operation, return the aligned address value
         if is_single_not_aligned {
-            assert!(addr_req_1 >= section.start);
+            assert!(
+                addr_req_1 >= section.start,
+                "addr_req_1: 0x{:X} 0x{:X}]",
+                addr_req_1,
+                section.start
+            );
             let read_position_req: usize = (addr_req_1 - section.start) as usize;
             let value_req = u64::from_le_bytes(
                 section.buffer[read_position_req..read_position_req + 8].try_into().unwrap(),
@@ -455,14 +467,24 @@ impl Mem {
         // If is a double not aligned operation, return the aligned address value and the next
         // one
         if is_double_not_aligned {
-            assert!(addr_req_1 >= section.start);
+            assert!(
+                addr_req_1 >= section.start,
+                "addr_req_1(d): 0x{:X} 0x{:X}]",
+                addr_req_1,
+                section.start
+            );
             let read_position_req_1: usize = (addr_req_1 - section.start) as usize;
             let value_req_1 = u64::from_le_bytes(
                 section.buffer[read_position_req_1..read_position_req_1 + 8].try_into().unwrap(),
             );
             additional_data.push(value_req_1);
 
-            assert!(addr_req_2 >= section.start);
+            assert!(
+                addr_req_2 >= section.start,
+                "addr_req_2(d): 0x{:X} 0x{:X}]",
+                addr_req_2,
+                section.start
+            );
             let read_position_req_2: usize = (addr_req_2 - section.start) as usize;
             let value_req_2 = u64::from_le_bytes(
                 section.buffer[read_position_req_2..read_position_req_2 + 8].try_into().unwrap(),

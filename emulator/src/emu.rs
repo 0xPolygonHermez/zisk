@@ -873,6 +873,21 @@ impl<'a> Emu<'a> {
 
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        println!(
+            "#### step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
+            self.ctx.inst_ctx.step,
+            self.ctx.inst_ctx.pc,
+            instruction.op,
+            instruction.op_str,
+            self.ctx.inst_ctx.a,
+            self.ctx.inst_ctx.b,
+            self.ctx.inst_ctx.c,
+            self.ctx.inst_ctx.flag,
+            instruction.to_text()
+        );
+        self.print_regs();
+        println!();
+
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_memory(instruction, emu_mem);
 
