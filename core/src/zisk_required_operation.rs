@@ -9,28 +9,51 @@ pub struct ZiskRequiredOperation {
 }
 
 #[derive(Clone)]
-pub struct ZiskRequiredMemory {
-    pub address: u32,
-    pub is_write: bool,
-    pub width: u8,
-    pub step_offset: u8,
-    pub step: u64,
-    pub value: u64,
+pub enum ZiskRequiredMemory {
+    Basic { step: u64, value: u64, address: u32, is_write: bool, width: u8, step_offset: u8 },
+    Extended { values: [u64; 2], address: u32 },
 }
 
 impl fmt::Debug for ZiskRequiredMemory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let label = if self.is_write { "WR" } else { "RD" };
-        write!(
-            f,
-            "{0} addr:{1:#08X}({1}) offset:{5} with:{2} value:{3:#016X}({3}) step:{4}",
-            label,
-            self.address,
-            self.width,
-            self.value,
-            self.step,
-            self.address & 0x07
-        )
+        match self {
+            ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset: _ } => {
+                let label = if *is_write { "WR" } else { "RD" };
+                write!(
+                    f,
+                    "{0} addr:{1:#08X}({1}) offset:{5} width:{2} value:{3:#016X}({3}) step:{4}",
+                    label,
+                    address,
+                    width,
+                    value,
+                    step,
+                    address & 0x07
+                )
+            }
+            ZiskRequiredMemory::Extended { values, address } => {
+                write!(
+                    f,
+                    "addr:{1:#08X}({0}) value[1]:{1} value[2]:{2}",
+                    address, values[0], values[1],
+                )
+            }
+        }
+    }
+}
+
+impl ZiskRequiredMemory {
+    pub fn get_address(&self) -> u32 {
+        match self {
+            ZiskRequiredMemory::Basic {
+                step: _,
+                value: _,
+                address,
+                is_write: _,
+                width: _,
+                step_offset: _,
+            } => *address,
+            ZiskRequiredMemory::Extended { values: _, address } => *address,
+        }
     }
 }
 

@@ -39,13 +39,20 @@ impl MemInput {
         MemInput { addr, is_write, step, value, is_internal }
     }
     pub fn from(mem_op: &ZiskRequiredMemory) -> Self {
-        debug_assert_eq!(mem_op.width, MEM_BYTES as u8);
-        MemInput {
-            addr: mem_op.address >> 3,
-            is_write: mem_op.is_write,
-            is_internal: false,
-            step: MemHelpers::main_step_to_address_step(mem_op.step, mem_op.step_offset),
-            value: mem_op.value,
+        match mem_op {
+            ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset } => {
+                debug_assert_eq!(*width, MEM_BYTES as u8);
+                MemInput {
+                    addr: address >> 3,
+                    is_write: *is_write,
+                    is_internal: false,
+                    step: MemHelpers::main_step_to_address_step(*step, *step_offset),
+                    value: *value,
+                }
+            }
+            ZiskRequiredMemory::Extended { values: _, address: _ } => {
+                panic!("MemInput::from() called with an extended instance");
+            }
         }
     }
 }
@@ -62,16 +69,20 @@ impl MemAlignInput {
         MemAlignInput { addr, is_write, width, step, value, mem_values }
     }
     pub fn from(mem_external_op: &ZiskRequiredMemory, mem_values: &[u64; 2]) -> Self {
-        MemAlignInput {
-            addr: mem_external_op.address,
-            is_write: mem_external_op.is_write,
-            step: MemHelpers::main_step_to_address_step(
-                mem_external_op.step,
-                mem_external_op.step_offset,
-            ),
-            width: mem_external_op.width,
-            value: mem_external_op.value,
-            mem_values: [mem_values[0], mem_values[1]],
+        match mem_external_op {
+            ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset } => {
+                MemAlignInput {
+                    addr: *address,
+                    is_write: *is_write,
+                    step: MemHelpers::main_step_to_address_step(*step, *step_offset),
+                    width: *width,
+                    value: *value,
+                    mem_values: [mem_values[0], mem_values[1]],
+                }
+            }
+            ZiskRequiredMemory::Extended { values: _, address: _ } => {
+                panic!("MemAlignInput::from() called with extended instance")
+            }
         }
     }
 }
@@ -101,37 +112,45 @@ pub fn mem_align_call(
     mem_values: [u64; 2],
     phase: u8,
 ) -> MemAlignResponse {
-    // DEBUG: only for testing
-    let offset = (mem_op.address & 0x7) * 8;
-    let width = (mem_op.width as u64) * 8;
-    let double_address = (offset + width as u32) > 64;
-    let mem_value = mem_values[phase as usize];
-    let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - width);
-    if mem_op.is_write {
-        if phase == 0 {
-            MemAlignResponse {
-                more_addr: double_address,
-                step: mem_op.step + 1,
-                value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))) |
-                        ((mem_op.value & mask) << offset),
-                ),
-            }
-        } else {
-            MemAlignResponse {
-                more_addr: false,
-                step: mem_op.step + 1,
-                value: Some(
-                    (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width as u32 - 64))) |
-                        ((mem_op.value & mask) >> (128 - (offset + width as u32))),
-                ),
+    match mem_op {
+        ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset: _ } => {
+            // DEBUG: only for testing
+            let offset = (*address & 0x7) * 8;
+            let width = (*width as u64) * 8;
+            let double_address = (offset + width as u32) > 64;
+            let mem_value = mem_values[phase as usize];
+            let mask = 0xFFFF_FFFF_FFFF_FFFFu64 >> (64 - width);
+            if *is_write {
+                if phase == 0 {
+                    MemAlignResponse {
+                        more_addr: double_address,
+                        step: step + 1,
+                        value: Some(
+                            (mem_value & (0xFFFF_FFFF_FFFF_FFFFu64 ^ (mask << offset))) |
+                                ((value & mask) << offset),
+                        ),
+                    }
+                } else {
+                    MemAlignResponse {
+                        more_addr: false,
+                        step: step + 1,
+                        value: Some(
+                            (mem_value &
+                                (0xFFFF_FFFF_FFFF_FFFFu64 << (offset + width as u32 - 64))) |
+                                ((value & mask) >> (128 - (offset + width as u32))),
+                        ),
+                    }
+                }
+            } else {
+                MemAlignResponse {
+                    more_addr: double_address && phase == 0,
+                    step: step + 1,
+                    value: None,
+                }
             }
         }
-    } else {
-        MemAlignResponse {
-            more_addr: double_address && phase == 0,
-            step: mem_op.step + 1,
-            value: None,
+        ZiskRequiredMemory::Extended { values: _, address: _ } => {
+            panic!("mem_align_call() called with an extended instance");
         }
     }
 }
