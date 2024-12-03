@@ -26,7 +26,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     Goldilocks::Element* evals = new Goldilocks::Element[setupCtx.starkInfo.evMap.size() * FIELD_EXTENSION];
     Goldilocks::Element* challenges = new Goldilocks::Element[setupCtx.starkInfo.challengesMap.size() * FIELD_EXTENSION];
-    Goldilocks::Element* airgroupValues = new Goldilocks::Element[setupCtx.starkInfo.airgroupValuesMap.size() * FIELD_EXTENSION];
     
     vector<bool> airgroupValuesCalculated(setupCtx.starkInfo.airgroupValuesMap.size(), false);
     StepsParams params = {
@@ -34,7 +33,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         pols : pols,
         publicInputs : publicInputs,
         challenges : challenges,
-        airgroupValues : airgroupValues,
+        airgroupValues : nullptr,
         evals : evals,
         xDivXSub : nullptr,
         pConstPolsAddress: pConstPols,
@@ -82,47 +81,33 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     }
 
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
-    Goldilocks::Element *num = new Goldilocks::Element[N*FIELD_EXTENSION];
-    Goldilocks::Element *den = new Goldilocks::Element[N*FIELD_EXTENSION];
+    Goldilocks::Element *res = new Goldilocks::Element[N*FIELD_EXTENSION];
     Goldilocks::Element *gprod = new Goldilocks::Element[N*FIELD_EXTENSION];
 
-    Hint gprod_hint = setupCtx.expressionsBin.hints[0];
-    auto denField = std::find_if(gprod_hint.fields.begin(), gprod_hint.fields.end(), [](const HintField& hintField) {
-        return hintField.name == "denominator";
-    });
-    auto numField = std::find_if(gprod_hint.fields.begin(), gprod_hint.fields.end(), [](const HintField& hintField) {
-        return hintField.name == "numerator";
-    });
-    auto gprodField = std::find_if(gprod_hint.fields.begin(), gprod_hint.fields.end(), [](const HintField& hintField) {
-        return hintField.name == "reference";
-    });
+    uint64_t gprodFieldId = setupCtx.expressionsBin.hints[0].fields[0].values[0].id;
+    uint64_t numFieldId = setupCtx.expressionsBin.hints[0].fields[1].values[0].id;
+    uint64_t denFieldId = setupCtx.expressionsBin.hints[0].fields[2].values[0].id;
 
-
-    Dest numStruct(num);
-    numStruct.addParams(setupCtx.expressionsBin.expressionsInfo[numField->values[0].id]);
-    Dest denStruct(den);
-    denStruct.addParams(setupCtx.expressionsBin.expressionsInfo[denField->values[0].id], true);
-    std::vector<Dest> dests = {numStruct, denStruct};
+    Dest destStruct(res);
+    destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[numFieldId]);
+    destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[denFieldId], true);
+    std::vector<Dest> dests = {destStruct};
 
     expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits));
-    
 
     Goldilocks3::copy((Goldilocks3::Element *)&gprod[0], &Goldilocks3::one());
     for(uint64_t i = 1; i < N; ++i) {
-        Goldilocks::Element res[3];
-        Goldilocks3::mul((Goldilocks3::Element *)res, (Goldilocks3::Element *)&num[(i - 1) * FIELD_EXTENSION], (Goldilocks3::Element *)&den[(i - 1) * FIELD_EXTENSION]);
-        Goldilocks3::mul((Goldilocks3::Element *)&gprod[i * FIELD_EXTENSION], (Goldilocks3::Element *)&gprod[(i - 1) * FIELD_EXTENSION], (Goldilocks3::Element *)res);
+        Goldilocks3::mul((Goldilocks3::Element *)&gprod[i * FIELD_EXTENSION], (Goldilocks3::Element *)&gprod[(i - 1) * FIELD_EXTENSION], (Goldilocks3::Element *)&res[(i - 1) * FIELD_EXTENSION]);
     }
 
     Polinomial gprodTransposedPol;
-    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, params.pols, "cm", setupCtx.starkInfo.cmPolsMap[gprodField->values[0].id], false);
+    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, params.pols, "cm", setupCtx.starkInfo.cmPolsMap[gprodFieldId], false);
 #pragma omp parallel for
     for(uint64_t j = 0; j < N; ++j) {
         std::memcpy(gprodTransposedPol[j], &gprod[j*FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
     }
     
-    delete num;
-    delete den;
+    delete res;
     delete gprod;
 
     TimerStart(CALCULATE_IM_POLS);
@@ -249,7 +234,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     delete challenges;
     delete evals;
-    delete airgroupValues;
 
     nlohmann::json jProof = proof.proof.proof2json();
     nlohmann::json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);

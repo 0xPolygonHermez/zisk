@@ -170,10 +170,16 @@ public:
         }
     }
 
-    inline void copyPolynomial(Goldilocks::Element* destVals, bool inverse, uint64_t dim, Goldilocks::Element* tmp) {
+    inline void copyPolynomial(Goldilocks::Element* destVals, bool inverse, bool batch, uint64_t dim, Goldilocks::Element* tmp) {
         if(dim == 1) {
             if(inverse) {
-                Goldilocks::batchInverse(&destVals[0], &tmp[0], nrowsPack);
+                if(batch) {
+                    Goldilocks::batchInverse(&destVals[0], &tmp[0], nrowsPack);
+                } else {
+                    for(uint64_t i = 0; i < nrowsPack; ++i) {
+                        Goldilocks::inv(destVals[i], tmp[i]);
+                    }
+                }
             } else {
                 Goldilocks::copy_pack(nrowsPack, &destVals[0], &tmp[0]);
             }
@@ -183,7 +189,13 @@ public:
                 Goldilocks::copy_pack(nrowsPack, &buff[0], uint64_t(FIELD_EXTENSION), &tmp[0]);
                 Goldilocks::copy_pack(nrowsPack, &buff[1], uint64_t(FIELD_EXTENSION), &tmp[nrowsPack]);
                 Goldilocks::copy_pack(nrowsPack, &buff[2], uint64_t(FIELD_EXTENSION), &tmp[2*nrowsPack]);
-                Goldilocks3::batchInverse((Goldilocks3::Element *)buff, (Goldilocks3::Element *)buff, nrowsPack);
+                if(batch) {
+                    Goldilocks3::batchInverse((Goldilocks3::Element *)buff, (Goldilocks3::Element *)buff, nrowsPack);
+                } else {
+                    for(uint64_t i = 0; i < nrowsPack; ++i) {
+                        Goldilocks3::inv((Goldilocks3::Element &)buff[i*FIELD_EXTENSION], (Goldilocks3::Element &)buff[i*FIELD_EXTENSION]);
+                    }
+                }
                 Goldilocks::copy_pack(nrowsPack, &destVals[0], &buff[0], uint64_t(FIELD_EXTENSION));
                 Goldilocks::copy_pack(nrowsPack, &destVals[nrowsPack], &buff[1], uint64_t(FIELD_EXTENSION));
                 Goldilocks::copy_pack(nrowsPack, &destVals[2*nrowsPack], &buff[2], uint64_t(FIELD_EXTENSION));
@@ -334,7 +346,7 @@ public:
                         uint64_t openingPointIndex = dests[j].params[k].rowOffsetIndex;
                         uint64_t buffPos = ns*openingPointIndex + dests[j].params[k].stage;
                         uint64_t stagePos = dests[j].params[k].stagePos;
-                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].dim, &bufferT_[(nColsStagesAcc[buffPos] + stagePos)*nrowsPack]);
+                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].batch, dests[j].params[k].dim, &bufferT_[(nColsStagesAcc[buffPos] + stagePos)*nrowsPack]);
                         continue;
                     } else if(dests[j].params[k].op == opType::number) {
                         uint64_t val = dests[j].params[k].inverse ? Goldilocks::inv(Goldilocks::fromU64(dests[j].params[k].value)).fe : dests[j].params[k].value;
@@ -788,9 +800,9 @@ public:
                     assert(i_args == dests[j].params[k].parserParams.nArgs);
 
                     if(dests[j].params[k].parserParams.destDim == 1) {
-                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].parserParams.destDim, &tmp1[dests[j].params[k].parserParams.destId*nrowsPack]);
+                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].batch, dests[j].params[k].parserParams.destDim, &tmp1[dests[j].params[k].parserParams.destId*nrowsPack]);
                     } else {
-                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].parserParams.destDim, &tmp3[dests[j].params[k].parserParams.destId*FIELD_EXTENSION*nrowsPack]);
+                        copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].batch, dests[j].params[k].parserParams.destDim, &tmp3[dests[j].params[k].parserParams.destId*FIELD_EXTENSION*nrowsPack]);
                     }
                 }
 
