@@ -1,6 +1,5 @@
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 
-use zisk_common::InstObserver;
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 

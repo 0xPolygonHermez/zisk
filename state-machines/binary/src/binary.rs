@@ -19,9 +19,8 @@ use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
 use sm_common::{
-    plan, CheckPoint, ChunkId, ComponentProvider, InstCount, InstanceExpanderCtx, InstanceXXXX,
-    OpResult, Plan, Planner, Provable, StateMachine, Survey, SurveyCounter, Surveyor,
-    WitnessBuffer,
+    plan, CheckPoint, ChunkId, ComponentProvider, Counter, InstCount, InstanceExpanderCtx,
+    InstanceXXXX, Metrics, OpResult, Plan, Planner, Provable, StateMachine, WitnessBuffer,
 };
 use zisk_common::InstObserver;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation, ZiskRom};
@@ -172,7 +171,7 @@ impl<F: PrimeField> BinarySM<F> {
 }
 
 impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
-    fn get_surveyor(&self) -> Box<dyn Surveyor> {
+    fn get_counter(&self) -> Box<dyn Metrics> {
         Box::new(BinarySurveyor::default())
     }
 

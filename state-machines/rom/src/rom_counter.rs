@@ -1,20 +1,20 @@
 use std::any::Any;
 
-use sm_common::{SurveyStats, Surveyor};
+use sm_common::{CounterStats, Metrics};
 use zisk_core::{InstContext, ZiskInst};
 
 #[derive(Default)]
-pub struct RomSurveyor {
-    pub rom: SurveyStats,
+pub struct RomCounter {
+    pub rom: CounterStats,
 }
 
-impl Surveyor for RomSurveyor {
-    fn survey(&mut self, _: &ZiskInst, inst_ctx: &InstContext) {
+impl Metrics for RomCounter {
+    fn measure(&mut self, _: &ZiskInst, inst_ctx: &InstContext) {
         self.rom.update(inst_ctx.pc, 1);
     }
 
-    fn add(&mut self, other: &dyn Surveyor) {
-        if let Some(other) = other.as_any().downcast_ref::<RomSurveyor>() {
+    fn add(&mut self, other: &dyn Metrics) {
+        if let Some(other) = other.as_any().downcast_ref::<RomCounter>() {
             for (k, v) in &other.rom.inst_count {
                 let count = self.rom.inst_count.entry(*k).or_default();
                 *count += *v;
@@ -27,7 +27,7 @@ impl Surveyor for RomSurveyor {
     }
 }
 
-impl std::fmt::Debug for RomSurveyor {
+impl std::fmt::Debug for RomCounter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // write!(f, "RomSurveyor {{ rom entries: {:?} }}", self.rom.inst_count.len())
         // write dummy

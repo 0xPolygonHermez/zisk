@@ -9,8 +9,6 @@ use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
 
 use proofman::WitnessComponent;
-use sm_arith::ArithSM;
-use sm_mem::MemSM;
 use zisk_pil::{MainRow, MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{Emu, EmuTrace};
 
@@ -22,12 +20,6 @@ use ziskemu::{Emu, EmuTrace};
 pub struct MainSM<F: PrimeField> {
     /// Witness computation manager
     wcm: Arc<WitnessManager<F>>,
-
-    /// Arithmetic state machine
-    arith_sm: Arc<ArithSM>,
-
-    /// Memory state machine
-    mem_sm: Arc<MemSM>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -44,18 +36,10 @@ impl<F: PrimeField> MainSM<F> {
     /// * `mem_sm` - Arc to the MemSM state machine
     /// # Returns
     /// * Arc to the MainSM state machine
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        arith_sm: Arc<ArithSM>,
-        mem_sm: Arc<MemSM>,
-    ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, mem_sm });
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+        let main_sm = Arc::new(Self { wcm: wcm.clone() });
 
         wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
-
-        // For all the secondary state machines, register the main state machine as a predecessor
-        main_sm.mem_sm.register_predecessor();
-        main_sm.arith_sm.register_predecessor();
 
         main_sm
     }

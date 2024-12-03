@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use sm_common::{plan, ChunkId, InstCount, Plan, Planner, Surveyor};
+use sm_common::{plan, ChunkId, InstCount, Plan, Planner, Metrics};
 use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::BinarySurveyor;
@@ -18,7 +18,7 @@ impl<F: PrimeField> BinaryPlanner<F> {
 }
 
 impl<F: PrimeField> Planner for BinaryPlanner<F> {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Surveyor>)>) -> Vec<Plan> {
+    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan> {
         // Prepare counts for binary
         let (count_binary, count_binary_e): (Vec<_>, Vec<_>) = surveys
             .iter()

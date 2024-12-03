@@ -14,30 +14,31 @@ impl InstCount {
 /// Generates a list of checkpoints from instruction counts in multiple chunks.
 ///
 /// # Arguments
-/// - `counts`: A vector of `InstCount` structs, each representing the number of instructions in a chunk.
+/// - `counts`: A vector of `InstCount` structs, each representing the number of instructions in a
+///   chunk.
 /// - `size`: The number of instructions at which to place checkpoints.
 ///
 /// # Returns
-/// A vector of `CheckPoint` structs, each representing a checkpoint with its associated chunk ID and offset.
+/// A vector of `CheckPoint` structs, each representing a checkpoint with its associated chunk ID
+/// and offset.
 ///
 /// # Example
 /// ```
 /// use sm_common::{plan, CheckPoint, InstCount};
 ///
-/// let counts = vec![
-///     InstCount::new(0, 500),
-///     InstCount::new(1, 700),
-///     InstCount::new(2, 300),
-/// ];
+/// let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
 /// let size = 300;
 /// let checkpoints = plan(&counts, size);
-/// assert_eq!(checkpoints, vec![
-///     CheckPoint::new(0, 0),
-///     CheckPoint::new(0, 300),
-///     CheckPoint::new(1, 100),
-///     CheckPoint::new(1, 400),
-///     CheckPoint::new(2, 0),
-/// ]);
+/// assert_eq!(
+///     checkpoints,
+///     vec![
+///         CheckPoint::new(0, 0),
+///         CheckPoint::new(0, 300),
+///         CheckPoint::new(1, 100),
+///         CheckPoint::new(1, 400),
+///         CheckPoint::new(2, 0),
+///     ]
+/// );
 /// ```
 pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
     if counts.is_empty() {

@@ -13,8 +13,8 @@ use zisk_core::{InstContext, ZiskInst};
 // }
 
 // impl RegisterStatus {
-//     pub fn new(step: u64, a: u64, b: u64, c: u64, last_c: u64, pc: u64, sp: u64) -> RegisterStatus {
-//         RegisterStatus { step, a, b, c, last_c, pc, sp }
+//     pub fn new(step: u64, a: u64, b: u64, c: u64, last_c: u64, pc: u64, sp: u64) ->
+// RegisterStatus {         RegisterStatus { step, a, b, c, last_c, pc, sp }
 //     }
 // }
 

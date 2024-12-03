@@ -1,9 +1,9 @@
 mod rom;
-mod rom_expander;
+mod rom_instance;
 mod rom_planner;
-mod rom_surveyor;
+mod rom_counter;
 
 pub use rom::*;
-pub use rom_expander::*;
+pub use rom_instance::*;
 pub use rom_planner::*;
-pub use rom_surveyor::*;
+pub use rom_counter::*;

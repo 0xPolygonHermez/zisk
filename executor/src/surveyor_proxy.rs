@@ -1,27 +1,27 @@
-use sm_common::Surveyor;
+use sm_common::Metrics;
 use zisk_common::InstObserver;
 use zisk_core::{InstContext, ZiskInst};
 
 #[derive(Default)]
-pub struct SurveyorProxy {
-    pub surveyors: Vec<Box<dyn Surveyor>>,
+pub struct MetricsProxy {
+    pub metrics: Vec<Box<dyn Metrics>>,
 }
 
-impl SurveyorProxy {
+impl MetricsProxy {
     pub fn new() -> Self {
-        Self { surveyors: Vec::new() }
+        Self { metrics: Vec::new() }
     }
 
-    pub fn register_surveyor(&mut self, observer: Box<dyn Surveyor>) {
-        self.surveyors.push(observer);
+    pub fn register_metrics(&mut self, observer: Box<dyn Metrics>) {
+        self.metrics.push(observer);
     }
 }
 
-impl InstObserver for SurveyorProxy {
+impl InstObserver for MetricsProxy {
     #[inline(always)]
     fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) -> bool {
-        for observer in &mut self.surveyors {
-            (*observer).survey(zisk_inst, inst_ctx);
+        for observer in &mut self.metrics {
+            (*observer).measure(zisk_inst, inst_ctx);
         }
 
         false

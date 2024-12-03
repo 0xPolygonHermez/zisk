@@ -1,13 +1,14 @@
 use std::any::Any;
 
-use crate::Surveyor;
+use crate::Metrics;
 
 pub type ChunkId = usize;
 
 #[derive(Debug, PartialEq)]
 pub struct CheckPoint {
     pub chunk_id: ChunkId,
-    // offset inside the chunk to start the trace. The offset corresponds to the number of instructions that the sorveyor has seen.
+    // offset inside the chunk to start the trace. The offset corresponds to the number of
+    // instructions that the sorveyor has seen.
     pub skip: u64,
 }
 
@@ -39,5 +40,5 @@ impl Plan {
 }
 
 pub trait Planner {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Surveyor>)>) -> Vec<Plan>;
+    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan>;
 }

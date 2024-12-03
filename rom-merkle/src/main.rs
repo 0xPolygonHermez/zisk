@@ -84,14 +84,14 @@ fn main() {
     let buffer_allocator: Arc<StarkBufferAllocator> =
         Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
     let global_info = GlobalInfo::new(global_info_path);
-    let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
+    let sctx = Arc::new(SetupCtx::<Goldilocks>::new(&global_info, &ProofType::Basic));
 
-    if let Err(e) =
-        RomSM::<Goldilocks>::compute_trace(rom_path.to_path_buf(), buffer_allocator, &sctx)
-    {
-        log::error!("Error: {}", e);
-        std::process::exit(1);
-    }
+    // if let Err(e) =
+    //     // RomSM::<Goldilocks>::compute_trace(rom_path.to_path_buf(), buffer_allocator, &sctx)
+    // {
+    //     log::error!("Error: {}", e);
+    //     std::process::exit(1);
+    // }
 
     // Compute LDE and Merkelize and get the root of the rom
     // TODO: Implement the logic to compute the trace

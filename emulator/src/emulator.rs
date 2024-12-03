@@ -270,7 +270,7 @@ impl ZiskEmulator {
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
-        
+
         // Run the emulation
         emu.run_slice_plan::<F>(min_traces, chunk_id, inst_observer);
     }

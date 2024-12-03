@@ -1,21 +1,21 @@
-use sm_common::{CheckPoint, ChunkId, Plan, Planner, Surveyor};
+use sm_common::{CheckPoint, ChunkId, Metrics, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
-use crate::RomSurveyor;
+use crate::RomCounter;
 
 pub struct RomPlanner {}
 
 impl Planner for RomPlanner {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Surveyor>)>) -> Vec<Plan> {
-        if surveys.len() == 0 {
-            panic!("RomPlanner::plan() found no surveys");
+    fn plan(&self, metrics: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan> {
+        if metrics.len() == 0 {
+            panic!("RomPlanner::plan() found no metrics");
         }
 
-        let mut total = RomSurveyor::default();
+        let mut total = RomCounter::default();
 
-        for (_, survey) in surveys {
-            let survey = survey.as_any().downcast_ref::<RomSurveyor>().unwrap();
-            total.add(survey);
+        for (_, metric) in metrics {
+            let metric = metric.as_any().downcast_ref::<RomCounter>().unwrap();
+            total.add(metric);
         }
 
         vec![Plan::new(
