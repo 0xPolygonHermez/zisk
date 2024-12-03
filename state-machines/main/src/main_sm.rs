@@ -44,10 +44,10 @@ impl<F: PrimeField> MainSM<F> {
         main_sm
     }
 
-    pub fn prove_main<'a>(
+    pub fn prove_main(
         &self,
         zisk_rom: &ZiskRom,
-        vec_traces: &'a [EmuTrace],
+        vec_traces: &[EmuTrace],
         iectx: &mut InstanceExpanderCtx<F>,
         pctx: &ProofCtx<F>,
     ) {

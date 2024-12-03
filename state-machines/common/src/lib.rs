@@ -1,21 +1,19 @@
+mod component_counter;
+mod component_instance;
+mod component_planner;
 mod component_provider;
-mod expander;
 mod instance_expander;
 mod operations;
-mod planner;
 mod planner_helpers;
 mod provable;
-mod state_machine;
-mod surveyor;
 mod witness_buffer;
 
+pub use component_counter::*;
+pub use component_instance::*;
+pub use component_planner::*;
 pub use component_provider::*;
-pub use expander::*;
 pub use instance_expander::*;
 pub use operations::*;
-pub use planner::*;
 pub use planner_helpers::*;
 pub use provable::*;
-pub use state_machine::*;
-pub use surveyor::*;
 pub use witness_buffer::*;
