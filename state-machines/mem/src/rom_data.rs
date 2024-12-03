@@ -36,15 +36,14 @@ impl<F: PrimeField> RomDataSM<F> {
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]);
         let rom_data_sm = Self {
             wcm: wcm.clone(),
-            std,
+            std: std.clone(),
             num_rows: air.num_rows(),
             registered_predecessors: AtomicU32::new(0),
         };
         let rom_data_sm = Arc::new(rom_data_sm);
 
         wcm.register_component(rom_data_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(ROM_DATA_AIR_IDS));
-
-        rom_data_sm.register_predecessor();
+        std.register_predecessor();
 
         rom_data_sm
     }

@@ -55,15 +55,14 @@ impl<F: PrimeField> MemSM<F> {
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
         let mem_sm = Self {
             wcm: wcm.clone(),
-            std,
+            std: std.clone(),
             num_rows: air.num_rows(),
             registered_predecessors: AtomicU32::new(0),
         };
         let mem_sm = Arc::new(mem_sm);
 
         wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MEM_AIR_IDS));
-
-        mem_sm.register_predecessor();
+        std.register_predecessor();
 
         mem_sm
     }

@@ -34,7 +34,7 @@ impl<F: PrimeField> InputDataSM<F> {
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
         let input_data_sm = Self {
             wcm: wcm.clone(),
-            std,
+            std: std.clone(),
             num_rows: air.num_rows(),
             registered_predecessors: AtomicU32::new(0),
         };
@@ -45,6 +45,7 @@ impl<F: PrimeField> InputDataSM<F> {
             Some(ZISK_AIRGROUP_ID),
             Some(INPUT_DATA_AIR_IDS),
         );
+        std.register_predecessor();
 
         input_data_sm
     }
