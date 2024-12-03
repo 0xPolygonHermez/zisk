@@ -14,10 +14,11 @@ struct Params {
     uint64_t polsMapId;
     uint64_t rowOffsetIndex;
     bool inverse = false;
+    bool batch = true;
     opType op;
     uint64_t value;
     
-    Params(ParserParams& params, bool inverse_ = false) : parserParams(params), inverse(inverse_) {
+    Params(ParserParams& params, bool inverse_ = false, bool batch_ = true) : parserParams(params), inverse(inverse_), batch(batch_) {
         dim = params.destDim;
         op = opType::tmp;
     }
@@ -41,8 +42,8 @@ struct Dest {
 
     Dest(Goldilocks::Element *dest_, uint64_t offset_ = false) : dest(dest_), offset(offset_) {}
 
-    void addParams(ParserParams& parserParams_, bool inverse_ = false) {
-        params.push_back(Params(parserParams_, inverse_));
+    void addParams(ParserParams& parserParams_, bool inverse_ = false, bool batch_ = true) {
+        params.push_back(Params(parserParams_, inverse_, batch_));
         uint64_t dimExp = parserParams_.destDim;
         dim = std::max(dim, dimExp);
     }

@@ -202,7 +202,6 @@ impl PilHelpersCmd {
                     .symbols
                     .iter()
                     .filter(|symbol| {
-                        println!("{:?}", symbol);
                         symbol.air_group_id.is_some()
                             && symbol.air_group_id.unwrap() == airgroup_id as u32
                             && ((symbol.air_id.is_some() && symbol.air_id.unwrap() == air_id as u32)
