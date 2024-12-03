@@ -5,8 +5,41 @@ require "std_prod.pil";
 const int DEFAULT_DIRECT_NAME = PIOP_NAME_DIRECT;
 const int DEFAULT_DIRECT_BUS_TYPE = PIOP_BUS_SUM;
 
-// Updates either the air or global constraint directly
+// Updates the global constraint directly
+function direct_global_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_initial_checks(cols, sel);
+
+    direct_to_bus(opid, cols, sel, proves, bus_type, name, PIOP_DIRECT_TYPE_GLOBAL);
+}
+
+function direct_global_update_assumes(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_global_update(opid, cols, sel, 0, bus_type, name);
+}
+
+function direct_global_update_proves(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_global_update(opid, cols, sel, 1, bus_type, name);
+}
+
+// Updates the air constraint directly
 function direct_update(const int opid, const expr cols[], const expr sel = 1, const int proves = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_initial_checks(cols, sel);
+
+    if (AIR_ID == -1) {
+        error("A direct update has to be performed inside an air");
+    }
+
+    direct_to_bus(opid, cols, sel, proves, bus_type, name, PIOP_DIRECT_TYPE_AIR);
+}
+
+function direct_update_assumes(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, cols, sel, 0, bus_type, name);
+}
+
+function direct_update_proves(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, cols, sel, 1, bus_type, name);
+}
+
+private function direct_initial_checks(const expr cols[], const expr sel) {
     if (AIRGROUP_ID == -1) {
         error("A direct update has to be performed inside an airgroup");
     }
@@ -20,9 +53,9 @@ function direct_update(const int opid, const expr cols[], const expr sel = 1, co
     if (degree(sel) > 0) {
         error(`Only field elements can be used for a direct update. The selector = ${sel} is not a field element`);
     }
+}
 
-    const int direct_type = AIR_ID == -1 ? PIOP_DIRECT_TYPE_GLOBAL : PIOP_DIRECT_TYPE_AIR;
-
+private function direct_to_bus(const int opid, const expr cols[], const expr sel, const int proves, const int bus_type, const int name, const int direct_type) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_DIRECT_NAME;
 
     if (bus_type == PIOP_BUS_DEFAULT) bus_type = DEFAULT_DIRECT_BUS_TYPE;
@@ -43,12 +76,4 @@ function direct_update(const int opid, const expr cols[], const expr sel = 1, co
         default:
             error(`Unknown bus type: ${bus_type} for opid: ${opid}`);
     }
-}
-
-function direct_update_assumes(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
-    direct_update(opid, cols, sel, 0, bus_type, name);
-}
-
-function direct_update_proves(const int opid, const expr cols[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
-    direct_update(opid, cols, sel, 1, bus_type, name);
 }
