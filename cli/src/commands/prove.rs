@@ -49,6 +49,9 @@ pub struct ProveCmd {
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
+    #[clap(short = 'f', long, default_value_t = false)]
+    pub final_snark: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -102,7 +105,7 @@ impl ProveCmd {
                 self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                ProofOptions::new(false, self.verbose.into(), std_mode, self.aggregation),
+                ProofOptions::new(false, self.verbose.into(), std_mode, self.aggregation, self.final_snark),
             )?,
         };
 

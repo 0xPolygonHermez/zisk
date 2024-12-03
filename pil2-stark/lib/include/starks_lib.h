@@ -123,7 +123,7 @@
 
     // Recursive proof
     // =================================================================================
-    void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* pAddress, void *pConstPols, void *pConstTree, void* pPublicInputs, char *proof_file);
+    void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* pAddress, void *pConstPols, void *pConstTree, void* pPublicInputs, char *proof_file, bool vadcop);
     void *get_zkin_ptr(char *zkin_file);
     void *add_recursive2_verkey(void *pZkin, char* recursive2VerKeyFilename);
     void *join_zkin_recursive2(char* globalInfoFile, uint64_t airgroupId, void* pPublics, void* pChallenges, void *zkin1, void *zkin2, void *starkInfoRecursive2);
@@ -134,6 +134,10 @@
     void zkin_proof_free(void *pZkinProof);
     void serialized_proof_free(char *zkinCStr);
     void get_committed_pols(void *pWitness, char* execFile, void *pAddress, void* pPublics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t offsetCm1, uint64_t nCols);
+
+    // Final proof
+    // =================================================================================
+    void gen_final_snark_proof(void *pWitnessFinal, char* zkeyFile, char* outputDir);
 
     // Util calls
     // =================================================================================

@@ -31,11 +31,11 @@ impl From<&SetupC> for *mut c_void {
 }
 
 #[derive(Debug)]
-pub struct Pols<F> {
-    pub values: RwLock<Vec<MaybeUninit<F>>>,
+pub struct Pols {
+    pub values: RwLock<Vec<MaybeUninit<u8>>>,
 }
 
-impl<F> Default for Pols<F> {
+impl Default for Pols {
     fn default() -> Self {
         Self { values: RwLock::new(Vec::new()) }
     }
@@ -44,21 +44,22 @@ impl<F> Default for Pols<F> {
 /// Air instance context for managing air instances (traces)
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct Setup<F> {
+pub struct Setup {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub p_setup: SetupC,
     pub stark_info: StarkInfo,
-    pub const_pols: Pols<F>,
-    pub const_tree: Pols<F>,
+    pub const_pols: Pols,
+    pub const_tree: Pols,
 }
 
-impl<F> Setup<F> {
+impl Setup {
     const MY_NAME: &'static str = "Setup";
 
     pub fn new(global_info: &GlobalInfo, airgroup_id: usize, air_id: usize, setup_type: &ProofType) -> Self {
         let setup_path = match setup_type {
-            ProofType::Final => global_info.get_final_setup_path(),
+            ProofType::VadcopFinal => global_info.get_setup_path("vadcop_final"),
+            ProofType::RecursiveF => global_info.get_setup_path("recursivef"),
             _ => global_info.get_air_setup_path(airgroup_id, air_id, setup_type),
         };
 
@@ -99,7 +100,8 @@ impl<F> Setup<F> {
 
     pub fn load_const_pols(&self, global_info: &GlobalInfo, setup_type: &ProofType) {
         let setup_path = match setup_type {
-            ProofType::Final => global_info.get_final_setup_path(),
+            ProofType::VadcopFinal => global_info.get_setup_path("vadcop_final"),
+            ProofType::RecursiveF => global_info.get_setup_path("recursivef"),
             _ => global_info.get_air_setup_path(self.airgroup_id, self.air_id, setup_type),
         };
 
@@ -111,7 +113,7 @@ impl<F> Setup<F> {
         let p_stark_info = self.p_setup.p_stark_info;
 
         let const_size = get_const_size_c(p_stark_info) as usize;
-        let const_pols: Vec<MaybeUninit<F>> = Vec::with_capacity(const_size);
+        let const_pols: Vec<MaybeUninit<u8>> = Vec::with_capacity(const_size);
 
         let p_const_pols_address = const_pols.as_ptr() as *mut c_void;
         load_const_pols_c(p_const_pols_address, const_pols_path.as_str(), const_size as u64);
@@ -120,19 +122,21 @@ impl<F> Setup<F> {
 
     pub fn load_const_pols_tree(&self, global_info: &GlobalInfo, setup_type: &ProofType, save_file: bool) {
         let setup_path = match setup_type {
-            ProofType::Final => global_info.get_final_setup_path(),
+            ProofType::VadcopFinal => global_info.get_setup_path("vadcop_final"),
+            ProofType::RecursiveF => global_info.get_setup_path("recursivef"),
             _ => global_info.get_air_setup_path(self.airgroup_id, self.air_id, setup_type),
         };
 
         let air_name = &global_info.airs[self.airgroup_id][self.air_id].name;
-        log::debug!("{}   : ··· Loading const tree for AIR {}", Self::MY_NAME, air_name);
+        log::debug!("{}   : ··· Loading const tree for AIR {} of type {:?}", Self::MY_NAME, air_name, setup_type);
 
         let const_pols_tree_path = setup_path.display().to_string() + ".consttree";
 
         let p_stark_info = self.p_setup.p_stark_info;
 
         let const_tree_size = get_const_tree_size_c(p_stark_info) as usize;
-        let const_tree: Vec<MaybeUninit<F>> = Vec::with_capacity(const_tree_size);
+
+        let const_tree: Vec<MaybeUninit<u8>> = Vec::with_capacity(const_tree_size);
 
         let p_const_tree_address = const_tree.as_ptr() as *mut c_void;
         if PathBuf::from(&const_pols_tree_path).exists() {

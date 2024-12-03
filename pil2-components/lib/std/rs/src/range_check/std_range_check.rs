@@ -47,7 +47,7 @@ pub struct StdRangeCheck<F: PrimeField> {
 }
 
 impl<F: PrimeField> Decider<F> for StdRangeCheck<F> {
-    fn decide(&self, sctx: Arc<SetupCtx<F>>, pctx: Arc<ProofCtx<F>>) {
+    fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have rc-related hints
         let air_groups = pctx.pilout.air_groups();
 
@@ -92,7 +92,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
         std_range_check
     }
 
-    fn register_range(&self, sctx: Arc<SetupCtx<F>>, airgroup_id: usize, air_id: usize, hint: u64) {
+    fn register_range(&self, sctx: Arc<SetupCtx>, airgroup_id: usize, air_id: usize, hint: u64) {
         let predefined = get_hint_field_constant::<F>(
             &sctx,
             airgroup_id,
@@ -267,7 +267,7 @@ impl<F: PrimeField> StdRangeCheck<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for StdRangeCheck<F> {
-    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.decide(sctx, pctx);
     }
 
@@ -276,8 +276,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdRangeCheck<F> {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
-        _sctx: Arc<SetupCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         // Nothing to do
     }

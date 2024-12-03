@@ -43,7 +43,7 @@ where
         }
     }
 
-    pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    pub fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = Arc::new(WitnessManager::new(pctx, ectx, sctx));
 
         let std_lib = Std::new(wcm.clone());
@@ -65,7 +65,7 @@ impl<F: PrimeField> WitnessLibrary<F> for PermutationWitness<F>
 where
     Standard: Distribution<F>,
 {
-    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
         self.wcm.as_ref().unwrap().start_proof(pctx, ectx, sctx);
@@ -75,7 +75,7 @@ where
         self.wcm.as_ref().unwrap().end_proof();
     }
 
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Execute those components that need to be executed
         self.permutation1_6.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
         self.permutation1_7.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
@@ -87,8 +87,8 @@ where
         &mut self,
         stage: u32,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }

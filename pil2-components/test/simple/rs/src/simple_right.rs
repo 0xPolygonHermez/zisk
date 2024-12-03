@@ -26,7 +26,7 @@ where
         simple_right
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let (buffer_size, _) =
             ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, SIMPLE_AIRGROUP_ID, SIMPLE_RIGHT_AIR_IDS[0]).unwrap();
 
@@ -49,8 +49,8 @@ where
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];

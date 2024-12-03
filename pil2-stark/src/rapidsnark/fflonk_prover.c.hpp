@@ -23,9 +23,6 @@ namespace Fflonk
         this->reservedMemorySize = reservedMemorySize;
 
         curveName = CurveUtils::getCurveNameByEngine();
-
-        Logger::getInstance()->enableConsoleLogging();
-        Logger::getInstance()->updateLogLevel(LOG_LEVEL_DEBUG);
     }
 
     template <typename Engine>

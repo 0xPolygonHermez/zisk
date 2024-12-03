@@ -10,19 +10,20 @@ use crate::GlobalInfo;
 use crate::Setup;
 use crate::ProofType;
 
-pub struct SetupsVadcop<F> {
-    pub sctx: Arc<SetupCtx<F>>,
-    pub sctx_compressor: Option<Arc<SetupCtx<F>>>,
-    pub sctx_recursive1: Option<Arc<SetupCtx<F>>>,
-    pub sctx_recursive2: Option<Arc<SetupCtx<F>>>,
-    pub sctx_final: Option<Arc<SetupCtx<F>>>,
+pub struct SetupsVadcop {
+    pub sctx: Arc<SetupCtx>,
+    pub sctx_compressor: Option<Arc<SetupCtx>>,
+    pub sctx_recursive1: Option<Arc<SetupCtx>>,
+    pub sctx_recursive2: Option<Arc<SetupCtx>>,
+    pub setup_vadcop_final: Option<Arc<Setup>>,
+    pub setup_recursivef: Option<Arc<Setup>>,
 }
 
-impl<F> SetupsVadcop<F> {
-    pub fn new(global_info: &GlobalInfo, aggregation: bool) -> Self {
+impl SetupsVadcop {
+    pub fn new(global_info: &GlobalInfo, aggregation: bool, final_snark: bool) -> Self {
         info!("Initializing setups");
         timer_start_debug!(INITIALIZING_SETUP);
-        let sctx: SetupCtx<F> = SetupCtx::new(global_info, &ProofType::Basic);
+        let sctx: SetupCtx = SetupCtx::new(global_info, &ProofType::Basic);
         timer_stop_and_log_debug!(INITIALIZING_SETUP);
         if aggregation {
             timer_start_debug!(INITIALIZING_SETUP_AGGREGATION);
@@ -30,30 +31,42 @@ impl<F> SetupsVadcop<F> {
 
             timer_start_debug!(INITIALIZING_SETUP_COMPRESSOR);
             info!(" ··· Initializing setups compressor");
-            let sctx_compressor: SetupCtx<F> = SetupCtx::new(global_info, &ProofType::Compressor);
+            let sctx_compressor: SetupCtx = SetupCtx::new(global_info, &ProofType::Compressor);
             timer_stop_and_log_debug!(INITIALIZING_SETUP_COMPRESSOR);
 
             timer_start_debug!(INITIALIZING_SETUP_RECURSIVE1);
             info!(" ··· Initializing setups recursive1");
-            let sctx_recursive1: SetupCtx<F> = SetupCtx::new(global_info, &ProofType::Recursive1);
+            let sctx_recursive1: SetupCtx = SetupCtx::new(global_info, &ProofType::Recursive1);
             timer_stop_and_log_debug!(INITIALIZING_SETUP_RECURSIVE1);
 
             timer_start_debug!(INITIALIZING_SETUP_RECURSIVE2);
             info!(" ··· Initializing setups recursive2");
-            let sctx_recursive2: SetupCtx<F> = SetupCtx::new(global_info, &ProofType::Recursive2);
+            let sctx_recursive2: SetupCtx = SetupCtx::new(global_info, &ProofType::Recursive2);
             timer_stop_and_log_debug!(INITIALIZING_SETUP_RECURSIVE2);
 
-            timer_start_debug!(INITIALIZING_SETUP_FINAL);
-            info!(" ··· Initializing setups final");
-            let sctx_final: SetupCtx<F> = SetupCtx::new(global_info, &ProofType::Final);
-            timer_stop_and_log_debug!(INITIALIZING_SETUP_FINAL);
+            timer_start_debug!(INITIALIZING_SETUP_VADCOP_FINAL);
+            info!(" ··· Initializing setups vadcop final");
+            let setup_vadcop_final: Setup = Setup::new(global_info, 0, 0, &ProofType::VadcopFinal);
+            timer_stop_and_log_debug!(INITIALIZING_SETUP_VADCOP_FINAL);
             timer_stop_and_log_debug!(INITIALIZING_SETUP_AGGREGATION);
+
+            let mut setup_recursivef = None;
+            if final_snark {
+                timer_start_debug!(INITIALIZING_SETUP_RECURSION);
+                timer_start_debug!(INITIALIZING_SETUP_RECURSIVEF);
+                info!(" ··· Initializing setups recursivef");
+                setup_recursivef = Some(Arc::new(Setup::new(global_info, 0, 0, &ProofType::RecursiveF)));
+                timer_stop_and_log_debug!(INITIALIZING_SETUP_RECURSIVEF);
+                timer_stop_and_log_debug!(INITIALIZING_SETUP_RECURSION);
+            }
+
             SetupsVadcop {
                 sctx: Arc::new(sctx),
                 sctx_compressor: Some(Arc::new(sctx_compressor)),
                 sctx_recursive1: Some(Arc::new(sctx_recursive1)),
                 sctx_recursive2: Some(Arc::new(sctx_recursive2)),
-                sctx_final: Some(Arc::new(sctx_final)),
+                setup_vadcop_final: Some(Arc::new(setup_vadcop_final)),
+                setup_recursivef,
             }
         } else {
             SetupsVadcop {
@@ -61,22 +74,23 @@ impl<F> SetupsVadcop<F> {
                 sctx_compressor: None,
                 sctx_recursive1: None,
                 sctx_recursive2: None,
-                sctx_final: None,
+                setup_vadcop_final: None,
+                setup_recursivef: None,
             }
         }
     }
 }
 
 #[derive(Debug)]
-pub struct SetupRepository<F> {
-    setups: HashMap<(usize, usize), Setup<F>>,
+pub struct SetupRepository {
+    setups: HashMap<(usize, usize), Setup>,
     global_bin: Option<*mut c_void>,
 }
 
-unsafe impl<F> Send for SetupRepository<F> {}
-unsafe impl<F> Sync for SetupRepository<F> {}
+unsafe impl Send for SetupRepository {}
+unsafe impl Sync for SetupRepository {}
 
-impl<F> SetupRepository<F> {
+impl SetupRepository {
     pub fn new(global_info: &GlobalInfo, setup_type: &ProofType) -> Self {
         timer_start_debug!(INITIALIZE_SETUPS);
         let mut setups = HashMap::new();
@@ -91,7 +105,7 @@ impl<F> SetupRepository<F> {
         };
 
         // Initialize Hashmap for each airgroup_id, air_id
-        if setup_type != &ProofType::Final {
+        if setup_type != &ProofType::VadcopFinal {
             for (airgroup_id, air_group) in global_info.airs.iter().enumerate() {
                 for (air_id, _) in air_group.iter().enumerate() {
                     setups.insert((airgroup_id, air_id), Setup::new(global_info, airgroup_id, air_id, setup_type));
@@ -112,13 +126,13 @@ impl<F> SetupRepository<F> {
 }
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
-pub struct SetupCtx<F> {
+pub struct SetupCtx {
     global_info: GlobalInfo,
-    setup_repository: SetupRepository<F>,
+    setup_repository: SetupRepository,
     setup_type: ProofType,
 }
 
-impl<F> SetupCtx<F> {
+impl SetupCtx {
     pub fn new(global_info: &GlobalInfo, setup_type: &ProofType) -> Self {
         SetupCtx {
             setup_repository: SetupRepository::new(global_info, setup_type),
@@ -127,7 +141,7 @@ impl<F> SetupCtx<F> {
         }
     }
 
-    pub fn get_setup(&self, airgroup_id: usize, air_id: usize) -> &Setup<F> {
+    pub fn get_setup(&self, airgroup_id: usize, air_id: usize) -> &Setup {
         match self.setup_repository.setups.get(&(airgroup_id, air_id)) {
             Some(setup) => setup,
             None => {

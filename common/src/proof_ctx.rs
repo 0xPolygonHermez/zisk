@@ -62,11 +62,18 @@ pub struct ProofOptions {
     pub verbose_mode: VerboseMode,
     pub std_mode: StdMode,
     pub aggregation: bool,
+    pub final_snark: bool,
 }
 
 impl ProofOptions {
-    pub fn new(verify_constraints: bool, verbose_mode: VerboseMode, std_mode: StdMode, aggregation: bool) -> Self {
-        Self { verify_constraints, verbose_mode, std_mode, aggregation }
+    pub fn new(
+        verify_constraints: bool,
+        verbose_mode: VerboseMode,
+        std_mode: StdMode,
+        aggregation: bool,
+        final_snark: bool,
+    ) -> Self {
+        Self { verify_constraints, verbose_mode, std_mode, aggregation, final_snark }
     }
 }
 

@@ -108,9 +108,9 @@ impl GlobalInfo {
         PathBuf::from(self.folder_path.clone())
     }
 
-    pub fn get_final_setup_path(&self) -> PathBuf {
-        let final_setup_folder = format!("{}/{}/final/final", self.folder_path, self.name);
-        PathBuf::from(final_setup_folder)
+    pub fn get_setup_path(&self, template: &str) -> PathBuf {
+        let vadcop_final_setup_folder = format!("{}/{}/{}/{}", self.folder_path, self.name, template, template);
+        PathBuf::from(vadcop_final_setup_folder)
     }
 
     pub fn get_air_setup_path(&self, airgroup_id: usize, air_id: usize, proof_type: &ProofType) -> PathBuf {

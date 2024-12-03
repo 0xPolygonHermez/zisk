@@ -22,7 +22,7 @@ impl<F: PrimeField + Copy> Permutation2<F> {
         permutation2
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // For simplicity, add a single instance of each air
         let (buffer_size, _) = ectx
             .buffer_allocator
@@ -48,8 +48,8 @@ impl<F: PrimeField + Copy> WitnessComponent<F> for Permutation2<F> {
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
         let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];

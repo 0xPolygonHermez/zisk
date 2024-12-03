@@ -663,7 +663,7 @@ pub fn get_hint_ids_by_name(p_expressions_bin: *mut c_void, name: &str) -> Vec<u
 
 #[allow(clippy::too_many_arguments)]
 pub fn mul_hint_fields<F: Field + Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -708,7 +708,7 @@ pub fn mul_hint_fields<F: Field + Field>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn acc_hint_field<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -757,7 +757,7 @@ pub fn acc_hint_field<F: Field>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn acc_mul_hint_fields<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -811,7 +811,7 @@ pub fn acc_mul_hint_fields<F: Field>(
 }
 
 pub fn get_hint_field<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -858,7 +858,7 @@ pub fn get_hint_field<F: Field>(
 }
 
 pub fn get_hint_field_a<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -911,7 +911,7 @@ pub fn get_hint_field_a<F: Field>(
 }
 
 pub fn get_hint_field_m<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     proof_ctx: &ProofCtx<F>,
     air_instance: &mut AirInstance<F>,
     hint_id: usize,
@@ -969,7 +969,7 @@ pub fn get_hint_field_m<F: Field>(
 }
 
 pub fn get_hint_field_constant<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
@@ -1010,7 +1010,7 @@ pub fn get_hint_field_constant<F: Field>(
 }
 
 pub fn get_hint_field_constant_a<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
@@ -1057,7 +1057,7 @@ pub fn get_hint_field_constant_a<F: Field>(
 }
 
 pub fn get_hint_field_constant_m<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     airgroup_id: usize,
     air_id: usize,
     hint_id: usize,
@@ -1112,7 +1112,7 @@ pub fn get_hint_field_constant_m<F: Field>(
 }
 
 pub fn set_hint_field<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
@@ -1145,7 +1145,7 @@ pub fn set_hint_field<F: Field>(
 }
 
 pub fn set_hint_field_val<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     hint_id: u64,
     hint_field_name: &str,
@@ -1187,7 +1187,7 @@ pub fn set_hint_field_val<F: Field>(
 }
 
 pub fn print_expression<F: Field>(
-    setup_ctx: &SetupCtx<F>,
+    setup_ctx: &SetupCtx,
     air_instance: &mut AirInstance<F>,
     expr: &HintFieldValue<F>,
     first_print_value: u64,
@@ -1224,7 +1224,7 @@ pub fn print_expression<F: Field>(
     }
 }
 
-pub fn print_row<F: Field>(setup_ctx: &SetupCtx<F>, air_instance: &AirInstance<F>, stage: u64, row: u64) {
+pub fn print_row<F: Field>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
     let buffer = air_instance.get_buffer_ptr() as *mut c_void;

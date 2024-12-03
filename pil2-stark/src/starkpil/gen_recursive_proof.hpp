@@ -1,10 +1,10 @@
 #include "starks.hpp"
 
 template <typename ElementType>
-void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupId, Goldilocks::Element *pAddress, Goldilocks::Element *pConstPols, Goldilocks::Element *pConstTree, Goldilocks::Element *publicInputs, std::string proofFile) {
+void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupId, Goldilocks::Element *pAddress, Goldilocks::Element *pConstPols, Goldilocks::Element *pConstTree, Goldilocks::Element *publicInputs, std::string proofFile, bool vadcop) {
     TimerStart(STARK_PROOF);
 
-    FRIProof<Goldilocks::Element> proof(setupCtx.starkInfo);
+    FRIProof<ElementType> proof(setupCtx.starkInfo);
 
     using TranscriptType = std::conditional_t<std::is_same<ElementType, Goldilocks::Element>::value, TranscriptGL, TranscriptBN128>;
     
@@ -27,7 +27,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     Goldilocks::Element* airgroupValues = new Goldilocks::Element[setupCtx.starkInfo.airgroupValuesMap.size() * FIELD_EXTENSION];
     
     vector<bool> airgroupValuesCalculated(setupCtx.starkInfo.airgroupValuesMap.size(), false);
-    vector<bool> commitsCalculated(setupCtx.starkInfo.cmPolsMap.size(), false);
 
     StepsParams params = {
         pols : pAddress,
@@ -39,11 +38,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         pConstPolsAddress: pConstPols,
         pConstPolsExtendedTreeAddress: pConstTree,
     };
-
-    for (uint64_t i = 0; i < setupCtx.starkInfo.mapSectionsN["cm1"]; ++i)
-    {
-        commitsCalculated[i] = true;
-    }
 
     //--------------------------------
     // 0.- Add const root and publics to transcript
@@ -129,32 +123,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     delete den;
     delete gprod;
 
-    commitsCalculated[gprodField->values[0].id] = true;
-
-    for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
-        if(setupCtx.starkInfo.cmPolsMap[i].stage == 2 && !setupCtx.starkInfo.cmPolsMap[i].imPol && !commitsCalculated[i]) {
-            zklog.info("Witness polynomial " + setupCtx.starkInfo.cmPolsMap[i].name + " is not calculated");
-            exitProcess();
-            exit(-1);
-        }
-    }
     TimerStart(CALCULATE_IM_POLS);
     starks.calculateImPolsExpressions(2, params);
     TimerStopAndLog(CALCULATE_IM_POLS);
-    for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
-        if(setupCtx.starkInfo.cmPolsMap[i].imPol && setupCtx.starkInfo.cmPolsMap[i].stage == 2) {
-            commitsCalculated[i] = true;
-        }
-    }
-
-    for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
-        if(setupCtx.starkInfo.cmPolsMap[i].stage == 2 && !commitsCalculated[i]) {
-            zklog.info("Witness polynomial " + setupCtx.starkInfo.cmPolsMap[i].name + " is not calculated");
-            exitProcess();
-            exit(-1);
-        }
-    }
-
 
     TimerStart(STARK_COMMIT_STAGE_2);
     starks.commitStage(2, pAddress, proof);
@@ -174,11 +145,6 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     
     expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
 
-    for(uint64_t i = 0; i < setupCtx.starkInfo.cmPolsMap.size(); i++) {
-        if(setupCtx.starkInfo.cmPolsMap[i].stage == setupCtx.starkInfo.nStages + 1) {
-            commitsCalculated[i] = true;
-        }
-    }
     TimerStart(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
     starks.commitStage(setupCtx.starkInfo.nStages + 1, pAddress, proof);
     TimerStopAndLog(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
@@ -240,10 +206,10 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     {   
         uint64_t currentBits = setupCtx.starkInfo.starkStruct.steps[step].nBits;
         uint64_t prevBits = step == 0 ? currentBits : setupCtx.starkInfo.starkStruct.steps[step - 1].nBits;
-        FRI<Goldilocks::Element>::fold(step, friPol, challenge, nBitsExt, prevBits, currentBits);
+        FRI<ElementType>::fold(step, friPol, challenge, nBitsExt, prevBits, currentBits);
         if (step < setupCtx.starkInfo.starkStruct.steps.size() - 1)
         {
-            FRI<Goldilocks::Element>::merkelize(step, proof, friPol, starks.treesFRI[step], currentBits, setupCtx.starkInfo.starkStruct.steps[step + 1].nBits);
+            FRI<ElementType>::merkelize(step, proof, friPol, starks.treesFRI[step], currentBits, setupCtx.starkInfo.starkStruct.steps[step + 1].nBits);
             starks.addTranscript(transcript, &proof.proof.fri.treesFRI[step].root[0], nFieldElements);
         }
         else
@@ -269,9 +235,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     transcriptPermutation.getPermutations(friQueries, setupCtx.starkInfo.starkStruct.nQueries, setupCtx.starkInfo.starkStruct.steps[0].nBits);
 
     uint64_t nTrees = setupCtx.starkInfo.nStages + setupCtx.starkInfo.customCommits.size() + 2;
-    FRI<Goldilocks::Element>::proveQueries(friQueries, setupCtx.starkInfo.starkStruct.nQueries, proof, starks.treesGL, nTrees);
+    FRI<ElementType>::proveQueries(friQueries, setupCtx.starkInfo.starkStruct.nQueries, proof, starks.treesGL, nTrees);
     for(uint64_t step = 1; step < setupCtx.starkInfo.starkStruct.steps.size(); ++step) {
-        FRI<Goldilocks::Element>::proveFRIQueries(friQueries, setupCtx.starkInfo.starkStruct.nQueries, step, setupCtx.starkInfo.starkStruct.steps[step].nBits, proof, starks.treesFRI[step - 1]);
+        FRI<ElementType>::proveFRIQueries(friQueries, setupCtx.starkInfo.starkStruct.nQueries, step, setupCtx.starkInfo.starkStruct.steps[step].nBits, proof, starks.treesFRI[step - 1]);
     }
 
     FRI<ElementType>::setFinalPol(proof, friPol, setupCtx.starkInfo.starkStruct.steps[setupCtx.starkInfo.starkStruct.steps.size() - 1].nBits);
@@ -282,7 +248,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     delete challenges;
     delete evals;
     delete airgroupValues;
-    
+
     nlohmann::json jProof = proof.proof.proof2json();
     nlohmann::json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);
 
@@ -292,7 +258,13 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     TimerStopAndLog(STARK_PROOF);
 
-    zkin = publics2zkin(zkin, publicInputs, globalInfo, airgroupId);
-
+    if(vadcop) {
+        zkin = publics2zkin(zkin, publicInputs, globalInfo, airgroupId);
+    } else {
+        zkin["publics"] = json::array();
+        for(uint64_t i = 0; i < uint64_t(globalInfo["nPublics"]); ++i) {
+            zkin["publics"][i] = Goldilocks::toString(publicInputs[i]);
+        }
+    }        
     return (void *) new nlohmann::json(zkin);
 }

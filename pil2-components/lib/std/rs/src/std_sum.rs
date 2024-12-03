@@ -24,7 +24,7 @@ pub struct StdSum<F: PrimeField> {
 }
 
 impl<F: PrimeField> Decider<F> for StdSum<F> {
-    fn decide(&self, sctx: Arc<SetupCtx<F>>, pctx: Arc<ProofCtx<F>>) {
+    fn decide(&self, sctx: Arc<SetupCtx>, pctx: Arc<ProofCtx<F>>) {
         // Scan the pilout for airs that have sum-related hints
         let air_groups = pctx.pilout.air_groups();
         let mut sum_airs_guard = self.sum_airs.lock().unwrap();
@@ -67,7 +67,7 @@ impl<F: PrimeField> StdSum<F> {
     fn debug(
         &self,
         pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        sctx: &SetupCtx,
         air_instance: &mut AirInstance<F>,
         num_rows: usize,
         debug_hints_data: Vec<u64>,
@@ -172,7 +172,7 @@ impl<F: PrimeField> StdSum<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
-    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.decide(sctx, pctx);
     }
 
@@ -181,8 +181,8 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
         stage: u32,
         _air_instance: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         if stage == 2 {
             let sum_airs = self.sum_airs.lock().unwrap();

@@ -519,7 +519,7 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19gen_recursive_proofPvPcmS_S_S_S_S0_"]
+    #[link_name = "\u{1}_Z19gen_recursive_proofPvPcmS_S_S_S_S0_b"]
     pub fn gen_recursive_proof(
         pSetupCtx: *mut ::std::os::raw::c_void,
         globalInfoFile: *mut ::std::os::raw::c_char,
@@ -529,6 +529,7 @@ extern "C" {
         pConstTree: *mut ::std::os::raw::c_void,
         pPublicInputs: *mut ::std::os::raw::c_void,
         proof_file: *mut ::std::os::raw::c_char,
+        vadcop: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
@@ -602,6 +603,14 @@ extern "C" {
         nPublics: u64,
         offsetCm1: u64,
         nCols: u64,
+    );
+}
+extern "C" {
+    #[link_name = "\u{1}_Z21gen_final_snark_proofPvPcS0_"]
+    pub fn gen_final_snark_proof(
+        pWitnessFinal: *mut ::std::os::raw::c_void,
+        zkeyFile: *mut ::std::os::raw::c_char,
+        outputDir: *mut ::std::os::raw::c_char,
     );
 }
 extern "C" {

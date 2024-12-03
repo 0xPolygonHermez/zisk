@@ -16,7 +16,10 @@ use transcript::FFITranscript;
 
 use crate::{WitnessLibInitFn, WitnessLibrary};
 use crate::verify_constraints_proof;
-use crate::generate_recursion_proof;
+use crate::{
+    generate_vadcop_recursive1_proof, generate_vadcop_final_proof, generate_vadcop_recursive2_proof,
+    generate_recursivef_proof, generate_fflonk_snark_proof,
+};
 
 use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, SetupCtx, SetupsVadcop};
 
@@ -71,8 +74,8 @@ impl<F: Field + 'static> ProofMan<F> {
 
         let pctx = Arc::new(ProofCtx::create_ctx(witness_lib.pilout(), proving_key_path.clone()));
 
-        let setups = Arc::new(SetupsVadcop::new(&pctx.global_info, options.aggregation));
-        let sctx: Arc<SetupCtx<F>> = setups.sctx.clone();
+        let setups = Arc::new(SetupsVadcop::new(&pctx.global_info, options.aggregation, options.final_snark));
+        let sctx: Arc<SetupCtx> = setups.sctx.clone();
 
         Self::initialize_witness(&mut witness_lib, pctx.clone(), ectx.clone(), sctx.clone());
         witness_lib.calculate_witness(1, pctx.clone(), ectx.clone(), sctx.clone());
@@ -85,7 +88,13 @@ impl<F: Field + 'static> ProofMan<F> {
             Self::print_summary(pctx.clone());
         }
 
-        Self::initialize_fixed_pols(setups.clone(), pctx.clone(), ectx.clone(), options.aggregation);
+        Self::initialize_fixed_pols(
+            setups.clone(),
+            pctx.clone(),
+            ectx.clone(),
+            options.aggregation,
+            options.final_snark,
+        );
 
         let mut provers: Vec<Box<dyn Prover<F>>> = Vec::new();
         Self::initialize_provers(sctx.clone(), &mut provers, pctx.clone(), ectx.clone());
@@ -189,41 +198,20 @@ impl<F: Field + 'static> ProofMan<F> {
         log::info!("{}: ··· Generating aggregated proofs", Self::MY_NAME);
 
         timer_start_info!(GENERATING_AGGREGATION_PROOFS);
-        timer_start_info!(GENERATING_COMPRESSOR_PROOFS);
-        let comp_proofs = generate_recursion_proof(
-            &pctx,
-            &ectx,
-            setups.sctx_compressor.as_ref().unwrap().clone(),
-            &proves_out,
-            &ProofType::Compressor,
-            output_dir_path.clone(),
-            false,
-        )?;
-        timer_stop_and_log_info!(GENERATING_COMPRESSOR_PROOFS);
-        log::info!("{}: Compressor proofs generated successfully", Self::MY_NAME);
-
-        timer_start_info!(GENERATING_RECURSIVE1_PROOFS);
-        let recursive1_proofs = generate_recursion_proof(
-            &pctx,
-            &ectx,
-            setups.sctx_recursive1.as_ref().unwrap().clone(),
-            &comp_proofs,
-            &ProofType::Recursive1,
-            output_dir_path.clone(),
-            false,
-        )?;
-        timer_stop_and_log_info!(GENERATING_RECURSIVE1_PROOFS);
-        log::info!("{}: Recursive1 proofs generated successfully", Self::MY_NAME);
+        timer_start_info!(GENERATING_COMPRESSOR_AND_RECURSIVE1_PROOFS);
+        let recursive1_proofs =
+            generate_vadcop_recursive1_proof(&pctx, setups.clone(), &proves_out, output_dir_path.clone(), false)?;
+        timer_stop_and_log_info!(GENERATING_COMPRESSOR_AND_RECURSIVE1_PROOFS);
+        log::info!("{}: Compressor and recursive1 proofs generated successfully", Self::MY_NAME);
 
         ectx.dctx.read().unwrap().barrier();
         timer_start_info!(GENERATING_RECURSIVE2_PROOFS);
         let sctx_recursive2 = setups.sctx_recursive2.clone();
-        let recursive2_proofs = generate_recursion_proof(
+        let recursive2_proof = generate_vadcop_recursive2_proof(
             &pctx,
             &ectx,
             sctx_recursive2.as_ref().unwrap().clone(),
             &recursive1_proofs,
-            &ProofType::Recursive2,
             output_dir_path.clone(),
             false,
         )?;
@@ -232,20 +220,33 @@ impl<F: Field + 'static> ProofMan<F> {
 
         ectx.dctx.read().unwrap().barrier();
         if mpi_rank == 0 {
-            timer_start_info!(GENERATING_FINAL_PROOFS);
-            let _final_proof = generate_recursion_proof(
+            timer_start_info!(GENERATING_VADCOP_FINAL_PROOF);
+            let final_proof = generate_vadcop_final_proof(
                 &pctx,
-                &ectx,
-                setups.sctx_final.as_ref().unwrap().clone(),
-                &recursive2_proofs,
-                &ProofType::Final,
+                setups.setup_vadcop_final.as_ref().unwrap().clone(),
+                recursive2_proof,
                 output_dir_path.clone(),
-                true,
             )?;
-            timer_stop_and_log_info!(GENERATING_FINAL_PROOFS);
-            log::info!("{}: Final proof generated successfully", Self::MY_NAME);
+            timer_stop_and_log_info!(GENERATING_VADCOP_FINAL_PROOF);
+            log::info!("{}: VadcopFinal proof generated successfully", Self::MY_NAME);
+
+            timer_stop_and_log_info!(GENERATING_AGGREGATION_PROOFS);
+
+            if options.final_snark {
+                timer_start_info!(GENERATING_RECURSIVE_F_PROOF);
+                let recursivef_proof = generate_recursivef_proof(
+                    &pctx,
+                    setups.setup_recursivef.as_ref().unwrap().clone(),
+                    final_proof,
+                    output_dir_path.clone(),
+                )?;
+                timer_stop_and_log_info!(GENERATING_RECURSIVE_F_PROOF);
+
+                timer_start_info!(GENERATING_FFLONK_SNARK_PROOF);
+                let _ = generate_fflonk_snark_proof(&pctx, recursivef_proof, output_dir_path.clone());
+                timer_stop_and_log_info!(GENERATING_FFLONK_SNARK_PROOF);
+            }
         }
-        timer_stop_and_log_info!(GENERATING_AGGREGATION_PROOFS);
         timer_stop_and_log_info!(GENERATING_VADCOP_PROOF);
         log::info!("{}: Proofs generated successfully", Self::MY_NAME);
         ectx.dctx.read().unwrap().barrier();
@@ -255,8 +256,8 @@ impl<F: Field + 'static> ProofMan<F> {
     fn initialize_witness(
         witness_lib: &mut Box<dyn WitnessLibrary<F>>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         timer_start_debug!(INITIALIZE_WITNESS);
         witness_lib.start_proof(pctx.clone(), ectx.clone(), sctx.clone());
@@ -296,10 +297,10 @@ impl<F: Field + 'static> ProofMan<F> {
     }
 
     fn initialize_provers(
-        sctx: Arc<SetupCtx<F>>,
+        sctx: Arc<SetupCtx>,
         provers: &mut Vec<Box<dyn Prover<F>>>,
         pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
     ) {
         timer_start_debug!(INITIALIZE_PROVERS);
         info!("{}: Initializing provers", Self::MY_NAME);
@@ -336,10 +337,11 @@ impl<F: Field + 'static> ProofMan<F> {
     }
 
     fn initialize_fixed_pols(
-        setups: Arc<SetupsVadcop<F>>,
+        setups: Arc<SetupsVadcop>,
         pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
         aggregation: bool,
+        final_snark: bool,
     ) {
         info!("{}: Initializing setup fixed pols", Self::MY_NAME);
         timer_start_debug!(INITIALIZE_SETUP);
@@ -365,7 +367,7 @@ impl<F: Field + 'static> ProofMan<F> {
             let sctx_compressor = setups.sctx_compressor.as_ref().unwrap().clone();
             let sctx_recursive1 = setups.sctx_recursive1.as_ref().unwrap().clone();
             let sctx_recursive2 = setups.sctx_recursive2.as_ref().unwrap().clone();
-            let sctx_final = setups.sctx_final.as_ref().unwrap().clone();
+            let setup_vadcop_final = setups.setup_vadcop_final.as_ref().unwrap().clone();
 
             timer_start_debug!(INITIALIZE_CONST_POLS_COMPRESSOR);
             info!("{}: ··· Initializing setup fixed pols compressor", Self::MY_NAME);
@@ -408,12 +410,20 @@ impl<F: Field + 'static> ProofMan<F> {
             }
             timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE2);
 
-            timer_start_debug!(INITIALIZE_CONST_POLS_FINAL);
-            info!("{}: ··· Initializing setup fixed pols final", Self::MY_NAME);
-            let setup = sctx_final.get_setup(0, 0);
-            setup.load_const_pols(&pctx.global_info, &ProofType::Final);
-            setup.load_const_pols_tree(&pctx.global_info, &ProofType::Final, false);
-            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_FINAL);
+            timer_start_debug!(INITIALIZE_CONST_POLS_VADCOP_FINAL);
+            info!("{}: ··· Initializing setup fixed pols vadcop final", Self::MY_NAME);
+            setup_vadcop_final.load_const_pols(&pctx.global_info, &ProofType::VadcopFinal);
+            setup_vadcop_final.load_const_pols_tree(&pctx.global_info, &ProofType::VadcopFinal, false);
+            timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_VADCOP_FINAL);
+
+            if final_snark {
+                let setup_recursivef = setups.setup_recursivef.as_ref().unwrap().clone();
+                timer_start_debug!(INITIALIZE_CONST_POLS_RECURSIVE_FINAL);
+                info!("{}: ··· Initializing setup fixed pols recursive final", Self::MY_NAME);
+                setup_recursivef.load_const_pols(&pctx.global_info, &ProofType::RecursiveF);
+                setup_recursivef.load_const_pols_tree(&pctx.global_info, &ProofType::RecursiveF, false);
+                timer_stop_and_log_debug!(INITIALIZE_CONST_POLS_RECURSIVE_FINAL);
+            }
         }
         timer_stop_and_log_debug!(INITIALIZE_SETUP);
     }
@@ -421,7 +431,7 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn calculate_stage(
         stage: u32,
         provers: &mut [Box<dyn Prover<F>>],
-        setup_ctx: Arc<SetupCtx<F>>,
+        setup_ctx: Arc<SetupCtx>,
         proof_ctx: Arc<ProofCtx<F>>,
     ) {
         if stage as usize == proof_ctx.global_info.n_challenges.len() + 1 {
@@ -501,7 +511,7 @@ impl<F: Field + 'static> ProofMan<F> {
         stage: u32,
         provers: &mut [Box<dyn Prover<F>>],
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
         verify_constraints: bool,
     ) {
@@ -564,8 +574,8 @@ impl<F: Field + 'static> ProofMan<F> {
     pub fn opening_stages(
         provers: &mut [Box<dyn Prover<F>>],
         pctx: Arc<ProofCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
+        sctx: Arc<SetupCtx>,
+        ectx: Arc<ExecutionCtx>,
         transcript: &mut FFITranscript,
     ) {
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;

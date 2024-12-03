@@ -715,6 +715,7 @@ pub fn gen_recursive_proof_c(
     proof_file: &str,
     global_info_file: &str,
     airgroup_id: u64,
+    vadcop: bool,
 ) -> *mut c_void {
     let proof_file_name = CString::new(proof_file).unwrap();
     let proof_file_ptr = proof_file_name.as_ptr() as *mut std::os::raw::c_char;
@@ -732,6 +733,7 @@ pub fn gen_recursive_proof_c(
             p_const_tree,
             p_public_inputs,
             proof_file_ptr,
+            vadcop,
         )
     }
 }
@@ -852,6 +854,18 @@ pub fn get_committed_pols_c(
 ) {
     unsafe {
         get_committed_pols(pWitness, execFile, pAddress, pPublics, sizeWitness, N, nPublics, offsetCm1, nCols);
+    }
+}
+
+#[cfg(not(feature = "no_lib_link"))]
+pub fn gen_final_snark_proof_c(pWitnessFinal: *mut ::std::os::raw::c_void, zkeyFile: &str, outputDir: &str) {
+    let zkey_file_name = CString::new(zkeyFile).unwrap();
+    let zkey_file_ptr = zkey_file_name.as_ptr() as *mut std::os::raw::c_char;
+
+    let output_dir_name = CString::new(outputDir).unwrap();
+    let output_dir_ptr = output_dir_name.as_ptr() as *mut std::os::raw::c_char;
+    unsafe {
+        gen_final_snark_proof(pWitnessFinal, zkey_file_ptr, output_dir_ptr);
     }
 }
 
@@ -1404,6 +1418,7 @@ pub fn gen_recursive_proof_c(
     _proof_file: &str,
     _global_info_file: &str,
     _airgroup_id: u64,
+    _vadcop: bool,
 ) -> *mut c_void {
     trace!("{}: ··· {}", "ffi     ", "gen_recursive_proof: This is a mock call because there is no linked library");
     std::ptr::null_mut()
@@ -1490,6 +1505,11 @@ pub fn get_committed_pols_c(
     _nCols: u64,
 ) {
     trace!("{}: ··· {}", "ffi     ", "get_committed_pols: This is a mock call because there is no linked library");
+}
+
+#[cfg(feature = "no_lib_link")]
+pub fn gen_final_snark_proof_c(_pWitnessFinal: *mut ::std::os::raw::c_void, _zkeyFile: &str, _outputDir: &str) {
+    trace!("{}: ··· {}", "ffi     ", "gen_final_snark_proof: This is a mock call because there is no linked library");
 }
 
 #[cfg(feature = "no_lib_link")]

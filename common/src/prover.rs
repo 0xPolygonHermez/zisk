@@ -20,7 +20,8 @@ pub enum ProofType {
     Compressor,
     Recursive1,
     Recursive2,
-    Final,
+    VadcopFinal,
+    RecursiveF,
 }
 
 pub struct ProverInfo {
@@ -62,17 +63,13 @@ pub trait Prover<F: Field> {
     fn new_transcript(&self) -> FFITranscript;
     fn num_stages(&self) -> u32;
     fn get_challenges(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>, transcript: &FFITranscript);
-    fn calculate_stage(&mut self, stage_id: u32, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>);
+    fn calculate_stage(&mut self, stage_id: u32, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>);
     fn check_stage(&self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>);
     fn commit_stage(&mut self, stage_id: u32, proof_ctx: Arc<ProofCtx<F>>) -> ProverStatus;
     fn calculate_xdivxsub(&mut self, proof_ctx: Arc<ProofCtx<F>>);
     fn calculate_lev(&mut self, proof_ctx: Arc<ProofCtx<F>>);
-    fn opening_stage(
-        &mut self,
-        opening_id: u32,
-        setup_ctx: Arc<SetupCtx<F>>,
-        proof_ctx: Arc<ProofCtx<F>>,
-    ) -> ProverStatus;
+    fn opening_stage(&mut self, opening_id: u32, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>)
+        -> ProverStatus;
 
     fn get_buff_helper_size(&self) -> usize;
     fn get_proof(&self) -> *mut c_void;
@@ -82,7 +79,7 @@ pub trait Prover<F: Field> {
     fn get_transcript_values(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<F>;
     fn get_transcript_values_u64(&self, stage: u64, proof_ctx: Arc<ProofCtx<F>>) -> Vec<u64>;
     fn calculate_hash(&self, values: Vec<F>) -> Vec<F>;
-    fn verify_constraints(&self, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo>;
+    fn verify_constraints(&self, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo>;
 
     fn get_proof_challenges(&self, global_steps: Vec<usize>, global_challenges: Vec<F>) -> Vec<F>;
 }

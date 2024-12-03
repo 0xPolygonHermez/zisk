@@ -52,13 +52,7 @@ impl<F: Field> StarkProver<F> {
     const HASH_SIZE: usize = 4;
     const FIELD_EXTENSION: usize = 3;
 
-    pub fn new(
-        sctx: Arc<SetupCtx<F>>,
-        airgroup_id: usize,
-        air_id: usize,
-        instance_id: usize,
-        prover_idx: usize,
-    ) -> Self {
+    pub fn new(sctx: Arc<SetupCtx>, airgroup_id: usize, air_id: usize, instance_id: usize, prover_idx: usize) -> Self {
         let setup = sctx.get_setup(airgroup_id, air_id);
 
         let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
@@ -130,7 +124,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         self.stark_info.n_stages
     }
 
-    fn verify_constraints(&self, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo> {
+    fn verify_constraints(&self, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>) -> Vec<ConstraintInfo> {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let setup = setup_ctx.get_setup(self.airgroup_id, self.air_id);
@@ -163,7 +157,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         .to_vec()
     }
 
-    fn calculate_stage(&mut self, stage_id: u32, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>) {
+    fn calculate_stage(&mut self, stage_id: u32, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
         let n_commits = self.stark_info.cm_pols_map.as_ref().expect("REASON").len();
@@ -381,7 +375,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn opening_stage(
         &mut self,
         opening_id: u32,
-        setup_ctx: Arc<SetupCtx<F>>,
+        setup_ctx: Arc<SetupCtx>,
         proof_ctx: Arc<ProofCtx<F>>,
     ) -> ProverStatus {
         let steps_fri: Vec<usize> = proof_ctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
@@ -723,7 +717,7 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 }
 
 impl<F: Field> StarkProver<F> {
-    fn compute_evals(&mut self, _opening_id: u32, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>) {
+    fn compute_evals(&mut self, _opening_id: u32, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>) {
         let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
         debug!("{}: ··· Calculating evals of instance {} of {}", Self::MY_NAME, self.instance_id, air_name);
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
@@ -758,7 +752,7 @@ impl<F: Field> StarkProver<F> {
         compute_evals_c(p_stark, (&steps_params).into(), buff_helper, p_proof);
     }
 
-    fn compute_fri_pol(&mut self, _opening_id: u32, setup_ctx: Arc<SetupCtx<F>>, proof_ctx: Arc<ProofCtx<F>>) {
+    fn compute_fri_pol(&mut self, _opening_id: u32, setup_ctx: Arc<SetupCtx>, proof_ctx: Arc<ProofCtx<F>>) {
         let air_name = &proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name;
         debug!("{}: ··· Calculating FRI polynomial of instance {} of {}", Self::MY_NAME, self.instance_id, air_name);
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
@@ -904,10 +898,10 @@ impl StarkBufferAllocator {
     }
 }
 
-impl<F> BufferAllocator<F> for StarkBufferAllocator {
+impl BufferAllocator for StarkBufferAllocator {
     fn get_buffer_info(
         &self,
-        sctx: &SetupCtx<F>,
+        sctx: &SetupCtx,
         airgroup_id: usize,
         air_id: usize,
     ) -> Result<(u64, Vec<u64>), Box<dyn Error>> {
@@ -919,7 +913,7 @@ impl<F> BufferAllocator<F> for StarkBufferAllocator {
 
     fn get_buffer_info_custom_commit(
         &self,
-        sctx: &SetupCtx<F>,
+        sctx: &SetupCtx,
         airgroup_id: usize,
         air_id: usize,
         name: &str,

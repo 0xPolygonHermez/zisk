@@ -26,13 +26,7 @@ pub fn parse_cached_buffers(s: &str) -> Result<HashMap<String, PathBuf>, String>
     Ok(map)
 }
 
-pub fn get_custom_commit_trace<F>(
-    commit_id: u64,
-    step: u64,
-    setup: &Setup<F>,
-    buffer: Vec<Goldilocks>,
-    buffer_str: &str,
-) {
+pub fn get_custom_commit_trace(commit_id: u64, step: u64, setup: &Setup, buffer: Vec<Goldilocks>, buffer_str: &str) {
     extend_and_merkelize_custom_commit_c(
         starks_new_c((&setup.p_setup).into(), std::ptr::null_mut()),
         commit_id,

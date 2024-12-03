@@ -60,7 +60,7 @@ pub struct AirInstance<F> {
 
 impl<F: Field> AirInstance<F> {
     pub fn new(
-        setup_ctx: Arc<SetupCtx<F>>,
+        setup_ctx: Arc<SetupCtx>,
         airgroup_id: usize,
         air_id: usize,
         air_segment_id: Option<usize>,
@@ -108,7 +108,7 @@ impl<F: Field> AirInstance<F> {
         ptrs
     }
 
-    pub fn set_custom_commit_cached_file(&mut self, setup_ctx: &SetupCtx<F>, commit_id: u64, cached_file: PathBuf) {
+    pub fn set_custom_commit_cached_file(&mut self, setup_ctx: &SetupCtx, commit_id: u64, cached_file: PathBuf) {
         let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let buffer_size = get_map_totaln_custom_commits_c(ps.p_setup.p_stark_info, commit_id);
@@ -122,7 +122,7 @@ impl<F: Field> AirInstance<F> {
         }
     }
 
-    pub fn set_custom_commit_id_buffer(&mut self, setup_ctx: &SetupCtx<F>, buffer: Vec<F>, commit_id: u64) {
+    pub fn set_custom_commit_id_buffer(&mut self, setup_ctx: &SetupCtx, buffer: Vec<F>, commit_id: u64) {
         self.custom_commits[commit_id as usize] = CustomCommitsInfo::new(buffer, PathBuf::new());
 
         let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
@@ -133,7 +133,7 @@ impl<F: Field> AirInstance<F> {
         }
     }
 
-    pub fn set_airvalue(&mut self, setup_ctx: &SetupCtx<F>, name: &str, lengths: Option<Vec<u64>>, value: F) {
+    pub fn set_airvalue(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: F) {
         let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
         let airvalues_map = ps.stark_info.airvalues_map.as_ref().unwrap();
         let airvalue_id = (0..airvalues_map.len())
@@ -158,7 +158,7 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(airvalue_id);
     }
 
-    pub fn set_airvalue_ext(&mut self, setup_ctx: &SetupCtx<F>, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
+    pub fn set_airvalue_ext(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
         let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let airvalues_map = ps.stark_info.airvalues_map.as_ref().unwrap();
@@ -191,7 +191,7 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(airvalue_id);
     }
 
-    pub fn set_airgroupvalue(&mut self, setup_ctx: &SetupCtx<F>, name: &str, lengths: Option<Vec<u64>>, value: F) {
+    pub fn set_airgroupvalue(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: F) {
         let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let airgroupvalues_map = ps.stark_info.airgroupvalues_map.as_ref().unwrap();
@@ -221,7 +221,7 @@ impl<F: Field> AirInstance<F> {
 
     pub fn set_airgroupvalue_ext(
         &mut self,
-        setup_ctx: &SetupCtx<F>,
+        setup_ctx: &SetupCtx,
         name: &str,
         lengths: Option<Vec<u64>>,
         value: Vec<F>,

@@ -87,7 +87,7 @@ impl VerifyConstraintsCmd {
                 self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
-                ProofOptions::new(true, self.verbose.into(), std_mode, false),
+                ProofOptions::new(true, self.verbose.into(), std_mode, false, false),
             )?,
         };
 

@@ -37,11 +37,11 @@ impl<F: PrimeField + AbstractField + Clone + Copy + Default + 'static> Module<F>
         x_mod
     }
 
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.calculate_trace(pctx, ectx, sctx);
     }
 
-    fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn calculate_trace(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
         let module = pctx.get_public_value("mod");
@@ -99,8 +99,8 @@ impl<F: PrimeField + AbstractField + Copy> WitnessComponent<F> for Module<F> {
         _stage: u32,
         _air_instance_id: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
-        _sctx: Arc<SetupCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
