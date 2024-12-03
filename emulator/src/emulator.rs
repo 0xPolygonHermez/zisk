@@ -1,3 +1,20 @@
+//! ZiskEmulator
+//!
+//! ```text
+//! ziskemu.main()
+//!  \
+//!   emulate()
+//!    \
+//!     process_directory() -> lists *dut*.elf files
+//!      \
+//!       process_elf_file()
+//!        \
+//!         - Riscv2zisk::run()
+//!         - process_rom()
+//!            \
+//!             Emu::run()
+//! ```
+
 use crate::{
     Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
     ZiskEmulatorErr,
@@ -26,22 +43,9 @@ use rayon::prelude::*;
 
 pub struct ZiskEmulator;
 
-/*
-ziskemu.main()
-\
- emulate()
- \
-  process_directory()
-  \
-   process_elf_file()
-   \
-    Riscv2zisk::run()
-    process_rom()
-    \
-     Emu::run()
-*/
-
 impl ZiskEmulator {
+    /// Lists all device-under-test riscof files in a directory (*dut*.elf) and calls
+    /// process_elf_file with each of them
     fn process_directory(
         directory: String,
         inputs: &[u8],
@@ -51,8 +55,12 @@ impl ZiskEmulator {
             println!("process_directory() directory={}", directory);
         }
 
+        // List all files in the directory
         let files = Self::list_files(&directory).unwrap();
+
+        // For every file
         for file in files {
+            // If file follows the riscof dut file name convention, then call process_elf_file()
             if file.contains("dut") && file.ends_with(".elf") {
                 Self::process_elf_file(file, inputs, options, None::<Box<dyn Fn(EmuTrace)>>)?;
             }
@@ -61,6 +69,7 @@ impl ZiskEmulator {
         Ok(Vec::new())
     }
 
+    /// Processes an RISC-V ELF file
     fn process_elf_file(
         elf_filename: String,
         inputs: &[u8],
@@ -71,16 +80,18 @@ impl ZiskEmulator {
             println!("process_elf_file() elf_file={}", elf_filename);
         }
 
-        // Convert the ELF file to ZisK ROM
-        // Create an instance of the RISCV -> ZisK program converter
+        // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
+        // file name
         let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
 
-        // Convert program to rom
+        // Convert the ELF file to ZisK ROM calling the transpiler run() method
         let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
 
+        // Process the Zisk rom with the provided inputs, according to the configured options
         Self::process_rom(&zisk_rom, inputs, options, callback)
     }
 
+    // To be implemented
     fn process_rom_file(
         rom_filename: String,
         inputs: &[u8],
@@ -96,6 +107,7 @@ impl ZiskEmulator {
         Self::process_rom(&rom, inputs, options, callback)
     }
 
+    /// Processes a Zisk rom with the provided inputs, according to the configured options
     pub fn process_rom(
         rom: &ZiskRom,
         inputs: &[u8],
@@ -106,17 +118,22 @@ impl ZiskEmulator {
             println!("process_rom() rom size={} inputs size={}", rom.insts.len(), inputs.len());
         }
 
-        // Create a emulator instance with this rom and inputs
+        // Create a emulator instance with the Zisk rom
         let mut emu = Emu::new(rom);
+
+        // Get the current time, to be used to calculate the metrics
         let start = Instant::now();
 
-        // Run the emulation
+        // Run the emulation, using the input and the options
         emu.run(inputs.to_owned(), options, callback);
 
+        // Check that the emulation completed, either successfully or not, but it must reach the end
+        // of the program
         if !emu.terminated() {
             return Err(ZiskEmulatorErr::EmulationNoCompleted);
         }
 
+        // Store the duration of the emulation process as a difference vs. the start time
         let duration = start.elapsed();
 
         // Log performance metrics
@@ -160,17 +177,21 @@ impl ZiskEmulator {
         Ok(output)
     }
 
+    /// Process a Zisk rom with the provided input data, according to the configured options, in
+    /// order to generate a histogram of the program counters used during the emulation.
     pub fn process_rom_pc_histogram(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
     ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
-        // Create a emulator instance with this rom and inputs
+        // Create a emulator instance with the rom
         let mut emu = Emu::new(rom);
 
-        // Run the emulation
+        // Run the emulation and get the pc histogram
         let pc_histogram = emu.run_pc_histogram(inputs.to_owned(), options);
 
+        // Check that the emulation completed, either successfully or not, but it must reach the end
+        // of the program
         if !emu.terminated() {
             return Err(ZiskEmulatorErr::EmulationNoCompleted);
         }
@@ -240,6 +261,8 @@ impl ZiskEmulator {
         Ok((vec_traces, emu_slices))
     }
 
+    /// Process a Zisk rom with the provided input data, according to the configured options, in
+    /// order to generate a set of required operation data.
     #[inline]
     pub fn process_slice_required<F: PrimeField>(
         rom: &ZiskRom,
@@ -248,20 +271,28 @@ impl ZiskEmulator {
         emu_trace_start: &EmuTraceStart,
         num_rows: usize,
     ) -> Vec<ZiskRequiredOperation> {
-        // Create a emulator instance with this rom
+        // Create a emulator instance with the rom
         let mut emu = Emu::new(rom);
+
         // Run the emulation
         emu.run_slice_required::<F>(vec_traces, op_type, emu_trace_start, num_rows)
     }
 
+    /// Finds all files in a directory and returns a vector with their full paths
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {
+        // Define an internal function to call it recursively
         fn _list_files(vec: &mut Vec<PathBuf>, path: &Path) -> std::io::Result<()> {
+            // Only search if the path is a directory
             if path.is_dir() {
+                // List all contained paths
                 for entry in fs::read_dir(path)? {
                     let entry = entry?;
                     let full_path = entry.path();
+
+                    // If it is a directory, call list files recursively
                     if full_path.is_dir() {
                         _list_files(vec, &full_path)?;
+                    // If it is a file, add it to the vector
                     } else {
                         vec.push(full_path);
                     }
@@ -270,13 +301,19 @@ impl ZiskEmulator {
             Ok(())
         }
 
+        // Define an empty vector
         let mut paths = Vec::new();
+
+        // Call the internal function
         _list_files(&mut paths, Path::new(directory))?;
+
+        // Return the paths
         Ok(paths.into_iter().map(|p| p.display().to_string()).collect())
     }
 }
 
 impl Emulator for ZiskEmulator {
+    /// Implement the emulate method of the Emulator trait for ZiskEmulator
     fn emulate(
         &self,
         options: &EmuOptions,
@@ -287,7 +324,7 @@ impl Emulator for ZiskEmulator {
             println!("emulate()\n{}", options);
         }
 
-        // Check options are valid
+        // Check options
         if options.rom.is_some() && options.elf.is_some() {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                 "ROM file and ELF file are incompatible; use only one of them",
@@ -298,9 +335,8 @@ impl Emulator for ZiskEmulator {
             )));
         }
 
-        // INPUTs:
-        // build inputs data either from the provided inputs path, or leave it empty (default
-        // inputs)
+        // Build an input data buffer either from the provided inputs path (if provided), or leave
+        // it empty
         let mut inputs = Vec::new();
         if options.inputs.is_some() {
             // Read inputs data from the provided inputs path
@@ -308,9 +344,12 @@ impl Emulator for ZiskEmulator {
             inputs = fs::read(path).expect("Could not read inputs file");
         }
 
+        // If a rom file path is provided, load the rom from it
         if options.rom.is_some() {
+            // Get the rom file name
             let rom_filename = options.rom.clone().unwrap();
 
+            // Check the file exists and it is not a directory
             let metadata = fs::metadata(&rom_filename).map_err(|_| {
                 ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new("ROM file does not exist"))
             })?;
@@ -320,16 +359,25 @@ impl Emulator for ZiskEmulator {
                 )));
             }
 
+            // Call process_rom_file()
             Self::process_rom_file(rom_filename, &inputs, options, callback)
-        } else {
+        }
+        // Process the ELF file
+        else {
+            // Get the ELF file name
             let elf_filename = options.elf.clone().unwrap();
 
+            // Get the file metadata
             let metadata = fs::metadata(&elf_filename).map_err(|_| {
                 ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new("ELF file does not exist"))
             })?;
+
+            // If it is a directory, call process_directory()
             if metadata.is_dir() {
                 Self::process_directory(elf_filename, &inputs, options)
-            } else {
+            }
+            // If it is a file, call process_elf_file()
+            else {
                 Self::process_elf_file(elf_filename, &inputs, options, callback)
             }
         }

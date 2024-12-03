@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
     Arc, Mutex,
 };
 
@@ -21,6 +21,7 @@ pub struct ArithTableSM<F> {
     // Inputs
     num_rows: usize,
     multiplicity: Mutex<Vec<u64>>,
+    used: AtomicBool,
 }
 
 impl<F: Field> ArithTableSM<F> {
@@ -34,6 +35,7 @@ impl<F: Field> ArithTableSM<F> {
             registered_predecessors: AtomicU32::new(0),
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
+            used: AtomicBool::new(false),
         };
         let arith_table_sm = Arc::new(_arith_table_sm);
 
@@ -47,7 +49,9 @@ impl<F: Field> ArithTableSM<F> {
     }
 
     pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 &&
+            self.used.load(Ordering::SeqCst)
+        {
             self.create_air_instance();
         }
     }
@@ -60,6 +64,7 @@ impl<F: Field> ArithTableSM<F> {
             info!("{}: ··· Processing row {} with value {}", Self::MY_NAME, row, value);
             _multiplicity[row] += value;
         }
+        self.used.store(true, Ordering::Relaxed);
     }
     pub fn create_air_instance(&self) {
         let ectx = self.wcm.get_ectx();
@@ -88,7 +93,7 @@ impl<F: Field> ArithTableSM<F> {
                 .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
 
             info!(
-                "{}: ··· Creating Binary basic table instance [{} rows filled 100%]",
+                "{}: ··· Creating Arith basic table instance [{} rows filled 100%]",
                 Self::MY_NAME,
                 self.num_rows,
             );
