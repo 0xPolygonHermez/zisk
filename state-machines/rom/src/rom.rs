@@ -1,13 +1,13 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{any::Any, path::PathBuf, sync::Arc};
 
 use p3_field::{Field, PrimeField};
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
+use proofman_common::{AirInstance, BufferAllocator, ProofCtx, SetupCtx};
 use proofman_util::create_buffer_fast;
 
 use sm_common::{
-    CheckPoint, ChunkId, ComponentProvider, Expander, Plan, Planner, StateMachine, Survey,
-    SurveyCounter, SurveyStats, Surveyor, WitnessBuffer,
+    CheckPoint, ChunkId, ComponentProvider, InstanceExpanderCtx, InstanceXXXX, Plan, Planner,
+    StateMachine, Survey, SurveyCounter, SurveyStats, Surveyor, WitnessBuffer,
 };
 use zisk_common::InstObserver;
 use zisk_core::{InstContext, Riscv2zisk, ZiskInst, ZiskPcHistogram, ZiskRom, SRC_IMM};
@@ -16,7 +16,7 @@ use ziskemu::EmuTrace;
 
 use std::error::Error;
 
-use crate::RomSurveyor;
+use crate::{RomPlanner, RomSurveyor};
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -24,7 +24,7 @@ pub struct RomSM<F> {
     zisk_rom: Arc<ZiskRom>,
 }
 
-impl<F: Field> RomSM<F> {
+impl<F: PrimeField> RomSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
         let rom_sm = Self { wcm: wcm.clone(), zisk_rom };
         let rom_sm = Arc::new(rom_sm);
@@ -463,43 +463,117 @@ impl<F: Field> RomSM<F> {
 
     //     Ok((prover_buffer, offsets[0], ROM_L_AIR_IDS[0]))
     // }
-}
 
-pub struct RomPlanner {}
-
-impl Planner for RomPlanner {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Surveyor>)>) -> Vec<Plan> {
-        if surveys.len() == 0 {
-            panic!("RomPlanner::plan() found no surveys");
-        }
-
-        let mut total = RomSurveyor::default();
-
-        for (_, survey) in surveys {
-            let survey = survey.as_any().downcast_ref::<RomSurveyor>().unwrap();
-            total.add(survey);
-        }
-
-        println!("Total rowm surveyor: {:?}", total);
-        vec![Plan {
-            airgroup_id: ZISK_AIRGROUP_ID,
-            air_id: ROM_AIR_IDS[0],
-            segment_id: None,
-            checkpoint: CheckPoint::new(0, 0),
-        }]
-    }
-}
-
-pub struct RomExpander {}
-
-impl<'a, F: PrimeField> Expander<'a, F> for RomExpander {
-    fn expand(
-        &self,
+    pub fn prove_instance(
+        pctx: Arc<ProofCtx<F>>,
+        rom: &ZiskRom,
         plan: &Plan,
-        min_traces: Arc<[EmuTrace]>,
-        buffer: WitnessBuffer<'a, F>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
+        min_traces: Arc<Vec<EmuTrace>>,
+        buffer: &mut WitnessBuffer<F>,
+    ) {
+        let rom_air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]);
+        let rom_rows = rom_air.num_rows();
+
+        let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomSurveyor>().unwrap();
+        let pc_histogram = &metadata.rom.inst_count;
+
+        // Create an empty ROM trace
+        let mut rom_trace =
+            RomTrace::<F>::map_buffer(&mut buffer.buffer, rom_rows, buffer.offset as usize)
+                .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+            // Get the Zisk instruction
+            let inst = inst_builder.1.i;
+
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
+            let mut multiplicity: u64;
+            if pc_histogram.is_empty() {
+                multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
+            } else {
+                let counter = pc_histogram.get(&inst.paddr);
+                if counter.is_some() {
+                    multiplicity = *counter.unwrap();
+                    //TODO! UNCOMMENT
+                    // if inst.paddr == pc_histogram.end_pc {
+                    //     multiplicity +=
+                    //         main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
+                    // }
+                } else {
+                    continue; // We skip those pc's that are not used in this execution
+                }
+            }
+
+            // Convert the i64 offsets to F
+            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+                F::from_canonical_u64(inst.jmp_offset1 as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+            };
+            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+                F::from_canonical_u64(inst.jmp_offset2 as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+            };
+            let store_offset = if inst.store_offset >= 0 {
+                F::from_canonical_u64(inst.store_offset as u64)
+            } else {
+                F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+            };
+            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+                F::from_canonical_u64(inst.a_offset_imm0)
+            } else {
+                F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+            };
+            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+                F::from_canonical_u64(inst.b_offset_imm0)
+            } else {
+                F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+            };
+
+            // Fill the rom trace row fields
+            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_trace[i].a_offset_imm0 = a_offset_imm0;
+            rom_trace[i].a_imm1 =
+                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+            rom_trace[i].b_offset_imm0 = b_offset_imm0;
+            rom_trace[i].b_imm1 =
+                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            //rom_trace[i].b_src_ind =
+            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
+            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_trace[i].store_offset = store_offset;
+            rom_trace[i].jmp_offset1 = jmp_offset1;
+            rom_trace[i].jmp_offset2 = jmp_offset2;
+            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
+            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
+            /*println!(
+                "ROM SM [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}], {}",
+                inst.paddr,
+                inst.a_offset_imm0,
+                if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 },
+                inst.b_offset_imm0,
+                if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 },
+                if inst.b_src == SRC_IND { 1 } else { 0 },
+                inst.ind_width,
+                inst.op,
+                inst.store_offset as u64,
+                inst.jmp_offset1 as u64,
+                inst.jmp_offset2 as u64,
+                inst.get_flags(),
+                multiplicity,
+            );*/
+        }
+
+        // Padd with zeroes
+        // for i in number_of_instructions..trace_size {
+        //     rom_trace[i] = RomRow::default();
+        // }
+
+        // Ok((prover_buffer, offsets[0], ROM_AIR_IDS[0]))
     }
 }
 
@@ -512,37 +586,65 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
         Box::new(RomPlanner {})
     }
 
-    fn get_expander(&self) -> Box<dyn Expander<F>> {
-        Box::new(RomExpander {})
+    fn get_instance(self: Arc<Self>, iectx: InstanceExpanderCtx<F>) -> Box<dyn InstanceXXXX> {
+        Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
     }
 }
 
-impl<F: PrimeField> StateMachine for RomSM<F> {
-    //     fn prove_x(
-    //         &self,
-    //         layout_planner: &dyn LayoutPlanner,
-    //     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-    //         // if let Some(rom_planner) = layout_planner.as_any().downcast_ref::<RomPlanner>() {
-    //         //     self.prove(&self.zisk_rom, &rom_planner.histogram).unwrap();
-    //         //     Ok(())
-    //         // } else {
-    //         //     Err(Box::new(std::io::Error::new(
-    //         //         std::io::ErrorKind::Other,
-    //         //         "Failed to downcast layout planner to BinaryPlanner",
-    //         //     )))
-    //         // }
-    //         Ok(())
-    //     }
-    // }
+impl<F: Field> WitnessComponent<F> for RomSM<F> {}
 
-    // impl<F: PrimeField> ObserverProvider<F> for RomSM<F> {
-    //     fn get_planner(&self) -> Box<dyn LayoutPlanner> {
-    //         Box::new(RomPlanner::default())
-    //     }
-
-    //     fn get_expander(&self, _: &[F], _: usize) -> Option<Box<dyn Expander>> {
-    //         None
-    //     }
+pub struct RomInstance<F: PrimeField> {
+    wcm: Arc<WitnessManager<F>>,
+    zisk_rom: Arc<ZiskRom>,
+    iectx: InstanceExpanderCtx<F>,
 }
 
-impl<F: Field> WitnessComponent<F> for RomSM<F> {}
+impl<F: PrimeField> RomInstance<F> {
+    pub fn new(
+        wcm: Arc<WitnessManager<F>>,
+        zisk_rom: Arc<ZiskRom>,
+        iectx: InstanceExpanderCtx<F>,
+    ) -> Self {
+        Self { wcm, zisk_rom, iectx }
+    }
+}
+impl<F: PrimeField> InstanceXXXX for RomInstance<F> {
+    fn expand(
+        &mut self,
+        zisk_rom: &ZiskRom,
+        min_traces: Arc<Vec<EmuTrace>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        Ok(())
+    }
+
+    fn prove(
+        &mut self,
+        min_traces: Arc<Vec<EmuTrace>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        RomSM::prove_instance(
+            self.wcm.get_pctx(),
+            &self.zisk_rom,
+            &mut self.iectx.plan,
+            min_traces,
+            &mut self.iectx.buffer,
+        );
+
+        let buffer = std::mem::take(&mut self.iectx.buffer.buffer);
+
+        let air_instance = AirInstance::new(
+            self.wcm.get_sctx().clone(),
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            self.iectx.plan.segment_id,
+            buffer,
+        );
+
+        self.wcm
+            .get_pctx()
+            .air_instance_repo
+            .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+        Ok(())
+    }
+}
+
+unsafe impl<F: PrimeField> Sync for RomInstance<F> {}

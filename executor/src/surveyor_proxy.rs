@@ -19,9 +19,11 @@ impl SurveyorProxy {
 
 impl InstObserver for SurveyorProxy {
     #[inline(always)]
-    fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) {
+    fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) -> bool {
         for observer in &mut self.surveyors {
             (*observer).survey(zisk_inst, inst_ctx);
         }
+
+        false
     }
 }

@@ -5,6 +5,12 @@ pub struct InstCount {
     pub inst_count: u64,
 }
 
+impl InstCount {
+    pub fn new(chunk_id: usize, inst_count: u64) -> Self {
+        InstCount { chunk_id, inst_count }
+    }
+}
+
 /// Generates a list of checkpoints from instruction counts in multiple chunks.
 ///
 /// # Arguments
@@ -16,22 +22,24 @@ pub struct InstCount {
 ///
 /// # Example
 /// ```
+/// use sm_common::{plan, CheckPoint, InstCount};
+///
 /// let counts = vec![
-///     InstCount { chunk_id: 0, inst_count: 500 },
-///     InstCount { chunk_id: 1, inst_count: 700 },
-///     InstCount { chunk_id: 2, inst_count: 300 },
+///     InstCount::new(0, 500),
+///     InstCount::new(1, 700),
+///     InstCount::new(2, 300),
 /// ];
 /// let size = 300;
-/// let checkpoints = plan(counts, size);
+/// let checkpoints = plan(&counts, size);
 /// assert_eq!(checkpoints, vec![
-///     CheckPoint { chunk_id: 0, offset: 0 },
-///     CheckPoint { chunk_id: 0, offset: 300 },
-///     CheckPoint { chunk_id: 1, offset: 100 },
-///     CheckPoint { chunk_id: 1, offset: 400 },
-///     CheckPoint { chunk_id: 2, offset: 0 },
+///     CheckPoint::new(0, 0),
+///     CheckPoint::new(0, 300),
+///     CheckPoint::new(1, 100),
+///     CheckPoint::new(1, 400),
+///     CheckPoint::new(2, 0),
 /// ]);
 /// ```
-pub fn plan(counts: Vec<InstCount>, size: u64) -> Vec<CheckPoint> {
+pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
     if counts.is_empty() {
         return vec![];
     }
@@ -67,21 +75,17 @@ mod tests {
 
     #[test]
     fn test_plan_basic() {
-        let counts = vec![
-            InstCount { chunk_id: 0, inst_count: 500 },
-            InstCount { chunk_id: 1, inst_count: 700 },
-            InstCount { chunk_id: 2, inst_count: 300 },
-        ];
+        let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
         let size = 300;
-        let checkpoints = plan(counts, size);
+        let checkpoints = plan(&counts, size);
         assert_eq!(
             checkpoints,
             vec![
-                CheckPoint { chunk_id: 0, offset: 0 },
-                CheckPoint { chunk_id: 0, offset: 300 },
-                CheckPoint { chunk_id: 1, offset: 100 },
-                CheckPoint { chunk_id: 1, offset: 400 },
-                CheckPoint { chunk_id: 2, offset: 0 },
+                CheckPoint::new(0, 0),
+                CheckPoint::new(0, 300),
+                CheckPoint::new(1, 100),
+                CheckPoint::new(1, 400),
+                CheckPoint::new(2, 0),
             ]
         );
     }
@@ -90,30 +94,24 @@ mod tests {
     fn test_plan_single_chunk() {
         let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
         let size = 250;
-        let checkpoints = plan(counts, size);
+        let checkpoints = plan(&counts, size);
         assert_eq!(
             checkpoints,
             vec![
-                CheckPoint { chunk_id: 0, offset: 0 },
-                CheckPoint { chunk_id: 0, offset: 250 },
-                CheckPoint { chunk_id: 0, offset: 500 },
-                CheckPoint { chunk_id: 0, offset: 750 },
+                CheckPoint::new(0, 0),
+                CheckPoint::new(0, 250),
+                CheckPoint::new(0, 500),
+                CheckPoint::new(0, 750),
             ]
         );
     }
 
     #[test]
     fn test_plan_small_chunks() {
-        let counts = vec![
-            InstCount { chunk_id: 0, inst_count: 100 },
-            InstCount { chunk_id: 1, inst_count: 150 },
-        ];
+        let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
         let size = 200;
-        let checkpoints = plan(counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![CheckPoint { chunk_id: 0, offset: 0 }, CheckPoint { chunk_id: 1, offset: 100 },]
-        );
+        let checkpoints = plan(&counts, size);
+        assert_eq!(checkpoints, vec![CheckPoint::new(0, 0), CheckPoint::new(1, 100),]);
     }
 
     #[test]
@@ -123,10 +121,7 @@ mod tests {
             InstCount { chunk_id: 1, inst_count: 300 },
         ];
         let size = 300;
-        let checkpoints = plan(counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![CheckPoint { chunk_id: 0, offset: 0 }, CheckPoint { chunk_id: 1, offset: 0 },]
-        );
+        let checkpoints = plan(&counts, size);
+        assert_eq!(checkpoints, vec![CheckPoint::new(0, 0), CheckPoint::new(1, 0),]);
     }
 }

@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
-use p3_field::PrimeField;
+use zisk_common::InstObserver;
+use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
-use crate::{Plan, WitnessBuffer};
-
-pub trait Expander<'a, F: PrimeField> {
+pub trait InstanceXXXX: Send + Sync {
     fn expand(
-        &self,
-        plan: &Plan,
-        min_traces: Arc<[EmuTrace]>,
-        buffer: WitnessBuffer<'a, F>,
+        &mut self,
+        zisk_rom: &ZiskRom,
+        min_traces: Arc<Vec<EmuTrace>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>>;
+
+    fn prove(
+        &mut self,
+        min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>>;
 }

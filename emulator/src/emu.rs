@@ -782,6 +782,39 @@ impl<'a> Emu<'a> {
         result
     }
 
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn run_slice_plan<F: PrimeField>(
+        &mut self,
+        vec_traces: &[EmuTrace],
+        chunk_id: usize,
+        inst_observer: &mut dyn InstObserver,
+    ) {
+        let emu_trace_start = &vec_traces[chunk_id].start_state;
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace_start.pc;
+        self.ctx.inst_ctx.sp = emu_trace_start.sp;
+        self.ctx.inst_ctx.step = emu_trace_start.step;
+        self.ctx.inst_ctx.c = emu_trace_start.c;
+
+        let mut current_box_id = chunk_id;
+        let mut current_step_idx = 0;
+
+        while self.ctx.inst_ctx.end == false {
+            let step = &vec_traces[current_box_id].steps[current_step_idx];
+
+            if self.step_slice_plan::<F>(step, inst_observer) {
+                break;
+            }
+
+            current_step_idx += 1;
+            if current_step_idx == vec_traces[current_box_id].steps.len() {
+                current_box_id += 1;
+                current_step_idx = 0;
+            }
+        }
+    }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn step_slice_required<F: PrimeField>(
@@ -826,6 +859,31 @@ impl<'a> Emu<'a> {
             }
             _ => panic!("Emu::step_slice() found invalid op_type"),
         }
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_slice_plan<F: PrimeField>(
+        &mut self,
+        trace_step: &EmuTraceStep,
+        inst_observer: &mut dyn InstObserver,
+    ) -> bool {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        self.ctx.inst_ctx.a = trace_step.a;
+        self.ctx.inst_ctx.b = trace_step.b;
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_slice(instruction);
+
+        let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        self.ctx.inst_ctx.step += 1;
+
+        finished
     }
 
     /// Performs one single step of the emulation

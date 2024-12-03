@@ -2,9 +2,15 @@ use p3_field::PrimeField;
 use proofman_common::{ExecutionCtx, SetupCtx};
 use proofman_util::create_buffer_fast;
 
-pub struct WitnessBuffer<'a, F: PrimeField> {
-    pub buffer: &'a mut [F],
-    pub offset: usize,
+pub struct WitnessBuffer<F: PrimeField> {
+    pub buffer: Vec<F>,
+    pub offset: u64,
+}
+
+impl<F: PrimeField> WitnessBuffer<F> {
+    pub fn new(buffer: Vec<F>, offset: u64) -> Self {
+        Self { buffer, offset }
+    }
 }
 
 pub fn create_prover_buffer<F>(

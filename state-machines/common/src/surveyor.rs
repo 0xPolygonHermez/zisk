@@ -18,22 +18,6 @@ pub trait Surveyor: Debug + Send + Sync + Any {
     fn as_any(&self) -> &dyn Any;
 }
 
-pub struct DummySurveyor;
-
-impl Surveyor for DummySurveyor {
-    fn survey(&mut self, _: &ZiskInst, _: &InstContext) {}
-    fn add(&mut self, _: &dyn Surveyor) {}
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl Debug for DummySurveyor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DummySurveyor")
-    }
-}
-
 #[derive(Default, Debug, Clone)]
 pub struct SurveyCounter {
     pub inst_count: usize,
@@ -61,13 +45,13 @@ impl AddAssign for SurveyCounter {
 
 #[derive(Default, Debug, Clone)]
 pub struct SurveyStats {
-    pub inst_count: HashMap<u64, usize>,
+    pub inst_count: HashMap<u64, u64>,
 }
 
 impl SurveyStats {
     pub fn update(&mut self, pc: u64, num: usize) {
         let count = self.inst_count.entry(pc).or_default();
-        *count += num;
+        *count += num as u64;
     }
 }
 
