@@ -334,7 +334,8 @@ impl Mem {
         }
 
         //println!("Mem::read() addr={:x} width={} value={:x}={}", addr, width, value, value);
-        return (value, Vec::new());
+
+        (value, Vec::new())
     }
 
     /// Write a u64 value to the memory write section, based on the provided address and width
@@ -484,6 +485,6 @@ impl Mem {
             _ => panic!("Mem::write_silent() invalid width={}", width),
         }
 
-        return additional_data;
+        additional_data
     }
 }

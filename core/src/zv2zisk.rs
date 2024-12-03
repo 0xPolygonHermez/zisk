@@ -1311,7 +1311,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         }
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
-        zib.src_b("imm", v as u64, false);
+        zib.src_b("imm", v, false);
         zib.op("copyb").unwrap();
         zib.ind_width(8);
         zib.store("ind", 0, false, false);
