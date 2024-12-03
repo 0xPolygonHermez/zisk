@@ -47,7 +47,7 @@ private function init_proof_containers_sum(int name, int opid[]) {
     }
 }
 
-private function init_containers_sum(int name, int opid[]) {
+private function init_air_containers_sum(int name, int opid[]) {
     container air.std.gsum {
         int gsum_nargs = 0;
         expr gsum_s[100];
@@ -112,18 +112,17 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
     init_proof_containers_sum(name, opid);
 
     if (direct_type == PIOP_DIRECT_TYPE_AIR || direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
-        init_containers_sum(name, opid);
-    }
+        init_air_containers_sum(name, opid);
 
-    if (direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
         // Create debug hints for the witness computation
-        const int ncols = length(cols);
-        string name_cols[ncols];
-        for (int i = 0; i < ncols; i++) {
-            name_cols[i] = string(cols[i]);
+        string name_expr[cols_count];
+        expr sum_expr = 0;
+        for (int i = 0; i < cols_count; i++) {
+            name_expr[i] = string(cols[i]);
+            sum_expr += cols[i];
         }
         // proves = 2 marks that the user is responsible for the use of proves and assumes
-        @gsum_member_data{name_piop: get_piop_name(name), names: name_cols, sumid: sumid, proves: proves == 2 ? sel : proves, selector: sel, references: cols};
+        @gsum_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: sumid, proves: proves == 2 ? sel : proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
     }
 
     initial_checks_sum(proves, opid, cols, direct_type);

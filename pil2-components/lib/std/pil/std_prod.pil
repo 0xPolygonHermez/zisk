@@ -41,7 +41,7 @@ private function init_proof_containers_prod(int name, int opid) {
     }
 }
 
-private function init_containers_prod(int name, int opid) {
+private function init_air_containers_prod(int name, int opid) {
     container air.std.gprod {
         int gprod_assumes_count = 0;
         expr gprod_assumes_sel[100];
@@ -104,17 +104,16 @@ private function update_piop_prod(int name, int proves, int opid, expr sel, expr
     init_proof_containers_prod(name, opid);
 
     if (direct_type == PIOP_DIRECT_TYPE_AIR || direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
-        init_containers_prod(name, opid);
-    }
+        init_air_containers_prod(name, opid);
 
-    if (direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
         // Create debug hints for the witness computation
-        const int ncols = length(cols);
-        string name_cols[ncols];
-        for (int i = 0; i < ncols; i++) {
+        string name_cols[cols_count];
+        expr sum_expr = 0;
+        for (int i = 0; i < cols_count; i++) {
             name_cols[i] = string(cols[i]);
+            sum_expr += cols[i];
         }
-        @gprod_member_data{name_piop: get_piop_name(name), names: name_cols, opid: opid, proves: proves, selector: sel, references: cols};
+        @gprod_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: opid, proves: proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
     }
 
     initial_checks_prod(proves, opid, cols, direct_type);

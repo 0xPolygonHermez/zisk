@@ -9,17 +9,17 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ModeName, ProofCtx, SetupCtx, StdMode};
 use proofman_hints::{
-    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, HintFieldOptions, HintFieldOutput,
-    HintFieldValue,
+    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a,
+    get_hint_ids_by_name, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
 };
 
-use crate::{print_debug_info, BusValue, DebugData, Decider};
+use crate::{print_debug_info, update_debug_data, DebugData, Decider};
 
-type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>);
+type ProdAirsItem = (usize, usize, Vec<u64>, Vec<u64>); // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
 
 pub struct StdProd<F: PrimeField> {
     mode: StdMode,
-    prod_airs: Mutex<Vec<ProdAirsItem>>, // (airgroup_id, air_id, gprod_hints, debug_hints_data, debug_hints)
+    prod_airs: Mutex<Vec<ProdAirsItem>>,
     debug_data: Option<DebugData<F>>,
 }
 
@@ -68,9 +68,29 @@ impl<F: PrimeField> StdProd<F> {
         num_rows: usize,
         debug_hints_data: Vec<u64>,
     ) {
+        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+        let airgroup_id = air_instance.airgroup_id;
+        let air_id = air_instance.air_id;
+        let instance_id = air_instance.air_instance_id.unwrap_or_default();
+
         for hint in debug_hints_data.iter() {
-            let _name =
-                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "name_piop", HintFieldOptions::default());
+            let _name_piop = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "name_piop",
+                HintFieldOptions::default(),
+            );
+
+            let _name_expr = get_hint_field_constant_a::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "name_expr",
+                HintFieldOptions::default(),
+            );
 
             let opid =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "opid", HintFieldOptions::default());
@@ -107,22 +127,57 @@ impl<F: PrimeField> StdProd<F> {
                 pctx,
                 air_instance,
                 *hint as usize,
-                "references",
+                "expressions",
                 HintFieldOptions::default(),
             );
 
-            // let _names = get_hint_field::<F>(
-            //     sctx,
-            //     &pctx.public_inputs,
-            //     &pctx.challenges,
-            //     air_instance,
-            //     *hint as usize,
-            //     "names",
-            //     HintFieldOptions::default(),
-            // );
+            let HintFieldValue::Field(deg_expr) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "deg_expr",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("deg_expr hint must be a field element");
+                panic!();
+            };
 
-            (0..num_rows).for_each(|j| {
-                let sel = if let HintFieldOutput::Field(selector) = selector.get(j) {
+            let HintFieldValue::Field(deg_mul) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "deg_sel",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("deg_mul hint must be a field element");
+                panic!();
+            };
+
+            // If both the expresion and the mul are of degree zero, then simply update the bus once
+            if deg_expr.is_zero() && deg_mul.is_zero() {
+                update_bus(airgroup_id, air_id, instance_id, opid, proves, &selector, &expressions, 0, debug_data);
+            } else {
+                // Otherwise, update the bus for each row
+                for j in 0..num_rows {
+                    update_bus(airgroup_id, air_id, instance_id, opid, proves, &selector, &expressions, j, debug_data);
+                }
+            }
+
+            #[allow(clippy::too_many_arguments)]
+            fn update_bus<F: PrimeField>(
+                airgroup_id: usize,
+                air_id: usize,
+                instance_id: usize,
+                opid: F,
+                proves: bool,
+                selector: &HintFieldValue<F>,
+                expressions: &HintFieldValuesVec<F>,
+                row: usize,
+                debug_data: &DebugData<F>,
+            ) {
+                let sel = if let HintFieldOutput::Field(selector) = selector.get(row) {
                     if !selector.is_zero() && !selector.is_one() {
                         log::error!("Selector must be either 0 or 1");
                         panic!();
@@ -134,31 +189,19 @@ impl<F: PrimeField> StdProd<F> {
                 };
 
                 if sel {
-                    self.update_bus_vals(opid, expressions.get(j), j, proves);
+                    update_debug_data(
+                        debug_data,
+                        opid,
+                        expressions.get(row),
+                        airgroup_id,
+                        air_id,
+                        instance_id,
+                        row,
+                        proves,
+                        F::one(),
+                    );
                 }
-            });
-        }
-    }
-
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_num: bool) {
-        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-        let mut bus = debug_data.lock().expect("Bus values missing");
-
-        let bus_opid = bus.entry(opid).or_default();
-
-        let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
-            num_proves: F::zero(),
-            num_assumes: F::zero(),
-            row_proves: Vec::new(),
-            row_assumes: Vec::new(),
-        });
-
-        if is_num {
-            bus_val.num_proves += F::one();
-            bus_val.row_proves.push(row);
-        } else {
-            bus_val.num_assumes += F::one();
-            bus_val.row_assumes.push(row);
+            }
         }
     }
 }

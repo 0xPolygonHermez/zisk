@@ -9,17 +9,17 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx, StdMode, ModeName};
 use proofman_hints::{
-    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions,
-    HintFieldOutput,
+    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a,
+    get_hint_ids_by_name, mul_hint_fields, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
 };
 
-use crate::{print_debug_info, BusValue, DebugData, Decider};
+use crate::{print_debug_info, update_debug_data, DebugData, Decider};
 
-type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>);
+type SumAirsItem = (usize, usize, Vec<u64>, Vec<u64>, Vec<u64>); // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
 
 pub struct StdSum<F: PrimeField> {
     mode: StdMode,
-    sum_airs: Mutex<Vec<SumAirsItem>>, // (airgroup_id, air_id, gsum_hints, im_hints, debug_hints_data, debug_hints)
+    sum_airs: Mutex<Vec<SumAirsItem>>,
     debug_data: Option<DebugData<F>>,
 }
 
@@ -72,20 +72,40 @@ impl<F: PrimeField> StdSum<F> {
         num_rows: usize,
         debug_hints_data: Vec<u64>,
     ) {
-        for hint in debug_hints_data.iter() {
-            // let _name =
-            //     get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "name_piop", HintFieldOptions::default());
+        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
+        let airgroup_id = air_instance.airgroup_id;
+        let air_id = air_instance.air_id;
+        let instance_id = air_instance.air_instance_id.unwrap_or_default();
 
-            let sumid =
-                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "sumid", HintFieldOptions::default());
-            if let HintFieldOutput::Field(sumid) = sumid.get(0) {
+        for hint in debug_hints_data.iter() {
+            let _name_piop = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "name_piop",
+                HintFieldOptions::default(),
+            );
+
+            let _name_expr = get_hint_field_constant_a::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "name_expr",
+                HintFieldOptions::default(),
+            );
+
+            let opid =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "opid", HintFieldOptions::default());
+            if let HintFieldOutput::Field(opid) = opid.get(0) {
                 if let Some(opids) = &self.mode.opids {
-                    if !opids.contains(&sumid.as_canonical_biguint().to_u64().expect("Cannot convert to u64")) {
+                    if !opids.contains(&opid.as_canonical_biguint().to_u64().expect("Cannot convert to u64")) {
                         continue;
                     }
                 }
             } else {
-                panic!("sumid must be a field element");
+                panic!("opid must be a field element");
             };
 
             let proves =
@@ -99,74 +119,95 @@ impl<F: PrimeField> StdSum<F> {
                 pctx,
                 air_instance,
                 *hint as usize,
-                "references",
+                "expressions",
                 HintFieldOptions::default(),
             );
 
-            // let _names = get_hint_field_a::<F>(
-            //     sctx,
-            //     &pctx.public_inputs,
-            //     &pctx.challenges,
-            //     air_instance,
-            //     *hint as usize,
-            //     "names",
-            //     HintFieldOptions::default(),
-            // );
+            let HintFieldValue::Field(deg_expr) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "deg_expr",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("deg_expr hint must be a field element");
+                panic!();
+            };
 
-            (0..num_rows).for_each(|j| {
-                let mut mul = match mul.get(j) {
-                    HintFieldOutput::Field(mul) => mul,
-                    _ => panic!("mul must be a field element"),
+            let HintFieldValue::Field(deg_mul) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "deg_sel",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("deg_mul hint must be a field element");
+                panic!();
+            };
+
+            // If both the expresion and the mul are of degree zero, then simply update the bus once
+            if deg_expr.is_zero() && deg_mul.is_zero() {
+                update_bus(airgroup_id, air_id, instance_id, &opid, &proves, &mul, &expressions, 0, debug_data);
+            } else {
+                // Otherwise, update the bus for each row
+                for j in 0..num_rows {
+                    update_bus(airgroup_id, air_id, instance_id, &opid, &proves, &mul, &expressions, j, debug_data);
+                }
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn update_bus<F: PrimeField>(
+            airgroup_id: usize,
+            air_id: usize,
+            instance_id: usize,
+            opid: &HintFieldValue<F>,
+            proves: &HintFieldValue<F>,
+            mul: &HintFieldValue<F>,
+            expressions: &HintFieldValuesVec<F>,
+            row: usize,
+            debug_data: &DebugData<F>,
+        ) {
+            let mut mul = match mul.get(row) {
+                HintFieldOutput::Field(mul) => mul,
+                _ => panic!("mul must be a field element"),
+            };
+
+            if !mul.is_zero() {
+                let opid = match opid.get(row) {
+                    HintFieldOutput::Field(opid) => opid,
+                    _ => panic!("opid must be a field element"),
                 };
 
-                if !mul.is_zero() {
-                    let sumid = match sumid.get(j) {
-                        HintFieldOutput::Field(sumid) => sumid,
-                        _ => panic!("sumid must be a field element"),
-                    };
-
-                    let is_positive = match proves.get(j) {
-                        HintFieldOutput::Field(proves) => match proves {
-                            p if p.is_zero() || p == -F::one() => {
-                                // If it's an assume, then negate its value
-                                if p == -F::one() {
-                                    mul = -mul;
-                                }
-                                false
+                let proves = match proves.get(row) {
+                    HintFieldOutput::Field(proves) => match proves {
+                        p if p.is_zero() || p == -F::one() => {
+                            // If it's an assume, then negate its value
+                            if p == -F::one() {
+                                mul = -mul;
                             }
-                            p if p.is_one() => true,
-                            _ => panic!("Proves hint must be either 0, 1, or -1"),
-                        },
-                        _ => panic!("Proves hint must be a field element"),
-                    };
-                    // println!("expressions[{j}]: {:?}, mul[{j}]: {}, is_positive[{j}]: {}", expressions.get(j), mul, is_positive);
+                            false
+                        }
+                        p if p.is_one() => true,
+                        _ => panic!("Proves hint must be either 0, 1, or -1"),
+                    },
+                    _ => panic!("Proves hint must be a field element"),
+                };
 
-                    self.update_bus_vals(sumid, expressions.get(j), j, is_positive, mul);
-                }
-            });
-        }
-    }
-
-    fn update_bus_vals(&self, opid: F, val: Vec<HintFieldOutput<F>>, row: usize, is_positive: bool, times: F) {
-        let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-        let mut bus = debug_data.lock().expect("Bus values missing");
-
-        let bus_opid = bus.entry(opid).or_default();
-
-        let bus_val = bus_opid.entry(val.clone()).or_insert_with(|| BusValue {
-            num_proves: F::zero(),
-            num_assumes: F::zero(),
-            row_proves: Vec::new(),
-            row_assumes: Vec::new(),
-        });
-
-        if is_positive {
-            bus_val.num_proves += times;
-            bus_val.row_proves.push(row);
-        } else {
-            assert!(times.is_one(), "The selector value is invalid: expected 1, but received {:?}.", times);
-            bus_val.num_assumes += times;
-            bus_val.row_assumes.push(row);
+                update_debug_data(
+                    debug_data,
+                    opid,
+                    expressions.get(row),
+                    airgroup_id,
+                    air_id,
+                    instance_id,
+                    row,
+                    proves,
+                    mul,
+                );
+            }
         }
     }
 }
