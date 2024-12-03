@@ -27,17 +27,16 @@ where
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        // For simplicity, add a single instance of each air
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, PERMUTATION_1_7_AIR_IDS[0])
-            .unwrap();
+        let num_rows = pctx.global_info.airs[PERMUTATION_AIRGROUP_ID][PERMUTATION_1_7_AIR_IDS[0]].num_rows;
+        let trace = Permutation1_7Trace::new(num_rows);
 
-        let buffer = vec![F::zero(); buffer_size as usize];
-
-        let air_instance =
-            AirInstance::new(sctx.clone(), PERMUTATION_AIRGROUP_ID, PERMUTATION_1_7_AIR_IDS[0], None, buffer);
+        let air_instance = AirInstance::new(
+            sctx.clone(),
+            PERMUTATION_AIRGROUP_ID,
+            PERMUTATION_1_7_AIR_IDS[0],
+            None,
+            trace.buffer.unwrap(),
+        );
         let (is_myne, gid) =
             ectx.dctx.write().unwrap().add_instance(PERMUTATION_AIRGROUP_ID, PERMUTATION_1_7_AIR_IDS[0], 1);
         if is_myne {
@@ -55,8 +54,8 @@ where
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
@@ -75,15 +74,11 @@ where
         );
 
         if stage == 1 {
-            let (_, offsets) =
-                ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, PERMUTATION_AIRGROUP_ID, air_id).unwrap();
-
-            let buffer = &mut air_instance.buffer;
+            let buffer = &mut air_instance.trace;
             let num_rows = pctx.pilout.get_air(airgroup_id, air_id).num_rows();
 
             // I cannot, programatically, link the permutation trace with its air_id
-            let mut trace =
-                Permutation1_7Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = Permutation1_7Trace::map_buffer(buffer.as_mut_slice(), num_rows, 0).unwrap();
 
             // TODO: Add the ability to send inputs to permutation2
             //       and consequently add random selectors

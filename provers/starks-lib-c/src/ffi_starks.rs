@@ -489,12 +489,13 @@ pub fn commit_stage_c(
     p_starks: *mut c_void,
     element_type: u32,
     step: u64,
+    trace: *mut c_void,
     buffer: *mut c_void,
     p_proof: *mut c_void,
     p_buff_helper: *mut c_void,
 ) {
     unsafe {
-        commit_stage(p_starks, element_type, step, buffer, p_proof, p_buff_helper);
+        commit_stage(p_starks, element_type, step, trace, buffer, p_proof, p_buff_helper);
     }
 }
 
@@ -1213,6 +1214,7 @@ pub fn commit_stage_c(
     _p_starks: *mut c_void,
     _element_type: u32,
     _step: u64,
+    _trace: *mut c_void,
     _buffer: *mut c_void,
     _p_proof: *mut c_void,
     _p_buff_helper: *mut c_void,

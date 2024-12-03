@@ -94,6 +94,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     fn build(&mut self, proof_ctx: Arc<ProofCtx<F>>) {
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
+        let buffer = Vec::with_capacity(get_map_totaln_c(self.p_stark_info) as usize);
+        air_instance.set_buffer(buffer);
+
         //initialize the common challenges if have not been initialized by another prover
         let challenges =
             vec![F::zero(); self.stark_info.challenges_map.as_ref().unwrap().len() * Self::FIELD_EXTENSION];
@@ -136,7 +139,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
-            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            trace: air_instance.get_trace_ptr() as *mut c_void,
+            pols: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
             airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -171,7 +175,8 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
-            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            trace: air_instance.get_trace_ptr() as *mut c_void,
+            pols: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
             airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -307,10 +312,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
 
             timer_start_trace!(STARK_COMMIT_STAGE_, stage_id);
 
+            let trace = match stage_id == 1 {
+                true => air_instance.get_trace_ptr() as *mut c_void,
+                false => std::ptr::null_mut(),
+            };
+
             let buffer = air_instance.get_buffer_ptr() as *mut c_void;
             let element_type = if type_name::<F>() == type_name::<Goldilocks>() { 1 } else { 0 };
 
-            commit_stage_c(p_stark, element_type, stage_id as u64, buffer, p_proof, buff_helper);
+            commit_stage_c(p_stark, element_type, stage_id as u64, trace, buffer, p_proof, buff_helper);
             timer_stop_and_log_trace!(STARK_COMMIT_STAGE_, stage_id);
         } else {
             let n_custom_commits = self.stark_info.custom_commits.len();
@@ -722,10 +732,6 @@ impl<F: Field> StarkProver<F> {
         debug!("{}: ··· Calculating evals of instance {} of {}", Self::MY_NAME, self.instance_id, air_name);
         let air_instance = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap()[self.prover_idx];
 
-        let buffer = air_instance.get_buffer_ptr() as *mut c_void;
-
-        let evals = air_instance.evals.as_mut_ptr() as *mut c_void;
-
         let setup = setup_ctx.get_setup(self.airgroup_id, self.air_id);
 
         let p_stark = self.p_stark;
@@ -737,12 +743,13 @@ impl<F: Field> StarkProver<F> {
         let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
         let steps_params = StepsParams {
-            buffer,
+            trace: std::ptr::null_mut(),
+            pols: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: std::ptr::null_mut(),
             challenges: std::ptr::null_mut(),
             airgroup_values: std::ptr::null_mut(),
             airvalues: std::ptr::null_mut(),
-            evals,
+            evals: air_instance.evals.as_mut_ptr() as *mut c_void,
             xdivxsub: std::ptr::null_mut(),
             p_const_pols: std::ptr::null_mut(),
             p_const_tree: const_tree_ptr,
@@ -769,7 +776,8 @@ impl<F: Field> StarkProver<F> {
         let p_stark = self.p_stark;
 
         let steps_params = StepsParams {
-            buffer: air_instance.get_buffer_ptr() as *mut c_void,
+            trace: std::ptr::null_mut(),
+            pols: air_instance.get_buffer_ptr() as *mut c_void,
             public_inputs: (*public_inputs_guard).as_ptr() as *mut c_void,
             challenges: (*challenges_guard).as_ptr() as *mut c_void,
             airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -899,18 +907,6 @@ impl StarkBufferAllocator {
 }
 
 impl BufferAllocator for StarkBufferAllocator {
-    fn get_buffer_info(
-        &self,
-        sctx: &SetupCtx,
-        airgroup_id: usize,
-        air_id: usize,
-    ) -> Result<(u64, Vec<u64>), Box<dyn Error>> {
-        let ps = sctx.get_setup(airgroup_id, air_id);
-
-        let p_stark_info = ps.p_setup.p_stark_info;
-        Ok((get_map_totaln_c(p_stark_info), vec![get_map_offsets_c(p_stark_info, "cm1", false)]))
-    }
-
     fn get_buffer_info_custom_commit(
         &self,
         sctx: &SetupCtx,

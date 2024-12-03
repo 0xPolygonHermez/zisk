@@ -504,11 +504,11 @@ fn generate_witness<F: Field>(
 
     let p_stark_info = setup.p_setup.p_stark_info;
 
-    let total_n = get_map_totaln_c(p_stark_info) as usize;
-    let buffer: Vec<MaybeUninit<F>> = Vec::with_capacity(total_n);
+    let n = 1 << (setup.stark_info.stark_struct.n_bits);
+
+    let buffer: Vec<MaybeUninit<F>> = Vec::with_capacity(n_cols * n);
     let p_address = buffer.as_ptr() as *mut c_void;
 
-    let n = 1 << (setup.stark_info.stark_struct.n_bits);
     let offset_cm1 = get_map_offsets_c(p_stark_info, "cm1", false);
 
     let n_publics = setup.stark_info.n_publics as usize;
@@ -557,7 +557,7 @@ fn generate_witness<F: Field>(
             p_address,
             p_publics,
             size_witness,
-            n,
+            n as u64,
             n_publics as u64,
             offset_cm1,
             n_cols as u64,

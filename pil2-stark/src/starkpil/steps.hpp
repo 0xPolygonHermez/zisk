@@ -5,6 +5,7 @@
 
 struct StepsParams
 {
+    Goldilocks::Element *trace;
     Goldilocks::Element *pols;
     Goldilocks::Element *publicInputs;
     Goldilocks::Element *challenges;

@@ -45,16 +45,8 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         let mut a = pctx.get_public_value("in1");
         let mut b = pctx.get_public_value("in2");
 
-        let (buffer_size, offsets) = ectx.buffer_allocator.as_ref().get_buffer_info(
-            &sctx,
-            FIBONACCI_SQUARE_AIRGROUP_ID,
-            FIBONACCI_SQUARE_AIR_IDS[0],
-        )?;
-
-        let mut buffer = vec![F::zero(); buffer_size as usize];
-
         let num_rows = pctx.global_info.airs[airgroup_id][air_id].num_rows;
-        let mut trace = FibonacciSquareTrace::map_buffer(&mut buffer, num_rows, offsets[0] as usize)?;
+        let mut trace = FibonacciSquareTrace::new(num_rows);
 
         trace[0].a = F::from_canonical_u64(a);
         trace[0].b = F::from_canonical_u64(b);
@@ -96,11 +88,16 @@ impl<F: PrimeField + Copy> FibonacciSquare<F> {
         // }
         // log::info!("Result Fibonacci buffer: {:?}", result);
 
-        let mut air_instance =
-            AirInstance::new(sctx.clone(), FIBONACCI_SQUARE_AIRGROUP_ID, FIBONACCI_SQUARE_AIR_IDS[0], Some(0), buffer);
-        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", Some(vec![0]), F::from_canonical_u64(1));
-        air_instance.set_airvalue(&sctx, "FibonacciSquare.fibo1", Some(vec![1]), F::from_canonical_u64(2));
-        air_instance.set_airvalue_ext(&sctx, "FibonacciSquare.fibo3", None, vec![F::from_canonical_u64(5); 3]);
+        let mut air_instance = AirInstance::new(
+            sctx.clone(),
+            FIBONACCI_SQUARE_AIRGROUP_ID,
+            FIBONACCI_SQUARE_AIR_IDS[0],
+            Some(0),
+            trace.buffer.unwrap(),
+        );
+        air_instance.set_airvalue("FibonacciSquare.fibo1", Some(vec![0]), F::from_canonical_u64(1));
+        air_instance.set_airvalue("FibonacciSquare.fibo1", Some(vec![1]), F::from_canonical_u64(2));
+        air_instance.set_airvalue_ext("FibonacciSquare.fibo3", None, vec![F::from_canonical_u64(5); 3]);
         match ectx.cached_buffers_path.as_ref().and_then(|cached_buffers| cached_buffers.get("rom").cloned()) {
             Some(buffer_path) => air_instance.set_custom_commit_cached_file(&sctx, commit_id, buffer_path),
             None => air_instance.set_custom_commit_id_buffer(&sctx, buffer_rom, commit_id),

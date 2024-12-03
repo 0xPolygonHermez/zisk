@@ -111,13 +111,7 @@ where
         self.range_check_mix.get().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 

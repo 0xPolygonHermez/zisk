@@ -112,10 +112,9 @@ impl<F: PrimeField> U8Air<F> {
             let air_instance_id = if !instance.is_empty() {
                 air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
             } else {
-                // create instance
-                let (buffer_size, _) =
-                    ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
-                let buffer: Vec<F> = create_buffer_fast(buffer_size as usize);
+                let num_rows = pctx.global_info.airs[self.airgroup_id][self.air_id].num_rows;
+                let buffer_size = num_rows;
+                let buffer: Vec<F> = create_buffer_fast(buffer_size);
                 let air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
                 pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
                 pctx.air_instance_repo.air_instances.read().unwrap().len() - 1
@@ -153,7 +152,7 @@ impl<F: PrimeField> U8Air<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
-    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         // Obtain info from the mul hints
         let setup = sctx.get_setup(self.airgroup_id, self.air_id);
         let u8air_hints = get_hint_ids_by_name(setup.p_setup.p_expressions_bin, "u8air");
@@ -163,9 +162,9 @@ impl<F: PrimeField> WitnessComponent<F> for U8Air<F> {
 
         // self.setup_repository.replace(sctx.setups.clone());
 
-        let (buffer_size, _) =
-            ectx.buffer_allocator.as_ref().get_buffer_info(&sctx, self.airgroup_id, self.air_id).unwrap();
-        let buffer = create_buffer_fast(buffer_size as usize);
+        let num_rows = pctx.global_info.airs[self.airgroup_id][self.air_id].num_rows;
+        let buffer_size = num_rows;
+        let buffer = create_buffer_fast(buffer_size);
 
         // Add a new air instance. Since U8Air is a table, only this air instance is needed
         let mut air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);

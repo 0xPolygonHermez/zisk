@@ -227,8 +227,9 @@ void StarkInfo::setMapOffsets() {
     // Set offsets for constants
     mapOffsets[std::make_pair("const", false)] = 0;
     mapOffsets[std::make_pair("const", true)] = 0;
+    mapOffsets[std::make_pair("cm1", false)] = 0;
 
-    // Set offsets for custom pols
+    // Set offsets for custom commits
     for(uint64_t i = 0; i < customCommits.size(); ++i) {
         mapOffsets[std::make_pair(customCommits[i].name + "0", false)] = 0;
         mapOffsets[std::make_pair(customCommits[i].name + "0", true)] = N * mapSectionsN[customCommits[i].name + "0"];
@@ -237,29 +238,23 @@ void StarkInfo::setMapOffsets() {
 
     mapTotalN = 0;
 
+    for(uint64_t stage = 2; stage <= nStages; stage++) {
+        mapOffsets[std::make_pair("cm" + to_string(stage), false)] = mapTotalN;
+        mapTotalN += N * mapSectionsN["cm" + to_string(stage)];
+    }
+
+    mapOffsets[std::make_pair("cm" + to_string(nStages), true)] = mapOffsets[std::make_pair("cm" + to_string(nStages), false)];
+    mapTotalN = mapOffsets[std::make_pair("cm" + to_string(nStages), false)] + NExtended * mapSectionsN["cm" + to_string(nStages)];
+
     // Set offsets for all stages in the extended field (cm1, cm2, ..., cmN)
     for(uint64_t stage = 1; stage <= nStages + 1; stage++) {
+        if(stage == nStages) continue;
         mapOffsets[std::make_pair("cm" + to_string(stage), true)] = mapTotalN;
         mapTotalN += NExtended * mapSectionsN["cm" + to_string(stage)];
     }
 
     mapOffsets[std::make_pair("q", true)] = mapTotalN;
     mapTotalN += NExtended * qDim;
-
-    uint64_t offsetPolsBasefield = mapOffsets[std::make_pair("cm" + to_string(nStages), true)];
-
-    // Set offsets for all stages in the basefield field (cm1, cm2, ... )
-    for(uint64_t stage = 1; stage <= nStages; stage++) {
-        string section;
-        if(stage == 1) {
-            section = "cm" + to_string(nStages);
-        } else {
-            section = "cm" + to_string(stage - 1);
-        }
-        mapOffsets[std::make_pair(section, false)] = offsetPolsBasefield;
-        offsetPolsBasefield += N * mapSectionsN[section];
-    }    
-    if(offsetPolsBasefield > mapTotalN) mapTotalN = offsetPolsBasefield;
 
     // Stage FRIPolynomial
     uint64_t offsetPolsFRI = mapOffsets[std::make_pair("q", true)];

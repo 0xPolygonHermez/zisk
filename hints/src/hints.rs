@@ -682,7 +682,8 @@ pub fn mul_hint_fields<F: Field + Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -726,7 +727,8 @@ pub fn acc_hint_field<F: Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -778,7 +780,8 @@ pub fn acc_mul_hint_fields<F: Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -827,7 +830,8 @@ pub fn get_hint_field<F: Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -874,7 +878,8 @@ pub fn get_hint_field_a<F: Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -927,7 +932,8 @@ pub fn get_hint_field_m<F: Field>(
     let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
 
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: public_inputs_ptr,
         challenges: challenges_ptr,
         airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
@@ -979,7 +985,8 @@ pub fn get_hint_field_constant<F: Field>(
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
-        buffer: std::ptr::null_mut(),
+        trace: std::ptr::null_mut(),
+        pols: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
         airgroup_values: std::ptr::null_mut(),
@@ -1020,7 +1027,8 @@ pub fn get_hint_field_constant_a<F: Field>(
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
-        buffer: std::ptr::null_mut(),
+        trace: std::ptr::null_mut(),
+        pols: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
         airgroup_values: std::ptr::null_mut(),
@@ -1067,7 +1075,8 @@ pub fn get_hint_field_constant_m<F: Field>(
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
     let steps_params = StepsParams {
-        buffer: std::ptr::null_mut(),
+        trace: std::ptr::null_mut(),
+        pols: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
         airgroup_values: std::ptr::null_mut(),
@@ -1119,7 +1128,8 @@ pub fn set_hint_field<F: Field>(
     values: &HintFieldValue<F>,
 ) {
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
         airgroup_values: std::ptr::null_mut(),
@@ -1152,7 +1162,8 @@ pub fn set_hint_field_val<F: Field>(
     value: HintFieldOutput<F>,
 ) {
     let steps_params = StepsParams {
-        buffer: air_instance.get_buffer_ptr() as *mut c_void,
+        trace: std::ptr::null_mut(),
+        pols: std::ptr::null_mut(),
         public_inputs: std::ptr::null_mut(),
         challenges: std::ptr::null_mut(),
         airgroup_values: air_instance.airgroup_values.as_mut_ptr() as *mut c_void,
@@ -1227,7 +1238,10 @@ pub fn print_expression<F: Field>(
 pub fn print_row<F: Field>(setup_ctx: &SetupCtx, air_instance: &AirInstance<F>, stage: u64, row: u64) {
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
-    let buffer = air_instance.get_buffer_ptr() as *mut c_void;
+    let buffer = match stage == 1 {
+        true => air_instance.get_trace_ptr() as *mut c_void,
+        false => air_instance.get_buffer_ptr() as *mut c_void,
+    };
 
     print_row_c((&setup.p_setup).into(), buffer, stage, row);
 }

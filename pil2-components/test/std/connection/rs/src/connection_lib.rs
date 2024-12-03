@@ -72,13 +72,7 @@ where
         self.connection_new.as_ref().unwrap().execute(pctx, ectx, sctx);
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
 

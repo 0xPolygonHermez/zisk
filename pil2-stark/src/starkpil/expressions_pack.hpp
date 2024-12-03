@@ -119,7 +119,11 @@ public:
                 for(uint64_t o = 0; o < nOpenings; ++o) {
                     for(uint64_t j = 0; j < nrowsPack; ++j) {
                         uint64_t l = (row + j + nextStrides[o]) % domainSize;
-                        bufferT_[(nColsStagesAcc[ns*o + stage] + (stagePos + d))*nrowsPack + j] = params.pols[offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
+                        if(stage == 1 && !domainExtended) {
+                            bufferT_[(nColsStagesAcc[ns*o + stage] + (stagePos + d))*nrowsPack + j] = params.trace[l * nColsStages[stage] + stagePos + d];
+                        } else {
+                            bufferT_[(nColsStagesAcc[ns*o + stage] + (stagePos + d))*nrowsPack + j] = params.pols[offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
+                        }
                     }
                 }
             }

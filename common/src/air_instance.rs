@@ -1,13 +1,15 @@
+use std::mem::MaybeUninit;
 use std::{collections::HashMap, os::raw::c_void, sync::Arc};
 use std::path::PathBuf;
 use p3_field::Field;
 use proofman_starks_lib_c::{get_custom_commit_map_ids_c, get_map_totaln_custom_commits_c};
 
-use crate::SetupCtx;
+use crate::{SetupCtx, StarkInfo};
 
 #[repr(C)]
 pub struct StepsParams {
-    pub buffer: *mut c_void,
+    pub trace: *mut c_void,
+    pub pols: *mut c_void,
     pub public_inputs: *mut c_void,
     pub challenges: *mut c_void,
     pub airgroup_values: *mut c_void,
@@ -47,7 +49,8 @@ pub struct AirInstance<F> {
     pub air_instance_id: Option<usize>,
     pub idx: Option<usize>,
     pub global_idx: Option<usize>,
-    pub buffer: Vec<F>,
+    pub trace: Vec<F>,
+    pub buffer: Option<Vec<MaybeUninit<F>>>,
     pub custom_commits: Vec<CustomCommitsInfo<F>>,
     pub airgroup_values: Vec<F>,
     pub airvalues: Vec<F>,
@@ -56,6 +59,7 @@ pub struct AirInstance<F> {
     pub airgroupvalue_calculated: HashMap<usize, bool>,
     pub airvalue_calculated: HashMap<usize, bool>,
     pub custom_commits_calculated: Vec<HashMap<usize, bool>>,
+    pub stark_info: StarkInfo,
 }
 
 impl<F: Field> AirInstance<F> {
@@ -64,7 +68,7 @@ impl<F: Field> AirInstance<F> {
         airgroup_id: usize,
         air_id: usize,
         air_segment_id: Option<usize>,
-        buffer: Vec<F>,
+        trace: Vec<F>,
     ) -> Self {
         let ps = setup_ctx.get_setup(airgroup_id, air_id);
 
@@ -84,7 +88,8 @@ impl<F: Field> AirInstance<F> {
             air_instance_id: None,
             idx: None,
             global_idx: None,
-            buffer,
+            trace,
+            buffer: None,
             custom_commits,
             airgroup_values: vec![F::zero(); ps.stark_info.airgroupvalues_map.as_ref().unwrap().len() * 3],
             airvalues: vec![F::zero(); ps.stark_info.airvalues_map.as_ref().unwrap().len() * 3],
@@ -93,11 +98,23 @@ impl<F: Field> AirInstance<F> {
             airgroupvalue_calculated: HashMap::new(),
             airvalue_calculated: HashMap::new(),
             custom_commits_calculated,
+            stark_info: ps.stark_info.clone(),
         }
     }
 
+    pub fn get_trace_ptr(&self) -> *mut u8 {
+        self.trace.as_ptr() as *mut u8
+    }
+
+    pub fn set_buffer(&mut self, buffer: Vec<MaybeUninit<F>>) {
+        self.buffer = Some(buffer);
+    }
+
     pub fn get_buffer_ptr(&self) -> *mut u8 {
-        self.buffer.as_ptr() as *mut u8
+        match &self.buffer {
+            Some(buffer) => buffer.as_ptr() as *mut u8,
+            None => std::ptr::null_mut(), // Return null if `buffer` is `None`
+        }
     }
 
     pub fn get_custom_commits_ptr(&self) -> [*mut c_void; 10] {
@@ -133,9 +150,8 @@ impl<F: Field> AirInstance<F> {
         }
     }
 
-    pub fn set_airvalue(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: F) {
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-        let airvalues_map = ps.stark_info.airvalues_map.as_ref().unwrap();
+    pub fn set_airvalue(&mut self, name: &str, lengths: Option<Vec<u64>>, value: F) {
+        let airvalues_map = self.stark_info.airvalues_map.as_ref().unwrap();
         let airvalue_id = (0..airvalues_map.len())
             .find(|&i| {
                 let airvalue = airvalues_map.get(i).unwrap();
@@ -158,10 +174,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(airvalue_id);
     }
 
-    pub fn set_airvalue_ext(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-
-        let airvalues_map = ps.stark_info.airvalues_map.as_ref().unwrap();
+    pub fn set_airvalue_ext(&mut self, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
+        let airvalues_map = self.stark_info.airvalues_map.as_ref().unwrap();
         let airvalue_id = (0..airvalues_map.len())
             .find(|&i| {
                 let airvalue = airvalues_map.get(i).unwrap();
@@ -191,10 +205,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airvalue_calculated(airvalue_id);
     }
 
-    pub fn set_airgroupvalue(&mut self, setup_ctx: &SetupCtx, name: &str, lengths: Option<Vec<u64>>, value: F) {
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-
-        let airgroupvalues_map = ps.stark_info.airgroupvalues_map.as_ref().unwrap();
+    pub fn set_airgroupvalue(&mut self, name: &str, lengths: Option<Vec<u64>>, value: F) {
+        let airgroupvalues_map = self.stark_info.airgroupvalues_map.as_ref().unwrap();
         let airgroupvalue_id = (0..airgroupvalues_map.len())
             .find(|&i| {
                 let airgroupvalue = airgroupvalues_map.get(i).unwrap();
@@ -219,16 +231,8 @@ impl<F: Field> AirInstance<F> {
         self.set_airgroupvalue_calculated(airgroupvalue_id);
     }
 
-    pub fn set_airgroupvalue_ext(
-        &mut self,
-        setup_ctx: &SetupCtx,
-        name: &str,
-        lengths: Option<Vec<u64>>,
-        value: Vec<F>,
-    ) {
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-
-        let airgroupvalues_map = ps.stark_info.airgroupvalues_map.as_ref().unwrap();
+    pub fn set_airgroupvalue_ext(&mut self, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
+        let airgroupvalues_map = self.stark_info.airgroupvalues_map.as_ref().unwrap();
         let airgroupvalue_id = (0..airgroupvalues_map.len())
             .find(|&i| {
                 let airgroupvalue = airgroupvalues_map.get(i).unwrap();

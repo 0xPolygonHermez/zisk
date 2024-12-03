@@ -124,7 +124,12 @@ public:
                 for(uint64_t o = 0; o < nOpenings; ++o) {
                     for(uint64_t j = 0; j < nrowsPack; ++j) {
                         uint64_t l = (row + j + nextStrides[o]) % domainSize;
-                        bufferT[nrowsPack*o + j] = params.pols[offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
+                        if(stage == 1 && !domainExtended) {
+                            bufferT[nrowsPack*o + j] = params.trace[l * nColsStages[stage] + stagePos + d];
+                        } else {
+                            bufferT[nrowsPack*o + j] = params.pols[offsetsStages[stage] + l * nColsStages[stage] + stagePos + d];
+                        }
+                        
                     }
                     Goldilocks::load_avx(bufferT_[nColsStagesAcc[ns*o + stage] + (stagePos + d)], &bufferT[nrowsPack*o]);
                 }

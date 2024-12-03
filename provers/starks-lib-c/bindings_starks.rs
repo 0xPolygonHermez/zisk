@@ -83,7 +83,6 @@ extern "C" {
     #[link_name = "\u{1}_Z15get_map_total_nPv"]
     pub fn get_map_total_n(pStarkInfo: *mut ::std::os::raw::c_void) -> u64;
 }
-
 extern "C" {
     #[link_name = "\u{1}_Z30get_map_total_n_custom_commitsPvm"]
     pub fn get_map_total_n_custom_commits(
@@ -99,7 +98,6 @@ extern "C" {
         flag: bool,
     ) -> u64;
 }
-
 extern "C" {
     #[link_name = "\u{1}_Z25get_custom_commit_map_idsPvmm"]
     pub fn get_custom_commit_map_ids(
@@ -216,7 +214,6 @@ extern "C" {
         add: bool,
     ) -> *mut ::std::os::raw::c_void;
 }
-
 extern "C" {
     #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
     pub fn set_hint_field(
@@ -315,11 +312,12 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_S_"]
+    #[link_name = "\u{1}_Z12commit_stagePvjmS_S_S_S_"]
     pub fn commit_stage(
         pStarks: *mut ::std::os::raw::c_void,
         elementType: u32,
         step: u64,
+        trace: *mut ::std::os::raw::c_void,
         buffer: *mut ::std::os::raw::c_void,
         pProof: *mut ::std::os::raw::c_void,
         pBuffHelper: *mut ::std::os::raw::c_void,

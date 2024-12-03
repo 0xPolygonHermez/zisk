@@ -69,7 +69,7 @@ After compiling the PIL files, generate the setup:
 ```bash
 node ../pil2-proofman-js/src/main_setup.js \
      -a ./examples/fibonacci-square/pil/build.pilout \
-     -b ./examples/fibonacci-square/build
+     -b ./examples/fibonacci-square/build \
      -t ./pil2-stark/build/bctree
 ```
 

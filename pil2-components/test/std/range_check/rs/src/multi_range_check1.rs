@@ -36,21 +36,15 @@ where
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        // For simplicity, add a single instance of the air
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0])
-            .unwrap();
-
-        let buffer = vec![F::zero(); buffer_size as usize];
+        let num_rows = pctx.global_info.airs[MULTI_RANGE_CHECK_1_AIRGROUP_ID][MULTI_RANGE_CHECK_1_AIR_IDS[0]].num_rows;
+        let trace = MultiRangeCheck1Trace::new(num_rows);
 
         let air_instance = AirInstance::new(
             sctx.clone(),
             MULTI_RANGE_CHECK_1_AIRGROUP_ID,
             MULTI_RANGE_CHECK_1_AIR_IDS[0],
             None,
-            buffer,
+            trace.buffer.unwrap(),
         );
         let (is_myne, gid) =
             ectx.dctx.write().unwrap().add_instance(MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0], 1);
@@ -69,26 +63,22 @@ where
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
         log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "MultiRangeCheck1", stage);
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0])
-                .unwrap();
+            let proof_ctx = pctx.clone();
+            let air_instances_vec = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap();
+            let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
 
-            let mut buffer = vec![F::zero(); buffer_size as usize];
-
+            let buffer = &mut air_instance.trace;
             let num_rows =
                 pctx.pilout.get_air(MULTI_RANGE_CHECK_1_AIRGROUP_ID, MULTI_RANGE_CHECK_1_AIR_IDS[0]).num_rows();
-            let mut trace =
-                MultiRangeCheck1Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = MultiRangeCheck1Trace::map_buffer(buffer.as_mut_slice(), num_rows, 0).unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 7) - 1), Some(false));
             let range2 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
@@ -148,10 +138,6 @@ where
                     }
                 }
             }
-
-            let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
-            let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-            air_instance.buffer = buffer;
         }
 
         self.std_lib.unregister_predecessor(pctx, None);

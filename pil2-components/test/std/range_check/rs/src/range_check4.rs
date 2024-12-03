@@ -33,17 +33,16 @@ where
     }
 
     pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        // For simplicity, add a single instance of the air
-        let (buffer_size, _) = ectx
-            .buffer_allocator
-            .as_ref()
-            .get_buffer_info(&sctx, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0])
-            .unwrap();
+        let num_rows = pctx.global_info.airs[RANGE_CHECK_4_AIRGROUP_ID][RANGE_CHECK_4_AIR_IDS[0]].num_rows;
+        let trace = RangeCheck4Trace::new(num_rows);
 
-        let buffer = vec![F::zero(); buffer_size as usize];
-
-        let air_instance =
-            AirInstance::new(sctx.clone(), RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0], None, buffer);
+        let air_instance = AirInstance::new(
+            sctx.clone(),
+            RANGE_CHECK_4_AIRGROUP_ID,
+            RANGE_CHECK_4_AIR_IDS[0],
+            None,
+            trace.buffer.unwrap(),
+        );
         let (is_myne, gid) =
             ectx.dctx.write().unwrap().add_instance(RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0], 1);
         if is_myne {
@@ -61,24 +60,21 @@ where
         stage: u32,
         air_instance_id: Option<usize>,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let mut rng = rand::thread_rng();
 
         log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheck4", stage);
 
         if stage == 1 {
-            let (buffer_size, offsets) = ectx
-                .buffer_allocator
-                .as_ref()
-                .get_buffer_info(&sctx, RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0])
-                .unwrap();
-
-            let mut buffer = vec![F::zero(); buffer_size as usize];
+            let proof_ctx = pctx.clone();
+            let air_instances_vec = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap();
+            let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
+            let buffer = &mut air_instance.trace;
 
             let num_rows = pctx.pilout.get_air(RANGE_CHECK_4_AIRGROUP_ID, RANGE_CHECK_4_AIR_IDS[0]).num_rows();
-            let mut trace = RangeCheck4Trace::map_buffer(buffer.as_mut_slice(), num_rows, offsets[0] as usize).unwrap();
+            let mut trace = RangeCheck4Trace::map_buffer(buffer.as_mut_slice(), num_rows, 0).unwrap();
 
             let range1 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), Some(true));
             let range2 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(true));
@@ -137,10 +133,6 @@ where
                 trace[i].a8 = F::from_canonical_u64(a8_val as u64);
                 self.std_lib.range_check(trace[i].a8, F::one(), range9);
             }
-
-            let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
-            let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-            air_instance.buffer = buffer;
         }
 
         self.std_lib.unregister_predecessor(pctx, None);

@@ -34,6 +34,8 @@ struct ProofCtx {
     air_groups: Vec<AirGroupsCtx>,
     constant_airgroups: Vec<(String, usize)>,
     constant_airs: Vec<(String, usize, Vec<usize>, String)>,
+    proof_values: Vec<ValuesCtx>,
+    publics: Vec<ValuesCtx>,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,6 +53,13 @@ struct AirCtx {
     num_rows: u32,
     columns: Vec<ColumnCtx>,
     custom_columns: Vec<CustomCommitsCtx>,
+    air_values: Vec<ValuesCtx>,
+    airgroup_values: Vec<ValuesCtx>,
+}
+
+#[derive(Debug, Serialize)]
+struct ValuesCtx {
+    values: Vec<ColumnCtx>,
 }
 
 #[derive(Debug, Serialize)]
@@ -118,6 +127,8 @@ impl PilHelpersCmd {
                         num_rows: air.num_rows.unwrap(),
                         columns: Vec::new(),
                         custom_columns: Vec::new(),
+                        air_values: Vec::new(),
+                        airgroup_values: Vec::new(),
                     })
                     .collect(),
             });
@@ -143,6 +154,36 @@ impl PilHelpersCmd {
             }
         }
 
+        let mut publics: Vec<ValuesCtx> = Vec::new();
+        let mut proof_values: Vec<ValuesCtx> = Vec::new();
+
+        pilout
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                (symbol.r#type == SymbolType::PublicValue as i32) || (symbol.r#type == SymbolType::ProofValue as i32)
+            })
+            .for_each(|symbol| {
+                let name = symbol.name.split_once('.').map(|x| x.1).unwrap_or(&symbol.name);
+                let r#type = if symbol.lengths.is_empty() {
+                    "F".to_string() // Case when lengths.len() == 0
+                } else {
+                    // Start with "F" and apply each length in reverse order
+                    symbol.lengths.iter().rev().fold("F".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
+                };
+                if symbol.r#type == SymbolType::ProofValue as i32 {
+                    if proof_values.is_empty() {
+                        proof_values.push(ValuesCtx { values: Vec::new() });
+                    }
+                    proof_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                } else {
+                    if publics.is_empty() {
+                        publics.push(ValuesCtx { values: Vec::new() });
+                    }
+                    publics[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                }
+            });
+
         // Build columns data for traces
         for (airgroup_id, airgroup) in pilout.air_groups.iter().enumerate() {
             for (air_id, _) in airgroup.airs.iter().enumerate() {
@@ -161,12 +202,15 @@ impl PilHelpersCmd {
                     .symbols
                     .iter()
                     .filter(|symbol| {
+                        println!("{:?}", symbol);
                         symbol.air_group_id.is_some()
                             && symbol.air_group_id.unwrap() == airgroup_id as u32
-                            && symbol.air_id.is_some()
-                            && symbol.air_id.unwrap() == air_id as u32
+                            && ((symbol.air_id.is_some() && symbol.air_id.unwrap() == air_id as u32)
+                                || symbol.r#type == SymbolType::AirGroupValue as i32)
                             && symbol.stage.is_some()
                             && ((symbol.r#type == SymbolType::WitnessCol as i32 && symbol.stage.unwrap() == 1)
+                                || (symbol.r#type == SymbolType::AirValue as i32)
+                                || (symbol.r#type == SymbolType::AirGroupValue as i32)
                                 || (symbol.r#type == SymbolType::CustomCol as i32 && symbol.stage.unwrap() == 0))
                     })
                     .for_each(|symbol| {
@@ -184,6 +228,16 @@ impl PilHelpersCmd {
                         };
                         if symbol.r#type == SymbolType::WitnessCol as i32 {
                             air.columns.push(ColumnCtx { name: name.to_owned(), r#type });
+                        } else if symbol.r#type == SymbolType::AirValue as i32 {
+                            if air.air_values.is_empty() {
+                                air.air_values.push(ValuesCtx { values: Vec::new() });
+                            }
+                            air.air_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                        } else if symbol.r#type == SymbolType::AirGroupValue as i32 {
+                            if air.airgroup_values.is_empty() {
+                                air.airgroup_values.push(ValuesCtx { values: Vec::new() });
+                            }
+                            air.airgroup_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
                         } else {
                             air.custom_columns[symbol.commit_id.unwrap() as usize]
                                 .custom_columns
@@ -200,6 +254,8 @@ impl PilHelpersCmd {
             air_groups: wcctxs,
             constant_airs,
             constant_airgroups,
+            publics,
+            proof_values,
         };
 
         const MOD_RS: &str = include_str!("../../assets/templates/pil_helpers_mod.rs.tt");
