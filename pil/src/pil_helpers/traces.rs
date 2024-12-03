@@ -8,7 +8,7 @@ trace!(MainRow, MainTrace<F> {
 });
 
 trace!(RomRow, RomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
+ multiplicity: F,
 });
 
 trace!(ArithRow, ArithTrace<F> {
@@ -24,7 +24,7 @@ trace!(ArithRangeTableRow, ArithRangeTableTrace<F> {
 });
 
 trace!(BinaryRow, BinaryTrace<F> {
- m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
+ m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F, main_step: F,
 });
 
 trace!(BinaryTableRow, BinaryTableTrace<F> {
@@ -41,4 +41,8 @@ trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
 
 trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
  mul: [F; 1],
+});
+
+trace!(RomRomRow, RomRomTrace<F> {
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });
