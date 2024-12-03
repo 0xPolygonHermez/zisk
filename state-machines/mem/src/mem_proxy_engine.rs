@@ -118,7 +118,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         // original vector is sorted by step, sort_by_key is stable, no reordering of elements with
         // the same key.
         timer_start_debug!(MEM_SORT);
-        mem_operations.sort_by_key(|mem| (mem.address & 0xFFFF_FFF8));
+        mem_operations.sort_by_key(|mem| (mem.get_address() & 0xFFFF_FFF8));
         timer_stop_and_log_debug!(MEM_SORT);
 
         // Step2. Add a final mark mem_op to force flush of open_mem_align_ops, because always the
@@ -141,60 +141,79 @@ impl<F: PrimeField> MemProxyEngine<F> {
         // the current mem_op.
 
         for mem_extern_op in mem_operations.iter_mut() {
-            self.log_mem_op(mem_extern_op);
-            let mem_op_aligned = Self::is_aligned(&mem_extern_op);
-            let mem_step = MemHelpers::main_step_to_address_step(
-                mem_extern_op.step,
-                mem_extern_op.step_offset,
-            );
-            let aligned_mem_addr = Self::to_aligned_addr(mem_extern_op.address);
+            match mem_extern_op {
+                ZiskRequiredMemory::Basic {
+                    step,
+                    value: _,
+                    address,
+                    is_write: _,
+                    width,
+                    step_offset,
+                } => {
+                    //self.log_mem_op(&mem_extern_op.clone());
+                    let mem_op_aligned = Self::is_aligned(*address, *width);
+                    let mem_step = MemHelpers::main_step_to_address_step(*step, *step_offset);
+                    let aligned_mem_addr = Self::to_aligned_addr(*address);
 
-            // Check if there are open mem align operations to be processed in this moment, with
-            // address (or step) less than the aligned of current mem_op.
-            self.process_all_previous_open_mem_align_ops(aligned_mem_addr, mem_step, mem_align_sm);
-
-            // check if we are at end of loop
-            if self.check_if_end_of_memory_mark(&mem_extern_op) {
-                break;
-            }
-
-            // TODO: edge case special memory with free-input memory data as input data
-            let mem_value = self.get_mem_value(aligned_mem_addr);
-
-            // all open mem align operations are processed, check if new mem operation is aligned
-            if !mem_op_aligned {
-                // In this point found non-aligned memory access, phase-0
-                let mem_align_input = MemAlignInput::from(&mem_extern_op, &[mem_value, 0]);
-                let mem_align_response = mem_align_sm.get_mem_op(&mem_align_input, 0);
-
-                #[cfg(feature = "debug_mem_proxy_engine")]
-                if mem_align_input.addr >= DEBUG_ADDR - 8 && mem_align_input.addr <= DEBUG_ADDR + 8
-                {
-                    debug_info!(
-                        "mem_align_input_{:X}: phase: 0 {:?}",
-                        mem_align_input.addr,
-                        mem_align_input
+                    // Check if there are open mem align operations to be processed in this moment,
+                    // with address (or step) less than the aligned of current
+                    // mem_op.
+                    self.process_all_previous_open_mem_align_ops(
+                        aligned_mem_addr,
+                        mem_step,
+                        mem_align_sm,
                     );
-                    debug_info!(
-                        "mem_align_response_{:X}: phase: 0 {:?}",
-                        mem_align_input.addr,
-                        mem_align_response
-                    );
+
+                    // check if we are at end of loop
+                    if self.check_if_end_of_memory_mark(&mem_extern_op) {
+                        break;
+                    }
+
+                    // TODO: edge case special memory with free-input memory data as input data
+                    let mem_value = self.get_mem_value(aligned_mem_addr);
+
+                    // all open mem align operations are processed, check if new mem operation is
+                    // aligned
+                    if !mem_op_aligned {
+                        // In this point found non-aligned memory access, phase-0
+                        let mem_align_input = MemAlignInput::from(&mem_extern_op, &[mem_value, 0]);
+                        let mem_align_response = mem_align_sm.get_mem_op(&mem_align_input, 0);
+
+                        #[cfg(feature = "debug_mem_proxy_engine")]
+                        if mem_align_input.addr >= DEBUG_ADDR - 8 &&
+                            mem_align_input.addr <= DEBUG_ADDR + 8
+                        {
+                            debug_info!(
+                                "mem_align_input_{:X}: phase: 0 {:?}",
+                                mem_align_input.addr,
+                                mem_align_input
+                            );
+                            debug_info!(
+                                "mem_align_response_{:X}: phase: 0 {:?}",
+                                mem_align_input.addr,
+                                mem_align_response
+                            );
+                        }
+                        // if operation applies to two consecutive memory addresses, add the second
+                        // part is enqueued to be processed in future when
+                        // processing next address on phase-1
+                        if mem_align_response.more_addr {
+                            self.push_open_mem_align_op(aligned_mem_addr, &mem_align_input);
+                        }
+                        self.push_mem_align_response_ops(
+                            aligned_mem_addr,
+                            mem_value,
+                            &mem_align_input,
+                            &mem_align_response,
+                        );
+                    } else {
+                        let mem_op = MemInput::from(mem_extern_op);
+                        self.push_mem_op(&mem_op);
+                    }
                 }
-                // if operation applies to two consecutive memory addresses, add the second part
-                // is enqueued to be processed in future when processing next address on phase-1
-                if mem_align_response.more_addr {
-                    self.push_open_mem_align_op(aligned_mem_addr, &mem_align_input);
+                ZiskRequiredMemory::Extended { values: _, address: _ } => {
+                    panic!("MemProxyEngine::prove() called with extended variant");
                 }
-                self.push_mem_align_response_ops(
-                    aligned_mem_addr,
-                    mem_value,
-                    &mem_align_input,
-                    &mem_align_response,
-                );
-            } else {
-                let mem_op = MemInput::from(mem_extern_op);
-                self.push_mem_op(&mem_op);
             }
         }
         self.finish_prove();
@@ -252,9 +271,27 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
     /// Static method to decide it the memory operation needs to be processed by
     /// memAlign, because it isn't a 8-byte and 8-byte aligned memory access.
-    fn is_aligned(mem_op: &ZiskRequiredMemory) -> bool {
-        let aligned_mem_addr = mem_op.address & MEM_ADDR_MASK;
-        aligned_mem_addr == mem_op.address && mem_op.width == MEM_BYTES as u8
+    /*fn is_aligned(mem_op: &ZiskRequiredMemory) -> bool {
+        match mem_op {
+            ZiskRequiredMemory::Basic {
+                step: _,
+                value: _,
+                address,
+                is_write: _,
+                width,
+                step_offset: _,
+            } => {
+                let aligned_mem_addr = *address & MEM_ADDR_MASK;
+                aligned_mem_addr == *address && *width == MEM_BYTES as u8
+            }
+            ZiskRequiredMemory::Extended { values: _, address: _ } => {
+                panic!("MemProxyEngine::is_aligned() called with an extended instance");
+            }
+        }
+    }*/
+    #[inline(always)]
+    fn is_aligned(address: u32, width: u8) -> bool {
+        ((address & 0x07) == 0) && (width == 8)
     }
     fn push_mem_op(&mut self, mem_op: &MemInput) {
         self.push_aligned_op(mem_op.is_write, mem_op.addr, mem_op.value, mem_op.step, true);
@@ -380,7 +417,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     // applies to two consecutive memory addresses.
 
     fn end_of_memory_mark() -> ZiskRequiredMemory {
-        ZiskRequiredMemory {
+        ZiskRequiredMemory::Basic {
             step: 0,
             step_offset: 0,
             is_write: false,
@@ -391,8 +428,9 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
     #[inline(always)]
     fn check_if_end_of_memory_mark(&self, mem_op: &ZiskRequiredMemory) -> bool {
+        let address = mem_op.get_address();
         // TODO: 0xFFFF_FFFF not valid address
-        if mem_op.address == MAX_MEM_ADDR as u32 {
+        if address == MAX_MEM_ADDR as u32 {
             assert!(
                 self.open_mem_align_ops.len() == 0,
                 "open_mem_align_ops not empty, has {} elements",
@@ -455,16 +493,23 @@ impl<F: PrimeField> MemProxyEngine<F> {
         });
     }
     fn log_mem_op(&self, mem_op: &ZiskRequiredMemory) {
-        debug_info!(
-            "next input [0x{:x}] {} {} {}b #{} [0x{:x},{}]",
-            mem_op.address,
-            if mem_op.is_write { "W" } else { "R" },
-            mem_op.value,
-            mem_op.width,
-            mem_op.step,
-            self.last_addr,
-            self.last_addr_value
-        );
+        match mem_op {
+            ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset } => {
+                debug_info!(
+                    "next input [0x{:x}] {} {} {}b #{} [0x{:x},{}]",
+                    *address,
+                    if *is_write { "W" } else { "R" },
+                    *value,
+                    *width,
+                    *step,
+                    self.last_addr,
+                    self.last_addr_value
+                );
+            }
+            ZiskRequiredMemory::Extended { values: _, address: _ } => {
+                panic!("MemProxyEngine::log_mem_op() called with an extended variant");
+            }
+        }
     }
     #[inline(always)]
     fn to_aligned_addr(addr: u32) -> u32 {
