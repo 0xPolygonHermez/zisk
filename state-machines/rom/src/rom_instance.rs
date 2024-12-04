@@ -43,6 +43,7 @@ impl<F: PrimeField> Instance for RomInstance<F> {
         let air = pctx.pilout.get_air(plan.airgroup_id, plan.air_id);
 
         RomSM::prove_instance(
+            &self.wcm,
             &self.zisk_rom,
             &mut self.iectx.plan,
             &mut self.iectx.buffer,

@@ -8,7 +8,7 @@ use sm_common::{
 };
 
 use zisk_core::{ZiskRom, SRC_IMM};
-use zisk_pil::{RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 
@@ -20,33 +20,34 @@ pub struct RomSM<F> {
 
 impl<F: PrimeField> RomSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
-        let rom_sm = Self { wcm: wcm.clone(), zisk_rom };
-        let rom_sm = Arc::new(rom_sm);
+        let rom_sm = Arc::new(Self { wcm: wcm.clone(), zisk_rom });
 
-        let rom_air_ids = ROM_AIR_IDS;
-        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(rom_air_ids));
+        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(ROM_AIR_IDS));
 
         rom_sm
     }
 
     pub fn prove_instance(
+        wcm: &WitnessManager<F>,
         rom: &ZiskRom,
         plan: &Plan,
         buffer: &mut WitnessBuffer<F>,
-        num_rows: usize,
+        trace_rows: usize,
     ) {
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
         let pc_histogram = &metadata.rom.inst_count;
+        let main_trace_len =
+            wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
 
         // Create an empty ROM trace
         let mut rom_trace =
-            RomTrace::<F>::map_buffer(&mut buffer.buffer, num_rows, buffer.offset as usize)
+            RomTrace::<F>::map_buffer(&mut buffer.buffer, trace_rows, buffer.offset as usize)
                 .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        for (i, inst_builder) in rom.insts.iter().enumerate() {
             // Get the Zisk instruction
-            let inst = inst_builder.1.i;
+            let inst = &inst_builder.1.i;
 
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
@@ -57,10 +58,10 @@ impl<F: PrimeField> RomSM<F> {
                 let counter = pc_histogram.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
-                    // if inst.paddr == pc_histogram.end_pc {
-                    //     multiplicity +=
-                    //         main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
-                    // }
+                    if inst.paddr == metadata.end_pc {
+                        multiplicity +=
+                            main_trace_len - 1 - (metadata.steps % (main_trace_len - 1));
+                    }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
                 }
@@ -110,30 +111,12 @@ impl<F: PrimeField> RomSM<F> {
             rom_trace[i].jmp_offset2 = jmp_offset2;
             rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
             rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
-            /*println!(
-                "ROM SM [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}], {}",
-                inst.paddr,
-                inst.a_offset_imm0,
-                if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 },
-                inst.b_offset_imm0,
-                if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 },
-                if inst.b_src == SRC_IND { 1 } else { 0 },
-                inst.ind_width,
-                inst.op,
-                inst.store_offset as u64,
-                inst.jmp_offset1 as u64,
-                inst.jmp_offset2 as u64,
-                inst.get_flags(),
-                multiplicity,
-            );*/
         }
 
         // Padd with zeroes
-        // for i in number_of_instructions..trace_size {
-        //     rom_trace[i] = RomRow::default();
-        // }
-
-        // Ok((prover_buffer, offsets[0], ROM_AIR_IDS[0]))
+        for i in rom.insts.len()..trace_rows {
+            rom_trace[i] = RomRow::default();
+        }
     }
 }
 

@@ -24,10 +24,3 @@ pub struct ZiskRequired {
     pub binary_extension: Vec<ZiskRequiredOperation>,
     pub memory: Vec<ZiskRequiredMemory>,
 }
-
-#[derive(Clone, Default)]
-pub struct ZiskPcHistogram {
-    pub map: HashMap<u64, u64>,
-    pub end_pc: u64,
-    pub steps: u64,
-}
