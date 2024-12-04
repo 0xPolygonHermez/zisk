@@ -1,3 +1,0 @@
-[submodule "src/goldilocks"]
-	path = pil2-stark/src/goldilocks
-	url = https://github.com/0xPolygonHermez/goldilocks.git

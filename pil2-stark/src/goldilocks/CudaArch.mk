@@ -1,0 +1,1 @@
+CUDA_ARCH = sm_86
