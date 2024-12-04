@@ -8,9 +8,8 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use rayon::prelude::*;
-use sm_common::create_prover_buffer;
 use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
-use zisk_pil::{BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{BinaryTableTrace, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
@@ -247,13 +246,10 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
         if is_myne {
             // Create the prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                &self.wcm.get_ectx(),
-                &self.wcm.get_sctx(),
-                ZISK_AIRGROUP_ID,
-                BINARY_TABLE_AIR_IDS[0],
-            );
-            prover_buffer[offset as usize..offset as usize + self.num_rows]
+            let trace: BinaryTableTrace<'_, _> = BinaryTableTrace::new(self.num_rows);
+            let mut prover_buffer = trace.buffer.unwrap();
+
+            prover_buffer[0..self.num_rows]
                 .par_iter_mut()
                 .enumerate()
                 .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
