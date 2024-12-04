@@ -469,12 +469,10 @@ impl Mem {
         if is_single_not_aligned {
             let mut additional_data: Vec<u64> = Vec::new();
 
-            assert!(addr_req_1 >= self.write_section.start);
-            let read_position_req: usize = (addr_req_1 - self.write_section.start) as usize;
+            assert!(addr_req_1 >= section.start);
+            let read_position_req: usize = (addr_req_1 - section.start) as usize;
             let value_req = u64::from_le_bytes(
-                self.write_section.buffer[read_position_req..read_position_req + 8]
-                    .try_into()
-                    .unwrap(),
+                section.buffer[read_position_req..read_position_req + 8].try_into().unwrap(),
             );
             additional_data.push(value_req);
 
@@ -486,21 +484,17 @@ impl Mem {
         if is_double_not_aligned {
             let mut additional_data: Vec<u64> = Vec::new();
 
-            assert!(addr_req_1 >= self.write_section.start);
-            let read_position_req_1: usize = (addr_req_1 - self.write_section.start) as usize;
+            assert!(addr_req_1 >= section.start);
+            let read_position_req_1: usize = (addr_req_1 - section.start) as usize;
             let value_req_1 = u64::from_le_bytes(
-                self.write_section.buffer[read_position_req_1..read_position_req_1 + 8]
-                    .try_into()
-                    .unwrap(),
+                section.buffer[read_position_req_1..read_position_req_1 + 8].try_into().unwrap(),
             );
             additional_data.push(value_req_1);
 
-            assert!(addr_req_2 >= self.write_section.start);
-            let read_position_req_2: usize = (addr_req_2 - self.write_section.start) as usize;
+            assert!(addr_req_2 >= section.start);
+            let read_position_req_2: usize = (addr_req_2 - section.start) as usize;
             let value_req_2 = u64::from_le_bytes(
-                self.write_section.buffer[read_position_req_2..read_position_req_2 + 8]
-                    .try_into()
-                    .unwrap(),
+                section.buffer[read_position_req_2..read_position_req_2 + 8].try_into().unwrap(),
             );
             additional_data.push(value_req_2);
 

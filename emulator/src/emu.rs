@@ -246,7 +246,7 @@ impl<'a> Emu<'a> {
                 // read values required to construct the requested read value, if not aligned)
                 let additional_data: Vec<u64>;
                 (self.ctx.inst_ctx.b, additional_data) =
-                    self.ctx.inst_ctx.mem.read_required(addr, 8);
+                    self.ctx.inst_ctx.mem.read_required(addr, instruction.ind_width);
 
                 // Store the read value into the vector as a basic record
                 let required_memory = ZiskRequiredMemory::Basic {
