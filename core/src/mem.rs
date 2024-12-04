@@ -79,6 +79,8 @@
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
 //!   program execution a general purpose memory.
 
+use std::fmt;
+
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x90000000;
 /// Maximum size of the input data
@@ -114,7 +116,6 @@ pub const UART_ADDR: u64 = SYS_ADDR + 512;
 
 /// Memory section data, including a buffer (a vector of bytes) and start and end program
 /// memory addresses.
-#[derive(Default)]
 pub struct MemSection {
     pub start: u64,
     pub end: u64,
