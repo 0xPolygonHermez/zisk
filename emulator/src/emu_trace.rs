@@ -5,6 +5,7 @@ pub struct EmuTraceStart {
     pub sp: u64,
     pub c: u64,
     pub step: u64,
+    pub regs: [u64; 32],
 }
 
 #[derive(Default, Debug, Clone)]

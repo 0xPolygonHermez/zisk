@@ -11,6 +11,7 @@ pub struct InstContext {
     pub pc: u64,
     pub step: u64,
     pub end: bool,
+    pub regs: [u64; 32],
 }
 
 /// RisK instruction context implementation
@@ -27,6 +28,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
+            regs: [0; 32],
         }
     }
     pub fn to_text(&self) -> String {

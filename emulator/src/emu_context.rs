@@ -34,6 +34,7 @@ impl EmuContext {
                 pc: ROM_ENTRY,
                 step: 0,
                 end: false,
+                regs: [0; 32],
             },
             tracerv: Vec::new(),
             tracerv_step: 0,
