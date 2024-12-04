@@ -8,7 +8,6 @@ use rayon::prelude::*;
 
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
-use sm_common::create_prover_buffer;
 use sm_main::{InstanceExtensionCtx, MainSM};
 use sm_mem::MemSM;
 use sm_rom::RomSM;
@@ -100,8 +99,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         rom_path: &Path,
         public_inputs_path: &Path,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let air_main = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
@@ -193,10 +192,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             };
 
             if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
-                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                 instances_extension_ctx.push(InstanceExtensionCtx::new(
-                    buffer,
-                    offset,
                     emu_slice.op_type,
                     emu_slice.emu_trace_start.clone(),
                     segment_id,

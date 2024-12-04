@@ -9,7 +9,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
+use sm_common::{OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -715,14 +715,12 @@ impl<F: Field> BinaryBasicSM<F> {
         &self,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
         Self::prove_internal(
             &self.wcm,
             &self.binary_basic_table_sm,
             operations,
             prover_buffer,
-            offset,
         );
     }
 
@@ -731,7 +729,6 @@ impl<F: Field> BinaryBasicSM<F> {
         binary_basic_table_sm: &BinaryBasicTableSM<F>,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
         timer_start_trace!(BINARY_TRACE);
         let pctx = wcm.get_pctx();
@@ -749,7 +746,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
         let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
         let mut trace_buffer =
-            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
+            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
@@ -818,19 +815,14 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &wcm.get_ectx(),
-                    &wcm.get_sctx(),
-                    ZISK_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                );
-
+                let trace: BinaryTrace<'_, _> = BinaryTrace::new(air.num_rows());
+                let mut prover_buffer = trace.buffer.unwrap();
+    
                 Self::prove_internal(
                     &wcm,
                     &binary_basic_table_sm,
                     drained_inputs,
                     &mut prover_buffer,
-                    offset,
                 );
 
                 let air_instance = AirInstance::new(
