@@ -1,8 +1,12 @@
+//! Provides an interface to convert a RISC-V instruction into one or more Zisk instructions using
+//! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
+//! attribute.
+
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, read_u16_le, read_u32_le, read_u64_le, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK,
-    INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT,
+    SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -13,8 +17,9 @@ const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
-/// Context to store the list of converted ZisK instructions, including their program address
-struct Riscv2ZiskContext<'a> {
+/// Context to store the list of converted ZisK instructions, including their program address and a
+/// map to store the instructions
+pub struct Riscv2ZiskContext<'a> {
     /// Next program address to assign
     s: u64,
     /// Map of program address to ZisK instructions
@@ -25,7 +30,6 @@ impl Riscv2ZiskContext<'_> {
     /// Converts an input RISCV instruction into a ZisK instruction and stores it into the internal
     /// map
     pub fn convert(&mut self, riscv_instruction: &RiscvInstruction) {
-        //let mut addr = self.s;
         match riscv_instruction.inst.as_str() {
             "lb" => self.load_op(riscv_instruction, "signextend_b", 1),
             "lbu" => self.load_op(riscv_instruction, "copyb", 1),
@@ -140,30 +144,6 @@ impl Riscv2ZiskContext<'_> {
                 riscv_instruction.inst
             ),
         }
-
-        /*if self.insts.contains_key(&addr)
-        {
-            let zib = self.insts.get(&addr).unwrap();
-            println!("Riscv2ZiskContext::convert() addr={} inst={}", addr, zib.i.to_string());
-        }
-        addr += 1;
-        if self.insts.contains_key(&addr)
-        {
-            let zib = self.insts.get(&addr).unwrap();
-            println!("Riscv2ZiskContext::convert() addr={} inst={}", addr, zib.i.to_string());
-        }
-        addr += 1;
-        if self.insts.contains_key(&addr)
-        {
-            let zib = self.insts.get(&addr).unwrap();
-            println!("Riscv2ZiskContext::convert() addr={} inst={}", addr, zib.i.to_string());
-        }
-        addr += 1;
-        if self.insts.contains_key(&addr)
-        {
-            let zib = self.insts.get(&addr).unwrap();
-            println!("Riscv2ZiskContext::convert() addr={} inst={}", addr, zib.i.to_string());
-        }*/
     }
 
     /*amoadd.w rs1, rs2, rd
@@ -177,6 +157,8 @@ impl Riscv2ZiskContext<'_> {
         copyb_w( [%rs1] , last_c) -> [a], j(pc+1, pc+1)
         copyb_d(0, [%tmp1]) -> [%rd], j(pc+1, pc+1), j(pc+1, pc+1)*/
 
+    /// Creates a set of Zisk operations that implement a RISC-V atomic operation,
+    /// i.e. a load-modify-store operation
     pub fn create_atomic_op(
         &mut self,
         i: &RiscvInstruction,
@@ -202,7 +184,6 @@ impl Riscv2ZiskContext<'_> {
             {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("lastc", 0, false);
-                //zib.ind_width(w);
                 zib.src_b("reg", i.rs2 as u64, false);
                 zib.op(op).unwrap();
                 zib.j(1, 1);
@@ -281,6 +262,7 @@ impl Riscv2ZiskContext<'_> {
     //    copyb_w( same_a , [rs2]) -> [a], j(pc+1, pc+1)
     //    copyb_d(0, [%tmp1]) -> [%rd], j(pc+2, pc+2)
 
+    /// Creates a set of Zisk operations that implement a RISC-V atomic swap operation
     pub fn create_atomic_swap(&mut self, i: &RiscvInstruction, loadf: &str, storef: &str, w: u64) {
         if (i.rd != i.rs1) && (i.rd != i.rs2) {
             {
@@ -348,6 +330,9 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
+    /// Creates a Zisk operation that implements a RISC-V register operation, i.e. an operation that
+    /// loads both input parameters a and b from their respective registers,
+    /// and stores the result c into a register
     pub fn create_register_op(&mut self, i: &RiscvInstruction, op: &str) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
@@ -363,6 +348,10 @@ impl Riscv2ZiskContext<'_> {
 
     // beq rs1, rs2, label
     //    eq([%rs1], [rs2]), j(label)
+
+    /// Creates a Zisk operation that implements a RISC-V branch operation, i.e. an operation that
+    /// jumps to another operation, or continues the normal execution, based on a condition
+    /// specifies by the operation
     pub fn create_branch_op(&mut self, i: &RiscvInstruction, op: &str, neg: bool) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
@@ -379,6 +368,8 @@ impl Riscv2ZiskContext<'_> {
         self.s += 4;
     }
 
+    /// Creates a Zisk flag operation that simply sets the flag to true and continues the execution
+    /// to the next operation
     pub fn nop(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -393,6 +384,9 @@ impl Riscv2ZiskContext<'_> {
 
     // lb rd, imm(rs1)
     //    signextend_b([%rs1], [a + imm]) -> [%rd]
+
+    /// Creates a Zisk operation that loads a value from memory using the specified operation
+    /// and stores the result in a register
     pub fn load_op(&mut self, i: &RiscvInstruction, op: &str, w: u64) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
@@ -409,6 +403,9 @@ impl Riscv2ZiskContext<'_> {
 
     // sb rs2, imm(rs1)
     //    copyb_d([%rs1], [%rs2]) -> [a + imm]
+
+    /// Creates a Zisk operation that loads a value from register using the specified operation
+    /// and stores the result in memory
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
@@ -425,6 +422,9 @@ impl Riscv2ZiskContext<'_> {
 
     // addi rd, rs1, imm
     //      add([%rs1], imm) -> [%rd]
+
+    /// Creates a Zisk operation that loads a constant value using the specified operation and
+    /// stores the result in a register
     pub fn immediate_op(&mut self, i: &RiscvInstruction, op: &str) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
@@ -457,6 +457,7 @@ impl Riscv2ZiskContext<'_> {
     // sc.w rd, rs2, (rs1)
     //    copyb_d([%rs1], [%rs2]) -> [a]
     //    copyb_d(0,0) -> [%rd]
+    /// Implements the RISC-V store-conditional instruction of a 32-bits value
     pub fn sc_w(&mut self, i: &RiscvInstruction) {
         if i.rd > 0 {
             {
@@ -501,6 +502,7 @@ impl Riscv2ZiskContext<'_> {
     // sc.d rd, rs2, (rs1)
     //    copyb([%rs1], [%rs2]) -> [a]
     //    copyb(0,0) -> [%rd]
+    /// Implements the RISC-V store-conditional instruction of a 64-bits value
     pub fn sc_d(&mut self, i: &RiscvInstruction) {
         if i.rd > 0 {
             {
@@ -543,6 +545,7 @@ impl Riscv2ZiskContext<'_> {
 
     // lui rd, imm
     //      copyb_b(0, imm) -> [rd]
+    /// Implementes the RISC-V load-upper-immediate instruction to load a 32-bits constant
     pub fn lui(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -558,6 +561,7 @@ impl Riscv2ZiskContext<'_> {
 
     //     jalr rd, rs1, imm
     //          copyb_d(0, [%rs1]), j(c + imm) -> [rd]
+    /// Implements the RISC-V jump-and-link-register inconditional jump instruction
     pub fn jalr(&mut self, i: &RiscvInstruction) {
         if (i.imm % 4) == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
@@ -601,6 +605,7 @@ impl Riscv2ZiskContext<'_> {
 
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
+    /// Implements the RISC-V jump-and-link inconditional jump instruction
     pub fn jal(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -614,6 +619,7 @@ impl Riscv2ZiskContext<'_> {
         self.s += 4;
     }
 
+    /// Makes a system call
     pub fn ecall(&mut self, _i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
@@ -627,6 +633,9 @@ impl Riscv2ZiskContext<'_> {
         self.insts.insert(self.s, zib);
         self.s += 4;
     }
+
+    // RISC-V defines a separate address space of 4096 Control and Status registers associated with
+    // each hart. All CSR instructions atomically read-modify-write a single CSR,
 
     /*
     csrrw rd, csr, rs1
@@ -648,6 +657,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRW (Atomic Read/Write CSR) instruction atomically swaps values in the CSRs and
+    /// integer registers. CSRRW reads the old value of the CSR, zero-extends the value to XLEN
+    /// bits, then writes it to integer register rd. The initial value in rs1 is written to the CSR.
+    /// If rd=x0, then the instruction shall not read the CSR and shall not cause any of the side
+    /// effects that might occur on a CSR read.
     pub fn csrrw(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -763,6 +777,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRS (Atomic Read and Set Bits in CSR) instruction reads the value of the CSR,
+    /// zero-extends the value to XLEN bits, and writes it to integer register rd. The initial value
+    /// in integer register rs1 is treated as a bit mask that specifies bit positions to be set in
+    /// the CSR. Any bit that is high in rs1 will cause the corresponding bit to be set in the CSR,
+    /// if that CSR bit is writable.
     pub fn csrrs(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -888,6 +907,11 @@ impl Riscv2ZiskContext<'_> {
         }
     */
 
+    /// The CSRRC (Atomic Read and Clear Bits in CSR) instruction reads the value of the CSR,
+    /// zero-extends the value to XLEN bits, and writes it to integer register rd. The initial value
+    /// in integer register rs1 is treated as a bit mask that specifies bit positions to be cleared
+    /// in the CSR. Any bit that is high in rs1 will cause the corresponding bit to be cleared in
+    /// the CSR, if that CSR bit is writable.
     pub fn csrrc(&mut self, i: &RiscvInstruction) {
         if i.rd == i.rs1 {
             if i.rd == 0 {
@@ -1032,6 +1056,10 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     */
+    /// The CSRRWI, CSRRSI, and CSRRCI variants are similar to CSRRW, CSRRS, and CSRRC respectively,
+    /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
+    /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
+    /// integer register.
     pub fn csrrwi(&mut self, i: &RiscvInstruction) {
         if i.rd == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
@@ -1251,7 +1279,8 @@ impl Riscv2ZiskContext<'_> {
     }
 } // impl Riscv2ZiskContext
 
-/// Converts a buffer with RISCV data into a vector of Zisk instructions
+/// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
+/// Riscv2ZiskContext to perform the instruction transpilation
 pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
     //print!("add_zisk_code() addr={}\n", addr);
 
@@ -1267,14 +1296,18 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
     // For all RISCV instructions
     for riscv_instruction in riscv_instructions {
         //print!("add_zisk_code() converting RISCV instruction={}\n",
-        // riscv_instruction.to_string()); Convert RICV instruction to ZisK instruction and
-        // store it in rom.insts
+        // riscv_instruction.to_string());
+
+        // Convert RICV instruction to ZisK instruction and store it in rom.insts
         ctx.convert(&riscv_instruction);
         //print!("   to: {}", ctx.insts.iter().last().)
     }
 }
 
-/// Add initial data to ZisK rom
+/// Add initial data to ZisK rom.
+///
+/// The initial data is copied in chunks of 8 bytes for efficiency, until less than 8 bytes are left
+/// to copy.  The remaining bytes are copied in additional chunks of 4, 2 and 1 byte, if required.
 pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_aligned: bool) {
     /*let mut s = String::new();
     for i in 0..min(50, data.len()) {
@@ -1287,7 +1320,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
     // Read 64-bit input data chunks and store them in rom
     let nd = data.len() / 8;
     for i in 0..nd {
-        let v = read_u64_le(data, i * 8);
+        let v = u64::from_le_bytes(data[i * 8..i * 8 + 8].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v, false);
@@ -1301,32 +1334,33 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         rom.next_init_inst_addr += 4;
         o += 8;
     }
-    /*
-        let bytes = addr + data.len() as u64 - o;
-        // Read remaining 32-bit input data chunk, if any, and store them in rom
-        if force_aligned && bytes > 0 {
-            let mut v: u64 = 0;
-            let from = (o - addr + bytes - 1) as usize;
-            for i in 0..bytes {
-                v = v * 256 + data[from - i as usize] as u64;
-            }
-            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-            zib.src_a("imm", o, false);
-            zib.src_b("imm", v, false);
-            zib.op("copyb").unwrap();
-            zib.ind_width(8);
-            zib.store("ind", 0, false, false);
-            zib.j(4, 4);
-            zib.verbose(&format!("Init Data {:08x}: {:04x}", o, v));
-            zib.build();
-            rom.insts.insert(rom.next_init_inst_addr, zib);
-            rom.next_init_inst_addr += 4;
-            o += bytes;
+
+    // TODO: review if necessary
+    let bytes = addr + data.len() as u64 - o;
+    // If force_aligned is active always store aligned
+    if force_aligned && bytes > 0 {
+        let mut v: u64 = 0;
+        let from = (o - addr + bytes - 1) as usize;
+        for i in 0..bytes {
+            v = v * 256 + data[from - i as usize] as u64;
         }
-    */
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", o, false);
+        zib.src_b("imm", v, false);
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.store("ind", 0, false, false);
+        zib.j(4, 4);
+        zib.verbose(&format!("Init Data {:08x}: {:04x}", o, v));
+        zib.build();
+        rom.insts.insert(rom.next_init_inst_addr, zib);
+        rom.next_init_inst_addr += 4;
+        o += bytes;
+    }
+
     // Read remaining 32-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 4 {
-        let v = read_u32_le(data, (o - addr) as usize);
+        let v = u32::from_le_bytes(data[o as usize..o as usize + 4].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
@@ -1343,7 +1377,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
 
     // Read remaining 16-bit input data chunk, if any, and store them in rom
     if addr + data.len() as u64 - o >= 2 {
-        let v = read_u16_le(data, (o - addr) as usize);
+        let v = u16::from_le_bytes(data[o as usize..o as usize + 2].try_into().unwrap());
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", o, false);
         zib.src_b("imm", v as u64, false);
@@ -1395,12 +1429,16 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
     }
 }
 
-/// Add the entry/exit jump program section
+/// Add the entry/exit jump program section to the rom instruction set.
 pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
+
+    // Calculate the trap handler rom pc address as an offset from the current instruction address
+    // to the beginning of the ecall section
     let trap_handler: u64 = rom.next_init_inst_addr + 0x38;
 
-    // :0000
+    // :0000 we note the rom pc address offset from the first address for each instruction
+    // Store the Zisk architecture ID into memory
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", ARCH_ID_ZISK, false);
@@ -1413,6 +1451,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0004
+    // Store the trap handler address into memory
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", trap_handler, false);
@@ -1425,6 +1464,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0008
+    // Store the input data address into register #10
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", INPUT_ADDR, false);
@@ -1437,6 +1477,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :000c
+    // Store the output data address into register #11
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", OUTPUT_ADDR, false);
@@ -1449,6 +1490,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0010
+    // Call to the program rom pc address, i.e. call the program
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", addr, false);
@@ -1476,7 +1518,25 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
             end
     */
 
-    // :0014 -> copyb: reg1 = c = b = mem(OUTPUT_ADDR,4), a=0
+    // :0014
+    // Returns from the program execution.
+    // Reads output data using the specific pubout operation
+    // Read the output data length located at first 64 bits of output data,
+    // and then then read output data in chunks of 64 bits:
+    //
+    // loadw: c(reg1) = b(mem=OUTPUT_ADDR), a=0   // TODO: check that Nx4 < OUTPUT_SIZE
+    // copyb: c(reg2)=b=0, a=0
+    // copyb: c(reg3)=b=OUTPUT_ADDR+4, a=0
+    //
+    // eq: if reg2==reg1 jump to end
+    // pubout: c=b.mem(reg3), a = reg2
+    // add: reg3 = reg3 + 4 // Increment memory address
+    // add: reg2 = reg2 + 1, jump -12 // Increment index, goto eq
+    //
+    // end
+    //
+    // Copy output data address into register #1
+    // copyb: reg1 = c = b = mem(OUTPUT_ADDR,4), a=0
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", OUTPUT_ADDR, false);
     zib.src_b("ind", 0, false);
@@ -1490,6 +1550,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0018 -> copyb: copyb: c(reg2)=b=0, a=0
+    // Set register #2 to zero
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
@@ -1502,6 +1563,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :001c -> copyb: c(reg3)=b=OUTPUT_ADDR, a=0
+    // Set register #3 to OUTPUT_ADDR + 4, i.e. to the beginning of the actual data after skipping
+    // the data length value
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", OUTPUT_ADDR + 4, false);
@@ -1514,6 +1577,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0020 -> eq: if reg2==reg1 jump to end
+    // Jump to end if registers #1 and #2 are equal, to break the data copy loop
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 1, false);
     zib.src_b("reg", 2, false);
@@ -1526,6 +1590,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0024 -> copyb: c = b = mem(reg3, 4)
+    // Copy the contents of memory at address set by register #3 into c, i.e. copy output data chunk
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
     zib.src_b("ind", 0, false);
@@ -1539,6 +1604,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0028 -> pubout: c = last_c = mem(reg3, 4), a = reg2 = index
+    // Call the special operation pubout with this data, being a the data chunk index
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 2, false);
     zib.src_b("lastc", 0, false);
@@ -1551,6 +1617,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :002c -> add: reg3 = reg3 + 4
+    // Increase the register #3, i.e. the data address, in 4 units
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
     zib.src_b("imm", 4, false);
@@ -1563,6 +1630,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0030 -> add: reg2 = reg2 + 1, jump -16
+    // Increase the register #2, i.e. the data chunk index, in 1 unit.
+    // Jump to the beginnig of the output data read loop
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 2, false);
     zib.src_b("imm", 1, false);
@@ -1575,6 +1644,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0034 jump to end (success)
+    // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", ROM_EXIT, false);
@@ -1586,8 +1656,12 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0038 trap_handle
-    // If register a7==CAUSE_EXIT, end the program
+    // :0038 trap_handle -> This is the address offset we use at the beginning of the function
+    // This code is executed when the program makes an ecall (system call).
+    // The pc is set to this address, and after the system call, it returns to the pc next to the
+    // one that made the ecall
+    // If register a7==CAUSE_EXIT, then execute the next instruction to end the program;
+    // otherwise jump to the one after the next one
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
@@ -1610,8 +1684,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0040 trap_handle
-    // If register a7==CAUSE_KECCAK, call the keccak opcode and return
+    // :0040
+    // If register a7==CAUSE_KECCAK, then call the keccak opcode and return
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_KECCAK, false);
@@ -1623,6 +1697,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0044
+    // Call the keccak precompiled opcode
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 11, false);
     zib.src_b("imm", 0, false);
@@ -1634,6 +1709,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0048
+    // Return to the instruction next to the one that made this ecall
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("reg", 1, false);
@@ -1646,6 +1722,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // END: all programs should exit here, regardless of the execution result
+    // This is the last instruction to be executed.  The emulator must stop after the instruction
+    // end flag is found to be true
     rom.next_init_inst_addr = ROM_EXIT;
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);

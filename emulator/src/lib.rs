@@ -1,14 +1,28 @@
+//! The Zisk emulator executes the Zisk program rom with the provided input data and generates
+//! the corresponding output data, according to the configured options.
+//!
+//! ```text
+//! ELF file --> riscv2zisk --> ZiskRom    \
+//!                                         |
+//! ZiskRom ------------------> ZiskInst's  |
+//!     \--> RO data                         > Emu --> Output data, statistics, metrics, logs...
+//!             \                           |
+//! Input file ---------------> Mem         |
+//!                                         |
+//! User configuration -------> EmuOptions /
+//! ```
+
 mod emu;
 mod emu_context;
 mod emu_full_trace;
-mod emu_options;
+pub mod emu_options;
 mod emu_par_options;
 mod emu_segment;
-mod emu_slice;
-mod emu_trace;
-mod emulator;
+pub mod emu_slice;
+pub mod emu_trace;
+pub mod emulator;
 mod emulator_errors;
-mod stats;
+pub mod stats;
 
 pub use emu::*;
 pub use emu_context::*;

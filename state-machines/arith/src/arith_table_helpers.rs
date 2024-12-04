@@ -217,7 +217,7 @@ pub struct ArithTableInputsIterator<'a> {
     inputs: &'a ArithTableInputs,
 }
 
-impl<'a> Iterator for ArithTableInputsIterator<'a> {
+impl Iterator for ArithTableInputsIterator<'_> {
     type Item = (usize, u64);
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -1,7 +1,14 @@
+//! Executable that performs a transpilation of a RISC-V ELF file to a Zisk ROM file.
+
 use std::{env, process};
 
 use zisk_core::Riscv2zisk;
 
+/// Performs a transpilation of a RISC-V ELF file to a Zisk ROM file.  
+/// The binary accepts 2 arguments: the path of the input RISC-V ELF file, and the path of the
+/// output Zisk rom file.  
+/// After parsing the arguments, the main function calls Riscv2zisk::runfile to perform the actual
+/// work.
 fn main() {
     println!("riscv2zisk converts an ELF RISCV file into a ZISK ASM file");
 

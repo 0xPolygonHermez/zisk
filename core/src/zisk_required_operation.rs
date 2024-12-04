@@ -1,5 +1,15 @@
+//! Data required to prove the different Zisk operations
+
 use std::{collections::HashMap, fmt};
 
+/// Required data to make an operation.
+///
+/// Stores the minimum information to reproduce an operation execution:
+/// * The opcode and the a and b registers values (regardless of their sources)
+/// * The step is also stored to keep track of the program execution point
+///
+/// This data is generated during the first emulation execution.
+/// This data is required by the main state machine executor to generate the witness computation.
 #[derive(Clone)]
 pub struct ZiskRequiredOperation {
     pub step: u64,
@@ -8,6 +18,7 @@ pub struct ZiskRequiredOperation {
     pub b: u64,
 }
 
+/// Stores the minimum information to generate the memory state machine witness computation.
 #[derive(Clone)]
 pub enum ZiskRequiredMemory {
     Basic { step: u64, value: u64, address: u32, is_write: bool, width: u8, step_offset: u8 },
@@ -57,6 +68,7 @@ impl ZiskRequiredMemory {
     }
 }
 
+/// Data required to get some operations proven by the secondary state machine
 #[derive(Clone, Default)]
 pub struct ZiskRequired {
     pub arith: Vec<ZiskRequiredOperation>,
@@ -65,6 +77,10 @@ pub struct ZiskRequired {
     pub memory: Vec<ZiskRequiredMemory>,
 }
 
+/// Histogram of the program counter values used during the program execution.
+///
+/// Each pc value has a u64 counter, associated to it via a hash map.
+/// The counter is increased every time the corresponding instruction is executed.
 #[derive(Clone, Default)]
 pub struct ZiskPcHistogram {
     pub map: HashMap<u64, u64>,

@@ -1,4 +1,6 @@
-/// Human-readable names of the 32 well-known RISCV registers, to be used in traces
+//! RISC-V registers
+
+/// Human-readable names of the 32 well-known RISC-V registers, to be used in traces
 #[repr(usize)]
 pub enum RiscVRegisters {
     Zero = 0,
