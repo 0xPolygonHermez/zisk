@@ -16,8 +16,7 @@ use zisk_pil::*;
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
-const BYTES: usize = 8;
-const HALF_BYTES: usize = BYTES / 2;
+const AND_OP: u8 = 0x0f;
 
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -235,9 +234,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_byte as u64,
                         previous_cin,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -278,9 +275,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_byte as u64,
                         previous_cin,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -339,9 +334,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
-                        if i == 7 { c_bytes[0] as u64 } else { 0 },
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -391,9 +384,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
-                        if i == 7 { c_bytes[0] as u64 } else { 0 },
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -437,9 +428,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
-                        if i == 7 { c_bytes[0] as u64 } else { 0 },
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -504,9 +493,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -571,9 +558,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -601,9 +586,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         0,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -631,9 +614,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         0,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -661,9 +642,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         b_bytes[i] as u64,
                         0,
                         plast[i],
-                        c_bytes[i] as u64,
                         flags,
-                        i as u64,
                     );
                     multiplicity[row as usize] += 1;
                 }
@@ -755,9 +734,9 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_TRACE);
 
         timer_start_trace!(BINARY_PADDING);
+        // Note: We can choose any operation that trivially satisfies the constraints on padding rows
         let padding_row = BinaryRow::<F> {
-            m_op: F::from_canonical_u8(0x20),
-            m_op_or_ext: F::from_canonical_u8(0x20),
+            m_op: F::from_canonical_u8(AND_OP),
             multiplicity: F::zero(),
             main_step: F::zero(), /* TODO: remove, since main_step is just for
                                    * debugging */
@@ -777,8 +756,6 @@ impl<F: Field> BinaryBasicSM<F> {
                 0,
                 0,
                 last as u64,
-                0,
-                0,
                 0,
             );
             multiplicity_table[row as usize] += multiplicity;

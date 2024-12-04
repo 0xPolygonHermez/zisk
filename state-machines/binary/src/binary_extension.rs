@@ -32,6 +32,8 @@ const SIGN_BYTE: u64 = 0x80;
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
 
+const SE_W_OP: u8 = 0x39;
+
 pub struct BinaryExtensionSM<F: PrimeField> {
     // Witness computation manager
     wcm: Arc<WitnessManager<F>>,
@@ -412,8 +414,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
+        // Note: We can choose any operation that trivially satisfies the constraints on padding rows
         let padding_row =
-            BinaryExtensionRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+            BinaryExtensionRow::<F> { op: F::from_canonical_u8(SE_W_OP), ..Default::default() };
 
         for i in operations.len()..air.num_rows() {
             trace_buffer[i] = padding_row;
