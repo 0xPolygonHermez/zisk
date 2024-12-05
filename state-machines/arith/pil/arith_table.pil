@@ -225,9 +225,9 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
             RANGE_CD[index] = range_cd;
 
             if (generate_table) {
-                println(`OP:${opcode} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} m32:${m32} div:${div}`,
-                        `div_by_zero:${div_by_zero} div_overflow:${div_overflow} sa:${sa} sb:${sb} main_mul:${main_mul}`,
-                        `main_div:${main_div} signed:${signed} range_ab:${range_ab} range_cd:${range_cd} index:${(opcode - 0xb0) * 128 + icase} icase:${icase}`);
+                // println(`OP:${opcode} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} m32:${m32} div:${div}`,
+                //         `div_by_zero:${div_by_zero} div_overflow:${div_overflow} sa:${sa} sb:${sb} main_mul:${main_mul}`,
+                //         `main_div:${main_div} signed:${signed} range_ab:${range_ab} range_cd:${range_cd} index:${(opcode - 0xb0) * 128 + icase} icase:${icase}`);
 
                 op2row[(opcode - 0xb0) * 128 + icase] = index;
                 code = code + `[${opcode}, ${flags}, ${range_ab}, ${range_cd}],`;

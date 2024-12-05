@@ -17,6 +17,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     // in this air the address in a mem-bytes address (internal), when this address is pushed in BUS must be multiplied
     // by MEM_BYTES to get the real address.
+
     const expr internal_base_address = base_address / MEM_BYTES;
     const expr internal_end_address = (base_address + mem_size - 1) / MEM_BYTES;
     airval segment_id;
@@ -135,7 +136,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
                   ],
                   sel: (1 - is_last_segment));
 
-    prepare_mem_continuations_global_contraint(base_address, internal_base_address, RC);
+    on final air final_mem_continuations_global_contraint();
 
     // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
     range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
@@ -197,22 +198,11 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
     }
 
-
     // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of MEM_BYTES
     // and the width to be exactly MEM_BYTES
     // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of MEM_BYTES.
     // These are handled with the Memory Align component
 
-    // if (free_input_mem) {
-    //     const expr mem_op = MEMORY_LOAD_OP;
-    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    // } else if (immutable) {
-    //     const expr mem_op = addr_changes * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    // } else {
-    //     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    //     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
-    // }
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
     permutation_proves(MEMORY_ID, cols: [mem_op, addr * MEM_BYTES, step, MEM_BYTES, ...value], sel: sel);
 }
@@ -234,23 +224,10 @@ private function mem_assumes(int id, int mem_op, expr addr, expr step, expr step
     permutation_assumes(id, [mem_op, addr, 1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset, bytes, ...value], sel: sel);
 }
 
-private function prepare_mem_continuations_global_contraint (const int base_address, const int initial_address, const int RC) {
-    container air.mem.continuations {
-        const int base_addr = base_address;
-        const int initial_addr = initial_address;
-        const int mem_chunks = RC;
-    }
-    on final air final_mem_continuations_global_contraint();
-}
-
 private function final_mem_continuations_global_contraint() {
-    const int base_addr = air.mem.continuations.base_addr;
-    const int initial_addr = air.mem.continuations.initial_addr;
-    const int id = MEMORY_CONT_ID;
-    const int values[air.mem.continuations.mem_chunks];
+    const int values[air.RC];
     for (int i = 0; i < length(values); ++i) {
         values[i] = 0;
     }
-    println(`base_addr: ${base_addr}, initial_addr: ${initial_addr}, values: ${values}`);
-    direct_update_proves(MEMORY_CONT_ID, [ base_addr, 0, initial_addr, 0, ...values]);
+    direct_global_update_proves(MEMORY_CONT_ID, [ air.base_address, 0, air.internal_base_address, 0, ...values]);
 }
