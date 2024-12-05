@@ -14,6 +14,7 @@ use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const INPUT_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
+const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     assert!(
@@ -260,6 +261,12 @@ impl<F: PrimeField> InputDataSM<F> {
         air_values.segment_last_step = last_step;
         air_values.segment_last_value[0] = last_value as u32;
         air_values.segment_last_value[1] = (last_value >> 32) as u32;
+
+        self.std.range_check(
+            F::from_canonical_u32(INPUT_W_ADDR_END - last_addr + 1),
+            F::one(),
+            range_id,
+        );
 
         // range of chunks
         let range_id = self.std.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), None);

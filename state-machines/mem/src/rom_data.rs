@@ -16,6 +16,7 @@ use zisk_pil::{RomDataTrace, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const ROM_W_ADDR: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
+const ROM_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     assert!(
@@ -243,6 +244,12 @@ impl<F: PrimeField> RomDataSM<F> {
         air_values.segment_last_step = last_step;
         air_values.segment_last_value[0] = last_value as u32;
         air_values.segment_last_value[1] = (last_value >> 32) as u32;
+
+        self.std.range_check(
+            F::from_canonical_u32(ROM_W_ADDR_END - last_addr + 1),
+            F::one(),
+            range_id,
+        );
 
         let wcm = self.wcm.clone();
         let pctx = wcm.get_pctx();

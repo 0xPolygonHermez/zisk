@@ -16,6 +16,7 @@ use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
+const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64, "RAM is too large");
@@ -192,6 +193,8 @@ impl<F: PrimeField> MemSM<F> {
 
         let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
 
+        println!("MemSM: segment_id:{} is_last_segment:{} previous_segment_addr:0x{:X} previous_segment_step:{} previous_segment_value:0x{:X} previous_segment_value:0x{:X}",
+            segment_id, is_last_segment, previous_segment.addr, previous_segment.step, previous_segment.value as u32, (previous_segment.value >> 32) as u32);
         let mut air_values = MemAirValues {
             segment_id: segment_id as u32,
             is_first_segment: segment_id == 0,
@@ -275,6 +278,10 @@ impl<F: PrimeField> MemSM<F> {
         // Store the value of trivial increment so that they can be range checked
         // value = 1 => index = 0
         range_check_data[0] += padding_size as u64;
+
+        // no add extra +1 because index = value - 1
+        // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
+        range_check_data[(RAM_W_ADDR_END - last_addr) as usize] += 1; // TODO
 
         // TODO: Perform the range checks
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);

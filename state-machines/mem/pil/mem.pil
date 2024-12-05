@@ -11,13 +11,14 @@ const int MEMORY_MAX_DIFF = 2**24;
 const int MAX_MEM_STEP_OFFSET = 2;
 const int MAX_MEM_OPS_PER_MAIN_STEP = (MAX_MEM_STEP_OFFSET + 1) * 2;
 
-airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int MEM_BYTES = 8, const int base_address = 0, int immutable = 0, const int free_input_mem = 0) {
+airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int MEM_BYTES = 8, const int base_address = 0, int immutable = 0, const int free_input_mem = 0, const int mem_size = 0x800_0000) {
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
     // in this air the address in a mem-bytes address (internal), when this address is pushed in BUS must be multiplied
     // by MEM_BYTES to get the real address.
     const expr internal_base_address = base_address / MEM_BYTES;
+    const expr internal_end_address = (base_address + mem_size - 1) / MEM_BYTES;
     airval segment_id;
     airval is_first_segment;
     airval is_last_segment;
@@ -113,33 +114,34 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     // add base_address to the columns to avoid collisions between different memories
     // for security send is_last_segment to avoid reuse end of last segment as start of new cycle of segments
-    direct_update(MEMORY_CONT_ID,
+    direct_update_assumes(MEMORY_CONT_ID,
                   [
                     base_address,                               // identify area of memory
                     segment_id,                                 // current segment_id
-                    0,                                          // security check, to avoid open a new cycle with
                                                                 // proves of last segment
                     previous_segment_addr,
                     previous_segment_step,
                     ...previous_segment_value
-                  ],
-                  proves: 0);
+                  ]);
 
-    direct_update(MEMORY_CONT_ID,
+    direct_update_proves(MEMORY_CONT_ID,
                   [
                     base_address,                               // identify area of memory
-                    (1 - is_last_segment) * (segment_id + 1),   // next segment_id, for last segment
+                    segment_id + 1,                             // next segment_id, for last segment
                                                                 // this value is forced to 0 to match global constraint
-                    is_last_segment,                            // to force mismatch with assume
-                                                                // (avoid attack repeat cycle)
-                    segment_last_addr,
-                    segment_last_step,
+                    segment_last_addr,                          // last addr of segment
+                    segment_last_step,                          // last step of segment
                     ...segment_last_value
                   ],
-                  proves: 1);
+                  sel: (1 - is_last_segment));
+
+    prepare_mem_continuations_global_contraint(base_address, internal_base_address, RC);
 
     // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
     range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+
+    // control final of memory
+    range_check(colu: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
 
 
     // check increment of memory
@@ -230,4 +232,25 @@ private function mem_assumes(int id, int mem_op, expr addr, expr step, expr step
 
     // adding 1 at step for first continuation
     permutation_assumes(id, [mem_op, addr, 1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset, bytes, ...value], sel: sel);
+}
+
+private function prepare_mem_continuations_global_contraint (const int base_address, const int initial_address, const int RC) {
+    container air.mem.continuations {
+        const int base_addr = base_address;
+        const int initial_addr = initial_address;
+        const int mem_chunks = RC;
+    }
+    on final air final_mem_continuations_global_contraint();
+}
+
+private function final_mem_continuations_global_contraint() {
+    const int base_addr = air.mem.continuations.base_addr;
+    const int initial_addr = air.mem.continuations.initial_addr;
+    const int id = MEMORY_CONT_ID;
+    const int values[air.mem.continuations.mem_chunks];
+    for (int i = 0; i < length(values); ++i) {
+        values[i] = 0;
+    }
+    println(`base_addr: ${base_addr}, initial_addr: ${initial_addr}, values: ${values}`);
+    direct_update_proves(MEMORY_CONT_ID, [ base_addr, 0, initial_addr, 0, ...values]);
 }
