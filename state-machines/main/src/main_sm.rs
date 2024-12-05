@@ -56,7 +56,7 @@ impl<F: PrimeField> MainSM<F> {
 
         let offset = iectx.buffer.offset;
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-        let filled = segment_trace.steps.len() + 1;
+        let filled = segment_trace.steps.steps + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
@@ -76,10 +76,12 @@ impl<F: PrimeField> MainSM<F> {
                 ..MainRow::default()
             }
         } else {
-            let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
+            //let emu_trace_previous = vec_traces[segment_id - 1].last_state;
             let mut emu =
                 Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
-            let row_previous = emu.step_slice_full_trace(emu_trace_previous);
+            let mut mem_reads_index: usize = vec_traces[segment_id - 1].last_state.mem_reads_index;
+            let row_previous =
+                emu.step_slice_full_trace(&vec_traces[segment_id - 1].steps, &mut mem_reads_index);
 
             MainRow::<F> {
                 set_pc: row_previous.set_pc,
@@ -111,20 +113,21 @@ impl<F: PrimeField> MainSM<F> {
         iectx.buffer.buffer[rng].copy_from_slice(row0.as_slice());
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
-        let total_rows = segment_trace.steps.len();
+        let total_rows = segment_trace.steps.steps as usize;
         const SLICE_ROWS: usize = 4096;
         let mut partial_trace = MainTrace::<F>::new(SLICE_ROWS);
 
         let mut last_row = MainRow::<F>::default();
+        let mut emu_trace_step = segment_trace.steps.clone();
+        let mut mem_reads_index: usize = 0;
         for slice in (0..(air.num_rows())).step_by(SLICE_ROWS) {
             // process the steps of the chunk
             let slice_start = std::cmp::min(slice, total_rows);
             let slice_end = std::cmp::min(slice + SLICE_ROWS, total_rows);
 
-            for (i, emu_trace_step) in
-                segment_trace.steps[slice_start..slice_end].iter().enumerate()
-            {
-                partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
+            for i in slice_start..slice_end {
+                partial_trace[i] =
+                    emu.step_slice_full_trace(&mut emu_trace_step, &mut mem_reads_index);
             }
 
             // if there are steps in the chunk update last row
