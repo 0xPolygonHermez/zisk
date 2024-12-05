@@ -219,7 +219,6 @@ impl<'a> Emu<'a> {
     //         self.ctx.inst_ctx.sp += instruction.inc_sp;
     //     }
     // }
-
     /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
@@ -650,7 +649,7 @@ impl<'a> Emu<'a> {
         let mut current_box_id = chunk_id;
         let mut current_step_idx = 0;
 
-        while self.ctx.inst_ctx.end == false {
+        while !self.ctx.inst_ctx.end {
             let step = &vec_traces[current_box_id].steps[current_step_idx];
 
             if self.step_slice_plan::<F>(step, inst_observer) {
