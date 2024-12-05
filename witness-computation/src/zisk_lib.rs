@@ -50,12 +50,7 @@ impl<F: PrimeField> ZiskWitness<F> {
         })
     }
 
-    fn initialize(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
-    ) {
+    fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = WitnessManager::new(pctx, ectx, sctx);
         let wcm = Arc::new(wcm);
 
@@ -101,8 +96,8 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(
         &mut self,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
@@ -112,7 +107,7 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn end_proof(&mut self) {
         self.wcm.get().unwrap().end_proof();
     }
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         timer_start_info!(EXECUTE);
         self.executor.get().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
         timer_stop_and_log_info!(EXECUTE);
@@ -122,8 +117,8 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         &mut self,
         stage: u32,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }
