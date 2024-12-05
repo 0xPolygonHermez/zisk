@@ -48,11 +48,10 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
     let mut checkpoints = vec![CheckPoint::new(0, 0)];
 
     let mut offset = 0i64;
-    let mut current_chunk = 0;
 
     let size = size as i64;
 
-    for count in counts {
+    for (current_chunk, count) in counts.iter().enumerate() {
         let inst_count = count.inst_count as i64;
 
         // Add checkpoints within the current chunk
@@ -63,8 +62,6 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
 
         // Carry over remaining instructions to the next chunk
         offset -= inst_count;
-
-        current_chunk += 1;
     }
 
     checkpoints
