@@ -5,59 +5,56 @@ use p3_field::PrimeField;
 use proofman::WitnessManager;
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{Instance, InstanceExpanderCtx};
+use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_common::InstObserver;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation, ZiskRom};
-use zisk_pil::BINARY_AIR_IDS;
+use zisk_pil::BinaryExtensionTrace;
 use ziskemu::{EmuTrace, ZiskEmulator};
 
-use crate::BinarySM;
+use crate::BinaryExtensionSM;
 
-pub struct BinaryInstance<F: PrimeField> {
-    binary_sm: Arc<BinarySM<F>>,
+pub struct BinaryExtensionInstance<F: PrimeField> {
+    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     wcm: Arc<WitnessManager<F>>,
-    iectx: InstanceExpanderCtx<F>,
+    iectx: InstanceExpanderCtx,
 
-    op_type: ZiskOperationType,
     skipping: bool,
     skipped: u64,
     expanded: u64,
     num_rows: u64,
     inputs: Vec<ZiskRequiredOperation>,
+    binary_e_trace: BinaryExtensionTrace<F>,
 }
 
-impl<F: PrimeField> BinaryInstance<F> {
+impl<F: PrimeField> BinaryExtensionInstance<F> {
     pub fn new(
-        binary_sm: Arc<BinarySM<F>>,
+        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
         wcm: Arc<WitnessManager<F>>,
-        iectx: InstanceExpanderCtx<F>,
+        iectx: InstanceExpanderCtx,
     ) -> Self {
         let pctx = wcm.get_pctx();
         let plan = &iectx.plan;
         let air = pctx.pilout.get_air(plan.airgroup_id, plan.air_id);
-        let op_type = if plan.air_id == BINARY_AIR_IDS[0] {
-            ZiskOperationType::Binary
-        } else {
-            ZiskOperationType::BinaryE
-        };
+
+        let binary_e_trace = BinaryExtensionTrace::new(air.num_rows());
 
         Self {
-            binary_sm,
+            binary_extension_sm,
             wcm,
             iectx,
-            op_type,
             skipping: true,
             skipped: 0,
             expanded: 0,
             num_rows: air.num_rows() as u64,
             inputs: Vec::new(),
+            binary_e_trace,
         }
     }
 }
 
-unsafe impl<F: PrimeField> Sync for BinaryInstance<F> {}
+unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}
 
-impl<F: PrimeField> Instance for BinaryInstance<F> {
+impl<F: PrimeField> Instance for BinaryExtensionInstance<F> {
     fn expand(
         &mut self,
         zisk_rom: &ZiskRom,
@@ -73,18 +70,12 @@ impl<F: PrimeField> Instance for BinaryInstance<F> {
         _min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         timer_start_debug!(PROVE_BINARY);
-        let inputs = std::mem::take(&mut self.inputs);
-
-        self.binary_sm.prove_instance(
-            inputs,
-            self.op_type == ZiskOperationType::BinaryE,
-            &mut self.iectx.buffer.buffer,
-            self.iectx.buffer.offset as u64,
-        );
+        self.binary_extension_sm.prove_instance(&self.inputs, &mut self.binary_e_trace);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
-        timer_start_debug!(CREATE_AIR_INSTANCE);
-        let buffer = std::mem::take(&mut self.iectx.buffer.buffer);
+        timer_start_debug!(CREATE_BINARY_EXTENSION_AIR_INSTANCE);
+        let buffer = std::mem::take(&mut self.binary_e_trace.buffer);
+        let buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
         let air_instance = AirInstance::new(
             self.wcm.get_sctx(),
             self.iectx.plan.airgroup_id,
@@ -93,28 +84,28 @@ impl<F: PrimeField> Instance for BinaryInstance<F> {
             buffer,
         );
 
-        self.wcm
-            .get_pctx()
-            .air_instance_repo
-            .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
+        air_instance_repo.add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+        timer_stop_and_log_debug!(CREATE_BINARY_EXTENSION_AIR_INSTANCE);
 
-        timer_stop_and_log_debug!(CREATE_AIR_INSTANCE);
         Ok(())
+    }
+
+    fn instance_type(&self) -> InstanceType {
+        InstanceType::Instance
     }
 }
 
-impl<F: PrimeField> InstObserver for BinaryInstance<F> {
+impl<F: PrimeField> InstObserver for BinaryExtensionInstance<F> {
     #[inline(always)]
     fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) -> bool {
-        if zisk_inst.op_type != self.op_type {
+        if zisk_inst.op_type != ZiskOperationType::BinaryE {
             return false;
         }
 
-        if self.skipping {
-            if self.skipped < self.iectx.plan.checkpoint.skip {
-                self.skipped += 1;
-                return false;
-            }
+        if self.skipping && self.skipped < self.iectx.plan.checkpoint.skip {
+            self.skipped += 1;
+            return false;
         }
 
         let required_operation = ZiskRequiredOperation {
@@ -127,6 +118,6 @@ impl<F: PrimeField> InstObserver for BinaryInstance<F> {
 
         self.expanded += 1;
 
-        return self.expanded == self.num_rows;
+        self.expanded == self.num_rows
     }
 }

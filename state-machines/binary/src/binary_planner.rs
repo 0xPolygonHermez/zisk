@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use sm_common::{plan, ChunkId, InstCount, Metrics, Plan, Planner};
-use zisk_pil::{BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, ZISK_AIRGROUP_ID};
+use sm_common::{plan, CheckPoint, ChunkId, InstCount, Metrics, Plan, Planner};
+use zisk_pil::{
+    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
+    ZISK_AIRGROUP_ID,
+};
 
 use crate::BinaryCounter;
 
@@ -45,6 +48,22 @@ impl<F: PrimeField> Planner for BinaryPlanner<F> {
                 .collect();
             plan_result.extend(plan);
         }
+
+        // plan_result.push(Plan::new(
+        //     ZISK_AIRGROUP_ID,
+        //     BINARY_TABLE_AIR_IDS[0],
+        //     None,
+        //     CheckPoint::new(0, 0),
+        //     None,
+        // ));
+
+        // plan_result.push(Plan::new(
+        //     ZISK_AIRGROUP_ID,
+        //     BINARY_EXTENSION_TABLE_AIR_IDS[0],
+        //     None,
+        //     CheckPoint::new(0, 0),
+        //     None,
+        // ));
 
         plan_result
     }

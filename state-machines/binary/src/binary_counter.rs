@@ -21,10 +21,12 @@ impl Metrics for BinaryCounter {
     }
 
     fn add(&mut self, other: &dyn Metrics) {
-        if let Some(other) = other.as_any().downcast_ref::<BinaryCounter>() {
-            self.binary.update(other.binary.inst_count);
-            self.binary_extension.update(other.binary_extension.inst_count);
-        }
+        let other = other
+            .as_any()
+            .downcast_ref::<BinaryCounter>()
+            .expect("Binary Metrics: Failed to downcast");
+        self.binary.update(other.binary.inst_count);
+        self.binary_extension.update(other.binary_extension.inst_count);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

@@ -31,8 +31,7 @@ impl<F: Field> BinaryBasicSM<F> {
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
-        let binary_basic = Self { wcm: wcm.clone(), binary_basic_table_sm };
-        let binary_basic = Arc::new(binary_basic);
+        let binary_basic = Arc::new(Self { wcm: wcm.clone(), binary_basic_table_sm });
 
         wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
 
@@ -599,28 +598,11 @@ impl<F: Field> BinaryBasicSM<F> {
 
     pub fn prove_instance(
         &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_basic_table_sm,
-            operations,
-            prover_buffer,
-            offset,
-        );
-    }
-
-    fn prove_internal(
-        wcm: &WitnessManager<F>,
-        binary_basic_table_sm: &BinaryBasicTableSM<F>,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
+        operations: &[ZiskRequiredOperation],
+        binary_trace: &mut BinaryTrace<F>,
     ) {
         timer_start_trace!(BINARY_TRACE);
-        let pctx = wcm.get_pctx();
+        let pctx = self.wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
         let air_binary_table = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
         assert!(operations.len() <= air.num_rows());
@@ -634,12 +616,10 @@ impl<F: Field> BinaryBasicSM<F> {
         );
 
         let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
-        let mut trace_buffer =
-            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
-            trace_buffer[i] = row;
+            binary_trace[i] = row;
         }
         timer_stop_and_log_trace!(BINARY_TRACE);
 
@@ -653,7 +633,7 @@ impl<F: Field> BinaryBasicSM<F> {
         };
 
         for i in operations.len()..air.num_rows() {
-            trace_buffer[i] = padding_row;
+            binary_trace[i] = padding_row;
         }
 
         let padding_size = air.num_rows() - operations.len();
@@ -674,13 +654,8 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_PADDING);
 
         timer_start_trace!(BINARY_TABLE);
-        binary_basic_table_sm.process_slice(&multiplicity_table);
+        self.binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
-
-        std::thread::spawn(move || {
-            drop(operations);
-            drop(multiplicity_table);
-        });
     }
 }
 
