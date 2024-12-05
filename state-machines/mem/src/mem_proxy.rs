@@ -68,11 +68,11 @@ impl<F: PrimeField> MemProxy<F> {
         &self,
         mem_operations: &mut Vec<ZiskRequiredMemory>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let mut engine = MemProxyEngine::<F>::new();
+        let mut engine = MemProxyEngine::<F>::new(self.mem_align_sm.clone());
         engine.add_module("mem", self.mem_sm.clone());
         engine.add_module("input_data", self.input_data_sm.clone());
         engine.add_module("row_data", self.rom_data_sm.clone());
-        engine.prove(&self.mem_align_sm, mem_operations)
+        engine.prove(mem_operations)
     }
 }
 

@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemInput, MemModule, MEM_BYTES, MEM_BYTES_BITS};
+use crate::{MemInput, MemModule, MEM_BYTES_BITS};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -11,11 +11,19 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, SetupCtx};
 
 use sm_common::create_prover_buffer;
+use zisk_core::{RAM_ADDR, RAM_SIZE};
 use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const MEMORY_MAX_DIFF: u32 = 1 << 24;
-const MEM_INITIAL_W_ADDRESS: u32 = 0xA000_0000 >> MEM_BYTES_BITS;
-const MEM_FINAL_W_ADDRESS: u32 = MEM_INITIAL_W_ADDRESS + MEMORY_MAX_DIFF;
+const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
+
+const _: () = {
+    assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64, "RAM is too large");
+    assert!(
+        (RAM_ADDR + RAM_SIZE - 1) <= 0xFFFF_FFFF,
+        "RAM memory exceeds the 32-bit addressable range"
+    );
+};
 
 pub struct MemSM<F: PrimeField> {
     // Witness computation manager
@@ -24,7 +32,6 @@ pub struct MemSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
-    num_rows: usize,
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 }
@@ -41,7 +48,7 @@ pub struct MemAirValues {
     pub segment_last_step: u64,
     pub segment_last_value: [u32; 2],
 }
-
+#[derive(Debug)]
 pub struct MemPreviousSegment {
     pub addr: u32,
     pub step: u64,
@@ -53,12 +60,8 @@ impl<F: PrimeField> MemSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
-        let mem_sm = Self {
-            wcm: wcm.clone(),
-            std: std.clone(),
-            num_rows: air.num_rows(),
-            registered_predecessors: AtomicU32::new(0),
-        };
+        let mem_sm =
+            Self { wcm: wcm.clone(), std: std.clone(), registered_predecessors: AtomicU32::new(0) };
         let mem_sm = Arc::new(mem_sm);
 
         wcm.register_component(mem_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MEM_AIR_IDS));
@@ -117,11 +120,10 @@ impl<F: PrimeField> MemSM<F> {
 
         // for (segment_id, mem_ops) in inputs.chunks(air_mem_available_rows).enumerate() {
         for segment_id in 0..num_segments {
-            println!("Processing MEM segment {}/{}", segment_id, num_segments);
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
             let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: MEM_INITIAL_W_ADDRESS, step: 0, value: 0 }
+                MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 }
             } else {
                 MemPreviousSegment {
                     addr: inputs[input_offset - 1].addr,
@@ -165,9 +167,12 @@ impl<F: PrimeField> MemSM<F> {
         air_mem_rows: usize,
         global_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let max_rows_per_segment = air_mem_rows - 1;
-
-        assert!(!mem_ops.is_empty() && mem_ops.len() <= max_rows_per_segment);
+        assert!(
+            !mem_ops.is_empty() && mem_ops.len() <= air_mem_rows,
+            "MemSM: mem_ops.len()={} out of range {}",
+            mem_ops.len(),
+            air_mem_rows
+        );
 
         // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
         // segments In a Memory AIR instance, the first row is reserved as a dummy row.
@@ -201,24 +206,14 @@ impl<F: PrimeField> MemSM<F> {
         };
 
         // index it's value - 1, for this reason no add +1
-        range_check_data[(previous_segment.addr - MEM_INITIAL_W_ADDRESS) as usize] += 1; // TODO
+        range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1; // TODO
 
         // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
-        println!("MEM Previous Segment [addr:0x{:X} step:{}]", last_addr, last_step);
-
         for (i, mem_op) in mem_ops.iter().enumerate() {
-            println!(
-                "Processing MEM operation {}/{} W_ADDR:0x{:X} ADDR:0x{:X} STEP:{}",
-                i,
-                mem_ops.len(),
-                mem_op.addr,
-                mem_op.addr * MEM_BYTES,
-                mem_op.step
-            );
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::from_bool(!mem_op.is_internal);
@@ -237,22 +232,12 @@ impl<F: PrimeField> MemSM<F> {
                 mem_op.step - last_step
             };
             trace[i].increment = F::from_canonical_u64(increment);
-            println!(
-                "MEM DEBUG addr:0x{:X} step:{} value:0x{:X} addr_changes:{} wr:{} sel:{} increment:{}",
-                mem_op.addr,
-                mem_op.step,
-                mem_op.value,
-                addr_changes as u8,
-                (!mem_op.is_internal) as u8,
-                mem_op.is_write as u8,
-                increment
-            );
 
             // Store the value of incremenet so it can be range checked
             if increment <= MEMORY_MAX_DIFF as u64 || increment == 0 {
                 range_check_data[(increment - 1) as usize] += 1;
             } else {
-                println!("***** => INCREMENT OUT OF RANGE (MEM): {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
+                panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
 
@@ -297,12 +282,6 @@ impl<F: PrimeField> MemSM<F> {
             if (multiplicity == 0) {
                 continue;
             }
-            println!(
-                "MEM DEBUG Range Check: value:{} multiplicity:{} range_id:{}",
-                value + 1,
-                multiplicity,
-                range_id,
-            );
             self.std.range_check(
                 F::from_canonical_usize(value + 1),
                 F::from_canonical_u64(multiplicity),
@@ -401,14 +380,13 @@ impl<F: PrimeField> MemSM<F> {
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {
     fn send_inputs(&self, mem_op: &[MemInput]) {
-        println!("Sending inputs to MemSM len:{}", mem_op.len());
         self.prove(&mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(MEM_INITIAL_W_ADDRESS * MEM_BYTES, (MEM_FINAL_W_ADDRESS - 1) * MEM_BYTES)]
+        vec![(RAM_ADDR as u32, (RAM_ADDR + RAM_SIZE - 1) as u32)]
     }
     fn get_flush_input_size(&self) -> u32 {
-        self.num_rows as u32
+        0
     }
 }
 

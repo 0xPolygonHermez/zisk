@@ -2,6 +2,7 @@ use crate::{MemAlignResponse, MEM_BYTES};
 use std::fmt;
 use zisk_core::ZiskRequiredMemory;
 
+#[allow(dead_code)]
 fn format_u64_hex(value: u64) -> String {
     let hex_str = format!("{:016x}", value);
     hex_str

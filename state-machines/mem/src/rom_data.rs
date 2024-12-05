@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemAirValues, MemInput, MemModule, MemPreviousSegment, MEM_BYTES, MEM_BYTES_BITS};
+use crate::{MemAirValues, MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -11,11 +11,19 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, SetupCtx};
 
 use sm_common::create_prover_buffer;
+use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{RomDataTrace, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const MEMORY_MAX_DIFF: u32 = 1 << 24;
-const MEM_INITIAL_W_ADDRESS: u32 = 0x8000_0000 >> 3;
-const MEM_FINAL_W_ADDRESS: u32 = MEM_INITIAL_W_ADDRESS + MEMORY_MAX_DIFF;
+const ROM_W_ADDR: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
+
+const _: () = {
+    assert!(
+        (ROM_ADDR_MAX - ROM_ADDR) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64,
+        "ROM_DATA is too large"
+    );
+    assert!(ROM_ADDR_MAX <= 0xFFFF_FFFF, "ROM_DATA memory exceeds the 32-bit addressable range");
+};
 
 pub struct RomDataSM<F: PrimeField> {
     // Witness computation manager
@@ -101,7 +109,7 @@ impl<F: PrimeField> RomDataSM<F> {
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
             let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: MEM_INITIAL_W_ADDRESS, step: 0, value: 0 }
+                MemPreviousSegment { addr: ROM_W_ADDR, step: 0, value: 0 }
             } else {
                 MemPreviousSegment {
                     addr: inputs[input_offset - 1].addr,
@@ -145,9 +153,12 @@ impl<F: PrimeField> RomDataSM<F> {
         air_mem_rows: usize,
         global_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let max_rows_per_segment = air_mem_rows - 1;
-
-        assert!(!mem_ops.is_empty() && mem_ops.len() <= max_rows_per_segment);
+        assert!(
+            !mem_ops.is_empty() && mem_ops.len() <= air_mem_rows,
+            "RomDataSM: mem_ops.len()={} out of range {}",
+            mem_ops.len(),
+            air_mem_rows
+        );
 
         // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
         // segments In a Memory AIR instance, the first row is reserved as a dummy row.
@@ -182,7 +193,7 @@ impl<F: PrimeField> RomDataSM<F> {
         // range of instance
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
         self.std.range_check(
-            F::from_canonical_u32(previous_segment.addr - MEM_INITIAL_W_ADDRESS + 1),
+            F::from_canonical_u32(previous_segment.addr - ROM_W_ADDR + 1),
             F::one(),
             range_id,
         );
@@ -327,7 +338,7 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         self.prove(&mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(MEM_INITIAL_W_ADDRESS * MEM_BYTES, (MEM_FINAL_W_ADDRESS - 1) * MEM_BYTES)]
+        vec![(ROM_ADDR as u32, ROM_ADDR_MAX as u32)]
     }
     fn get_flush_input_size(&self) -> u32 {
         self.num_rows as u32

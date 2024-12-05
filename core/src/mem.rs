@@ -46,8 +46,7 @@
 //! * The first instructions do the basic program setup, including writing the input data into
 //!   memory, configuring the ecall (system call) program address, and configuring the program
 //!   completion return address.
-//! * After the program setup, the program counter jumps to `ROM_ADDR`, executing the actual
-//!   program.
+//! * After the program set1, the program counter jumps to `ROM_ADDR`, executing the actual program.
 //! * During the execution, the program can make system calls that will jump to the configured ecall
 //!   program address, and return once the task has completed. The precompiled are implemented via
 //!   ecall.
@@ -84,11 +83,11 @@ use std::fmt;
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x90000000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x10000000; // 256M,
+pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
 /// First globa RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
-pub const RAM_SIZE: u64 = 0x10000000; // 256M
+pub const RAM_SIZE: u64 = 0x08000000; // 128M
 /// First system RW memory address
 pub const SYS_ADDR: u64 = RAM_ADDR;
 /// Size of the system RW memory
@@ -108,7 +107,7 @@ pub const ROM_EXIT: u64 = 0x10000000;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
-pub const ROM_ADDR_MAX: u64 = INPUT_ADDR - 1;
+pub const ROM_ADDR_MAX: u64 = (ROM_ADDR + 0x08000000) - 1; // 128M
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output
@@ -359,8 +358,6 @@ impl Mem {
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
-        println!("Mem::read_required() addr=0x{:x} addr_req_1=0x{:x} addr_req_2=0x{:x} width={} is_full_aligned={} is_single_not_aligned={} is_double_not_aligned={}",
-            addr, addr_req_1, addr_req_2, width, is_full_aligned, is_single_not_aligned, is_double_not_aligned);
         // First try to read in the write section
         if (addr >= self.write_section.start) && (addr <= (self.write_section.end - width)) {
             // Calculate the read position
@@ -381,7 +378,6 @@ impl Mem {
                 _ => panic!("Mem::read() invalid width={}", width),
             };
 
-            println!("I'm here");
             // If is a single not aligned operation, return the aligned address value
             if is_single_not_aligned {
                 let mut additional_data: Vec<u64> = Vec::new();
