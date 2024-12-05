@@ -280,7 +280,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                                       (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
                                       (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
                                       1, 0, 
-                                      1], sel: div);
+                                      1], sel: div * (1 - div_by_zero));
 
     for (int index = 0; index < length(carry); ++index) {
          arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range

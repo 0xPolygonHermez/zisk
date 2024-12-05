@@ -414,7 +414,8 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
-        // Note: We can choose any operation that trivially satisfies the constraints on padding rows
+        // Note: We can choose any operation that trivially satisfies the constraints on padding
+        // rows
         let padding_row =
             BinaryExtensionRow::<F> { op: F::from_canonical_u8(SE_W_OP), ..Default::default() };
 
@@ -456,12 +457,8 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             drop(range_check);
         });
     }
-}
 
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
-
-impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensionSM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, _scope: &Scope) {
+    pub fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
         if let Ok(mut inputs) = self.inputs.lock() {
             inputs.extend_from_slice(operations);
 
@@ -502,3 +499,5 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
         }
     }
 }
+
+impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}

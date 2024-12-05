@@ -51,7 +51,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let rom_sm = RomSM::new(wcm.clone());
         let mem_sm = MemSM::new(wcm.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
-        let arith_sm = ArithSM::new(wcm.clone());
+        let arith_sm = ArithSM::new(wcm.clone(), binary_sm.clone());
 
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let zisk_rom = if rom_path.extension().unwrap() == "elf" {
