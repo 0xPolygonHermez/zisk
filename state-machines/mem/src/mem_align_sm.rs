@@ -12,7 +12,6 @@ use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 
-use sm_common::create_prover_buffer;
 use zisk_pil::{MemAlignRow, MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
@@ -947,17 +946,9 @@ impl<F: PrimeField> MemAlignSM<F> {
         debug_assert!(rows_len <= air_mem_align_rows);
 
         // Get the execution and setup context
-        let ectx = wcm.get_ectx();
         let sctx = wcm.get_sctx();
 
-        // Create a prover buffer
-        let (mut prover_buffer, offset) =
-            create_prover_buffer(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
-
-        // Create a Mem Align trace buffer
-        let mut trace_buffer =
-            MemAlignTrace::<F>::map_buffer(&mut prover_buffer, air_mem_align_rows, offset as usize)
-                .unwrap();
+        let mut trace_buffer: MemAlignTrace<'_, _> = MemAlignTrace::new(air_mem_align_rows);
 
         let mut reg_range_check: Vec<u64> = vec![0; 1 << CHUNK_BITS];
         println!("ROW 0 mem_align {:?}", rows[0]);
@@ -1017,8 +1008,13 @@ impl<F: PrimeField> MemAlignSM<F> {
         );
 
         // Add a new Mem Align instance
-        let air_instance =
-            AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0], None, prover_buffer);
+        let air_instance = AirInstance::new(
+            sctx,
+            ZISK_AIRGROUP_ID,
+            MEM_ALIGN_AIR_IDS[0],
+            None,
+            trace_buffer.buffer.unwrap(),
+        );
         pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }

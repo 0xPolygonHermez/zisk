@@ -6,10 +6,11 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, BufferAllocator, SetupCtx};
 use proofman_util::create_buffer_fast;
 
-use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
-use zisk_pil::{Pilout, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
-//use ziskemu::ZiskEmulatorErr;
 use std::error::Error;
+use zisk_core::{Riscv2zisk, ZiskPcHistogram, ZiskRom, SRC_IMM};
+use zisk_pil::{
+    Pilout, RomRomRow, RomRomTrace, RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 pub struct RomSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -36,83 +37,19 @@ impl<F: Field> RomSM<F> {
             panic!("RomSM::prove() detected pc_histogram.end_pc == 0"); // TODO: return an error
         }
 
+        // Allocate a prover buffer
         let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
         let sctx = self.wcm.get_sctx();
 
-        let main_trace_len =
-            self.wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows();
-
-        let prover_buffer = Self::compute_trace_rom(
-            rom,
-            buffer_allocator,
-            &sctx,
-            pc_histogram,
-            main_trace_len as u64,
-        )?;
-
-        let air_instance =
-            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
-
-        self.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(instance_gid));
-
-        Ok(())
-    }
-    pub fn compute_trace(
-        rom_path: PathBuf,
-        buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        sctx: &SetupCtx<F>,
-    ) -> Result<Vec<F>, Box<dyn Error + Send>> {
-        // Get the ELF file path as a string
-        let elf_filename: String = rom_path.to_str().unwrap().into();
-        println!("Proving ROM for ELF file={}", elf_filename);
-
-        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
-
-        // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
-
-        // Convert program to rom
-        let rom_result = riscv2zisk.run();
-        if rom_result.is_err() {
-            //return Err(ZiskEmulatorErr::Unknown(zisk_rom.err().unwrap().to_string()));
-            panic!("RomSM::prover() failed converting elf to rom");
-        }
-        let rom = rom_result.unwrap();
-
-        let empty_pc_histogram = ZiskPcHistogram::default();
-
-        Self::compute_trace_rom(&rom, buffer_allocator, sctx, empty_pc_histogram, 0)
-    }
-
-    pub fn compute_trace_rom(
-        rom: &ZiskRom,
-        buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        sctx: &SetupCtx<F>,
-        pc_histogram: ZiskPcHistogram,
-        main_trace_len: u64,
-    ) -> Result<Vec<F>, Box<dyn Error + Send>> {
+        // Create an empty ROM trace
         let pilout = Pilout::pilout();
         let num_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
-        let number_of_instructions = rom.insts.len();
-
-        // Allocate a prover buffer
-        let (buffer_size, offsets) = buffer_allocator
-            .get_buffer_info(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
-            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
-        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
-
-        // Create an empty ROM trace
-        let mut rom_trace =
-            RomTrace::<F>::map_buffer(&mut prover_buffer, num_rows, offsets[0] as usize)
-                .expect("RomSM::compute_trace() failed mapping buffer to ROMS0Trace");
+        let mut rom_trace = RomTrace::new(num_rows);
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
-        let keys = rom.insts.keys();
-        let sorted_keys = keys.sorted();
-        let mut i = 0;
-        for key in sorted_keys {
+        let main_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
@@ -133,6 +70,88 @@ impl<F: Field> RomSM<F> {
                     continue; // We skip those pc's that are not used in this execution
                 }
             }
+            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
+        }
+
+        // Padd with zeroes
+        for i in rom.insts.len()..num_rows {
+            rom_trace[i] = RomRow::default();
+        }
+
+        let mut air_instance = AirInstance::new(
+            sctx.clone(),
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            None,
+            rom_trace.buffer.unwrap(),
+        );
+
+        match self
+            .wcm
+            .get_ectx()
+            .cached_buffers_path
+            .as_ref()
+            .and_then(|cached_buffers| cached_buffers.get("rom").cloned())
+        {
+            Some(buffer_path) => {
+                let (_, _, commit_id) = buffer_allocator
+                    .clone()
+                    .get_buffer_info_custom_commit(&sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
+                    .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+
+                air_instance.set_custom_commit_cached_file(&sctx, commit_id, buffer_path);
+            }
+            None => {
+                let (commit_id_rom, prover_buffer_rom) =
+                    Self::compute_trace_rom(rom, buffer_allocator.clone(), &sctx)?;
+
+                air_instance.set_custom_commit_id_buffer(&sctx, prover_buffer_rom, commit_id_rom);
+            }
+        }
+
+        let (commit_id_rom, prover_buffer_rom) =
+            Self::compute_trace_rom(rom, buffer_allocator.clone(), &sctx)?;
+
+        air_instance.set_custom_commit_id_buffer(&sctx, prover_buffer_rom, commit_id_rom);
+
+        let (is_mine, instance_gid) = self.wcm.get_ectx().dctx.write().unwrap().add_instance(
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            1,
+        );
+        if is_mine {
+            self.wcm
+                .get_pctx()
+                .air_instance_repo
+                .add_air_instance(air_instance, Some(instance_gid));
+        }
+
+        Ok(())
+    }
+
+    pub fn compute_trace_rom(
+        rom: &ZiskRom,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
+        // Allocate a prover buffer
+        let (buffer_size_rom, offsets_rom, commit_id) = buffer_allocator
+            .get_buffer_info_custom_commit(sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], "rom")
+            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
+
+        // Create an empty ROM trace
+        let pilout = Pilout::pilout();
+        let trace_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
+        let mut prover_buffer = create_buffer_fast(buffer_size_rom as usize);
+
+        let mut rom_trace =
+            RomRomTrace::<F>::map_buffer(&mut prover_buffer, trace_rows, offsets_rom[0] as usize)
+                .expect("RomRootSM::compute_trace() failed mapping buffer to ROMSRow");
+
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
+            // Get the Zisk instruction
+            let inst = &rom.insts[key].i;
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
@@ -169,23 +188,40 @@ impl<F: Field> RomSM<F> {
             rom_trace[i].b_offset_imm0 = b_offset_imm0;
             rom_trace[i].b_imm1 =
                 F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            //rom_trace[i].b_src_ind =
-            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
             rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
             rom_trace[i].op = F::from_canonical_u8(inst.op);
             rom_trace[i].store_offset = store_offset;
             rom_trace[i].jmp_offset1 = jmp_offset1;
             rom_trace[i].jmp_offset2 = jmp_offset2;
             rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
-            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
         }
 
         // Padd with zeroes
-        for i in number_of_instructions..num_rows {
-            rom_trace[i] = RomRow::default();
+        for i in rom.insts.len()..trace_rows {
+            rom_trace[i] = RomRomRow::default();
         }
 
-        Ok(prover_buffer)
+        Ok((commit_id, prover_buffer))
+    }
+
+    pub fn compute_trace_rom_buffer(
+        rom_path: PathBuf,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
+    ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
+        // Get the ELF file path as a string
+        let elf_filename: String = rom_path.to_str().unwrap().into();
+        println!("Proving ROM for ELF file={}", elf_filename);
+
+        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
+
+        // Create an instance of the RISCV -> ZisK program converter
+        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+
+        // Convert program to rom
+        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+
+        Self::compute_trace_rom(&rom, buffer_allocator, sctx)
     }
 }
 

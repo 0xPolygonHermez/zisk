@@ -59,9 +59,8 @@ impl<F: Field> ArithSM<F> {
         &self,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
-        self.arith_full_sm.prove_instance(operations, prover_buffer, offset);
+        self.arith_full_sm.prove_instance(operations, prover_buffer);
     }
 }
 

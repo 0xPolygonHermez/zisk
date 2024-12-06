@@ -11,7 +11,6 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 
-use sm_common::create_prover_buffer;
 use zisk_pil::{MemAlignRomRow, MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[derive(Debug, Clone, Copy)]
@@ -184,17 +183,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         let air_mem_align_rom = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
         let air_mem_align_rom_rows = air_mem_align_rom.num_rows();
 
-        // Create a prover buffer
-        let (mut prover_buffer, offset) =
-            create_prover_buffer(&ectx, &sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
-
-        // Create the Mem Align ROM trace buffer
-        let mut trace_buffer = MemAlignRomTrace::<F>::map_buffer(
-            &mut prover_buffer,
-            air_mem_align_rom_rows,
-            offset as usize,
-        )
-        .unwrap();
+        let mut trace_buffer: MemAlignRomTrace<'_, _> = MemAlignRomTrace::new(air_mem_align_rom_rows);
 
         // Initialize the trace buffer to zero
         for i in 0..air_mem_align_rom_rows {
@@ -211,8 +200,13 @@ impl<F: PrimeField> MemAlignRomSM<F> {
 
         info!("{}: ··· Creating Mem Align Rom instance", Self::MY_NAME,);
 
-        let air_instance =
-            AirInstance::new(sctx, ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0], None, prover_buffer);
+        let air_instance = AirInstance::new(
+            sctx,
+            ZISK_AIRGROUP_ID,
+            MEM_ALIGN_ROM_AIR_IDS[0],
+            None,
+            trace_buffer.buffer.unwrap(),
+        );
         pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }

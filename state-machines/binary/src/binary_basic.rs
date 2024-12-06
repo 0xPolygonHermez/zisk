@@ -9,12 +9,15 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
+use sm_common::{OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{BinaryRow, BinaryTrace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
+
+const BYTES: usize = 8;
+const HALF_BYTES: usize = BYTES / 2;
 
 pub struct BinaryBasicSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -158,6 +161,7 @@ impl<F: Field> BinaryBasicSM<F> {
         let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
         let mode32 = Self::opcode_is_32_bits(opcode);
         row.mode32 = F::from_bool(mode32);
+        let mode64 = F::from_bool(!mode32);
 
         // Set c_filtered
         let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
@@ -667,6 +671,33 @@ impl<F: Field> BinaryBasicSM<F> {
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", operation.opcode),
         }
 
+        // Set cout
+        let cout32 = row.carry[HALF_BYTES - 1];
+        let cout64 = row.carry[BYTES - 1];
+        row.cout = mode64 * (cout64 - cout32) + cout32;
+
+        // Set result_is_a
+        row.result_is_a = row.op_is_min_max * row.cout;
+
+        // Set use_last_carry_mode32 and use_last_carry_mode64
+        row.use_last_carry_mode32 = F::from_bool(mode32) * row.use_last_carry;
+        row.use_last_carry_mode64 = mode64 * row.use_last_carry;
+
+        // Set micro opcode
+        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
+
+        // Set m_op_or_ext
+        let ext_32_op = F::from_canonical_u8(BinaryBasicTableOp::Ext32 as u8);
+        row.m_op_or_ext = mode64 * (row.m_op - ext_32_op) + ext_32_op;
+
+        // Set free_in_a_or_c and free_in_b_or_zero
+        for i in 0..HALF_BYTES {
+            row.free_in_a_or_c[i] = mode64 *
+                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
+                row.free_in_c[HALF_BYTES - 1];
+            row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
+        }
+
         if row.use_last_carry == F::one() {
             // Set first and last elements
             row.free_in_c[7] = row.free_in_c[0];
@@ -676,9 +707,6 @@ impl<F: Field> BinaryBasicSM<F> {
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::one();
 
-        // Set micro opcode
-        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
-
         // Return
         row
     }
@@ -687,14 +715,12 @@ impl<F: Field> BinaryBasicSM<F> {
         &self,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
         Self::prove_internal(
             &self.wcm,
             &self.binary_basic_table_sm,
             operations,
             prover_buffer,
-            offset,
         );
     }
 
@@ -703,7 +729,6 @@ impl<F: Field> BinaryBasicSM<F> {
         binary_basic_table_sm: &BinaryBasicTableSM<F>,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
         timer_start_trace!(BINARY_TRACE);
         let pctx = wcm.get_pctx();
@@ -721,7 +746,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
         let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
         let mut trace_buffer =
-            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize).unwrap();
+            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
@@ -732,6 +757,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_start_trace!(BINARY_PADDING);
         let padding_row = BinaryRow::<F> {
             m_op: F::from_canonical_u8(0x20),
+            m_op_or_ext: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
             main_step: F::zero(), /* TODO: remove, since main_step is just for
                                    * debugging */
@@ -789,19 +815,14 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &wcm.get_ectx(),
-                    &wcm.get_sctx(),
-                    ZISK_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                );
-
+                let trace: BinaryTrace<'_, _> = BinaryTrace::new(air.num_rows());
+                let mut prover_buffer = trace.buffer.unwrap();
+    
                 Self::prove_internal(
                     &wcm,
                     &binary_basic_table_sm,
                     drained_inputs,
                     &mut prover_buffer,
-                    offset,
                 );
 
                 let air_instance = AirInstance::new(

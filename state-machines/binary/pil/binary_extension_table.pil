@@ -1,3 +1,4 @@
+require "std_constants.pil"
 require "std_lookup.pil"
 
 // Operations Table:
