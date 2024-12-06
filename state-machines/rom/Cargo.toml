@@ -18,6 +18,7 @@ proofman = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }
+itertools = "0.13.0"
 
 [features]
 default = []

@@ -49,21 +49,21 @@ impl<F: PrimeField> Planner for BinaryPlanner<F> {
             plan_result.extend(plan);
         }
 
-        // plan_result.push(Plan::new(
-        //     ZISK_AIRGROUP_ID,
-        //     BINARY_TABLE_AIR_IDS[0],
-        //     None,
-        //     CheckPoint::new(0, 0),
-        //     None,
-        // ));
+        plan_result.push(Plan::new(
+            ZISK_AIRGROUP_ID,
+            BINARY_TABLE_AIR_IDS[0],
+            None,
+            CheckPoint::new(0, 0),
+            None,
+        ));
 
-        // plan_result.push(Plan::new(
-        //     ZISK_AIRGROUP_ID,
-        //     BINARY_EXTENSION_TABLE_AIR_IDS[0],
-        //     None,
-        //     CheckPoint::new(0, 0),
-        //     None,
-        // ));
+        plan_result.push(Plan::new(
+            ZISK_AIRGROUP_ID,
+            BINARY_EXTENSION_TABLE_AIR_IDS[0],
+            None,
+            CheckPoint::new(0, 0),
+            None,
+        ));
 
         plan_result
     }

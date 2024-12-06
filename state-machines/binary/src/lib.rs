@@ -7,6 +7,7 @@ mod binary_counter;
 mod binary_extension;
 mod binary_extension_instance;
 mod binary_extension_table;
+mod binary_extension_table_instance;
 mod binary_planner;
 
 pub use binary::*;
@@ -18,4 +19,5 @@ pub use binary_counter::*;
 pub use binary_extension::*;
 pub use binary_extension_instance::*;
 pub use binary_extension_table::*;
+pub use binary_extension_table_instance::*;
 pub use binary_planner::*;

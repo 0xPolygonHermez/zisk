@@ -5,10 +5,8 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 
 use rayon::prelude::*;
 
-use sm_common::{
-    create_prover_buffer, CheckPoint, ComponentProvider, InstanceExpanderCtx, Plan, WitnessBuffer,
-};
-use sm_main::MainSM;
+use sm_common::{CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan};
+use sm_main::{MainInstance, MainSM};
 
 use std::{
     fs,
@@ -52,8 +50,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         public_inputs_path: &Path,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        _: Arc<SetupCtx>,
     ) {
         // Call emulate with these options
         let public_inputs = {
@@ -74,7 +72,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // PATH A PHASE 2. Count & Reduce the Minimal Traces to get the Plans
         // ---------------------------------------------------------------------------------
         let mut main_planning = self.create_main_plans(&min_traces);
-        let mut main_layouts = self.create_main_layouts(&mut main_planning);
+        let mut main_layouts = self.create_main_instances(&mut main_planning);
 
         // PATH A PHASE 3. Expand the Minimal Traces to fill the Main Traces
         // ---------------------------------------------------------------------------------
@@ -85,8 +83,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
             let minimal_traces = min_traces.clone();
 
             std::thread::spawn(move || {
-                main_layouts.par_iter_mut().for_each(|iectx| {
-                    main_sm.prove_main(&zisk_rom, &minimal_traces, iectx, &pctx);
+                main_layouts.par_iter_mut().for_each(|main_instance| {
+                    main_sm.prove_main(&zisk_rom, &minimal_traces, main_instance, &pctx);
                 });
                 main_layouts
             })
@@ -107,23 +105,28 @@ impl<F: PrimeField> ZiskExecutor<F> {
         for (i, plans_by_sm) in plans.iter_mut().enumerate() {
             for plan in plans_by_sm.drain(..) {
                 if let (true, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1) {
-                    let (buffer, offset) =
-                        create_prover_buffer::<F>(&ectx, &sctx, plan.airgroup_id, plan.air_id);
+                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
 
-                    let witness_buffer = WitnessBuffer::new(buffer, offset);
-                    let iectx = InstanceExpanderCtx::new(witness_buffer, global_idx, plan);
-
-                    let instance = self.secondary_sm[i].clone().get_instance(iectx);
+                    let instance = self.secondary_sm[i].get_instance(iectx);
                     sec_instances.push(instance);
                 }
             }
         }
+        drop(dctx);
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
         sec_instances.par_iter_mut().for_each(|sec_instance| {
-            let _ = sec_instance.expand(&self.zisk_rom, min_traces.clone());
-            let _ = sec_instance.prove(min_traces.clone());
+            if sec_instance.instance_type() == InstanceType::Instance {
+                let _ = sec_instance.expand(&self.zisk_rom, min_traces.clone());
+                let _ = sec_instance.prove(min_traces.clone());
+            }
+        });
+
+        sec_instances.par_iter_mut().for_each(|sec_instance| {
+            if sec_instance.instance_type() == InstanceType::Table {
+                let _ = sec_instance.prove(min_traces.clone());
+            }
         });
 
         // Drop memory
@@ -146,7 +149,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 });
                 ZiskEmulator::process_rom_slice_counters::<F>(
                     &self.zisk_rom,
-                    &minimal_trace,
+                    minimal_trace,
                     &mut metrics_proxy,
                 );
                 metrics_proxy
@@ -154,19 +157,19 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect::<Vec<_>>();
         timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
-        // Group surveyors by chunk_id and surveyor type
-        let mut vec_surveyors =
+        // Group counters by chunk_id and surveyor type
+        let mut vec_counters =
             (0..metrics_slices[0].metrics.len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
         for (chunk_id, surveyor_slice) in metrics_slices.iter_mut().enumerate() {
             for (i, surveyor) in surveyor_slice.metrics.drain(..).enumerate() {
-                vec_surveyors[i].push((chunk_id, surveyor));
+                vec_counters[i].push((chunk_id, surveyor));
             }
         }
 
         self.secondary_sm
             .iter()
-            .map(|sm| sm.get_planner().plan(vec_surveyors.drain(..1).next().unwrap()))
+            .map(|sm| sm.get_planner().plan(vec_counters.drain(..1).next().unwrap()))
             .collect()
     }
 
@@ -212,19 +215,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    fn create_main_layouts(&self, main_planning: &mut Vec<Plan>) -> Vec<InstanceExpanderCtx<F>> {
+    fn create_main_instances(&self, main_planning: &mut Vec<Plan>) -> Vec<MainInstance<F>> {
         let mut main_instances = Vec::new();
         let ectx = self.wcm.get_ectx();
-        let sctx = self.wcm.get_sctx();
 
         let mut dctx = ectx.dctx.write().unwrap();
         for plan in main_planning.drain(..) {
             if let (true, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1) {
-                let (buffer, offset) =
-                    create_prover_buffer::<F>(&ectx, &sctx, plan.airgroup_id, plan.air_id);
-
-                let witness_buffer = WitnessBuffer::new(buffer, offset);
-                main_instances.push(InstanceExpanderCtx::new(witness_buffer, global_idx, plan));
+                let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                main_instances.push(self.main_sm.get_instance(iectx));
             }
         }
 

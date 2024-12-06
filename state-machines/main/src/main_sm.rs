@@ -56,22 +56,21 @@ impl<F: PrimeField> MainSM<F> {
         pctx: &ProofCtx<F>,
     ) {
         let iectx = &main_instance.iectx;
-        let segment_id = iectx.plan.segment_id.unwrap();
-        let segment_trace = &vec_traces[segment_id];
+        let current_segment = iectx.plan.segment_id.unwrap();
 
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-        let filled = segment_trace.steps.len() + 1;
+        let filled = vec_traces[current_segment].steps.len() + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            segment_id,
+            current_segment,
             filled,
             air.num_rows(),
             filled as f64 / air.num_rows() as f64 * 100.0
         );
 
         // Set Row 0 of the current segment
-        let row0 = if segment_id == 0 {
+        let row0 = if current_segment == 0 {
             MainRow::<F> {
                 pc: F::from_canonical_u64(ROM_ENTRY),
                 op: F::from_canonical_u8(ZiskOp::CopyB.code()),
@@ -80,9 +79,9 @@ impl<F: PrimeField> MainSM<F> {
                 ..MainRow::default()
             }
         } else {
-            let emu_trace_previous = vec_traces[segment_id - 1].steps.last().unwrap();
+            let emu_trace_previous = vec_traces[current_segment - 1].steps.last().unwrap();
             let mut emu =
-                Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
+                Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment - 1].last_state);
             let row_previous = emu.step_slice_full_trace(emu_trace_previous);
 
             MainRow::<F> {
@@ -109,18 +108,18 @@ impl<F: PrimeField> MainSM<F> {
             }
         };
 
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment].start_state);
 
         main_instance.main_trace.buffer[0] = row0;
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
-        for (idx, emu_trace) in vec_traces[segment_id].steps.iter().enumerate() {
+        for (idx, emu_trace) in vec_traces[current_segment].steps.iter().enumerate() {
             let expanded_row = emu.step_slice_full_trace(emu_trace);
 
             main_instance.main_trace.buffer[idx + 1] = expanded_row;
         }
 
-        let filled_rows = segment_trace.steps.len();
+        let filled_rows = vec_traces[current_segment].steps.len();
         let last_row = main_instance.main_trace.buffer[filled_rows];
 
         // Fill the rest of the buffer with the last row
@@ -136,12 +135,12 @@ impl<F: PrimeField> MainSM<F> {
             sctx.clone(),
             ZISK_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
-            Some(segment_id),
+            Some(current_segment),
             buffer,
         );
 
-        let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
-        let main_segment = F::from_canonical_usize(segment_id);
+        let main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
+        let main_segment = F::from_canonical_usize(current_segment);
 
         air_instance.set_airvalue("Main.main_last_segment", None, main_last_segment);
         air_instance.set_airvalue("Main.main_segment", None, main_segment);

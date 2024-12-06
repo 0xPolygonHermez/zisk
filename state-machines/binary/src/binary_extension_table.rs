@@ -28,7 +28,7 @@ pub struct BinaryExtensionTableSM<F> {
 
     // Row multiplicity table
     num_rows: usize,
-    multiplicity: Mutex<Vec<u64>>,
+    pub multiplicity: Mutex<Vec<u64>>,
 }
 
 #[derive(Debug)]

@@ -15,7 +15,7 @@ impl Metrics for RomCounter {
         self.rom.update(inst_ctx.pc, 1);
         if inst.end {
             self.end_pc = inst_ctx.pc;
-            self.steps = inst_ctx.step;
+            self.steps = inst_ctx.step + 1;
         }
     }
 

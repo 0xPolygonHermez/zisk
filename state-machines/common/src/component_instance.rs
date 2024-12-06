@@ -3,6 +3,12 @@ use std::sync::Arc;
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
+#[derive(PartialEq)]
+pub enum InstanceType {
+    Instance,
+    Table,
+}
+
 pub trait Instance: Send + Sync {
     fn expand(
         &mut self,
@@ -14,4 +20,6 @@ pub trait Instance: Send + Sync {
         &mut self,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>>;
+
+    fn instance_type(&self) -> InstanceType;
 }

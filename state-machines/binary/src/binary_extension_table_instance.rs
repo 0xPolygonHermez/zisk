@@ -11,32 +11,32 @@ use ziskemu::EmuTrace;
 
 use rayon::prelude::*;
 
-use crate::BinaryBasicTableSM;
+use crate::BinaryExtensionTableSM;
 
-pub struct BinaryBasicTableInstance<F: PrimeField> {
+pub struct BinaryExtensionTableInstance<F: PrimeField> {
     /// Witness manager
     wcm: Arc<WitnessManager<F>>,
 
     /// Instance expander context
     iectx: InstanceExpanderCtx,
 
-    /// Binary basic table state machine
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+    /// Binary extension table state machine
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
-impl<F: PrimeField> BinaryBasicTableInstance<F> {
+impl<F: PrimeField> BinaryExtensionTableInstance<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        Self { wcm, iectx, binary_basic_table_sm }
+        Self { wcm, iectx, binary_extension_table_sm }
     }
 }
 
-unsafe impl<F: PrimeField> Sync for BinaryBasicTableInstance<F> {}
+unsafe impl<F: PrimeField> Sync for BinaryExtensionTableInstance<F> {}
 
-impl<F: PrimeField> Instance for BinaryBasicTableInstance<F> {
+impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
     fn expand(
         &mut self,
         _: &ZiskRom,
@@ -54,7 +54,7 @@ impl<F: PrimeField> Instance for BinaryBasicTableInstance<F> {
 
         let owner: usize = dctx.owner(self.iectx.instance_global_idx);
 
-        let mut multiplicity = self.binary_basic_table_sm.multiplicity.lock().unwrap();
+        let mut multiplicity = self.binary_extension_table_sm.multiplicity.lock().unwrap();
         let mut multiplicity_ = std::mem::take(&mut *multiplicity);
 
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
@@ -63,9 +63,9 @@ impl<F: PrimeField> Instance for BinaryBasicTableInstance<F> {
         // if is_mine {
         let pctx = self.wcm.get_pctx();
         let air = pctx.pilout.get_air(self.iectx.plan.airgroup_id, self.iectx.plan.air_id);
-        let binary_basic_trace = BinaryTableTrace::<F>::new(air.num_rows());
+        let binary_extension_trace = BinaryTableTrace::<F>::new(air.num_rows());
 
-        let buffer = binary_basic_trace.buffer;
+        let buffer = binary_extension_trace.buffer;
         let mut buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
 
         buffer[0..air.num_rows()]

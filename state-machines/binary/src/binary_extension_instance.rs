@@ -109,7 +109,7 @@ impl<F: PrimeField> InstObserver for BinaryExtensionInstance<F> {
         }
 
         let required_operation = ZiskRequiredOperation {
-            step: inst_ctx.step - 1,
+            step: inst_ctx.step,
             opcode: zisk_inst.op,
             a: if zisk_inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a },
             b: if zisk_inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b },

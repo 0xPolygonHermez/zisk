@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryCounter, BinaryExtensionInstance,
-    BinaryExtensionSM, BinaryExtensionTableSM, BinaryPlanner,
+    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableInstance, BinaryBasicTableSM,
+    BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableInstance,
+    BinaryExtensionTableSM, BinaryPlanner,
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -20,7 +21,9 @@ pub struct BinarySM<F: PrimeField> {
 
     // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
 impl<F: PrimeField> BinarySM<F> {
@@ -29,7 +32,7 @@ impl<F: PrimeField> BinarySM<F> {
             BinaryBasicTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
         let binary_basic_sm = BinaryBasicSM::new(
             wcm.clone(),
-            binary_basic_table_sm,
+            binary_basic_table_sm.clone(),
             ZISK_AIRGROUP_ID,
             BINARY_AIR_IDS,
         );
@@ -42,12 +45,18 @@ impl<F: PrimeField> BinarySM<F> {
         let binary_extension_sm = BinaryExtensionSM::new(
             wcm.clone(),
             std,
-            binary_extension_table_sm,
+            binary_extension_table_sm.clone(),
             ZISK_AIRGROUP_ID,
             BINARY_EXTENSION_AIR_IDS,
         );
 
-        let binary_sm = Self { wcm: wcm.clone(), binary_basic_sm, binary_extension_sm };
+        let binary_sm = Self {
+            wcm: wcm.clone(),
+            binary_basic_sm,
+            binary_basic_table_sm,
+            binary_extension_sm,
+            binary_extension_table_sm,
+        };
         let binary_sm = Arc::new(binary_sm);
 
         wcm.register_component(binary_sm.clone(), None, None);
@@ -77,6 +86,18 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
                 self.wcm.clone(),
                 iectx,
             )),
+            id if id == BINARY_TABLE_AIR_IDS[0] => Box::new(BinaryBasicTableInstance::new(
+                self.wcm.clone(),
+                self.binary_basic_table_sm.clone(),
+                iectx,
+            )),
+            id if id == BINARY_EXTENSION_TABLE_AIR_IDS[0] => {
+                Box::new(BinaryExtensionTableInstance::new(
+                    self.wcm.clone(),
+                    self.binary_extension_table_sm.clone(),
+                    iectx,
+                ))
+            }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
         }
     }
