@@ -61,7 +61,7 @@ impl<F: PrimeField> Instance for BinaryExtensionInstance<F> {
         let chunk_id = self.iectx.plan.checkpoint.chunk_id;
         let observer: &mut dyn InstObserver = self;
 
-        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, false, chunk_id, observer);
+        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, chunk_id, observer);
         Ok(())
     }
 
@@ -104,8 +104,8 @@ impl<F: PrimeField> InstObserver for BinaryExtensionInstance<F> {
         }
 
         if self.skipping {
-            if self.iectx.plan.checkpoint.skip == 0
-                || self.skipped == self.iectx.plan.checkpoint.skip
+            if self.iectx.plan.checkpoint.skip == 0 ||
+                self.skipped == self.iectx.plan.checkpoint.skip
             {
                 self.skipping = false;
             } else {

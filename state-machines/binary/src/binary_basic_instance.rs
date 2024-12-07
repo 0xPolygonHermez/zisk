@@ -61,7 +61,7 @@ impl<F: PrimeField> Instance for BinaryBasicInstance<F> {
         let chunk_id = self.iectx.plan.checkpoint.chunk_id;
         let observer: &mut dyn InstObserver = self;
 
-        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, true, chunk_id, observer);
+        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, chunk_id, observer);
         Ok(())
     }
 
@@ -102,8 +102,6 @@ impl<F: PrimeField> InstObserver for BinaryBasicInstance<F> {
         if zisk_inst.op_type != ZiskOperationType::Binary {
             return false;
         }
-
-        let chunk_0 = self.iectx.plan.checkpoint.chunk_id == 0;
 
         if self.skipping {
             if self.iectx.plan.checkpoint.skip == 0
