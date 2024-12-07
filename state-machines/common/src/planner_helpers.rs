@@ -1,5 +1,6 @@
 use crate::CheckPoint;
 
+#[derive(Debug)]
 pub struct InstCount {
     pub chunk_id: usize,
     pub inst_count: u64,

@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use sm_common::{Counter, Metrics};
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
@@ -25,11 +27,22 @@ impl Metrics for BinaryCounter {
             .as_any()
             .downcast_ref::<BinaryCounter>()
             .expect("Binary Metrics: Failed to downcast");
-        self.binary.update(other.binary.inst_count);
-        self.binary_extension.update(other.binary_extension.inst_count);
+        self.binary += &other.binary;
+        self.binary_extension += &other.binary_extension;
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+impl Add for BinaryCounter {
+    type Output = BinaryCounter;
+
+    fn add(self, other: Self) -> BinaryCounter {
+        BinaryCounter {
+            binary: &self.binary + &other.binary,
+            binary_extension: &self.binary_extension + &other.binary_extension,
+        }
     }
 }

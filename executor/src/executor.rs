@@ -96,7 +96,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         // PATH B PHASE 2. Count & Reduce the Minimal Traces to get the Plans
         // ---------------------------------------------------------------------------------
-        // Compute surveys for each minimal trace
+        // Compute counters for each minimal trace
         let mut plans = self.compute_plans(min_traces.clone());
 
         // Create the buffer ta the distribution context
@@ -157,13 +157,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect::<Vec<_>>();
         timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
-        // Group counters by chunk_id and surveyor type
+        // Group counters by chunk_id and counter type
         let mut vec_counters =
             (0..metrics_slices[0].metrics.len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
-        for (chunk_id, surveyor_slice) in metrics_slices.iter_mut().enumerate() {
-            for (i, surveyor) in surveyor_slice.metrics.drain(..).enumerate() {
-                vec_counters[i].push((chunk_id, surveyor));
+        for (chunk_id, counter_slice) in metrics_slices.iter_mut().enumerate() {
+            for (i, counter) in counter_slice.metrics.drain(..).enumerate() {
+                vec_counters[i].push((chunk_id, counter));
             }
         }
 

@@ -211,6 +211,7 @@ impl ZiskEmulator {
     pub fn process_rom_slice_plan<F: PrimeField>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
+        binary: bool,
         chunk_id: usize,
         inst_observer: &mut dyn InstObserver,
     ) {
@@ -218,7 +219,7 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_plan::<F>(min_traces, chunk_id, inst_observer);
+        emu.run_slice_plan::<F>(min_traces, binary, chunk_id, inst_observer);
     }
 
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {

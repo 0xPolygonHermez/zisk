@@ -40,5 +40,5 @@ impl Plan {
 }
 
 pub trait Planner {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan>;
+    fn plan(&self, counter: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan>;
 }

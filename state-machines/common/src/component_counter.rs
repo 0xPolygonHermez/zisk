@@ -30,16 +30,16 @@ impl Counter {
     }
 }
 
-impl Add for Counter {
-    type Output = Self;
+impl Add for &Counter {
+    type Output = Counter;
 
-    fn add(self, other: Self) -> Self {
+    fn add(self, other: Self) -> Counter {
         Counter { inst_count: self.inst_count + other.inst_count }
     }
 }
 
-impl AddAssign for Counter {
-    fn add_assign(&mut self, other: Self) {
+impl AddAssign<&Counter> for Counter {
+    fn add_assign(&mut self, other: &Counter) {
         self.inst_count += other.inst_count;
     }
 }
@@ -56,23 +56,23 @@ impl CounterStats {
     }
 }
 
-impl Add for CounterStats {
-    type Output = Self;
+impl Add for &CounterStats {
+    type Output = CounterStats;
 
-    fn add(self, other: Self) -> Self {
+    fn add(self, other: Self) -> CounterStats {
         let mut inst_count = self.inst_count.clone();
-        for (k, v) in other.inst_count {
-            let count = inst_count.entry(k).or_default();
+        for (k, v) in &other.inst_count {
+            let count = inst_count.entry(*k).or_default();
             *count += v;
         }
         CounterStats { inst_count }
     }
 }
 
-impl AddAssign for CounterStats {
-    fn add_assign(&mut self, other: Self) {
-        for (k, v) in other.inst_count {
-            let count = self.inst_count.entry(k).or_default();
+impl AddAssign<&CounterStats> for CounterStats {
+    fn add_assign(&mut self, other: &CounterStats) {
+        for (k, v) in &other.inst_count {
+            let count = self.inst_count.entry(*k).or_default();
             *count += v;
         }
     }

@@ -22,10 +22,7 @@ impl Metrics for RomCounter {
     fn add(&mut self, other: &dyn Metrics) {
         let other =
             other.as_any().downcast_ref::<RomCounter>().expect("Rom Metrics: Failed to downcast");
-        for (k, v) in &other.rom.inst_count {
-            let count = self.rom.inst_count.entry(*k).or_default();
-            *count += *v;
-        }
+        self.rom += &other.rom;
 
         if other.end_pc != 0 {
             self.end_pc = other.end_pc;

@@ -20,7 +20,6 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
 
     skipping: bool,
     skipped: u64,
-    expanded: u64,
     num_rows: u64,
     inputs: Vec<ZiskRequiredOperation>,
     binary_e_trace: BinaryExtensionTrace<F>,
@@ -44,7 +43,6 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
             iectx,
             skipping: true,
             skipped: 0,
-            expanded: 0,
             num_rows: air.num_rows() as u64,
             inputs: Vec::new(),
             binary_e_trace,
@@ -60,8 +58,10 @@ impl<F: PrimeField> Instance for BinaryExtensionInstance<F> {
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let chunk_id = self.iectx.plan.checkpoint.chunk_id;
         let observer: &mut dyn InstObserver = self;
-        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, 0, observer);
+
+        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, false, chunk_id, observer);
         Ok(())
     }
 
@@ -103,21 +103,22 @@ impl<F: PrimeField> InstObserver for BinaryExtensionInstance<F> {
             return false;
         }
 
-        if self.skipping && self.skipped < self.iectx.plan.checkpoint.skip {
-            self.skipped += 1;
-            return false;
+        if self.skipping {
+            if self.iectx.plan.checkpoint.skip == 0
+                || self.skipped == self.iectx.plan.checkpoint.skip
+            {
+                self.skipping = false;
+            } else {
+                self.skipped += 1;
+                return false;
+            }
         }
 
-        let required_operation = ZiskRequiredOperation {
-            step: inst_ctx.step,
-            opcode: zisk_inst.op,
-            a: if zisk_inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a },
-            b: if zisk_inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b },
-        };
-        self.inputs.push(required_operation);
+        let a = if zisk_inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
+        let b = if zisk_inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 
-        self.expanded += 1;
+        self.inputs.push(ZiskRequiredOperation { step: inst_ctx.step, opcode: zisk_inst.op, a, b });
 
-        self.expanded == self.num_rows
+        self.inputs.len() == self.num_rows as usize
     }
 }
