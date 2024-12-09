@@ -226,15 +226,15 @@ impl<F: PrimeField> StdSum<F> {
                 };
 
                 let proves = match proves {
-                    p if p.is_zero() || p == -F::one() => {
+                    p if p.is_zero() || p == F::neg_one() => {
                         // If it's an assume, then negate its value
-                        if p == -F::one() {
+                        if p == F::neg_one() {
                             mul = -mul;
                         }
                         false
                     }
                     p if p.is_one() => true,
-                    _ => panic!("Proves hint must be either 0, 1, or -1"),
+                    _ => panic!("Proves hint must be either 0, 1, or -1 but has value {}", proves),
                 };
 
                 update_debug_data(

@@ -49,6 +49,7 @@ pub struct HintFieldOptions {
     pub inverse: bool,
     pub print_expression: bool,
     pub initialize_zeros: bool,
+    pub compilation_time: bool,
 }
 
 impl From<&HintFieldOptions> for *mut c_void {
@@ -68,6 +69,10 @@ impl HintFieldOptions {
 
     pub fn inverse() -> Self {
         Self { inverse: true, ..Default::default() }
+    }
+
+    pub fn compilation_time() -> Self {
+        Self { compilation_time: true, ..Default::default() }
     }
 
     pub fn inverse_and_print_expression() -> Self {
@@ -980,23 +985,13 @@ pub fn get_hint_field_constant<F: Field>(
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
-    options: HintFieldOptions,
+    mut options: HintFieldOptions,
 ) -> HintFieldValue<F> {
+    options.compilation_time = true;
+
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
-    let steps_params = StepsParams {
-        trace: std::ptr::null_mut(),
-        pols: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        airgroup_values: std::ptr::null_mut(),
-        airvalues: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: std::ptr::null_mut(),
-        p_const_tree: std::ptr::null_mut(),
-        custom_commits: [std::ptr::null_mut(); 10],
-    };
+    let steps_params = StepsParams::default();
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
@@ -1022,23 +1017,13 @@ pub fn get_hint_field_constant_a<F: Field>(
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
-    options: HintFieldOptions,
+    mut options: HintFieldOptions,
 ) -> Vec<HintFieldValue<F>> {
+    options.compilation_time = true;
+
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
-    let steps_params = StepsParams {
-        trace: std::ptr::null_mut(),
-        pols: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        airgroup_values: std::ptr::null_mut(),
-        airvalues: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: std::ptr::null_mut(),
-        p_const_tree: std::ptr::null_mut(),
-        custom_commits: [std::ptr::null_mut(); 10],
-    };
+    let steps_params = StepsParams::default();
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
@@ -1070,23 +1055,13 @@ pub fn get_hint_field_constant_m<F: Field>(
     air_id: usize,
     hint_id: usize,
     hint_field_name: &str,
-    options: HintFieldOptions,
+    mut options: HintFieldOptions,
 ) -> HintFieldValues<F> {
+    options.compilation_time = true;
+
     let setup = setup_ctx.get_setup(airgroup_id, air_id);
 
-    let steps_params = StepsParams {
-        trace: std::ptr::null_mut(),
-        pols: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        airgroup_values: std::ptr::null_mut(),
-        airvalues: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: std::ptr::null_mut(),
-        p_const_tree: std::ptr::null_mut(),
-        custom_commits: [std::ptr::null_mut(); 10],
-    };
+    let steps_params = StepsParams::default();
 
     let raw_ptr = get_hint_field_c(
         (&setup.p_setup).into(),
@@ -1127,19 +1102,9 @@ pub fn set_hint_field<F: Field>(
     hint_field_name: &str,
     values: &HintFieldValue<F>,
 ) {
-    let steps_params = StepsParams {
-        trace: air_instance.get_trace_ptr() as *mut c_void,
-        pols: air_instance.get_buffer_ptr() as *mut c_void,
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        airgroup_values: std::ptr::null_mut(),
-        airvalues: std::ptr::null_mut(),
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: std::ptr::null_mut(),
-        p_const_tree: std::ptr::null_mut(),
-        custom_commits: [std::ptr::null_mut(); 10],
-    };
+    let mut steps_params = StepsParams::default();
+    steps_params.trace = air_instance.get_trace_ptr() as *mut c_void;
+    steps_params.pols = air_instance.get_buffer_ptr() as *mut c_void;
 
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
@@ -1161,19 +1126,9 @@ pub fn set_hint_field_val<F: Field>(
     hint_field_name: &str,
     value: HintFieldOutput<F>,
 ) {
-    let steps_params = StepsParams {
-        trace: std::ptr::null_mut(),
-        pols: std::ptr::null_mut(),
-        public_inputs: std::ptr::null_mut(),
-        challenges: std::ptr::null_mut(),
-        airgroup_values: air_instance.airgroup_values.as_mut_ptr() as *mut c_void,
-        airvalues: air_instance.airvalues.as_mut_ptr() as *mut c_void,
-        evals: std::ptr::null_mut(),
-        xdivxsub: std::ptr::null_mut(),
-        p_const_pols: std::ptr::null_mut(),
-        p_const_tree: std::ptr::null_mut(),
-        custom_commits: [std::ptr::null_mut(); 10],
-    };
+    let mut steps_params = StepsParams::default();
+    steps_params.airgroup_values = air_instance.airgroup_values.as_mut_ptr() as *mut c_void;
+    steps_params.airvalues = air_instance.airvalues.as_mut_ptr() as *mut c_void;
 
     let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
 
