@@ -183,7 +183,8 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         let air_mem_align_rom = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
         let air_mem_align_rom_rows = air_mem_align_rom.num_rows();
 
-        let mut trace_buffer: MemAlignRomTrace<'_, _> = MemAlignRomTrace::new(air_mem_align_rom_rows);
+        let mut trace_buffer: MemAlignRomTrace<'_, _> =
+            MemAlignRomTrace::new(air_mem_align_rom_rows);
 
         // Initialize the trace buffer to zero
         for i in 0..air_mem_align_rom_rows {

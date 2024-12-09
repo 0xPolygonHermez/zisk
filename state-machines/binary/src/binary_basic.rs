@@ -711,17 +711,8 @@ impl<F: Field> BinaryBasicSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_basic_table_sm,
-            operations,
-            prover_buffer,
-        );
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
+        Self::prove_internal(&self.wcm, &self.binary_basic_table_sm, operations, prover_buffer);
     }
 
     fn prove_internal(
@@ -817,7 +808,7 @@ impl<F: Field> Provable<ZiskRequiredOperation, OpResult> for BinaryBasicSM<F> {
 
                 let trace: BinaryTrace<'_, _> = BinaryTrace::new(air.num_rows());
                 let mut prover_buffer = trace.buffer.unwrap();
-    
+
                 Self::prove_internal(
                     &wcm,
                     &binary_basic_table_sm,

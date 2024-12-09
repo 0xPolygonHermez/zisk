@@ -365,11 +365,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         Self::prove_internal(
             &self.wcm,
             &self.binary_extension_table_sm,
@@ -405,8 +401,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
         let mut trace_buffer =
-            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0)
-                .unwrap();
+            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
@@ -481,7 +476,7 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let trace: BinaryExtensionTrace<'_, _> = BinaryExtensionTrace::new(air.num_rows());
                 let mut prover_buffer = trace.buffer.unwrap();
-    
+
                 Self::prove_internal(
                     &wcm,
                     &binary_extension_table_sm,
