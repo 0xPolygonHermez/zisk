@@ -181,7 +181,7 @@ impl Mem {
 
     #[inline(always)]
     pub fn address_is_register(address: u64) -> bool {
-        ((address & 0x7) == 0) && (address >= REG_FIRST) && (address <= REG_LAST)
+        ((address & 0x7) == 0) && (REG_FIRST..=REG_LAST).contains(&address)
     }
 
     #[inline(always)]
