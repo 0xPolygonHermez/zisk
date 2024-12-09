@@ -15,6 +15,8 @@ use zisk_core::{
     SYS_ADDR,
 };
 
+const STEPS_TO_MEM_READS_RATIO_IN_BITS: u64 = 3;
+
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
 pub struct Emu<'a> {
@@ -1010,7 +1012,9 @@ impl<'a> Emu<'a> {
             if self.step_slice_plan::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer) {
                 break;
             }
-            if self.ctx.inst_ctx.end { break; }
+            if self.ctx.inst_ctx.end {
+                break;
+            }
 
             current_step_idx += 1;
             if current_step_idx == vec_traces[current_box_id].steps.steps {
