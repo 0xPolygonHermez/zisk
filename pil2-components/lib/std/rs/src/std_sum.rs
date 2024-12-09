@@ -120,17 +120,8 @@ impl<F: PrimeField> StdSum<F> {
                 panic!();
             };
 
-            let HintFieldValue::Field(proves) = get_hint_field_constant::<F>(
-                sctx,
-                airgroup_id,
-                air_id,
-                *hint as usize,
-                "proves",
-                HintFieldOptions::default(),
-            ) else {
-                log::error!("proves hint must be a field element");
-                panic!();
-            };
+            let proves =
+                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "proves", HintFieldOptions::default());
 
             let mul =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "selector", HintFieldOptions::default());
@@ -175,7 +166,7 @@ impl<F: PrimeField> StdSum<F> {
                     air_id,
                     instance_id,
                     &opid,
-                    proves,
+                    &proves,
                     &mul,
                     &expressions,
                     0,
@@ -190,7 +181,7 @@ impl<F: PrimeField> StdSum<F> {
                         air_id,
                         instance_id,
                         &opid,
-                        proves,
+                        &proves,
                         &mul,
                         &expressions,
                         j,
@@ -207,7 +198,7 @@ impl<F: PrimeField> StdSum<F> {
             air_id: usize,
             instance_id: usize,
             opid: &HintFieldValue<F>,
-            proves: F,
+            proves: &HintFieldValue<F>,
             mul: &HintFieldValue<F>,
             expressions: &HintFieldValuesVec<F>,
             row: usize,
@@ -225,16 +216,19 @@ impl<F: PrimeField> StdSum<F> {
                     _ => panic!("opid must be a field element"),
                 };
 
-                let proves = match proves {
-                    p if p.is_zero() || p == F::neg_one() => {
-                        // If it's an assume, then negate its value
-                        if p == F::neg_one() {
-                            mul = -mul;
+                let proves = match proves.get(row) {
+                    HintFieldOutput::Field(proves) => match proves {
+                        p if p.is_zero() || p == F::neg_one() => {
+                            // If it's an assume, then negate its value
+                            if p == F::neg_one() {
+                                mul = -mul;
+                            }
+                            false
                         }
-                        false
-                    }
-                    p if p.is_one() => true,
-                    _ => panic!("Proves hint must be either 0, 1, or -1 but has value {}", proves),
+                        p if p.is_one() => true,
+                        _ => panic!("Proves hint must be either 0, 1, or -1 but has value {}", proves),
+                    },
+                    _ => panic!("Proves hint must be a field element"),
                 };
 
                 update_debug_data(
