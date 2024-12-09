@@ -157,6 +157,10 @@ impl ZiskEmulator {
         Ok(output)
     }
 
+    /// EXECUTE phase
+    /// First phase of the witness computation
+    /// 8 threads in waterfall (# threads to be re-calibrated after memory reads refactor)
+    /// Must be fast
     pub fn process_rom_min_trace<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
@@ -194,6 +198,10 @@ impl ZiskEmulator {
         Ok(vec_traces)
     }
 
+    /// COUNT phase
+    /// Second phase of the witness computation
+    /// Executes in parallel the different blocks of wc
+    /// Good to be fast
     #[inline]
     pub fn process_rom_slice_counters<F: PrimeField>(
         rom: &ZiskRom,
@@ -207,6 +215,9 @@ impl ZiskEmulator {
         emu.run_slice_observer2::<F>(emu_trace, inst_observer);
     }
 
+    /// EXPAND phase
+    /// Third phase of the witness computation
+    /// I have a
     #[inline]
     pub fn process_rom_slice_plan<F: PrimeField>(
         rom: &ZiskRom,

@@ -106,10 +106,61 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Calculate the 'a' register value based on the source specified by the current instruction,
-    /// using previously memory reads
+    /// Calculate the 'a' register value based on the source specified by the current instruction
+    /// and generate memory reads data
     #[inline(always)]
-    pub fn source_a_mem_reads(
+    pub fn source_a_mem_reads_generate(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &mut Vec<u64>,
+        mem_reads_index: &mut usize,
+    ) {
+        match instruction.a_src {
+            SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut address = instruction.a_offset_imm0;
+                if instruction.a_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.a);
+                    /*println!(
+                        "Emu::source_a_mem_reads_generate() mem_leads.len={} value={:x}",
+                        mem_reads.len(),
+                        self.ctx.inst_ctx.a
+                    );*/
+                }
+
+                // Feed the stats
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+            }
+            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            _ => panic!(
+                "Emu::source_a_mem_reads_generate() Invalid a_src={} pc={}",
+                instruction.a_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'a' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_a_mem_reads_consume(
         &mut self,
         instruction: &ZiskInst,
         mem_reads: &Vec<u64>,
@@ -132,6 +183,10 @@ impl<'a> Emu<'a> {
                 else {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
+                    /*println!(
+                        "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
+                        *mem_reads_index, self.ctx.inst_ctx.a
+                    );*/
                     *mem_reads_index += 1;
                 }
 
@@ -147,7 +202,7 @@ impl<'a> Emu<'a> {
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
-                "Emu::source_a() Invalid a_src={} pc={}",
+                "Emu::source_a_mem_reads_consume() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
             ),
         }
@@ -209,10 +264,81 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Calculate the 'b' register value based on the source specified by the current instruction,
-    /// using previously memory reads
+    /// Calculate the 'b' register value based on the source specified by the current instruction
     #[inline(always)]
-    pub fn source_b_mem_reads(
+    pub fn source_b_mem_reads_generate(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &mut Vec<u64>,
+        mem_reads_index: &mut usize,
+    ) {
+        match instruction.b_src {
+            SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut addr = instruction.b_offset_imm0;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(addr) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(addr));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                    /*println!(
+                        "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                        mem_reads.len(),
+                        self.ctx.inst_ctx.b
+                    );*/
+                }
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(addr, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+            }
+            SRC_IND => {
+                // Calculate memory address
+                let mut addr =
+                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(addr) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(addr));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                    /*println!(
+                        "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                        mem_reads.len(),
+                        self.ctx.inst_ctx.b
+                    );*/
+                }
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(addr, instruction.ind_width);
+                }
+            }
+            _ => panic!(
+                "Emu::source_b_mem_reads_generate() Invalid b_src={} pc={}",
+                instruction.b_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'b' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_b_mem_reads_consume(
         &mut self,
         instruction: &ZiskInst,
         mem_reads: &Vec<u64>,
@@ -235,6 +361,10 @@ impl<'a> Emu<'a> {
                 else {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    /*println!(
+                        "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                        *mem_reads_index, self.ctx.inst_ctx.b
+                    );*/
                     *mem_reads_index += 1;
                 }
                 if self.ctx.do_stats {
@@ -260,6 +390,10 @@ impl<'a> Emu<'a> {
                 else {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    /*println!(
+                        "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                        *mem_reads_index, self.ctx.inst_ctx.b
+                    );*/
                     *mem_reads_index += 1;
                 }
                 if self.ctx.do_stats {
@@ -267,7 +401,7 @@ impl<'a> Emu<'a> {
                 }
             }
             _ => panic!(
-                "Emu::source_b() Invalid b_src={} pc={}",
+                "Emu::source_b_mem_reads_consume() Invalid b_src={} pc={}",
                 instruction.b_src, self.ctx.inst_ctx.pc
             ),
         }
@@ -512,9 +646,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some()
-                && (options.print_step.unwrap() != 0)
-                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some() &&
+                (options.print_step.unwrap() != 0) &&
+                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -689,9 +823,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end
-                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
-                    == self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end ||
+                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
+                    self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -737,14 +871,14 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
-        self.source_a_mem_reads(
+        self.source_a_mem_reads_generate(
             instruction,
             &mut emu_full_trace_vec.steps.mem_reads,
             &mut mem_reads_index,
         );
 
         // Build the 'b' register value  based on the source specified by the current instruction
-        self.source_b_mem_reads(
+        self.source_b_mem_reads_generate(
             instruction,
             &mut emu_full_trace_vec.steps.mem_reads,
             &mut mem_reads_index,
@@ -811,8 +945,8 @@ impl<'a> Emu<'a> {
         inst_observer: &mut dyn InstObserver,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads(instruction, &mut trace_step.mem_reads, mem_reads_index);
-        self.source_b_mem_reads(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_a_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
@@ -899,8 +1033,8 @@ impl<'a> Emu<'a> {
         inst_observer: &mut dyn InstObserver,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads(instruction, &mut trace_step.mem_reads, mem_reads_index);
-        self.source_b_mem_reads(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_a_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
@@ -927,8 +1061,8 @@ impl<'a> Emu<'a> {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads(instruction, &trace_step.mem_reads, trace_step_index);
-        self.source_b_mem_reads(instruction, &trace_step.mem_reads, trace_step_index);
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
         // #[cfg(feature = "sp")]
@@ -957,8 +1091,8 @@ impl<'a> Emu<'a> {
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
 
-        let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+        let addr1 = (inst.b_offset_imm0 as i64 +
+            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -1036,8 +1170,8 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
+                inst.op_type == ZiskOperationType::Binary ||
+                    inst.op_type == ZiskOperationType::BinaryE,
             ),
         }
     }
