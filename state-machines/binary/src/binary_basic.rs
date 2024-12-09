@@ -23,8 +23,9 @@ const MAXU_OP: u8 = ZiskOp::Maxu.code();
 const MAX_OP: u8 = ZiskOp::Max.code();
 pub const LT_ABS_NP_OP: u8 = 0x06;
 pub const LT_ABS_PN_OP: u8 = 0x07;
-const LTU_OP: u8 = ZiskOp::Ltu.code();
-pub const LT_OP: u8 = ZiskOp::Lt.code();
+pub const LTU_OP: u8 = ZiskOp::Ltu.code();
+const LT_OP: u8 = ZiskOp::Lt.code();
+pub const GT_OP: u8 = 0x0a;
 const EQ_OP: u8 = ZiskOp::Eq.code();
 const ADD_OP: u8 = ZiskOp::Add.code();
 const SUB_OP: u8 = ZiskOp::Sub.code();
@@ -114,6 +115,7 @@ impl<F: Field> BinaryBasicSM<F> {
             LT_ABS_PN_OP,
             LTU_OP,
             LT_OP,
+            GT_OP,
             EQ_OP,
             ADD_OP,
             SUB_OP,
@@ -522,6 +524,55 @@ impl<F: Field> BinaryBasicSM<F> {
                         } else {
                             binary_basic_table_op
                         },
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    multiplicity[row as usize] += 1;
+                }
+            }
+            GT_OP => {
+                // Set opcode is min or max
+                row.op_is_min_max = F::zero();
+
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Gt;
+
+                // Set use last carry to one
+                row.use_last_carry = F::one();
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
+                    }
+
+                    // The result is the sign of b
+                    if (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if b_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                    }
+                    cin = cout;
+                    row.carry[i] = F::from_canonical_u64(cin);
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cin + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                        binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         previous_cin,

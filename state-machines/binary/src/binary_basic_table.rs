@@ -22,15 +22,16 @@ pub enum BinaryBasicTableOp {
     LtAbsPN = 0x07,
     Ltu = 0x08,
     Lt = 0x09,
-    Eq = 0x0a,
-    Add = 0x0b,
-    Sub = 0x0c,
-    Leu = 0x0d,
-    Le = 0x0e,
-    And = 0x0f,
-    Or = 0x10,
-    Xor = 0x11,
-    Ext32 = 0x12,
+    Gt = 0x0a,
+    Eq = 0x0b,
+    Add = 0x0c,
+    Sub = 0x0d,
+    Leu = 0x0e,
+    Le = 0x0f,
+    And = 0x10,
+    Or = 0x11,
+    Xor = 0x12,
+    Ext32 = 0x13,
 }
 
 pub struct BinaryBasicTableSM<F> {
@@ -161,6 +162,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
             BinaryBasicTableOp::LtAbsPN |
             BinaryBasicTableOp::Ltu |
             BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
             BinaryBasicTableOp::Eq |
             BinaryBasicTableOp::Add |
             BinaryBasicTableOp::Sub |
@@ -183,6 +185,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
             BinaryBasicTableOp::LtAbsPN |
             BinaryBasicTableOp::Ltu |
             BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
             BinaryBasicTableOp::Eq |
             BinaryBasicTableOp::Add |
             BinaryBasicTableOp::Sub => true,
@@ -207,6 +210,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
             BinaryBasicTableOp::LtAbsPN |
             BinaryBasicTableOp::Ltu |
             BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
             BinaryBasicTableOp::Eq |
             BinaryBasicTableOp::Add |
             BinaryBasicTableOp::Sub |
@@ -229,15 +233,16 @@ impl<F: Field> BinaryBasicTableSM<F> {
             BinaryBasicTableOp::LtAbsPN => 5 * P2_19,
             BinaryBasicTableOp::Ltu => 6 * P2_19,
             BinaryBasicTableOp::Lt => 6 * P2_19 + P2_18,
-            BinaryBasicTableOp::Eq => 6 * P2_19 + 2 * P2_18,
-            BinaryBasicTableOp::Add => 6 * P2_19 + 3 * P2_18,
-            BinaryBasicTableOp::Sub => 6 * P2_19 + 4 * P2_18,
-            BinaryBasicTableOp::Leu => 6 * P2_19 + 5 * P2_18,
-            BinaryBasicTableOp::Le => 6 * P2_19 + 5 * P2_18 + P2_17,
-            BinaryBasicTableOp::And => 6 * P2_19 + 5 * P2_18 + 2 * P2_17,
-            BinaryBasicTableOp::Or => 6 * P2_19 + 5 * P2_18 + 3 * P2_17,
-            BinaryBasicTableOp::Xor => 6 * P2_19 + 5 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Ext32 => 6 * P2_19 + 5 * P2_18 + 5 * P2_17,
+            BinaryBasicTableOp::Gt => 6 * P2_19 + 2 * P2_18,
+            BinaryBasicTableOp::Eq => 6 * P2_19 + 3 * P2_18,
+            BinaryBasicTableOp::Add => 6 * P2_19 + 4 * P2_18,
+            BinaryBasicTableOp::Sub => 6 * P2_19 + 5 * P2_18,
+            BinaryBasicTableOp::Leu => 6 * P2_19 + 6 * P2_18,
+            BinaryBasicTableOp::Le => 6 * P2_19 + 6 * P2_18 + P2_17,
+            BinaryBasicTableOp::And => 6 * P2_19 + 6 * P2_18 + 2 * P2_17,
+            BinaryBasicTableOp::Or => 6 * P2_19 + 6 * P2_18 + 3 * P2_17,
+            BinaryBasicTableOp::Xor => 6 * P2_19 + 6 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Ext32 => 6 * P2_19 + 6 * P2_18 + 5 * P2_17,
         }
     }
 

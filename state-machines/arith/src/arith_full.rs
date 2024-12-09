@@ -10,7 +10,7 @@ use log::info;
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use sm_binary::{BinarySM, LT_ABS_NP_OP, LT_ABS_PN_OP, LT_OP};
+use sm_binary::{BinarySM, LT_ABS_NP_OP, LT_ABS_PN_OP, LTU_OP, GT_OP};
 use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -199,10 +199,10 @@ impl<F: PrimeField> ArithFullSM<F> {
             // to check that the remainer is lower than the divisor
             if aop.div && !aop.div_by_zero {
                 let opcode = match (aop.nr, aop.nb) {
-                    (false, false) => LT_OP,
+                    (false, false) => LTU_OP,
                     (false, true) => LT_ABS_PN_OP,
                     (true, false) => LT_ABS_NP_OP,
-                    (true, true) => LT_OP,
+                    (true, true) => GT_OP,
                 };
 
                 let extension = match (aop.m32, aop.nr, aop.nb) {

@@ -276,7 +276,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     // Check that remainder (d) is lower than divisor (b) when division is performed
     // Specifically, we ensure that 0 <= |d| < |b|
     lookup_assumes(operation_bus_id, [debug_main_step,
-                                      nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + (nr * nb + (1 - nr) * (1 - nb)) * LT_OP,
+                                      (1 - nr) * (1 - nb) * LTU_OP + nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + nr * nb * GT_OP,
                                       (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
                                       (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
                                       1, 0, 
