@@ -5,7 +5,7 @@ use proofman::WitnessManager;
 use proofman_common::AirInstance;
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
-use zisk_pil::{RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::RomTrace;
 use ziskemu::EmuTrace;
 
 use crate::RomSM;
@@ -60,9 +60,9 @@ impl<F: PrimeField> Instance for RomInstance<F> {
         let buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
 
         let air_instance = AirInstance::new(
-            self.wcm.get_sctx().clone(),
-            ZISK_AIRGROUP_ID,
-            ROM_AIR_IDS[0],
+            self.wcm.get_sctx(),
+            self.iectx.plan.airgroup_id,
+            self.iectx.plan.air_id,
             self.iectx.plan.segment_id,
             buffer,
         );

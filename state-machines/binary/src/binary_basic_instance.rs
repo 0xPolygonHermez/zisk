@@ -104,8 +104,8 @@ impl<F: PrimeField> InstObserver for BinaryBasicInstance<F> {
         }
 
         if self.skipping {
-            if self.iectx.plan.checkpoint.skip == 0
-                || self.skipped == self.iectx.plan.checkpoint.skip
+            if self.iectx.plan.checkpoint.skip == 0 ||
+                self.skipped == self.iectx.plan.checkpoint.skip
             {
                 self.skipping = false;
             } else {

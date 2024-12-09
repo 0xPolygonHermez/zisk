@@ -3,6 +3,7 @@ use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_binary::BinarySM;
 use sm_rom::RomSM;
+use sm_std::StdSM;
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
 use zisk_pil::*;
@@ -81,10 +82,13 @@ impl<F: PrimeField> ZiskWitness<F> {
 
         // Create the secondary state machines
         let std = Std::new(wcm.clone());
+
+        let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(wcm.clone(), zisk_rom.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
 
         let mut executor = ZiskExecutor::new(wcm.clone(), zisk_rom);
+        executor.register_sm(std_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
 
