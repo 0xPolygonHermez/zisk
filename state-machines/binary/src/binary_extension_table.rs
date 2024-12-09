@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use log::info;
 use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use proofman_common::AirInstance;
 use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
 use zisk_pil::{BinaryExtensionTableTrace, BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
@@ -39,7 +39,7 @@ pub enum ExtensionTableSMErr {
 impl<F: Field> BinaryExtensionTableSM<F> {
     const MY_NAME: &'static str = "BinaryET";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
 
@@ -48,10 +48,8 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             num_rows: air.num_rows(),
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
         };
-        let binary_extension_table = Arc::new(binary_extension_table);
-        wcm.register_component(binary_extension_table.clone(), Some(airgroup_id), Some(air_ids));
 
-        binary_extension_table
+        Arc::new(binary_extension_table)
     }
 
     pub fn operations() -> Vec<u8> {
@@ -151,5 +149,3 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         }
     }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryExtensionTableSM<F> {}

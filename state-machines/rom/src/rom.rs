@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use log::info;
-use p3_field::{Field, PrimeField};
-use proofman::{WitnessComponent, WitnessManager};
+use p3_field::PrimeField;
+use proofman::WitnessManager;
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
 use zisk_core::{ZiskRom, SRC_IMM};
-use zisk_pil::{RomRow, RomTrace, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomRow, RomTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 
@@ -21,11 +21,7 @@ impl<F: PrimeField> RomSM<F> {
     const MY_NAME: &'static str = "RomSM   ";
 
     pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
-        let rom_sm = Arc::new(Self { wcm: wcm.clone(), zisk_rom });
-
-        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(ROM_AIR_IDS));
-
-        rom_sm
+        Arc::new(Self { wcm: wcm.clone(), zisk_rom })
     }
 
     pub fn prove_instance(
@@ -159,5 +155,3 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
         Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
     }
 }
-
-impl<F: Field> WitnessComponent<F> for RomSM<F> {}

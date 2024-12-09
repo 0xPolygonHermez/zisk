@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use log::info;
 use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
@@ -28,14 +28,8 @@ impl<F: Field> BinaryBasicSM<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
-        airgroup_id: usize,
-        air_ids: &[usize],
     ) -> Arc<Self> {
-        let binary_basic = Arc::new(Self { wcm: wcm.clone(), binary_basic_table_sm });
-
-        wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
-
-        binary_basic
+        Arc::new(Self { wcm: wcm.clone(), binary_basic_table_sm })
     }
 
     pub fn operations() -> Vec<u8> {
@@ -658,5 +652,3 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_TABLE);
     }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}

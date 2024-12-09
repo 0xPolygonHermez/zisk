@@ -7,11 +7,10 @@ use crate::{
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner};
 use zisk_pil::{
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
-    ZISK_AIRGROUP_ID,
 };
 
 #[allow(dead_code)]
@@ -28,27 +27,12 @@ pub struct BinarySM<F: PrimeField> {
 
 impl<F: PrimeField> BinarySM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm =
-            BinaryBasicTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
-        let binary_basic_sm = BinaryBasicSM::new(
-            wcm.clone(),
-            binary_basic_table_sm.clone(),
-            ZISK_AIRGROUP_ID,
-            BINARY_AIR_IDS,
-        );
+        let binary_basic_table_sm = BinaryBasicTableSM::new(wcm.clone());
+        let binary_basic_sm = BinaryBasicSM::new(wcm.clone(), binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new(
-            wcm.clone(),
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_TABLE_AIR_IDS,
-        );
-        let binary_extension_sm = BinaryExtensionSM::new(
-            wcm.clone(),
-            std,
-            binary_extension_table_sm.clone(),
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_AIR_IDS,
-        );
+        let binary_extension_table_sm = BinaryExtensionTableSM::new(wcm.clone());
+        let binary_extension_sm =
+            BinaryExtensionSM::new(wcm.clone(), std, binary_extension_table_sm.clone());
 
         let binary_sm = Self {
             wcm: wcm.clone(),
@@ -57,11 +41,8 @@ impl<F: PrimeField> BinarySM<F> {
             binary_extension_sm,
             binary_extension_table_sm,
         };
-        let binary_sm = Arc::new(binary_sm);
 
-        wcm.register_component(binary_sm.clone(), None, None);
-
-        binary_sm
+        Arc::new(binary_sm)
     }
 }
 
@@ -102,5 +83,3 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
         }
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}

@@ -5,7 +5,7 @@ use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -41,13 +41,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
-        airgroup_id: usize,
-        air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_extension_sm =
             Arc::new(Self { wcm: wcm.clone(), std: std.clone(), binary_extension_table_sm });
-
-        wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
 
         std.register_predecessor();
 
@@ -382,5 +378,3 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}

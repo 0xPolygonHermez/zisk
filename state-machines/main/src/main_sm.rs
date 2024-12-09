@@ -8,7 +8,6 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
 
-use proofman::WitnessComponent;
 use zisk_pil::{MainRow, MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{Emu, EmuTrace};
 
@@ -37,11 +36,7 @@ impl<F: PrimeField> MainSM<F> {
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone() });
-
-        wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
-
-        main_sm
+        Arc::new(Self { wcm: wcm.clone() })
     }
 
     pub fn get_instance(&self, iectx: InstanceExpanderCtx) -> MainInstance<F> {
@@ -151,8 +146,6 @@ impl<F: PrimeField> MainSM<F> {
             .add_air_instance(air_instance, Some(iectx.instance_global_idx));
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {}
 
 pub struct MainInstance<F: PrimeField> {
     iectx: InstanceExpanderCtx,

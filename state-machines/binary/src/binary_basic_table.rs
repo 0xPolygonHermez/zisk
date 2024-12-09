@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
 use zisk_pil::{BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -34,7 +34,7 @@ pub struct BinaryBasicTableSM<F> {
 }
 
 impl<F: Field> BinaryBasicTableSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
+    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
 
@@ -42,10 +42,8 @@ impl<F: Field> BinaryBasicTableSM<F> {
             multiplicity: Mutex::new(vec![0; air.num_rows()]),
             _phantom: std::marker::PhantomData,
         };
-        let binary_basic_table = Arc::new(binary_basic_table);
-        wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
 
-        binary_basic_table
+        Arc::new(binary_basic_table)
     }
 
     pub fn process_slice(&self, input: &[u64]) {
@@ -167,5 +165,3 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {}
