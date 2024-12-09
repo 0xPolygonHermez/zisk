@@ -208,7 +208,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     ZISK_AIRGROUP_ID,
                     MAIN_AIR_IDS[0],
                     Some(segment_id),
-                    CheckPoint::new(segment_id, 0),
+                    Some(CheckPoint::new(segment_id, 0)),
                     None,
                 )
             })

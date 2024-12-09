@@ -58,7 +58,7 @@ impl<F: PrimeField> Instance for BinaryBasicInstance<F> {
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let chunk_id = self.iectx.plan.checkpoint.chunk_id;
+        let chunk_id = self.iectx.plan.checkpoint.as_ref().unwrap().chunk_id;
         let observer: &mut dyn InstObserver = self;
 
         ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, chunk_id, observer);
@@ -104,9 +104,8 @@ impl<F: PrimeField> InstObserver for BinaryBasicInstance<F> {
         }
 
         if self.skipping {
-            if self.iectx.plan.checkpoint.skip == 0 ||
-                self.skipped == self.iectx.plan.checkpoint.skip
-            {
+            let checkpoint = self.iectx.plan.checkpoint.as_ref().unwrap();
+            if checkpoint.skip == 0 || self.skipped == checkpoint.skip {
                 self.skipping = false;
             } else {
                 self.skipped += 1;

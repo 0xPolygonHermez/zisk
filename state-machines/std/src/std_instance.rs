@@ -26,10 +26,7 @@ impl<F: PrimeField> Instance for StdInstance<F> {
         Ok(())
     }
 
-    fn prove(
-        &mut self,
-        _: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn prove(&mut self, _: Arc<Vec<EmuTrace>>) -> Result<(), Box<dyn std::error::Error + Send>> {
         let plan = &self.iectx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
