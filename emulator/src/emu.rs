@@ -939,13 +939,13 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_observer<F: PrimeField>(
         &mut self,
-        trace_step: &mut EmuTraceSteps,
+        trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,
         inst_observer: &mut dyn InstObserver,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
-        self.source_b_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
@@ -957,7 +957,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
-        trace_step.steps += 1;
+        //trace_step.steps += 1;
 
         finished
     }
@@ -977,11 +977,9 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
 
         let mut mem_reads_index: usize = 0;
-        let mut emu_trace_steps = emu_trace.steps.clone();
-        loop {
-            if self.step_observer::<F>(&mut emu_trace_steps, &mut mem_reads_index, inst_observer) {
-                break;
-            }
+        let emu_trace_steps = &emu_trace.steps;
+        for _step in 0..emu_trace.steps.steps {
+            self.step_observer::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer);
         }
     }
 
@@ -1006,12 +1004,13 @@ impl<'a> Emu<'a> {
 
         let mut emu_trace_steps = &vec_traces[current_box_id].steps;
         let mut mem_reads_index: usize = 0;
-        while !self.ctx.inst_ctx.end {
+        loop {
             //let step = &vec_traces[current_box_id].steps[current_step_idx];
 
             if self.step_slice_plan::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer) {
                 break;
             }
+            if self.ctx.inst_ctx.end { break; }
 
             current_step_idx += 1;
             if current_step_idx == vec_traces[current_box_id].steps.steps {
