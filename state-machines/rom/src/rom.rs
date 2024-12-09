@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use p3_field::{Field, PrimeField};
-use proofman::{WitnessComponent, WitnessManager};
-
-use sm_common::{
-    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner, WitnessBuffer,
-};
+use itertools::Itertools;
+use log::info;
+use p3_field::PrimeField;
+use proofman::WitnessManager;
+use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
 use zisk_core::{ZiskRom, SRC_IMM};
-use zisk_pil::{RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomRow, RomTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 
@@ -19,34 +18,41 @@ pub struct RomSM<F> {
 }
 
 impl<F: PrimeField> RomSM<F> {
+    const MY_NAME: &'static str = "RomSM   ";
+
     pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
-        let rom_sm = Self { wcm: wcm.clone(), zisk_rom };
-        let rom_sm = Arc::new(rom_sm);
-
-        let rom_air_ids = ROM_AIR_IDS;
-        wcm.register_component(rom_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(rom_air_ids));
-
-        rom_sm
+        Arc::new(Self { wcm: wcm.clone(), zisk_rom })
     }
 
     pub fn prove_instance(
+        wcm: &WitnessManager<F>,
         rom: &ZiskRom,
         plan: &Plan,
-        buffer: &mut WitnessBuffer<F>,
-        num_rows: usize,
+        rom_trace: &mut RomTrace<F>,
+        trace_rows: usize,
     ) {
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
-        let pc_histogram = &metadata.rom.inst_count;
 
-        // Create an empty ROM trace
-        let mut rom_trace =
-            RomTrace::<F>::map_buffer(&mut buffer.buffer, num_rows, buffer.offset as usize)
-                .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
+        let pc_histogram = &metadata.rom.inst_count;
+        let main_trace_len =
+            wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+
+        info!(
+            "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            pc_histogram.len(),
+            main_trace_len,
+            pc_histogram.len() as f64 / main_trace_len as f64 * 100.0
+        );
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
+        let keys = rom.insts.keys();
+        let sorted_keys = keys.sorted();
+        let mut i = 0;
+        for key in sorted_keys {
             // Get the Zisk instruction
-            let inst = inst_builder.1.i;
+            let inst = &rom.insts[key].i;
 
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
@@ -57,10 +63,10 @@ impl<F: PrimeField> RomSM<F> {
                 let counter = pc_histogram.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
-                    // if inst.paddr == pc_histogram.end_pc {
-                    //     multiplicity +=
-                    //         main_trace_len - 1 - (pc_histogram.steps % (main_trace_len - 1));
-                    // }
+                    if inst.paddr == metadata.end_pc {
+                        multiplicity +=
+                            main_trace_len - 1 - (metadata.steps % (main_trace_len - 1));
+                    }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
                 }
@@ -126,14 +132,13 @@ impl<F: PrimeField> RomSM<F> {
                 inst.get_flags(),
                 multiplicity,
             );*/
+            i += 1;
         }
 
         // Padd with zeroes
-        // for i in number_of_instructions..trace_size {
-        //     rom_trace[i] = RomRow::default();
-        // }
-
-        // Ok((prover_buffer, offsets[0], ROM_AIR_IDS[0]))
+        for i in rom.insts.len()..trace_rows {
+            rom_trace[i] = RomRow::default();
+        }
     }
 }
 
@@ -146,9 +151,7 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
         Box::new(RomPlanner {})
     }
 
-    fn get_instance(self: Arc<Self>, iectx: InstanceExpanderCtx<F>) -> Box<dyn Instance> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {
         Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
     }
 }
-
-impl<F: Field> WitnessComponent<F> for RomSM<F> {}

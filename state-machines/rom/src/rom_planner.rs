@@ -1,4 +1,4 @@
-use sm_common::{CheckPoint, ChunkId, Metrics, Plan, Planner};
+use sm_common::{ChunkId, Metrics, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::RomCounter;
@@ -7,7 +7,7 @@ pub struct RomPlanner {}
 
 impl Planner for RomPlanner {
     fn plan(&self, metrics: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan> {
-        if metrics.len() == 0 {
+        if metrics.is_empty() {
             panic!("RomPlanner::plan() found no metrics");
         }
 
@@ -18,12 +18,6 @@ impl Planner for RomPlanner {
             total.add(metric);
         }
 
-        vec![Plan::new(
-            ZISK_AIRGROUP_ID,
-            ROM_AIR_IDS[0],
-            None,
-            CheckPoint::new(0, 0),
-            Some(Box::new(total)),
-        )]
+        vec![Plan::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, None, Some(Box::new(total)))]
     }
 }

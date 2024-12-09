@@ -8,7 +8,6 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, ProofCtx};
 
-use proofman::WitnessComponent;
 use zisk_pil::{MainRow, MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{Emu, EmuTrace};
 
@@ -37,37 +36,36 @@ impl<F: PrimeField> MainSM<F> {
     /// # Returns
     /// * Arc to the MainSM state machine
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone() });
-
-        wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
-
-        main_sm
+        Arc::new(Self { wcm: wcm.clone() })
     }
 
-    pub fn prove_main<'a>(
+    pub fn get_instance(&self, iectx: InstanceExpanderCtx) -> MainInstance<F> {
+        MainInstance::new(&self.wcm, iectx)
+    }
+
+    pub fn prove_main(
         &self,
         zisk_rom: &ZiskRom,
-        vec_traces: &'a [EmuTrace],
-        iectx: &mut InstanceExpanderCtx<F>,
+        vec_traces: &[EmuTrace],
+        main_instance: &mut MainInstance<F>,
         pctx: &ProofCtx<F>,
     ) {
-        let segment_id = iectx.plan.segment_id.unwrap();
-        let segment_trace = &vec_traces[segment_id];
+        let iectx = &main_instance.iectx;
+        let current_segment = iectx.plan.segment_id.unwrap();
 
-        let offset = iectx.buffer.offset;
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-        let filled = segment_trace.steps.steps + 1;
+        let filled = vec_traces[current_segment].steps.steps + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            segment_id,
+            current_segment,
             filled,
             air.num_rows(),
             filled as f64 / air.num_rows() as f64 * 100.0
         );
 
         // Set Row 0 of the current segment
-        let row0 = if segment_id == 0 {
+        let row0 = if current_segment == 0 {
             MainRow::<F> {
                 pc: F::from_canonical_u64(ROM_ENTRY),
                 op: F::from_canonical_u8(ZiskOp::CopyB.code()),
@@ -78,10 +76,13 @@ impl<F: PrimeField> MainSM<F> {
         } else {
             //let emu_trace_previous = vec_traces[segment_id - 1].last_state;
             let mut emu =
-                Emu::from_emu_trace_start(zisk_rom, &vec_traces[segment_id - 1].last_state);
-            let mut mem_reads_index: usize = vec_traces[segment_id - 1].last_state.mem_reads_index;
-            let row_previous =
-                emu.step_slice_full_trace(&vec_traces[segment_id - 1].steps, &mut mem_reads_index);
+                Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment - 1].last_state);
+            let mut mem_reads_index: usize =
+                vec_traces[current_segment - 1].last_state.mem_reads_index;
+            let row_previous = emu.step_slice_full_trace(
+                &vec_traces[current_segment - 1].steps,
+                &mut mem_reads_index,
+            );
 
             MainRow::<F> {
                 set_pc: row_previous.set_pc,
@@ -107,62 +108,45 @@ impl<F: PrimeField> MainSM<F> {
             }
         };
 
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment].start_state);
 
-        let rng = offset as usize..(offset as usize + MainRow::<F>::ROW_SIZE);
-        iectx.buffer.buffer[rng].copy_from_slice(row0.as_slice());
+        main_instance.main_trace.buffer[0] = row0;
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
-        let total_rows = segment_trace.steps.steps as usize;
-        const SLICE_ROWS: usize = 4096;
-        let mut partial_trace = MainTrace::<F>::new(SLICE_ROWS);
-
-        let mut last_row = MainRow::<F>::default();
-        let mut emu_trace_step = segment_trace.steps.clone();
+        let mut emu_trace_step = &vec_traces[current_segment].steps;
         let mut mem_reads_index: usize = 0;
-        for slice in (0..(air.num_rows())).step_by(SLICE_ROWS) {
-            // process the steps of the chunk
-            let slice_start = std::cmp::min(slice, total_rows);
-            let slice_end = std::cmp::min(slice + SLICE_ROWS, total_rows);
+        //for (idx, emu_trace) in vec_traces[current_segment].steps.iter().enumerate() {
+        for idx in 0..vec_traces[current_segment].steps.steps as usize {
+            let expanded_row = emu.step_slice_full_trace(&mut emu_trace_step, &mut mem_reads_index);
 
-            for i in slice_start..slice_end {
-                partial_trace[i] =
-                    emu.step_slice_full_trace(&mut emu_trace_step, &mut mem_reads_index);
-            }
-
-            // if there are steps in the chunk update last row
-            if slice_end - slice_start > 0 {
-                last_row = partial_trace[slice_end - slice_start - 1];
-            }
-
-            // if there are less steps than the chunk size, fill the rest with the last row
-            for i in (slice_end - slice_start)..SLICE_ROWS {
-                partial_trace[i] = last_row;
-            }
-
-            //copy the chunk to the prover buffer
-            let partial_buffer = partial_trace.buffer.as_ref().unwrap();
-            let buffer_offset_slice = offset as usize + (slice + 1) * MainRow::<F>::ROW_SIZE;
-
-            let rng = buffer_offset_slice..buffer_offset_slice + partial_buffer.len();
-            iectx.buffer.buffer[rng].copy_from_slice(partial_buffer);
+            main_instance.main_trace.buffer[idx + 1] = expanded_row;
         }
 
-        let buffer = std::mem::take(&mut iectx.buffer.buffer);
+        let filled_rows = vec_traces[current_segment].steps.steps as usize;
+        let last_row = main_instance.main_trace.buffer[filled_rows];
+
+        // Fill the rest of the buffer with the last row
+        for i in (filled_rows + 1)..main_instance.main_trace.buffer.len() {
+            main_instance.main_trace.buffer[i] = last_row;
+        }
+
+        let buffer = std::mem::take(&mut main_instance.main_trace.buffer);
+        let buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
+
         let sctx = self.wcm.get_sctx();
         let mut air_instance = AirInstance::new(
             sctx.clone(),
             ZISK_AIRGROUP_ID,
             MAIN_AIR_IDS[0],
-            Some(segment_id),
+            Some(current_segment),
             buffer,
         );
 
-        let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
-        let main_segment = F::from_canonical_usize(segment_id);
+        let main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
+        let main_segment = F::from_canonical_usize(current_segment);
 
-        air_instance.set_airvalue(&sctx, "Main.main_last_segment", main_last_segment);
-        air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
+        air_instance.set_airvalue("Main.main_last_segment", None, main_last_segment);
+        air_instance.set_airvalue("Main.main_segment", None, main_segment);
 
         self.wcm
             .get_pctx()
@@ -171,4 +155,18 @@ impl<F: PrimeField> MainSM<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for MainSM<F> {}
+pub struct MainInstance<F: PrimeField> {
+    iectx: InstanceExpanderCtx,
+    main_trace: MainTrace<F>,
+}
+
+impl<F: PrimeField> MainInstance<F> {
+    pub fn new(wcm: &WitnessManager<F>, iectx: InstanceExpanderCtx) -> Self {
+        let pctx = wcm.get_pctx();
+        let plan = &iectx.plan;
+        let air = pctx.pilout.get_air(plan.airgroup_id, plan.air_id);
+        let main_trace = MainTrace::new(air.num_rows());
+
+        Self { iectx, main_trace }
+    }
+}

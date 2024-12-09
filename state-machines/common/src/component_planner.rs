@@ -23,7 +23,7 @@ pub struct Plan {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub segment_id: Option<usize>,
-    pub checkpoint: CheckPoint,
+    pub checkpoint: Option<CheckPoint>,
     pub meta: Option<Box<dyn Any>>,
 }
 
@@ -32,7 +32,7 @@ impl Plan {
         airgroup_id: usize,
         air_id: usize,
         segment_id: Option<usize>,
-        checkpoint: CheckPoint,
+        checkpoint: Option<CheckPoint>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
         Plan { airgroup_id, air_id, segment_id, checkpoint, meta }
@@ -40,5 +40,5 @@ impl Plan {
 }
 
 pub trait Planner {
-    fn plan(&self, surveys: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan>;
+    fn plan(&self, counter: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan>;
 }

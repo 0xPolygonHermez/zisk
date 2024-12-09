@@ -554,7 +554,6 @@ impl<'a> Emu<'a> {
     //         self.ctx.inst_ctx.sp += instruction.inc_sp;
     //     }
     // }
-
     /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
@@ -646,9 +645,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -823,9 +822,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -1005,12 +1004,12 @@ impl<'a> Emu<'a> {
         let mut current_box_id = chunk_id;
         let mut current_step_idx = 0;
 
-        let mut emu_trace_steps = vec_traces[current_box_id].steps.clone();
+        let mut emu_trace_steps = &vec_traces[current_box_id].steps;
         let mut mem_reads_index: usize = 0;
+        while !self.ctx.inst_ctx.end {
+            //let step = &vec_traces[current_box_id].steps[current_step_idx];
 
-        while self.ctx.inst_ctx.end == false {
-            if self.step_slice_plan::<F>(&mut emu_trace_steps, &mut mem_reads_index, inst_observer)
-            {
+            if self.step_slice_plan::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer) {
                 break;
             }
 
@@ -1018,7 +1017,7 @@ impl<'a> Emu<'a> {
             if current_step_idx == vec_traces[current_box_id].steps.steps {
                 current_box_id += 1;
                 current_step_idx = 0;
-                emu_trace_steps = vec_traces[current_box_id].steps.clone();
+                emu_trace_steps = &vec_traces[current_box_id].steps;
                 mem_reads_index = 0;
             }
         }
@@ -1028,13 +1027,13 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_slice_plan<F: PrimeField>(
         &mut self,
-        trace_step: &mut EmuTraceSteps,
+        trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,
         inst_observer: &mut dyn InstObserver,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
-        self.source_b_mem_reads_consume(instruction, &mut trace_step.mem_reads, mem_reads_index);
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
@@ -1046,7 +1045,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
-        trace_step.steps += 1;
+        //trace_step.steps += 1;
 
         finished
     }
@@ -1091,8 +1090,8 @@ impl<'a> Emu<'a> {
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
 
-        let addr1 = (inst.b_offset_imm0 as i64 +
-            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+        let addr1 = (inst.b_offset_imm0 as i64
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -1170,8 +1169,8 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Binary ||
-                    inst.op_type == ZiskOperationType::BinaryE,
+                inst.op_type == ZiskOperationType::Binary
+                    || inst.op_type == ZiskOperationType::BinaryE,
             ),
         }
     }

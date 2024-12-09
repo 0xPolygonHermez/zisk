@@ -53,8 +53,8 @@ impl<F> WitnessComponent<F> for Arith64SM {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
-        _sctx: Arc<SetupCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }

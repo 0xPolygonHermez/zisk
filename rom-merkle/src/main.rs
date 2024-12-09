@@ -6,6 +6,7 @@ use sm_rom::RomSM;
 use stark::StarkBufferAllocator;
 use std::{path::Path, sync::Arc};
 use sysinfo::System;
+use zisk_core::Riscv2zisk;
 
 fn main() {
     let matches = Command::new("ROM Handler")
@@ -84,14 +85,20 @@ fn main() {
     let buffer_allocator: Arc<StarkBufferAllocator> =
         Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
     let global_info = GlobalInfo::new(global_info_path);
-    let sctx = Arc::new(SetupCtx::<Goldilocks>::new(&global_info, &ProofType::Basic));
+    let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
-    // if let Err(e) =
-    //     // RomSM::<Goldilocks>::compute_trace(rom_path.to_path_buf(), buffer_allocator, &sctx)
-    // {
-    //     log::error!("Error: {}", e);
-    //     std::process::exit(1);
-    // }
+    // Get the ELF file path as a string
+    let elf_filename: String = rom_path.to_str().unwrap().into();
+    println!("Proving ROM for ELF file={}", elf_filename);
+
+    // Create an instance of the RISCV -> ZisK program converter
+    let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+
+    // Convert program to rom
+    let rom = riscv2zisk.run().expect("RomSM::prover() failed running rom");
+
+    // Compute the trace
+    // RomSM::<Goldilocks>::prove_instance(wcm, rom, plan, buffer, trace_rows);
 
     // Compute LDE and Merkelize and get the root of the rom
     // TODO: Implement the logic to compute the trace

@@ -3,6 +3,7 @@ use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_binary::BinarySM;
 use sm_rom::RomSM;
+use sm_std::StdSM;
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
 use zisk_pil::*;
@@ -50,12 +51,7 @@ impl<F: PrimeField> ZiskWitness<F> {
         })
     }
 
-    fn initialize(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
-    ) {
+    fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         let wcm = WitnessManager::new(pctx, ectx, sctx);
         let wcm = Arc::new(wcm);
 
@@ -86,10 +82,13 @@ impl<F: PrimeField> ZiskWitness<F> {
 
         // Create the secondary state machines
         let std = Std::new(wcm.clone());
+
+        let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(wcm.clone(), zisk_rom.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
 
         let mut executor = ZiskExecutor::new(wcm.clone(), zisk_rom);
+        executor.register_sm(std_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
 
@@ -101,8 +100,8 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn start_proof(
         &mut self,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
 
@@ -112,7 +111,7 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn end_proof(&mut self) {
         self.wcm.get().unwrap().end_proof();
     }
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
         timer_start_info!(EXECUTE);
         self.executor.get().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
         timer_stop_and_log_info!(EXECUTE);
@@ -122,8 +121,8 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         &mut self,
         stage: u32,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        sctx: Arc<SetupCtx>,
     ) {
         self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
     }

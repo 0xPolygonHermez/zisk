@@ -1,5 +1,5 @@
 [package]
-name = "sm-rom"
+name = "sm-std"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,6 +15,7 @@ proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 proofman = { workspace = true }
+pil-std-lib = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }

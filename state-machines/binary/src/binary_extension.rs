@@ -5,7 +5,7 @@ use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
+use proofman::WitnessManager;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -34,11 +34,6 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
 }
 
-#[derive(Debug)]
-pub enum BinaryExtensionSMErr {
-    InvalidOpcode,
-}
-
 impl<F: PrimeField> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
@@ -46,14 +41,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
-        airgroup_id: usize,
-        air_ids: &[usize],
     ) -> Arc<Self> {
         let binary_extension_sm =
-            Self { wcm: wcm.clone(), std: std.clone(), binary_extension_table_sm };
-        let binary_extension_sm = Arc::new(binary_extension_sm);
-
-        wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
+            Arc::new(Self { wcm: wcm.clone(), std: std.clone(), binary_extension_table_sm });
 
         std.register_predecessor();
 
@@ -323,30 +313,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
     pub fn prove_instance(
         &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_extension_table_sm,
-            &self.std,
-            operations,
-            prover_buffer,
-            offset,
-        );
-    }
-
-    fn prove_internal(
-        wcm: &WitnessManager<F>,
-        binary_extension_table_sm: &BinaryExtensionTableSM<F>,
-        std: &Std<F>,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
+        operations: &[ZiskRequiredOperation],
+        binary_e_trace: &mut BinaryExtensionTrace<F>,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let pctx = wcm.get_pctx();
+        let pctx = self.wcm.get_pctx();
 
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
         let air_binary_extension_table =
@@ -363,13 +334,10 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
-        let mut trace_buffer =
-            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
-                .unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
-            trace_buffer[i] = row;
+            binary_e_trace[i] = row;
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
@@ -378,7 +346,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             BinaryExtensionRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
         for i in operations.len()..air.num_rows() {
-            trace_buffer[i] = padding_row;
+            binary_e_trace[i] = padding_row;
         }
 
         let padding_size = air.num_rows() - operations.len();
@@ -395,26 +363,18 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
 
         timer_start_debug!(BINARY_EXTENSION_TABLE);
-        binary_extension_table_sm.process_slice(&multiplicity_table);
+        self.binary_extension_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
-        let range_id = std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
         timer_start_debug!(BINARY_EXTENSION_RANGE);
         for (value, multiplicity) in &range_check {
-            std.range_check(
+            self.std.range_check(
                 F::from_canonical_u64(*value),
                 F::from_canonical_u64(*multiplicity),
                 range_id,
             );
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
-
-        std::thread::spawn(move || {
-            drop(operations);
-            drop(multiplicity_table);
-            drop(range_check);
-        });
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}

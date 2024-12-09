@@ -1,5 +1,5 @@
 mod executor;
-mod surveyor_proxy;
+mod metrics_proxy;
 
 pub use executor::*;
-pub use surveyor_proxy::*;
+pub use metrics_proxy::*;
