@@ -108,8 +108,29 @@ impl<F: PrimeField> StdSum<F> {
                 panic!("opid must be a field element");
             };
 
-            let proves =
-                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "proves", HintFieldOptions::default());
+            let HintFieldValue::Field(is_global) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "is_global",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("is_global hint must be a field element");
+                panic!();
+            };
+
+            let HintFieldValue::Field(proves) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "proves",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("proves hint must be a field element");
+                panic!();
+            };
 
             let mul =
                 get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "selector", HintFieldOptions::default());
@@ -147,13 +168,35 @@ impl<F: PrimeField> StdSum<F> {
                 panic!();
             };
 
-            // If both the expresion and the mul are of degree zero, then simply update the bus once
             if deg_expr.is_zero() && deg_mul.is_zero() {
-                update_bus(airgroup_id, air_id, instance_id, &opid, &proves, &mul, &expressions, 0, debug_data);
+                // If both the expresion and the mul are of degree zero, then simply update the bus once
+                update_bus(
+                    airgroup_id,
+                    air_id,
+                    instance_id,
+                    &opid,
+                    proves,
+                    &mul,
+                    &expressions,
+                    0,
+                    debug_data,
+                    is_global.is_one(),
+                );
             } else {
                 // Otherwise, update the bus for each row
                 for j in 0..num_rows {
-                    update_bus(airgroup_id, air_id, instance_id, &opid, &proves, &mul, &expressions, j, debug_data);
+                    update_bus(
+                        airgroup_id,
+                        air_id,
+                        instance_id,
+                        &opid,
+                        proves,
+                        &mul,
+                        &expressions,
+                        j,
+                        debug_data,
+                        false,
+                    );
                 }
             }
         }
@@ -164,11 +207,12 @@ impl<F: PrimeField> StdSum<F> {
             air_id: usize,
             instance_id: usize,
             opid: &HintFieldValue<F>,
-            proves: &HintFieldValue<F>,
+            proves: F,
             mul: &HintFieldValue<F>,
             expressions: &HintFieldValuesVec<F>,
             row: usize,
             debug_data: &DebugData<F>,
+            is_global: bool,
         ) {
             let mut mul = match mul.get(row) {
                 HintFieldOutput::Field(mul) => mul,
@@ -181,19 +225,16 @@ impl<F: PrimeField> StdSum<F> {
                     _ => panic!("opid must be a field element"),
                 };
 
-                let proves = match proves.get(row) {
-                    HintFieldOutput::Field(proves) => match proves {
-                        p if p.is_zero() || p == -F::one() => {
-                            // If it's an assume, then negate its value
-                            if p == -F::one() {
-                                mul = -mul;
-                            }
-                            false
+                let proves = match proves {
+                    p if p.is_zero() || p == -F::one() => {
+                        // If it's an assume, then negate its value
+                        if p == -F::one() {
+                            mul = -mul;
                         }
-                        p if p.is_one() => true,
-                        _ => panic!("Proves hint must be either 0, 1, or -1"),
-                    },
-                    _ => panic!("Proves hint must be a field element"),
+                        false
+                    }
+                    p if p.is_one() => true,
+                    _ => panic!("Proves hint must be either 0, 1, or -1"),
                 };
 
                 update_debug_data(
@@ -206,6 +247,7 @@ impl<F: PrimeField> StdSum<F> {
                     row,
                     proves,
                     mul,
+                    is_global,
                 );
             }
         }

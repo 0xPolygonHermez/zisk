@@ -11,6 +11,7 @@ pub struct BusValue<F> {
 }
 
 struct SharedData<F> {
+    direct_was_called: bool,
     num_proves: F,
     num_assumes: F,
 }
@@ -35,13 +36,14 @@ pub fn update_debug_data<F: PrimeField>(
     row: usize,
     proves: bool,
     times: F,
+    is_global: bool,
 ) {
     let mut bus = debug_data.lock().expect("Bus values missing");
 
     let bus_opid = bus.entry(opid).or_default();
 
     let bus_val = bus_opid.entry(val).or_insert_with(|| BusValue {
-        shared_data: SharedData { num_proves: F::zero(), num_assumes: F::zero() },
+        shared_data: SharedData { direct_was_called: false, num_proves: F::zero(), num_assumes: F::zero() },
         grouped_data: AirGroupMap::new(),
     });
 
@@ -53,6 +55,14 @@ pub fn update_debug_data<F: PrimeField>(
         .or_default()
         .entry(instance_id)
         .or_insert_with(|| MetaData { row_proves: Vec::new(), row_assumes: Vec::new() });
+
+    // If the value is global but it was already processed, skip it
+    if is_global {
+        if bus_val.shared_data.direct_was_called {
+            return;
+        }
+        bus_val.shared_data.direct_was_called = true;
+    }
 
     if proves {
         bus_val.shared_data.num_proves += times;

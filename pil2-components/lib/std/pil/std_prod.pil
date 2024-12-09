@@ -41,7 +41,7 @@ private function init_proof_containers_prod(int name, int opid) {
     }
 }
 
-private function init_air_containers_prod(int name, int opid) {
+private function init_air_containers_prod(int name) {
     container air.std.gprod {
         int gprod_assumes_count = 0;
         expr gprod_assumes_sel[100];
@@ -62,17 +62,15 @@ private function init_air_containers_prod(int name, int opid) {
     }
 }
 
-private function initial_checks_prod(int proves, int opid, expr cols[], int direct_type) {
-    const int cols_count = length(cols);
-
-    // Assumes and proves of the same opid must have the same number of columns (except for the direct_type case)
+private function initial_checks_prod(int proves, int opid, int cols_count, int direct_type) {
+    // Assumes and proves of the same opid must have the same number of columns
     if (proof.std.gprod.`id${opid}`.cols == 0) {
         // first time called
         proof.std.gprod.`id${opid}`.cols = cols_count;
         // add opid on a list to verify at final
         proof.std.gprod.opids[proof.std.gprod.opids_count] = opid;
         proof.std.gprod.opids_count++;
-    } else if (direct_type == PIOP_DIRECT_TYPE_DEFAULT && cols_count != proof.std.gprod.`id${opid}`.cols) {
+    } else if (cols_count != proof.std.gprod.`id${opid}`.cols) {
         const int expected_cols = proof.std.gprod.`id${opid}`.cols;
         error(`The number of columns of PIOP #${opid} must be ${expected_cols} but was ${cols_count}`);
     }
@@ -104,19 +102,20 @@ private function update_piop_prod(int name, int proves, int opid, expr sel, expr
     init_proof_containers_prod(name, opid);
 
     if (direct_type == PIOP_DIRECT_TYPE_AIR || direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
-        init_air_containers_prod(name, opid);
-
-        // Create debug hints for the witness computation
-        string name_cols[cols_count];
-        expr sum_expr = 0;
-        for (int i = 0; i < cols_count; i++) {
-            name_cols[i] = string(cols[i]);
-            sum_expr += cols[i];
-        }
-        @gprod_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: opid, proves: proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
+        init_air_containers_prod(name);
     }
 
-    initial_checks_prod(proves, opid, cols, direct_type);
+    // Create debug hints for the witness computation
+    string name_cols[cols_count];
+    expr sum_expr = 0;
+    for (int i = 0; i < cols_count; i++) {
+        name_cols[i] = string(cols[i]);
+        sum_expr += cols[i];
+    }
+    @gprod_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: opid, is_global: direct_type == PIOP_DIRECT_TYPE_GLOBAL,
+                          proves: proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
+
+    initial_checks_prod(proves, opid, cols_count, direct_type);
 
     init_challenges();
 
@@ -297,10 +296,12 @@ private function check_opids_were_completed_prod() {
         int opid = proof.std.gprod.opids[i];
         use proof.std.gprod.`id${opid}`;
 
+        // If the PIOP is isolated, avoid any check
         if (name == PIOP_NAME_ISOLATED) continue;
 
         const string name_str = get_piop_name(name);
 
+        // At least one assume and one prove must be defined
         if (assumes == 0) {
             error(`${name_str} #${opid} defined without assume`);
         } else if (proves == 0) {

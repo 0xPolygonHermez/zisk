@@ -47,7 +47,7 @@ private function init_proof_containers_sum(int name, int opid[]) {
     }
 }
 
-private function init_air_containers_sum(int name, int opid[]) {
+private function init_air_containers_sum(int name) {
     container air.std.gsum {
         int gsum_nargs = 0;
         expr gsum_s[100];
@@ -61,11 +61,9 @@ private function init_air_containers_sum(int name, int opid[]) {
     }
 }
 
-private function initial_checks_sum(int proves, int opid[], expr cols[], int direct_type) {
-    const int cols_count = length(cols);
-
+private function initial_checks_sum(int proves, int opid[], int cols_count, int direct_type) {
     for (int i = 0; i < length(opid); i++) {
-        // Assumes and proves of the same opid must have the same number of columns (except for the direct_type case)
+        // Assumes and proves of the same opid must have the same number of columns
         if (proof.std.gsum.`id${opid[i]}`.cols == 0) {
             // first time called
             proof.std.gsum.`id${opid[i]}`.cols = cols_count;
@@ -73,7 +71,7 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int dir
             // add opid on a list to verify at final
             proof.std.gsum.opids[proof.std.gsum.opids_count] = opid[i];
             proof.std.gsum.opids_count++;
-        } else if (direct_type == PIOP_DIRECT_TYPE_DEFAULT && cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
+        } else if (cols_count != proof.std.gsum.`id${opid[i]}`.cols) {
             const int expected_cols = proof.std.gsum.`id${opid[i]}`.cols;
             error(`The number of columns of PIOP #${opid[i]} must be ${expected_cols} but was ${cols_count}`);
         }
@@ -81,10 +79,12 @@ private function initial_checks_sum(int proves, int opid[], expr cols[], int dir
         // The same opid is shared among multiple instances of the same air, so we must keep track of the number of
         // proves and assumes to verify at the end that all of them match
         if (proves == 2) {
-            // proves = 2 marks that the user is responsible for the use of proves and assumes
+            // proves = 2 indicates the user is responsible for the use of proves and assumes
+            // so we mark it as both a prove and an assume
             proof.std.gsum.`id${opid[i]}`.proves++;
             proof.std.gsum.`id${opid[i]}`.assumes++;
         } else {
+            // otherwise, we mark it correctly
             const string name_str = proves ? "proves" : "assumes";
             proof.std.gsum.`id${opid[i]}`.`${name_str}`++;
         }
@@ -112,20 +112,21 @@ private function update_piop_sum(int name, int proves, int opid[], expr sumid, e
     init_proof_containers_sum(name, opid);
 
     if (direct_type == PIOP_DIRECT_TYPE_AIR || direct_type == PIOP_DIRECT_TYPE_DEFAULT) {
-        init_air_containers_sum(name, opid);
-
-        // Create debug hints for the witness computation
-        string name_expr[cols_count];
-        expr sum_expr = 0;
-        for (int i = 0; i < cols_count; i++) {
-            name_expr[i] = string(cols[i]);
-            sum_expr += cols[i];
-        }
-        // proves = 2 marks that the user is responsible for the use of proves and assumes
-        @gsum_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: sumid, proves: proves == 2 ? sel : proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
+        init_air_containers_sum(name);
     }
 
-    initial_checks_sum(proves, opid, cols, direct_type);
+    // Create debug hints for the witness computation
+    string name_expr[cols_count];
+    expr sum_expr = 0;
+    for (int i = 0; i < cols_count; i++) {
+        name_expr[i] = string(cols[i]);
+        sum_expr += cols[i];
+    }
+    // proves = 2 marks that the user is responsible for the use of proves and assumes
+    @gsum_member_data{name_piop: get_piop_name(name), name_expr: name_expr, opid: sumid, is_global: direct_type == PIOP_DIRECT_TYPE_GLOBAL,
+                         proves: proves == 2 ? sel : proves, selector: sel, expressions: cols, deg_expr: degree(sum_expr), deg_sel: degree(sel)};
+
+    initial_checks_sum(proves, opid, cols_count, direct_type);
 
     init_challenges();
 
@@ -444,10 +445,12 @@ private function check_opids_were_completed_sum() {
         int opid = proof.std.gsum.opids[i];
         use proof.std.gsum.`id${opid}`;
 
+        // If the PIOP is isolated, avoid any check
         if (name == PIOP_NAME_ISOLATED) continue;
 
         const string name_str = get_piop_name(name);
 
+        // At least one assume and one prove must be defined
         if (assumes == 0) {
             error(`${name_str} #${opid} defined without assume`);
         } else if (proves == 0) {
