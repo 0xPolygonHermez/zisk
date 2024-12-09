@@ -320,8 +320,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         if self.mode.name == ModeName::Debug {
             let name = Self::MY_NAME;
             let max_values_to_print = self.mode.n_vals;
+            let print_to_file = self.mode.print_to_file;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-            print_debug_info(name, max_values_to_print, debug_data);
+            print_debug_info(name, max_values_to_print, print_to_file, debug_data);
         }
     }
 }

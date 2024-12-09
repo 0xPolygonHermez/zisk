@@ -50,6 +50,9 @@ pub struct VerifyConstraintsCmd {
     #[clap(long)]
     pub print: Option<usize>,
 
+    #[clap(long, action = clap::ArgAction::SetTrue)]
+    pub print_to_file: bool,
+
     #[clap(long, action = clap::ArgAction::Append)]
     pub opids: Option<Vec<String>>,
 }
@@ -74,7 +77,8 @@ impl VerifyConstraintsCmd {
             });
 
             let n_values = self.print.unwrap_or(DEFAULT_PRINT_VALS);
-            StdMode::new(proofman_common::ModeName::Debug, op_ids, n_values)
+            let print_to_file = self.print_to_file;
+            StdMode::new(proofman_common::ModeName::Debug, op_ids, n_values, print_to_file)
         } else {
             self.debug.into()
         };

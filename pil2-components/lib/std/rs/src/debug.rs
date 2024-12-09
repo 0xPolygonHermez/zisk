@@ -1,4 +1,10 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::{self, Write},
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use p3_field::PrimeField;
 use proofman_hints::{format_vec, HintFieldOutput};
@@ -74,16 +80,56 @@ pub fn update_debug_data<F: PrimeField>(
     }
 }
 
-pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, debug_data: &DebugData<F>) {
+pub fn print_debug_info<F: PrimeField>(
+    name: &str,
+    max_values_to_print: usize,
+    print_to_file: bool,
+    debug_data: &DebugData<F>,
+) {
+    let mut file_path = PathBuf::new();
+    let mut output: Box<dyn Write> = Box::new(io::stdout());
     let mut there_are_errors = false;
     let mut bus_vals = debug_data.lock().expect("Bus values missing");
     for (opid, bus) in bus_vals.iter_mut() {
         if bus.iter().any(|(_, v)| v.shared_data.num_proves != v.shared_data.num_assumes) {
             if !there_are_errors {
+                // Print to a file if requested
+                if print_to_file {
+                    let tmp_dir = Path::new("tmp");
+                    if !tmp_dir.exists() {
+                        match fs::create_dir_all(tmp_dir) {
+                            Ok(_) => log::info!("Debug   : Created directory: {:?}", tmp_dir),
+                            Err(e) => {
+                                eprintln!("Failed to create directory {:?}: {}", tmp_dir, e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+
+                    file_path = tmp_dir.join(format!("{}_debug.log", name));
+
+                    match File::create(&file_path) {
+                        Ok(file) => {
+                            output = Box::new(file);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to create log file at {:?}: {}", file_path, e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                let file_msg = if print_to_file {
+                    format!(" Check the {:?} file for more details.", file_path)
+                } else {
+                    "".to_string()
+                };
+                log::error!("{}: Some bus values do not match.{}", name, file_msg);
+
+                // Set the flag to avoid printing the error message multiple times
                 there_are_errors = true;
-                log::error!("{}: Some bus values do not match.", name);
             }
-            println!("\t► Mismatched bus values for opid {}:", opid);
+            writeln!(output, "\t► Mismatched bus values for opid {}:", opid).expect("Write error");
         } else {
             continue;
         }
@@ -94,21 +140,22 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         let len_overassumed = overassumed_values.len();
 
         if len_overassumed > 0 {
-            println!("\t  ⁃ There are {} unmatching values thrown as 'assume':", len_overassumed);
+            writeln!(output, "\t  ⁃ There are {} unmatching values thrown as 'assume':", len_overassumed)
+                .expect("Write error");
         }
 
         for (i, (val, data)) in overassumed_values.iter_mut().enumerate() {
             if i == max_values_to_print {
-                println!("\t      ...");
+                writeln!(output, "\t      ...").expect("Write error");
                 break;
             }
             let shared_data = &data.shared_data;
             let grouped_data = &mut data.grouped_data;
-            print_diffs(val, max_values_to_print, shared_data, grouped_data, false);
+            print_diffs(val, max_values_to_print, shared_data, grouped_data, false, &mut output);
         }
 
         if len_overassumed > 0 {
-            println!();
+            writeln!(output).expect("Write error");
         }
 
         // TODO: Sort unmatching values by the row
@@ -117,22 +164,23 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         let len_overproven = overproven_values.len();
 
         if len_overproven > 0 {
-            println!("\t  ⁃ There are {} unmatching values thrown as 'prove':", len_overproven);
+            writeln!(output, "\t  ⁃ There are {} unmatching values thrown as 'prove':", len_overproven)
+                .expect("Write error");
         }
 
         for (i, (val, data)) in overproven_values.iter_mut().enumerate() {
             if i == max_values_to_print {
-                println!("\t      ...");
+                writeln!(output, "\t      ...").expect("Write error");
                 break;
             }
 
             let shared_data = &data.shared_data;
             let grouped_data = &mut data.grouped_data;
-            print_diffs(val, max_values_to_print, shared_data, grouped_data, true);
+            print_diffs(val, max_values_to_print, shared_data, grouped_data, true, &mut output);
         }
 
         if len_overproven > 0 {
-            println!();
+            writeln!(output).expect("Write error");
         }
     }
 
@@ -142,6 +190,7 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         shared_data: &SharedData<F>,
         grouped_data: &mut AirGroupMap,
         proves: bool,
+        output: &mut dyn Write,
     ) {
         let num_assumes = shared_data.num_assumes;
         let num_proves = shared_data.num_proves;
@@ -149,13 +198,15 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
         let num = if proves { num_proves } else { num_assumes };
         let num_str = if num.is_one() { "time" } else { "times" };
 
-        println!("\t    ==================================================");
-        println!(
+        writeln!(output, "\t    ==================================================").expect("Write error");
+        writeln!(
+            output,
             "\t    • Value:\n\t        {}\n\t      Appears {} {} across the following:",
             format_vec(val),
             num,
             num_str,
-        );
+        )
+        .expect("Write error");
 
         // Collect and organize rows
         let mut organized_rows = Vec::new();
@@ -184,7 +235,8 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
                 rows.iter().map(|x| x.to_string()).take(max_values_to_print).collect::<Vec<_>>().join(",");
 
             let truncated = rows.len() > max_values_to_print;
-            println!(
+            writeln!(
+                output,
                 "\t        Airgroup: {:<3} | Air: {:<3} | Instance: {:<3} | Num: {:<9} | Rows: [{}{}]",
                 airgroup_id,
                 air_id,
@@ -192,15 +244,18 @@ pub fn print_debug_info<F: PrimeField>(name: &str, max_values_to_print: usize, d
                 rows.len(),
                 rows_display,
                 if truncated { ",..." } else { "" },
-            );
+            )
+            .expect("Write error");
         }
 
-        println!("\t    --------------------------------------------------");
+        writeln!(output, "\t    --------------------------------------------------").expect("Write error");
         let diff = if proves { num_proves - num_assumes } else { num_assumes - num_proves };
-        println!(
+        writeln!(
+            output,
             "\t    Total Num Assumes: {}.\n\t    Total Num Proves: {}.\n\t    Total Unmatched: {}.",
             num_assumes, num_proves, diff
-        );
-        println!("\t    ==================================================\n");
+        )
+        .expect("Write error");
+        writeln!(output, "\t    ==================================================\n").expect("Write error");
     }
 }
