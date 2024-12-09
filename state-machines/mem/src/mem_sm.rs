@@ -103,6 +103,7 @@ impl<F: PrimeField> MemSM<F> {
         let mut prover_buffers = Mutex::new(vec![Vec::new(); num_segments]);
         let mut global_idxs = vec![0; num_segments];
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
             if let (true, global_idx) =
@@ -116,7 +117,7 @@ impl<F: PrimeField> MemSM<F> {
             }
         }
 
-        // for (segment_id, mem_ops) in inputs.chunks(air_mem_available_rows).enumerate() {
+        #[allow(clippy::needless_range_loop)]
         for segment_id in 0..num_segments {
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
@@ -153,6 +154,7 @@ impl<F: PrimeField> MemSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
+    #[allow(clippy::too_many_arguments)]
     pub fn prove_instance(
         &self,
         mem_ops: &[MemInput],
@@ -371,7 +373,7 @@ impl<F: PrimeField> MemSM<F> {
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {
     fn send_inputs(&self, mem_op: &[MemInput]) {
-        self.prove(&mem_op);
+        self.prove(mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(RAM_ADDR as u32, (RAM_ADDR + RAM_SIZE - 1) as u32)]

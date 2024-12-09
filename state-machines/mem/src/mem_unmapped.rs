@@ -8,6 +8,12 @@ pub struct MemUnmapped<F: PrimeField> {
     __data: PhantomData<F>,
 }
 
+impl<F: PrimeField> Default for MemUnmapped<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> MemUnmapped<F> {
     pub fn new() -> Self {
         Self { ranges: Vec::new(), __data: PhantomData }

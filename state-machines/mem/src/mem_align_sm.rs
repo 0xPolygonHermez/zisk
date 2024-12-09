@@ -688,7 +688,7 @@ impl<F: PrimeField> MemAlignSM<F> {
                             let mask: u64 = (1 << (rem_bytes * CHUNK_BITS)) - 1;
 
                             // Get the first width bytes of the unaligned value
-                            let value_to_write = (value >> width_norm * CHUNK_BITS) & mask;
+                            let value_to_write = (value >> (width_norm * CHUNK_BITS)) & mask;
 
                             // Write zeroes to value_read from 0 to offset + width
                             // and add the value to write to the value read

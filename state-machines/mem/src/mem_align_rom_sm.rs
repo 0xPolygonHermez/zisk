@@ -137,7 +137,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         let width_idx = Self::calculate_possible_widths(one_word, offset)
             .iter()
             .position(|&w| w == width)
-            .expect(&format!("Invalid width offset:{} width:{}", offset, width));
+            .unwrap_or_else(|| panic!("Invalid width offset:{} width:{}", offset, width));
         first_row_idx += op_size * width_idx as u64;
 
         first_row_idx
@@ -149,14 +149,14 @@ impl<F: PrimeField> MemAlignRomSM<F> {
             true => match offset {
                 x if x <= 4 => vec![1, 2, 4],
                 x if x <= 6 => vec![1, 2],
-                x if x == 7 => vec![1],
+                7 => vec![1],
                 _ => panic!("Invalid offset={}", offset),
             },
             false => match offset {
-                x if x == 0 => panic!("Invalid offset={}", offset),
+                0 => panic!("Invalid offset={}", offset),
                 x if x <= 4 => vec![8],
                 x if x <= 6 => vec![4, 8],
-                x if x == 7 => vec![2, 4, 8],
+                7 => vec![2, 4, 8],
                 _ => panic!("Invalid offset={}", offset),
             },
         }
@@ -176,7 +176,6 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         // Get the contexts
         let wcm = self.wcm.clone();
         let pctx = wcm.get_pctx();
-        let ectx = wcm.get_ectx();
         let sctx = wcm.get_sctx();
 
         // Get the Mem Align ROM AIR

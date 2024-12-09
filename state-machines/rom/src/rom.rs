@@ -31,7 +31,6 @@ impl<F: Field> RomSM<F> {
         &self,
         rom: &ZiskRom,
         pc_histogram: ZiskPcHistogram,
-        instance_gid: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         if pc_histogram.end_pc == 0 {
             panic!("RomSM::prove() detected pc_histogram.end_pc == 0"); // TODO: return an error

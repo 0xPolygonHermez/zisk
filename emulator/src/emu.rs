@@ -129,9 +129,7 @@ impl<'a> Emu<'a> {
                 if !additional_data.is_empty() {
                     assert!(additional_data.len() <= 2);
                     let mut values: [u64; 2] = [0; 2];
-                    for i in 0..additional_data.len() {
-                        values[i] = additional_data[i];
-                    }
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
                     let required_memory =
                         ZiskRequiredMemory::Extended { values, address: addr as u32 };
                     emu_mem.push(required_memory);
@@ -223,9 +221,7 @@ impl<'a> Emu<'a> {
                 if !additional_data.is_empty() {
                     assert!(additional_data.len() <= 2);
                     let mut values: [u64; 2] = [0; 2];
-                    for i in 0..additional_data.len() {
-                        values[i] = additional_data[i];
-                    }
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
                     let required_memory =
                         ZiskRequiredMemory::Extended { values, address: addr as u32 };
                     emu_mem.push(required_memory);
@@ -263,9 +259,7 @@ impl<'a> Emu<'a> {
                 if !additional_data.is_empty() {
                     assert!(additional_data.len() <= 2);
                     let mut values: [u64; 2] = [0; 2];
-                    for i in 0..additional_data.len() {
-                        values[i] = additional_data[i];
-                    }
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
                     let required_memory =
                         ZiskRequiredMemory::Extended { values, address: addr as u32 };
                     emu_mem.push(required_memory);
@@ -364,9 +358,7 @@ impl<'a> Emu<'a> {
                 if !additional_data.is_empty() {
                     assert!(additional_data.len() <= 2);
                     let mut values: [u64; 2] = [0; 2];
-                    for i in 0..additional_data.len() {
-                        values[i] = additional_data[i];
-                    }
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
                     let required_memory =
                         ZiskRequiredMemory::Extended { values, address: addr as u32 };
                     emu_mem.push(required_memory);
@@ -410,9 +402,7 @@ impl<'a> Emu<'a> {
                 if !additional_data.is_empty() {
                     assert!(additional_data.len() <= 2);
                     let mut values: [u64; 2] = [0; 2];
-                    for i in 0..additional_data.len() {
-                        values[i] = additional_data[i];
-                    }
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
                     let required_memory =
                         ZiskRequiredMemory::Extended { values, address: addr as u32 };
                     emu_mem.push(required_memory);
@@ -423,11 +413,6 @@ impl<'a> Emu<'a> {
                 instruction.store, self.ctx.inst_ctx.pc
             ),
         }
-    }
-
-    #[inline(always)]
-    fn is_8_aligned(address: u64, width: u64) -> bool {
-        address & 7 == 0 && width == 8
     }
 
     /// Set SP, if specified by the current instruction

@@ -15,6 +15,7 @@ const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const INPUT_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
+#[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(
         (MAX_INPUT_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64,
@@ -94,6 +95,7 @@ impl<F: PrimeField> InputDataSM<F> {
         let mut prover_buffers = Mutex::new(vec![Vec::new(); num_segments]);
         let mut global_idxs = vec![0; num_segments];
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
             if let (true, global_idx) =
@@ -106,7 +108,7 @@ impl<F: PrimeField> InputDataSM<F> {
             }
         }
 
-        // for (segment_id, mem_ops) in inputs.chunks(air_mem_available_rows).enumerate() {
+        #[allow(clippy::needless_range_loop)]
         for segment_id in 0..num_segments {
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
@@ -143,6 +145,7 @@ impl<F: PrimeField> InputDataSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
+    #[allow(clippy::too_many_arguments)]
     pub fn prove_instance(
         &self,
         mem_ops: &[MemInput],
@@ -278,12 +281,12 @@ impl<F: PrimeField> InputDataSM<F> {
                 range_id,
             );
         }
-        for j in 0..4 {
+        for value_chunk in &value {
             println!(
                 "INPUT-DATA DEBUG Range Check2: value:{} multiplicity:{} range_id:{}",
-                value[j], padding_size, range_id,
+                value_chunk, padding_size, range_id,
             );
-            self.std.range_check(value[j], F::from_canonical_usize(padding_size), range_id);
+            self.std.range_check(*value_chunk, F::from_canonical_usize(padding_size), range_id);
         }
 
         let wcm = self.wcm.clone();
@@ -367,7 +370,7 @@ impl<F: PrimeField> InputDataSM<F> {
 
 impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
     fn send_inputs(&self, mem_op: &[MemInput]) {
-        self.prove(&mem_op);
+        self.prove(mem_op);
     }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(INPUT_ADDR as u32, (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32)]

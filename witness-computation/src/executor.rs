@@ -209,14 +209,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         // ROM State Machine
         // ----------------------------------------------
-        let (rom_is_mine, rom_instance_gid) =
+        let (rom_is_mine, _rom_instance_gid) =
             ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], 1);
 
         let rom_thread = if rom_is_mine {
             let rom_sm = self.rom_sm.clone();
             let zisk_rom = self.zisk_rom.clone();
 
-            Some(thread::spawn(move || rom_sm.prove(&zisk_rom, rom_required, rom_instance_gid)))
+            Some(thread::spawn(move || rom_sm.prove(&zisk_rom, rom_required)))
         } else {
             None
         };

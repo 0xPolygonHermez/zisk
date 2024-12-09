@@ -167,15 +167,14 @@ impl<F: PrimeField> MemProxyEngine<F> {
                     [0, 0]
                 };
                 index += 1;
-                if self.prove_one(
+                if !self.prove_one(
                     address,
                     MemHelpers::main_step_to_address_step(step, step_offset),
                     value,
                     is_write,
                     width,
                     extend_values,
-                ) == false
-                {
+                ) {
                     break
                 }
             } else {
@@ -245,7 +244,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
 
     fn update_next_open_mem_align(&mut self) {
-        if self.open_mem_align_ops.len() == 0 {
+        if self.open_mem_align_ops.is_empty() {
             self.next_open_addr = NO_OPEN_ADDR;
             self.next_open_step = NO_OPEN_STEP;
         } else if self.open_mem_align_ops.len() == 1 {
@@ -356,7 +355,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
         {
             self.set_active_region(index);
         } else {
-            assert!(false, "out-of-memory 0x{:X}", addr);
+            panic!("out-of-memory 0x{:X}", addr);
         }
     }
     fn update_mem_module(&mut self, addr: u32) {
@@ -407,7 +406,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     fn check_if_end_of_memory_mark(&self, addr: u32, _mem_step: u64) -> bool {
         if addr == MAX_MEM_ADDR as u32 {
             debug_assert!(
-                self.open_mem_align_ops.len() == 0,
+                self.open_mem_align_ops.is_empty(),
                 "open_mem_align_ops not empty, has {} elements",
                 self.open_mem_align_ops.len()
             );
