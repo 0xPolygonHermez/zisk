@@ -8,8 +8,6 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use rayon::Scope;
-use sm_common::{OpResult, Provable};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -48,6 +46,8 @@ const SUBW_OP: u8 = ZiskOp::SubW.code();
 const LEUW_OP: u8 = ZiskOp::LeuW.code();
 const LEW_OP: u8 = ZiskOp::LeW.code();
 
+const BYTES: usize = 8;
+const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
 pub struct BinaryBasicSM<F> {
