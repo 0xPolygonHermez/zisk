@@ -543,7 +543,7 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Set SP, if specified by the current instruction
+    // Set SP, if specified by the current instruction
     // #[cfg(feature = "sp")]
     // #[inline(always)]
     // pub fn set_sp(&mut self, instruction: &ZiskInst) {
@@ -1169,7 +1169,8 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Binary ||
+                inst.op_type == ZiskOperationType::Arith ||
+                    inst.op_type == ZiskOperationType::Binary ||
                     inst.op_type == ZiskOperationType::BinaryE,
             ),
         }

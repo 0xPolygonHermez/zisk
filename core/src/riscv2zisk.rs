@@ -1,3 +1,8 @@
+//! Converts a RISC-V program into a Zisk program.
+//!
+//! The input parameter is an ELF RISC-V file name, and the output parameter is a JSON Zisk ROM
+//! file.  Optionally, the Zisk ROM can also be saved in PIL-friendly format or in a binary format.
+
 use crate::{elf2rom, elf2romfile, ZiskRom};
 use std::error::Error;
 

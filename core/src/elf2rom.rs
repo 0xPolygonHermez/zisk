@@ -1,6 +1,7 @@
-//use core::num;
+//! Reads RISC-V data from and ELF file and converts it to a ZiskRom
+
 use crate::{
-    zv2zisk::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
+    riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use elf::{
@@ -10,36 +11,49 @@ use elf::{
 };
 use std::error::Error;
 
-/// Executes the file conversion process
+/// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
+    // Get all data from the ELF file copied to a memory buffer
     let elf_file_path = std::path::PathBuf::from(elf_file.clone());
     let file_data = std::fs::read(elf_file_path)?;
 
+    // Parse the ELF data
     let elf_bytes = ElfBytes::<AnyEndian>::minimal_parse(file_data.as_slice())?;
 
+    // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
+    // Iterate on the available section headers of the ELF parsed data
     if let Some(section_headers) = elf_bytes.section_headers() {
         for section_header in section_headers {
+            // Consider only the section headers that contain program data
             if section_header.sh_type == SHT_PROGBITS {
+                // Get the program section data as a vector of bytes
                 let (data_u8, _) = elf_bytes.section_data(&section_header)?;
                 let mut data = data_u8.to_vec();
 
+                // Remove extra bytes if length is not 4-bytes aligned
                 while data.len() % 4 != 0 {
                     data.pop();
                 }
 
+                // Get the section data address
                 let addr = section_header.sh_addr;
 
+                // If the data contains instructions, parse them as RISC-V instructions and add them
+                // to the ROM instructions, at the specified program address
                 if (section_header.sh_flags & SHF_EXECINSTR as u64) != 0 {
                     add_zisk_code(&mut rom, addr, &data);
                 }
 
+                // If the data is a writable memory section, add it to the ROM memory using Zisk
+                // copy instructions
                 if (section_header.sh_flags & SHF_WRITE as u64) != 0 &&
                     addr >= RAM_ADDR &&
                     addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
                     add_zisk_init_data(&mut rom, addr, &data);
+                // Otherwise, add it to the ROM as RO data
                 } else {
                     rom.ro_data.push(RoData::new(addr, data.len(), data));
                 }
@@ -47,12 +61,14 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
         }
     }
 
+    // Add the program setup, system call and program wrapup instructions
     add_entry_exit_jmp(&mut rom, elf_bytes.ehdr.e_entry);
 
     // Preprocess the ROM (experimental)
+    // Split the ROM instructions based on their address in order to get a better performance when
+    // searching for the corresponding intruction to the pc program address
     let mut max_rom_entry = 0;
     let mut max_rom_instructions = 0;
-
     let mut min_rom_na_unstructions = u64::MAX;
     let mut max_rom_na_unstructions = 0;
     for instruction in &rom.insts {
@@ -115,7 +131,8 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
     Ok(rom)
 }
 
-/// Executes the file conversion process, and saves result into a file
+/// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
+/// file.  The file format can be JSON, PIL-based or binary.
 pub fn elf2romfile(
     elf_file: String,
     rom_file: String,

@@ -1,3 +1,5 @@
+//! Zisk emulator options
+
 use clap::Parser;
 use std::fmt;
 
@@ -27,7 +29,8 @@ pub struct EmuOptions {
     /// Sets the output data file path
     #[clap(short, long, value_name = "OUTPUT_FILE")]
     pub output: Option<String>,
-    /// Sets the maximum number of steps to execute
+    /// Sets the maximum number of steps to execute.  Default value is 1000000000.  Configured with
+    /// `-n`.
     #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "1000000000")]
     pub max_steps: u64,
     /// Sets the print step period in number of steps
@@ -43,23 +46,24 @@ pub struct EmuOptions {
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
     /// Log the output to console. This option is set by default to true as a requirement to pass
-    /// the riscof GHA tests
+    /// the riscof GHA tests.  Enabled with `-c`.
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
     pub log_output: bool,
-    /// Trace every this number of steps
+    /// Trace every this number of steps.
     pub trace_steps: Option<u64>,
-    /// Log performance metrics
+    /// Log performance metrics.  Enabled with `-m`.
     #[clap(short = 'm', long, value_name = "LOG_METRICS", default_value = "false")]
     pub log_metrics: bool,
-    /// Tracer v
+    /// Tracer v.  Enabled with `-a`.
     #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
     pub tracerv: bool,
+    /// Generates statistics about opcodes and memory usage.  Enabled with `-x`.
     #[clap(short = 'x', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
 }
 
-/// Default constructor for impl fmt::Display for EmuOptions structure
 impl Default for EmuOptions {
+    /// Default constructor for impl fmt::Display for EmuOptions structure
     fn default() -> Self {
         Self {
             rom: None,
@@ -81,6 +85,7 @@ impl Default for EmuOptions {
 }
 
 impl fmt::Display for EmuOptions {
+    /// Formats a string with the configuration information
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -91,6 +96,7 @@ impl fmt::Display for EmuOptions {
 }
 
 impl EmuOptions {
+    /// Returns true if the configuration allows to emulate in fast mode, maximizing the performance
     pub fn is_fast(&self) -> bool {
         self.trace_steps.is_none() &&
             (self.print_step.is_none() || (self.print_step.unwrap() == 0)) &&

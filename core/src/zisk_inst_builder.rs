@@ -1,59 +1,33 @@
+//! Builds a Zisk instruction.  
+//! The ZiskInstBuilder structure contains one ZiskInst structure, and provides a set of helper
+//! methods to modify its attributes
+
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
-    ZiskInst, ZiskOperationType, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, SYS_ADDR,
+    ZiskInst, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE,
 };
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
-#[derive(Debug, Clone)]
+/// Helps building a Zisk instruction during the transpilation process
+#[derive(Debug, Clone, Default)]
 pub struct ZiskInstBuilder {
-    ind_width_set: bool,
+    /// Zisk instruction
     pub i: ZiskInst,
-    regs_addr: u64,
 }
 
 impl ZiskInstBuilder {
+    /// Constructor setting the initial pc address
     #[inline]
-    pub const fn new(paddr: u64) -> ZiskInstBuilder {
-        let regs_addr = SYS_ADDR;
-
-        ZiskInstBuilder {
-            ind_width_set: false,
-            i: ZiskInst {
-                paddr,
-                store_ra: false,
-                store_use_sp: false,
-                store: STORE_NONE,
-                store_offset: 0,
-                set_pc: false,
-                // #[cfg(feature = "sp")]
-                // set_sp: false,
-                ind_width: 8,
-                // #[cfg(feature = "sp")]
-                // inc_sp: 0,
-                end: false,
-                a_src: 0,
-                a_use_sp_imm1: 0,
-                a_offset_imm0: 0,
-                b_src: 0,
-                b_use_sp_imm1: 0,
-                b_offset_imm0: 0,
-                jmp_offset1: 0,
-                jmp_offset2: 0,
-                is_external_op: false,
-                op: 0,
-                func: |_| (),
-                op_str: "",
-                op_type: ZiskOperationType::None,
-                verbose: String::new(),
-                m32: false,
-            },
-            regs_addr,
-        }
+    pub fn new(paddr: u64) -> ZiskInstBuilder {
+        let mut zib = ZiskInstBuilder::default();
+        zib.i.paddr = paddr;
+        zib
     }
 
+    /// Converts a string to an a source value
     fn a_src(&self, src: &str) -> u64 {
         match src {
             "mem" => SRC_MEM,
@@ -66,6 +40,7 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Converts a string to a b source value
     fn b_src(&self, src: &str) -> u64 {
         match src {
             "mem" => SRC_MEM,
@@ -76,6 +51,7 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Converts a string to a c store value
     fn c_store(&self, store: &str) -> u64 {
         match store {
             "none" => STORE_NONE,
@@ -85,6 +61,7 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Splits a 128 bits into 2 32-bits chunks
     pub fn nto32s(n: i128) -> (u32, u32) {
         let mut a = n;
         if a >= (1_i128 << 64) {
@@ -99,6 +76,7 @@ impl ZiskInstBuilder {
         ((a & 0xFFFFFFFF) as u32, (a >> 32) as u32)
     }
 
+    /// Sets the a source instruction sttributes
     pub fn src_a(&mut self, src_input: &str, offset_imm_reg_input: u64, use_sp: bool) {
         let mut src = src_input;
         let mut offset_imm_reg = offset_imm_reg_input;
@@ -108,7 +86,7 @@ impl ZiskInstBuilder {
                 offset_imm_reg = 0;
             } else {
                 src = "mem";
-                offset_imm_reg = self.regs_addr + offset_imm_reg * 8;
+                offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
         }
         self.i.a_src = self.a_src(src);
@@ -130,6 +108,7 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Sets the b source instruction sttributes
     pub fn src_b(&mut self, src_input: &str, offset_imm_reg_input: u64, use_sp: bool) {
         let mut src = src_input;
         let mut offset_imm_reg = offset_imm_reg_input;
@@ -139,7 +118,7 @@ impl ZiskInstBuilder {
                 offset_imm_reg = 0;
             } else {
                 src = "mem";
-                offset_imm_reg = self.regs_addr + offset_imm_reg * 8;
+                offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
         }
         self.i.b_src = self.b_src(src);
@@ -161,6 +140,7 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Sets the c store instruction attributes
     pub fn store(&mut self, dst_input: &str, offset_input: i64, use_sp: bool, store_ra: bool) {
         let mut dst = dst_input;
         let mut offset = offset_input;
@@ -169,7 +149,7 @@ impl ZiskInstBuilder {
                 return;
             } else {
                 dst = "mem";
-                offset = self.regs_addr as i64 + offset * 8;
+                offset = REG_FIRST as i64 + offset * 8;
             }
         }
 
@@ -185,10 +165,12 @@ impl ZiskInstBuilder {
         }
     }
 
+    /// Set the store as a store ra
     pub fn store_ra(&mut self, dst: &str, offset: i64, use_sp: bool) {
         self.store(dst, offset, use_sp, true);
     }
 
+    /// Sets the set pc flag to true
     pub fn set_pc(&mut self) {
         self.i.set_pc = true;
     }
@@ -198,6 +180,7 @@ impl ZiskInstBuilder {
     //     self.i.set_sp = true;
     // }
 
+    /// Sets the opcode, and other instruction attributes that depend on it
     pub fn op(&mut self, optxt: &str) -> Result<(), InvalidNameError> {
         let op = ZiskOp::try_from_name(optxt)?;
         self.i.is_external_op = op.op_type() != OpType::Internal;
@@ -209,19 +192,24 @@ impl ZiskInstBuilder {
         Ok(())
     }
 
+    /// Sets jump offsets.  The first offset is added to the pc when a set pc or a flag happens,
+    /// and the second offset is the default one.
     pub fn j(&mut self, j1: i32, j2: i32) {
         self.i.jmp_offset1 = j1 as i64;
         self.i.jmp_offset2 = j2 as i64;
     }
 
+    /// Set the indirection data width.  Accepted values are 1, 2, 4 and 8 (bytes.)
     pub fn ind_width(&mut self, w: u64) {
-        if w != 1 && w != 2 && w != 4 && w != 8 {
-            panic!("ZiskInstBuilder::indWidth() invalid v={}", w);
-        }
-        self.i.ind_width = w;
-        self.ind_width_set = true;
+        self.i.ind_width = match w {
+            1 | 2 | 4 | 8 => w,
+            _ => {
+                panic!("ZiskInstBuilder::indWidth() invalid widtch={}", w);
+            }
+        };
     }
 
+    /// Sets the end flag to true, to be called only by the last instruction in any execution path
     pub fn end(&mut self) {
         self.i.end = true;
     }
@@ -231,10 +219,12 @@ impl ZiskInstBuilder {
     //     self.i.inc_sp += inc;
     // }
 
+    /// Sets a verbose description of the instruction
     pub fn verbose(&mut self, s: &str) {
         self.i.verbose = s.to_owned();
     }
 
+    /// Called when the instruction has been built
     pub fn build(&mut self) {
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }

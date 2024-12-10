@@ -7,6 +7,40 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug",
+            "program": "target/debug/proofman-cli",
+            //"cargo": {
+                "args": [
+                    //"run",
+                    //"--bin",
+                    //"proofman-cli",
+                    "verify-constraints",
+                    "--witness-lib",
+                    "../zisk/target/debug/libzisk_witness.so",
+                    "--rom",
+                    "../zisk/emulator/benches/data/my.elf",
+                    "-i",
+                    "../zisk/emulator/benches/data/input_two_segments.bin",
+                    "--proving-key",
+                    "../zisk/build/provingKey"
+                ],
+                //"filter": {
+                //    "name": "proofman_cli",
+                //    "kind": "lib"
+                //}
+            //},
+            //"args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "RUSTFLAGS", "value": "-L native=/home/zkronos73/devel/zisk2/pil2-proofman/pil2-stark/lib" }
+            ],
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'ziskemu'",
             "cargo": {
                 "args": [
