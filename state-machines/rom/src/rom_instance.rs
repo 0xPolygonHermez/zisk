@@ -55,7 +55,7 @@ impl<F: PrimeField> Instance for RomInstance<F> {
         self.wcm
             .get_pctx()
             .air_instance_repo
-            .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+            .add_air_instance(air_instance, Some(self.iectx.global_idx));
 
         Ok(())
     }

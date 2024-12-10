@@ -143,7 +143,7 @@ impl<F: PrimeField> MainSM<F> {
         self.wcm
             .get_pctx()
             .air_instance_repo
-            .add_air_instance(air_instance, Some(main_instance.iectx.instance_global_idx));
+            .add_air_instance(air_instance, Some(main_instance.iectx.global_idx));
     }
 }
 

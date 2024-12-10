@@ -99,11 +99,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut plans = self.compute_plans(min_traces.clone());
 
         // Create the buffer ta the distribution context
-        let mut dctx = ectx.dctx.write().unwrap();
         let mut sec_instances = Vec::new();
         for (i, plans_by_sm) in plans.iter_mut().enumerate() {
             for plan in plans_by_sm.drain(..) {
-                let (is_mine, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1);
+                let (is_mine, global_idx) =
+                    ectx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
                 if is_mine || plan.instance_type == InstanceType::Table {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
@@ -113,7 +113,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
             }
         }
-        drop(dctx);
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
@@ -218,9 +217,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut main_instances = Vec::new();
         let ectx = self.wcm.get_ectx();
 
-        let mut dctx = ectx.dctx.write().unwrap();
         for plan in main_planning.drain(..) {
-            if let (true, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1) {
+            if let (true, global_idx) = ectx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1) {
                 let iectx = InstanceExpanderCtx::new(global_idx, plan);
                 main_instances.push(self.main_sm.get_instance(iectx));
             }
