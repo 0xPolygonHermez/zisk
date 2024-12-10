@@ -358,9 +358,6 @@ private function piop_gsum_air(const int blowupFactor = 2) {
     //  At this point, the constraint has been transformed to:
     //       gsum === 'gsum * (1 - L1) + ∑ᵢ imᵢ + num / den
     //  check that the constraint is satisfied
-
-    @gsum_col{reference: gsum, numerator: sum_ims * isolated_den + isolated_num, denominator: isolated_den, result: gsum_result};
-
     (gsum - 'gsum * (1 - __L1) - sum_ims) * isolated_den - isolated_num === 0;
 
     /*
@@ -385,6 +382,8 @@ private function piop_gsum_air(const int blowupFactor = 2) {
         direct_num += _tmp;
     }
 
+    @gsum_col{reference: gsum, numerator_air: sum_ims * isolated_den + isolated_num, denominator_air: isolated_den, 
+                               numerator_direct: direct_num, denominator_direct: direct_den, result: gsum_result};
     __L1' * ((gsum_result - gsum) * direct_den - direct_num) === 0;
 }
 

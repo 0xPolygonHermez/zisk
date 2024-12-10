@@ -320,12 +320,15 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
                         gsum_hint,
                         "reference",
                         "result",
-                        "numerator",
-                        "denominator",
+                        "numerator_air",
+                        "denominator_air",
                         HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
                         true,
                     );
+
+                    // TODO: Add direct part
+                    // result += numerator_direct/denominator_direct
 
                     air_instance.set_commit_calculated(pol_id as usize);
                     air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);

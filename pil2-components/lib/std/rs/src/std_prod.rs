@@ -302,12 +302,15 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
                         gprod_hint,
                         "reference",
                         "result",
-                        "numerator",
-                        "denominator",
+                        "numerator_air",
+                        "denominator_air",
                         HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
                         false,
                     );
+
+                    // TODO: Add direct part
+                    // result *= numerator_direct/denominator_direct
 
                     air_instance.set_commit_calculated(pol_id as usize);
                     air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
