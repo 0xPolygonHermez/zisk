@@ -60,7 +60,6 @@ impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
         drop(dctx);
 
-        // if is_mine {
         let mut trace = BinaryExtensionTableTrace::<F>::new();
 
         trace.buffer[0..BinaryExtensionTableTrace::<F>::NUM_ROWS]
@@ -75,7 +74,6 @@ impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
             .get_pctx()
             .air_instance_repo
             .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
-        // }
 
         Ok(())
     }
