@@ -37,7 +37,7 @@ impl<F: Field> ArithFullSM<F> {
 
         timer_start_trace!(ARITH_TRACE);
         info!(
-            "{}: ··· Creating Arith instance KKKKK [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             inputs.len(),
             num_rows,
