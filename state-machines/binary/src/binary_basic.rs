@@ -147,7 +147,7 @@ impl<F: Field> BinaryBasicSM<F> {
         OPCODES_32_BITS.contains(&opcode)
     }
 
-    fn lt_abs_np(a: u64, b: u64) -> (u64, bool) {
+    fn lt_abs_np_execute(a: u64, b: u64) -> (u64, bool) {
         let a_pos = (a ^ MASK_U64).wrapping_add(1);
         if a_pos < b {
             (1, true)
@@ -156,9 +156,17 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
-    fn lt_abs_pn(a: u64, b: u64) -> (u64, bool) {
+    fn lt_abs_pn_execute(a: u64, b: u64) -> (u64, bool) {
         let b_pos = (b ^ MASK_U64).wrapping_add(1);
         if a < b_pos {
+            (1, true)
+        } else {
+            (0, false)
+        }
+    }
+
+    fn gt_execute(a: u64, b: u64) -> (u64, bool) {
+        if (a as i64) > (b as i64) {
             (1, true)
         } else {
             (0, false)
@@ -171,8 +179,9 @@ impl<F: Field> BinaryBasicSM<F> {
             ZiskOp::execute(opcode, a, b)
         } else {
             match opcode {
-                LT_ABS_NP_OP => Self::lt_abs_np(a, b),
-                LT_ABS_PN_OP => Self::lt_abs_pn(a, b),
+                LT_ABS_NP_OP => Self::lt_abs_np_execute(a, b),
+                LT_ABS_PN_OP => Self::lt_abs_pn_execute(a, b),
+                GT_OP => Self::gt_execute(a, b),
                 _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
             }
         }
@@ -184,7 +193,8 @@ impl<F: Field> BinaryBasicSM<F> {
             0
         } else {
             match opcode {
-                LT_ABS_NP_OP | LT_ABS_PN_OP => 1,
+                LT_ABS_NP_OP | LT_ABS_PN_OP => 2,
+                GT_OP => 0,
                 _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
             }
         }
@@ -195,10 +205,6 @@ impl<F: Field> BinaryBasicSM<F> {
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
     ) -> BinaryRow<F> {
-        if operation.step == 10634 {
-            panic!("opreation = {:?}", operation);
-        }
-
         // Create an empty trace
         let mut row: BinaryRow<F> = Default::default();
 
@@ -262,6 +268,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 // Set use last carry to zero
                 row.use_last_carry = F::zero();
+
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -328,6 +337,9 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry to zero
                 row.use_last_carry = F::zero();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
@@ -386,15 +398,19 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry
                 row.use_last_carry = F::one();
 
+                // Set has initial carry
+                row.has_initial_carry = F::one();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
-                    let _clt = cin & 0x1;
-                    let _cop = cin & 0x2;
+                    let _clt = cin & 0x01;
+                    let _cop = (cin & 0x02) >> 1;
 
                     let _a = (a_bytes[i] as u64 ^ 0xFF) + _cop;
                     let _b = b_bytes[i] as u64;
 
                     // Calculate the output carry
+                    let previous_cin = cin;
                     match (_a & 0xFF).cmp(&_b) {
                         CmpOrdering::Less => {
                             cout = 1;
@@ -408,7 +424,10 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     cout += 2*(_a >> 8);
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_canonical_u64(cout);
+
+                    // Set carry for next iteration
+                    cin = cout;
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 8 * plast[i];
@@ -418,7 +437,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
-                        cin,
+                        previous_cin,
                         plast[i],
                         flags,
                     );
@@ -435,15 +454,19 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry
                 row.use_last_carry = F::one();
 
+                // Set has initial carry
+                row.has_initial_carry = F::one();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
                     let _clt = cin & 0x1;
-                    let _cop = cin & 0x2;
+                    let _cop = (cin & 0x02) >> 1;
 
                     let _a = a_bytes[i] as u64;
                     let _b = (b_bytes[i] as u64 ^ 0xFF) + _cop;
 
                     // Calculate the output carry
+                    let previous_cin = cin;
                     match _a.cmp(&(_b & 0xFF)) {
                         CmpOrdering::Less => {
                             cout = 1;
@@ -457,7 +480,10 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     cout += 2*(_b >> 8);
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_canonical_u64(cout);
+
+                    // Set carry for next iteration
+                    cin = cout;
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 8 * plast[i];
@@ -467,7 +493,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
-                        cin,
+                        previous_cin,
                         plast[i],
                         flags,
                     );
@@ -487,6 +513,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 // Set use last carry to one
                 row.use_last_carry = F::one();
+
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -543,6 +572,9 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry to one
                 row.use_last_carry = F::one();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
@@ -564,11 +596,13 @@ impl<F: Field> BinaryBasicSM<F> {
                     {
                         cout = if b_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
+                    row.carry[i] = F::from_canonical_u64(cout);
+
+                    // Set carry for next iteration
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cin + 8 * plast[i];
+                    let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::<F>::calculate_table_row(
@@ -591,6 +625,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 // Set use last carry to one
                 row.use_last_carry = F::one();
+
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -636,6 +673,9 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry to zero
                 row.use_last_carry = F::zero();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
@@ -677,6 +717,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 // Set use last carry to zero
                 row.use_last_carry = F::zero();
+
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -723,6 +766,9 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set use last carry to one
                 row.use_last_carry = F::one();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
@@ -768,6 +814,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 row.use_last_carry = F::zero();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // No carry
                 for i in 0..8 {
                     row.carry[i] = F::zero();
@@ -796,6 +845,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 row.use_last_carry = F::zero();
 
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
+
                 // No carry
                 for i in 0..8 {
                     row.carry[i] = F::zero();
@@ -822,7 +874,11 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Xor;
 
+                // Set use last carry to zero
                 row.use_last_carry = F::zero();
+
+                // Set has initial carry
+                row.has_initial_carry = F::zero();
 
                 // No carry
                 for i in 0..8 {
@@ -934,9 +990,7 @@ impl<F: Field> BinaryBasicSM<F> {
         // rows
         let padding_row = BinaryRow::<F> {
             m_op: F::from_canonical_u8(AND_OP),
-            multiplicity: F::zero(),
-            main_step: F::zero(), /* TODO: remove, since main_step is just for
-                                   * debugging */
+            m_op_or_ext: F::from_canonical_u8(AND_OP),
             ..Default::default()
         };
 

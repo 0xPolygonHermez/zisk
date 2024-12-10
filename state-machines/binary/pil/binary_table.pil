@@ -27,8 +27,11 @@ require "std_lookup.pil"
 // (***) The op do not use CIN, but the binary does so we need to consider it
 // Note: EXT_32 is the only unary operation which is not a ZisK OP but it is used to prove the rest
 
-const int EXT_32_OP = 0x13;
 const int BINARY_TABLE_ID = 125;
+
+const int EXT_32_OP = 0x13;
+
+const int INITIAL_CARRY_LT_ABS = 0x02;
 
 airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
 
@@ -155,9 +158,9 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
 
                 // Decode the carries
                 const int _clt = cin & 0x01;
-                const int _cop = cin & 0x02;
+                const int _cop = (cin & 0x02) >> 1;
 
-                const int _a = a ^ 0xFF + _cop; // _cop should be 1 at the first byte and _a >> 8 at the rest 
+                const int _a = (a ^ 0xFF) + _cop; // _cop should be 1 at the first byte and _a >> 8 at the rest 
                 const int _b = b;    
 
                 if ((_a  & 0xFF) < _b) {
@@ -181,10 +184,10 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
 
                 // Decode the carries
                 const int _clt = cin & 0x01;
-                const int _cop = cin & 0x02;
+                const int _cop = (cin & 0x02) >> 1;
 
                 const int _a = a;
-                const int _b = b ^ 0xFF + _cop; // _cop should be 1 at the first byte and _b >> 8 at the rest              
+                const int _b = (b ^ 0xFF) + _cop; // _cop should be 1 at the first byte and _b >> 8 at the rest              
 
                 if (_a < (_b & 0xFF)) {
                     cout = 1;
