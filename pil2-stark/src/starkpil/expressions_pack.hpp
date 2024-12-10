@@ -271,7 +271,7 @@ public:
         }
     }
 
-    void calculateExpressions(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> dests, uint64_t domainSize) override {
+    void calculateExpressions(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> dests, uint64_t domainSize, bool compilation_time) override {
         uint64_t nOpenings = setupCtx.starkInfo.openingPoints.size();
         uint64_t ns = 2 + setupCtx.starkInfo.nStages + setupCtx.starkInfo.customCommits.size();
         bool domainExtended = domainSize == uint64_t(1 << setupCtx.starkInfo.starkStruct.nBitsExt) ? true : false;
@@ -280,11 +280,13 @@ public:
         setBufferTInfo(domainExtended, expId);
 
         Goldilocks::Element challenges[setupCtx.starkInfo.challengesMap.size()*FIELD_EXTENSION*nrowsPack];
-        for(uint64_t i = 0; i < setupCtx.starkInfo.challengesMap.size(); ++i) {
-            for(uint64_t j = 0; j < nrowsPack; ++j) {
-                challenges[(i*FIELD_EXTENSION)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION];
-                challenges[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION + 1];
-                challenges[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION + 2];
+        if(!compilation_time) {
+            for(uint64_t i = 0; i < setupCtx.starkInfo.challengesMap.size(); ++i) {
+                for(uint64_t j = 0; j < nrowsPack; ++j) {
+                    challenges[(i*FIELD_EXTENSION)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION];
+                    challenges[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION + 1];
+                    challenges[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.challenges[i * FIELD_EXTENSION + 2];
+                }
             }
         }
 
@@ -296,44 +298,52 @@ public:
         }
 
         Goldilocks::Element publics[setupCtx.starkInfo.nPublics*nrowsPack];
-        for(uint64_t i = 0; i < setupCtx.starkInfo.nPublics; ++i) {
-            for(uint64_t j = 0; j < nrowsPack; ++j) {
-                publics[i*nrowsPack + j] = params.publicInputs[i];
+        if(!compilation_time) {
+            for(uint64_t i = 0; i < setupCtx.starkInfo.nPublics; ++i) {
+                for(uint64_t j = 0; j < nrowsPack; ++j) {
+                    publics[i*nrowsPack + j] = params.publicInputs[i];
+                }
             }
         }
 
         Goldilocks::Element evals[setupCtx.starkInfo.evMap.size()*FIELD_EXTENSION*nrowsPack];
-        for(uint64_t i = 0; i < setupCtx.starkInfo.evMap.size(); ++i) {
-            for(uint64_t j = 0; j < nrowsPack; ++j) {
-                evals[(i*FIELD_EXTENSION)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION];
-                evals[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION + 1];
-                evals[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION + 2];
+        if(!compilation_time) {
+            for(uint64_t i = 0; i < setupCtx.starkInfo.evMap.size(); ++i) {
+                for(uint64_t j = 0; j < nrowsPack; ++j) {
+                    evals[(i*FIELD_EXTENSION)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION];
+                    evals[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION + 1];
+                    evals[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.evals[i * FIELD_EXTENSION + 2];
+                }
             }
         }
 
         Goldilocks::Element airgroupValues[setupCtx.starkInfo.airgroupValuesMap.size()*FIELD_EXTENSION*nrowsPack];
-        for(uint64_t i = 0; i < setupCtx.starkInfo.airgroupValuesMap.size(); ++i) {
-            for(uint64_t j = 0; j < nrowsPack; ++j) {
-                airgroupValues[(i*FIELD_EXTENSION)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION];
-                airgroupValues[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION + 1];
-                airgroupValues[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION + 2];
+        if(!compilation_time) {
+            for(uint64_t i = 0; i < setupCtx.starkInfo.airgroupValuesMap.size(); ++i) {
+                for(uint64_t j = 0; j < nrowsPack; ++j) {
+                    airgroupValues[(i*FIELD_EXTENSION)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION];
+                    airgroupValues[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION + 1];
+                    airgroupValues[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.airgroupValues[i * FIELD_EXTENSION + 2];
+                }
             }
         }
 
         Goldilocks::Element airValues[setupCtx.starkInfo.airValuesMap.size()*FIELD_EXTENSION*nrowsPack];
-        for(uint64_t i = 0; i < setupCtx.starkInfo.airValuesMap.size(); ++i) {
-            for(uint64_t j = 0; j < nrowsPack; ++j) {
-                airValues[(i*FIELD_EXTENSION)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION];
-                airValues[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION + 1];
-                airValues[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION + 2];
+        if(!compilation_time) {
+            for(uint64_t i = 0; i < setupCtx.starkInfo.airValuesMap.size(); ++i) {
+                for(uint64_t j = 0; j < nrowsPack; ++j) {
+                    airValues[(i*FIELD_EXTENSION)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION];
+                    airValues[(i*FIELD_EXTENSION + 1)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION + 1];
+                    airValues[(i*FIELD_EXTENSION + 2)*nrowsPack + j] = params.airValues[i * FIELD_EXTENSION + 2];
+                }
             }
-        }
+            }
 
-    #pragma omp parallel for
+    // #pragma omp parallel for
         for (uint64_t i = 0; i < domainSize; i+= nrowsPack) {
             Goldilocks::Element bufferT_[nOpenings*nCols*nrowsPack];
 
-            loadPolynomials(params, parserArgs, dests, bufferT_, i, domainSize);
+            if(!compilation_time) loadPolynomials(params, parserArgs, dests, bufferT_, i, domainSize);
 
             Goldilocks::Element **destVals = new Goldilocks::Element*[dests.size()];
 

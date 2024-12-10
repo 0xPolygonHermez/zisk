@@ -72,11 +72,13 @@ public:
 
     virtual ~ExpressionsCtx() {};
     
-    virtual void calculateExpressions(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> dests, uint64_t domainSize) {};
+    virtual void calculateExpressions(StepsParams& params, ParserArgs &parserArgs, std::vector<Dest> dests, uint64_t domainSize, bool compilationTime = false) {};
  
-    void calculateExpression(StepsParams& params, Goldilocks::Element* dest, uint64_t expressionId, bool inverse = false) {
+    void calculateExpression(StepsParams& params, Goldilocks::Element* dest, uint64_t expressionId, bool inverse = false, bool compilation_time = false) {
         uint64_t domainSize;
-        if(expressionId == setupCtx.starkInfo.cExpId || expressionId == setupCtx.starkInfo.friExpId) {
+        if (compilation_time) {
+            domainSize = 1;
+        } else if(expressionId == setupCtx.starkInfo.cExpId || expressionId == setupCtx.starkInfo.friExpId) {
             setupCtx.expressionsBin.expressionsInfo[expressionId].destDim = 3;
             domainSize = 1 << setupCtx.starkInfo.starkStruct.nBitsExt;
         } else {
@@ -85,7 +87,7 @@ public:
         Dest destStruct(dest);
         destStruct.addParams(setupCtx.expressionsBin.expressionsInfo[expressionId], inverse);
         std::vector<Dest> dests = {destStruct};
-        calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, domainSize);
+        calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, domainSize, compilation_time);
     }
 };
 

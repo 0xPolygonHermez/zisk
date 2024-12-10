@@ -359,7 +359,7 @@ void Starks<ElementType>::calculateImPolsExpressions(uint64_t step, StepsParams 
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
 
-    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits));
+    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits), false);
 }
 
 template <typename ElementType>

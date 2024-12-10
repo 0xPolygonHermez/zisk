@@ -33,6 +33,7 @@ struct HintFieldOptions {
     bool inverse = false;
     bool print_expression = false;
     bool initialize_zeros = false;
+    bool compilation_time = false;
 };
 
 
@@ -261,11 +262,19 @@ HintFieldValues getHintField(
                 exitProcess();
             }
         } else if (hintFieldVal.operand == opType::tmp) {
-            uint64_t dim = setupCtx.expressionsBin.expressionsInfo[hintFieldVal.id].destDim;
-            hintFieldInfo.size = deg*dim;
-            hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
-            hintFieldInfo.fieldType = dim == 1 ? HintFieldType::Column : HintFieldType::ColumnExtended;
-            hintFieldInfo.offset = dim;
+            if(hintOptions.compilation_time) {
+                hintFieldInfo.size = 1;
+                hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+                hintFieldInfo.fieldType = HintFieldType::Field;
+                hintFieldInfo.offset = 1;
+                ExpressionsPack expressionsCtx(setupCtx, 1);
+                expressionsCtx.calculateExpression(params, hintFieldInfo.values, hintFieldVal.id, hintOptions.inverse, true);
+            } else {
+                uint64_t dim = setupCtx.expressionsBin.expressionsInfo[hintFieldVal.id].destDim;
+                hintFieldInfo.size = deg*dim;
+                hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
+                hintFieldInfo.fieldType = dim == 1 ? HintFieldType::Column : HintFieldType::ColumnExtended;
+                hintFieldInfo.offset = dim;
 #ifdef __AVX512__
     ExpressionsAvx512 expressionsCtx(setupCtx);
 #elif defined(__AVX2__)
@@ -273,7 +282,8 @@ HintFieldValues getHintField(
 #else
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
-            expressionsCtx.calculateExpression(params, hintFieldInfo.values, hintFieldVal.id, hintOptions.inverse);
+                expressionsCtx.calculateExpression(params, hintFieldInfo.values, hintFieldVal.id, hintOptions.inverse, false);
+            }
         } else if (hintFieldVal.operand == opType::public_) {
             hintFieldInfo.size = 1;
             hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
@@ -436,7 +446,7 @@ void opHintFields(SetupCtx& setupCtx, StepsParams& params, Goldilocks::Element* 
 
     uint64_t domainSize = 1 << setupCtx.starkInfo.starkStruct.nBits;
     std::vector<Dest> dests = {destStruct};
-    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, {destStruct}, domainSize);
+    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsExpressions, {destStruct}, domainSize, false);
 }
 
 uint64_t multiplyHintFields(SetupCtx& setupCtx, StepsParams &params, uint64_t hintId, std::string hintFieldNameDest, std::string hintFieldName1, std::string hintFieldName2,  HintFieldOptions &hintOptions1, HintFieldOptions &hintOptions2) {

@@ -106,16 +106,35 @@ impl<F: PrimeField> StdProd<F> {
                 panic!("sumid must be a field element");
             };
 
-            let proves =
-                get_hint_field::<F>(sctx, pctx, air_instance, *hint as usize, "proves", HintFieldOptions::default());
-            let proves = if let HintFieldValue::Field(proves) = proves {
-                if !proves.is_zero() && !proves.is_one() {
-                    log::error!("Proves hint must be either 0 or 1");
-                    panic!();
-                }
-                proves.is_one()
+            let HintFieldValue::Field(is_global) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "is_global",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("is_global hint must be a field element");
+                panic!();
+            };
+
+            let HintFieldValue::Field(proves) = get_hint_field_constant::<F>(
+                sctx,
+                airgroup_id,
+                air_id,
+                *hint as usize,
+                "proves",
+                HintFieldOptions::default(),
+            ) else {
+                log::error!("proves hint must be a field element");
+                panic!();
+            };
+            let proves = if proves.is_zero() {
+                false
+            } else if proves.is_one() {
+                true
             } else {
-                log::error!("Proves hint must be a field element");
+                log::error!("Proves hint must be either 0 or 1");
                 panic!();
             };
 
@@ -143,7 +162,7 @@ impl<F: PrimeField> StdProd<F> {
                 panic!();
             };
 
-            let HintFieldValue::Field(deg_mul) = get_hint_field_constant::<F>(
+            let HintFieldValue::Field(deg_sel) = get_hint_field_constant::<F>(
                 sctx,
                 airgroup_id,
                 air_id,
@@ -151,17 +170,38 @@ impl<F: PrimeField> StdProd<F> {
                 "deg_sel",
                 HintFieldOptions::default(),
             ) else {
-                log::error!("deg_mul hint must be a field element");
+                log::error!("deg_sel hint must be a field element");
                 panic!();
             };
 
-            // If both the expresion and the mul are of degree zero, then simply update the bus once
-            if deg_expr.is_zero() && deg_mul.is_zero() {
-                update_bus(airgroup_id, air_id, instance_id, opid, proves, &selector, &expressions, 0, debug_data);
+            if deg_expr.is_zero() && deg_sel.is_zero() {
+                update_bus(
+                    airgroup_id,
+                    air_id,
+                    instance_id,
+                    opid,
+                    proves,
+                    &selector,
+                    &expressions,
+                    0,
+                    debug_data,
+                    is_global.is_one(),
+                );
             } else {
                 // Otherwise, update the bus for each row
                 for j in 0..num_rows {
-                    update_bus(airgroup_id, air_id, instance_id, opid, proves, &selector, &expressions, j, debug_data);
+                    update_bus(
+                        airgroup_id,
+                        air_id,
+                        instance_id,
+                        opid,
+                        proves,
+                        &selector,
+                        &expressions,
+                        j,
+                        debug_data,
+                        false,
+                    );
                 }
             }
 
@@ -176,6 +216,7 @@ impl<F: PrimeField> StdProd<F> {
                 expressions: &HintFieldValuesVec<F>,
                 row: usize,
                 debug_data: &DebugData<F>,
+                is_global: bool,
             ) {
                 let sel = if let HintFieldOutput::Field(selector) = selector.get(row) {
                     if !selector.is_zero() && !selector.is_one() {
@@ -199,6 +240,7 @@ impl<F: PrimeField> StdProd<F> {
                         row,
                         proves,
                         F::one(),
+                        is_global,
                     );
                 }
             }
@@ -278,8 +320,9 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
         if self.mode.name == ModeName::Debug {
             let name = Self::MY_NAME;
             let max_values_to_print = self.mode.n_vals;
+            let print_to_file = self.mode.print_to_file;
             let debug_data = self.debug_data.as_ref().expect("Debug data missing");
-            print_debug_info(name, max_values_to_print, debug_data);
+            print_debug_info(name, max_values_to_print, print_to_file, debug_data);
         }
     }
 }

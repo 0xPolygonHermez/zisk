@@ -118,7 +118,7 @@ ConstraintsResults *verifyConstraints(SetupCtx& setupCtx, StepsParams &params) {
     ExpressionsPack expressionsCtx(setupCtx);
 #endif
 
-    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsConstraints, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits));
+    expressionsCtx.calculateExpressions(params, setupCtx.expressionsBin.expressionsBinArgsConstraints, dests, uint64_t(1 << setupCtx.starkInfo.starkStruct.nBits), false);
 
 #pragma omp parallel for
     for (uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); i++) {
