@@ -189,7 +189,7 @@ impl ArithFullSM {
         timer_start_trace!(ARITH_TABLE);
         self.arith_table_sm.process_slice(&table_inputs);
         timer_stop_and_log_trace!(ARITH_TABLE);
-        
+
         timer_start_trace!(ARITH_RANGE_TABLE);
         self.arith_range_table_sm.process_slice(&range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);

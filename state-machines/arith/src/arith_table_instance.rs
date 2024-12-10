@@ -54,7 +54,7 @@ impl<F: PrimeField> Instance for ArithTableInstance<F> {
 
         let ectx = self.wcm.get_ectx();
         let dctx = ectx.dctx.write().unwrap();
-        
+
         let owner: usize = dctx.owner(self.iectx.instance_global_idx);
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
         drop(dctx);

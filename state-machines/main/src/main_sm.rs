@@ -124,7 +124,7 @@ impl<F: PrimeField> MainSM<F> {
         let filled_rows = vec_traces[current_segment].steps.steps as usize;
         let last_row = main_instance.main_trace.buffer[filled_rows];
         // Fill the rest of the buffer with the last row
-        for i in (filled_rows + 1)..main_instance.main_trace.buffer.len() {
+        for i in (filled_rows + 1)..num_rows {
             main_instance.main_trace.buffer[i] = last_row;
         }
 

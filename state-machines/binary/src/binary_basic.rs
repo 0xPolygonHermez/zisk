@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use log::info;
-use p3_field::Field;
+use p3_field::PrimeField;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
@@ -9,11 +9,9 @@ use zisk_pil::*;
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
-pub struct BinaryBasicSM<F> {
+pub struct BinaryBasicSM {
     // Secondary State machines
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -21,11 +19,11 @@ pub enum BinaryBasicSMErr {
     InvalidOpcode,
 }
 
-impl<F: Field> BinaryBasicSM<F> {
+impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
 
     pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
-        Arc::new(Self { binary_basic_table_sm, _phantom: std::marker::PhantomData })
+        Arc::new(Self { binary_basic_table_sm })
     }
 
     pub fn operations() -> Vec<u8> {
@@ -94,7 +92,7 @@ impl<F: Field> BinaryBasicSM<F> {
     }
 
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<F: PrimeField>(
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
     ) -> BinaryTraceRow<F> {
@@ -636,7 +634,7 @@ impl<F: Field> BinaryBasicSM<F> {
         row
     }
 
-    pub fn prove_instance(
+    pub fn prove_instance<F: PrimeField>(
         &self,
         operations: &[ZiskRequiredOperation],
         binary_trace: &mut BinaryTrace<F>,

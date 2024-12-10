@@ -14,7 +14,7 @@ use ziskemu::{EmuTrace, ZiskEmulator};
 use crate::BinaryBasicSM;
 
 pub struct BinaryBasicInstance<F: PrimeField> {
-    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    binary_basic_sm: Arc<BinaryBasicSM>,
     wcm: Arc<WitnessManager<F>>,
     iectx: InstanceExpanderCtx,
 
@@ -26,7 +26,7 @@ pub struct BinaryBasicInstance<F: PrimeField> {
 
 impl<F: PrimeField> BinaryBasicInstance<F> {
     pub fn new(
-        binary_basic_sm: Arc<BinaryBasicSM<F>>,
+        binary_basic_sm: Arc<BinaryBasicSM>,
         wcm: Arc<WitnessManager<F>>,
         iectx: InstanceExpanderCtx,
     ) -> Self {

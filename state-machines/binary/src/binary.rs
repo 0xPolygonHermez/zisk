@@ -19,7 +19,7 @@ pub struct BinarySM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     // Secondary State machines
-    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    binary_basic_sm: Arc<BinaryBasicSM>,
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
