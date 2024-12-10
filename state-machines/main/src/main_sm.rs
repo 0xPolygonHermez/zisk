@@ -53,7 +53,7 @@ impl<F: PrimeField> MainSM<F> {
         let current_segment = iectx.plan.segment_id.unwrap();
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
-        let filled = vec_traces[current_segment].steps.len() + 1;
+        let filled = vec_traces[current_segment].steps.steps + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
@@ -73,10 +73,15 @@ impl<F: PrimeField> MainSM<F> {
                 ..MainTraceRow::default()
             }
         } else {
-            let emu_trace_previous = vec_traces[current_segment - 1].steps.last().unwrap();
+            //let emu_trace_previous = vec_traces[segment_id - 1].last_state;
             let mut emu =
                 Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment - 1].last_state);
-            let row_previous = emu.step_slice_full_trace(emu_trace_previous);
+            let mut mem_reads_index: usize =
+                vec_traces[current_segment - 1].last_state.mem_reads_index;
+            let row_previous = emu.step_slice_full_trace(
+                &vec_traces[current_segment - 1].steps,
+                &mut mem_reads_index,
+            );
 
             MainTraceRow::<F> {
                 set_pc: row_previous.set_pc,
@@ -107,13 +112,16 @@ impl<F: PrimeField> MainSM<F> {
         main_instance.main_trace.buffer[0] = row0;
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
-        for (idx, emu_trace) in vec_traces[current_segment].steps.iter().enumerate() {
-            let expanded_row = emu.step_slice_full_trace(emu_trace);
+        let emu_trace_step = &vec_traces[current_segment].steps;
+        let mut mem_reads_index: usize = 0;
+        //for (idx, emu_trace) in vec_traces[current_segment].steps.iter().enumerate() {
+        for idx in 0..vec_traces[current_segment].steps.steps as usize {
+            let expanded_row = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
 
             main_instance.main_trace.buffer[idx + 1] = expanded_row;
         }
 
-        let filled_rows = vec_traces[current_segment].steps.len();
+        let filled_rows = vec_traces[current_segment].steps.steps as usize;
         let last_row = main_instance.main_trace.buffer[filled_rows];
         // Fill the rest of the buffer with the last row
         for i in (filled_rows + 1)..main_instance.main_trace.buffer.len() {

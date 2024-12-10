@@ -1,4 +1,4 @@
-use crate::UART_ADDR;
+use crate::{REG_FIRST, REG_LAST, UART_ADDR};
 
 use crate::MemSection;
 
@@ -70,6 +70,8 @@ impl Mem {
     /// Read a u64 value from the memory read sections, based on the provided address and width
     #[inline(always)]
     pub fn read(&self, addr: u64, width: u64) -> u64 {
+        debug_assert!(!Mem::address_is_register(addr));
+
         // First try to read in the write section
         if (addr >= self.write_section.start) && (addr <= (self.write_section.end - width)) {
             // Calculate the read position
@@ -131,6 +133,8 @@ impl Mem {
     /// Write a u64 value to the memory write section, based on the provided address and width
     #[inline(always)]
     pub fn write(&mut self, addr: u64, val: u64, width: u64) {
+        debug_assert!(!Mem::address_is_register(addr));
+
         // Call write_silent to perform the real work
         self.write_silent(addr, val, width);
 
@@ -143,6 +147,8 @@ impl Mem {
     /// Write a u64 value to the memory write section, based on the provided address and width
     #[inline(always)]
     pub fn write_silent(&mut self, addr: u64, val: u64, width: u64) {
+        debug_assert!(!Mem::address_is_register(addr));
+
         //println!("Mem::write() addr={:x}={} width={} value={:x}={}", addr, addr, width, val,
         // val);
 
@@ -171,5 +177,16 @@ impl Mem {
                 .copy_from_slice(&val.to_le_bytes()),
             _ => panic!("Mem::write_silent() invalid width={}", width),
         }
+    }
+
+    #[inline(always)]
+    pub fn address_is_register(address: u64) -> bool {
+        ((address & 0x7) == 0) && (REG_FIRST..=REG_LAST).contains(&address)
+    }
+
+    #[inline(always)]
+    pub fn address_to_register_index(address: u64) -> usize {
+        debug_assert!(Mem::address_is_register(address));
+        ((address - REG_FIRST) >> 3) as usize
     }
 }

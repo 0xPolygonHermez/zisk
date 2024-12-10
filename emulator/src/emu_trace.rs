@@ -5,13 +5,16 @@ pub struct EmuTraceStart {
     pub sp: u64,
     pub c: u64,
     pub step: u64,
+    pub regs: [u64; 32],
+    pub mem_reads_index: usize,
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct EmuTraceStep {
-    pub a: u64,
-    pub b: u64,
+pub struct EmuTraceSteps {
+    pub mem_reads: Vec<u64>,
+    pub steps: u64,
 }
+
 #[derive(Default, Debug, Clone)]
 pub struct EmuTraceEnd {
     pub end: bool,
@@ -21,6 +24,6 @@ pub struct EmuTraceEnd {
 pub struct EmuTrace {
     pub start_state: EmuTraceStart,
     pub last_state: EmuTraceStart,
-    pub steps: Vec<EmuTraceStep>,
+    pub steps: EmuTraceSteps,
     pub end: EmuTraceEnd,
 }

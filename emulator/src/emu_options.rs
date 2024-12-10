@@ -93,7 +93,7 @@ impl fmt::Display for EmuOptions {
 impl EmuOptions {
     pub fn is_fast(&self) -> bool {
         self.trace_steps.is_none() &&
-            self.print_step.is_none() &&
+            (self.print_step.is_none() || (self.print_step.unwrap() == 0)) &&
             self.trace.is_none() &&
             !self.log_step &&
             !self.verbose &&
