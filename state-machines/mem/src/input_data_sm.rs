@@ -282,10 +282,6 @@ impl<F: PrimeField> InputDataSM<F> {
             );
         }
         for value_chunk in &value {
-            println!(
-                "INPUT-DATA DEBUG Range Check2: value:{} multiplicity:{} range_id:{}",
-                value_chunk, padding_size, range_id,
-            );
             self.std.range_check(*value_chunk, F::from_canonical_usize(padding_size), range_id);
         }
 

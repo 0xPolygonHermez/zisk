@@ -241,12 +241,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //
 
     const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
-    // permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, ...specific_registers, c[0] * (1 - main_last_segment), c[1] * (1 - main_last_segment)],
-    //                                     sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
-    permutation_proves(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
-                                        sel: SEGMENT_LAST, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
-    permutation_assumes(MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
-                                        sel: SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
+    permutation (MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
+                                        sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
     flag * (1 - flag) === 0;
 
