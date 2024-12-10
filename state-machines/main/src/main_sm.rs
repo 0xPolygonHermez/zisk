@@ -168,7 +168,9 @@ impl<F: PrimeField> MainSM<F> {
             let partial_buffer = partial_trace.buffer.as_ref().unwrap();
             let buffer_offset_slice = (slice + 1) * MainRow::<F>::ROW_SIZE;
 
-            let slice_rows = if slice + SLICE_ROWS >= pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() {
+            let slice_rows = if slice + SLICE_ROWS >=
+                pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows()
+            {
                 partial_buffer.len() - MainRow::<F>::ROW_SIZE
             } else {
                 partial_buffer.len()

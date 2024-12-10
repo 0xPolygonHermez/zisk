@@ -136,7 +136,8 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
 
         if is_myne {
-            let trace: BinaryExtensionTableTrace<'_, _> = BinaryExtensionTableTrace::new(self.num_rows);
+            let trace: BinaryExtensionTableTrace<'_, _> =
+                BinaryExtensionTableTrace::new(self.num_rows);
             let mut prover_buffer = trace.buffer.unwrap();
 
             prover_buffer[0..self.num_rows]

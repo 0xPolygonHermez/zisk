@@ -45,7 +45,7 @@ impl<F: Field> RomSM<F> {
         let num_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
         let mut rom_trace = RomTrace::new(num_rows);
-        
+
         // For every instruction in the rom, fill its corresponding ROM trace
         let main_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -77,8 +77,13 @@ impl<F: Field> RomSM<F> {
             rom_trace[i] = RomRow::default();
         }
 
-        let mut air_instance =
-            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, rom_trace.buffer.unwrap());
+        let mut air_instance = AirInstance::new(
+            sctx.clone(),
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            None,
+            rom_trace.buffer.unwrap(),
+        );
 
         match self
             .wcm

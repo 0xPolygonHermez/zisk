@@ -423,7 +423,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         }
                     }
 
-                    cout += 2*(_a >> 8);
+                    cout += 2 * (_a >> 8);
                     row.carry[i] = F::from_canonical_u64(cout);
 
                     // Set carry for next iteration
@@ -479,7 +479,7 @@ impl<F: Field> BinaryBasicSM<F> {
                         }
                     }
 
-                    cout += 2*(_b >> 8);
+                    cout += 2 * (_b >> 8);
                     row.carry[i] = F::from_canonical_u64(cout);
 
                     // Set carry for next iteration
@@ -592,8 +592,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // The result is the sign of b
-                    if (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
-                    {
+                    if (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                         cout = if b_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
                     row.carry[i] = F::from_canonical_u64(cout);
@@ -942,17 +941,8 @@ impl<F: Field> BinaryBasicSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_basic_table_sm,
-            operations,
-            prover_buffer,
-        );
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
+        Self::prove_internal(&self.wcm, &self.binary_basic_table_sm, operations, prover_buffer);
     }
 
     fn prove_internal(
@@ -1041,7 +1031,7 @@ impl<F: Field> BinaryBasicSM<F> {
 
                 let trace: BinaryTrace<'_, _> = BinaryTrace::new(air.num_rows());
                 let mut prover_buffer = trace.buffer.unwrap();
-    
+
                 Self::prove_internal(
                     &wcm,
                     &binary_basic_table_sm,

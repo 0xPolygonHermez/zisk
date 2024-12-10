@@ -10,7 +10,7 @@ use std::collections::HashMap;
 ///
 /// This data is generated during the first emulation execution.  
 /// This data is required by the main state machine executor to generate the witness computation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ZiskRequiredOperation {
     pub step: u64,
     pub opcode: u8,

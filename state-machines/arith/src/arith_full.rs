@@ -10,7 +10,7 @@ use log::info;
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use sm_binary::{BinarySM, LT_ABS_NP_OP, LT_ABS_PN_OP, LTU_OP, GT_OP};
+use sm_binary::{BinarySM, GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -69,11 +69,7 @@ impl<F: PrimeField> ArithFullSM<F> {
             self.binary_sm.unregister_predecessor();
         }
     }
-    pub fn prove_instance(
-        &self,
-        input: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
+    pub fn prove_instance(&self, input: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
@@ -90,8 +86,7 @@ impl<F: PrimeField> ArithFullSM<F> {
         );
         assert!(input.len() <= num_rows);
 
-        let mut traces =
-            ArithTrace::<F>::map_buffer(prover_buffer, num_rows, 0).unwrap();
+        let mut traces = ArithTrace::<F>::map_buffer(prover_buffer, num_rows, 0).unwrap();
 
         let mut aop = ArithOperation::new();
         let mut binary_inputs = Vec::new();
@@ -213,7 +208,8 @@ impl<F: PrimeField> ArithFullSM<F> {
                     (true, true, true) => (EXTENSION, EXTENSION),
                 };
 
-                // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
+                // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
+                // this!
                 let operation = ZiskRequiredOperation {
                     step: input.step,
                     opcode,

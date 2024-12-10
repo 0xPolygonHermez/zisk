@@ -57,11 +57,7 @@ impl<F: PrimeField> ArithSM<F> {
             self.arith_full_sm.unregister_predecessor();
         }
     }
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         self.arith_full_sm.prove_instance(operations, prover_buffer);
     }
 }
