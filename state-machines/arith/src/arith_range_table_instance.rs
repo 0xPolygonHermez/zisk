@@ -21,16 +21,16 @@ pub struct ArithRangeTableInstance<F: PrimeField> {
     iectx: InstanceExpanderCtx,
 
     /// Arith range table state machine
-    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+    arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
 impl<F: PrimeField> ArithRangeTableInstance<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+        arith_range_table_sm: Arc<ArithRangeTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        Self { wcm, iectx, arith_range_table_sm: arith_range_table_sm }
+        Self { wcm, iectx, arith_range_table_sm }
     }
 }
 

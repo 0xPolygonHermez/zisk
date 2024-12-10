@@ -12,15 +12,15 @@ use crate::{
 
 pub struct ArithSM<F> {
     wcm: Arc<WitnessManager<F>>,
-    arith_full_sm: Arc<ArithFullSM<F>>,
-    arith_table_sm: Arc<ArithTableSM<F>>,
-    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+    arith_full_sm: Arc<ArithFullSM>,
+    arith_table_sm: Arc<ArithTableSM>,
+    arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
 impl<F: PrimeField> ArithSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let arith_table_sm = ArithTableSM::new(wcm.clone());
-        let arith_range_table_sm = ArithRangeTableSM::new(wcm.clone());
+        let arith_table_sm = ArithTableSM::new::<F>();
+        let arith_range_table_sm = ArithRangeTableSM::new::<F>();
 
         let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
 

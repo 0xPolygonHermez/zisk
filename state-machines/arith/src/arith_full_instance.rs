@@ -15,7 +15,7 @@ use crate::ArithFullSM;
 
 pub struct ArithFullInstance<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
-    arith_full_sm: Arc<ArithFullSM<F>>,
+    arith_full_sm: Arc<ArithFullSM>,
     iectx: InstanceExpanderCtx,
 
     skipping: bool,
@@ -27,7 +27,7 @@ pub struct ArithFullInstance<F: PrimeField> {
 impl<F: PrimeField> ArithFullInstance<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        arith_full_sm: Arc<ArithFullSM<F>>,
+        arith_full_sm: Arc<ArithFullSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
         let arith_trace = ArithTrace::new();
@@ -68,10 +68,8 @@ impl<F: PrimeField> Instance for ArithFullInstance<F> {
         timer_stop_and_log_debug!(PROVE_ARITH);
 
         timer_start_debug!(CREATE_ARITH_AIR_INSTANCE);
-        let air_instance = AirInstance::new_from_trace(
-            self.wcm.get_sctx(),
-            FromTrace::new(&mut self.arith_trace),
-        );
+        let air_instance =
+            AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut self.arith_trace));
 
         self.wcm
             .get_pctx()

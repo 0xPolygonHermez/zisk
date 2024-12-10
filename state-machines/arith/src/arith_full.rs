@@ -4,28 +4,28 @@ use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use log::info;
-use p3_field::Field;
+use p3_field::PrimeField;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
-pub struct ArithFullSM<F> {
-    arith_table_sm: Arc<ArithTableSM<F>>,
-    arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+pub struct ArithFullSM {
+    arith_table_sm: Arc<ArithTableSM>,
+    arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
-impl<F: Field> ArithFullSM<F> {
+impl ArithFullSM {
     const MY_NAME: &'static str = "Arith   ";
 
     pub fn new(
-        arith_table_sm: Arc<ArithTableSM<F>>,
-        arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+        arith_table_sm: Arc<ArithTableSM>,
+        arith_range_table_sm: Arc<ArithRangeTableSM>,
     ) -> Arc<Self> {
         Arc::new(Self { arith_table_sm, arith_range_table_sm })
     }
 
-    pub fn prove_instance(
+    pub fn prove_instance<F: PrimeField>(
         &self,
         inputs: &[ZiskRequiredOperation],
         arith_trace: &mut ArithTrace<F>,
@@ -47,7 +47,13 @@ impl<F: Field> ArithFullSM<F> {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in inputs.iter().enumerate() {
-            log::debug!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
+            log::debug!(
+                "#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}",
+                irow,
+                input.opcode,
+                input.a,
+                input.b
+            );
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithTraceRow<F> = Default::default();
             for i in [0, 2] {

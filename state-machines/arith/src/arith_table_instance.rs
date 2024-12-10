@@ -21,13 +21,13 @@ pub struct ArithTableInstance<F: PrimeField> {
     iectx: InstanceExpanderCtx,
 
     /// Arith table state machine
-    arith_table_sm: Arc<ArithTableSM<F>>,
+    arith_table_sm: Arc<ArithTableSM>,
 }
 
 impl<F: PrimeField> ArithTableInstance<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        arith_table_sm: Arc<ArithTableSM<F>>,
+        arith_table_sm: Arc<ArithTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
         Self { wcm, iectx, arith_table_sm }

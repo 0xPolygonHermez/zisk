@@ -10,11 +10,8 @@ pub struct ArithCounter {
 
 impl Metrics for ArithCounter {
     fn measure(&mut self, inst: &ZiskInst, _: &InstContext) {
-        match inst.op_type {
-            ZiskOperationType::Arith => {
-                self.arith.update(1);
-            }
-            _ => {}
+        if inst.op_type == ZiskOperationType::Arith {
+            self.arith.update(1);
         }
     }
 
