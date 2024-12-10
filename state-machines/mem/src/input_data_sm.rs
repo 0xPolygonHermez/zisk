@@ -3,7 +3,9 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemAirValues, MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS};
+use crate::{
+    MemAirValues, MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
+};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -11,7 +13,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataTrace, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
-const MEMORY_MAX_DIFF: u32 = 1 << 24;
+
 const INPUT_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
@@ -270,10 +272,6 @@ impl<F: PrimeField> InputDataSM<F> {
             if (multiplicity == 0) {
                 continue;
             }
-            println!(
-                "INPUT-DATA DEBUG Range Check: value:{} multiplicity:{} range_id:{}",
-                value, multiplicity, range_id,
-            );
 
             self.std.range_check(
                 F::from_canonical_usize(value),

@@ -951,8 +951,6 @@ impl<F: PrimeField> MemAlignSM<F> {
         let mut trace_buffer: MemAlignTrace<'_, _> = MemAlignTrace::new(air_mem_align_rows);
 
         let mut reg_range_check: Vec<u64> = vec![0; 1 << CHUNK_BITS];
-        println!("ROW 0 mem_align {:?}", rows[0]);
-        println!("ROW 1 mem_align {:?}", rows[1]);
         // Add the input rows to the trace
         for (i, &row) in rows.iter().enumerate() {
             // Store the entire row
@@ -963,16 +961,11 @@ impl<F: PrimeField> MemAlignSM<F> {
                     row.reg[j].as_canonical_biguint().to_usize().expect("Cannot convert to usize");
                 reg_range_check[element] += 1;
             }
-            if i < 2 {
-                println!("ROW_{} mem_align {:?}", i, trace_buffer[i]);
-            }
         }
 
         // Pad the remaining rows with trivially satisfying rows
         let padding_row = MemAlignRow::<F> { reset: F::from_bool(true), ..Default::default() };
         let padding_size = air_mem_align_rows - rows_len;
-
-        println!("ROW PADDING mem_align {:?}", padding_row);
 
         // Store the padding rows
         for i in rows_len..air_mem_align_rows {

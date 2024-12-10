@@ -25,9 +25,9 @@ impl ArithTableHelpers {
             sext as u64 * 16 +
             div_by_zero as u64 * 32 +
             div_overflow as u64 * 64;
-        assert!(index < ARITH_TABLE_ROWS.len() as u64);
+        debug_assert!(index < ARITH_TABLE_ROWS.len() as u64);
         let row = ARITH_TABLE_ROWS[index as usize];
-        assert!(
+        debug_assert!(
             row < 255,
             "INVALID ROW row:{} op:0x{:x} na:{} nb:{} np:{} nr:{} sext:{} div_by_zero:{} div_overflow:{} index:{}",
             row,

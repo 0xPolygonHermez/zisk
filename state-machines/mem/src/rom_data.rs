@@ -3,7 +3,9 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemAirValues, MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS};
+use crate::{
+    MemAirValues, MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
+};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -12,7 +14,6 @@ use proofman_common::AirInstance;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{RomDataTrace, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
-const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const ROM_W_ADDR: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
 const ROM_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
 

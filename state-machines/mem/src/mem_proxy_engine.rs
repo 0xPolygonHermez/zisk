@@ -1,10 +1,96 @@
+//! The `MemProxyEngine` module is designed to facilitate dividing the proxy logic into smaller,
+//! more manageable pieces of code.
+//!
+//! The engine is created through MemProxy on a static call, which creates the `MemProxyEngine`.
+//! `MemProxyEngine` has state, and this state allows the implementation of smaller, focused
+//! methods, making the codebase easier to maintain and extend.
+//!
+//!
+//! ## Creation and Setup of the `MemProxyEngine`
+//!
+//! When creating the `MemProxyEngine`, a state machine is provided to handle alignment of memory
+//! accesses. This state machine is responsible for demostrate unaligned accesses based on aligned
+//! ones.
+//!
+//! Once the `MemProxyEngine` is created, all memory modules are registered. These modules must
+//! implement the `MemModule` trait, which serves three purposes:
+//!
+//! 1. To define the range of addresses (regions) they are responsible for handling.
+//! 2. To specify the frequency (number of inputs) at which they expect to receive inputs.
+//! 3. To define the "callback" used to send inputs to the module
+//!
+//!
+//! ## Inputs from `MemProxyEngine`
+//!
+//! The inputs to the `MemProxyEngine` are represented as an enumeration to optimize memory usage
+//! and performance. This design ensures efficient handling of both common and rare cases,
+//! balancing memory allocation and computational efficiency.
+//!
+//! The enumeration has two variants:
+//!  1. `Basic`: The primary input type, used for the majority of memory accesses. This variant is
+//!     highly optimized to minimize overhead and ensure efficient processing in typical scenarios.
+//!  2. `Extended`: A specialized input type used exclusively for handling unaligned memory
+//!     accesses. This variant is appended to the vector immediately after the corresponding `Basic`
+//!     instance that generates it. The `Extended` input contains the aligned memory values required
+//!     to process the unaligned access (in word case two values)
+//!
+//! By adopting this design, the `MemProxyEngine` avoids penalizing the commonly used `Basic` type
+//! due to the less frequent unaligned cases that requires addicional `Extended` type. This
+//! separation ensures that unaligned access handling introduces minimal overhead to the overall
+//! system, while still providing the flexibility to unaligned access.
+//!
+//!
+//! ## Logic of the `MemProxyEngine`
+//!
+//! Step 1. Sort the aligned memory accesses
+//! original vector is sorted by step, sort_by_key is stable, no reordering of elements with
+//! the same key.
+//!
+//! Step 2. Add a final mark mem_op to force flush of open_mem_align_ops, because always the
+//! last operation is mem_op.
+//!
+//! Step 3. Composing information for memory operation (access). In this step, all necessary
+//! information is gathered and composed to perform a memory operation. The process involves
+//! reading the next input from the input vector, which defines the nature of the operation.
+//!
+//!  - For standard (aligned) operations, only the `Basic` input is required, and the operation
+//!    proceeds directly.
+//!  - For unaligned operations, the `Extended` input is also read. This additional input provides
+//!    the extra values required to handle the unaligned operation.
+//!
+//! Step 4. Process each memory operation ordered by address and step. When a non-aligned
+//! memory access there are two possible situations:
+//!
+//!  1. The operation applies only applies to one memory address (read or read+write). In this case
+//!     mem_align helper return the aligned operation for this address, and loop continues.
+//!
+//!  2. The operation applies to two consecutive memory addresses, mem_align helper returns the
+//!     aligned operation involved for the current address, and the second part of the operation is
+//!     enqueued to open_mem_align_ops, it will processed when processing next address.
+//!
+//! First, we verify if there are any "previous" open memory alignment operations
+//! (`open_mem_align_ops`) that need to be processed before handling the current `mem_op`. If such
+//! operations exist, they are processed first, and then the current `mem_op` is executed.
+//!
+//! At the end of Step 2, a final marker is used to ensure a forced flush of any remaining
+//! `open_mem_align_ops`. This guarantees that all pending alignment operations are completed,
+//! as the last operation in this step is always a `mem_op`.
+//!
+//!
+//! ## Handling Large Gaps Between Steps
+//!
+//! One challenge in the design is addressing cases where the distance between steps becomes
+//! more large than max range check MEMORY_MAX_DIFF (current 2^24). This solve this situation
+//! the proxy add extra intermediate internal reads (internal because don't send to bus), each
+//! increase step in MEMORY_MAX_DIFF to arrive to the final step.
+
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
-    MemAlignInput, MemAlignResponse, MemAlignSM, MemHelpers, MemInput, MemUnmapped, MAX_MEM_ADDR,
-    MAX_MEM_OPS_PER_MAIN_STEP, MEM_ADDR_MASK, MEM_BYTES, MEM_BYTES_BITS,
+    MemAlignInput, MemAlignResponse, MemAlignSM, MemHelpers, MemInput, MemModule, MemUnmapped,
+    MAX_MAIN_STEP, MAX_MEM_ADDR, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_STEP, MAX_MEM_STEP_OFFSET,
+    MEMORY_MAX_DIFF, MEM_ADDR_MASK, MEM_BYTES, MEM_BYTES_BITS,
 };
-#[cfg(feature = "debug_mem_proxy_engine")]
 use log::info;
 
 use p3_field::PrimeField;
@@ -18,15 +104,9 @@ macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_proxy_engine")]
         {
-            info!(concat!("MemPE   : ",$prefix), $($arg)*);
+            info!(concat!("MemProxy: ",$prefix), $($arg)*);
         }
     };
-}
-
-pub trait MemModule<F>: Send + Sync {
-    fn send_inputs(&self, mem_op: &[MemInput]);
-    fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
-    fn get_flush_input_size(&self) -> u32;
 }
 
 struct MemModuleData {
@@ -46,13 +126,17 @@ pub struct MemProxyEngine<F: PrimeField> {
     modules_data: Vec<MemModuleData>,
     open_mem_align_ops: VecDeque<MemAlignInput>,
     addr_map: Vec<AddressRegion>,
-    addr_map_closed: bool,
+    addr_map_fetched: bool,
     current_module_id: usize,
     current_module: String,
     module_end_addr: u32,
     mem_align_sm: Arc<MemAlignSM<F>>,
     next_open_addr: u32,
     next_open_step: u64,
+    last_addr: u32,
+    last_step: u64,
+    intermediate_cases: u32,
+    intermediate_steps: u32,
 }
 
 const NO_OPEN_ADDR: u32 = 0xFFFF_FFFF;
@@ -68,10 +152,14 @@ impl<F: PrimeField> MemProxyEngine<F> {
             module_end_addr: 0,
             open_mem_align_ops: VecDeque::new(),
             addr_map: Vec::new(),
-            addr_map_closed: false,
+            addr_map_fetched: false,
             mem_align_sm,
             next_open_addr: NO_OPEN_ADDR,
             next_open_step: NO_OPEN_STEP,
+            last_addr: 0xFFFF_FFFF,
+            last_step: 0,
+            intermediate_cases: 0,
+            intermediate_steps: 0,
         }
     }
 
@@ -115,31 +203,18 @@ impl<F: PrimeField> MemProxyEngine<F> {
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.init_prove();
 
-        // Step 1. Sort the aligned memory accesses
+        // Sort the aligned memory accesses
         // original vector is sorted by step, sort_by_key is stable, no reordering of elements with
         // the same key.
+
         timer_start_debug!(MEM_SORT);
         mem_operations.sort_by_key(|mem| (mem.get_address() & 0xFFFF_FFF8));
         timer_stop_and_log_debug!(MEM_SORT);
 
-        // Step2. Add a final mark mem_op to force flush of open_mem_align_ops, because always the
+        // Add a final mark mem_op to force flush of open_mem_align_ops, because always the
         // last operation is mem_op.
-        self.push_end_of_memory_mark(mem_operations);
 
-        // Step3. Process each memory operation ordered by address and step. When a non-aligned
-        // memory access there are two possible situations:
-        //
-        //  1) the operation applies only applies to one memory address (read or read+write). In
-        //     this case mem_align helper return the aligned operation for this address, and loop
-        //     continues.
-        //  2) the operation applies to two consecutive memory addresses, mem_align helper returns
-        //     the aligned operation involved for the current address, and the second part of the
-        //     operation is enqueued to open_mem_align_ops, it will processed when processing next
-        //     address.
-        //
-        // Inside loop, first of all, we verify if exists "previous" open mem align operations that
-        // be processed before current mem_op, in this case process all "previous" and after process
-        // the current mem_op.
+        self.push_end_of_memory_mark(mem_operations);
 
         let mut index = 0;
         let count = mem_operations.len();
@@ -161,7 +236,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
                         index += 1;
                         values
                     } else {
-                        panic!("MemProxyEngine::prove() unexpected Basic variant");
+                        panic!("MemProxy::prove() unexpected Basic variant");
                     }
                 } else {
                     [0, 0]
@@ -175,10 +250,10 @@ impl<F: PrimeField> MemProxyEngine<F> {
                     width,
                     extend_values,
                 ) {
-                    break
+                    break;
                 }
             } else {
-                panic!("MemProxyEngine::prove() unexpected Extended variant");
+                panic!("MemProxy::prove() unexpected Extended variant");
             }
         }
         self.finish_prove();
@@ -281,7 +356,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
 
     pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
-        1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset as u64
+        1 + MAX_MEM_OPS_BY_MAIN_STEP * step + 2 * step_offset as u64
     }
 
     #[inline(always)]
@@ -291,13 +366,17 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
     fn push_aligned_op(&mut self, is_write: bool, addr: u32, value: u64, step: u64) {
         self.update_mem_module(addr);
-        let mem_op = MemInput {
-            step,
-            is_write,
-            is_internal: false,
-            addr: Self::to_aligned_word_addr(addr),
-            value,
-        };
+        let w_addr = Self::to_aligned_word_addr(addr);
+
+        // check if step difference is too large
+        if self.last_addr == w_addr && (step - self.last_step) > MEMORY_MAX_DIFF {
+            self.push_intermediate_internal_reads(w_addr, value, self.last_step, step);
+        }
+
+        self.last_step = step;
+        self.last_addr = w_addr;
+
+        let mem_op = MemInput { step, is_write, is_internal: false, addr: w_addr, value };
         debug_info!(
             "route ==> {}[{:X}] {} {} #{}",
             self.current_module,
@@ -306,10 +385,30 @@ impl<F: PrimeField> MemProxyEngine<F> {
             value,
             step,
         );
+        self.internal_push_mem_op(mem_op);
+    }
+
+    fn push_intermediate_internal_reads(
+        &mut self,
+        addr: u32,
+        value: u64,
+        last_step: u64,
+        final_step: u64,
+    ) {
+        let mut step = last_step;
+        self.intermediate_cases += 1;
+        while (final_step - step) > MEMORY_MAX_DIFF {
+            self.intermediate_steps += 1;
+            step += MEMORY_MAX_DIFF;
+            let mem_op = MemInput { step, is_write: false, is_internal: true, addr, value };
+            self.internal_push_mem_op(mem_op);
+        }
+    }
+
+    fn internal_push_mem_op(&mut self, mem_op: MemInput) {
         self.modules_data[self.current_module_id].inputs.push(mem_op);
         self.check_flush_inputs();
     }
-
     // method to add aligned read operation
     #[inline(always)]
     fn push_aligned_read(&mut self, addr: u32, value: u64, step: u64) {
@@ -392,8 +491,8 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
     fn push_end_of_memory_mark(&mut self, mem_operations: &mut Vec<ZiskRequiredMemory>) {
         mem_operations.push(ZiskRequiredMemory::Basic {
-            step: 0,
-            step_offset: 0,
+            step: MAX_MAIN_STEP,
+            step_offset: MAX_MEM_STEP_OFFSET as u8,
             is_write: false,
             address: MAX_MEM_ADDR as u32,
             width: MEM_BYTES as u8,
@@ -402,9 +501,11 @@ impl<F: PrimeField> MemProxyEngine<F> {
         mem_operations
             .push(ZiskRequiredMemory::Extended { address: MAX_MEM_ADDR as u32, values: [0, 0] });
     }
+
+    /// Check if the address is the "special" address inserted at the end of the memory operations
     #[inline(always)]
-    fn check_if_end_of_memory_mark(&self, addr: u32, _mem_step: u64) -> bool {
-        if addr == MAX_MEM_ADDR as u32 {
+    fn check_if_end_of_memory_mark(&self, addr: u32, mem_step: u64) -> bool {
+        if addr == MAX_MEM_ADDR as u32 && mem_step == MAX_MEM_STEP {
             debug_assert!(
                 self.open_mem_align_ops.is_empty(),
                 "open_mem_align_ops not empty, has {} elements",
@@ -415,14 +516,23 @@ impl<F: PrimeField> MemProxyEngine<F> {
             false
         }
     }
+    /// Encapsulates all tasks to be performed at the beginning of the witness computation (stage
+    /// 1).
+    ///
+    /// This method fetches the address map and sets the initial values to prepare for the
+    /// computation.
     fn init_prove(&mut self) {
-        if !self.addr_map_closed {
-            self.close_address_map();
+        if !self.addr_map_fetched {
+            self.fetch_address_map();
         }
         self.current_module_id = self.addr_map[0].module_id as usize;
         self.current_module = self.modules_data[self.current_module_id].name.clone();
         self.module_end_addr = self.addr_map[0].to_addr;
     }
+    /// Encapsulates all tasks to be performed at the end of the witness computation (stage 1).
+    ///
+    /// This method flushes all module inputs to ensure they are finalized and ready for further
+    /// processing.
     fn finish_prove(&self) {
         for (module_id, module) in self.modules.iter().enumerate() {
             debug_info!(
@@ -432,8 +542,30 @@ impl<F: PrimeField> MemProxyEngine<F> {
             );
             module.send_inputs(&self.modules_data[module_id].inputs);
         }
+        info!(
+            "MemProxy: ··· Intermediate reads [cases:{} steps:{}]",
+            self.intermediate_cases, self.intermediate_steps
+        );
     }
-    fn close_address_map(&mut self) {
+    /// Fetches the address map, defining and calculating all necessary structures to manage the
+    /// memory map.
+    ///
+    /// For undefined regions (such as memory between defined regions, or memory at the beginning or
+    /// end of the memory map), this method assigns an unmapped module. If any access occurs
+    /// within these unmapped memory regions, the method will trigger a panic.
+    ///
+    /// The unmapped module ensures that every address has an associated module to handle memory
+    /// access, providing a safety mechanism to prevent undefined behavior.
+    fn fetch_address_map(&mut self) {
+        let unmapped_regions: Vec<(u32, u32)> = self.get_unmapped_regions();
+        if !unmapped_regions.is_empty() {
+            self.define_unmapped_module(&unmapped_regions);
+        }
+        self.addr_map_fetched = true;
+    }
+
+    /// Get list of regions (from_addr, to_addr) that are not defined in the memory map
+    fn get_unmapped_regions(&self) -> Vec<(u32, u32)> {
         let mut next_addr = 0;
         let mut unmapped_regions: Vec<(u32, u32)> = Vec::new();
         for addr_region in self.addr_map.iter() {
@@ -442,24 +574,31 @@ impl<F: PrimeField> MemProxyEngine<F> {
             }
             next_addr = addr_region.to_addr + 1;
         }
-        if !unmapped_regions.is_empty() {
-            let mut unmapped_module = MemUnmapped::<F>::new();
-            for unmapped_region in unmapped_regions.iter() {
-                unmapped_module.add_range(unmapped_region.0, unmapped_region.1);
-            }
-            self.add_module("unmapped", Arc::new(unmapped_module));
-        }
-        self.addr_map_closed = true;
+        unmapped_regions
     }
 
+    /// Define an unmapped module with all unmapped regions.
+    fn define_unmapped_module(&mut self, unmapped_regions: &Vec<(u32, u32)>) {
+        let mut unmapped_module = MemUnmapped::<F>::new();
+        for unmapped_region in unmapped_regions.iter() {
+            unmapped_module.add_range(unmapped_region.0, unmapped_region.1);
+        }
+        self.add_module("unmapped", Arc::new(unmapped_module));
+    }
+
+    /// Calculate aligned address from regular address (aligned or not)
     #[inline(always)]
     fn to_aligned_addr(addr: u32) -> u32 {
         addr & MEM_ADDR_MASK
     }
+
+    /// Calculate the next aligned address from regular address (aligned or not)
     #[inline(always)]
     fn next_aligned_addr(addr: u32) -> u32 {
         (addr & MEM_ADDR_MASK) + MEM_BYTES
     }
+
+    /// Calculate the word address where word is MEM_BYTES
     #[inline(always)]
     fn to_aligned_word_addr(addr: u32) -> u32 {
         addr >> MEM_BYTES_BITS

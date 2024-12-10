@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use crate::{MemInput, MemModule, MEM_BYTES_BITS};
+use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -13,7 +13,6 @@ use proofman_common::AirInstance;
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
-const MEMORY_MAX_DIFF: u32 = 1 << 24;
 const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
@@ -189,8 +188,6 @@ impl<F: PrimeField> MemSM<F> {
 
         let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
 
-        println!("MemSM: segment_id:{} is_last_segment:{} previous_segment_addr:0x{:X} previous_segment_step:{} previous_segment_value:0x{:X} previous_segment_value:0x{:X}",
-            segment_id, is_last_segment, previous_segment.addr, previous_segment.step, previous_segment.value as u32, (previous_segment.value >> 32) as u32);
         let mut air_values = MemAirValues {
             segment_id: segment_id as u32,
             is_first_segment: segment_id == 0,

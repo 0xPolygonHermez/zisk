@@ -69,7 +69,7 @@ impl<F: Field> ArithFullSM<F> {
         let num_rows = air.num_rows();
         timer_start_trace!(ARITH_TRACE);
         info!(
-            "{}: ··· Creating Arith instance KKKKK [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             input.len(),
             num_rows,
@@ -213,7 +213,6 @@ impl<F: Field> ArithFullSM<F> {
         }
         timer_stop_and_log_trace!(ARITH_PADDING);
         timer_start_trace!(ARITH_TABLE);
-        info!("{}: ··· calling arit_table_sm", Self::MY_NAME);
         self.arith_table_sm.process_slice(&table_inputs);
         timer_stop_and_log_trace!(ARITH_TABLE);
         timer_start_trace!(ARITH_RANGE_TABLE);
