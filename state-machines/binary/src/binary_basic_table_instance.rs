@@ -49,14 +49,13 @@ impl<F: PrimeField> Instance for BinaryBasicTableInstance<F> {
         &mut self,
         _min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let mut multiplicity = self.binary_basic_table_sm.multiplicity.lock().unwrap();
+        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
+
         let ectx = self.wcm.get_ectx();
         let dctx = ectx.dctx.write().unwrap();
 
         let owner: usize = dctx.owner(self.iectx.instance_global_idx);
-
-        let mut multiplicity = self.binary_basic_table_sm.multiplicity.lock().unwrap();
-        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
-
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
         drop(dctx);
 

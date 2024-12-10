@@ -49,18 +49,16 @@ impl<F: PrimeField> Instance for ArithTableInstance<F> {
         &mut self,
         _min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let ectx = self.wcm.get_ectx();
-        let dctx = ectx.dctx.write().unwrap();
-
-        let owner: usize = dctx.owner(self.iectx.instance_global_idx);
-
         let mut multiplicity = self.arith_table_sm.multiplicity.lock().unwrap();
         let mut multiplicity_ = std::mem::take(&mut *multiplicity);
 
+        let ectx = self.wcm.get_ectx();
+        let dctx = ectx.dctx.write().unwrap();
+        
+        let owner: usize = dctx.owner(self.iectx.instance_global_idx);
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
         drop(dctx);
 
-        // if is_mine {
         let mut trace = ArithTableTrace::<F>::new();
 
         trace.buffer[0..ArithTableTrace::<F>::NUM_ROWS]
@@ -75,8 +73,6 @@ impl<F: PrimeField> Instance for ArithTableInstance<F> {
             .get_pctx()
             .air_instance_repo
             .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
-
-        // }
 
         Ok(())
     }
