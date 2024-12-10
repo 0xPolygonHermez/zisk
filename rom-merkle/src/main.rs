@@ -1,12 +1,10 @@
 use clap::{Arg, Command};
 use colored::Colorize;
-use p3_goldilocks::Goldilocks;
-use proofman_common::{GlobalInfo, ProofType, SetupCtx};
-use sm_rom::RomSM;
-use stark::StarkBufferAllocator;
-use zisk_core::Riscv2zisk;
-use std::{path::Path, sync::Arc};
+// use proofman_common::{GlobalInfo, ProofType, SetupCtx};
+// use stark::StarkBufferAllocator;
+use std::path::Path;
 use sysinfo::System;
+// use zisk_core::Riscv2zisk;
 
 fn main() {
     let matches = Command::new("ROM Handler")
@@ -32,12 +30,12 @@ fn main() {
     // Get the value of the `rom` argument as a path
     let rom_path_str = matches.get_one::<String>("rom").expect("ROM path is required");
     let rom_path = Path::new(rom_path_str);
-    let proving_key_path_str =
-        matches.get_one::<String>("proving_key").expect("Proving key path is required");
-    let proving_key_path = Path::new(proving_key_path_str);
-    let global_info_path_str =
-        matches.get_one::<String>("global_info").expect("Global info path is required");
-    let global_info_path = Path::new(global_info_path_str);
+    // let proving_key_path_str =
+    //     matches.get_one::<String>("proving_key").expect("Proving key path is required");
+    // let proving_key_path = Path::new(proving_key_path_str);
+    // let global_info_path_str =
+    //     matches.get_one::<String>("global_info").expect("Global info path is required");
+    // let global_info_path = Path::new(global_info_path_str);
 
     env_logger::builder()
         .format_timestamp(None)
@@ -82,27 +80,26 @@ fn main() {
     // If all checks pass, continue with the program
     println!("ROM Path is valid: {}", rom_path.display());
 
-    let buffer_allocator: Arc<StarkBufferAllocator> =
-        Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
-    let global_info = GlobalInfo::new(global_info_path);
-    let sctx = Arc::new(SetupCtx::<Goldilocks>::new(&global_info, &ProofType::Basic));
+    // let _buffer_allocator: Arc<StarkBufferAllocator> =
+    //     Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
+    // let global_info = GlobalInfo::new(global_info_path);
+    // let _sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
-    // Get the ELF file path as a string
-    let elf_filename: String = rom_path.to_str().unwrap().into();
-    println!("Proving ROM for ELF file={}", elf_filename);
+    // // Get the ELF file path as a string
+    // let elf_filename: String = rom_path.to_str().unwrap().into();
+    // println!("Proving ROM for ELF file={}", elf_filename);
 
-    // Create an instance of the RISCV -> ZisK program converter
-    let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+    // // Create an instance of the RISCV -> ZisK program converter
+    // let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
 
-    // Convert program to rom
-    let rom = riscv2zisk.run().expect("RomSM::prover() failed running rom");
+    // // Convert program to rom
+    // let _rom = riscv2zisk.run().expect("RomSM::prover() failed running rom");
 
-    // Compute the trace
-    // RomSM::<Goldilocks>::prove_instance(wcm, rom, plan, buffer, trace_rows);
+    // // Compute the trace
+    // // RomSM::<Goldilocks>::prove_instance(wcm, rom, plan, buffer, trace_rows);
 
-    // Compute LDE and Merkelize and get the root of the rom
-    // TODO: Implement the logic to compute the trace
+    // // Compute LDE and Merkelize and get the root of the rom
+    // // TODO: Implement the logic to compute the trace
 
     log::info!("ROM proof successful");
 }
- 

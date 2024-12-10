@@ -5,7 +5,6 @@ use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::WitnessManager;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
@@ -24,26 +23,21 @@ const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
 
 pub struct BinaryExtensionSM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
     // STD
     std: Arc<Std<F>>,
 
     // Secondary State machines
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 impl<F: PrimeField> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
     pub fn new(
-        wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
-        binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let binary_extension_sm =
-            Arc::new(Self { wcm: wcm.clone(), std: std.clone(), binary_extension_table_sm });
+        let binary_extension_sm = Arc::new(Self { std: std.clone(), binary_extension_table_sm });
 
         std.register_predecessor();
 
@@ -98,7 +92,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
         range_check: &mut HashMap<u64, u64>,
-    ) -> BinaryExtensionRow<F> {
+    ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
         let op = operation.opcode;
 
@@ -107,7 +101,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         // Create an empty trace
         let mut row =
-            BinaryExtensionRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
+            BinaryExtensionTraceRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -293,7 +287,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.multiplicity = F::one();
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
-            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+            let row = BinaryExtensionTableSM::calculate_table_row(
                 binary_extension_table_op,
                 i as u64,
                 *a_byte as u64,
@@ -317,22 +311,18 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         binary_e_trace: &mut BinaryExtensionTrace<F>,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let pctx = self.wcm.get_pctx();
-
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-        let air_binary_extension_table =
-            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
-        assert!(operations.len() <= air.num_rows());
+        let num_rows = BinaryExtensionTrace::<F>::NUM_ROWS;
+        assert!(operations.len() <= BinaryExtensionTrace::<F>::NUM_ROWS);
 
         info!(
             "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
-            air.num_rows(),
-            operations.len() as f64 / air.num_rows() as f64 * 100.0
+            num_rows,
+            operations.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
+        let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
 
         for (i, operation) in operations.iter().enumerate() {
@@ -343,16 +333,16 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
         let padding_row =
-            BinaryExtensionRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+            BinaryExtensionTraceRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
 
-        for i in operations.len()..air.num_rows() {
+        for i in operations.len()..num_rows {
             binary_e_trace[i] = padding_row;
         }
 
-        let padding_size = air.num_rows() - operations.len();
+        let padding_size = num_rows - operations.len();
         for i in 0..8 {
             let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+            let row = BinaryExtensionTableSM::calculate_table_row(
                 BinaryExtensionTableOp::SignExtendW,
                 i,
                 0,

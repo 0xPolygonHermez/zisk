@@ -7,7 +7,7 @@ use proofman::WitnessManager;
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
 use zisk_core::{ZiskRom, SRC_IMM};
-use zisk_pil::{RomRow, RomTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MainTrace, RomTrace, RomTraceRow};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 
@@ -25,7 +25,6 @@ impl<F: PrimeField> RomSM<F> {
     }
 
     pub fn prove_instance(
-        wcm: &WitnessManager<F>,
         rom: &ZiskRom,
         plan: &Plan,
         rom_trace: &mut RomTrace<F>,
@@ -34,8 +33,7 @@ impl<F: PrimeField> RomSM<F> {
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
         let pc_histogram = &metadata.rom.inst_count;
-        let main_trace_len =
-            wcm.get_pctx().pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
+        let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
         info!(
             "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
@@ -137,7 +135,7 @@ impl<F: PrimeField> RomSM<F> {
 
         // Padd with zeroes
         for i in rom.insts.len()..trace_rows {
-            rom_trace[i] = RomRow::default();
+            rom_trace[i] = RomTraceRow::default();
         }
     }
 }

@@ -27,11 +27,7 @@ impl MemUnalignedSM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
-        wcm.register_component(
-            mem_aligned_sm.clone(),
-            Some(MEM_AIRGROUP_ID),
-            Some(MEM_UNALIGNED_AIR_IDS),
-        );
+        wcm.register_component(mem_aligned_sm.clone(), MEM_AIRGROUP_ID, MEM_UNALIGNED_AIR_IDS[0]);
 
         mem_aligned_sm
     }

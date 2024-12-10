@@ -27,11 +27,7 @@ impl Arith3264SM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith3264_sm = Arc::new(arith3264_sm);
 
-        wcm.register_component(
-            arith3264_sm.clone(),
-            Some(ARITH_AIRGROUP_ID),
-            Some(ARITH3264_AIR_IDS),
-        );
+        wcm.register_component(arith3264_sm.clone(), ARITH_AIRGROUP_ID, ARITH3264_AIR_IDS[0]);
 
         arith3264_sm
     }

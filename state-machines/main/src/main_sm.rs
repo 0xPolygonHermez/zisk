@@ -6,9 +6,9 @@ use std::sync::Arc;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 
 use proofman::WitnessManager;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, FromTrace};
 
-use zisk_pil::{MainRow, MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuTrace};
 
 /// This is a multithreaded implementation of the Zisk MainSM state machine.
@@ -40,7 +40,7 @@ impl<F: PrimeField> MainSM<F> {
     }
 
     pub fn get_instance(&self, iectx: InstanceExpanderCtx) -> MainInstance<F> {
-        MainInstance::new(&self.wcm, iectx)
+        MainInstance::new(iectx)
     }
 
     pub fn prove_main(
@@ -48,30 +48,29 @@ impl<F: PrimeField> MainSM<F> {
         zisk_rom: &ZiskRom,
         vec_traces: &[EmuTrace],
         main_instance: &mut MainInstance<F>,
-        pctx: &ProofCtx<F>,
     ) {
         let iectx = &main_instance.iectx;
         let current_segment = iectx.plan.segment_id.unwrap();
+        let num_rows = MainTrace::<F>::NUM_ROWS;
 
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         let filled = vec_traces[current_segment].steps.len() + 1;
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             current_segment,
             filled,
-            air.num_rows(),
-            filled as f64 / air.num_rows() as f64 * 100.0
+            num_rows,
+            filled as f64 / num_rows as f64 * 100.0
         );
 
         // Set Row 0 of the current segment
         let row0 = if current_segment == 0 {
-            MainRow::<F> {
+            MainTraceRow::<F> {
                 pc: F::from_canonical_u64(ROM_ENTRY),
                 op: F::from_canonical_u8(ZiskOp::CopyB.code()),
                 a_src_imm: F::one(),
                 b_src_imm: F::one(),
-                ..MainRow::default()
+                ..MainTraceRow::default()
             }
         } else {
             let emu_trace_previous = vec_traces[current_segment - 1].steps.last().unwrap();
@@ -79,7 +78,7 @@ impl<F: PrimeField> MainSM<F> {
                 Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment - 1].last_state);
             let row_previous = emu.step_slice_full_trace(emu_trace_previous);
 
-            MainRow::<F> {
+            MainTraceRow::<F> {
                 set_pc: row_previous.set_pc,
                 jmp_offset1: row_previous.jmp_offset1,
                 jmp_offset2: if row_previous.flag == F::one() {
@@ -99,7 +98,7 @@ impl<F: PrimeField> MainSM<F> {
                 pc: row_previous.pc,
                 a_src_imm: F::one(),
                 b_src_imm: F::one(),
-                ..MainRow::default()
+                ..MainTraceRow::default()
             }
         };
 
@@ -116,34 +115,27 @@ impl<F: PrimeField> MainSM<F> {
 
         let filled_rows = vec_traces[current_segment].steps.len();
         let last_row = main_instance.main_trace.buffer[filled_rows];
-
         // Fill the rest of the buffer with the last row
         for i in (filled_rows + 1)..main_instance.main_trace.buffer.len() {
             main_instance.main_trace.buffer[i] = last_row;
         }
 
-        let buffer = std::mem::take(&mut main_instance.main_trace.buffer);
-        let buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
-
-        let sctx = self.wcm.get_sctx();
-        let mut air_instance = AirInstance::new(
-            sctx.clone(),
-            ZISK_AIRGROUP_ID,
-            MAIN_AIR_IDS[0],
-            Some(current_segment),
-            buffer,
-        );
-
         let main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
         let main_segment = F::from_canonical_usize(current_segment);
 
-        air_instance.set_airvalue("Main.main_last_segment", None, main_last_segment);
-        air_instance.set_airvalue("Main.main_segment", None, main_segment);
+        let mut main_air_values = MainAirValues::<F>::new();
+        main_air_values.main_last_segment[0] = main_last_segment;
+        main_air_values.main_segment[0] = main_segment;
+
+        let air_instance = AirInstance::new_from_trace(
+            self.wcm.get_sctx(),
+            FromTrace::new(&mut main_instance.main_trace).with_air_values(&mut main_air_values),
+        );
 
         self.wcm
             .get_pctx()
             .air_instance_repo
-            .add_air_instance(air_instance, Some(iectx.instance_global_idx));
+            .add_air_instance(air_instance, Some(main_instance.iectx.instance_global_idx));
     }
 }
 
@@ -153,11 +145,8 @@ pub struct MainInstance<F: PrimeField> {
 }
 
 impl<F: PrimeField> MainInstance<F> {
-    pub fn new(wcm: &WitnessManager<F>, iectx: InstanceExpanderCtx) -> Self {
-        let pctx = wcm.get_pctx();
-        let plan = &iectx.plan;
-        let air = pctx.pilout.get_air(plan.airgroup_id, plan.air_id);
-        let main_trace = MainTrace::new(air.num_rows());
+    pub fn new(iectx: InstanceExpanderCtx) -> Self {
+        let main_trace = MainTrace::new();
 
         Self { iectx, main_trace }
     }

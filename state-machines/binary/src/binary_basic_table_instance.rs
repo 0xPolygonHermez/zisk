@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 
 use proofman::WitnessManager;
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, FromTrace};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
 use zisk_pil::BinaryTableTrace;
@@ -21,13 +21,13 @@ pub struct BinaryBasicTableInstance<F: PrimeField> {
     iectx: InstanceExpanderCtx,
 
     /// Binary basic table state machine
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
 impl<F: PrimeField> BinaryBasicTableInstance<F> {
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
-        binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
         Self { wcm, iectx, binary_basic_table_sm }
@@ -61,28 +61,21 @@ impl<F: PrimeField> Instance for BinaryBasicTableInstance<F> {
         drop(dctx);
 
         // if is_mine {
-        let pctx = self.wcm.get_pctx();
-        let air = pctx.pilout.get_air(self.iectx.plan.airgroup_id, self.iectx.plan.air_id);
-        let binary_basic_trace = BinaryTableTrace::<F>::new(air.num_rows());
+        let mut trace = BinaryTableTrace::<F>::new();
 
-        let buffer = binary_basic_trace.buffer;
-        let mut buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
-
-        buffer[0..air.num_rows()]
+        trace.buffer[0..BinaryTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()
             .enumerate()
-            .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
+            .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity_[i]));
 
-        let air_instance = AirInstance::new(
-            self.wcm.get_sctx(),
-            self.iectx.plan.airgroup_id,
-            self.iectx.plan.air_id,
-            None,
-            buffer,
-        );
+        let air_instance =
+            AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut trace));
 
-        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        air_instance_repo.add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+        self.wcm
+            .get_pctx()
+            .air_instance_repo
+            .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+
         // }
 
         Ok(())

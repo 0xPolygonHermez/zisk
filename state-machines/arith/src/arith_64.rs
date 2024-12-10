@@ -27,7 +27,7 @@ impl Arith64SM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith64_sm = Arc::new(arith64_sm);
 
-        wcm.register_component(arith64_sm.clone(), Some(ARITH_AIRGROUP_ID), Some(ARITH64_AIR_IDS));
+        wcm.register_component(arith64_sm.clone(), ARITH_AIRGROUP_ID, ARITH64_AIR_IDS[0]);
 
         arith64_sm
     }

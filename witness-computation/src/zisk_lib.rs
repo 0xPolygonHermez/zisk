@@ -6,14 +6,11 @@ use sm_rom::RomSM;
 use sm_std::StdSM;
 use std::{cell::OnceCell, error::Error, path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
-use zisk_pil::*;
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{
-    initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout,
-};
+use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode};
 
 pub struct ZiskWitness<F: PrimeField> {
     /// Public inputs path
@@ -125,10 +122,6 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
         sctx: Arc<SetupCtx>,
     ) {
         self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
-    }
-
-    fn pilout(&self) -> WitnessPilout {
-        Pilout::pilout()
     }
 }
 

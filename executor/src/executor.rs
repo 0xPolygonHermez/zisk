@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 use zisk_core::ZiskRom;
-use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 use crate::MetricsProxy;
@@ -49,7 +49,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     pub fn execute(
         &self,
         public_inputs_path: &Path,
-        pctx: Arc<ProofCtx<F>>,
+        _: Arc<ProofCtx<F>>,
         ectx: Arc<ExecutionCtx>,
         _: Arc<SetupCtx>,
     ) {
@@ -79,12 +79,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let main_task = {
             let main_sm = self.main_sm.clone();
             let zisk_rom = self.zisk_rom.clone();
-            let pctx = pctx.clone();
             let minimal_traces = min_traces.clone();
 
             std::thread::spawn(move || {
                 main_layouts.par_iter_mut().for_each(|main_instance| {
-                    main_sm.prove_main(&zisk_rom, &minimal_traces, main_instance, &pctx);
+                    main_sm.prove_main(&zisk_rom, &minimal_traces, main_instance);
                 });
                 main_layouts
             })
@@ -104,7 +103,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut sec_instances = Vec::new();
         for (i, plans_by_sm) in plans.iter_mut().enumerate() {
             for plan in plans_by_sm.drain(..) {
-                if let (true, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1) {
+                let (is_mine, global_idx) = dctx.add_instance(plan.airgroup_id, plan.air_id, 1);
+
+                if is_mine || plan.instance_type == InstanceType::Table {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
 
                     let instance = self.secondary_sm[i].get_instance(iectx);
@@ -176,14 +177,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
         timer_start_debug!(PHASE1_FAST_PROCESS_ROM);
 
-        let pctx = self.wcm.get_pctx();
-        let air_main = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
-
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
             elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
             inputs: None, //Some(public_inputs_path.display().to_string()),
-            trace_steps: Some(air_main.num_rows() as u64 - 1),
+            trace_steps: Some(MainTrace::<F>::NUM_ROWS as u64 - 1),
             ..EmuOptions::default()
         };
 
@@ -208,6 +206,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     ZISK_AIRGROUP_ID,
                     MAIN_AIR_IDS[0],
                     Some(segment_id),
+                    InstanceType::Instance,
                     Some(CheckPoint::new(segment_id, 0)),
                     None,
                 )

@@ -1,9 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use p3_field::Field;
-use proofman::WitnessManager;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
-use zisk_pil::{BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::BinaryTableTrace;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
@@ -25,25 +24,14 @@ pub enum BinaryBasicTableOp {
     Ext32 = 0x23,
 }
 
-pub struct BinaryBasicTableSM<F> {
+pub struct BinaryBasicTableSM {
     // Row multiplicity table
     pub multiplicity: Mutex<Vec<u64>>,
-
-    /// Phantom data to make the type system happy
-    _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: Field> BinaryBasicTableSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-
-        let binary_basic_table = Self {
-            multiplicity: Mutex::new(vec![0; air.num_rows()]),
-            _phantom: std::marker::PhantomData,
-        };
-
-        Arc::new(binary_basic_table)
+impl BinaryBasicTableSM {
+    pub fn new<F: Field>() -> Arc<Self> {
+        Arc::new(Self { multiplicity: Mutex::new(vec![0; BinaryTableTrace::<F>::NUM_ROWS]) })
     }
 
     pub fn process_slice(&self, input: &[u64]) {

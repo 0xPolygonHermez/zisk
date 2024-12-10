@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 
 use proofman::WitnessManager;
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_common::InstObserver;
@@ -20,7 +20,6 @@ pub struct BinaryBasicInstance<F: PrimeField> {
 
     skipping: bool,
     skipped: u64,
-    num_rows: u64,
     inputs: Vec<ZiskRequiredOperation>,
     binary_trace: BinaryTrace<F>,
 }
@@ -31,11 +30,7 @@ impl<F: PrimeField> BinaryBasicInstance<F> {
         wcm: Arc<WitnessManager<F>>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        let pctx = wcm.get_pctx();
-        let plan = &iectx.plan;
-        let air = pctx.pilout.get_air(plan.airgroup_id, plan.air_id);
-
-        let binary_trace = BinaryTrace::new(air.num_rows());
+        let binary_trace = BinaryTrace::new();
 
         Self {
             binary_basic_sm,
@@ -43,7 +38,6 @@ impl<F: PrimeField> BinaryBasicInstance<F> {
             iectx,
             skipping: true,
             skipped: 0,
-            num_rows: air.num_rows() as u64,
             inputs: Vec::new(),
             binary_trace,
         }
@@ -74,18 +68,16 @@ impl<F: PrimeField> Instance for BinaryBasicInstance<F> {
         timer_stop_and_log_debug!(PROVE_BINARY);
 
         timer_start_debug!(CREATE_BINARY_AIR_INSTANCE);
-        let buffer = std::mem::take(&mut self.binary_trace.buffer);
-        let buffer: Vec<F> = unsafe { std::mem::transmute(buffer) };
-        let air_instance = AirInstance::new(
+        let air_instance = AirInstance::new_from_trace(
             self.wcm.get_sctx(),
-            self.iectx.plan.airgroup_id,
-            self.iectx.plan.air_id,
-            None,
-            buffer,
+            FromTrace::new(&mut self.binary_trace),
         );
 
-        let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-        air_instance_repo.add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+        self.wcm
+            .get_pctx()
+            .air_instance_repo
+            .add_air_instance(air_instance, Some(self.iectx.instance_global_idx));
+
         timer_stop_and_log_debug!(CREATE_BINARY_AIR_INSTANCE);
 
         Ok(())
@@ -118,6 +110,6 @@ impl<F: PrimeField> InstObserver for BinaryBasicInstance<F> {
 
         self.inputs.push(ZiskRequiredOperation { step: inst_ctx.step, opcode: zisk_inst.op, a, b });
 
-        self.inputs.len() == self.num_rows as usize
+        self.inputs.len() == BinaryTrace::<F>::NUM_ROWS
     }
 }

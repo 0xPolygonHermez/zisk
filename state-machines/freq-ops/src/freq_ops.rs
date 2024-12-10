@@ -26,7 +26,7 @@ impl FreqOpsSM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let freqop_sm = Arc::new(freqop_sm);
 
-        wcm.register_component(freqop_sm.clone(), Some(airgroup_id), Some(air_ids));
+        wcm.register_component(freqop_sm.clone(), airgroup_id, air_ids[0]);
 
         freqop_sm
     }

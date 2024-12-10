@@ -30,7 +30,7 @@ impl Arith32SM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let arith32_sm = Arc::new(arith32_sm);
 
-        wcm.register_component(arith32_sm.clone(), Some(ARITH_AIRGROUP_ID), Some(ARITH32_AIR_IDS));
+        wcm.register_component(arith32_sm.clone(), ARITH_AIRGROUP_ID, ARITH32_AIR_IDS[0]);
 
         arith32_sm
     }

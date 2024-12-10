@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use log::info;
 use p3_field::Field;
-use proofman::WitnessManager;
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
@@ -11,10 +10,10 @@ use zisk_pil::*;
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
 
 pub struct BinaryBasicSM<F> {
-    wcm: Arc<WitnessManager<F>>,
-
     // Secondary State machines
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
 #[derive(Debug)]
@@ -25,11 +24,8 @@ pub enum BinaryBasicSMErr {
 impl<F: Field> BinaryBasicSM<F> {
     const MY_NAME: &'static str = "Binary  ";
 
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
-    ) -> Arc<Self> {
-        Arc::new(Self { wcm: wcm.clone(), binary_basic_table_sm })
+    pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
+        Arc::new(Self { binary_basic_table_sm, _phantom: std::marker::PhantomData })
     }
 
     pub fn operations() -> Vec<u8> {
@@ -101,9 +97,9 @@ impl<F: Field> BinaryBasicSM<F> {
     pub fn process_slice(
         operation: &ZiskRequiredOperation,
         multiplicity: &mut [u64],
-    ) -> BinaryRow<F> {
+    ) -> BinaryTraceRow<F> {
         // Create an empty trace
-        let mut row: BinaryRow<F> = Default::default();
+        let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
         let c: u64;
@@ -175,7 +171,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -215,7 +211,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -273,7 +269,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cin + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -322,7 +318,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cin + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -365,7 +361,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -419,7 +415,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 2 + 4 * result_is_a;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -473,7 +469,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 2 + 4 * result_is_a;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -504,7 +500,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -531,7 +527,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -558,7 +554,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -596,20 +592,18 @@ impl<F: Field> BinaryBasicSM<F> {
         binary_trace: &mut BinaryTrace<F>,
     ) {
         timer_start_trace!(BINARY_TRACE);
-        let pctx = self.wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_table = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-        assert!(operations.len() <= air.num_rows());
+        let num_rows = BinaryTrace::<F>::NUM_ROWS;
+        assert!(operations.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
-            air.num_rows(),
-            operations.len() as f64 / air.num_rows() as f64 * 100.0
+            num_rows,
+            operations.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
+        let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
@@ -618,7 +612,7 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_TRACE);
 
         timer_start_trace!(BINARY_PADDING);
-        let padding_row = BinaryRow::<F> {
+        let padding_row = BinaryTraceRow::<F> {
             m_op: F::from_canonical_u8(0x20),
             multiplicity: F::zero(),
             main_step: F::zero(), /* TODO: remove, since main_step is just for
@@ -626,14 +620,14 @@ impl<F: Field> BinaryBasicSM<F> {
             ..Default::default()
         };
 
-        for i in operations.len()..air.num_rows() {
+        for i in operations.len()..num_rows {
             binary_trace[i] = padding_row;
         }
 
-        let padding_size = air.num_rows() - operations.len();
+        let padding_size = num_rows - operations.len();
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
-            let row = BinaryBasicTableSM::<F>::calculate_table_row(
+            let row = BinaryBasicTableSM::calculate_table_row(
                 BinaryBasicTableOp::And,
                 0,
                 0,

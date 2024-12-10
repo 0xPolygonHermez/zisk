@@ -2,31 +2,62 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common as common;
 pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
-trace!(MainRow, MainTrace<F> {
+#[allow(dead_code)]
+type FieldExtension<F> = [F; 3];
+
+pub const PILOUT_HASH: &[u8] = b"ZiskMain2-hash";
+
+//AIRGROUP CONSTANTS
+
+pub const ZISK_AIRGROUP_ID: usize = 0;
+
+//AIR CONSTANTS
+
+pub const MAIN_AIR_IDS: &[usize] = &[0];
+
+pub const ROM_AIR_IDS: &[usize] = &[1];
+
+pub const BINARY_AIR_IDS: &[usize] = &[2];
+
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[3];
+
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[4];
+
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[5];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[6];
+
+  
+trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
-});
+},  0, 0, 2097152 );
 
-trace!(RomRow, RomTrace<F> {
+trace!(RomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
-});
+},  0, 1, 1048576 );
 
-trace!(BinaryRow, BinaryTrace<F> {
+trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
-});
+},  0, 2, 2097152 );
 
-trace!(BinaryTableRow, BinaryTableTrace<F> {
+trace!(BinaryTableTrace<F> {
  multiplicity: F,
-});
+},  0, 3, 4194304 );
 
-trace!(BinaryExtensionRow, BinaryExtensionTrace<F> {
+trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
-});
+},  0, 4, 2097152 );
 
-trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
+trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
-});
+},  0, 5, 4194304 );
 
-trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
+trace!(SpecifiedRangesTrace<F> {
  mul: [F; 1],
+},  0, 6, 16777216 );
+
+values!(MainAirValues<F> {
+ main_last_segment: FieldExtension<F>, main_segment: FieldExtension<F>,
 });

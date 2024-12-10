@@ -27,11 +27,7 @@ impl QuickOpsSM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let quickop_sm = Arc::new(quickop_sm);
 
-        wcm.register_component(
-            quickop_sm.clone(),
-            Some(QUICKOPS_AIRGROUP_ID),
-            Some(QUICKOPS_AIR_IDS),
-        );
+        wcm.register_component(quickop_sm.clone(), QUICKOPS_AIRGROUP_ID, QUICKOPS_AIR_IDS[0]);
 
         quickop_sm
     }

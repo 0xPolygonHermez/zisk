@@ -20,19 +20,18 @@ pub struct BinarySM<F: PrimeField> {
 
     // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM<F>>,
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 impl<F: PrimeField> BinarySM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm = BinaryBasicTableSM::new(wcm.clone());
-        let binary_basic_sm = BinaryBasicSM::new(wcm.clone(), binary_basic_table_sm.clone());
+        let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
+        let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new(wcm.clone());
-        let binary_extension_sm =
-            BinaryExtensionSM::new(wcm.clone(), std, binary_extension_table_sm.clone());
+        let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
+        let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
         let binary_sm = Self {
             wcm: wcm.clone(),
@@ -52,7 +51,7 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(BinaryPlanner::new(self.wcm.clone()))
+        Box::new(BinaryPlanner::<F>::new())
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {

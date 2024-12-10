@@ -44,7 +44,7 @@ impl ArithSM {
         };
         let arith_sm = Arc::new(arith_sm);
 
-        wcm.register_component(arith_sm.clone(), None, None);
+        wcm.register_proxy_component(arith_sm.clone());
 
         arith_sm.arith32_sm.register_predecessor();
         arith_sm.arith64_sm.register_predecessor();

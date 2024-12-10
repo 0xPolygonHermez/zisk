@@ -1,22 +1,25 @@
-use std::sync::Arc;
-
 use p3_field::PrimeField;
-use proofman::WitnessManager;
-use sm_common::{plan, ChunkId, InstCount, Metrics, Plan, Planner};
+use sm_common::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner};
 use zisk_pil::{
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    BinaryExtensionTrace, BinaryTrace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
+    BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::BinaryCounter;
 
 pub struct BinaryPlanner<F: PrimeField> {
-    wcm: Arc<WitnessManager<F>>,
+    _phantom: std::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField> Default for BinaryPlanner<F> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<F: PrimeField> BinaryPlanner<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Self {
-        Self { wcm }
+    pub fn new() -> Self {
+        Self { _phantom: std::marker::PhantomData }
     }
 }
 
@@ -34,33 +37,40 @@ impl<F: PrimeField> Planner for BinaryPlanner<F> {
             })
             .collect();
 
-        let pctx = self.wcm.get_pctx();
-
-        let binaries =
-            [(BINARY_AIR_IDS[0], count_binary), (BINARY_EXTENSION_AIR_IDS[0], count_binary_e)];
+        let binaries = [
+            (BINARY_AIR_IDS[0], BinaryTrace::<F>::NUM_ROWS, count_binary),
+            (BINARY_EXTENSION_AIR_IDS[0], BinaryExtensionTrace::<F>::NUM_ROWS, count_binary_e),
+        ];
 
         let mut plan_result = Vec::new();
-        for (air_id, counts) in binaries.iter() {
-            let rows = pctx.pilout.get_air(ZISK_AIRGROUP_ID, *air_id).num_rows() as u64;
-            let plan: Vec<_> = plan(counts, rows)
+        for (air_id, num_rows, counts) in binaries.iter() {
+            let plan: Vec<_> = plan(counts, *num_rows as u64)
                 .into_iter()
                 .map(|checkpoint| {
-                    Plan::new(ZISK_AIRGROUP_ID, *air_id, None, Some(checkpoint), None)
+                    Plan::new(
+                        ZISK_AIRGROUP_ID,
+                        *air_id,
+                        None,
+                        InstanceType::Instance,
+                        Some(checkpoint),
+                        None,
+                    )
                 })
                 .collect();
 
             plan_result.extend(plan);
         }
 
-        plan_result.push(Plan::new(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], None, None, None));
-
-        plan_result.push(Plan::new(
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_TABLE_AIR_IDS[0],
-            None,
-            None,
-            None,
-        ));
+        for &air_id in &[BINARY_TABLE_AIR_IDS[0], BINARY_EXTENSION_TABLE_AIR_IDS[0]] {
+            plan_result.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                air_id,
+                None,
+                InstanceType::Table,
+                None,
+                None,
+            ));
+        }
 
         plan_result
     }
