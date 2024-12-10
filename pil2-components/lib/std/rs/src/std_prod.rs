@@ -9,7 +9,7 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ModeName, ProofCtx, SetupCtx, StdMode};
 use proofman_hints::{
-    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a,
+    get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a,
     get_hint_ids_by_name, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
 };
 
@@ -294,26 +294,51 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     // This call calculates "numerator" / "denominator" and accumulates it into "reference". Its last value is stored into "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and calculating the operations in Rust,
-                    // TODO: GENERALIZE CALLS
-                    let (pol_id, airgroupvalue_id) = acc_mul_hint_fields::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gprod_hint,
-                        "reference",
-                        "result",
-                        "numerator_air",
-                        "denominator_air",
-                        HintFieldOptions::default(),
-                        HintFieldOptions::inverse(),
-                        false,
-                    );
+                    // let (pol_id, airgroupvalue_id) = acc_mul_hint_fields_extended::<F>(
+                    //     &sctx,
+                    //     &pctx,
+                    //     air_instance,
+                    //     gprod_hint,
+                    //     "reference",
+                    //     "result",
+                    //     "numerator_air",
+                    //     "denominator_air",
+                    //     "numerator_direct",
+                    //     "denominator_direct",
+                    //     HintFieldOptions::default(),
+                    //     HintFieldOptions::inverse(),
+                    //     HintFieldOptions::default(),
+                    //     HintFieldOptions::inverse(),
+                    //     false,
+                    // );
 
-                    // TODO: Add direct part
-                    // result *= numerator_direct/denominator_direct
+                    // air_instance.set_commit_calculated(pol_id as usize);
+                    // air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
 
-                    air_instance.set_commit_calculated(pol_id as usize);
-                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
+                    let mut gprod = get_hint_field::<F>(&sctx, &pctx, air_instance, gprod_hint, "reference", HintFieldOptions::default());
+
+                    let numerator_air = get_hint_field::<F>(&sctx, &pctx, air_instance, gprod_hint, "numerator_air", HintFieldOptions::default());
+                    let denominator_air = get_hint_field::<F>(&sctx, &pctx, air_instance, gprod_hint, "denominator_air", HintFieldOptions::inverse());
+
+                    let numerator_direct = get_hint_field::<F>(&sctx, &pctx, air_instance, gprod_hint, "numerator_direct", HintFieldOptions::default());
+                    let denominator_direct = get_hint_field::<F>(&sctx, &pctx, air_instance, gprod_hint, "denominator_direct", HintFieldOptions::inverse());
+
+                    let mut fraq_direct = Vec::new();
+                    for i in 0..num_rows {
+                        fraq_direct.push(numerator_direct.get(i) * denominator_direct.get(i));
+                    }
+
+                    gprod.set(0, numerator_air.get(0) * denominator_air.get(0));
+                    for i in 1..num_rows {
+                        gprod.set(i, gprod.get(i - 1) * (numerator_air.get(i) * denominator_air.get(i)));
+                    }
+
+                    for i in 0..num_rows {
+                        gprod.set(i, gprod.get(i) * fraq_direct[i]);
+                    }
+
+                    set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
+                    set_hint_field_val(&sctx, air_instance, gprod_hint as u64, "result", gprod.get(num_rows - 1));
                 }
             }
         }
