@@ -1,68 +1,62 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
+use std::sync::Arc;
+
+use p3_field::PrimeField;
+use proofman::WitnessManager;
+use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner};
+use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS};
+
+use crate::{
+    ArithCounter, ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableInstance,
+    ArithRangeTableSM, ArithTableInstance, ArithTableSM,
 };
 
-use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
-use zisk_core::ZiskRequiredOperation;
-use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
-
-use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
-
-#[allow(dead_code)]
 pub struct ArithSM<F> {
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
+    wcm: Arc<WitnessManager<F>>,
     arith_full_sm: Arc<ArithFullSM<F>>,
     arith_table_sm: Arc<ArithTableSM<F>>,
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
 }
 
-impl<F: Field> ArithSM<F> {
+impl<F: PrimeField> ArithSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let arith_table_sm = ArithTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_TABLE_AIR_IDS);
-        let arith_range_table_sm =
-            ArithRangeTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_RANGE_TABLE_AIR_IDS);
-        let arith_full_sm = ArithFullSM::new(
-            wcm.clone(),
-            arith_table_sm.clone(),
-            arith_range_table_sm.clone(),
-            ZISK_AIRGROUP_ID,
-            ARITH_AIR_IDS,
-        );
-        let arith_sm = Self {
-            registered_predecessors: AtomicU32::new(0),
-            arith_full_sm,
-            arith_table_sm,
-            arith_range_table_sm,
-        };
-        let arith_sm = Arc::new(arith_sm);
+        let arith_table_sm = ArithTableSM::new(wcm.clone());
+        let arith_range_table_sm = ArithRangeTableSM::new(wcm.clone());
 
-        wcm.register_proxy_component(arith_sm.clone());
+        let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
 
-        arith_sm.arith_full_sm.register_predecessor();
+        let arith_sm = Self { wcm, arith_full_sm, arith_table_sm, arith_range_table_sm };
 
-        arith_sm
-    }
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.arith_full_sm.unregister_predecessor();
-        }
-    }
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        self.arith_full_sm.prove_instance(operations, prover_buffer, offset);
+        Arc::new(arith_sm)
     }
 }
 
-impl<F: Field> WitnessComponent<F> for ArithSM<F> {}
+impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
+    fn get_counter(&self) -> Box<dyn Metrics> {
+        Box::new(ArithCounter::default())
+    }
+
+    fn get_planner(&self) -> Box<dyn Planner> {
+        Box::new(ArithPlanner::<F>::new())
+    }
+
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {
+        match iectx.plan.air_id {
+            id if id == ARITH_AIR_IDS[0] => Box::new(ArithFullInstance::new(
+                self.wcm.clone(),
+                self.arith_full_sm.clone(),
+                iectx,
+            )),
+            id if id == ARITH_TABLE_AIR_IDS[0] => Box::new(ArithTableInstance::new(
+                self.wcm.clone(),
+                self.arith_table_sm.clone(),
+                iectx,
+            )),
+            id if id == ARITH_RANGE_TABLE_AIR_IDS[0] => Box::new(ArithRangeTableInstance::new(
+                self.wcm.clone(),
+                self.arith_range_table_sm.clone(),
+                iectx,
+            )),
+            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
+        }
+    }
+}

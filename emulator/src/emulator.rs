@@ -15,10 +15,7 @@
 //!             Emu::run()
 //! ```
 
-use crate::{
-    Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
-    ZiskEmulatorErr,
-};
+use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
 use p3_field::PrimeField;
 use std::{

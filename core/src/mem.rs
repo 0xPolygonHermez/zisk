@@ -79,7 +79,7 @@
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
 //!   program execution a general purpose memory.
 
-use crate::{REG_FIRST, REG_LAST, UART_ADDR};
+use crate::{REG_FIRST, REG_LAST};
 
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x90000000;

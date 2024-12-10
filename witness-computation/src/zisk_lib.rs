@@ -1,6 +1,7 @@
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_rom::RomSM;
 use sm_std::StdSM;
@@ -83,11 +84,13 @@ impl<F: PrimeField> ZiskWitness<F> {
         let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(wcm.clone(), zisk_rom.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
+        let arith_sm = ArithSM::new(wcm.clone());
 
         let mut executor = ZiskExecutor::new(wcm.clone(), zisk_rom);
         executor.register_sm(std_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
+        executor.register_sm(arith_sm);
 
         self.executor.set(executor).ok();
     }
