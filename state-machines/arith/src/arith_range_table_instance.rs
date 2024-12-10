@@ -6,7 +6,7 @@ use proofman::WitnessManager;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
-use zisk_pil::ArithTableTrace;
+use zisk_pil::ArithRangeTableTrace;
 use ziskemu::EmuTrace;
 
 use rayon::prelude::*;
@@ -61,9 +61,9 @@ impl<F: PrimeField> Instance for ArithRangeTableInstance<F> {
         drop(dctx);
 
         // if is_mine {
-        let mut trace = ArithTableTrace::<F>::new();
+        let mut trace = ArithRangeTableTrace::<F>::new();
 
-        trace.buffer[0..ArithTableTrace::<F>::NUM_ROWS]
+        trace.buffer[0..ArithRangeTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity_[i]));
