@@ -9,8 +9,8 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx, StdMode, ModeName};
 use proofman_hints::{
-    get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a, set_hint_field_val,
-    set_hint_field, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions, HintFieldOutput, HintFieldValue,
+    get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a, acc_mul_hint_fields,
+    update_airgroupvalue, get_hint_ids_by_name, mul_hint_fields, HintFieldOptions, HintFieldOutput, HintFieldValue,
     HintFieldValuesVec,
 };
 
@@ -313,79 +313,36 @@ impl<F: PrimeField> WitnessComponent<F> for StdSum<F> {
 
                     // This call accumulates "expression" into "reference" expression and stores its last value to "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and doing the accumulation in Rust,
-                    // let (pol_id, airgroupvalue_id) = acc_mul_hint_fields_extended::<F>(
-                    //     &sctx,
-                    //     &pctx,
-                    //     air_instance,
-                    //     gsum_hint,
-                    //     "reference",
-                    //     "result",
-                    //     "numerator_air",
-                    //     "denominator_air",
-                    //     "numerator_direct",
-                    //     "denominator_direct",
-                    //     HintFieldOptions::default(),
-                    //     HintFieldOptions::inverse(),
-                    //     HintFieldOptions::default(),
-                    //     HintFieldOptions::inverse(),
-                    //     true,
-                    // );
-
-                    // air_instance.set_commit_calculated(pol_id as usize);
-                    // air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
-
-                    let mut gsum = get_hint_field::<F>(
+                    let (pol_id, _) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gsum_hint,
                         "reference",
-                        HintFieldOptions::default(),
-                    );
-
-                    let numerator_air = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
+                        "result",
                         "numerator_air",
-                        HintFieldOptions::default(),
-                    );
-                    let denominator_air = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
                         "denominator_air",
-                        HintFieldOptions::inverse(),
-                    );
-
-                    let numerator_direct = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gsum_hint,
-                        "numerator_direct",
                         HintFieldOptions::default(),
+                        HintFieldOptions::inverse(),
+                        true,
                     );
-                    let denominator_direct = get_hint_field::<F>(
+
+                    air_instance.set_commit_calculated(pol_id as usize);
+
+                    let airgroupvalue_id = update_airgroupvalue::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gsum_hint,
+                        "result",
+                        "numerator_direct",
                         "denominator_direct",
+                        HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
+                        true,
                     );
 
-                    gsum.set(0, numerator_air.get(0) * denominator_air.get(0));
-                    for i in 1..num_rows {
-                        gsum.set(i, gsum.get(i - 1) + (numerator_air.get(i) * denominator_air.get(i)));
-                    }
-
-                    let result = gsum.get(num_rows - 1) + numerator_direct.get(0) * denominator_direct.get(0);
-
-                    set_hint_field(&sctx, air_instance, gsum_hint as u64, "reference", &gsum);
-                    set_hint_field_val(&sctx, air_instance, gsum_hint as u64, "result", result);
+                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }
         }

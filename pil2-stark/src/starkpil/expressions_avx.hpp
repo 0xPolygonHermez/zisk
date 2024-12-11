@@ -345,7 +345,7 @@ public:
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION], dests[j].params[k].inverse, dests[j].params[k].dim, &bufferT_[nColsStagesAcc[buffPos] + stagePos]);
                         continue;
                     } else if(dests[j].params[k].op == opType::number) {
-                        uint64_t val = dests[j].params[k].inverse ? Goldilocks::inv(Goldilocks::fromU64(dests[j].params[k].value)).fe : dests[j].params[k].value;
+                        uint64_t val = dests[j].params[k].value;
                         destVals[j][k*FIELD_EXTENSION] = _mm256_set1_epi64x(val);
                         continue;
                     }

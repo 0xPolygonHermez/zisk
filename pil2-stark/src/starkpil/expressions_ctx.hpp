@@ -59,6 +59,7 @@ struct Dest {
     }
 
     void addNumber(uint64_t value, bool inverse_ = false) {
+        if(inverse_) value = Goldilocks::inv(Goldilocks::fromU64(value)).fe;
         params.push_back(Params(value, inverse_));
     }
 };

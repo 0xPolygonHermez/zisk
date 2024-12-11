@@ -10,7 +10,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ModeName, ProofCtx, SetupCtx, StdMode};
 use proofman_hints::{
     get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a, get_hint_ids_by_name,
-    set_hint_field, set_hint_field_val, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
+    update_airgroupvalue, acc_mul_hint_fields, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
 };
 
 use crate::{print_debug_info, update_debug_data, DebugData, Decider};
@@ -294,79 +294,36 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     // This call calculates "numerator" / "denominator" and accumulates it into "reference". Its last value is stored into "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and calculating the operations in Rust,
-                    // let (pol_id, airgroupvalue_id) = acc_mul_hint_fields_extended::<F>(
-                    //     &sctx,
-                    //     &pctx,
-                    //     air_instance,
-                    //     gprod_hint,
-                    //     "reference",
-                    //     "result",
-                    //     "numerator_air",
-                    //     "denominator_air",
-                    //     "numerator_direct",
-                    //     "denominator_direct",
-                    //     HintFieldOptions::default(),
-                    //     HintFieldOptions::inverse(),
-                    //     HintFieldOptions::default(),
-                    //     HintFieldOptions::inverse(),
-                    //     false,
-                    // );
-
-                    // air_instance.set_commit_calculated(pol_id as usize);
-                    // air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
-
-                    let mut gprod = get_hint_field::<F>(
+                    let (pol_id, _) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gprod_hint,
                         "reference",
-                        HintFieldOptions::default(),
-                    );
-
-                    let numerator_air = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gprod_hint,
+                        "result",
                         "numerator_air",
-                        HintFieldOptions::default(),
-                    );
-                    let denominator_air = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gprod_hint,
                         "denominator_air",
-                        HintFieldOptions::inverse(),
-                    );
-
-                    let numerator_direct = get_hint_field::<F>(
-                        &sctx,
-                        &pctx,
-                        air_instance,
-                        gprod_hint,
-                        "numerator_direct",
                         HintFieldOptions::default(),
+                        HintFieldOptions::inverse(),
+                        false,
                     );
-                    let denominator_direct = get_hint_field::<F>(
+
+                    air_instance.set_commit_calculated(pol_id as usize);
+
+                    let airgroupvalue_id = update_airgroupvalue::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gprod_hint,
+                        "result",
+                        "numerator_direct",
                         "denominator_direct",
+                        HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
+                        false,
                     );
 
-                    gprod.set(0, numerator_air.get(0) * denominator_air.get(0));
-                    for i in 1..num_rows {
-                        gprod.set(i, gprod.get(i - 1) * (numerator_air.get(i) * denominator_air.get(i)));
-                    }
-
-                    let result = gprod.get(num_rows - 1) * numerator_direct.get(0) * denominator_direct.get(0);
-
-                    set_hint_field(&sctx, air_instance, gprod_hint as u64, "reference", &gprod);
-                    set_hint_field_val(&sctx, air_instance, gprod_hint as u64, "result", result);
+                    air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }
         }

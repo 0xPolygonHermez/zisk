@@ -215,6 +215,20 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
+    #[link_name = "\u{1}_Z19acc_mul_hint_fieldsPvS_mPcS0_S0_S_S_b"]
+    pub fn update_airgroupvalue(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
+        hintId: u64,
+        hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
+        hintFieldName1: *mut ::std::os::raw::c_char,
+        hintFieldName2: *mut ::std::os::raw::c_char,
+        hintOptions1: *mut ::std::os::raw::c_void,
+        hintOptions2: *mut ::std::os::raw::c_void,
+        add: bool,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
     #[link_name = "\u{1}_Z14set_hint_fieldPvS_S_mPc"]
     pub fn set_hint_field(
         pSetupCtx: *mut ::std::os::raw::c_void,
