@@ -7,11 +7,12 @@ edition = "2021"
 sm-rom = { path = "../state-machines/rom" }
 log = { workspace = true }
 proofman-common = { workspace = true }
-zisk-core = { path = "../core" }
+proofman-util = { workspace = true }
+zisk-pil = { path="../pil" }
 
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 p3-field = { workspace = true }
 clap = { version = "4.5.13", features = ["derive", "env"] }
 env_logger = "0.11"
-sysinfo = "0.33"
+sysinfo = "0.32"
 colored = "2"

@@ -1,14 +1,13 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
-use zisk_core::{ZiskRom, SRC_IMM};
-use zisk_pil::{MainTrace, RomTrace, RomTraceRow};
-
 use crate::{RomCounter, RomInstance, RomPlanner};
+use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
+use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace, RomTraceRow};
 
 pub struct RomSM {
     zisk_rom: Arc<ZiskRom>,
@@ -25,7 +24,7 @@ impl RomSM {
         rom: &ZiskRom,
         plan: &Plan,
         rom_trace: &mut RomTrace<F>,
-        trace_rows: usize,
+        mut rom_custom_trace: &mut RomRomTrace<F>,
     ) {
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
@@ -42,10 +41,7 @@ impl RomSM {
 
         // For every instruction in the rom, fill its corresponding ROM trace
         //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
-        let keys = rom.insts.keys();
-        let sorted_keys = keys.sorted();
-        let mut i = 0;
-        for key in sorted_keys {
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
@@ -66,6 +62,22 @@ impl RomSM {
                     continue; // We skip those pc's that are not used in this execution
                 }
             }
+            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
+        }
+
+        // Padd with zeroes
+        for i in rom.insts.len()..rom_trace.num_rows() {
+            rom_trace[i] = RomTraceRow::default();
+        }
+
+        Self::compute_trace_rom(rom, &mut rom_custom_trace);
+    }
+
+    pub fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
+        // For every instruction in the rom, fill its corresponding ROM trace
+        for (i, key) in rom.insts.keys().sorted().enumerate() {
+            // Get the Zisk instruction
+            let inst = &rom.insts[key].i;
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
@@ -95,45 +107,44 @@ impl RomSM {
             };
 
             // Fill the rom trace row fields
-            rom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-            rom_trace[i].a_offset_imm0 = a_offset_imm0;
-            rom_trace[i].a_imm1 =
+            rom_custom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_custom_trace[i].a_offset_imm0 = a_offset_imm0;
+            rom_custom_trace[i].a_imm1 =
                 F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-            rom_trace[i].b_offset_imm0 = b_offset_imm0;
-            rom_trace[i].b_imm1 =
+            rom_custom_trace[i].b_offset_imm0 = b_offset_imm0;
+            rom_custom_trace[i].b_imm1 =
                 F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            //rom_trace[i].b_src_ind =
-            //    F::from_canonical_u64(if inst.b_src == SRC_IND { 1 } else { 0 });
-            rom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
-            rom_trace[i].op = F::from_canonical_u8(inst.op);
-            rom_trace[i].store_offset = store_offset;
-            rom_trace[i].jmp_offset1 = jmp_offset1;
-            rom_trace[i].jmp_offset2 = jmp_offset2;
-            rom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
-            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
-            /*println!(
-                "ROM SM [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}], {}",
-                inst.paddr,
-                inst.a_offset_imm0,
-                if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 },
-                inst.b_offset_imm0,
-                if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 },
-                if inst.b_src == SRC_IND { 1 } else { 0 },
-                inst.ind_width,
-                inst.op,
-                inst.store_offset as u64,
-                inst.jmp_offset1 as u64,
-                inst.jmp_offset2 as u64,
-                inst.get_flags(),
-                multiplicity,
-            );*/
-            i += 1;
+            rom_custom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
+            rom_custom_trace[i].op = F::from_canonical_u8(inst.op);
+            rom_custom_trace[i].store_offset = store_offset;
+            rom_custom_trace[i].jmp_offset1 = jmp_offset1;
+            rom_custom_trace[i].jmp_offset2 = jmp_offset2;
+            rom_custom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..trace_rows {
-            rom_trace[i] = RomTraceRow::default();
+        for i in rom.insts.len()..rom_custom_trace.num_rows() {
+            rom_custom_trace[i] = RomRomTraceRow::default();
         }
+    }
+
+    pub fn compute_custom_trace_rom<F: PrimeField>(
+        rom_path: PathBuf,
+        rom_custom_trace: &mut RomRomTrace<F>,
+    ) {
+        // Get the ELF file path as a string
+        let elf_filename: String = rom_path.to_str().unwrap().into();
+        println!("Proving ROM for ELF file={}", elf_filename);
+
+        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
+
+        // Create an instance of the RISCV -> ZisK program converter
+        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+
+        // Convert program to rom
+        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+
+        Self::compute_trace_rom(&rom, rom_custom_trace);
     }
 }
 
