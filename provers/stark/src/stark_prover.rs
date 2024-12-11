@@ -680,8 +680,9 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let global_info_path = proof_ctx.global_info.get_proving_key_path().join("pilout.globalInfo.json");
         let global_info_file: &str = global_info_path.to_str().unwrap();
 
-        let proof_name = format!("{}_{}", proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name, self.instance_id);
-        
+        let proof_name =
+            format!("{}_{}", proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name, self.instance_id);
+
         fri_proof_get_zkinproof_c(
             self.p_proof,
             public_inputs,
