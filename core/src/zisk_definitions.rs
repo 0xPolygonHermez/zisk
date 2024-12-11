@@ -35,4 +35,5 @@ pub const P2_30: u64 = 0x40000000;
 pub const P2_31: u64 = 0x80000000;
 
 /// Constant values used in operation functions and state machine executors
+pub const M3: u64 = 0x7;
 pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;

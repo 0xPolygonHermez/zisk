@@ -4,64 +4,52 @@ require "std_lookup.pil"
 
 /*
     List 64-bit operations:
-      name  │    op    │   m_op   │ carry │ use_last_carry │ NOTES
-    ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
-      ADD   │   0x02   │   0x02   │   X   │                │
-      SUB   │   0x03   │   0x03   │   X   │                │
-      LTU   │   0x04   │   0x04   │   X   │        X       │
-      LT    │   0x05   │   0x05   │   X   │        X       │
-      LEU   │   0x06   │   0x06   │   X   │        X       │
-      LE    │   0x07   │   0x07   │   X   │        X       │
-      EQ    │   0x08   │   0x08   │   X   │        X       │
-      MINU  │   0x09   │   0x09   │   X   │                │
-      MIN   │   0x0a   │   0x0a   │   X   │                │
-      MAXU  │   0x0b   │   0x0b   │   X   │                │
-      MAX   │   0x0c   │   0x0c   │   X   │                │
-      AND   │   0x20   │   0x20   │       │                │
-      OR    │   0x21   │   0x21   │       │                │
-      XOR   │   0x22   │   0x22   │       │                │
-    ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
+      name     │    op    │   m_op   │ has_initial_carry │ carry │ use_last_carry │ ZisK OP │ Notes                                              │ 
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼ 
+     MINU      │   0x02   │   0x02   │                   │   X   │                │    X    │                                                    │ 
+     MIN       │   0x03   │   0x03   │                   │   X   │                │    X    │                                                    │ 
+     MAXU      │   0x04   │   0x04   │                   │   X   │                │    X    │                                                    │ 
+     MAX       │   0x05   │   0x05   │                   │   X   │                │    X    │                                                    │ 
+     LT_ABS_NP │   0x06   │   0x06   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │ 
+     LT_ABS_PN │   0x07   │   0x07   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │ 
+     LTU       │   0x08   │   0x08   │                   │   X   │       X        │    X    │                                                    │ 
+     LT        │   0x09   │   0x09   │                   │   X   │       X        │    X    │                                                    │ 
+     GT        │   0x0a   │   0x0a   │                   │   X   │       X        │         │ This operation is used by the arithmetic component │ 
+     EQ        │   0x0b   │   0x0b   │                   │   X   │       X        │    X    │                                                    │ 
+     ADD       │   0x0c   │   0x0c   │                   │   X   │                │    X    │                                                    │ 
+     SUB       │   0x0d   │   0x0d   │                   │   X   │                │    X    │                                                    │ 
+     LEU       │   0x0e   │   0x0e   │                   │   X   │       X        │    X    │                                                    │ 
+     LE        │   0x0f   │   0x0f   │                   │   X   │       X        │    X    │                                                    │ 
+     AND       │   0x10   │   0x10   │                   │       │                │    X    │                                                    │ 
+     OR        │   0x11   │   0x11   │                   │       │                │    X    │                                                    │ 
+     XOR       │   0x12   │   0x12   │                   │       │                │    X    │                                                    │ 
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼ 
 
     List 32-bit operations:
-     name   │    op    │   m_op   │ carry │ use_last_carry │ NOTES
-    ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
-     ADD_W  │   0x12   │   0x02   │   X   │                │
-     SUB_W  │   0x13   │   0x03   │   X   │                │
-     LTU_W  │   0x14   │   0x04   │   X   │       X        │
-     LT_W   │   0x15   │   0x05   │   X   │       X        │
-     LEU_W  │   0x16   │   0x06   │   X   │       X        │
-     LE_W   │   0x17   │   0x07   │   X   │       X        │
-     EQ_W   │   0x18   │   0x08   │   X   │       X        │
-     MINU_W │   0x19   │   0x09   │   X   │                │
-     MIN_W  │   0x1a   │   0x0a   │   X   │                │
-     MAXU_W │   0x1b   │   0x0b   │   X   │                │
-     MAX_W  │   0x1c   │   0x0c   │   X   │                │
-    ────────┼──────────┼──────────┼───────┼────────────────┼───────────────────────────────────
+     name      │    op    │   m_op   │ has_initial_carry │ carry │ use_last_carry │ ZisK OP │
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────│
+     MINU_W    │   0x22   │   0x02   │                   │   X   │                │    X    │
+     MIN_W     │   0x23   │   0x03   │                   │   X   │                │    X    │
+     MAXU_W    │   0x24   │   0x04   │                   │   X   │                │    X    │
+     MAX_W     │   0x25   │   0x05   │                   │   X   │                │    X    │
+     LTU_W     │   0x28   │   0x08   │                   │   X   │       X        │    X    │
+     LT_W      │   0x29   │   0x09   │                   │   X   │       X        │    X    │
+     EQ_W      │   0x2b   │   0x0b   │                   │   X   │       X        │    X    │
+     ADD_W     │   0x2c   │   0x0c   │                   │   X   │                │    X    │
+     SUB_W     │   0x2d   │   0x0d   │                   │   X   │                │    X    │
+     LEU_W     │   0x2e   │   0x0e   │                   │   X   │       X        │    X    │
+     LE_W      │   0x2f   │   0x0f   │                   │   X   │       X        │    X    │
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────│
 
-    Opcodes:
-    ---------------------------------------
-    expr op = m_op + 16*mode32
-
-    mode32  64bits   32bits     m_op    op
-     0/1     ADD      ADD_W     0x02    (0x02,0x12)
-     0/1     SUB      SUB_W     0x03    (0x03,0x13)
-     0/1     LTU      LTU_W     0x04    (0x04,0x14)
-     0/1     LT       LT_W      0x05    (0x05,0x15)
-     0/1     LEU      LEU_W     0x06    (0x06,0x16)
-     0/1     LE       LE_W      0x07    (0x07,0x17)
-     0/1     EQ       EQ_W      0x08    (0x08,0x18)
-     0/1     MINU     MINU_W    0x09    (0x09,0x19)
-     0/1     MIN      MIN_W     0x0a    (0x0a,0x1a)
-     0/1     MAXU     MAXU_W    0x0b    (0x0b,0x1b)
-     0/1     MAX      MAX_W     0x0c    (0x0c,0x1c)
-     0/1     AND                0x20     0x20
-      0      OR                 0x21     0x21
-      0      XOR                0x22     0x22
+    Note: op = m_op + 0x20*mode32
 */
 
-const int BINARY_ID = 20;
+const int LT_ABS_NP_OP = 0x06;
+const int LT_ABS_PN_OP = 0x07;
+const int LTU_OP = 0x08;
+const int GT_OP = 0x0a;
 
-airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) {
+airtemplate Binary(const int N = 2**21, const int operation_bus_id) {
     // Default values
     const int bits = 64;
     const int bytes = bits / 8;
@@ -72,16 +60,17 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     const int input_chunk_bytes = bytes / input_chunks;
 
     // Primary columns
-    col witness m_op;             // micro operation code of the binary table (e.g. add)
-    col witness mode32;           // 1 if the operation is 32 bits, 0 otherwise
-    col witness free_in_a[bytes]; // input1
-    col witness free_in_b[bytes]; // input2
-    col witness free_in_c[bytes]; // output
-    col witness carry[bytes];     // bytes chunks carries [0,cout:0],[cin:0,cout:1],...,[cin:bytes-2,cout:bytes-1]
+    col witness m_op;              // micro operation code of the binary table (e.g. add)
+    col witness mode32;            // 1 if the operation is 32 bits, 0 otherwise
+    col witness free_in_a[bytes];  // input1
+    col witness free_in_b[bytes];  // input2
+    col witness free_in_c[bytes];  // output
+    col witness carry[bytes];      // bytes chunks carries [0,cout:0],[cin:0,cout:1],...,[cin:bytes-2,cout:bytes-1]
 
     // Secondary columns
-    col witness use_last_carry;   // 1 if the operation uses the last carry as its result
-    col witness op_is_min_max;    // 1 if the operation is any of the MIN/MAX operations
+    col witness use_last_carry;    // 1 if the operation uses the last carry as its result
+    col witness op_is_min_max;     // 1 if the operation is any of the MIN/MAX operations
+    col witness has_initial_carry; // 1 if the operation has an initial carry
 
     const expr mode64 = 1 - mode32;
     const expr cout32 = carry[half_bytes-1];
@@ -89,7 +78,6 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
 
     use_last_carry * (1 - use_last_carry) === 0;
     op_is_min_max * (1 - op_is_min_max) === 0;
-    cout32*(1 - cout32) === 0;
     cout64*(1 - cout64) === 0;
 
     // Auxiliary columns (primarily used to optimize lookups, but can be substituted with expressions)
@@ -120,7 +108,7 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     where last indicates whether the byte is the last one in the operation
     */
 
-    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a]);
+    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], has_initial_carry*INITIAL_CARRY_LT_ABS, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a]);
 
     // More auxiliary columns
     col witness m_op_or_ext;
@@ -180,9 +168,9 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     c[0] += use_last_carry * cout;
     c[input_chunks - 1] -= use_last_carry * cout * factor;
 
-    expr op = m_op + 16 * mode32;
+    expr op = m_op + 0x20 * mode32;
 
     col witness multiplicity;
-    col witness debug_main_step;
-    lookup_proves(OPERATION_BUS_ID, [debug_main_step, op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
+    col witness main_step;
+    lookup_proves(OPERATION_BUS_ID, [main_step, op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
 }

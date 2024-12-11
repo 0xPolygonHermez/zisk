@@ -3,15 +3,16 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::Field;
+use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
+use sm_binary::BinarySM;
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 #[allow(dead_code)]
-pub struct ArithSM<F> {
+pub struct ArithSM<F: PrimeField> {
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
@@ -20,8 +21,8 @@ pub struct ArithSM<F> {
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
 }
 
-impl<F: Field> ArithSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+impl<F: PrimeField> ArithSM<F> {
+    pub fn new(wcm: Arc<WitnessManager<F>>, binary_sm: Arc<BinarySM<F>>) -> Arc<Self> {
         let arith_table_sm = ArithTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_TABLE_AIR_IDS);
         let arith_range_table_sm =
             ArithRangeTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, ARITH_RANGE_TABLE_AIR_IDS);
@@ -29,6 +30,7 @@ impl<F: Field> ArithSM<F> {
             wcm.clone(),
             arith_table_sm.clone(),
             arith_range_table_sm.clone(),
+            binary_sm,
             ZISK_AIRGROUP_ID,
             ARITH_AIR_IDS,
         );
@@ -55,14 +57,9 @@ impl<F: Field> ArithSM<F> {
             self.arith_full_sm.unregister_predecessor();
         }
     }
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
-        self.arith_full_sm.prove_instance(operations, prover_buffer, offset);
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
+        self.arith_full_sm.prove_instance(operations, prover_buffer);
     }
 }
 
-impl<F: Field> WitnessComponent<F> for ArithSM<F> {}
+impl<F: PrimeField> WitnessComponent<F> for ArithSM<F> {}
