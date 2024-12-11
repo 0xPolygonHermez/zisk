@@ -15,7 +15,7 @@ use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::Scope;
-use sm_common::{create_prover_buffer, OpResult, Provable};
+use sm_common::{OpResult, Provable};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
@@ -362,19 +362,13 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
+    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         Self::prove_internal(
             &self.wcm,
             &self.binary_extension_table_sm,
             &self.std,
             operations,
             prover_buffer,
-            offset,
         );
     }
 
@@ -384,7 +378,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: &Std<F>,
         operations: Vec<ZiskRequiredOperation>,
         prover_buffer: &mut [F],
-        offset: u64,
     ) {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let pctx = wcm.get_pctx();
@@ -405,8 +398,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
         let mut trace_buffer =
-            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), offset as usize)
-                .unwrap();
+            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
@@ -479,12 +471,8 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
 
                 let sctx = self.wcm.get_sctx().clone();
 
-                let (mut prover_buffer, offset) = create_prover_buffer(
-                    &wcm.get_ectx(),
-                    &wcm.get_sctx(),
-                    ZISK_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                );
+                let trace: BinaryExtensionTrace<'_, _> = BinaryExtensionTrace::new(air.num_rows());
+                let mut prover_buffer = trace.buffer.unwrap();
 
                 Self::prove_internal(
                     &wcm,
@@ -492,7 +480,6 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinaryExtensio
                     &std,
                     drained_inputs,
                     &mut prover_buffer,
-                    offset,
                 );
 
                 let air_instance = AirInstance::new(

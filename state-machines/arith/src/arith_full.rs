@@ -60,12 +60,7 @@ impl<F: Field> ArithFullSM<F> {
             self.arith_range_table_sm.unregister_predecessor();
         }
     }
-    pub fn prove_instance(
-        &self,
-        input: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
+    pub fn prove_instance(&self, input: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
@@ -82,12 +77,10 @@ impl<F: Field> ArithFullSM<F> {
         );
         assert!(input.len() <= num_rows);
 
-        let mut traces =
-            ArithTrace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
+        let mut traces = ArithTrace::<F>::map_buffer(prover_buffer, num_rows, 0).unwrap();
 
         let mut aop = ArithOperation::new();
         for (irow, input) in input.iter().enumerate() {
-            println!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {
