@@ -215,7 +215,7 @@ extern "C" {
     ) -> *mut ::std::os::raw::c_void;
 }
 extern "C" {
-    #[link_name = "\u{1}_Z19acc_mul_hint_fieldsPvS_mPcS0_S0_S_S_b"]
+    #[link_name = "\u{1}_Z20update_airgroupvaluePvS_mPcS0_S0_S_S_b"]
     pub fn update_airgroupvalue(
         pSetupCtx: *mut ::std::os::raw::c_void,
         stepsParams: *mut ::std::os::raw::c_void,

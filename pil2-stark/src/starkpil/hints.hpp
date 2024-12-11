@@ -586,9 +586,17 @@ VecU64Result updateAirgroupValue(SetupCtx& setupCtx, StepsParams &params, uint64
 
     Goldilocks::Element *airgroupValue = &params.airgroupValues[FIELD_EXTENSION*hintFieldAirgroupVal.id];
     if(add) {
-        Goldilocks3::add((Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)vals[0]);
+        if(destStruct.dim == 1) {
+            Goldilocks::add(airgroupValue[0], airgroupValue[0], vals[0]);
+        } else {
+            Goldilocks3::add((Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)vals[0]);
+        }
     } else {
-        Goldilocks3::mul((Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)vals[0]);
+        if(destStruct.dim == 1) {
+            Goldilocks::mul(airgroupValue[0], airgroupValue[0], vals[0]);
+        } else {
+            Goldilocks3::mul((Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)airgroupValue[0], (Goldilocks3::Element &)vals[0]);
+        }
     }
 
     VecU64Result hintIds;

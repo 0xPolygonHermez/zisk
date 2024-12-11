@@ -816,6 +816,8 @@ public:
                 }
 
                 if(dests[j].params.size() == 2) {
+                    cout << Goldilocks::toString(destVals[0][0]) << " " << Goldilocks::toString(destVals[0][1]) << " " << Goldilocks::toString(destVals[0][2]) << endl;
+                    cout << Goldilocks::toString(destVals[0][3]) << " " << Goldilocks::toString(destVals[0][4]) << " " << Goldilocks::toString(destVals[0][5]) << endl;
                     multiplyPolynomials(dests[j], destVals[j]);
                 }
             }
