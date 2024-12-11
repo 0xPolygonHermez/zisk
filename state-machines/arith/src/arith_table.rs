@@ -58,9 +58,7 @@ impl<F: Field> ArithTableSM<F> {
         // Create the trace vector
         let mut _multiplicity = self.multiplicity.lock().unwrap();
 
-        info!("{}: ··· process multiplicity", Self::MY_NAME);
         for (row, value) in inputs {
-            info!("{}: ··· Processing row {} with value {}", Self::MY_NAME, row, value);
             _multiplicity[row] += value;
         }
         self.used.store(true, Ordering::Relaxed);

@@ -2238,10 +2238,14 @@ name = "sm-mem"
 version = "0.1.0"
 dependencies = [
  "log",
+ "num-bigint",
+ "num-traits",
  "p3-field",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "proofman-macros",
+ "proofman-util",
  "rayon",
  "sm-common",
  "zisk-core",

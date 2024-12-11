@@ -1,5 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_mem::MemProxy;
 
 use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -12,7 +13,6 @@ use proofman_common::{AirInstance, ProofCtx};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_mem::MemSM;
 use zisk_pil::{
     ArithTrace, BinaryExtensionTrace, BinaryTrace, MainRow, MainTrace, ARITH_AIR_IDS,
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
@@ -28,14 +28,14 @@ pub struct MainSM<F: PrimeField> {
     /// Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
+    /// Memory state machine
+    mem_proxy_sm: Arc<MemProxy<F>>,
+
     /// Arithmetic state machine
     arith_sm: Arc<ArithSM<F>>,
 
     /// Binary state machine
     binary_sm: Arc<BinarySM<F>>,
-
-    /// Memory state machine
-    mem_sm: Arc<MemSM>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -54,16 +54,16 @@ impl<F: PrimeField> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
+        mem_proxy_sm: Arc<MemProxy<F>>,
         arith_sm: Arc<ArithSM<F>>,
         binary_sm: Arc<BinarySM<F>>,
-        mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm, mem_sm });
+        let main_sm = Arc::new(Self { wcm: wcm.clone(), mem_proxy_sm, arith_sm, binary_sm });
 
         wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        main_sm.mem_sm.register_predecessor();
+        main_sm.mem_proxy_sm.register_predecessor();
         main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 
@@ -153,6 +153,39 @@ impl<F: PrimeField> MainSM<F> {
                 segment_trace.steps[slice_start..slice_end].iter().enumerate()
             {
                 partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
+                // if partial_trace[i].a_src_mem == F::one() {
+                //     println!(
+                //         "A=MEM_OP_RD({}) [{},{}] PC:{}",
+                //         partial_trace[i].a_offset_imm0,
+                //         partial_trace[i].a[0],
+                //         partial_trace[i].a[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind ==
+                // F::one() {
+                //     println!(
+                //         "B=MEM_OP_RD({0}) [{1},{2}] PC:{3}",
+                //         partial_trace[i].addr1,
+                //         partial_trace[i].b[0],
+                //         partial_trace[i].b[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind ==
+                // F::one() {
+                //     println!(
+                //         "MEM_OP_WR({}) [{}, {}] PC:{}",
+                //         partial_trace[i].store_offset
+                //             + partial_trace[i].store_ind * partial_trace[i].a[0],
+                //         partial_trace[i].store_ra
+                //             * (partial_trace[i].pc + partial_trace[i].jmp_offset2
+                //                 - partial_trace[i].c[0])
+                //             + partial_trace[i].c[0],
+                //         (F::one() - partial_trace[i].store_ra) * partial_trace[i].c[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
             }
             // if there are steps in the chunk update last row
             if slice_end - slice_start > 0 {

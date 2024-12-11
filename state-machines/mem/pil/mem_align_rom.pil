@@ -1,0 +1,323 @@
+require "std_lookup.pil"
+
+const int MEM_ALIGN_ROM_ID = 133;
+const int MEM_ALIGN_ROM_SIZE = P2_8;
+
+airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 8, const int DEFAULT_OFFSET = 0, const int DEFAULT_WIDTH = 8, const int disable_fixed = 0) {
+    if (N < MEM_ALIGN_ROM_SIZE) {
+        error(`N must be at least ${MEM_ALIGN_ROM_SIZE}, but N=${N} was provided`);
+    }
+
+    col witness multiplicity;
+
+    if (disable_fixed) {
+        col fixed _K = [0...];
+        multiplicity * _K === 0;
+
+        println("*** DISABLE_FIXED ***");
+        return;
+    }
+
+    // Define the size of each sub-program: RV, RWV, RVR, RWVWR
+    const int spsize[4] = [2, 3, 3, 5];
+
+    // Not all combinations of offset and width are valid for each program:
+    const int one_word_combinations = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -> 5*3 + 2*2 + 1*1 = 20
+    const int two_word_combinations = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
+
+    // table_size = combinations * program_size
+    const int tsize[4] = [one_word_combinations*spsize[0], one_word_combinations*spsize[1], two_word_combinations*spsize[2], two_word_combinations*spsize[3]];
+    const int psize = tsize[0] + tsize[1] + tsize[2] + tsize[3];
+
+    // Offset is set to DEFAULT_OFFSET and width to DEFAULT_WIDTH in aligned memory accesses.
+    // Offset and width are set to 0 in padding lines.
+                                                                                                                             //            size
+    col fixed OFFSET   = [0,                                                                                                 // Padding 1            = 1  | 1
+                          [[0,0]:3, [0,1]:3, [0,2]:3, [0,3]:3, [0,4]:3, [0,5]:2, [0,6]:2, [0,7]],                            // RV      6+6*4+4+4+2  = 40 | 41
+                          [[0,0,0]:3, [0,0,1]:3, [0,0,2]:3, [0,0,3]:3, [0,0,4]:3, [0,0,5]:2, [0,0,6]:2, [0,0,7]],            // RWV     9+9*4+6+6+3  = 60 | 101
+                          [[0,1,0], [0,2,0], [0,3,0], [0,4,0], [0,5,0]:2, [0,6,0]:2, [0,7,0]:3],                             // RVR     3*4+6+6+9    = 33 | 134
+                          [[0,0,1,0,0], [0,0,2,0,0], [0,0,3,0,0], [0,0,4,0,0], [0,0,5,0,0]:2, [0,0,6,0,0]:2, [0,0,7,0,0]:3], // RWVWR   5*4+10+10+15 = 55 | 189 => N = 2^8
+                          0...];                                                                                             // Padding
+
+    col fixed WIDTH    = [0,                                                                                                 // Padding
+                          [[8,1,8,2,8,4]:5, [8,1,8,2]:2, [8,1]],                                                             // RV
+                          [[8,8,1,8,8,2,8,8,4]:5, [8,8,1,8,8,2]:2, [8,8,1]],                                                 // RWV
+                          [[8,8,8]:4, [8,4,8,8,8,8]:2, [8,2,8,8,4,8,8,8,8]],                                                 // RVR
+                          [[8,8,8,8,8]:4, [8,8,4,8,8,8,8,8,8,8]:2, [8,8,2,8,8,8,8,4,8,8,8,8,8,8,8]],                         // RWVWR
+                          0...];                                                                                             // Padding
+
+    // line | pc | pc'-pc | reset |  addr  | (addr-'addr)*(1-reset) |
+    //   0  | 0  |   0    |   1   |    0   |            0           | // for padding
+    //   1  | 0  |   1    |   1   |   X1   |            0           | // (RV)
+    //   2  | 1  |  -1    |   0   |   X1   |            0           |
+    //   3  | 0  |   3    |   1   |   X2   |            0           | // (RV)
+    //   4  | 3  |  -3    |   0   |   X2   |            0           |
+    //   5  | 0  |   5    |   1   |   X3   |            0           | // (RV)
+    //   6  | 5  |  -5    |   0   |   X3   |            0           |
+    //   7  | 0  |   7    |   1   |   ⋮   |            ⋮          | // (RV)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          |
+    //  41  | 0  |  41    |   1   |   X4   |            0           | // (RWV)
+    //  42  | 41 |   1    |   0   |   X4   |            0           |
+    //  43  | 42 | -42    |   0   |   X4   |            0           |
+    //  44  | 0  |  44    |   1   |   X5   |            0           | // (RWV)
+    //  45  | 44 |   1    |   0   |   X5   |            0           |
+    //  46  | 45 | -45    |   0   |   X5   |            0           |
+    //  47  | 0  |  47    |   1   |   X6   |            0           | // (RWV)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          |
+    // 101  | 0  |  101   |   1   |   X7   |            0           | // (RVR)
+    // 102  |101 |   1    |   0   |   X7   |            0           |
+    // 103  |102 | -102   |   0   |  X7+1  |            1           |
+    // 104  | 0  |  104   |   1   |   X8   |            0           | // (RVR)
+    // 105  |104 |   1    |   0   |   X8   |            0           |
+    // 106  |105 | -105   |   0   |  X8+1  |            1           |
+    // 107  | 0  |  107   |   1   |   X9   |            0           | // (RVR)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          |
+    // 134  | 0  |  134   |   1   |   X10  |            0           | // (RWVWR)
+    // 135  |134 |   1    |   0   |   X10  |            0           |
+    // 136  |135 |   1    |   0   |   X10  |            0           |
+    // 137  |136 |   1    |   0   |  X10+1 |            1           |
+    // 138  |137 | -137   |   0   |  X10+1 |            0           |
+    // 139  | 0  |  139   |   1   |   X11  |            0           | // (RWVWR)
+    // 140  |139 |   1    |   0   |   X11  |            0           |
+    // 141  |140 |   1    |   0   |   X11  |            0           |
+    // 142  |141 |   1    |   0   |  X11+1 |            1           |
+    // 143  |142 | -142   |   0   |  X11+1 |            0           |
+    // 144  | 0  |  144   |   1   |   X12  |            0           | // (RWVWR)
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          |
+    // 188  |187 | -187   |   0   |  X13+1 |            0           |
+    // 189  | 0  |   0    |   1   |    0   |            0           | // for padding
+    //  ⋮  | ⋮ |  ⋮    |   ⋮  |   ⋮   |            ⋮          |
+
+    // Note: The overall program contains "holes", meaning that pc can vary
+    // from program to program by any constant, as long as it is unique for each program.
+    // For example, the first program has pc=0,1, while the second has pc=0,3.
+
+    col fixed PC;
+    col fixed DELTA_PC;
+    col fixed DELTA_ADDR;
+    col fixed FLAGS;
+    for (int i = 0; i < N; i++) {
+        int pc = 0;
+        int delta_pc = 0;
+        int delta_addr = 0;
+        int is_write = 0;
+        int reset = 0;
+        int sel[CHUNK_NUM];
+        for (int j = 0; j < CHUNK_NUM; j++) {
+            sel[j] = 0;
+        }
+        int sel_up_to_down = 0;
+        int sel_down_to_up = 0;
+
+        const int prev_line = i == 0 ? 0 : i-1;
+        const int line = i;
+        if (line == 0 || line > psize)
+        {
+                // pc = 0;
+                // delta_pc = 0;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                // sel = [0:CHUNK_NUM]
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+        }
+        else if (line < 1+tsize[0]) // RV
+        {
+            if (line % 2 == 1) {
+                // pc = 0;
+                delta_pc = line;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j >= OFFSET[i+1] && j < OFFSET[i+1] + WIDTH[i+1]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else {
+                pc = prev_line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j == OFFSET[i]) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            }
+        }
+        else if (line < 1+tsize[0]+tsize[1])  // RWV
+        {
+            if (line % 3 == 2) {
+                // pc = 0;
+                delta_pc = line;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j < OFFSET[i+2] || j >= OFFSET[i+2] + WIDTH[i+2]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 3 == 0) {
+                pc = prev_line;
+                delta_pc = 1;
+                // delta_addr = 0;
+                is_write = 1;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j >= OFFSET[i+1] && j < OFFSET[i+1] + WIDTH[i+1]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else {
+                pc = prev_line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                is_write = 1;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j == OFFSET[i]) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            }
+        }
+        else if (line < 1+tsize[0]+tsize[1]+tsize[2]) // RVR
+        {
+            if (line % 3 == 2) {
+                // pc = 0;
+                delta_pc = line;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j >= OFFSET[i+1]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 3 == 0) {
+                pc = prev_line;
+                delta_pc = 1;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j == OFFSET[i]) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            } else {
+                pc = prev_line;
+                delta_pc = -pc;
+                delta_addr = 1;
+                // is_write = 0;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j < (OFFSET[i-1] + WIDTH[i-1]) % CHUNK_NUM) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            }
+        }
+        else if (line < 1+tsize[0]+tsize[1]+tsize[2]+tsize[3]) // RWVWR
+        {
+            if (line % 5 == 4) {
+                // pc = 0;
+                delta_pc = line;
+                // delta_addr = 0;
+                // is_write = 0;
+                reset = 1;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j < OFFSET[i+2]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 5 == 0) {
+                pc = prev_line;
+                delta_pc = 1;
+                // delta_addr = 0;
+                is_write = 1;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j >= OFFSET[i+1]) {
+                        sel[j] = 1;
+                    }
+                }
+                sel_up_to_down = 1;
+                // sel_down_to_up = 0;
+            } else if (line % 5 == 1) {
+                pc = prev_line;
+                delta_pc = 1;
+                // delta_addr = 0;
+                is_write = 1;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j == OFFSET[i]) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                // sel_down_to_up = 0;
+            } else if (line % 5 == 2) {
+                pc = prev_line;
+                delta_pc = 1;
+                delta_addr = 1;
+                is_write = 1;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j < (OFFSET[i-1] + WIDTH[i-1]) % CHUNK_NUM) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            } else {
+                pc = prev_line;
+                delta_pc = -pc;
+                // delta_addr = 0;
+                // is_write = 0;
+                // reset = 0;
+                for (int j = 0; j < CHUNK_NUM; j++) {
+                    if (j >= (OFFSET[i-2] + WIDTH[i-2]) % CHUNK_NUM) {
+                        sel[j] = 1;
+                    }
+                }
+                // sel_up_to_down = 0;
+                sel_down_to_up = 1;
+            }
+        }
+        PC[i] = pc;
+        DELTA_PC[i] = delta_pc;
+        DELTA_ADDR[i] = delta_addr;
+        int flags = 0;
+        for (int j = 0; j < CHUNK_NUM; j++) {
+            flags += sel[j] * 2**j;
+        }
+        flags += is_write * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3);
+        FLAGS[i] = flags;
+    }
+
+    // Ensure the program is being followed by the MemAlign
+    lookup_proves(MEM_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
+}

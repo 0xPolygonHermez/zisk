@@ -284,7 +284,7 @@ define_ops! {
     (MaxuW, "maxu_w", Binary, 77, 0x24, opc_maxu_w, op_maxu_w),
     (MaxW, "max_w", Binary, 77, 0x25, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, 77, 0xf1, opc_keccak, op_keccak),
-    (PubOut, "pubout", PubOut, 77, 0x30, opc_pubout, op_pubout), // TODO: New type
+    (PubOut, "pubout", PubOut, 77, 0x30, opc_pubout, op_pubout),
 }
 
 /* INTERNAL operations */
