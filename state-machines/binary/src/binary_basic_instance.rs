@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman::WitnessManager;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
@@ -15,7 +14,6 @@ use crate::BinaryBasicSM;
 
 pub struct BinaryBasicInstance<F: PrimeField> {
     binary_basic_sm: Arc<BinaryBasicSM>,
-    wcm: Arc<WitnessManager<F>>,
     iectx: InstanceExpanderCtx,
 
     skipping: bool,
@@ -25,16 +23,11 @@ pub struct BinaryBasicInstance<F: PrimeField> {
 }
 
 impl<F: PrimeField> BinaryBasicInstance<F> {
-    pub fn new(
-        binary_basic_sm: Arc<BinaryBasicSM>,
-        wcm: Arc<WitnessManager<F>>,
-        iectx: InstanceExpanderCtx,
-    ) -> Self {
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
         let binary_trace = BinaryTrace::new();
 
         Self {
             binary_basic_sm,
-            wcm,
             iectx,
             skipping: true,
             skipped: 0,
@@ -64,10 +57,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
         self.binary_basic_sm.prove_instance(&self.inputs, &mut self.binary_trace);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
-        let instance = AirInstance::new_from_trace(
-            self.wcm.get_sctx(),
-            FromTrace::new(&mut self.binary_trace),
-        );
+        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.binary_trace));
         Some(instance)
     }
 

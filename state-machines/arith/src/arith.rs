@@ -43,11 +43,9 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
-            id if id == ARITH_AIR_IDS[0] => Box::new(ArithFullInstance::new(
-                self.wcm.clone(),
-                self.arith_full_sm.clone(),
-                iectx,
-            )),
+            id if id == ARITH_AIR_IDS[0] => {
+                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+            }
             id if id == ARITH_TABLE_AIR_IDS[0] => Box::new(ArithTableInstance::new(
                 self.wcm.clone(),
                 self.arith_table_sm.clone(),

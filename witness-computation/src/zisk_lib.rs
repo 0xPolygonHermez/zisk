@@ -82,7 +82,7 @@ impl<F: PrimeField> ZiskWitness<F> {
         let std = Std::new(wcm.clone());
 
         let std_sm = StdSM::new(std.clone());
-        let rom_sm = RomSM::new(wcm.clone(), zisk_rom.clone());
+        let rom_sm = RomSM::new(zisk_rom.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
         let arith_sm = ArithSM::new(wcm.clone());
 

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use p3_field::PrimeField;
-use proofman::WitnessManager;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
@@ -11,21 +10,16 @@ use ziskemu::EmuTrace;
 use crate::RomSM;
 
 pub struct RomInstance<F: PrimeField> {
-    wcm: Arc<WitnessManager<F>>,
     zisk_rom: Arc<ZiskRom>,
     iectx: InstanceExpanderCtx,
     rom_trace: RomTrace<F>,
 }
 
 impl<F: PrimeField> RomInstance<F> {
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        zisk_rom: Arc<ZiskRom>,
-        iectx: InstanceExpanderCtx,
-    ) -> Self {
+    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
         let rom_trace = RomTrace::new();
 
-        Self { wcm, zisk_rom, iectx, rom_trace }
+        Self { zisk_rom, iectx, rom_trace }
     }
 }
 
@@ -46,8 +40,7 @@ impl<F: PrimeField> Instance<F> for RomInstance<F> {
             RomTrace::<F>::NUM_ROWS,
         );
 
-        let instance =
-            AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut self.rom_trace));
+        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.rom_trace));
 
         Some(instance)
     }

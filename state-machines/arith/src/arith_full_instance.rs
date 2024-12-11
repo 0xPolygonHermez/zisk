@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman::WitnessManager;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
@@ -14,7 +13,6 @@ use ziskemu::{EmuTrace, ZiskEmulator};
 use crate::ArithFullSM;
 
 pub struct ArithFullInstance<F: PrimeField> {
-    wcm: Arc<WitnessManager<F>>,
     arith_full_sm: Arc<ArithFullSM>,
     iectx: InstanceExpanderCtx,
 
@@ -25,22 +23,10 @@ pub struct ArithFullInstance<F: PrimeField> {
 }
 
 impl<F: PrimeField> ArithFullInstance<F> {
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        arith_full_sm: Arc<ArithFullSM>,
-        iectx: InstanceExpanderCtx,
-    ) -> Self {
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
         let arith_trace = ArithTrace::new();
 
-        Self {
-            wcm,
-            arith_full_sm,
-            iectx,
-            skipping: true,
-            skipped: 0,
-            inputs: Vec::new(),
-            arith_trace,
-        }
+        Self { arith_full_sm, iectx, skipping: true, skipped: 0, inputs: Vec::new(), arith_trace }
     }
 }
 
@@ -64,8 +50,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance<F> {
         self.arith_full_sm.prove_instance(&self.inputs, &mut self.arith_trace);
         timer_stop_and_log_debug!(PROVE_ARITH);
 
-        let instance =
-            AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut self.arith_trace));
+        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.arith_trace));
 
         Some(instance)
     }

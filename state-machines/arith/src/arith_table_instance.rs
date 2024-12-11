@@ -57,7 +57,7 @@ impl<F: PrimeField> Instance<F> for ArithTableInstance<F> {
             .enumerate()
             .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i]));
 
-        let instance = AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut trace));
+        let instance = AirInstance::new_from_trace(FromTrace::new(&mut trace));
 
         Some(instance)
     }

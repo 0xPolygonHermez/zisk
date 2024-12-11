@@ -136,7 +136,6 @@ impl<F: PrimeField> MainSM<F> {
         main_air_values.main_segment[0] = main_segment;
 
         let air_instance = AirInstance::new_from_trace(
-            self.wcm.get_sctx(),
             FromTrace::new(&mut main_instance.main_trace).with_air_values(&mut main_air_values),
         );
 

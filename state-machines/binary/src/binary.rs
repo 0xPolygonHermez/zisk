@@ -59,16 +59,12 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
-            id if id == BINARY_AIR_IDS[0] => Box::new(BinaryBasicInstance::new(
-                self.binary_basic_sm.clone(),
-                self.wcm.clone(),
-                iectx,
-            )),
-            id if id == BINARY_EXTENSION_AIR_IDS[0] => Box::new(BinaryExtensionInstance::new(
-                self.binary_extension_sm.clone(),
-                self.wcm.clone(),
-                iectx,
-            )),
+            id if id == BINARY_AIR_IDS[0] => {
+                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))
+            }
+            id if id == BINARY_EXTENSION_AIR_IDS[0] => {
+                Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), iectx))
+            }
             id if id == BINARY_TABLE_AIR_IDS[0] => Box::new(BinaryBasicTableInstance::new(
                 self.wcm.clone(),
                 self.binary_basic_table_sm.clone(),

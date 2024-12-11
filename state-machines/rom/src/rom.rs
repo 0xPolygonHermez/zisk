@@ -3,7 +3,6 @@ use std::sync::Arc;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
-use proofman::WitnessManager;
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
 use zisk_core::{ZiskRom, SRC_IMM};
@@ -11,20 +10,18 @@ use zisk_pil::{MainTrace, RomTrace, RomTraceRow};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 
-pub struct RomSM<F> {
-    wcm: Arc<WitnessManager<F>>,
-
+pub struct RomSM {
     zisk_rom: Arc<ZiskRom>,
 }
 
-impl<F: PrimeField> RomSM<F> {
+impl RomSM {
     const MY_NAME: &'static str = "RomSM   ";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
-        Arc::new(Self { wcm: wcm.clone(), zisk_rom })
+    pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
+        Arc::new(Self { zisk_rom })
     }
 
-    pub fn prove_instance(
+    pub fn prove_instance<F: PrimeField>(
         rom: &ZiskRom,
         plan: &Plan,
         rom_trace: &mut RomTrace<F>,
@@ -140,7 +137,7 @@ impl<F: PrimeField> RomSM<F> {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
+impl<F: PrimeField> ComponentProvider<F> for RomSM {
     fn get_counter(&self) -> Box<dyn Metrics> {
         Box::new(RomCounter::default())
     }
@@ -150,6 +147,6 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
-        Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
+        Box::new(RomInstance::new(self.zisk_rom.clone(), iectx))
     }
 }
