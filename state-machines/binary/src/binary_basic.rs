@@ -239,7 +239,7 @@ impl<F: Field> BinaryBasicSM<F> {
         }
 
         // Set main SM step
-        row.main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(operation.step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;
@@ -899,33 +899,6 @@ impl<F: Field> BinaryBasicSM<F> {
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
-        }
-
-        // Set cout
-        let cout32 = row.carry[HALF_BYTES - 1];
-        let cout64 = row.carry[BYTES - 1];
-        row.cout = mode64 * (cout64 - cout32) + cout32;
-
-        // Set result_is_a
-        row.result_is_a = row.op_is_min_max * row.cout;
-
-        // Set use_last_carry_mode32 and use_last_carry_mode64
-        row.use_last_carry_mode32 = F::from_bool(mode32) * row.use_last_carry;
-        row.use_last_carry_mode64 = mode64 * row.use_last_carry;
-
-        // Set micro opcode
-        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
-
-        // Set m_op_or_ext
-        let ext_32_op = F::from_canonical_u8(BinaryBasicTableOp::Ext32 as u8);
-        row.m_op_or_ext = mode64 * (row.m_op - ext_32_op) + ext_32_op;
-
-        // Set free_in_a_or_c and free_in_b_or_zero
-        for i in 0..HALF_BYTES {
-            row.free_in_a_or_c[i] = mode64 *
-                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
-                row.free_in_c[HALF_BYTES - 1];
-            row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 
         // Set cout
