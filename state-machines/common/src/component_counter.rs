@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     ops::{Add, AddAssign},
 };
-use zisk_core::{InstContext, ZiskInst};
+use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 #[derive(Debug)]
 pub enum CounterType {
@@ -14,7 +14,15 @@ pub enum CounterType {
 
 pub trait Metrics: Send + Sync + Any {
     fn measure(&mut self, inst: &ZiskInst, inst_ctx: &InstContext);
+
     fn add(&mut self, other: &dyn Metrics);
+
+    /// Returns the operation types that this metric is interested in.
+    /// This is used to filter out metrics that are not interested while executing the ROM.
+    /// If a Metrics is not interested in any operation types, it should return an empty vector.
+    /// If a Metrics is interested in all operation types, it should return a vector with a single
+    /// element `ZiskOperationType::None`.
+    fn op_type(&self) -> Vec<ZiskOperationType>;
 
     fn as_any(&self) -> &dyn Any;
 }

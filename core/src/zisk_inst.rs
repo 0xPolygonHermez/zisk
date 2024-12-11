@@ -61,7 +61,7 @@ pub const STORE_IND: u64 = 2;
 /// Internal operations are proven as part of the main state machine itself, given their
 /// simplicity. External operations (rest of types) are proven in their corresponding secondary
 /// state machine.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd)]
 #[repr(u32)]
 pub enum ZiskOperationType {
     None,
@@ -72,6 +72,8 @@ pub enum ZiskOperationType {
     Keccak,
     PubOut,
 }
+
+pub const ZISK_OP_TYPE_COUNT: usize = 7;
 
 /// ZisK instruction definition
 ///

@@ -147,6 +147,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 self.secondary_sm.iter().for_each(|sm| {
                     metrics_proxy.register_metrics(sm.get_counter());
                 });
+
                 ZiskEmulator::process_rom_slice_counters::<F>(
                     &self.zisk_rom,
                     minimal_trace,

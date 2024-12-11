@@ -23,6 +23,10 @@ impl Metrics for ArithCounter {
         self.arith += &other.arith;
     }
 
+    fn op_type(&self) -> Vec<ZiskOperationType> {
+        vec![ZiskOperationType::Arith]
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

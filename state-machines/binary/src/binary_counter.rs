@@ -31,6 +31,10 @@ impl Metrics for BinaryCounter {
         self.binary_extension += &other.binary_extension;
     }
 
+    fn op_type(&self) -> Vec<ZiskOperationType> {
+        vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE]
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

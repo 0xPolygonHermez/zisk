@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use sm_common::{CounterStats, Metrics};
-use zisk_core::{InstContext, ZiskInst};
+use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 #[derive(Default)]
 pub struct RomCounter {
@@ -31,6 +31,10 @@ impl Metrics for RomCounter {
         if other.steps != 0 {
             self.steps = other.steps;
         }
+    }
+
+    fn op_type(&self) -> Vec<ZiskOperationType> {
+        vec![ZiskOperationType::None]
     }
 
     fn as_any(&self) -> &dyn Any {
