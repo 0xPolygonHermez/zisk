@@ -18,12 +18,6 @@ impl<F: Default + Clone> InstanceExtensionCtx<F> {
         instance_global_idx: usize,
         air_instance: Option<AirInstance<F>>,
     ) -> Self {
-        Self {
-            op_type,
-            emu_trace_start,
-            instance_global_idx,
-            segment_id,
-            air_instance,
-        }
+        Self { op_type, emu_trace_start, instance_global_idx, segment_id, air_instance }
     }
 }

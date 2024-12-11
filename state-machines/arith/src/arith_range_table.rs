@@ -48,8 +48,8 @@ impl<F: Field> ArithRangeTableSM<F> {
     }
 
     pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1
-            && self.used.load(Ordering::SeqCst)
+        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 &&
+            self.used.load(Ordering::SeqCst)
         {
             self.create_air_instance();
         }
