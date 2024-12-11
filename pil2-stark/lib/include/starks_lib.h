@@ -14,7 +14,7 @@
     void fri_proof_get_tree_root(void *pFriProof, void* root, uint64_t tree_index);
     void fri_proof_set_airgroupvalues(void *pFriProof, void *airgroupValues);
     void fri_proof_set_airvalues(void *pFriProof, void *airValues);
-    void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* globalInfoFile, char *fileDir);
+    void *fri_proof_get_zkinproof(void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* proof_name, char* globalInfoFile, char *fileDir);
     void fri_proof_free_zkinproof(void *pZkinProof);
     void fri_proof_free(void *pFriProof);
 
@@ -55,6 +55,7 @@
     uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2); 
     void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName, bool add);
     void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2,  void* hintOptions1, void *hintOptions2, bool add);
+    void *update_airgroupvalue(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add);
     uint64_t set_hint_field(void *pSetupCtx, void* stepsParams, void *values, uint64_t hintId, char* hintFieldName);
 
     // Starks

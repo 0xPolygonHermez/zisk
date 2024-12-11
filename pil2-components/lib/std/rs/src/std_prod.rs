@@ -9,8 +9,8 @@ use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ModeName, ProofCtx, SetupCtx, StdMode};
 use proofman_hints::{
-    acc_mul_hint_fields, get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a,
-    get_hint_ids_by_name, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
+    get_hint_field, get_hint_field_a, get_hint_field_constant, get_hint_field_constant_a, get_hint_ids_by_name,
+    update_airgroupvalue, acc_mul_hint_fields, HintFieldOptions, HintFieldOutput, HintFieldValue, HintFieldValuesVec,
 };
 
 use crate::{print_debug_info, update_debug_data, DebugData, Decider};
@@ -294,22 +294,35 @@ impl<F: PrimeField> WitnessComponent<F> for StdProd<F> {
 
                     // This call calculates "numerator" / "denominator" and accumulates it into "reference". Its last value is stored into "result"
                     // Alternatively, this could be done using get_hint_field and set_hint_field methods and calculating the operations in Rust,
-                    // TODO: GENERALIZE CALLS
-                    let (pol_id, airgroupvalue_id) = acc_mul_hint_fields::<F>(
+                    let (pol_id, _) = acc_mul_hint_fields::<F>(
                         &sctx,
                         &pctx,
                         air_instance,
                         gprod_hint,
                         "reference",
                         "result",
-                        "numerator",
-                        "denominator",
+                        "numerator_air",
+                        "denominator_air",
                         HintFieldOptions::default(),
                         HintFieldOptions::inverse(),
                         false,
                     );
 
                     air_instance.set_commit_calculated(pol_id as usize);
+
+                    let airgroupvalue_id = update_airgroupvalue::<F>(
+                        &sctx,
+                        &pctx,
+                        air_instance,
+                        gprod_hint,
+                        "result",
+                        "numerator_direct",
+                        "denominator_direct",
+                        HintFieldOptions::default(),
+                        HintFieldOptions::inverse(),
+                        false,
+                    );
+
                     air_instance.set_airgroupvalue_calculated(airgroupvalue_id as usize);
                 }
             }

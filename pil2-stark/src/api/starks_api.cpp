@@ -89,7 +89,7 @@ void fri_proof_set_airvalues(void *pFriProof, void *airValues)
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
     friProof->proof.setAirValues((Goldilocks::Element *)airValues);
 }
-void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* globalInfoFile, char *fileDir)
+void *fri_proof_get_zkinproof(void *pFriProof, void* pPublics, void* pChallenges, void *pStarkInfo, char* proof_name, char* globalInfoFile, char *fileDir)
 {
     json globalInfo;
     file2json(globalInfoFile, globalInfo);
@@ -119,8 +119,8 @@ void *fri_proof_get_zkinproof(uint64_t proof_id, void *pFriProof, void* pPublics
         if (!std::filesystem::exists(string(fileDir) + "/proofs")) {
             std::filesystem::create_directory(string(fileDir) + "/proofs");
         }
-        json2file(jProof, string(fileDir) + "/proofs/proof_" + to_string(proof_id) + ".json");
-        json2file(zkin, string(fileDir) + "/zkin/proof_" + to_string(proof_id) + "_zkin.json");
+        json2file(jProof, string(fileDir) + "/proofs/proof_" + proof_name + ".json");
+        json2file(zkin, string(fileDir) + "/zkin/proof_" + proof_name + "_zkin.json");
     }
 
     return (void *) new nlohmann::json(zkin);    
@@ -277,6 +277,10 @@ void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *
 
 void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
     return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add));
+}
+
+void *update_airgroupvalue(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
+    return new VecU64Result(updateAirgroupValue(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add));
 }
 
 

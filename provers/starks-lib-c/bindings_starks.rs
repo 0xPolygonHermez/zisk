@@ -49,13 +49,13 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z23fri_proof_get_zkinproofmPvS_S_S_PcS0_"]
+    #[link_name = "\u{1}_Z23fri_proof_get_zkinproofPvS_S_S_PcS0_S0_"]
     pub fn fri_proof_get_zkinproof(
-        proof_id: u64,
         pFriProof: *mut ::std::os::raw::c_void,
         pPublics: *mut ::std::os::raw::c_void,
         pChallenges: *mut ::std::os::raw::c_void,
         pStarkInfo: *mut ::std::os::raw::c_void,
+        proof_name: *mut ::std::os::raw::c_char,
         globalInfoFile: *mut ::std::os::raw::c_char,
         fileDir: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;
@@ -206,6 +206,20 @@ extern "C" {
         stepsParams: *mut ::std::os::raw::c_void,
         hintId: u64,
         hintFieldNameDest: *mut ::std::os::raw::c_char,
+        hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
+        hintFieldName1: *mut ::std::os::raw::c_char,
+        hintFieldName2: *mut ::std::os::raw::c_char,
+        hintOptions1: *mut ::std::os::raw::c_void,
+        hintOptions2: *mut ::std::os::raw::c_void,
+        add: bool,
+    ) -> *mut ::std::os::raw::c_void;
+}
+extern "C" {
+    #[link_name = "\u{1}_Z20update_airgroupvaluePvS_mPcS0_S0_S_S_b"]
+    pub fn update_airgroupvalue(
+        pSetupCtx: *mut ::std::os::raw::c_void,
+        stepsParams: *mut ::std::os::raw::c_void,
+        hintId: u64,
         hintFieldNameAirgroupVal: *mut ::std::os::raw::c_char,
         hintFieldName1: *mut ::std::os::raw::c_char,
         hintFieldName2: *mut ::std::os::raw::c_char,

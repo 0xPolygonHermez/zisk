@@ -1,6 +1,6 @@
 use proofman_starks_lib_c::{
     acc_hint_field_c, acc_mul_hint_fields_c, get_hint_field_c, get_hint_ids_by_name_c, mul_hint_fields_c,
-    print_expression_c, print_row_c, set_hint_field_c, VecU64Result,
+    print_expression_c, print_row_c, set_hint_field_c, update_airgroupvalue_c, VecU64Result,
 };
 
 use std::collections::HashMap;
@@ -816,6 +816,60 @@ pub fn acc_mul_hint_fields<F: Field>(
     let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.values, hint_ids_result.n_values as usize) };
 
     (slice[0], slice[1])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_airgroupvalue<F: Field>(
+    setup_ctx: &SetupCtx,
+    proof_ctx: &ProofCtx<F>,
+    air_instance: &mut AirInstance<F>,
+    hint_id: usize,
+    hint_field_airgroupvalue: &str,
+    hint_field_name1: &str,
+    hint_field_name2: &str,
+    options1: HintFieldOptions,
+    options2: HintFieldOptions,
+    add: bool,
+) -> u64 {
+    let setup = setup_ctx.get_setup(air_instance.airgroup_id, air_instance.air_id);
+
+    let public_inputs_ptr = (*proof_ctx.public_inputs.inputs.read().unwrap()).as_ptr() as *mut c_void;
+    let challenges_ptr = (*proof_ctx.challenges.challenges.read().unwrap()).as_ptr() as *mut c_void;
+
+    let const_pols_ptr = (*setup.const_pols.values.read().unwrap()).as_ptr() as *mut c_void;
+    let const_tree_ptr = (*setup.const_tree.values.read().unwrap()).as_ptr() as *mut c_void;
+
+    let steps_params = StepsParams {
+        trace: air_instance.get_trace_ptr() as *mut c_void,
+        pols: air_instance.get_buffer_ptr() as *mut c_void,
+        public_inputs: public_inputs_ptr,
+        challenges: challenges_ptr,
+        airgroup_values: air_instance.airgroup_values.as_ptr() as *mut c_void,
+        airvalues: air_instance.airvalues.as_ptr() as *mut c_void,
+        evals: air_instance.evals.as_ptr() as *mut c_void,
+        xdivxsub: std::ptr::null_mut(),
+        p_const_pols: const_pols_ptr,
+        p_const_tree: const_tree_ptr,
+        custom_commits: air_instance.get_custom_commits_ptr(),
+    };
+
+    let raw_ptr = update_airgroupvalue_c(
+        (&setup.p_setup).into(),
+        (&steps_params).into(),
+        hint_id as u64,
+        hint_field_airgroupvalue,
+        hint_field_name1,
+        hint_field_name2,
+        (&options1).into(),
+        (&options2).into(),
+        add,
+    );
+
+    let hint_ids_result = unsafe { Box::from_raw(raw_ptr as *mut VecU64Result) };
+
+    let slice = unsafe { std::slice::from_raw_parts(hint_ids_result.values, hint_ids_result.n_values as usize) };
+
+    slice[0]
 }
 
 pub fn get_hint_field<F: Field>(

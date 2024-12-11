@@ -359,9 +359,8 @@ public:
                         copyPolynomial(&destVals[j][k*FIELD_EXTENSION*nrowsPack], dests[j].params[k].inverse, dests[j].params[k].batch, dests[j].params[k].dim, &bufferT_[(nColsStagesAcc[buffPos] + stagePos)*nrowsPack]);
                         continue;
                     } else if(dests[j].params[k].op == opType::number) {
-                        uint64_t val = dests[j].params[k].inverse ? Goldilocks::inv(Goldilocks::fromU64(dests[j].params[k].value)).fe : dests[j].params[k].value;
                         for(uint64_t r = 0; r < nrowsPack; ++r) {
-                            destVals[j][k*FIELD_EXTENSION*nrowsPack + r] = Goldilocks::fromU64(val);
+                            destVals[j][k*FIELD_EXTENSION*nrowsPack + r] = Goldilocks::fromU64(dests[j].params[k].value);
                         }
                         continue;
                     }
@@ -817,6 +816,8 @@ public:
                 }
 
                 if(dests[j].params.size() == 2) {
+                    cout << Goldilocks::toString(destVals[0][0]) << " " << Goldilocks::toString(destVals[0][1]) << " " << Goldilocks::toString(destVals[0][2]) << endl;
+                    cout << Goldilocks::toString(destVals[0][3]) << " " << Goldilocks::toString(destVals[0][4]) << " " << Goldilocks::toString(destVals[0][5]) << endl;
                     multiplyPolynomials(dests[j], destVals[j]);
                 }
             }

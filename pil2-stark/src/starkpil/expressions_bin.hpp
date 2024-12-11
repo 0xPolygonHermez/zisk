@@ -54,34 +54,34 @@ struct VecU64Result {
 
 struct ParserParams
 {
-    uint32_t stage;
-    uint32_t expId;
-    uint32_t nTemp1;
-    uint32_t nTemp3;
-    uint32_t nOps;
-    uint32_t opsOffset;
-    uint32_t nArgs;
-    uint32_t argsOffset;
-    uint32_t nConstPolsUsed;
-    uint32_t constPolsOffset;
-    uint32_t nCmPolsUsed;
-    uint32_t cmPolsOffset;
-    uint32_t nChallengesUsed;
-    uint32_t challengesOffset;
-    uint32_t nPublicsUsed;
-    uint32_t publicsOffset;
-    uint32_t nAirgroupValuesUsed;
-    uint32_t airgroupValuesOffset;
-    uint32_t nAirValuesUsed;
-    uint32_t airValuesOffset;
+    uint32_t stage = 0;
+    uint32_t expId = 0;
+    uint32_t nTemp1 = 0;
+    uint32_t nTemp3 = 0;
+    uint32_t nOps = 0;
+    uint32_t opsOffset = 0;
+    uint32_t nArgs = 0;
+    uint32_t argsOffset = 0;
+    uint32_t nConstPolsUsed = 0;
+    uint32_t constPolsOffset = 0;
+    uint32_t nCmPolsUsed = 0;
+    uint32_t cmPolsOffset = 0;
+    uint32_t nChallengesUsed = 0;
+    uint32_t challengesOffset = 0;
+    uint32_t nPublicsUsed = 0;
+    uint32_t publicsOffset = 0;
+    uint32_t nAirgroupValuesUsed = 0;
+    uint32_t airgroupValuesOffset = 0;
+    uint32_t nAirValuesUsed = 0;
+    uint32_t airValuesOffset = 0;
     std::vector<uint32_t> nCustomCommitsPolsUsed;
     std::vector<uint32_t> customCommitsOffset;
-    uint32_t firstRow;
-    uint32_t lastRow;
-    uint32_t destDim;
-    uint32_t destId;
-    bool imPol;
-    string line;
+    uint32_t firstRow = 0;
+    uint32_t lastRow = 0;
+    uint32_t destDim = 0;
+    uint32_t destId = 0;
+    bool imPol = false;
+    string line = "";
 };
 
 struct ParserArgs 

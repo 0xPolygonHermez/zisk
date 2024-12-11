@@ -167,7 +167,7 @@ impl<F: Field + 'static> ProofMan<F> {
         }
 
         if options.verify_constraints {
-            return verify_constraints_proof(pctx.clone(), ectx.clone(), sctx.clone(), provers, witness_lib);
+            return verify_constraints_proof(pctx.clone(), ectx.clone(), sctx.clone(), &mut provers, &mut witness_lib);
         }
 
         // Compute Quotient polynomial

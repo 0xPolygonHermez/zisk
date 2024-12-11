@@ -13,8 +13,8 @@ pub fn verify_constraints_proof<F: Field>(
     pctx: Arc<ProofCtx<F>>,
     ectx: Arc<ExecutionCtx>,
     sctx: Arc<SetupCtx>,
-    provers: Vec<Box<dyn Prover<F>>>,
-    mut witness_lib: Box<dyn WitnessLibrary<F>>,
+    provers: &mut [Box<dyn Prover<F>>],
+    witness_lib: &mut Box<dyn WitnessLibrary<F>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     const MY_NAME: &str = "CstrVrfy";
 

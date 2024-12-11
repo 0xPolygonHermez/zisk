@@ -671,7 +671,6 @@ impl<F: Field> Prover<F> for StarkProver<F> {
     }
 
     fn get_zkin_proof(&self, proof_ctx: Arc<ProofCtx<F>>, output_dir: &str) -> *mut c_void {
-        let gidx = proof_ctx.air_instance_repo.air_instances.read().unwrap()[self.prover_idx].global_idx.unwrap();
         let public_inputs_guard = proof_ctx.public_inputs.inputs.read().unwrap();
         let public_inputs = (*public_inputs_guard).as_ptr() as *mut c_void;
 
@@ -681,12 +680,15 @@ impl<F: Field> Prover<F> for StarkProver<F> {
         let global_info_path = proof_ctx.global_info.get_proving_key_path().join("pilout.globalInfo.json");
         let global_info_file: &str = global_info_path.to_str().unwrap();
 
+        let proof_name =
+            format!("{}_{}", proof_ctx.global_info.airs[self.airgroup_id][self.air_id].name, self.instance_id);
+
         fri_proof_get_zkinproof_c(
-            gidx as u64,
             self.p_proof,
             public_inputs,
             challenges,
             self.p_stark_info,
+            &proof_name,
             global_info_file,
             output_dir,
         )
