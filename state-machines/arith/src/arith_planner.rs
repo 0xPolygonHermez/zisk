@@ -1,10 +1,8 @@
 use p3_field::PrimeField;
-use sm_common::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner};
+use sm_common::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner, RegularCounter};
 use zisk_pil::{
     ArithTrace, ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
 };
-
-use crate::ArithCounter;
 
 pub struct ArithPlanner<F: PrimeField> {
     _phantom: std::marker::PhantomData<F>,
@@ -28,8 +26,8 @@ impl<F: PrimeField> Planner for ArithPlanner<F> {
         let count_arith: Vec<_> = counters
             .iter()
             .map(|(chunk_id, counter)| {
-                let arith_counter = counter.as_any().downcast_ref::<ArithCounter>().unwrap();
-                InstCount::new(*chunk_id, arith_counter.arith.inst_count as u64)
+                let arith_counter = counter.as_any().downcast_ref::<RegularCounter>().unwrap();
+                InstCount::new(*chunk_id, arith_counter.inst_count())
             })
             .collect();
 

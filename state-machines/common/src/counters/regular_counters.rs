@@ -1,0 +1,63 @@
+use std::ops::Add;
+
+use crate::{Counter, Metrics};
+use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+
+pub struct RegularCounters {
+    op_type: Vec<ZiskOperationType>,
+    counter: Vec<Counter>,
+}
+
+impl RegularCounters {
+    pub fn new(op_type: Vec<ZiskOperationType>) -> Self {
+        let counter = vec![Counter::default(); op_type.len()];
+        Self { op_type, counter }
+    }
+
+    pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
+        if let Some(index) = self.op_type.iter().position(|&_op_type| op_type == _op_type) {
+            return Some(self.counter[index].inst_count);
+        }
+        None
+    }
+}
+
+impl Metrics for RegularCounters {
+    fn measure(&mut self, inst: &ZiskInst, _: &InstContext) {
+        if let Some(index) = self.op_type.iter().position(|&op_type| op_type == inst.op_type) {
+            self.counter[index].update(1);
+        }
+    }
+
+    fn add(&mut self, other: &dyn Metrics) {
+        let other = other
+            .as_any()
+            .downcast_ref::<RegularCounters>()
+            .expect("Regular Metrics: Failed to downcast");
+        for (counter, other_counter) in self.counter.iter_mut().zip(other.counter.iter()) {
+            *counter += other_counter;
+        }
+    }
+
+    fn op_type(&self) -> Vec<ZiskOperationType> {
+        self.op_type.clone()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl Add for RegularCounters {
+    type Output = RegularCounters;
+
+    fn add(self, other: Self) -> RegularCounters {
+        let counter = self
+            .counter
+            .into_iter()
+            .zip(other.counter)
+            .map(|(counter, other_counter)| &counter + &other_counter)
+            .collect();
+        RegularCounters { op_type: self.op_type, counter }
+    }
+}

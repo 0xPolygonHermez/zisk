@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner};
+use sm_common::{
+    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner, RegularCounter,
+};
 use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS};
 
 use crate::{
-    ArithCounter, ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableInstance,
-    ArithRangeTableSM, ArithTableInstance, ArithTableSM,
+    ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableInstance, ArithRangeTableSM,
+    ArithTableInstance, ArithTableSM,
 };
 
 pub struct ArithSM<F> {
@@ -32,7 +34,7 @@ impl<F: PrimeField> ArithSM<F> {
 
 impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
     fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(ArithCounter::default())
+        Box::new(RegularCounter::new(zisk_core::ZiskOperationType::Arith))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {

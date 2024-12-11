@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use crate::{
     BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableInstance, BinaryBasicTableSM,
-    BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableInstance,
+    BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableInstance,
     BinaryExtensionTableSM, BinaryPlanner,
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::WitnessManager;
-use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner};
+use sm_common::{
+    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner, RegularCounters,
+};
+use zisk_core::ZiskOperationType;
 use zisk_pil::{
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
 };
@@ -47,7 +50,7 @@ impl<F: PrimeField> BinarySM<F> {
 
 impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
     fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(BinaryCounter::default())
+        Box::new(RegularCounters::new(vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE]))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {

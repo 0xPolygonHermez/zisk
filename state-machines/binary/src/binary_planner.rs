@@ -1,11 +1,10 @@
 use p3_field::PrimeField;
-use sm_common::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner};
+use sm_common::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner, RegularCounters};
+use zisk_core::ZiskOperationType;
 use zisk_pil::{
     BinaryExtensionTrace, BinaryTrace, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
 };
-
-use crate::BinaryCounter;
 
 pub struct BinaryPlanner<F: PrimeField> {
     _phantom: std::marker::PhantomData<F>,
@@ -29,10 +28,16 @@ impl<F: PrimeField> Planner for BinaryPlanner<F> {
         let (count_binary, count_binary_e): (Vec<_>, Vec<_>) = counters
             .iter()
             .map(|(chunk_id, counter)| {
-                let binary_counter = counter.as_any().downcast_ref::<BinaryCounter>().unwrap();
+                let binary_counter = counter.as_any().downcast_ref::<RegularCounters>().unwrap();
                 (
-                    InstCount::new(*chunk_id, binary_counter.binary.inst_count as u64),
-                    InstCount::new(*chunk_id, binary_counter.binary_extension.inst_count as u64),
+                    InstCount::new(
+                        *chunk_id,
+                        binary_counter.inst_count(ZiskOperationType::Binary).unwrap(),
+                    ),
+                    InstCount::new(
+                        *chunk_id,
+                        binary_counter.inst_count(ZiskOperationType::BinaryE).unwrap(),
+                    ),
                 )
             })
             .collect();

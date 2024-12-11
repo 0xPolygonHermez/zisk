@@ -29,11 +29,11 @@ pub trait Metrics: Send + Sync + Any {
 
 #[derive(Default, Debug, Clone)]
 pub struct Counter {
-    pub inst_count: usize,
+    pub inst_count: u64,
 }
 
 impl Counter {
-    pub fn update(&mut self, num: usize) {
+    pub fn update(&mut self, num: u64) {
         self.inst_count += num;
     }
 }

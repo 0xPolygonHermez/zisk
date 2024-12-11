@@ -1,5 +1,4 @@
 mod arith;
-mod arith_counter;
 mod arith_full;
 mod arith_full_instance;
 mod arith_operation;
@@ -13,7 +12,6 @@ mod arith_table_helpers;
 mod arith_table_instance;
 
 pub use arith::*;
-pub use arith_counter::*;
 pub use arith_full::*;
 pub use arith_full_instance::*;
 pub use arith_operation::*;
