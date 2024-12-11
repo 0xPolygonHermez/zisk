@@ -17,7 +17,7 @@ const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
-    assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64, "RAM is too large");
+    assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS <= MEMORY_MAX_DIFF, "RAM is too large");
     assert!(
         (RAM_ADDR + RAM_SIZE - 1) <= 0xFFFF_FFFF,
         "RAM memory exceeds the 32-bit addressable range"
@@ -230,7 +230,7 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].increment = F::from_canonical_u64(increment);
 
             // Store the value of incremenet so it can be range checked
-            if increment <= MEMORY_MAX_DIFF as u64 || increment == 0 {
+            if increment <= MEMORY_MAX_DIFF || increment == 0 {
                 range_check_data[(increment - 1) as usize] += 1;
             } else {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",

@@ -20,7 +20,7 @@ const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BY
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(
-        (MAX_INPUT_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64,
+        (MAX_INPUT_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF,
         "INPUT_DATA is too large"
     );
     assert!(

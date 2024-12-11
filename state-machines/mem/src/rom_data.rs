@@ -19,7 +19,7 @@ const ROM_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     assert!(
-        (ROM_ADDR_MAX - ROM_ADDR) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF as u64,
+        (ROM_ADDR_MAX - ROM_ADDR) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF,
         "ROM_DATA is too large"
     );
     assert!(ROM_ADDR_MAX <= 0xFFFF_FFFF, "ROM_DATA memory exceeds the 32-bit addressable range");

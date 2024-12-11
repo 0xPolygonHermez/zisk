@@ -578,7 +578,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
     }
 
     /// Define an unmapped module with all unmapped regions.
-    fn define_unmapped_module(&mut self, unmapped_regions: &Vec<(u32, u32)>) {
+    fn define_unmapped_module(&mut self, unmapped_regions: &[(u32, u32)]) {
         let mut unmapped_module = MemUnmapped::<F>::new();
         for unmapped_region in unmapped_regions.iter() {
             unmapped_module.add_range(unmapped_region.0, unmapped_region.1);
