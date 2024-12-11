@@ -1,6 +1,5 @@
 require "std_constants.pil"
 require "std_lookup.pil"
-require "std_constants.pil"
 
 // Operations Table:
 //                                                                Running Total
