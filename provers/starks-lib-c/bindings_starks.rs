@@ -49,13 +49,13 @@ extern "C" {
     );
 }
 extern "C" {
-    #[link_name = "\u{1}_Z23fri_proof_get_zkinproofmPvS_S_S_PcS0_"]
+    #[link_name = "\u{1}_Z23fri_proof_get_zkinproofPvS_S_S_PcS0_S0_"]
     pub fn fri_proof_get_zkinproof(
-        proof_id: u64,
         pFriProof: *mut ::std::os::raw::c_void,
         pPublics: *mut ::std::os::raw::c_void,
         pChallenges: *mut ::std::os::raw::c_void,
         pStarkInfo: *mut ::std::os::raw::c_void,
+        proof_name: *mut ::std::os::raw::c_char,
         globalInfoFile: *mut ::std::os::raw::c_char,
         fileDir: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_void;

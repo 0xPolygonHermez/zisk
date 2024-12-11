@@ -72,11 +72,11 @@ pub fn fri_proof_set_air_values_c(p_fri_proof: *mut c_void, p_air_values: *mut c
 
 #[cfg(not(feature = "no_lib_link"))]
 pub fn fri_proof_get_zkinproof_c(
-    proof_id: u64,
     p_fri_proof: *mut c_void,
     p_publics: *mut c_void,
     p_challenges: *mut c_void,
     p_stark_info: *mut c_void,
+    proof_name: &str,
     global_info_file: &str,
     output_dir_file: &str,
 ) -> *mut c_void {
@@ -86,13 +86,16 @@ pub fn fri_proof_get_zkinproof_c(
     let file_dir = CString::new(output_dir_file).unwrap();
     let file_ptr = file_dir.as_ptr() as *mut std::os::raw::c_char;
 
+    let proof_name = CString::new(proof_name).unwrap();
+    let proof_name_ptr = proof_name.as_ptr() as *mut std::os::raw::c_char;
+
     unsafe {
         fri_proof_get_zkinproof(
-            proof_id,
             p_fri_proof,
             p_publics,
             p_challenges,
             p_stark_info,
+            proof_name_ptr,
             global_info_file_ptr,
             file_ptr,
         )
@@ -959,11 +962,11 @@ pub fn fri_proof_set_air_values_c(_p_fri_proof: *mut c_void, _p_params: *mut c_v
 
 #[cfg(feature = "no_lib_link")]
 pub fn fri_proof_get_zkinproof_c(
-    _proof_id: u64,
     _p_fri_proof: *mut c_void,
     _p_publics: *mut c_void,
     _p_challenges: *mut c_void,
     _p_stark_info: *mut c_void,
+    _proof_name: &str,
     _global_info_file: &str,
     _output_dir_file: &str,
 ) -> *mut c_void {
