@@ -1,5 +1,5 @@
-require "main/pil/main.pil"
 require "rom/pil/rom.pil"
+require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_rom.pil"
