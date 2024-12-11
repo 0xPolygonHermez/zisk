@@ -110,8 +110,6 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = BINARY_ID) 
     where last indicates whether the byte is the last one in the operation
     */
 
-    // TODO: I can use mode32 with value 2 to indicate I'm in the first chunk as use that as
-    // the initial carry
     lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], has_initial_carry*INITIAL_CARRY_LT_ABS, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a]);
 
     // More auxiliary columns
