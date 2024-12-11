@@ -18,9 +18,8 @@ Run the following commands to clone the necessary repositories:
 ```bash
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/zisk.git
-git clone -b 0.0.13 https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b 0.0.13 https://github.com/0xPolygonHermez/pil2-stark-js.git
-git clone -b 0.0.13 https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
 ## Compile a Verifiable Rust Program
@@ -166,13 +165,13 @@ To generate the aggregated proofs, add `-a`
 
 ```bash
 // Using input_one_segment.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
 
 // Using input_two_segments.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
 
 // Using input.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -d -a -v)
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
 ```
 
 ### Verify the Proof
@@ -184,5 +183,5 @@ node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs
 If the aggregation proofs are being generated, can be verified with the following command:
 
 ```bash
-node ../pil2-stark-js/src/main_verifier.js -v build/provingKey/zisk/final/final.verkey.json -s build/provingKey/zisk/final/final.starkinfo.json -i build/provingKey/zisk/final/final.verifierinfo.json -o proofs/proofs/final_proof.json -b proofs/publics.json
+node ../pil2-proofman-js/src/main_verify -k ./build/provingKey/ -p ./proofs -t vadcop_final
 ```

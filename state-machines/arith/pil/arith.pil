@@ -7,8 +7,6 @@ require "arith_range_table.pil"
 //          full   mul_64  full_32  mul_32
 // TOTAL      88       77       57      44
 
-const int OP_LT_ABS = 0x9F;
-
 airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
 
     const int CHUNK_SIZE = 2**16;
@@ -275,11 +273,14 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
                                      bus_res0, bus_res1,
                                      div_by_zero /*+ div_overflow*/], mul: multiplicity);
 
-    // TODO: remainder check
-    // lookup_assumes(operation_bus_id, [debug_main_step, signed * (OP_LT_ABS - OP_LT) + OP_LT,
-    //                                  (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF,
-    //                                  (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF,
-    //                                  1, 0, 1], sel: div);
+    // Check that remainder (d) is lower than divisor (b) when division is performed
+    // Specifically, we ensure that 0 <= |d| < |b|
+    lookup_assumes(operation_bus_id, [debug_main_step,
+                                      (1 - nr) * (1 - nb) * LTU_OP + nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + nr * nb * GT_OP,
+                                      (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
+                                      (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
+                                      1, 0, 
+                                      1], sel: div * (1 - div_by_zero));
 
     for (int index = 0; index < length(carry); ++index) {
          arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range

@@ -4,7 +4,7 @@ echo "Verify all ELF files found in a directory"
 
 # Check that at least one argument has been passed
 if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <dirname> [-l/--list -b/--begin <first_file> -e/--end <last_file>]"
+    echo "Usage: $0 <dirname> [-l/--list -b/--begin <first_file> -e/--end <last_file> -d/--debug]"
     exit 1
 fi
 
@@ -21,11 +21,13 @@ echo "Verifying ELF files found in directory ${DIR}"
 LIST=0
 BEGIN=0
 END=0
+DEBUG=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -l|--list) LIST=1 ;;
         -b|--begin) BEGIN=$2; shift; ;;
         -e|--end) END=$2; shift; ;;
+        -d|--debug) DEBUG=1 ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -46,7 +48,7 @@ if [ $BEGIN -ne 0 ]; then
     echo "Beginning at file ${BEGIN}";
 fi
 if [ $END -ne 0 ]; then
-    echo "Beginning at file ${END}";
+    echo "Ending at file ${END}";
 fi
 
 # If just listing, exit
@@ -58,7 +60,7 @@ fi
 # Record the number of files
 MAX_COUNTER=${COUNTER}
 
-# Create and empty input file
+# Create an empty input file
 INPUT_FILE="/tmp/empty_input.bin"
 touch $INPUT_FILE
 
@@ -82,6 +84,13 @@ do
     # Varify the contraints for this file
     echo ""
     echo "Verifying file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
-    (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom $ELF_FILE -i $INPUT_FILE --proving-key ../zisk/build/provingKey)
+
+    if [ $DEBUG -eq 1 ]; then
+        # Run with debug flag
+        (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom $ELF_FILE -i $INPUT_FILE --proving-key ../zisk/build/provingKey -d)
+    else
+        # Run without debug flag
+        (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom $ELF_FILE -i $INPUT_FILE --proving-key ../zisk/build/provingKey)
+    fi
 done
 

@@ -39,18 +39,12 @@ impl<F: Field> RomSM<F> {
         // Allocate a prover buffer
         let buffer_allocator = self.wcm.get_ectx().buffer_allocator.clone();
         let sctx = self.wcm.get_sctx();
-        let (buffer_size, offsets) = buffer_allocator
-            .get_buffer_info(&sctx, ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
-            .unwrap_or_else(|err| panic!("Error getting buffer info: {}", err));
 
         // Create an empty ROM trace
         let pilout = Pilout::pilout();
-        let trace_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
-        let mut prover_buffer = create_buffer_fast(buffer_size as usize);
+        let num_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
-        let mut rom_trace =
-            RomTrace::<F>::map_buffer(&mut prover_buffer, trace_rows, offsets[0] as usize)
-                .expect("RomSM::compute_trace() failed mapping buffer to ROMSRow");
+        let mut rom_trace = RomTrace::new(num_rows);
 
         // For every instruction in the rom, fill its corresponding ROM trace
         let main_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
@@ -79,12 +73,17 @@ impl<F: Field> RomSM<F> {
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..trace_rows {
+        for i in rom.insts.len()..num_rows {
             rom_trace[i] = RomRow::default();
         }
 
-        let mut air_instance =
-            AirInstance::new(sctx.clone(), ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], None, prover_buffer);
+        let mut air_instance = AirInstance::new(
+            sctx.clone(),
+            ZISK_AIRGROUP_ID,
+            ROM_AIR_IDS[0],
+            None,
+            rom_trace.buffer.unwrap(),
+        );
 
         match self
             .wcm
@@ -131,8 +130,8 @@ impl<F: Field> RomSM<F> {
 
     pub fn compute_trace_rom(
         rom: &ZiskRom,
-        buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        sctx: &SetupCtx<F>,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
         // Allocate a prover buffer
         let (buffer_size_rom, offsets_rom, commit_id) = buffer_allocator
@@ -206,8 +205,8 @@ impl<F: Field> RomSM<F> {
 
     pub fn compute_trace_rom_buffer(
         rom_path: PathBuf,
-        buffer_allocator: Arc<dyn BufferAllocator<F>>,
-        sctx: &SetupCtx<F>,
+        buffer_allocator: Arc<dyn BufferAllocator>,
+        sctx: &SetupCtx,
     ) -> Result<(u64, Vec<F>), Box<dyn Error + Send>> {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();

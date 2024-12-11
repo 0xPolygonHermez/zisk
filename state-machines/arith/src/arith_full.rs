@@ -7,30 +7,36 @@ use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use log::info;
-use p3_field::Field;
+use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use sm_binary::{BinarySM, GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
-pub struct ArithFullSM<F> {
+const CHUNK_SIZE: u64 = 0x10000;
+const EXTENSION: u64 = 0xFFFFFFFF;
+
+pub struct ArithFullSM<F: PrimeField> {
     wcm: Arc<WitnessManager<F>>,
 
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 
-    // Inputs
+    // Secondary State Machines
     arith_table_sm: Arc<ArithTableSM<F>>,
     arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+    binary_sm: Arc<BinarySM<F>>,
 }
 
-impl<F: Field> ArithFullSM<F> {
+impl<F: PrimeField> ArithFullSM<F> {
     const MY_NAME: &'static str = "Arith   ";
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
         arith_table_sm: Arc<ArithTableSM<F>>,
         arith_range_table_sm: Arc<ArithRangeTableSM<F>>,
+        binary_sm: Arc<BinarySM<F>>,
         airgroup_id: usize,
         air_ids: &[usize],
     ) -> Arc<Self> {
@@ -39,6 +45,7 @@ impl<F: Field> ArithFullSM<F> {
             registered_predecessors: AtomicU32::new(0),
             arith_table_sm,
             arith_range_table_sm,
+            binary_sm,
         };
         let arith_full_sm = Arc::new(arith_full_sm);
 
@@ -46,6 +53,7 @@ impl<F: Field> ArithFullSM<F> {
 
         arith_full_sm.arith_table_sm.register_predecessor();
         arith_full_sm.arith_range_table_sm.register_predecessor();
+        arith_full_sm.binary_sm.register_predecessor();
 
         arith_full_sm
     }
@@ -58,14 +66,10 @@ impl<F: Field> ArithFullSM<F> {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.arith_table_sm.unregister_predecessor();
             self.arith_range_table_sm.unregister_predecessor();
+            self.binary_sm.unregister_predecessor();
         }
     }
-    pub fn prove_instance(
-        &self,
-        input: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-        offset: u64,
-    ) {
+    pub fn prove_instance(&self, input: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
@@ -82,12 +86,11 @@ impl<F: Field> ArithFullSM<F> {
         );
         assert!(input.len() <= num_rows);
 
-        let mut traces =
-            ArithTrace::<F>::map_buffer(prover_buffer, num_rows, offset as usize).unwrap();
+        let mut traces = ArithTrace::<F>::map_buffer(prover_buffer, num_rows, 0).unwrap();
 
         let mut aop = ArithOperation::new();
+        let mut binary_inputs = Vec::new();
         for (irow, input) in input.iter().enumerate() {
-            println!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, input.opcode, input.a, input.b);
             aop.calculate(input.opcode, input.a, input.b);
             let mut t: ArithRow<F> = Default::default();
             for i in [0, 2] {
@@ -186,6 +189,42 @@ impl<F: Field> ArithFullSM<F> {
                 aop.d[2] + (aop.d[3] << 16)
             });
             traces[irow] = t;
+
+            // If the operation is a division, then use the binary component
+            // to check that the remainer is lower than the divisor
+            if aop.div && !aop.div_by_zero {
+                let opcode = match (aop.nr, aop.nb) {
+                    (false, false) => LTU_OP,
+                    (false, true) => LT_ABS_PN_OP,
+                    (true, false) => LT_ABS_NP_OP,
+                    (true, true) => GT_OP,
+                };
+
+                let extension = match (aop.m32, aop.nr, aop.nb) {
+                    (false, _, _) => (0, 0),
+                    (true, false, false) => (0, 0),
+                    (true, false, true) => (0, EXTENSION),
+                    (true, true, false) => (EXTENSION, 0),
+                    (true, true, true) => (EXTENSION, EXTENSION),
+                };
+
+                // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
+                // this!
+                let operation = ZiskRequiredOperation {
+                    step: input.step,
+                    opcode,
+                    a: aop.d[0] +
+                        CHUNK_SIZE * aop.d[1] +
+                        CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
+                        CHUNK_SIZE.pow(3) * aop.d[3],
+                    b: aop.b[0] +
+                        CHUNK_SIZE * aop.b[1] +
+                        CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
+                        CHUNK_SIZE.pow(3) * aop.b[3],
+                };
+
+                binary_inputs.push(operation);
+            }
         }
         timer_stop_and_log_trace!(ARITH_TRACE);
 
@@ -226,7 +265,14 @@ impl<F: Field> ArithFullSM<F> {
         timer_start_trace!(ARITH_RANGE_TABLE);
         self.arith_range_table_sm.process_slice(&range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
+
+        if !binary_inputs.is_empty() {
+            timer_start_trace!(ARITH_BINARY);
+            info!("{}: ··· calling binary_sm", Self::MY_NAME);
+            self.binary_sm.prove(binary_inputs.as_slice(), false);
+            timer_stop_and_log_trace!(ARITH_BINARY);
+        }
     }
 }
 
-impl<F: Send + Sync> WitnessComponent<F> for ArithFullSM<F> {}
+impl<F: PrimeField> WitnessComponent<F> for ArithFullSM<F> {}

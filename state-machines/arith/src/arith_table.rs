@@ -9,8 +9,7 @@ use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use sm_common::create_prover_buffer;
-use zisk_pil::{ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{ArithTableTrace, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct ArithTableSM<F> {
     wcm: Arc<WitnessManager<F>>,
@@ -80,14 +79,9 @@ impl<F: Field> ArithTableSM<F> {
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
 
         if is_myne {
-            // Create the prover buffer
-            let (mut prover_buffer, offset) = create_prover_buffer(
-                &self.wcm.get_ectx(),
-                &self.wcm.get_sctx(),
-                ZISK_AIRGROUP_ID,
-                ARITH_TABLE_AIR_IDS[0],
-            );
-            prover_buffer[offset as usize..offset as usize + self.num_rows]
+            let trace: ArithTableTrace<'_, _> = ArithTableTrace::new(self.num_rows);
+            let mut prover_buffer = trace.buffer.unwrap();
+            prover_buffer[0..self.num_rows]
                 .par_iter_mut()
                 .enumerate()
                 .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
@@ -118,8 +112,8 @@ impl<F: Field> WitnessComponent<F> for ArithTableSM<F> {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx<F>>,
-        _sctx: Arc<SetupCtx<F>>,
+        _ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
     }
 }
