@@ -2,7 +2,7 @@ require "std_lookup.pil"
 
 const int ARITH_TABLE_ID = 331;
 
-airtemplate ArithTable(int N = 2**7, int generate_table = 1) {
+airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
 
     // div m32 sa  sb  primary  secondary  opcodes             na   nb   np   nr   sext(c)
     // -----------------------------------------------------------------------------------

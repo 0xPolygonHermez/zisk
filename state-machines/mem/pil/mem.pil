@@ -50,7 +50,10 @@ const int MEMORY_MAX_DIFF = 2**24;
 const int MAX_MEM_STEP_OFFSET = 2;
 const int MAX_MEM_OPS_PER_MAIN_STEP = (MAX_MEM_STEP_OFFSET + 1) * 2;
 
-airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int mem_bytes = 8, const int base_address = 0, const int mem_size = 0x800_0000, int immutable = 0, const int free_input_mem = 0) {
+airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int mem_bytes = 8,
+                const int base_address = 0, const int mem_size = 0x800_0000, int immutable = 0,
+                const int free_input_mem = 0, const expr enable_flag = 1) {
+
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
@@ -146,7 +149,8 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     for (int i = 0; i < length(zeros); ++i) {
         zeros[i] = 0;
     }
-    direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros]);
+
+    direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
     range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);

@@ -26,12 +26,12 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
-stark = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.16" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
+stark = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "0.0.17-pre" }
 #Local development
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
