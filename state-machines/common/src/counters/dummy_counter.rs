@@ -1,12 +1,12 @@
 use std::any::Any;
 
-use sm_common::Metrics;
+use crate::Metrics;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 #[derive(Default)]
-pub struct StdCounter {}
+pub struct DummyCounter {}
 
-impl Metrics for StdCounter {
+impl Metrics for DummyCounter {
     fn measure(&mut self, _: &ZiskInst, _: &InstContext) {}
 
     fn add(&mut self, _: &dyn Metrics) {}

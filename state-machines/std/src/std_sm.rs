@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner};
+use sm_common::{ComponentProvider, DummyCounter, Instance, InstanceExpanderCtx, Metrics, Planner};
 
-use crate::{StdCounter, StdInstance, StdPlanner};
+use crate::{StdInstance, StdPlanner};
 
 pub struct StdSM<F: PrimeField> {
     std: Arc<Std<F>>,
@@ -18,7 +18,7 @@ impl<F: PrimeField> StdSM<F> {
 
 impl<F: PrimeField> ComponentProvider<F> for StdSM<F> {
     fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(StdCounter::default())
+        Box::new(DummyCounter::default())
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
