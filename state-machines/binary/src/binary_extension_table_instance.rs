@@ -36,8 +36,8 @@ impl<F: PrimeField> BinaryExtensionTableInstance<F> {
 
 unsafe impl<F: PrimeField> Sync for BinaryExtensionTableInstance<F> {}
 
-impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
-    fn expand(
+impl<F: PrimeField> Instance<F> for BinaryExtensionTableInstance<F> {
+    fn collect(
         &mut self,
         _: &ZiskRom,
         _: Arc<Vec<EmuTrace>>,
@@ -45,10 +45,7 @@ impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
         Ok(())
     }
 
-    fn prove(
-        &mut self,
-        _min_traces: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
         let mut multiplicity = self.binary_extension_table_sm.multiplicity.lock().unwrap();
         let mut multiplicity = std::mem::take(&mut *multiplicity);
 
@@ -60,15 +57,9 @@ impl<F: PrimeField> Instance for BinaryExtensionTableInstance<F> {
             .enumerate()
             .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i]));
 
-        let air_instance =
-            AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut trace));
+        let instance = AirInstance::new_from_trace(self.wcm.get_sctx(), FromTrace::new(&mut trace));
 
-        self.wcm
-            .get_pctx()
-            .air_instance_repo
-            .add_air_instance(air_instance, Some(self.iectx.global_idx));
-
-        Ok(())
+        Some(instance)
     }
 
     fn instance_type(&self) -> InstanceType {

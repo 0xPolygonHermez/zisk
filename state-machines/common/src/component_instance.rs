@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use p3_field::PrimeField;
+use proofman_common::AirInstance;
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
@@ -9,17 +11,14 @@ pub enum InstanceType {
     Table,
 }
 
-pub trait Instance: Send + Sync {
-    fn expand(
+pub trait Instance<F: PrimeField>: Send + Sync {
+    fn collect(
         &mut self,
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>>;
 
-    fn prove(
-        &mut self,
-        min_traces: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>>;
+    fn compute_witness(&mut self) -> Option<AirInstance<F>>;
 
     fn instance_type(&self) -> InstanceType;
 }

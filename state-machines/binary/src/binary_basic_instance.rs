@@ -46,8 +46,8 @@ impl<F: PrimeField> BinaryBasicInstance<F> {
 
 unsafe impl<F: PrimeField> Sync for BinaryBasicInstance<F> {}
 
-impl<F: PrimeField> Instance for BinaryBasicInstance<F> {
-    fn expand(
+impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
+    fn collect(
         &mut self,
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
@@ -59,28 +59,16 @@ impl<F: PrimeField> Instance for BinaryBasicInstance<F> {
         Ok(())
     }
 
-    fn prove(
-        &mut self,
-        _min_traces: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
         timer_start_debug!(PROVE_BINARY);
         self.binary_basic_sm.prove_instance(&self.inputs, &mut self.binary_trace);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
-        timer_start_debug!(CREATE_BINARY_AIR_INSTANCE);
-        let air_instance = AirInstance::new_from_trace(
+        let instance = AirInstance::new_from_trace(
             self.wcm.get_sctx(),
             FromTrace::new(&mut self.binary_trace),
         );
-
-        self.wcm
-            .get_pctx()
-            .air_instance_repo
-            .add_air_instance(air_instance, Some(self.iectx.global_idx));
-
-        timer_stop_and_log_debug!(CREATE_BINARY_AIR_INSTANCE);
-
-        Ok(())
+        Some(instance)
     }
 
     fn instance_type(&self) -> InstanceType {

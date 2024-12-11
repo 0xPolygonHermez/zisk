@@ -149,7 +149,7 @@ impl<F: PrimeField> ComponentProvider<F> for RomSM<F> {
         Box::new(RomPlanner {})
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         Box::new(RomInstance::new(self.wcm.clone(), self.zisk_rom.clone(), iectx))
     }
 }

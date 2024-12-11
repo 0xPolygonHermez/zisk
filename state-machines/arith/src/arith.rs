@@ -41,7 +41,7 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
         Box::new(ArithPlanner::<F>::new())
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
             id if id == ARITH_AIR_IDS[0] => Box::new(ArithFullInstance::new(
                 self.wcm.clone(),

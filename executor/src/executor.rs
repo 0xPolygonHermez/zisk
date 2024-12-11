@@ -109,23 +109,29 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
 
                     let instance = self.secondary_sm[i].get_instance(iectx);
-                    sec_instances.push(instance);
+                    sec_instances.push((global_idx, instance));
                 }
             }
         }
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
-        sec_instances.par_iter_mut().for_each(|sec_instance| {
+        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Instance {
-                let _ = sec_instance.expand(&self.zisk_rom, min_traces.clone());
-                let _ = sec_instance.prove(min_traces.clone());
+                let _ = sec_instance.collect(&self.zisk_rom, min_traces.clone());
+                if let Some(air_instance) = sec_instance.compute_witness() {
+                    let pctx = self.wcm.get_pctx();
+                    pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
+                }
             }
         });
 
-        sec_instances.par_iter_mut().for_each(|sec_instance| {
+        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                let _ = sec_instance.prove(min_traces.clone());
+                if let Some(air_instance) = sec_instance.compute_witness() {
+                    let pctx = self.wcm.get_pctx();
+                    pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
+                }
             }
         });
 

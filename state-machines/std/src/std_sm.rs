@@ -25,7 +25,7 @@ impl<F: PrimeField> ComponentProvider<F> for StdSM<F> {
         Box::new(StdPlanner::new(self.std.clone()))
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         Box::new(StdInstance::new(self.std.clone(), iectx))
     }
 }

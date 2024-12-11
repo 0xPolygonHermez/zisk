@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
+use proofman_common::AirInstance;
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
@@ -17,8 +18,8 @@ impl<F: PrimeField> StdInstance<F> {
     }
 }
 
-impl<F: PrimeField> Instance for StdInstance<F> {
-    fn expand(
+impl<F: PrimeField> Instance<F> for StdInstance<F> {
+    fn collect(
         &mut self,
         _: &ZiskRom,
         _: Arc<Vec<EmuTrace>>,
@@ -26,13 +27,13 @@ impl<F: PrimeField> Instance for StdInstance<F> {
         Ok(())
     }
 
-    fn prove(&mut self, _: Arc<Vec<EmuTrace>>) -> Result<(), Box<dyn std::error::Error + Send>> {
+    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
         let plan = &self.iectx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
         self.std.drain_inputs(rc_type);
 
-        Ok(())
+        None
     }
 
     fn instance_type(&self) -> InstanceType {
