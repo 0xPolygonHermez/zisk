@@ -14,15 +14,15 @@ use zisk_pil::{BinaryExtensionTableTrace, BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_A
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryExtensionTableOp {
-    Sll = 0x0d,
-    Srl = 0x0e,
-    Sra = 0x0f,
-    SllW = 0x1d,
-    SrlW = 0x1e,
-    SraW = 0x1f,
-    SignExtendB = 0x23,
-    SignExtendH = 0x24,
-    SignExtendW = 0x25,
+    Sll = 0x31,
+    Srl = 0x32,
+    Sra = 0x33,
+    SllW = 0x34,
+    SrlW = 0x35,
+    SraW = 0x36,
+    SignExtendB = 0x37,
+    SignExtendH = 0x38,
+    SignExtendW = 0x39,
 }
 
 pub struct BinaryExtensionTableSM<F> {
@@ -71,11 +71,13 @@ impl<F: Field> BinaryExtensionTableSM<F> {
     }
 
     pub fn operations() -> Vec<u8> {
-        // TODO! Review this codes
         vec![
             ZiskOp::Sll.code(),
             ZiskOp::Srl.code(),
             ZiskOp::Sra.code(),
+            ZiskOp::SllW.code(),
+            ZiskOp::SrlW.code(),
+            ZiskOp::SraW.code(),
             ZiskOp::SignExtendB.code(),
             ZiskOp::SignExtendH.code(),
             ZiskOp::SignExtendW.code(),
@@ -92,17 +94,17 @@ impl<F: Field> BinaryExtensionTableSM<F> {
 
     //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
     pub fn calculate_table_row(opcode: BinaryExtensionTableOp, offset: u64, a: u64, b: u64) -> u64 {
+        debug_assert!(offset <= 0x07);
+        debug_assert!(a <= 0xFF);
+        debug_assert!(b <= 0xFF);
+
         // Calculate the different row offset contributors, according to the PIL
-        assert!(a <= 0xFF);
         let offset_a: u64 = a;
-        assert!(offset < 0x08);
         let offset_offset: u64 = offset * P2_8;
-        assert!(b <= 0xFF);
         let offset_b: u64 = b * P2_11;
         let offset_opcode: u64 = Self::offset_opcode(opcode);
 
         offset_a + offset_offset + offset_b + offset_opcode
-        //assert!(row < self.num_rows as u64);
     }
 
     fn offset_opcode(opcode: BinaryExtensionTableOp) -> u64 {
@@ -116,7 +118,6 @@ impl<F: Field> BinaryExtensionTableSM<F> {
             BinaryExtensionTableOp::SignExtendB => 6 * P2_19,
             BinaryExtensionTableOp::SignExtendH => 6 * P2_19 + P2_11,
             BinaryExtensionTableOp::SignExtendW => 6 * P2_19 + 2 * P2_11,
-            //_ => panic!("BinaryExtensionTableSM::offset_opcode() got invalid opcode={:?}", opcode),
         }
     }
 

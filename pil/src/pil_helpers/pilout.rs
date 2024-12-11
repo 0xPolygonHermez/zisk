@@ -63,7 +63,7 @@ impl Pilout {
         air_group.add_air(Some("ArithTable"), 128);
         air_group.add_air(Some("ArithRangeTable"), 4194304);
         air_group.add_air(Some("Binary"), 2097152);
-        air_group.add_air(Some("BinaryTable"), 4194304);
+        air_group.add_air(Some("BinaryTable"), 8388608);
         air_group.add_air(Some("BinaryExtension"), 2097152);
         air_group.add_air(Some("BinaryExtensionTable"), 4194304);
         air_group.add_air(Some("SpecifiedRanges"), 16777216);

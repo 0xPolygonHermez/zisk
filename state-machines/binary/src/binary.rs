@@ -7,8 +7,6 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman::{WitnessComponent, WitnessManager};
-use rayon::Scope;
-use sm_common::{OpResult, Provable};
 use zisk_core::ZiskRequiredOperation;
 use zisk_pil::{
     BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
@@ -78,12 +76,8 @@ impl<F: PrimeField> BinarySM<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // <BinarySM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-            //     self,
-            //     &[],
-            //     true,
-            //     scope,
-            // );
+            // If there are remaining binary inputs, prove them
+            self.prove(&[], true);
 
             self.binary_basic_sm.unregister_predecessor();
             self.binary_extension_sm.unregister_predecessor();
@@ -102,19 +96,15 @@ impl<F: PrimeField> BinarySM<F> {
             self.binary_extension_sm.prove_instance(operations, prover_buffer);
         }
     }
-}
 
-impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}
-
-impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
-    fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool, scope: &Scope) {
+    pub fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
+        // Split the operations into basic and extended operations
         let mut _inputs_basic = Vec::new();
         let mut _inputs_extension = Vec::new();
 
         let basic_operations = BinaryBasicSM::<F>::operations();
         let extension_operations = BinaryExtensionSM::<F>::operations();
 
-        // TODO Split the operations into basic and extended operations in parallel
         for operation in operations {
             if basic_operations.contains(&operation.opcode) {
                 _inputs_basic.push(operation.clone());
@@ -125,31 +115,34 @@ impl<F: PrimeField> Provable<ZiskRequiredOperation, OpResult> for BinarySM<F> {
             }
         }
 
-        let mut inputs_basic = self.inputs_basic.lock().unwrap();
-        inputs_basic.extend(_inputs_basic);
+        // Accumulate the basic operations, proving them once there are enough
+        if let Ok(mut inputs_basic) = self.inputs_basic.lock() {
+            inputs_basic.extend(_inputs_basic);
 
-        while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
-            let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
-            let drained_inputs_basic = inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
+            while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
+                let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
+                let drained_inputs_basic =
+                    inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
 
-            let binary_basic_sm_cloned = self.binary_basic_sm.clone();
-
-            binary_basic_sm_cloned.prove(&drained_inputs_basic, false, scope);
+                self.binary_basic_sm.prove(&drained_inputs_basic, false);
+            }
         }
-        drop(inputs_basic);
 
-        let mut inputs_extension = self.inputs_extension.lock().unwrap();
-        inputs_extension.extend(_inputs_extension);
+        // Accumulate the extension operations, proving them once there are enough
+        if let Ok(mut inputs_extension) = self.inputs_extension.lock() {
+            inputs_extension.extend(_inputs_extension);
 
-        while inputs_extension.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_extension.is_empty())
-        {
-            let num_drained_extension = std::cmp::min(PROVE_CHUNK_SIZE, inputs_extension.len());
-            let drained_inputs_extension =
-                inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
-            let binary_extension_sm_cloned = self.binary_extension_sm.clone();
+            while inputs_extension.len() >= PROVE_CHUNK_SIZE ||
+                (drain && !inputs_extension.is_empty())
+            {
+                let num_drained_extension = std::cmp::min(PROVE_CHUNK_SIZE, inputs_extension.len());
+                let drained_inputs_extension =
+                    inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
 
-            binary_extension_sm_cloned.prove(&drained_inputs_extension, false, scope);
+                self.binary_extension_sm.prove(&drained_inputs_extension, false);
+            }
         }
-        drop(inputs_extension);
     }
 }
+
+impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}

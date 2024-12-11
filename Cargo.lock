@@ -2164,6 +2164,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "sm-binary",
  "sm-common",
  "zisk-core",
  "zisk-pil",
