@@ -74,7 +74,3 @@ trace!(U16AirRow, U16AirTrace<F> {
 trace!(RomRomRow, RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });
-
-trace!(RomRomRow, RomRomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-});
