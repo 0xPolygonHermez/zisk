@@ -7,7 +7,7 @@ pub use proofman_macros::values;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &[u8] = b"ZiskArith-hash";
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -77,5 +77,5 @@ trace!(SpecifiedRangesTrace<F> {
 },  0, 9, 16777216 );
 
 values!(MainAirValues<F> {
- main_last_segment: FieldExtension<F>, main_segment: FieldExtension<F>,
+ main_last_segment: F, main_segment: F,
 });
