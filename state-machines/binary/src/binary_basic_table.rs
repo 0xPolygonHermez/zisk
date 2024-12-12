@@ -26,7 +26,7 @@ pub enum BinaryBasicTableOp {
 
 pub struct BinaryBasicTableSM {
     // Row multiplicity table
-    pub multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Mutex<Vec<u64>>,
 }
 
 impl BinaryBasicTableSM {
@@ -41,6 +41,11 @@ impl BinaryBasicTableSM {
         for (i, val) in input.iter().enumerate() {
             multiplicity[i] += *val;
         }
+    }
+
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+        std::mem::take(&mut *multiplicity)
     }
 
     //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
@@ -86,20 +91,20 @@ impl BinaryBasicTableSM {
 
     fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add |
-            BinaryBasicTableOp::Sub |
-            BinaryBasicTableOp::Ltu |
-            BinaryBasicTableOp::Lt |
-            BinaryBasicTableOp::Leu |
-            BinaryBasicTableOp::Le |
-            BinaryBasicTableOp::Eq |
-            BinaryBasicTableOp::Minu |
-            BinaryBasicTableOp::Min |
-            BinaryBasicTableOp::Maxu |
-            BinaryBasicTableOp::Max |
-            BinaryBasicTableOp::And |
-            BinaryBasicTableOp::Or |
-            BinaryBasicTableOp::Xor => true,
+            BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor => true,
             BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_last() got invalid opcode={:?}", opcode),
         }
@@ -107,22 +112,22 @@ impl BinaryBasicTableSM {
 
     fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Add |
-            BinaryBasicTableOp::Sub |
-            BinaryBasicTableOp::Ltu |
-            BinaryBasicTableOp::Lt |
-            BinaryBasicTableOp::Eq |
-            BinaryBasicTableOp::Minu |
-            BinaryBasicTableOp::Min |
-            BinaryBasicTableOp::Maxu |
-            BinaryBasicTableOp::Max => true,
+            BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max => true,
 
-            BinaryBasicTableOp::Leu |
-            BinaryBasicTableOp::Le |
-            BinaryBasicTableOp::And |
-            BinaryBasicTableOp::Or |
-            BinaryBasicTableOp::Xor |
-            BinaryBasicTableOp::Ext32 => false,
+            BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor
+            | BinaryBasicTableOp::Ext32 => false,
             //_ => panic!("BinaryBasicTableSM::opcode_has_cin() got invalid opcode={:?}", opcode),
         }
     }

@@ -39,8 +39,7 @@ unsafe impl<F: PrimeField> Sync for BinaryBasicTableInstance<F> {}
 
 impl<F: PrimeField> Instance<F> for BinaryBasicTableInstance<F> {
     fn compute_witness(&mut self) -> Option<AirInstance<F>> {
-        let mut multiplicity = self.binary_basic_table_sm.multiplicity.lock().unwrap();
-        let mut multiplicity = std::mem::take(&mut *multiplicity);
+        let mut multiplicity = self.binary_basic_table_sm.detach_multiplicity();
 
         self.wcm.get_ectx().dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
 

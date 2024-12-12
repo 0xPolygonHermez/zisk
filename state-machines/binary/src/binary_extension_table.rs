@@ -20,7 +20,7 @@ pub enum BinaryExtensionTableOp {
 
 pub struct BinaryExtensionTableSM {
     // Row multiplicity table
-    pub multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Mutex<Vec<u64>>,
 }
 
 #[derive(Debug)]
@@ -54,6 +54,11 @@ impl BinaryExtensionTableSM {
         for (i, val) in input.iter().enumerate() {
             multiplicity[i] += *val;
         }
+    }
+
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+        std::mem::take(&mut *multiplicity)
     }
 
     //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);

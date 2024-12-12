@@ -6,7 +6,7 @@ use zisk_pil::ArithRangeTableTrace;
 use p3_field::PrimeField;
 
 pub struct ArithRangeTableSM {
-    pub multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Mutex<Vec<u64>>,
 }
 
 impl ArithRangeTableSM {
@@ -20,5 +20,10 @@ impl ArithRangeTableSM {
         for (row, value) in inputs {
             multiplicity[row] += value;
         }
+    }
+
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+        std::mem::take(&mut *multiplicity)
     }
 }
