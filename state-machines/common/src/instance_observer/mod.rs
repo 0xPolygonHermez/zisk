@@ -1,3 +1,3 @@
-mod regular_instance_observer;
+mod inputs_collector;
 
-pub use regular_instance_observer::*;
+pub use inputs_collector::*;

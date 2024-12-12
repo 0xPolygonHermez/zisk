@@ -7,7 +7,7 @@ use zisk_core::{InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation}
 use zisk_core::ZiskRom;
 use ziskemu::{EmuTrace, ZiskEmulator};
 
-pub struct RegularInstance {
+pub struct InputsCollector {
     check_point: CheckPoint,
     num_rows: usize,
     op_type: ZiskOperationType,
@@ -17,7 +17,7 @@ pub struct RegularInstance {
     inputs: Vec<ZiskRequiredOperation>,
 }
 
-impl RegularInstance {
+impl InputsCollector {
     pub fn collect(
         check_point: CheckPoint,
         num_rows: usize,
@@ -38,7 +38,7 @@ impl RegularInstance {
     }
 }
 
-impl InstObserver for RegularInstance {
+impl InstObserver for InputsCollector {
     #[inline(always)]
     fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) -> bool {
         if zisk_inst.op_type != self.op_type {

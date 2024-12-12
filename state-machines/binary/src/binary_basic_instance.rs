@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{Instance, InstanceExpanderCtx, InstanceType, RegularInstance};
+use sm_common::{InputsCollector, Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::{ZiskRequiredOperation, ZiskRom};
 use zisk_pil::BinaryTrace;
 use ziskemu::EmuTrace;
@@ -30,7 +30,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        self.inputs = RegularInstance::collect(
+        self.inputs = InputsCollector::collect(
             self.iectx.plan.check_point.unwrap(),
             BinaryTrace::<F>::NUM_ROWS,
             zisk_rom,
