@@ -12,7 +12,7 @@ pub enum InstanceType {
 }
 
 pub trait Instance<F: PrimeField>: Send + Sync {
-    fn collect(
+    fn collect_inputs(
         &mut self,
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,

@@ -118,7 +118,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // ---------------------------------------------------------------------------------
         sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Instance {
-                let _ = sec_instance.collect(&self.zisk_rom, min_traces.clone());
+                let _ = sec_instance.collect_inputs(&self.zisk_rom, min_traces.clone());
                 if let Some(air_instance) = sec_instance.compute_witness() {
                     let pctx = self.wcm.get_pctx();
                     pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));

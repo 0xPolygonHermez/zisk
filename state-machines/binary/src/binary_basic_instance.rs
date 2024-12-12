@@ -11,21 +11,27 @@ use ziskemu::EmuTrace;
 use crate::BinaryBasicSM;
 
 pub struct BinaryBasicInstance<F: PrimeField> {
+    /// Binary basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
+
+    /// Instance expander context
     iectx: InstanceExpanderCtx,
 
+    /// Binary trace
+    trace: BinaryTrace<F>,
+
+    /// Inputs
     inputs: Vec<ZiskRequiredOperation>,
-    binary_trace: BinaryTrace<F>,
 }
 
 impl<F: PrimeField> BinaryBasicInstance<F> {
     pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self { binary_basic_sm, iectx, inputs: Vec::new(), binary_trace: BinaryTrace::new() }
+        Self { binary_basic_sm, iectx, inputs: Vec::new(), trace: BinaryTrace::new() }
     }
 }
 
 impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
-    fn collect(
+    fn collect_inputs(
         &mut self,
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
@@ -42,10 +48,9 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
     }
 
     fn compute_witness(&mut self) -> Option<AirInstance<F>> {
-        self.binary_basic_sm.prove_instance(&self.inputs, &mut self.binary_trace);
+        self.binary_basic_sm.prove_instance(&self.inputs, &mut self.trace);
 
-        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.binary_trace));
-        Some(instance)
+        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
     }
 
     fn instance_type(&self) -> InstanceType {

@@ -9,14 +9,19 @@ use zisk_pil::RomTrace;
 use crate::RomSM;
 
 pub struct RomInstance<F: PrimeField> {
-    zisk_rom: Arc<ZiskRom>,
+    /// Instance expander context
     iectx: InstanceExpanderCtx,
+
+    /// Zisk ROM
+    zisk_rom: Arc<ZiskRom>,
+
+    /// ROM trace
     rom_trace: RomTrace<F>,
 }
 
 impl<F: PrimeField> RomInstance<F> {
     pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
-        Self { zisk_rom, iectx, rom_trace: RomTrace::new() }
+        Self { iectx, zisk_rom, rom_trace: RomTrace::new() }
     }
 }
 

@@ -7,6 +7,8 @@ use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 
 pub struct StdInstance<F: PrimeField> {
     std: Arc<Std<F>>,
+
+    /// Instance expander context
     iectx: InstanceExpanderCtx,
 }
 

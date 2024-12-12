@@ -15,11 +15,14 @@ pub struct ArithTableInstance<F: PrimeField> {
     /// Witness manager
     wcm: Arc<WitnessManager<F>>,
 
+    /// Arith table state machine
+    arith_table_sm: Arc<ArithTableSM>,
+
     /// Instance expander context
     iectx: InstanceExpanderCtx,
 
-    /// Arith table state machine
-    arith_table_sm: Arc<ArithTableSM>,
+    /// Arith table trace
+    trace: ArithTableTrace<F>,
 }
 
 impl<F: PrimeField> ArithTableInstance<F> {
@@ -28,7 +31,7 @@ impl<F: PrimeField> ArithTableInstance<F> {
         arith_table_sm: Arc<ArithTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        Self { wcm, iectx, arith_table_sm }
+        Self { wcm, arith_table_sm, iectx, trace: ArithTableTrace::<F>::new() }
     }
 }
 
@@ -41,15 +44,12 @@ impl<F: PrimeField> Instance<F> for ArithTableInstance<F> {
 
         self.wcm.get_ectx().dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
 
-        let mut trace = ArithTableTrace::<F>::new();
-        trace.buffer[0..ArithTableTrace::<F>::NUM_ROWS]
+        self.trace.buffer[0..ArithTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i]));
 
-        let instance = AirInstance::new_from_trace(FromTrace::new(&mut trace));
-
-        Some(instance)
+        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
     }
 
     fn instance_type(&self) -> InstanceType {

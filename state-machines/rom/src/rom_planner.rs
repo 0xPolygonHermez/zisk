@@ -8,7 +8,7 @@ pub struct RomPlanner {}
 impl Planner for RomPlanner {
     fn plan(&self, metrics: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan> {
         if metrics.is_empty() {
-            panic!("RomPlanner::plan() found no metrics");
+            panic!("RomPlanner::plan() No metrics found");
         }
 
         let mut total = RomCounter::default();

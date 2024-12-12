@@ -15,11 +15,14 @@ pub struct BinaryExtensionTableInstance<F: PrimeField> {
     /// Witness manager
     wcm: Arc<WitnessManager<F>>,
 
+    /// Binary extension table state machine
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+
     /// Instance expander context
     iectx: InstanceExpanderCtx,
 
-    /// Binary extension table state machine
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+    /// Binary extension table trace
+    trace: BinaryExtensionTableTrace<F>,
 }
 
 impl<F: PrimeField> BinaryExtensionTableInstance<F> {
@@ -28,7 +31,7 @@ impl<F: PrimeField> BinaryExtensionTableInstance<F> {
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        Self { wcm, iectx, binary_extension_table_sm }
+        Self { wcm, binary_extension_table_sm, iectx, trace: BinaryExtensionTableTrace::<F>::new() }
     }
 }
 
@@ -41,13 +44,12 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionTableInstance<F> {
 
         self.wcm.get_ectx().dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
 
-        let mut trace = BinaryExtensionTableTrace::<F>::new();
-        trace.buffer[0..BinaryExtensionTableTrace::<F>::NUM_ROWS]
+        self.trace.buffer[0..BinaryExtensionTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i]));
 
-        let instance = AirInstance::new_from_trace(FromTrace::new(&mut trace));
+        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.trace));
 
         Some(instance)
     }
