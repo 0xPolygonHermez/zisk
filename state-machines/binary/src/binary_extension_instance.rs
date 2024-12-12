@@ -21,9 +21,12 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
 
 impl<F: PrimeField> BinaryExtensionInstance<F> {
     pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, iectx: InstanceExpanderCtx) -> Self {
-        let binary_e_trace = BinaryExtensionTrace::new();
-
-        Self { binary_extension_sm, iectx, inputs: Vec::new(), binary_e_trace }
+        Self {
+            binary_extension_sm,
+            iectx,
+            inputs: Vec::new(),
+            binary_e_trace: BinaryExtensionTrace::new(),
+        }
     }
 }
 

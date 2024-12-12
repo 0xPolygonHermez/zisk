@@ -16,9 +16,7 @@ pub struct RomInstance<F: PrimeField> {
 
 impl<F: PrimeField> RomInstance<F> {
     pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
-        let rom_trace = RomTrace::new();
-
-        Self { zisk_rom, iectx, rom_trace }
+        Self { zisk_rom, iectx, rom_trace: RomTrace::new() }
     }
 }
 

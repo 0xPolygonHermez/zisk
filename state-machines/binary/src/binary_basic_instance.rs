@@ -20,9 +20,7 @@ pub struct BinaryBasicInstance<F: PrimeField> {
 
 impl<F: PrimeField> BinaryBasicInstance<F> {
     pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
-        let binary_trace = BinaryTrace::new();
-
-        Self { binary_basic_sm, iectx, inputs: Vec::new(), binary_trace }
+        Self { binary_basic_sm, iectx, inputs: Vec::new(), binary_trace: BinaryTrace::new() }
     }
 }
 
