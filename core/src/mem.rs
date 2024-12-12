@@ -632,7 +632,7 @@ impl Mem {
     /// a fully aligned data
     #[inline(always)]
     pub fn required_addresses(address: u64, width: u64) -> (u64, u64) {
-        (address & 0xFFFF_FFFF_FFFF_FFF8, (address + width as u64 - 1) & 0xFFFF_FFFF_FFFF_FFF8)
+        (address & 0xFFFF_FFFF_FFFF_FFF8, (address + width - 1) & 0xFFFF_FFFF_FFFF_FFF8)
     }
 
     /// Get single not aligned data from the raw data

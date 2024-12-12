@@ -128,23 +128,21 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, 8) {
-                        self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
-                        mem_reads.push(self.ctx.inst_ctx.a);
-                    } else {
-                        let mut additional_data: Vec<u64>;
-                        (self.ctx.inst_ctx.a, additional_data) =
-                            self.ctx.inst_ctx.mem.read_required(address, 8);
-                        debug_assert!(!additional_data.is_empty());
-                        mem_reads.append(&mut additional_data);
-                    }
-                    /*println!(
-                        "Emu::source_a_mem_reads_generate() mem_leads.len={} value={:x}",
-                        mem_reads.len(),
-                        self.ctx.inst_ctx.a
-                    );*/
+                else if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.a);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.a, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
                 }
+                /*println!(
+                    "Emu::source_a_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.a
+                );*/
 
                 // Feed the stats
                 if self.ctx.do_stats {
@@ -187,29 +185,27 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, 8) {
-                        assert!(*mem_reads_index < mem_reads.len());
-                        self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
-                        *mem_reads_index += 1;
-                    } else {
-                        let (required_address_1, required_address_2) =
-                            Mem::required_addresses(address, 8);
-                        debug_assert!(required_address_1 != required_address_2);
-                        assert!(*mem_reads_index < mem_reads.len());
-                        let raw_data_1 = mem_reads[*mem_reads_index];
-                        *mem_reads_index += 1;
-                        assert!(*mem_reads_index < mem_reads.len());
-                        let raw_data_2 = mem_reads[*mem_reads_index];
-                        *mem_reads_index += 1;
-                        self.ctx.inst_ctx.a =
-                            Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
-                    }
-                    /*println!(
-                        "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
-                        *mem_reads_index, self.ctx.inst_ctx.a
-                    );*/
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    debug_assert!(required_address_1 != required_address_2);
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_1 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_2 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    self.ctx.inst_ctx.a =
+                        Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
                 }
+                /*println!(
+                    "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.a
+                );*/
 
                 // Feed the stats
                 if self.ctx.do_stats {
@@ -307,23 +303,22 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, 8) {
-                        self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
-                        mem_reads.push(self.ctx.inst_ctx.b);
-                    } else {
-                        let mut additional_data: Vec<u64>;
-                        (self.ctx.inst_ctx.b, additional_data) =
-                            self.ctx.inst_ctx.mem.read_required(address, 8);
-                        debug_assert!(!additional_data.is_empty());
-                        mem_reads.append(&mut additional_data);
-                    }
-                    /*println!(
-                        "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
-                        mem_reads.len(),
-                        self.ctx.inst_ctx.b
-                    );*/
+                else if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
                 }
+                /*println!(
+                    "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.b
+                );*/
+
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(address, 8);
                 }
@@ -344,24 +339,23 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, instruction.ind_width) {
-                        self.ctx.inst_ctx.b =
-                            self.ctx.inst_ctx.mem.read(address, instruction.ind_width);
-                        mem_reads.push(self.ctx.inst_ctx.b);
-                    } else {
-                        let mut additional_data: Vec<u64>;
-                        (self.ctx.inst_ctx.b, additional_data) =
-                            self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
-                        debug_assert!(!additional_data.is_empty());
-                        mem_reads.append(&mut additional_data);
-                    }
-                    /*println!(
-                        "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
-                        mem_reads.len(),
-                        self.ctx.inst_ctx.b
-                    );*/
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    self.ctx.inst_ctx.b =
+                        self.ctx.inst_ctx.mem.read(address, instruction.ind_width);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
                 }
+                /*println!(
+                    "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.b
+                );*/
+
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(address, instruction.ind_width);
                 }
@@ -396,37 +390,35 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, 8) {
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
-                        self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                        let raw_data = mem_reads[*mem_reads_index];
                         *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_single_not_aligned_data(address, 8, raw_data);
                     } else {
-                        let (required_address_1, required_address_2) =
-                            Mem::required_addresses(address, 8);
-                        if required_address_1 == required_address_2 {
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            self.ctx.inst_ctx.b =
-                                Mem::get_single_not_aligned_data(address, 8, raw_data);
-                        } else {
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data_1 = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data_2 = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
-                                address, 8, raw_data_1, raw_data_2,
-                            );
-                        }
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
                     }
-                    /*println!(
-                        "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
-                        *mem_reads_index, self.ctx.inst_ctx.b
-                    );*/
                 }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(address, 8);
                 }
@@ -447,43 +439,42 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
                 }
                 // Otherwise, get it from memory
-                else {
-                    if Mem::is_full_aligned(address, instruction.ind_width) {
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, instruction.ind_width);
+                    if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
-                        self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                        let raw_data = mem_reads[*mem_reads_index];
                         *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data,
+                        );
                     } else {
-                        let (required_address_1, required_address_2) =
-                            Mem::required_addresses(address, instruction.ind_width);
-                        if required_address_1 == required_address_2 {
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
-                                address,
-                                instruction.ind_width,
-                                raw_data,
-                            );
-                        } else {
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data_1 = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            assert!(*mem_reads_index < mem_reads.len());
-                            let raw_data_2 = mem_reads[*mem_reads_index];
-                            *mem_reads_index += 1;
-                            self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
-                                address,
-                                instruction.ind_width,
-                                raw_data_1,
-                                raw_data_2,
-                            );
-                        }
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data_1,
+                            raw_data_2,
+                        );
                     }
-                    /*println!(
-                        "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
-                        *mem_reads_index, self.ctx.inst_ctx.b
-                    );*/
                 }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(address, instruction.ind_width);
                 }
