@@ -16,7 +16,11 @@ pub trait Instance<F: PrimeField>: Send + Sync {
         &mut self,
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>>;
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let _ = zisk_rom;
+        let _ = min_traces;
+        Ok(())
+    }
 
     fn compute_witness(&mut self) -> Option<AirInstance<F>>;
 

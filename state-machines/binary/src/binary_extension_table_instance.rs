@@ -5,9 +5,7 @@ use p3_field::PrimeField;
 use proofman::WitnessManager;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
-use zisk_core::ZiskRom;
 use zisk_pil::BinaryExtensionTableTrace;
-use ziskemu::EmuTrace;
 
 use rayon::prelude::*;
 
@@ -37,14 +35,6 @@ impl<F: PrimeField> BinaryExtensionTableInstance<F> {
 unsafe impl<F: PrimeField> Sync for BinaryExtensionTableInstance<F> {}
 
 impl<F: PrimeField> Instance<F> for BinaryExtensionTableInstance<F> {
-    fn collect(
-        &mut self,
-        _: &ZiskRom,
-        _: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
-
     fn compute_witness(&mut self) -> Option<AirInstance<F>> {
         let mut multiplicity = self.binary_extension_table_sm.multiplicity.lock().unwrap();
         let mut multiplicity = std::mem::take(&mut *multiplicity);

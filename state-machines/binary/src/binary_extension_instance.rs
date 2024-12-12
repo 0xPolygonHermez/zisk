@@ -4,11 +4,10 @@ use p3_field::PrimeField;
 
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
-use zisk_common::InstObserver;
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation, ZiskRom};
+use sm_common::{Instance, InstanceExpanderCtx, InstanceType, RegularInstance};
+use zisk_core::{ZiskRequiredOperation, ZiskRom};
 use zisk_pil::BinaryExtensionTrace;
-use ziskemu::{EmuTrace, ZiskEmulator};
+use ziskemu::EmuTrace;
 
 use crate::BinaryExtensionSM;
 
@@ -16,8 +15,6 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     iectx: InstanceExpanderCtx,
 
-    skipping: bool,
-    skipped: u64,
     inputs: Vec<ZiskRequiredOperation>,
     binary_e_trace: BinaryExtensionTrace<F>,
 }
@@ -26,18 +23,9 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, iectx: InstanceExpanderCtx) -> Self {
         let binary_e_trace = BinaryExtensionTrace::new();
 
-        Self {
-            binary_extension_sm,
-            iectx,
-            skipping: true,
-            skipped: 0,
-            inputs: Vec::new(),
-            binary_e_trace,
-        }
+        Self { binary_extension_sm, iectx, inputs: Vec::new(), binary_e_trace }
     }
 }
-
-unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}
 
 impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     fn collect(
@@ -45,10 +33,14 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         zisk_rom: &ZiskRom,
         min_traces: Arc<Vec<EmuTrace>>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let chunk_id = self.iectx.plan.checkpoint.as_ref().unwrap().chunk_id;
-        let observer: &mut dyn InstObserver = self;
+        self.inputs = RegularInstance::collect(
+            self.iectx.plan.check_point.unwrap(),
+            BinaryExtensionTrace::<F>::NUM_ROWS,
+            zisk_rom,
+            min_traces,
+            zisk_core::ZiskOperationType::BinaryE,
+        )?;
 
-        ZiskEmulator::process_rom_slice_plan::<F>(zisk_rom, &min_traces, chunk_id, observer);
         Ok(())
     }
 
@@ -67,28 +59,4 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     }
 }
 
-impl<F: PrimeField> InstObserver for BinaryExtensionInstance<F> {
-    #[inline(always)]
-    fn on_instruction(&mut self, zisk_inst: &ZiskInst, inst_ctx: &InstContext) -> bool {
-        if zisk_inst.op_type != ZiskOperationType::BinaryE {
-            return false;
-        }
-
-        if self.skipping {
-            let checkpoint = self.iectx.plan.checkpoint.as_ref().unwrap();
-            if checkpoint.skip == 0 || self.skipped == checkpoint.skip {
-                self.skipping = false;
-            } else {
-                self.skipped += 1;
-                return false;
-            }
-        }
-
-        let a = if zisk_inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
-        let b = if zisk_inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
-
-        self.inputs.push(ZiskRequiredOperation { step: inst_ctx.step, opcode: zisk_inst.op, a, b });
-
-        self.inputs.len() == BinaryExtensionTrace::<F>::NUM_ROWS
-    }
-}
+unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}

@@ -234,7 +234,7 @@ impl ZiskEmulator {
     /// Third phase of the witness computation
     /// I have a
     #[inline]
-    pub fn process_rom_slice_plan<F: PrimeField>(
+    pub fn process_rom_slice_plan(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
@@ -244,7 +244,7 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_plan::<F>(min_traces, chunk_id, inst_observer);
+        emu.run_slice_plan(min_traces, chunk_id, inst_observer);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

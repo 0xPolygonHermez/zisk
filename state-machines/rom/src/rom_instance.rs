@@ -5,7 +5,6 @@ use proofman_common::{AirInstance, FromTrace};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
-use ziskemu::EmuTrace;
 
 use crate::RomSM;
 
@@ -24,14 +23,6 @@ impl<F: PrimeField> RomInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for RomInstance<F> {
-    fn collect(
-        &mut self,
-        _zisk_rom: &ZiskRom,
-        _min_traces: Arc<Vec<EmuTrace>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
-
     fn compute_witness(&mut self) -> Option<AirInstance<F>> {
         RomSM::prove_instance(
             &self.zisk_rom,

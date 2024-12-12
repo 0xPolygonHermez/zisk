@@ -984,7 +984,7 @@ impl<'a> Emu<'a> {
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice_plan<F: PrimeField>(
+    pub fn run_slice_plan(
         &mut self,
         vec_traces: &[EmuTrace],
         chunk_id: usize,
@@ -1006,7 +1006,7 @@ impl<'a> Emu<'a> {
         loop {
             //let step = &vec_traces[current_box_id].steps[current_step_idx];
 
-            if self.step_slice_plan::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer) {
+            if self.step_slice_plan(emu_trace_steps, &mut mem_reads_index, inst_observer) {
                 break;
             }
             if self.ctx.inst_ctx.end {
@@ -1025,7 +1025,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_plan<F: PrimeField>(
+    pub fn step_slice_plan(
         &mut self,
         trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,

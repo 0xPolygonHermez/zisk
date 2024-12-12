@@ -4,7 +4,7 @@ use crate::{InstanceType, Metrics};
 
 pub type ChunkId = usize;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CheckPoint {
     pub chunk_id: ChunkId,
     // offset inside the chunk to start the trace. The offset corresponds to the number of
@@ -23,7 +23,7 @@ pub struct Plan {
     pub air_id: usize,
     pub segment_id: Option<usize>,
     pub instance_type: InstanceType,
-    pub checkpoint: Option<CheckPoint>,
+    pub check_point: Option<CheckPoint>,
     pub meta: Option<Box<dyn Any>>,
 }
 
@@ -36,7 +36,7 @@ impl Plan {
         checkpoint: Option<CheckPoint>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, checkpoint, meta }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point: checkpoint, meta }
     }
 }
 
