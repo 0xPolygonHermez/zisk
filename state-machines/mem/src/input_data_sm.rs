@@ -74,10 +74,17 @@ impl<F: PrimeField> InputDataSM<F> {
             self.std.unregister_predecessor(pctx, None);
         }
     }
-
     pub fn prove(&self, inputs: &[MemInput]) {
         let wcm = self.wcm.clone();
         let pctx = wcm.get_pctx();
+
+        if (inputs.is_empty()) {
+            pctx.set_proof_value("enable_input_data", F::zero());
+            return;
+        }
+
+        pctx.set_proof_value("enable_input_data", F::one());
+
         let ectx = wcm.get_ectx();
         let sctx = wcm.get_sctx();
 

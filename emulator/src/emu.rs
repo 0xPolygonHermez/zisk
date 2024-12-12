@@ -415,7 +415,7 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Set SP, if specified by the current instruction
+    // Set SP, if specified by the current instruction
     // #[cfg(feature = "sp")]
     // #[inline(always)]
     // pub fn set_sp(&mut self, instruction: &ZiskInst) {
@@ -426,7 +426,7 @@ impl<'a> Emu<'a> {
     //     }
     // }
 
-    /// Set PC, based on current PC, current flag and current instruction
+    // Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
         if instruction.set_pc {
