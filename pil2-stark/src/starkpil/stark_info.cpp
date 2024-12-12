@@ -122,6 +122,13 @@ void StarkInfo::load(json j)
         airValuesMap.push_back(map);
     }
 
+    for (uint64_t i = 0; i < j["proofValuesMap"].size(); i++) 
+    {
+        PolMap map;
+        map.name = j["proofValuesMap"][i]["name"];
+        proofValuesMap.push_back(map);
+    }
+
     for (uint64_t i = 0; i < j["cmPolsMap"].size(); i++) 
     {
         PolMap map;
@@ -308,6 +315,8 @@ opType string2opType(const string s)
         return airvalue;
     if(s == "custom") 
         return custom;
+    if(s == "proofvalue") 
+        return proofvalue;
     zklog.error("string2opType() found invalid string=" + s);
     exitProcess();
     exit(-1);

@@ -134,6 +134,7 @@ public:
     vector<PolMap> challengesMap;
     vector<PolMap> airgroupValuesMap;
     vector<PolMap> airValuesMap;
+    vector<PolMap> proofValuesMap;
     vector<PolMap> publicsMap;
     vector<vector<PolMap>> customCommitsMap;
 

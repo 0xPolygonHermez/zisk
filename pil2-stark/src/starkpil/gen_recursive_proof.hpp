@@ -32,6 +32,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         trace: pAddress,
         pols : pols,
         publicInputs : publicInputs,
+        proofValues: nullptr,
         challenges : challenges,
         airgroupValues : nullptr,
         evals : evals,

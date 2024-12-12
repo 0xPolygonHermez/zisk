@@ -6,7 +6,6 @@ use proofman_starks_lib_c::{save_challenges_c, save_proof_values_c, save_publics
 use core::panic;
 use std::fs;
 use std::error::Error;
-use std::mem::MaybeUninit;
 
 use colored::*;
 
@@ -25,7 +24,9 @@ use proofman_common::{ExecutionCtx, ProofCtx, ProofOptions, ProofType, Prover, S
 
 use std::os::raw::c_void;
 
-use proofman_util::{timer_start_debug, timer_start_info, timer_stop_and_log_debug, timer_stop_and_log_info};
+use proofman_util::{
+    create_buffer_fast, timer_start_debug, timer_start_info, timer_stop_and_log_debug, timer_stop_and_log_info,
+};
 
 pub struct ProofMan<F> {
     _phantom: std::marker::PhantomData<F>,
@@ -330,7 +331,7 @@ impl<F: Field + 'static> ProofMan<F> {
             }
         }
 
-        let buff_helper: Vec<MaybeUninit<F>> = Vec::with_capacity(buff_helper_size);
+        let buff_helper = create_buffer_fast(3 * buff_helper_size);
 
         *pctx.buff_helper.buff_helper.write().unwrap() = buff_helper;
         timer_stop_and_log_debug!(INITIALIZE_PROVERS);
@@ -579,17 +580,20 @@ impl<F: Field + 'static> ProofMan<F> {
         transcript: &mut FFITranscript,
     ) {
         let num_commit_stages = pctx.global_info.n_challenges.len() as u32;
-        let dctx = ectx.dctx.read().unwrap();
 
         // Calculate evals
         timer_start_debug!(CALCULATING_EVALS);
         Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 2, provers, pctx.clone(), transcript);
-        for group_idx in dctx.my_air_groups.iter() {
-            provers[group_idx[0]].calculate_lev(pctx.clone());
-            for idx in group_idx.iter() {
-                provers[*idx].opening_stage(1, sctx.clone(), pctx.clone());
+        for airgroup_id in 0..pctx.global_info.air_groups.len() {
+            for air_id in 0..pctx.global_info.airs[airgroup_id].len() {
+                let instances = pctx.air_instance_repo.find_air_instances(airgroup_id, air_id);
+                for instance in instances {
+                    provers[instance].calculate_lev(pctx.clone());
+                    provers[instance].opening_stage(1, sctx.clone(), pctx.clone());
+                }
             }
         }
+
         timer_stop_and_log_debug!(CALCULATING_EVALS);
         Self::calculate_challenges(num_commit_stages + 2, provers, pctx.clone(), ectx.clone(), transcript, false);
 
@@ -597,14 +601,17 @@ impl<F: Field + 'static> ProofMan<F> {
         Self::get_challenges(pctx.global_info.n_challenges.len() as u32 + 3, provers, pctx.clone(), transcript);
         info!("{}: Calculating FRI Polynomials", Self::MY_NAME);
         timer_start_debug!(CALCULATING_FRI_POLINOMIAL);
-        for group_idx in dctx.my_air_groups.iter() {
-            provers[group_idx[0]].calculate_xdivxsub(pctx.clone());
-            for idx in group_idx.iter() {
-                provers[*idx].opening_stage(2, sctx.clone(), pctx.clone());
+
+        for airgroup_id in 0..pctx.global_info.air_groups.len() {
+            for air_id in 0..pctx.global_info.airs[airgroup_id].len() {
+                let instances = pctx.air_instance_repo.find_air_instances(airgroup_id, air_id);
+                for instance in instances {
+                    provers[instance].calculate_xdivxsub(pctx.clone());
+                    provers[instance].opening_stage(2, sctx.clone(), pctx.clone());
+                }
             }
         }
         timer_stop_and_log_debug!(CALCULATING_FRI_POLINOMIAL);
-        drop(dctx);
 
         let global_steps_fri: Vec<usize> = pctx.global_info.steps_fri.iter().map(|step| step.n_bits).collect();
         let num_opening_stages = global_steps_fri.len() as u32;

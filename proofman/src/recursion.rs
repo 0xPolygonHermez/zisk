@@ -4,7 +4,6 @@ use std::ffi::CString;
 use std::fs::File;
 use std::sync::Arc;
 use proofman_starks_lib_c::*;
-use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::io::Read;
 
@@ -12,14 +11,14 @@ use proofman_common::{ExecutionCtx, ProofCtx, ProofType, Setup, SetupCtx, Setups
 
 use std::os::raw::{c_void, c_char};
 
-use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use proofman_util::{create_buffer_fast, timer_start_trace, timer_stop_and_log_trace};
 
 type GetWitnessFunc =
     unsafe extern "C" fn(zkin: *mut c_void, dat_file: *const c_char, witness: *mut c_void, n_mutexes: u64);
 
 type GetSizeWitnessFunc = unsafe extern "C" fn() -> u64;
 
-type GenWitnessResult<F> = Result<(Vec<MaybeUninit<F>>, Vec<MaybeUninit<F>>), Box<dyn std::error::Error>>;
+type GenWitnessResult<F> = Result<(Vec<F>, Vec<F>), Box<dyn std::error::Error>>;
 
 pub fn generate_vadcop_recursive1_proof<F: Field>(
     pctx: &ProofCtx<F>,
@@ -469,7 +468,7 @@ pub fn generate_fflonk_snark_proof<F: Field>(
         let get_size_witness: Symbol<GetSizeWitnessFunc> = library.get(b"getSizeWitness\0")?;
         let size_witness = get_size_witness();
 
-        let witness: Vec<MaybeUninit<u8>> = Vec::with_capacity((size_witness * 32) as usize);
+        let witness: Vec<u8> = create_buffer_fast((size_witness * 32) as usize);
         let witness_ptr = witness.as_ptr() as *mut c_void;
 
         let get_witness: Symbol<GetWitnessFunc> = library.get(b"getWitness\0")?;
@@ -502,19 +501,6 @@ fn generate_witness<F: Field>(
     // Load the symbol (function) from the library
     timer_start_trace!(CALCULATE_WITNESS);
 
-    let p_stark_info = setup.p_setup.p_stark_info;
-
-    let n = 1 << (setup.stark_info.stark_struct.n_bits);
-
-    let buffer: Vec<MaybeUninit<F>> = Vec::with_capacity(n_cols * n);
-    let p_address = buffer.as_ptr() as *mut c_void;
-
-    let offset_cm1 = get_map_offsets_c(p_stark_info, "cm1", false);
-
-    let n_publics = setup.stark_info.n_publics as usize;
-    let publics: Vec<MaybeUninit<F>> = Vec::with_capacity(n_publics);
-    let p_publics = publics.as_ptr() as *mut c_void;
-
     let rust_lib_filename = setup_path.display().to_string() + ".so";
     let rust_lib_path = Path::new(rust_lib_filename.as_str());
 
@@ -523,46 +509,57 @@ fn generate_witness<F: Field>(
     }
 
     let library: Library = unsafe { Library::new(rust_lib_path)? };
-    unsafe {
-        // Call the function
-        let dat_filename = setup_path.display().to_string() + ".dat";
-        let dat_filename_str = CString::new(dat_filename.as_str()).unwrap();
-        let dat_filename_ptr = dat_filename_str.as_ptr() as *mut std::os::raw::c_char;
 
-        let exec_filename = setup_path.display().to_string() + ".exec";
-        let exec_filename_str = CString::new(exec_filename.as_str()).unwrap();
-        let exec_filename_ptr = exec_filename_str.as_ptr() as *mut std::os::raw::c_char;
+    let dat_filename = setup_path.display().to_string() + ".dat";
+    let dat_filename_str = CString::new(dat_filename.as_str()).unwrap();
+    let dat_filename_ptr = dat_filename_str.as_ptr() as *mut std::os::raw::c_char;
 
+    let nmutex = 128;
+
+    let exec_filename = setup_path.display().to_string() + ".exec";
+    let exec_filename_str = CString::new(exec_filename.as_str()).unwrap();
+    let exec_filename_ptr = exec_filename_str.as_ptr() as *mut std::os::raw::c_char;
+
+    let size_witness = unsafe {
         let get_size_witness: Symbol<GetSizeWitnessFunc> = library.get(b"getSizeWitness\0")?;
-        let size_witness = get_size_witness();
+        get_size_witness()
+    };
 
-        let mut file = File::open(exec_filename)?; // Open the file
+    let mut file = File::open(exec_filename)?; // Open the file
 
-        let mut n_adds = [0u8; 8]; // Buffer for nAdds (u64 is 8 bytes)
-        file.read_exact(&mut n_adds)?;
-        let n_adds = u64::from_le_bytes(n_adds);
+    let mut n_adds = [0u8; 8]; // Buffer for nAdds (u64 is 8 bytes)
+    file.read_exact(&mut n_adds)?;
+    let n_adds = u64::from_le_bytes(n_adds);
 
-        let witness: Vec<MaybeUninit<F>> = Vec::with_capacity((size_witness + n_adds) as usize);
-        let witness_ptr = witness.as_ptr() as *mut c_void;
+    let witness: Vec<F> = create_buffer_fast((size_witness + n_adds) as usize);
+    let witness_ptr = witness.as_ptr() as *mut c_void;
 
+    unsafe {
         let get_witness: Symbol<GetWitnessFunc> = library.get(b"getWitness\0")?;
-
-        let nmutex = 128;
-
         get_witness(zkin, dat_filename_ptr, witness_ptr, nmutex);
-
-        get_committed_pols_c(
-            witness_ptr,
-            exec_filename_ptr,
-            p_address,
-            p_publics,
-            size_witness,
-            n as u64,
-            n_publics as u64,
-            offset_cm1,
-            n_cols as u64,
-        );
     }
+
+    let n = 1 << (setup.stark_info.stark_struct.n_bits);
+
+    let buffer = create_buffer_fast(n_cols * n);
+    let p_address = buffer.as_ptr() as *mut c_void;
+
+    let n_publics = setup.stark_info.n_publics as usize;
+    let publics = create_buffer_fast(n_publics);
+    let p_publics = publics.as_ptr() as *mut c_void;
+
+    get_committed_pols_c(
+        witness_ptr,
+        exec_filename_ptr,
+        p_address,
+        p_publics,
+        size_witness,
+        n as u64,
+        n_publics as u64,
+        0,
+        n_cols as u64,
+    );
+
     timer_stop_and_log_trace!(CALCULATE_WITNESS);
 
     Ok((buffer, publics))

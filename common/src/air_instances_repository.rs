@@ -4,9 +4,15 @@ use p3_field::Field;
 
 use crate::AirInstance;
 
+// #[derive(Default)]
+// pub struct InstancesInfo {
+//     pub my_groups: Vec<Vec<usize>>,
+//     pub my_air_groups: Vec<Vec<usize>>,
+// }
 pub struct AirInstancesRepository<F> {
     pub air_instances: RwLock<Vec<AirInstance<F>>>,
     pub air_instances_counts: RwLock<HashMap<(usize, usize), usize>>,
+    // pub instances_info: RwLock<InstancesInfo>,
 }
 
 impl<F: Field> Default for AirInstancesRepository<F> {
@@ -20,6 +26,7 @@ impl<F: Field> AirInstancesRepository<F> {
         AirInstancesRepository {
             air_instances: RwLock::new(Vec::new()),
             air_instances_counts: RwLock::new(HashMap::new()),
+            // instances_info: RwLock::new(InstancesInfo::default()),
         }
     }
 
@@ -63,6 +70,40 @@ impl<F: Field> AirInstancesRepository<F> {
 
         indices
     }
+
+    // pub fn calculate_my_groups(&self) {
+    //     let mut group_indices: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+
+    //     let air_instances = self.air_instances.read().unwrap();
+
+    //     let mut instances_info = self.instances_info.write().unwrap();
+
+    //     // Populate the HashMap based on group_id and buffer positions
+    //     for (idx, instance) in air_instances.iter().enumerate() {
+    //         #[cfg(feature = "distributed")]
+    //         let pos_buffer =
+    //             self.roots_gatherv_displ[self.instances_owner[idx].0] as usize + self.instances_owner[idx].1 * 4;
+    //         #[cfg(not(feature = "distributed"))]
+    //         let pos_buffer = idx * 4;
+    //         group_indices.entry(instance.airgroup_id).or_default().push(pos_buffer);
+    //     }
+
+    //     for (_, indices) in group_indices {
+    //         instances_info.my_groups.push(indices);
+    //     }
+
+    //     let mut my_air_groups_indices: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    //     for (loc_idx, air_instance) in air_instances.iter().enumerate() {
+    //         my_air_groups_indices.entry((air_instance.airgroup_id, air_instance.air_id)).or_default().push(loc_idx);
+    //     }
+
+    //     for (_, indices) in my_air_groups_indices {
+    //         instances_info.my_air_groups.push(indices);
+    //     }
+
+    //     println!("// MY AIR GROUPS {:?} // MY GROUPS {:?}", instances_info.my_air_groups, instances_info.my_groups);
+
+    // }
 
     pub fn find_last_segment(&self, airgroup_id: usize, air_id: usize) -> Option<usize> {
         let air_instances = self.air_instances.read().unwrap();
