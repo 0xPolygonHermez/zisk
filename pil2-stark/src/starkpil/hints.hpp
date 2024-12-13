@@ -307,7 +307,7 @@ HintFieldValues getHintField(
                 if(hintOptions.inverse)  {
                     Goldilocks3::inv((Goldilocks3::Element *)hintFieldInfo.values, (Goldilocks3::Element *)&params.airgroupValues[FIELD_EXTENSION*hintFieldVal.id]);
                 } else {
-                    std::memcpy(hintFieldInfo.values, &params.airgroupValues[FIELD_EXTENSION*hintFieldVal.id], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                    std::memcpy(hintFieldInfo.values, &params.airgroupValues[FIELD_EXTENSION*hintFieldVal.id], hintFieldInfo.size * sizeof(Goldilocks::Element));
                 }
             }
         } else if (hintFieldVal.operand == opType::airvalue) {
@@ -320,11 +320,11 @@ HintFieldValues getHintField(
                 if(hintOptions.inverse)  {
                     Goldilocks3::inv((Goldilocks3::Element *)hintFieldInfo.values, (Goldilocks3::Element *)&params.airValues[FIELD_EXTENSION*hintFieldVal.id]);
                 } else {
-                    std::memcpy(hintFieldInfo.values, &params.airValues[FIELD_EXTENSION*hintFieldVal.id], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                    std::memcpy(hintFieldInfo.values, &params.airValues[FIELD_EXTENSION*hintFieldVal.id], hintFieldInfo.size * sizeof(Goldilocks::Element));
                 }
             }
         } else if (hintFieldVal.operand == opType::proofvalue) {
-            uint64_t dim = FIELD_EXTENSION;
+            uint64_t dim = 1;
             hintFieldInfo.size = dim;
             hintFieldInfo.values = new Goldilocks::Element[hintFieldInfo.size];
             hintFieldInfo.fieldType = dim == 1 ? HintFieldType::Field : HintFieldType::FieldExtended;
@@ -333,7 +333,7 @@ HintFieldValues getHintField(
                 if(hintOptions.inverse)  {
                     Goldilocks3::inv((Goldilocks3::Element *)hintFieldInfo.values, (Goldilocks3::Element *)&params.proofValues[FIELD_EXTENSION*hintFieldVal.id]);
                 } else {
-                    std::memcpy(hintFieldInfo.values, &params.proofValues[FIELD_EXTENSION*hintFieldVal.id], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                    std::memcpy(hintFieldInfo.values, &params.proofValues[FIELD_EXTENSION*hintFieldVal.id], hintFieldInfo.size * sizeof(Goldilocks::Element));
                 }
             }
         } else if (hintFieldVal.operand == opType::challenge) {
@@ -344,7 +344,7 @@ HintFieldValues getHintField(
             if(hintOptions.inverse) {
                 Goldilocks3::inv((Goldilocks3::Element *)hintFieldInfo.values, (Goldilocks3::Element *)&params.challenges[FIELD_EXTENSION*hintFieldVal.id]);
             } else {
-                std::memcpy(hintFieldInfo.values, &params.challenges[FIELD_EXTENSION*hintFieldVal.id], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                std::memcpy(hintFieldInfo.values, &params.challenges[FIELD_EXTENSION*hintFieldVal.id], hintFieldInfo.size * sizeof(Goldilocks::Element));
             }
         } else if (hintFieldVal.operand == opType::string_) {
             hintFieldInfo.values = nullptr;
