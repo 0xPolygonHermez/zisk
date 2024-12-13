@@ -10,7 +10,7 @@ use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 
 #[allow(dead_code)]
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -72,7 +72,6 @@ impl<F> WitnessComponent<F> for MemSM {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
         _sctx: Arc<SetupCtx>,
     ) {
     }

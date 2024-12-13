@@ -11,7 +11,7 @@ use zisk_core::Riscv2zisk;
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
 use proofman::{WitnessLibrary, WitnessManager};
-use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode};
+use proofman_common::{initialize_logger, ProofCtx, SetupCtx, VerboseMode};
 
 pub struct ZiskWitness<F: PrimeField> {
     /// Public inputs path
@@ -49,8 +49,8 @@ impl<F: PrimeField> ZiskWitness<F> {
         })
     }
 
-    fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let wcm = WitnessManager::new(pctx, ectx, sctx);
+    fn initialize(&mut self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
+        let wcm = WitnessManager::new(pctx, sctx);
         let wcm = Arc::new(wcm);
 
         self.wcm.set(wcm.clone()).ok();
@@ -97,34 +97,23 @@ impl<F: PrimeField> ZiskWitness<F> {
 }
 
 impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
-    fn start_proof(
-        &mut self,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
-        self.initialize(pctx.clone(), ectx.clone(), sctx.clone());
+    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
+        self.initialize(pctx.clone(), sctx.clone());
 
-        self.wcm.get().unwrap().start_proof(pctx, ectx, sctx);
+        self.wcm.get().unwrap().start_proof(pctx, sctx);
     }
 
     fn end_proof(&mut self) {
         self.wcm.get().unwrap().end_proof();
     }
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
         timer_start_info!(EXECUTE);
-        self.executor.get().unwrap().execute(&self.public_inputs_path, pctx, ectx, sctx);
+        self.executor.get().unwrap().execute(&self.public_inputs_path, pctx, sctx);
         timer_stop_and_log_info!(EXECUTE);
     }
 
-    fn calculate_witness(
-        &mut self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        sctx: Arc<SetupCtx>,
-    ) {
-        self.wcm.get().unwrap().calculate_witness(stage, pctx, ectx, sctx);
+    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
+        self.wcm.get().unwrap().calculate_witness(stage, pctx, sctx);
     }
 }
 

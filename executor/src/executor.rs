@@ -1,6 +1,6 @@
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 
 use rayon::prelude::*;
@@ -46,13 +46,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.push(sm);
     }
 
-    pub fn execute(
-        &self,
-        public_inputs_path: &Path,
-        _: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx>,
-        _: Arc<SetupCtx>,
-    ) {
+    pub fn execute(&self, public_inputs_path: &Path, pctx: Arc<ProofCtx<F>>, _: Arc<SetupCtx>) {
         // Call emulate with these options
         let public_inputs = {
             // Read inputs data from the provided inputs path
@@ -103,7 +97,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         for (i, plans_by_sm) in plans.iter_mut().enumerate() {
             for plan in plans_by_sm.drain(..) {
                 let (is_mine, global_idx) =
-                    ectx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
+                    pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
                 if is_mine || plan.instance_type == InstanceType::Table {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
@@ -222,10 +216,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
     fn create_main_instances(&self, main_planning: &mut Vec<Plan>) -> Vec<MainInstance<F>> {
         let mut main_instances = Vec::new();
-        let ectx = self.wcm.get_ectx();
+        let pctx = self.wcm.get_pctx();
 
         for plan in main_planning.drain(..) {
-            if let (true, global_idx) = ectx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1) {
+            if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1) {
                 let iectx = InstanceExpanderCtx::new(global_idx, plan);
                 main_instances.push(self.main_sm.get_instance(iectx));
             }

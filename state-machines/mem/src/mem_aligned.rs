@@ -5,7 +5,7 @@ use std::sync::{
 
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ExecutionCtx, ProofCtx, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
 use zisk_pil::{MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS};
@@ -44,7 +44,7 @@ impl MemAlignedSM {
 
     fn read(
         &self,
-        _addr: u64, /* , _ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx */
+        _addr: u64, /* , _ctx: &mut ProofCtx<F> */
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((0, true))
     }
@@ -52,7 +52,7 @@ impl MemAlignedSM {
     fn write(
         &self,
         _addr: u64,
-        _val: u64, /* , _ctx: &mut ProofCtx<F>, _ectx: &ExecutionCtx */
+        _val: u64, /* , _ctx: &mut ProofCtx<F> */
     ) -> Result<OpResult, Box<dyn std::error::Error>> {
         Ok((0, true))
     }
@@ -64,7 +64,6 @@ impl<F> WitnessComponent<F> for MemAlignedSM {
         _stage: u32,
         _air_instance: Option<usize>,
         _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
         _sctx: Arc<SetupCtx>,
     ) {
     }
