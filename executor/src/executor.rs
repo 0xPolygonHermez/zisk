@@ -1,6 +1,6 @@
 use p3_field::PrimeField;
 use proofman::WitnessManager;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::ProofCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 
 use rayon::prelude::*;
@@ -46,7 +46,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.push(sm);
     }
 
-    pub fn execute(&self, public_inputs_path: &Path, pctx: Arc<ProofCtx<F>>, _: Arc<SetupCtx>) {
+    pub fn execute(&self, public_inputs_path: &Path, pctx: Arc<ProofCtx<F>>) {
         // Call emulate with these options
         let public_inputs = {
             // Read inputs data from the provided inputs path

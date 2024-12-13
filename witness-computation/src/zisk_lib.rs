@@ -106,9 +106,9 @@ impl<F: PrimeField> WitnessLibrary<F> for ZiskWitness<F> {
     fn end_proof(&mut self) {
         self.wcm.get().unwrap().end_proof();
     }
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         timer_start_info!(EXECUTE);
-        self.executor.get().unwrap().execute(&self.public_inputs_path, pctx, sctx);
+        self.executor.get().unwrap().execute(&self.public_inputs_path, pctx);
         timer_stop_and_log_info!(EXECUTE);
     }
 
