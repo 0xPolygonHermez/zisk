@@ -6,19 +6,11 @@ use zisk_pil::{
     BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
-pub struct BinaryPlanner<F: PrimeField> {
-    _phantom: std::marker::PhantomData<F>,
-}
+pub struct BinaryPlanner<F: PrimeField>(std::marker::PhantomData<F>);
 
 impl<F: PrimeField> Default for BinaryPlanner<F> {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<F: PrimeField> BinaryPlanner<F> {
-    pub fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self(std::marker::PhantomData)
     }
 }
 

@@ -38,7 +38,7 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(ArithPlanner::<F>::new())
+        Box::new(ArithPlanner::<F>::default())
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {

@@ -54,7 +54,7 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(BinaryPlanner::<F>::new())
+        Box::new(BinaryPlanner::<F>::default())
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {

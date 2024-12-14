@@ -4,19 +4,11 @@ use zisk_pil::{
     ArithTrace, ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
-pub struct ArithPlanner<F: PrimeField> {
-    _phantom: std::marker::PhantomData<F>,
-}
+pub struct ArithPlanner<F: PrimeField>(std::marker::PhantomData<F>);
 
 impl<F: PrimeField> Default for ArithPlanner<F> {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<F: PrimeField> ArithPlanner<F> {
-    pub fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self(std::marker::PhantomData)
     }
 }
 

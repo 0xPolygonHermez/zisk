@@ -10,7 +10,6 @@ use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
 use zisk_core::ZiskRequiredMemory;
 
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ProofCtx, SetupCtx};
 
 #[allow(dead_code)]
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
@@ -43,7 +42,7 @@ impl MemSM {
         };
         let mem_sm = Arc::new(mem_sm);
 
-        wcm.register_proxy_component(mem_sm.clone());
+        wcm.register_component(mem_sm.clone());
 
         // For all the secondary state machines, register the main state machine as a predecessor
         mem_sm.mem_aligned_sm.register_predecessor();
@@ -66,16 +65,7 @@ impl MemSM {
     }
 }
 
-impl<F> WitnessComponent<F> for MemSM {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F> WitnessComponent<F> for MemSM {}
 
 impl Provable<ZiskRequiredMemory, OpResult> for MemSM {
     fn calculate(

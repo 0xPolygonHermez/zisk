@@ -5,10 +5,8 @@ use std::sync::{
 
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{ProofCtx, SetupCtx};
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
-use zisk_pil::{MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
@@ -27,7 +25,7 @@ impl MemAlignedSM {
             Self { registered_predecessors: AtomicU32::new(0), inputs: Mutex::new(Vec::new()) };
         let mem_aligned_sm = Arc::new(mem_aligned_sm);
 
-        wcm.register_component(mem_aligned_sm.clone(), MEM_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]);
+        wcm.register_component(mem_aligned_sm.clone());
 
         mem_aligned_sm
     }
@@ -58,16 +56,7 @@ impl MemAlignedSM {
     }
 }
 
-impl<F> WitnessComponent<F> for MemAlignedSM {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _sctx: Arc<SetupCtx>,
-    ) {
-    }
-}
+impl<F> WitnessComponent<F> for MemAlignedSM {}
 
 impl Provable<MemOp, OpResult> for MemAlignedSM {
     fn calculate(&self, operation: MemOp) -> Result<OpResult, Box<dyn std::error::Error>> {

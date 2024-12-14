@@ -16,12 +16,12 @@ pub struct RomInstance<F: PrimeField> {
     zisk_rom: Arc<ZiskRom>,
 
     /// ROM trace
-    rom_trace: RomTrace<F>,
+    trace: RomTrace<F>,
 }
 
 impl<F: PrimeField> RomInstance<F> {
     pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
-        Self { iectx, zisk_rom, rom_trace: RomTrace::new() }
+        Self { iectx, zisk_rom, trace: RomTrace::new() }
     }
 }
 
@@ -30,13 +30,11 @@ impl<F: PrimeField> Instance<F> for RomInstance<F> {
         RomSM::prove_instance(
             &self.zisk_rom,
             &self.iectx.plan,
-            &mut self.rom_trace,
+            &mut self.trace,
             RomTrace::<F>::NUM_ROWS,
         );
 
-        let instance = AirInstance::new_from_trace(FromTrace::new(&mut self.rom_trace));
-
-        Some(instance)
+        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
     }
 
     fn instance_type(&self) -> InstanceType {

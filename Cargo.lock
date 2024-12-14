@@ -198,9 +198,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.3"
+version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
+checksum = "9157bbaa6b165880c27a4293a474c91cdcf265cc68cc829bf10be0964a391caf"
 dependencies = [
  "jobserver",
  "libc",
@@ -1484,7 +1484,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "log",
  "num-bigint",
@@ -1502,7 +1502,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "bytes",
  "log",
@@ -1622,7 +1622,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "colored",
  "env_logger",
@@ -1643,7 +1643,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "env_logger",
  "log",
@@ -1662,7 +1662,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "log",
  "p3-field",
@@ -1673,7 +1673,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1683,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "log",
 ]
@@ -1691,7 +1691,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "colored",
  "sysinfo 0.31.4",
@@ -1771,7 +1771,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2",
- "thiserror 2.0.6",
+ "thiserror 2.0.7",
  "tokio",
  "tracing",
 ]
@@ -1790,7 +1790,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.6",
+ "thiserror 2.0.7",
  "tinyvec",
  "tracing",
  "web-time",
@@ -2061,9 +2061,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.10.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16f1201b3c9a7ee8039bcadc17b7e605e2945b27eee7631788c1bd2b0643674b"
+checksum = "d2bf47e6ff922db3825eb750c4e2ff784c6ff8fb9e13046ef6a1d1c5401b0b37"
 dependencies = [
  "web-time",
 ]
@@ -2333,7 +2333,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "log",
  "p3-field",
@@ -2484,11 +2484,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.6"
+version = "2.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec2a1820ebd077e2b90c4df007bebf344cd394098a13c563957d0afc83ea47"
+checksum = "93605438cbd668185516ab499d589afb7ee1859ea3d5fc8f6b0755e1c7443767"
 dependencies = [
- "thiserror-impl 2.0.6",
+ "thiserror-impl 2.0.7",
 ]
 
 [[package]]
@@ -2504,9 +2504,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.6"
+version = "2.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d65750cab40f4ff1929fb1ba509e9914eb756131cef4210da8d5d700d26f6312"
+checksum = "e1d8749b4531af2117677a5fcd12b1348a3fe2b81e36e61ffeac5c4aa3273e36"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2682,7 +2682,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#b4f007aca4b77912649832ebd6ba73fdf048e9a5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#7d1bd95817b1b2d74abfb83cf0b6b356ff9da6c7"
 dependencies = [
  "proofman-starks-lib-c",
 ]

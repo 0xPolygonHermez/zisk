@@ -38,7 +38,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance<F> {
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.inputs = InputsCollector::collect(
             self.iectx.plan.check_point.unwrap(),
-            BinaryTrace::<F>::NUM_ROWS,
+            self.trace.num_rows(),
             zisk_rom,
             min_traces,
             zisk_core::ZiskOperationType::Binary,
