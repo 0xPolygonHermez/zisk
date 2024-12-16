@@ -504,10 +504,6 @@ impl<'a> Emu<'a> {
                 if Mem::address_is_register(addr) {
                     self.set_reg(Mem::address_to_register_index(addr), val);
                 }
-                // Otherwise, get it from memory
-                else {
-                    self.ctx.inst_ctx.mem.write_silent(addr, val, 8);
-                }
             }
             STORE_IND => {
                 // Calculate the value
@@ -530,10 +526,6 @@ impl<'a> Emu<'a> {
                 // If the operation is a register operation, write it to the context registers
                 if (instruction.ind_width == 8) && Mem::address_is_register(addr) {
                     self.set_reg(Mem::address_to_register_index(addr), val);
-                }
-                // Otherwise, get it from memory
-                else {
-                    self.ctx.inst_ctx.mem.write_silent(addr, val, instruction.ind_width);
                 }
             }
             _ => panic!(
