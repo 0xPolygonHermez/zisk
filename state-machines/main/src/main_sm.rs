@@ -1,5 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
+use sm_mem::MemProxy;
 
 use crate::InstanceExtensionCtx;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -12,10 +13,9 @@ use proofman_common::{AirInstance, ProofCtx};
 
 use proofman::WitnessComponent;
 use sm_arith::ArithSM;
-use sm_mem::MemSM;
 use zisk_pil::{
-    MainRow, MainTrace, ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    ArithTrace, BinaryExtensionTrace, BinaryTrace, MainRow, MainTrace, ARITH_AIR_IDS,
+    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 use ziskemu::{Emu, EmuTrace, ZiskEmulator};
 
@@ -28,14 +28,14 @@ pub struct MainSM<F: PrimeField> {
     /// Witness computation manager
     wcm: Arc<WitnessManager<F>>,
 
+    /// Memory state machine
+    mem_proxy_sm: Arc<MemProxy<F>>,
+
     /// Arithmetic state machine
     arith_sm: Arc<ArithSM<F>>,
 
     /// Binary state machine
     binary_sm: Arc<BinarySM<F>>,
-
-    /// Memory state machine
-    mem_sm: Arc<MemSM>,
 }
 
 impl<F: PrimeField> MainSM<F> {
@@ -54,16 +54,16 @@ impl<F: PrimeField> MainSM<F> {
     /// * Arc to the MainSM state machine
     pub fn new(
         wcm: Arc<WitnessManager<F>>,
+        mem_proxy_sm: Arc<MemProxy<F>>,
         arith_sm: Arc<ArithSM<F>>,
         binary_sm: Arc<BinarySM<F>>,
-        mem_sm: Arc<MemSM>,
     ) -> Arc<Self> {
-        let main_sm = Arc::new(Self { wcm: wcm.clone(), arith_sm, binary_sm, mem_sm });
+        let main_sm = Arc::new(Self { wcm: wcm.clone(), mem_proxy_sm, arith_sm, binary_sm });
 
         wcm.register_component(main_sm.clone(), Some(ZISK_AIRGROUP_ID), Some(MAIN_AIR_IDS));
 
         // For all the secondary state machines, register the main state machine as a predecessor
-        main_sm.mem_sm.register_predecessor();
+        main_sm.mem_proxy_sm.register_predecessor();
         main_sm.binary_sm.register_predecessor();
         main_sm.arith_sm.register_predecessor();
 
@@ -80,7 +80,6 @@ impl<F: PrimeField> MainSM<F> {
         let segment_id = iectx.segment_id.unwrap();
         let segment_trace = &vec_traces[segment_id];
 
-        let offset = iectx.offset;
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
         let filled = segment_trace.steps.len() + 1;
         info!(
@@ -133,8 +132,11 @@ impl<F: PrimeField> MainSM<F> {
 
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &segment_trace.start_state);
 
-        let rng = offset as usize..(offset as usize + MainRow::<F>::ROW_SIZE);
-        iectx.prover_buffer[rng].copy_from_slice(row0.as_slice());
+        let trace = MainTrace::new(air.num_rows());
+        let mut prover_buffer = trace.buffer.unwrap();
+
+        let rng = 0..MainRow::<F>::ROW_SIZE;
+        prover_buffer[rng].copy_from_slice(row0.as_slice());
 
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
         let total_rows = segment_trace.steps.len();
@@ -151,6 +153,39 @@ impl<F: PrimeField> MainSM<F> {
                 segment_trace.steps[slice_start..slice_end].iter().enumerate()
             {
                 partial_trace[i] = emu.step_slice_full_trace(emu_trace_step);
+                // if partial_trace[i].a_src_mem == F::one() {
+                //     println!(
+                //         "A=MEM_OP_RD({}) [{},{}] PC:{}",
+                //         partial_trace[i].a_offset_imm0,
+                //         partial_trace[i].a[0],
+                //         partial_trace[i].a[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind ==
+                // F::one() {
+                //     println!(
+                //         "B=MEM_OP_RD({0}) [{1},{2}] PC:{3}",
+                //         partial_trace[i].addr1,
+                //         partial_trace[i].b[0],
+                //         partial_trace[i].b[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
+                // if partial_trace[i].b_src_mem == F::one() || partial_trace[i].b_src_ind ==
+                // F::one() {
+                //     println!(
+                //         "MEM_OP_WR({}) [{}, {}] PC:{}",
+                //         partial_trace[i].store_offset
+                //             + partial_trace[i].store_ind * partial_trace[i].a[0],
+                //         partial_trace[i].store_ra
+                //             * (partial_trace[i].pc + partial_trace[i].jmp_offset2
+                //                 - partial_trace[i].c[0])
+                //             + partial_trace[i].c[0],
+                //         (F::one() - partial_trace[i].store_ra) * partial_trace[i].c[1],
+                //         partial_trace[i].pc
+                //     );
+                // }
             }
             // if there are steps in the chunk update last row
             if slice_end - slice_start > 0 {
@@ -164,13 +199,21 @@ impl<F: PrimeField> MainSM<F> {
 
             //copy the chunk to the prover buffer
             let partial_buffer = partial_trace.buffer.as_ref().unwrap();
-            let buffer_offset_slice = offset as usize + (slice + 1) * MainRow::<F>::ROW_SIZE;
+            let buffer_offset_slice = (slice + 1) * MainRow::<F>::ROW_SIZE;
 
-            let rng = buffer_offset_slice..buffer_offset_slice + partial_buffer.len();
-            iectx.prover_buffer[rng].copy_from_slice(partial_buffer);
+            let slice_rows = if slice + SLICE_ROWS >=
+                pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows()
+            {
+                partial_buffer.len() - MainRow::<F>::ROW_SIZE
+            } else {
+                partial_buffer.len()
+            };
+
+            let rng = buffer_offset_slice..buffer_offset_slice + slice_rows;
+            prover_buffer[rng].copy_from_slice(&partial_buffer[..slice_rows]);
         }
 
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        let buffer = std::mem::take(&mut prover_buffer);
         let sctx = self.wcm.get_sctx();
         let mut air_instance = AirInstance::new(
             sctx.clone(),
@@ -183,9 +226,8 @@ impl<F: PrimeField> MainSM<F> {
         let main_last_segment = F::from_bool(segment_id == vec_traces.len() - 1);
         let main_segment = F::from_canonical_usize(segment_id);
 
-        air_instance.set_airvalue(&sctx, "Main.main_last_segment", main_last_segment);
-        air_instance.set_airvalue(&sctx, "Main.main_segment", main_segment);
-
+        air_instance.set_airvalue("Main.main_last_segment", None, main_last_segment);
+        air_instance.set_airvalue("Main.main_segment", None, main_segment);
         iectx.air_instance = Some(air_instance);
     }
 
@@ -210,11 +252,14 @@ impl<F: PrimeField> MainSM<F> {
 
         timer_start_debug!(PROVE_ARITH);
 
-        self.arith_sm.prove_instance(inputs, &mut iectx.prover_buffer, iectx.offset);
+        let trace = ArithTrace::new(air.num_rows());
+        let mut prover_buffer = trace.buffer.unwrap();
+
+        self.arith_sm.prove_instance(inputs, &mut prover_buffer);
         timer_stop_and_log_debug!(PROVE_ARITH);
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        let buffer = std::mem::take(&mut prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
             self.wcm.get_sctx(),
             ZISK_AIRGROUP_ID,
@@ -245,11 +290,14 @@ impl<F: PrimeField> MainSM<F> {
         timer_stop_and_log_debug!(PROCESS_BINARY);
 
         timer_start_debug!(PROVE_BINARY);
-        self.binary_sm.prove_instance(inputs, false, &mut iectx.prover_buffer, iectx.offset);
+        let trace = BinaryTrace::new(air.num_rows());
+        let mut prover_buffer = trace.buffer.unwrap();
+
+        self.binary_sm.prove_instance(inputs, false, &mut prover_buffer);
         timer_stop_and_log_debug!(PROVE_BINARY);
 
         timer_start_debug!(CREATE_AIR_INSTANCE);
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        let buffer = std::mem::take(&mut prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
             self.wcm.get_sctx(),
             ZISK_AIRGROUP_ID,
@@ -277,9 +325,12 @@ impl<F: PrimeField> MainSM<F> {
             air.num_rows(),
         );
 
-        self.binary_sm.prove_instance(inputs, true, &mut iectx.prover_buffer, iectx.offset);
+        let trace = BinaryExtensionTrace::new(air.num_rows());
+        let mut prover_buffer = trace.buffer.unwrap();
 
-        let buffer = std::mem::take(&mut iectx.prover_buffer);
+        self.binary_sm.prove_instance(inputs, true, &mut prover_buffer);
+
+        let buffer = std::mem::take(&mut prover_buffer);
         iectx.air_instance = Some(AirInstance::new(
             self.wcm.get_sctx(),
             ZISK_AIRGROUP_ID,

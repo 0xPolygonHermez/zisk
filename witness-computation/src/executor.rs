@@ -8,18 +8,19 @@ use rayon::prelude::*;
 
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
-use sm_common::create_prover_buffer;
 use sm_main::{InstanceExtensionCtx, MainSM};
-use sm_mem::MemSM;
+use sm_mem::MemProxy;
 use sm_rom::RomSM;
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    thread,
 };
 use zisk_core::{Riscv2zisk, ZiskOperationType, ZiskRom, ZISK_OPERATION_TYPE_VARIANTS};
 use zisk_pil::{
-    ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ZISK_AIRGROUP_ID,
+    ARITH_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, MAIN_AIR_IDS, ROM_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -34,7 +35,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub rom_sm: Arc<RomSM<F>>,
 
     /// Memory State Machine
-    pub mem_sm: Arc<MemSM>,
+    pub mem_proxy_sm: Arc<MemProxy<F>>,
 
     /// Binary State Machine
     pub binary_sm: Arc<BinarySM<F>>,
@@ -50,9 +51,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let std = Std::new(wcm.clone());
 
         let rom_sm = RomSM::new(wcm.clone());
-        let mem_sm = MemSM::new(wcm.clone());
+        let mem_proxy_sm = MemProxy::new(wcm.clone(), std.clone());
         let binary_sm = BinarySM::new(wcm.clone(), std.clone());
-        let arith_sm = ArithSM::new(wcm.clone());
+        let arith_sm = ArithSM::new(wcm.clone(), binary_sm.clone());
 
         // If rom_path has an .elf extension it must be converted to a ZisK ROM
         let zisk_rom = if rom_path.extension().unwrap() == "elf" {
@@ -82,9 +83,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // TODO - If there is more than one Main AIR available, the MAX_ACCUMULATED will be the one
         // with the highest num_rows. It has to be a power of 2.
 
-        let main_sm = MainSM::new(wcm.clone(), arith_sm.clone(), binary_sm.clone(), mem_sm.clone());
+        let main_sm =
+            MainSM::new(wcm.clone(), mem_proxy_sm.clone(), arith_sm.clone(), binary_sm.clone());
 
-        Self { zisk_rom, main_sm, rom_sm, mem_sm, binary_sm, arith_sm }
+        Self { zisk_rom, main_sm, rom_sm, mem_proxy_sm, binary_sm, arith_sm }
     }
 
     /// Executes the MainSM state machine and processes the inputs in batches when the maximum
@@ -100,8 +102,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         rom_path: &Path,
         public_inputs_path: &Path,
         pctx: Arc<ProofCtx<F>>,
-        ectx: Arc<ExecutionCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
+        ectx: Arc<ExecutionCtx>,
+        _sctx: Arc<SetupCtx>,
     ) {
         let air_main = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]);
 
@@ -119,6 +121,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             let path = PathBuf::from(public_inputs_path.display().to_string());
             fs::read(path).expect("Could not read inputs file")
         };
+        let public_inputs = Arc::new(public_inputs);
 
         // During ROM processing, we gather execution data necessary for creating the AIR instances.
         // This data is collected by the emulator and includes the minimal execution trace,
@@ -138,17 +141,36 @@ impl<F: PrimeField> ZiskExecutor<F> {
         op_sizes[ZiskOperationType::Binary as usize] = air_binary.num_rows() as u64;
         op_sizes[ZiskOperationType::BinaryE as usize] = air_binary_e.num_rows() as u64;
 
+        // STEP 1. Generate all inputs
+        // ==============================================
+
+        // Memory State Machine
+        // ----------------------------------------------
+        let mem_thread = thread::spawn({
+            let zisk_rom = self.zisk_rom.clone();
+            let public_inputs = public_inputs.clone();
+            move || {
+                ZiskEmulator::par_process_rom_memory::<F>(&zisk_rom, &public_inputs)
+                    .expect("Failed in ZiskEmulator::par_process_rom_memory")
+            }
+        });
+
         // ROM State Machine
         // ----------------------------------------------
         // Run the ROM to compute the ROM witness
-        let rom_sm = self.rom_sm.clone();
-        let zisk_rom = self.zisk_rom.clone();
-        let pc_histogram =
-            ZiskEmulator::process_rom_pc_histogram(&self.zisk_rom, &public_inputs, &emu_options)
-                .expect(
-                    "MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()",
-                );
-        let handle_rom = std::thread::spawn(move || rom_sm.prove(&zisk_rom, pc_histogram));
+        let rom_thread = thread::spawn({
+            let zisk_rom = self.zisk_rom.clone();
+            let public_inputs = public_inputs.clone();
+            let emu_options_cloned = emu_options.clone();
+            move || {
+                ZiskEmulator::process_rom_pc_histogram(
+                    &zisk_rom,
+                    &public_inputs,
+                    &emu_options_cloned,
+                )
+                .expect("MainSM::execute() failed calling ZiskEmulator::process_rom_pc_histogram()")
+            }
+        });
 
         // Main, Binary and Arith State Machines
         // ----------------------------------------------
@@ -165,10 +187,43 @@ impl<F: PrimeField> ZiskExecutor<F> {
         .expect("Error during emulator execution");
         timer_stop_and_log_debug!(PAR_PROCESS_ROM);
 
-        emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
+        // STEP 2. Wait until all inputs are generated
+        // ==============================================
+        // Join all the threads to synchronize the execution
+        let mut mem_required = mem_thread.join().expect("Error during Memory witness computation");
+        let rom_required = rom_thread.join().expect("Error during ROM witness computation");
 
-        // Join threads to synchronize the execution
-        handle_rom.join().unwrap().expect("Error during ROM witness computation");
+        // STEP 3. Generate AIRs and Prove
+        // ==============================================
+
+        // Memory State Machine
+        // ----------------------------------------------
+        let mem_thread = thread::spawn({
+            let mem_proxy_sm = self.mem_proxy_sm.clone();
+            move || {
+                mem_proxy_sm
+                    .prove(&mut mem_required)
+                    .expect("Error during Memory witness computation")
+            }
+        });
+
+        // ROM State Machine
+        // ----------------------------------------------
+        let (rom_is_mine, _rom_instance_gid) =
+            ectx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], 1);
+
+        let rom_thread = if rom_is_mine {
+            let rom_sm = self.rom_sm.clone();
+            let zisk_rom = self.zisk_rom.clone();
+
+            Some(thread::spawn(move || rom_sm.prove(&zisk_rom, rom_required)))
+        } else {
+            None
+        };
+
+        // Main, Binary and Arith State Machines
+        // ----------------------------------------------
+        emu_slices.points.sort_by(|a, b| a.op_type.partial_cmp(&b.op_type).unwrap());
 
         // FIXME: Move InstanceExtensionCtx form main SM to another place
         let mut instances_extension_ctx: Vec<InstanceExtensionCtx<F>> =
@@ -193,10 +248,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             };
 
             if let (true, global_idx) = dctx.add_instance(airgroup_id, air_id, 1) {
-                let (buffer, offset) = create_prover_buffer::<F>(&ectx, &sctx, airgroup_id, air_id);
                 instances_extension_ctx.push(InstanceExtensionCtx::new(
-                    buffer,
-                    offset,
                     emu_slice.op_type,
                     emu_slice.emu_trace_start.clone(),
                     segment_id,
@@ -236,7 +288,28 @@ impl<F: PrimeField> ZiskExecutor<F> {
         }
         timer_stop_and_log_debug!(ADD_INSTANCES_TO_THE_REPO);
 
-        // self.mem_sm.unregister_predecessor(scope);
+        mem_thread.join().expect("Error during Memory witness computation");
+
+        // match mem_thread.join() {
+        //     Ok(_) => println!("El thread ha finalitzat correctament."),
+        //     Err(e) => {
+        //         println!("El thread ha fet panic!");
+        //
+        //         // Converteix l'error en una cadena llegible (opcional)
+        //         if let Some(missatge) = e.downcast_ref::<&str>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else if let Some(missatge) = e.downcast_ref::<String>() {
+        //             println!("Missatge d'error: {}", missatge);
+        //         } else {
+        //             println!("No es pot determinar el tipus d'error.");
+        //         }
+        //     }
+        // }
+        if let Some(thread) = rom_thread {
+            let _ = thread.join().expect("Error during ROM witness computation");
+        }
+
+        self.mem_proxy_sm.unregister_predecessor();
         self.binary_sm.unregister_predecessor();
         self.arith_sm.unregister_predecessor();
     }

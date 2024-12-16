@@ -8,7 +8,27 @@ trace!(MainRow, MainTrace<F> {
 });
 
 trace!(RomRow, RomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
+ multiplicity: F,
+});
+
+trace!(MemRow, MemTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+});
+
+trace!(RomDataRow, RomDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
+});
+
+trace!(InputDataRow, InputDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
+});
+
+trace!(MemAlignRow, MemAlignTrace<F> {
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
+});
+
+trace!(MemAlignRomRow, MemAlignRomTrace<F> {
+ multiplicity: F,
 });
 
 trace!(ArithRow, ArithTrace<F> {
@@ -24,7 +44,7 @@ trace!(ArithRangeTableRow, ArithRangeTableTrace<F> {
 });
 
 trace!(BinaryRow, BinaryTrace<F> {
- m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, multiplicity: F, main_step: F,
+ m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F, debug_main_step: F,
 });
 
 trace!(BinaryTableRow, BinaryTableTrace<F> {
@@ -32,7 +52,7 @@ trace!(BinaryTableRow, BinaryTableTrace<F> {
 });
 
 trace!(BinaryExtensionRow, BinaryExtensionTrace<F> {
- op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], main_step: F, multiplicity: F,
+ op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], debug_main_step: F, multiplicity: F,
 });
 
 trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
@@ -40,5 +60,17 @@ trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
 });
 
 trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
- mul: [F; 1],
+ mul: [F; 2],
+});
+
+trace!(U8AirRow, U8AirTrace<F> {
+ mul: F,
+});
+
+trace!(U16AirRow, U16AirTrace<F> {
+ mul: F,
+});
+
+trace!(RomRomRow, RomRomTrace<F> {
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });

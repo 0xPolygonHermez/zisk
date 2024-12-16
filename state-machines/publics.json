@@ -1,0 +1,6 @@
+{
+    "nPublics": 4,
+    "definitions": [
+        { "name": "rom_root", "initialPos": 0, "chunks": [4, 64] }
+    ]
+}

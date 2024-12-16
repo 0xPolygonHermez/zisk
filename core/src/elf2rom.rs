@@ -28,7 +28,15 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
         for section_header in section_headers {
             // Consider only the section headers that contain program data
             if section_header.sh_type == SHT_PROGBITS {
-                // Get the program section data as a vector of bytes
+                // Get the section header address
+                let addr = section_header.sh_addr;
+
+                // Ignore sections with address = 0, as per ELF spec
+                if addr == 0 {
+                    continue;
+                }
+
+                // Get the section data
                 let (data_u8, _) = elf_bytes.section_data(&section_header)?;
                 let mut data = data_u8.to_vec();
 
@@ -37,31 +45,58 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
                     data.pop();
                 }
 
-                // Get the section data address
-                let addr = section_header.sh_addr;
-
-                // If the data contains instructions, parse them as RISC-V instructions and add them
-                // to the ROM instructions, at the specified program address
+                // If this is a code section, add it to program
                 if (section_header.sh_flags & SHF_EXECINSTR as u64) != 0 {
                     add_zisk_code(&mut rom, addr, &data);
                 }
 
+                // Add init data as a read/write memory section, initialized by code
                 // If the data is a writable memory section, add it to the ROM memory using Zisk
                 // copy instructions
                 if (section_header.sh_flags & SHF_WRITE as u64) != 0 &&
                     addr >= RAM_ADDR &&
                     addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
-                    add_zisk_init_data(&mut rom, addr, &data);
-                // Otherwise, add it to the ROM as RO data
-                } else {
-                    rom.ro_data.push(RoData::new(addr, data.len(), data));
+                    //println! {"elf2rom() new RW from={:x} length={:x}={}", addr, data.len(),
+                    //data.len()};
+                    add_zisk_init_data(&mut rom, addr, &data, true);
+                }
+                // Add read-only data memory section
+                else {
+                    // Search for an existing RO section previous to this one
+                    let mut found = false;
+                    for rd in rom.ro_data.iter_mut() {
+                        // Section data should be previous to this one
+                        if (rd.from + rd.length as u64) == addr {
+                            rd.length += data.len();
+                            rd.data.extend(data.clone());
+                            found = true;
+                            //println! {"elf2rom() adding RO from={:x} length={:x}={}", rd.from,
+                            // rd.length, rd.length};
+                            break;
+                        }
+                    }
+
+                    // If not found, create a new RO section
+                    if !found {
+                        //println! {"elf2rom() new RO from={:x} length={:x}={}", addr, data.len(),
+                        // data.len()};
+                        rom.ro_data.push(RoData::new(addr, data.len(), data));
+                    }
                 }
             }
         }
     }
 
-    // Add the program setup, system call and program wrapup instructions
+    // Add RO data initialization code insctructions
+    let ro_data_len = rom.ro_data.len();
+    for i in 0..ro_data_len {
+        let addr = rom.ro_data[i].from;
+        let mut data = Vec::new();
+        data.extend(rom.ro_data[i].data.as_slice());
+        add_zisk_init_data(&mut rom, addr, &data, true);
+    }
+
     add_entry_exit_jmp(&mut rom, elf_bytes.ehdr.e_entry);
 
     // Preprocess the ROM (experimental)
@@ -127,6 +162,8 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
             rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
         }
     }
+
+    //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
 
     Ok(rom)
 }

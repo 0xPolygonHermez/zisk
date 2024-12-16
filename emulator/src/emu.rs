@@ -9,9 +9,9 @@ use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_core::{
-    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredOperation, ZiskRom,
-    OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
+    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredMemory,
+    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -29,8 +29,8 @@ pub struct Emu<'a> {
 /// - run -> step -> source_a, source_b, store_c (full functionality, called by main state machine,
 ///   calls callback with trace)
 /// - run -> run_fast -> step_fast -> source_a, source_b, store_c (maximum speed, for benchmarking)
-/// - run_slice -> step_slice -> source_a_slice, source_b_slice, store_c_slice (generates full trace
-///   and required input data for secondary state machines)
+/// - run_slice -> step_slice -> source_a_slice, source_b_slice (generates full trace and required
+///   input data for secondary state machines)
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu {
         Emu { rom, ctx: EmuContext::default() }
@@ -92,6 +92,62 @@ impl<'a> Emu<'a> {
         }
     }
 
+    /// Calculate the 'a' register value based on the source specified by the current instruction
+    #[inline(always)]
+    pub fn source_a_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
+        match instruction.a_src {
+            SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Build the memory address
+                let mut addr = instruction.a_offset_imm0;
+                if instruction.a_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+
+                // Call read_required to get both the read value and the additional data (aligned
+                // read values required to construct the requested read value, if not aligned)
+                let additional_data: Vec<u64>;
+                (self.ctx.inst_ctx.a, additional_data) =
+                    self.ctx.inst_ctx.mem.read_required(addr, 8);
+
+                // Store the read value into the vector as a basic record
+                let required_memory = ZiskRequiredMemory::Basic {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 0,
+                    is_write: false,
+                    address: addr as u32,
+                    width: 8,
+                    value: self.ctx.inst_ctx.a,
+                };
+                emu_mem.push(required_memory);
+
+                // Store the additional data, if any, as extended records
+                if !additional_data.is_empty() {
+                    assert!(additional_data.len() <= 2);
+                    let mut values: [u64; 2] = [0; 2];
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
+                    let required_memory =
+                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
+                    emu_mem.push(required_memory);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+            }
+            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            _ => panic!(
+                "Emu::source_a() Invalid a_src={} pc={}",
+                instruction.a_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
     /// Calculate the 'b' register value based on the source specified by the current instruction
     #[inline(always)]
     pub fn source_b(&mut self, instruction: &ZiskInst) {
@@ -119,6 +175,94 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, instruction.ind_width);
+                }
+            }
+            _ => panic!(
+                "Emu::source_b() Invalid b_src={} pc={}",
+                instruction.b_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'b' register value based on the source specified by the current instruction
+    #[inline(always)]
+    pub fn source_b_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
+        match instruction.b_src {
+            SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Build the memory address
+                let mut addr = instruction.b_offset_imm0;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+
+                // Call read_required to get both the read value and the additional data (aligned
+                // read values required to construct the requested read value, if not aligned)
+                let additional_data: Vec<u64>;
+                (self.ctx.inst_ctx.b, additional_data) =
+                    self.ctx.inst_ctx.mem.read_required(addr, 8);
+
+                // Store the read value into the vector as a basic record
+                let required_memory = ZiskRequiredMemory::Basic {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
+                    is_write: false,
+                    address: addr as u32,
+                    width: 8,
+                    value: self.ctx.inst_ctx.b,
+                };
+                emu_mem.push(required_memory);
+
+                // Store the additional data, if any, as extended records
+                if !additional_data.is_empty() {
+                    assert!(additional_data.len() <= 2);
+                    let mut values: [u64; 2] = [0; 2];
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
+                    let required_memory =
+                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
+                    emu_mem.push(required_memory);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+            }
+            SRC_IND => {
+                // Build the memory address
+                let mut addr =
+                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                if instruction.b_use_sp_imm1 != 0 {
+                    addr += self.ctx.inst_ctx.sp;
+                }
+
+                // Call read_required to get both the read value and the additional data (aligned
+                // read values required to construct the requested read value, if not aligned)
+                let additional_data: Vec<u64>;
+                (self.ctx.inst_ctx.b, additional_data) =
+                    self.ctx.inst_ctx.mem.read_required(addr, instruction.ind_width);
+
+                // Store the read value into the vector as a basic record
+                let required_memory = ZiskRequiredMemory::Basic {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 1,
+                    is_write: false,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
+                    value: self.ctx.inst_ctx.b,
+                };
+                emu_mem.push(required_memory);
+
+                // Store the additional data, if any, as extended records
+                if !additional_data.is_empty() {
+                    assert!(additional_data.len() <= 2);
+                    let mut values: [u64; 2] = [0; 2];
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
+                    let required_memory =
+                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
+                    emu_mem.push(required_memory);
                 }
             }
             _ => panic!(
@@ -171,39 +315,101 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Store the 'c' register value based on the storage specified by the current instruction and
-    /// log memory access if required
+    /// Store the 'c' register value based on the storage specified by the current instruction
     #[inline(always)]
-    pub fn store_c_slice(&mut self, instruction: &ZiskInst) {
+    pub fn store_c_memory(
+        &mut self,
+        instruction: &ZiskInst,
+        emu_mem: &mut Vec<ZiskRequiredMemory>,
+    ) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
+                // Calculate the value to write
                 let val: i64 = if instruction.store_ra {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
                 };
+
+                // Build the memory address
                 let mut addr: i64 = instruction.store_offset;
                 if instruction.store_use_sp {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
-                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, 8);
+
+                // Call write_silent_required to get the additional data (aligned read values
+                // required to construct the new written data, if not aligned)
+                let additional_data: Vec<u64> =
+                    self.ctx.inst_ctx.mem.write_silent_required(addr as u64, val as u64, 8);
+
+                // Store the written value into the vector as a basic record
+                let required_memory = ZiskRequiredMemory::Basic {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
+                    is_write: true,
+                    address: addr as u32,
+                    width: 8,
+                    value: val as u64,
+                };
+                emu_mem.push(required_memory);
+
+                // Store the additional data, if any, as extended records
+                if !additional_data.is_empty() {
+                    assert!(additional_data.len() <= 2);
+                    let mut values: [u64; 2] = [0; 2];
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
+                    let required_memory =
+                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
+                    emu_mem.push(required_memory);
+                }
             }
             STORE_IND => {
+                // Calculate the value to write
                 let val: i64 = if instruction.store_ra {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
                 };
+
+                // Build the memory address
                 let mut addr = instruction.store_offset;
                 if instruction.store_use_sp {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 addr += self.ctx.inst_ctx.a as i64;
-                self.ctx.inst_ctx.mem.write_silent(addr as u64, val as u64, instruction.ind_width);
+
+                // Call write_silent_required to get the additional data (aligned read values
+                // required to construct the new written data, if not aligned)
+                let additional_data: Vec<u64> = self.ctx.inst_ctx.mem.write_silent_required(
+                    addr as u64,
+                    val as u64,
+                    instruction.ind_width,
+                );
+
+                // Store the written value into the vector as a basic record
+                let required_memory = ZiskRequiredMemory::Basic {
+                    step: self.ctx.inst_ctx.step,
+                    step_offset: 2,
+                    is_write: true,
+                    address: addr as u32,
+                    width: instruction.ind_width as u8,
+                    value: val as u64,
+                };
+                emu_mem.push(required_memory);
+
+                // Store the additional data, if any, as extended records
+                if !additional_data.is_empty() {
+                    assert!(additional_data.len() <= 2);
+                    let mut values: [u64; 2] = [0; 2];
+                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
+                    let required_memory =
+                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
+                    emu_mem.push(required_memory);
+                }
             }
             _ => panic!(
-                "Emu::store_c_slice() Invalid store={} pc={}",
+                "Emu::store_c() Invalid store={} pc={}",
                 instruction.store, self.ctx.inst_ctx.pc
             ),
         }
@@ -220,7 +426,7 @@ impl<'a> Emu<'a> {
     //     }
     // }
 
-    /// Set PC, based on current PC, current flag and current instruction
+    // Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
         if instruction.set_pc {
@@ -449,6 +655,22 @@ impl<'a> Emu<'a> {
         (emu_traces, emu_segments)
     }
 
+    pub fn par_run_memory<F: PrimeField>(&mut self, inputs: Vec<u8>) -> Vec<ZiskRequiredMemory> {
+        // Context, where the state of the execution is stored and modified at every execution step
+        self.ctx = self.create_emu_context(inputs);
+
+        // Init pc to the rom entry address
+        self.ctx.trace.start_state.pc = ROM_ENTRY;
+
+        let mut emu_mem = Vec::new();
+
+        while !self.ctx.inst_ctx.end {
+            self.par_step_memory::<F>(&mut emu_mem);
+        }
+
+        emu_mem
+    }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     #[allow(unused_variables)]
@@ -456,8 +678,13 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+        /*println!(
+            "Emu::step() executing step={} pc={:x} inst={}",
+            self.ctx.inst_ctx.step,
+            self.ctx.inst_ctx.pc,
+            instruction.to_text()
+        );*/
+        //println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a(instruction);
@@ -625,6 +852,56 @@ impl<'a> Emu<'a> {
     /// Performs one single step of the emulation
     #[inline(always)]
     #[allow(unused_variables)]
+    pub fn par_step_memory<F: PrimeField>(&mut self, emu_mem: &mut Vec<ZiskRequiredMemory>) {
+        //let last_pc = self.ctx.inst_ctx.pc;
+        //let last_c = self.ctx.inst_ctx.c;
+
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        // println!(
+        //     "#### step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
+        //     self.ctx.inst_ctx.step,
+        //     self.ctx.inst_ctx.pc,
+        //     instruction.op,
+        //     instruction.op_str,
+        //     self.ctx.inst_ctx.a,
+        //     self.ctx.inst_ctx.b,
+        //     self.ctx.inst_ctx.c,
+        //     self.ctx.inst_ctx.flag,
+        //     instruction.to_text()
+        // );
+        // self.print_regs();
+        // println!();
+
+        // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a_memory(instruction, emu_mem);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b_memory(instruction, emu_mem);
+
+        // Call the operation
+        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c_memory(instruction, emu_mem);
+
+        // Set SP, if specified by the current instruction
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+
+        // Set PC, based on current PC, current flag and current instruction
+        self.set_pc(instruction);
+
+        // If this is the last instruction, stop executing
+        self.ctx.inst_ctx.end = instruction.end;
+
+        // Increment step counter
+        self.ctx.inst_ctx.step += 1;
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    #[allow(unused_variables)]
     pub fn par_step_2<F: PrimeField>(
         &mut self,
         options: &EmuOptions,
@@ -742,7 +1019,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.a = trace_step.a;
         self.ctx.inst_ctx.b = trace_step.b;
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice(instruction);
+        // No need to store c
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -788,7 +1065,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.a = trace_step.a;
         self.ctx.inst_ctx.b = trace_step.b;
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice(instruction);
+        // No need to store c
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
