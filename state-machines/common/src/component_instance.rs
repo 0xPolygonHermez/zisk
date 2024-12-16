@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use p3_field::PrimeField;
 use proofman_common::AirInstance;
 use zisk_core::ZiskRom;
@@ -15,7 +13,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     fn collect_inputs(
         &mut self,
         zisk_rom: &ZiskRom,
-        min_traces: Arc<Vec<EmuTrace>>,
+        min_traces: &[EmuTrace],
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let _ = zisk_rom;
         let _ = min_traces;

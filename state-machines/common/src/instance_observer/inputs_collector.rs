@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::CheckPoint;
 use zisk_common::InstObserver;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType, ZiskRequiredOperation};
@@ -22,7 +20,7 @@ impl InputsCollector {
         check_point: CheckPoint,
         num_rows: usize,
         zisk_rom: &ZiskRom,
-        min_traces: Arc<Vec<EmuTrace>>,
+        min_traces: &[EmuTrace],
         op_type: ZiskOperationType,
     ) -> Result<Vec<ZiskRequiredOperation>, Box<dyn std::error::Error + Send>> {
         let mut instance =
@@ -32,7 +30,7 @@ impl InputsCollector {
 
         let observer: &mut dyn InstObserver = &mut instance;
 
-        ZiskEmulator::process_rom_slice_plan(zisk_rom, &min_traces, chunk_id, observer);
+        ZiskEmulator::process_rom_slice_plan(zisk_rom, min_traces, chunk_id, observer);
 
         Ok(std::mem::take(&mut instance.inputs))
     }

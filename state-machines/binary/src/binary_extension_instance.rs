@@ -35,7 +35,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     fn collect_inputs(
         &mut self,
         zisk_rom: &ZiskRom,
-        min_traces: Arc<Vec<EmuTrace>>,
+        min_traces: &[EmuTrace],
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         self.inputs = InputsCollector::collect(
             self.iectx.plan.check_point.unwrap(),
