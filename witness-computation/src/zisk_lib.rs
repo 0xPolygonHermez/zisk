@@ -25,15 +25,9 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
                 String::new(),
             );
 
-            // Convert program to rom
-            match rv2zk.run() {
-                Ok(rom) => rom,
-                Err(e) => {
-                    panic!("Application error: {}", e);
-                }
-            }
+            // Convert program to ROM
+            rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e))
         } else {
-            // TODO - Remove this when the ZisK ROM is able to be loaded from a file
             panic!("ROM file must be an ELF file");
         };
         let zisk_rom = Arc::new(zisk_rom);
