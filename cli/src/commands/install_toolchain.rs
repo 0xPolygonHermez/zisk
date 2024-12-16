@@ -68,21 +68,36 @@ impl InstallToolchainCmd {
         let toolchain_asset_name = format!("rust-toolchain-{}.tar.gz", target);
         let toolchain_archive_path = root_dir.join(toolchain_asset_name.clone());
         let toolchain_dir = root_dir.join(&target);
-        let rt = tokio::runtime::Runtime::new()?;
 
-        let toolchain_download_url =
-            rt.block_on(get_toolchain_download_url(&client, target.to_string()));
+        let source_toolchain_dir = std::env::var("ZISK_TOOLCHAIN_SOURCE_DIR");
+        match source_toolchain_dir {
+            Ok(source_toolchain_dir) => {
+                // Copy the toolchain from the source directory.
+                let mut source_toolchain_file = fs::canonicalize(source_toolchain_dir)?;
+                source_toolchain_file.push(&toolchain_asset_name);
+                fs::copy(&source_toolchain_file, &toolchain_archive_path)?;
+                println!("Successfully copied toolchain from source directory.");
+            }
+            Err(_) => {
+                // Download the toolchain.
+                let rt = tokio::runtime::Runtime::new()?;
 
-        let artifact_exists = rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
-        if !artifact_exists {
-            return Err(anyhow::anyhow!(
-                "Unsupported architecture. Please build the toolchain from source."
-            ));
+                let toolchain_download_url =
+                    rt.block_on(get_toolchain_download_url(&client, target.to_string()));
+
+                let artifact_exists =
+                    rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
+                if !artifact_exists {
+                    return Err(anyhow::anyhow!(
+                        "Unsupported architecture. Please build the toolchain from source."
+                    ));
+                }
+
+                let mut file = fs::File::create(toolchain_archive_path)?;
+                rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))
+                    .unwrap();
+            }
         }
-
-        // Download the toolchain.
-        let mut file = fs::File::create(toolchain_archive_path)?;
-        rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file)).unwrap();
 
         // Remove the existing toolchain from rustup, if it exists.
         let mut child = Command::new("rustup")
