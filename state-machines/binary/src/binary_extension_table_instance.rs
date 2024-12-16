@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_pil::BinaryExtensionTableTrace;
 
@@ -12,9 +11,6 @@ use rayon::prelude::*;
 use crate::BinaryExtensionTableSM;
 
 pub struct BinaryExtensionTableInstance<F: PrimeField> {
-    /// Witness manager
-    wcm: Arc<WitnessManager<F>>,
-
     /// Binary extension table state machine
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 
@@ -27,21 +23,20 @@ pub struct BinaryExtensionTableInstance<F: PrimeField> {
 
 impl<F: PrimeField> BinaryExtensionTableInstance<F> {
     pub fn new(
-        wcm: Arc<WitnessManager<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
         iectx: InstanceExpanderCtx,
     ) -> Self {
-        Self { wcm, binary_extension_table_sm, iectx, trace: BinaryExtensionTableTrace::<F>::new() }
+        Self { binary_extension_table_sm, iectx, trace: BinaryExtensionTableTrace::<F>::new() }
     }
 }
 
 unsafe impl<F: PrimeField> Sync for BinaryExtensionTableInstance<F> {}
 
 impl<F: PrimeField> Instance<F> for BinaryExtensionTableInstance<F> {
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         let mut multiplicity = self.binary_extension_table_sm.detach_multiplicity();
 
-        self.wcm.get_pctx().dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
+        pctx.dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
 
         self.trace.buffer[0..BinaryExtensionTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()

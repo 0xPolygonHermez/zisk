@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{InputsCollector, Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::{ZiskRequiredOperation, ZiskRom};
@@ -48,7 +48,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         Ok(())
     }
 
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         timer_start_debug!(PROVE_BINARY);
         self.binary_extension_sm.prove_instance(&self.inputs, &mut self.trace);
         timer_stop_and_log_debug!(PROVE_BINARY);

@@ -9,7 +9,7 @@ use rayon::Scope;
 use sm_common::{MemOp, MemUnalignedOp, OpResult, Provable};
 use zisk_core::ZiskRequiredMemory;
 
-use proofman::{WitnessComponent, WitnessManager};
+use witness::{WitnessComponent, WitnessManager};
 
 #[allow(dead_code)]
 const PROVE_CHUNK_SIZE: usize = 1 << 12;

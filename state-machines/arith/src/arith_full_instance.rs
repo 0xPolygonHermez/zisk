@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use sm_common::{InputsCollector, Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::{ZiskRequiredOperation, ZiskRom};
 use zisk_pil::ArithTrace;
@@ -47,7 +47,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance<F> {
         Ok(())
     }
 
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         self.arith_full_sm.prove_instance(&self.inputs, &mut self.trace);
 
         Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))

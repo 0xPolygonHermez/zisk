@@ -7,7 +7,6 @@ use crate::{
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::WitnessManager;
 use sm_common::{
     ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner, RegularCounters,
 };
@@ -18,9 +17,6 @@ use zisk_pil::{
 
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
     // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM>,
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
@@ -29,7 +25,7 @@ pub struct BinarySM<F: PrimeField> {
 }
 
 impl<F: PrimeField> BinarySM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
@@ -37,7 +33,6 @@ impl<F: PrimeField> BinarySM<F> {
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
         let binary_sm = Self {
-            wcm: wcm.clone(),
             binary_basic_sm,
             binary_basic_table_sm,
             binary_extension_sm,
@@ -65,18 +60,12 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
             id if id == BINARY_EXTENSION_AIR_IDS[0] => {
                 Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), iectx))
             }
-            id if id == BINARY_TABLE_AIR_IDS[0] => Box::new(BinaryBasicTableInstance::new(
-                self.wcm.clone(),
-                self.binary_basic_table_sm.clone(),
-                iectx,
-            )),
-            id if id == BINARY_EXTENSION_TABLE_AIR_IDS[0] => {
-                Box::new(BinaryExtensionTableInstance::new(
-                    self.wcm.clone(),
-                    self.binary_extension_table_sm.clone(),
-                    iectx,
-                ))
+            id if id == BINARY_TABLE_AIR_IDS[0] => {
+                Box::new(BinaryBasicTableInstance::new(self.binary_basic_table_sm.clone(), iectx))
             }
+            id if id == BINARY_EXTENSION_TABLE_AIR_IDS[0] => Box::new(
+                BinaryExtensionTableInstance::new(self.binary_extension_table_sm.clone(), iectx),
+            ),
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
         }
     }

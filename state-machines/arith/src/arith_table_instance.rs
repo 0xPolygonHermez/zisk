@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 
-use proofman::WitnessManager;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_pil::ArithTableTrace;
 
@@ -12,9 +11,6 @@ use rayon::prelude::*;
 use crate::ArithTableSM;
 
 pub struct ArithTableInstance<F: PrimeField> {
-    /// Witness manager
-    wcm: Arc<WitnessManager<F>>,
-
     /// Arith table state machine
     arith_table_sm: Arc<ArithTableSM>,
 
@@ -26,22 +22,18 @@ pub struct ArithTableInstance<F: PrimeField> {
 }
 
 impl<F: PrimeField> ArithTableInstance<F> {
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        arith_table_sm: Arc<ArithTableSM>,
-        iectx: InstanceExpanderCtx,
-    ) -> Self {
-        Self { wcm, arith_table_sm, iectx, trace: ArithTableTrace::<F>::new() }
+    pub fn new(arith_table_sm: Arc<ArithTableSM>, iectx: InstanceExpanderCtx) -> Self {
+        Self { arith_table_sm, iectx, trace: ArithTableTrace::<F>::new() }
     }
 }
 
 unsafe impl<F: PrimeField> Sync for ArithTableInstance<F> {}
 
 impl<F: PrimeField> Instance<F> for ArithTableInstance<F> {
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         let mut multiplicity = self.arith_table_sm.detach_multiplicity();
 
-        self.wcm.get_pctx().dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
+        pctx.dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
 
         self.trace.buffer[0..ArithTableTrace::<F>::NUM_ROWS]
             .par_iter_mut()

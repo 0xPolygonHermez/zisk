@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 sm-rom = { path = "../state-machines/rom" }
 log = { workspace = true }
-stark = { workspace = true }
 proofman-common = { workspace = true }
 zisk-core = { path = "../core" }
 

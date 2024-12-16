@@ -4,9 +4,9 @@ use std::sync::{
 };
 
 use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
 use rayon::Scope;
 use sm_common::{MemOp, OpResult, Provable};
+use witness::{WitnessComponent, WitnessManager};
 
 const PROVE_CHUNK_SIZE: usize = 1 << 12;
 

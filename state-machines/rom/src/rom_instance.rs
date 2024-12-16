@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -26,7 +26,7 @@ impl<F: PrimeField> RomInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for RomInstance<F> {
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         RomSM::prove_instance(
             &self.zisk_rom,
             &self.iectx.plan,

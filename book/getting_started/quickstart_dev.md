@@ -127,7 +127,7 @@ Run this whenever the `.pilout` file changes:
 ### Generate Setup Data
 Run this whenever the `.pilout` file changes:
 
-```bash
+```bash[]
 node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree
 ```
 

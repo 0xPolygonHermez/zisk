@@ -11,10 +11,10 @@ zisk-pil = { path = "../../pil" }
 p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
-proofman = { workspace = true }
+witness = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link"]

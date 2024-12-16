@@ -1,5 +1,5 @@
 use p3_field::PrimeField;
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, ProofCtx};
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
@@ -20,7 +20,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
         Ok(())
     }
 
-    fn compute_witness(&mut self) -> Option<AirInstance<F>>;
+    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
     fn instance_type(&self) -> InstanceType;
 }

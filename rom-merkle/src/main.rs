@@ -1,7 +1,6 @@
 use clap::{Arg, Command};
 use colored::Colorize;
 // use proofman_common::{GlobalInfo, ProofType, SetupCtx};
-// use stark::StarkBufferAllocator;
 use std::path::Path;
 use sysinfo::System;
 // use zisk_core::Riscv2zisk;
