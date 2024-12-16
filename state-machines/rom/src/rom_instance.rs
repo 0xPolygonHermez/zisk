@@ -4,24 +4,27 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace, ProofCtx};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 use zisk_core::ZiskRom;
-use zisk_pil::RomTrace;
+use zisk_pil::{RomRomTrace, RomTrace};
 
 use crate::RomSM;
 
 pub struct RomInstance<F: PrimeField> {
     /// Instance expander context
-    iectx: InstanceExpanderCtx,
-
-    /// Zisk ROM
     zisk_rom: Arc<ZiskRom>,
-
-    /// ROM trace
-    trace: RomTrace<F>,
+    iectx: InstanceExpanderCtx,
+    rom_trace: RomTrace<F>,
+    rom_custom_trace: RomRomTrace<F>,
 }
 
 impl<F: PrimeField> RomInstance<F> {
-    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
-        Self { iectx, zisk_rom, trace: RomTrace::new() }
+    pub fn new(
+        zisk_rom: Arc<ZiskRom>,
+        iectx: InstanceExpanderCtx,
+    ) -> Self {
+        let rom_trace = RomTrace::new();
+        let rom_custom_trace = RomRomTrace::new();
+
+        Self { zisk_rom, iectx, rom_trace, rom_custom_trace }
     }
 }
 
@@ -30,11 +33,14 @@ impl<F: PrimeField> Instance<F> for RomInstance<F> {
         RomSM::prove_instance(
             &self.zisk_rom,
             &self.iectx.plan,
-            &mut self.trace,
-            RomTrace::<F>::NUM_ROWS,
+            &mut self.rom_trace,
+            &mut self.rom_custom_trace,
         );
 
-        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
+        Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut self.rom_trace)
+                .with_custom_traces(vec![&mut self.rom_custom_trace])
+        ))
     }
 
     fn instance_type(&self) -> InstanceType {

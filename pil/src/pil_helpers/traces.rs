@@ -35,13 +35,27 @@ pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[8];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[9];
 
+
+//PUBLICS
+use serde::Deserialize;
+use serde::Serialize;
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct ZiskPublics {
+    #[serde(default)] 
+    pub rom_root: [u64; 4],
+    
+}
+
+values!(ZiskPublicValues<F> {
+ rom_root: [F; 4],
+});
   
 trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 },  0, 0, 2097152 );
 
 trace!(RomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, multiplicity: F,
+ multiplicity: F,
 },  0, 1, 1048576 );
 
 trace!(ArithTrace<F> {
@@ -75,6 +89,10 @@ trace!(BinaryExtensionTableTrace<F> {
 trace!(SpecifiedRangesTrace<F> {
  mul: [F; 1],
 },  0, 9, 16777216 );
+
+trace!(RomRomTrace<F> {
+ line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
+}, 0, 1, 1048576, 0 );
 
 values!(MainAirValues<F> {
  main_last_segment: F, main_segment: F,

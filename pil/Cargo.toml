@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
+serde = { version = "1.0.204", features = ["derive"] }
 
 [features]
 default = []
