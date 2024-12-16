@@ -1,19 +1,30 @@
-
-require "std_constants.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
+require "mem/pil/mem.pil"
+require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align_rom.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
 require "arith/pil/arith.pil"
-// require "mem/pil/mem.pil"
 
 const int OPERATION_BUS_ID = 5000;
+
+proofval enable_input_data;
+enable_input_data * (1 - enable_input_data);
+
 airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
-    Rom(N: 2**20);
-    // Mem(N: 2**21, RC: 2);
+    Rom(N: 2**22);
+
+    Mem(N: 2**21, RC: 2, base_address: 0xA000_0000);
+    Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+
+    MemAlign(N: 2**21);
+    MemAlignRom(disable_fixed: 0);
+
     Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     ArithTable();
     ArithRangeTable();

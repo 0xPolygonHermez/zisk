@@ -9,6 +9,7 @@ zisk-common = { path = "../../common" }
 zisk-pil = { path="../../pil" }
 ziskemu = { path = "../../emulator" }
 sm-common = { path = "../common" }
+sm-binary = { path = "../binary" }
 
 p3-field = { workspace=true }
 proofman-common = { workspace = true }

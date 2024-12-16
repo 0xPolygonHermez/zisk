@@ -24,7 +24,7 @@ impl RomSM {
         rom: &ZiskRom,
         plan: &Plan,
         rom_trace: &mut RomTrace<F>,
-        mut rom_custom_trace: &mut RomRomTrace<F>,
+        rom_custom_trace: &mut RomRomTrace<F>,
     ) {
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
@@ -70,7 +70,7 @@ impl RomSM {
             rom_trace[i] = RomTraceRow::default();
         }
 
-        Self::compute_trace_rom(rom, &mut rom_custom_trace);
+        Self::compute_trace_rom(rom, rom_custom_trace);
     }
 
     pub fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {

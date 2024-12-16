@@ -7,7 +7,7 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
+use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -21,6 +21,8 @@ const SIGN_BYTE: u64 = 0x80;
 
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
+
+const SE_W_OP: u8 = 0x39;
 
 pub struct BinaryExtensionSM<F: PrimeField> {
     // STD
@@ -134,7 +136,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.in2[1] = F::from_canonical_u64(in2_1);
 
         // Set main SM step
-        row.main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(operation.step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -332,8 +334,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
-        let padding_row =
-            BinaryExtensionTraceRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+        // Note: We can choose any operation that trivially satisfies the constraints on padding
+        // rows
+        let padding_row = BinaryExtensionTraceRow::<F> {
+            op: F::from_canonical_u8(SE_W_OP),
+            ..Default::default()
+        };
 
         for i in operations.len()..num_rows {
             binary_e_trace[i] = padding_row;

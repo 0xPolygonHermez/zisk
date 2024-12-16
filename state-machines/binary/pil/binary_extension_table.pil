@@ -1,22 +1,22 @@
-require "std_lookup.pil"
 require "std_constants.pil"
+require "std_lookup.pil"
 
 // Operations Table:
 //                                                                Running Total
-// SLL     (OP:0x0d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
-// SRL     (OP:0x0e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20                      
-// SRA     (OP:0x0f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
-// SLL_W   (OP:0x1d)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21  
-// SRL_W   (OP:0x1e)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19
-// SRA_W   (OP:0x1f)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20
-// SE_B    (OP:0x23)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11
-// SE_H    (OP:0x24)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12
-// SE_W    (OP:0x25)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22
+// SLL     (OP:0x31)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
+// SRL     (OP:0x32)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20
+// SRA     (OP:0x33)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
+// SLL_W   (OP:0x34)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21
+// SRL_W   (OP:0x35)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19
+// SRA_W   (OP:0x36)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20
+// SE_B    (OP:0x37)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20              + 2^11
+// SE_H    (OP:0x38)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12
+// SE_W    (OP:0x39)   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20         2^12 + 2^11 => 2^22
 
 const int BINARY_EXTENSION_TABLE_ID = 124;
 
 airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 0) {
-    
+
     #pragma memory m1 start
 
     const int SE_MASK_32 = 0xFFFFFFFF00000000;
@@ -28,15 +28,15 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
 
     const int LS_5_BITS = 0x1F;
     const int LS_6_BITS = 0x3F;
-    
+
     col witness multiplicity;
 
     if (disable_fixed) {
         col fixed _K = [0...];
         // FORCE ONE TRACE
         multiplicity * _K === 0;
-        
-        println("*** DISABLE_FIXED ***"); 
+
+        println("*** DISABLE_FIXED ***");
         return;
     }
 
@@ -49,18 +49,25 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
 
     #pragma timer tt start
     #pragma timer t1 start
-    col fixed A = [0..255]...;                              // Input A    (8 bits)
 
-    col fixed OFFSET = [0:P2_8..(bytes-1):P2_8]...;         // Offset     (3 bits)
+    // Input A    (8 bits)
+    col fixed A = [0..255]...;
 
-    col fixed B = [[0:P2_11..255:P2_11]:6,                  // Input B    (8 bits)
-                    0:(P2_11*3)]...;                    
+    // Offset     (3 bits)
+    col fixed OFFSET = [0:P2_8..(bytes-1):P2_8]...;
 
-    col fixed OP = [0x0d:P2_19, 0x0e:P2_19, 0x0f:P2_19,     // SLL, SRL, SRA
-                    0x1d:P2_19, 0x1e:P2_19, 0x1f:P2_19,     // SLL_W, SRL_W, SRA_W
-                    0x23:P2_11, 0x24:P2_11, 0x25:P2_11]...; // SE_B, SE_H, SE_W
+    // Input B    (8 bits)
+    col fixed B = [[0:P2_11..255:P2_11]:6, // SLL, SRL, SRA, SLL_W, SRL_W, SRA_W
+                    0:(P2_11*3)]...;       // SE_B, SE_H, SE_W
 
-    col fixed OP_IS_SHIFT = [1:(P2_19*6), 0:(P2_11*3)]...;
+    // Operation is shift (fixed values)
+    col fixed OP_IS_SHIFT = [1:(P2_19*6),     // SLL, SRL, SRA, SLL_W, SRL_W, SRA_W
+                             0:(P2_11*3)]...; // SE_B, SE_H, SE_W
+
+    // Operation opcode (fixed values)
+    col fixed OP = [0x31:P2_19, 0x32:P2_19, 0x33:P2_19,     // SLL, SRL, SRA
+                    0x34:P2_19, 0x35:P2_19, 0x36:P2_19,     // SLL_W, SRL_W, SRA_W
+                    0x37:P2_11, 0x38:P2_11, 0x39:P2_11]...; // SE_B, SE_H, SE_W
 
     #pragma timer t1 end
     #pragma timer t2 start
@@ -76,13 +83,13 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
         int _out = 0;
         const int _a = a << (8*offset);
         switch (op) {
-            case 0x0d: // SLL
-                _out = _a << (b & LS_6_BITS); 
+            case 0x31: // SLL
+                _out = _a << (b & LS_6_BITS);
 
-            case 0x0e: // SRL
+            case 0x32: // SRL
                 _out = _a >> (b & LS_6_BITS);
 
-            case 0x0f: { // SRA 
+            case 0x33: { // SRA
                 const int _b = b & LS_6_BITS;
                 _out = _a >> _b;
                 if (offset == 7) {
@@ -93,7 +100,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     }
                 }
             }
-            case 0x1d: // SLL_W
+            case 0x34: // SLL_W
                 if (offset >= 4) {
                     // last most significant bytes are ignored because it's 32-bit operation
                     _out = 0;
@@ -103,8 +110,8 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                         _out = _out | SE_MASK_32;
                     }
                 }
-                
-            case 0x1e: // SRL_W
+
+            case 0x35: // SRL_W
                 if (offset >= 4) {
                     // last most significant bytes are ignored because it's 32-bit operation
                     _out = 0;
@@ -115,7 +122,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     }
                 }
 
-            case 0x1f: // SRA_W
+            case 0x36: // SRA_W
                 if (offset >= 4) {
                     // last most significant bytes are ignored because it's 32-bit operation
                     _out = 0;
@@ -131,7 +138,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     }
                 }
 
-            case 0x23: // SE_B
+            case 0x37: // SE_B
                 if (offset == 0) {
                     // the most significant bit of first byte determines the sign extend
                     _out = (a & SIGN_BYTE) ? a | SE_MASK_8 : a
@@ -140,8 +147,8 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     _out = 0;
                 }
 
-            case 0x24: // SE_H
-                if (offset == 0) {            
+            case 0x38: // SE_H
+                if (offset == 0) {
                     // fist byte not define the sign extend, but participate of result
                     _out = a;
                 } else if (offset == 1) {
@@ -152,7 +159,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22, const int disable_fixed = 
                     _out = 0;
                 }
 
-            case 0x25: // SE_W
+            case 0x39: // SE_W
                 if (offset <= 3) {
                     _out = _a;
                     if (offset == 3) {

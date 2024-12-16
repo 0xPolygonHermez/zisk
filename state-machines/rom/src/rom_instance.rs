@@ -17,10 +17,7 @@ pub struct RomInstance<F: PrimeField> {
 }
 
 impl<F: PrimeField> RomInstance<F> {
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        iectx: InstanceExpanderCtx,
-    ) -> Self {
+    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
         let rom_trace = RomTrace::new();
         let rom_custom_trace = RomRomTrace::new();
 
@@ -39,7 +36,7 @@ impl<F: PrimeField> Instance<F> for RomInstance<F> {
 
         Some(AirInstance::new_from_trace(
             FromTrace::new(&mut self.rom_trace)
-                .with_custom_traces(vec![&mut self.rom_custom_trace])
+                .with_custom_traces(vec![&mut self.rom_custom_trace]),
         ))
     }
 
