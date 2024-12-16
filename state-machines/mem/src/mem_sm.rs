@@ -1,14 +1,13 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, FromTrace};
 
-use witness::WitnessManager;
 use zisk_core::{RAM_ADDR, RAM_SIZE};
-use zisk_pil::{MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemTrace, MemAirValues, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -22,15 +21,12 @@ const _: () = {
 };
 
 pub struct MemSM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
     // STD
     std: Arc<Std<F>>,
 }
 
 #[derive(Default)]
-pub struct MemAirValues {
+pub struct MemoryAirValues {
     pub segment_id: u32,
     pub is_first_segment: bool,
     pub is_last_segment: bool,
@@ -50,15 +46,11 @@ pub struct MemPreviousSegment {
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> MemSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { wcm: wcm.clone(), std: std.clone() })
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        Arc::new(Self { std: std.clone() })
     }
 
     pub fn prove(&self, inputs: &[MemInput]) {
-        let wcm = self.wcm.clone();
-        let pctx = wcm.get_pctx();
-        let sctx = wcm.get_sctx();
-
         // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
         // memory only need to process these special inputs, but inputs no change. At end of
         // inputs proxy add an extra internal input to jump to last address
@@ -70,19 +62,14 @@ impl<F: PrimeField> MemSM<F> {
         let count_rem = count % air_rows;
         let num_segments = (count / air_rows) + if count_rem > 0 { 1 } else { 0 };
 
-        let mut prover_buffers = Mutex::new(vec![Vec::new(); num_segments]);
         let mut global_idxs = vec![0; num_segments];
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
             if let (true, global_idx) =
-                pctx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0], 1)
+                self.std.wcm.get_pctx().dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0], 1)
             {
-                let trace: MemTrace<F> = MemTrace::new();
-                let mut buffer = trace.buffer;
-
-                prover_buffers.lock().unwrap()[i] = buffer;
                 global_idxs[i] = global_idx;
             }
         }
@@ -103,17 +90,15 @@ impl<F: PrimeField> MemSM<F> {
             let input_end =
                 if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
             let mem_ops = &inputs[input_offset..input_end];
-            let prover_buffer = std::mem::take(&mut prover_buffers.lock().unwrap()[segment_id]);
 
-            // self.prove_instance(
-            //     mem_ops,
-            //     segment_id,
-            //     is_last_segment,
-            //     &previous_segment,
-            //     prover_buffer,
-            //     air_rows,
-            //     global_idxs[segment_id],
-            // );
+            self.prove_instance(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                &previous_segment,
+                air_rows,
+                global_idxs[segment_id],
+            );
         }
     }
 
@@ -131,7 +116,6 @@ impl<F: PrimeField> MemSM<F> {
         segment_id: usize,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
-        mut prover_buffer: Vec<F>,
         air_mem_rows: usize,
         global_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -160,7 +144,7 @@ impl<F: PrimeField> MemSM<F> {
 
         let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
 
-        let mut air_values = MemAirValues {
+        let mut air_values = MemoryAirValues {
             segment_id: segment_id as u32,
             is_first_segment: segment_id == 0,
             is_last_segment,
@@ -170,7 +154,7 @@ impl<F: PrimeField> MemSM<F> {
                 previous_segment.value as u32,
                 (previous_segment.value >> 32) as u32,
             ],
-            ..MemAirValues::default()
+            ..MemoryAirValues::default()
         };
 
         // index it's value - 1, for this reason no add +1
@@ -261,21 +245,22 @@ impl<F: PrimeField> MemSM<F> {
             );
         }
 
-        let wcm = self.wcm.clone();
-        let pctx = wcm.get_pctx();
-        let sctx = wcm.get_sctx();
+        let mut air_values = MemAirValues::<F>::new();
+        air_values.segment_id = air_values.segment_id;
+        air_values.is_first_segment = air_values.is_first_segment;
+        air_values.is_last_segment = air_values.is_last_segment;
+        air_values.previous_segment_addr = air_values.previous_segment_addr;
+        air_values.previous_segment_step = air_values.previous_segment_step;
+        air_values.segment_last_addr = air_values.segment_last_addr;
+        air_values.segment_last_step = air_values.segment_last_step;
+        let count = air_values.previous_segment_value.len();
+        for i in 0..count {
+            air_values.previous_segment_value[i] = air_values.previous_segment_value[i];
+            air_values.segment_last_value[i] = air_values.segment_last_value[i];
+        }
 
-        // let mut air_instance = AirInstance::new(
-        //     sctx.clone(),
-        //     ZISK_AIRGROUP_ID,
-        //     MEM_AIR_IDS[0],
-        //     Some(segment_id),
-        //     prover_buffer,
-        // );
-
-        // self.set_airvalues("Mem", &mut air_instance, &air_values);
-
-        // pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values));
+        self.std.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
@@ -283,61 +268,7 @@ impl<F: PrimeField> MemSM<F> {
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
     }
-    fn set_airvalues(
-        &self,
-        prefix: &str,
-        air_instance: &mut AirInstance<F>,
-        air_values: &MemAirValues,
-    ) {
-        // air_instance.set_airvalue(
-        //     format!("{}.segment_id", prefix).as_str(),
-        //     None,
-        //     F::from_canonical_u32(air_values.segment_id),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.is_first_segment", prefix).as_str(),
-        //     None,
-        //     F::from_bool(air_values.is_first_segment),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.is_last_segment", prefix).as_str(),
-        //     None,
-        //     F::from_bool(air_values.is_last_segment),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.previous_segment_addr", prefix).as_str(),
-        //     None,
-        //     F::from_canonical_u32(air_values.previous_segment_addr),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.previous_segment_step", prefix).as_str(),
-        //     None,
-        //     F::from_canonical_u64(air_values.previous_segment_step),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.segment_last_addr", prefix).as_str(),
-        //     None,
-        //     F::from_canonical_u32(air_values.segment_last_addr),
-        // );
-        // air_instance.set_airvalue(
-        //     format!("{}.segment_last_step", prefix).as_str(),
-        //     None,
-        //     F::from_canonical_u64(air_values.segment_last_step),
-        // );
-        // let count = air_values.previous_segment_value.len();
-        // for i in 0..count {
-        //     air_instance.set_airvalue(
-        //         format!("{}.previous_segment_value", prefix).as_str(),
-        //         Some(vec![i as u64]),
-        //         F::from_canonical_u32(air_values.previous_segment_value[i]),
-        //     );
-        //     air_instance.set_airvalue(
-        //         format!("{}.segment_last_value", prefix).as_str(),
-        //         Some(vec![i as u64]),
-        //         F::from_canonical_u32(air_values.segment_last_value[i]),
-        //     );
-        // }
-    }
+
 }
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {

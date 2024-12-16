@@ -3,9 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use p3_field::PrimeField;
-
-use witness::WitnessManager;
 use zisk_pil::MemAlignRomTrace;
 
 #[derive(Debug, Clone, Copy)]
@@ -20,10 +17,7 @@ const OP_SIZES: [u64; 4] = [2, 3, 3, 5];
 const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -> 5*3 + 2*2 + 1*1 = 20
 const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
-pub struct MemAlignRomSM<F> {
-    // Witness computation manager
-    _wcm: Arc<WitnessManager<F>>,
-
+pub struct MemAlignRomSM {
     multiplicity: Mutex<HashMap<u64, u64>>, // row_num -> multiplicity
 }
 
@@ -32,13 +26,12 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: PrimeField> MemAlignRomSM<F> {
+impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            _wcm: wcm.clone(),
-            multiplicity: Mutex::new(HashMap::with_capacity(MemAlignRomTrace::<F>::NUM_ROWS)),
+            multiplicity: Mutex::new(HashMap::with_capacity(MemAlignRomTrace::<usize>::NUM_ROWS)),
         })
     }
 
@@ -71,7 +64,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         for i in 0..op_size {
             let row_idx = first_row_idx + i;
             // Check whether the row index is within the bounds
-            debug_assert!(row_idx < MemAlignRomTrace::<F>::NUM_ROWS as u64);
+            debug_assert!(row_idx < MemAlignRomTrace::<usize>::NUM_ROWS as u64);
             // Update the multiplicity
             self.update_multiplicity_by_row_idx(row_idx, 1);
         }

@@ -7,7 +7,7 @@ pub use proofman_macros::values;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &[u8] = b"ZiskDevelop-hash";
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -54,17 +54,17 @@ pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
 use serde::Deserialize;
 use serde::Serialize;
 #[derive(Default, Debug, Serialize, Deserialize)]
-pub struct ZiskDevelopPublics {
+pub struct ZiskPublics {
     #[serde(default)] 
     pub rom_root: [u64; 4],
     
 }
 
-values!(ZiskDevelopPublicValues<F> {
+values!(ZiskPublicValues<F> {
  rom_root: [F; 4],
 });
  
-values!(ZiskDevelopProofValues<F> {
+values!(ZiskProofValues<F> {
  enable_input_data: FieldExtension<F>,
 });
  

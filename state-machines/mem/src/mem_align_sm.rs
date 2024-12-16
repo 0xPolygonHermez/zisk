@@ -7,7 +7,6 @@ use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 
-use witness::WitnessManager;
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
@@ -43,9 +42,6 @@ pub struct MemAlignResponse {
     pub value: Option<u64>,
 }
 pub struct MemAlignSM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
     // STD
     std: Arc<Std<F>>,
 
@@ -56,7 +52,7 @@ pub struct MemAlignSM<F: PrimeField> {
     num_computed_rows: Mutex<usize>,
 
     // Secondary State machines
-    mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
+    mem_align_rom_sm: Arc<MemAlignRomSM>,
 }
 
 macro_rules! debug_info {
@@ -72,12 +68,10 @@ impl<F: PrimeField> MemAlignSM<F> {
     const MY_NAME: &'static str = "MemAlign";
 
     pub fn new(
-        wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
-        mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
+        mem_align_rom_sm: Arc<MemAlignRomSM>,
     ) -> Arc<Self> {
         Arc::new(Self {
-            wcm: wcm.clone(),
             std: std.clone(),
             rows: Mutex::new(Vec::new()),
             #[cfg(feature = "debug_mem_align")]
@@ -886,18 +880,12 @@ impl<F: PrimeField> MemAlignSM<F> {
     }
 
     fn fill_new_air_instance(&self, rows: &[MemAlignTraceRow<F>]) {
-        // Get the proof context
-        let wcm = self.wcm.clone();
-
         // Get the Mem Align AIR
         let air_mem_align_rows = MemAlignTrace::<F>::NUM_ROWS;
         let rows_len = rows.len();
 
         // You cannot feed to the AIR more rows than it has
         debug_assert!(rows_len <= air_mem_align_rows);
-
-        // Get the execution and setup context
-        let _sctx = wcm.get_sctx();
 
         let mut trace_buffer: MemAlignTrace<F> = MemAlignTrace::new();
 

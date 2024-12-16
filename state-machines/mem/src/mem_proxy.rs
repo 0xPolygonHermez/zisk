@@ -3,25 +3,24 @@ use std::sync::Arc;
 use crate::{InputDataSM, MemAlignRomSM, MemAlignSM, MemProxyEngine, MemSM, RomDataSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use witness::WitnessManager;
 use zisk_core::ZiskRequiredMemory;
 
 pub struct MemProxy<F: PrimeField> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
-    _mem_align_rom_sm: Arc<MemAlignRomSM<F>>,
+    _mem_align_rom_sm: Arc<MemAlignRomSM>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
 }
 
 impl<F: PrimeField> MemProxy<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let mem_align_rom_sm = MemAlignRomSM::new(wcm.clone());
-        let mem_align_sm = MemAlignSM::new(wcm.clone(), std.clone(), mem_align_rom_sm.clone());
-        let mem_sm = MemSM::new(wcm.clone(), std.clone());
-        let input_data_sm = InputDataSM::new(wcm.clone(), std.clone());
-        let rom_data_sm = RomDataSM::new(wcm.clone(), std.clone());
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let mem_align_rom_sm = MemAlignRomSM::new();
+        let mem_align_sm = MemAlignSM::new(std.clone(), mem_align_rom_sm.clone());
+        let mem_sm = MemSM::new(std.clone());
+        let input_data_sm = InputDataSM::new(std.clone());
+        let rom_data_sm = RomDataSM::new(std.clone());
 
         Arc::new(Self {
             mem_align_sm,
