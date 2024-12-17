@@ -218,20 +218,7 @@ impl ZiskEmulator {
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
     #[inline]
-    pub fn process_rom_slice_counters<F: PrimeField>(
-        rom: &ZiskRom,
-        emu_trace: &EmuTrace,
-        inst_observer: &mut dyn InstObserver,
-    ) {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        emu.run_slice_observer2::<F>(emu_trace, inst_observer);
-    }
-
-    #[inline]
-    pub fn process_rom_slice_counters2<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_rom_slice_counters<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
@@ -240,7 +227,7 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_observer3::<F, BD>(emu_trace, data_bus);
+        emu.run_slice_observer2::<F, BD>(emu_trace, data_bus);
     }
 
     /// EXPAND phase

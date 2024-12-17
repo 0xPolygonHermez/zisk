@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use sm_common::{CounterStats, Metrics};
-use zisk_common::{BusDevice, DataBusMain, Opid, MAIN_BUS_OPID};
+use zisk_common::{BusDevice, OperationBusData, Opid, OPERATION_BUS_OPID};
 use zisk_core::ZiskOperationType;
 
 #[derive(Default)]
@@ -13,11 +13,11 @@ pub struct RomCounter {
 
 impl Metrics for RomCounter {
     fn measure(&mut self, opid: &Opid, data: &[u64]) -> Vec<(Opid, Vec<u64>)> {
-        if *opid == MAIN_BUS_OPID {
+        if *opid == OPERATION_BUS_OPID {
             let data: &[u64; 8] = data.try_into().expect("Regular Metrics: Failed to convert data");
-            let inst_pc = DataBusMain::get_pc(data);
-            let inst_step = DataBusMain::get_step(data);
-            let inst_end = DataBusMain::get_end(data);
+            let inst_pc = OperationBusData::get_pc(data);
+            let inst_step = OperationBusData::get_step(data);
+            let inst_end = OperationBusData::get_end(data);
 
             self.rom.update(inst_pc, 1);
             if inst_end == 1 {

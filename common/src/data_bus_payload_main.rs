@@ -14,11 +14,11 @@ const END: usize = 7;
 
 pub type MainData<D> = [D; MAIN_DATA_SIZE];
 
-pub const MAIN_BUS_OPID: u16 = 5000;
+pub const OPERATION_BUS_OPID: u16 = 5000;
 
-pub struct DataBusMain<D>(std::marker::PhantomData<D>);
+pub struct OperationBusData<D>(std::marker::PhantomData<D>);
 
-impl DataBusMain<u64> {
+impl OperationBusData<u64> {
     #[inline(always)]
     pub fn new_payload(inst: &ZiskInst, inst_ctx: &InstContext) -> MainData<u64> {
         [

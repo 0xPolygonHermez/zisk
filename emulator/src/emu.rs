@@ -6,7 +6,7 @@ use crate::{
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
-use zisk_common::{BusDevice, DataBusMain, InstObserver, MAIN_BUS_OPID};
+use zisk_common::{BusDevice, InstObserver, OperationBusData, OPERATION_BUS_OPID};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_common::DataBus;
@@ -968,8 +968,8 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
-        let payload = DataBusMain::new_payload(instruction, &self.ctx.inst_ctx);
-        data_bus.write_to_bus(MAIN_BUS_OPID, payload.to_vec());
+        let payload = OperationBusData::new_payload(instruction, &self.ctx.inst_ctx);
+        data_bus.write_to_bus(OPERATION_BUS_OPID, payload.to_vec());
         // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
 
         // #[cfg(feature = "sp")]
@@ -985,28 +985,7 @@ impl<'a> Emu<'a> {
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice_observer2<F: PrimeField>(
-        &mut self,
-        emu_trace: &EmuTrace,
-        inst_observer: &mut dyn InstObserver,
-    ) {
-        // Set initial state
-        self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
-        self.ctx.inst_ctx.sp = emu_trace.start_state.sp;
-        self.ctx.inst_ctx.step = emu_trace.start_state.step;
-        self.ctx.inst_ctx.c = emu_trace.start_state.c;
-        self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
-
-        let mut mem_reads_index: usize = 0;
-        let emu_trace_steps = &emu_trace.steps;
-        for _step in 0..emu_trace.steps.steps {
-            self.step_observer::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer);
-        }
-    }
-
-    /// Run a slice of the program to generate full traces
-    #[inline(always)]
-    pub fn run_slice_observer3<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn run_slice_observer2<F: PrimeField, BD: BusDevice<u64>>(
         &mut self,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
