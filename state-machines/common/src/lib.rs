@@ -1,3 +1,5 @@
+mod bus_device_instance;
+mod bus_device_metrics;
 mod component_counter;
 mod component_instance;
 mod component_planner;
@@ -11,6 +13,8 @@ mod planners;
 mod provable;
 mod witness_buffer;
 
+pub use bus_device_instance::*;
+pub use bus_device_metrics::*;
 pub use component_counter::*;
 pub use component_instance::*;
 pub use component_planner::*;
