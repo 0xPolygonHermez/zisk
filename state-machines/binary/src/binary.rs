@@ -32,14 +32,12 @@ impl<F: PrimeField> BinarySM<F> {
         let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
-        let binary_sm = Self {
+        Arc::new(Self {
             binary_basic_sm,
             binary_basic_table_sm,
             binary_extension_sm,
             binary_extension_table_sm,
-        };
-
-        Arc::new(binary_sm)
+        })
     }
 }
 

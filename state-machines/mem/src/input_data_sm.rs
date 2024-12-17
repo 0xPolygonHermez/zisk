@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use crate::{
-    MemoryAirValues, MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
+    MemInput, MemModule, MemPreviousSegment, MemoryAirValues, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
 };
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
-use zisk_pil::{InputDataTrace, ZiskProofValues, InputDataAirValues, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    InputDataAirValues, InputDataTrace, ZiskProofValues, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 const INPUT_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -33,14 +35,13 @@ pub struct InputDataSM<F: PrimeField> {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> InputDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { std: std.clone()})
+        Arc::new(Self { std: std.clone() })
     }
 
     pub fn prove(&self, inputs: &[MemInput]) {
-
-        let mut proof_values = ZiskProofValues::from_vec_guard(self.std.wcm.get_pctx().get_proof_values());
+        let mut proof_values = ZiskProofValues::from_vec_guard(self.std.pctx.get_proof_values());
         proof_values.enable_input_data[0] = if inputs.is_empty() { F::zero() } else { F::one() };
-      
+
         // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
         // memory only need to process these special inputs, but inputs no change. At end of
         // inputs proxy add an extra internal input to jump to last address
@@ -59,7 +60,7 @@ impl<F: PrimeField> InputDataSM<F> {
         for i in 0..num_segments {
             // TODO: Review
             if let (true, global_idx) =
-                self.std.wcm.get_pctx().dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1)
+                self.std.pctx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1)
             {
                 global_idxs[i] = global_idx;
             }
@@ -253,8 +254,10 @@ impl<F: PrimeField> InputDataSM<F> {
             air_values.segment_last_value[i] = air_values.segment_last_value[i];
         }
 
-        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values));
-        self.std.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+        let air_instance = AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        );
+        self.std.pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
@@ -262,7 +265,6 @@ impl<F: PrimeField> InputDataSM<F> {
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
     }
-
 }
 
 impl<F: PrimeField> MemModule<F> for InputDataSM<F> {

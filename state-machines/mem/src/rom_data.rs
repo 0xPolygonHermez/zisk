@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    MemoryAirValues, MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
+    MemInput, MemModule, MemPreviousSegment, MemoryAirValues, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
 };
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -51,7 +51,7 @@ impl<F: PrimeField> RomDataSM<F> {
         for i in 0..num_segments {
             // TODO: Review
             if let (true, global_idx) =
-                self.std.wcm.get_pctx().dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1)
+                self.std.pctx.dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, air_id, 1)
             {
                 global_idxs[i] = global_idx;
             }
@@ -213,8 +213,10 @@ impl<F: PrimeField> RomDataSM<F> {
             air_values.segment_last_value[i] = air_values.segment_last_value[i];
         }
 
-        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values));
-        self.std.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+        let air_instance = AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        );
+        self.std.pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
@@ -222,7 +224,6 @@ impl<F: PrimeField> RomDataSM<F> {
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
     }
-
 }
 
 impl<F: PrimeField> MemModule<F> for RomDataSM<F> {

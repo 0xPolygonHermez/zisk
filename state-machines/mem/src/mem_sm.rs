@@ -7,7 +7,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 
 use zisk_core::{RAM_ADDR, RAM_SIZE};
-use zisk_pil::{MemTrace, MemAirValues, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAirValues, MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -67,9 +67,11 @@ impl<F: PrimeField> MemSM<F> {
         #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
-            if let (true, global_idx) =
-                self.std.wcm.get_pctx().dctx.write().unwrap().add_instance(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0], 1)
-            {
+            if let (true, global_idx) = self.std.pctx.dctx.write().unwrap().add_instance(
+                ZISK_AIRGROUP_ID,
+                MEM_AIR_IDS[0],
+                1,
+            ) {
                 global_idxs[i] = global_idx;
             }
         }
@@ -259,8 +261,10 @@ impl<F: PrimeField> MemSM<F> {
             air_values.segment_last_value[i] = air_values.segment_last_value[i];
         }
 
-        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values));
-        self.std.wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+        let air_instance = AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        );
+        self.std.pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
 
         Ok(())
     }
@@ -268,7 +272,6 @@ impl<F: PrimeField> MemSM<F> {
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
     }
-
 }
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {

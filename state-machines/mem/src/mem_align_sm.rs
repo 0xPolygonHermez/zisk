@@ -67,10 +67,7 @@ macro_rules! debug_info {
 impl<F: PrimeField> MemAlignSM<F> {
     const MY_NAME: &'static str = "MemAlign";
 
-    pub fn new(
-        std: Arc<Std<F>>,
-        mem_align_rom_sm: Arc<MemAlignRomSM>,
-    ) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             rows: Mutex::new(Vec::new()),

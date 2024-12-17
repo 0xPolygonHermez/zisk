@@ -24,9 +24,7 @@ impl ArithSM {
 
         let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
 
-        let arith_sm = Self { arith_full_sm, arith_table_sm, arith_range_table_sm };
-
-        Arc::new(arith_sm)
+        Arc::new(Self { arith_full_sm, arith_table_sm, arith_range_table_sm })
     }
 }
 
