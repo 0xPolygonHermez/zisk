@@ -78,9 +78,8 @@
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
 //!   program execution a general purpose memory.
 
+use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
-
-use crate::{REG_FIRST, REG_LAST};
 
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x90000000;
@@ -685,4 +684,76 @@ impl Mem {
         debug_assert!(Mem::address_is_register(address));
         ((address - REG_FIRST) >> 3) as usize
     }
+
+    /// Returns true if the address and width are fully aligned
+    #[inline(always)]
+    pub fn is_full_aligned(address: u64, width: u64) -> bool {
+        ((address & 0x03) == 0) && (width == 8)
+    }
+
+    /// Returns true if the address and width are single non aligned
+    #[inline(always)]
+    pub fn is_single_not_aligned(address: u64, width: u64) -> bool {
+        if Self::is_full_aligned(address, width) {
+            return true;
+        }
+        let (address_required_1, address_required_2) = Self::required_addresses(address, width);
+        address_required_1 == address_required_2
+    }
+
+    /// Returns true if the address and width are double non aligned
+    #[inline(always)]
+    pub fn is_double_not_aligned(address: u64, width: u64) -> bool {
+        if Self::is_full_aligned(address, width) {
+            return true;
+        }
+        let (address_required_1, address_required_2) = Self::required_addresses(address, width);
+        address_required_1 != address_required_2
+    }
+
+    /// Aligned addresses of the first and second 8-bytes chunks
+    /// They can be equal if the required data fits into one single chunk of 8 bytes, or if it is
+    /// a fully aligned data
+    #[inline(always)]
+    pub fn required_addresses(address: u64, width: u64) -> (u64, u64) {
+        (address & 0xFFFF_FFFF_FFFF_FFF8, (address + width - 1) & 0xFFFF_FFFF_FFFF_FFF8)
+    }
+
+    /// Get single not aligned data from the raw data
+    #[inline(always)]
+    pub fn get_single_not_aligned_data(address: u64, width: u64, raw_data: u64) -> u64 {
+        debug_assert!(width < 8);
+        let offset = address & M3;
+        let raw_data = raw_data >> (8 * offset);
+        match width {
+            1 => raw_data & M8,
+            2 => raw_data & M16,
+            4 => raw_data & M32,
+            _ => panic!("Mem::get_single_not_aligned_data() invalid width={}", width),
+        }
+    }
+
+    /// Get double not aligned data from the raw data
+    #[inline(always)]
+    pub fn get_double_not_aligned_data(
+        address: u64,
+        width: u64,
+        raw_data_1: u64,
+        raw_data_2: u64,
+    ) -> u64 {
+        //println!("Mem::get_double_not_aligned_data() address={:x} width={} raw_data_1={:x}
+        // raw_data_2={:x}", address, width, raw_data_1, raw_data_2);
+        debug_assert!(width <= 8);
+        let offset = address & M3;
+        let raw_data = ((raw_data_1 as u128 + ((raw_data_2 as u128) << 64)) >> (8 * offset)) as u64;
+        match width {
+            1 => raw_data & M8,
+            2 => raw_data & M16,
+            4 => raw_data & M32,
+            8 => raw_data,
+            _ => panic!("Mem::get_double_not_aligned_data() invalid width={}", width),
+        }
+    }
+
+    //pub fn get_non_aligned_data_from_required(address: u64, width: u8,)
 }
