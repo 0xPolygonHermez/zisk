@@ -1,5 +1,5 @@
 use p3_field::PrimeField;
-use zisk_common::{BusDevice, Opid, PayloadType};
+use zisk_common::{BusDevice, BusId, PayloadType};
 
 use crate::{Instance, InstanceExpanderCtx, Metrics, Planner};
 
@@ -25,7 +25,11 @@ impl BusDeviceWrapper {
 
 impl BusDevice<u64> for BusDeviceWrapper {
     #[inline(always)]
-    fn process_data(&mut self, opid: &Opid, data: &[PayloadType]) -> Vec<(Opid, Vec<PayloadType>)> {
-        self.inner.process_data(opid, data)
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[PayloadType],
+    ) -> Vec<(BusId, Vec<PayloadType>)> {
+        self.inner.process_data(bus_id, data)
     }
 }

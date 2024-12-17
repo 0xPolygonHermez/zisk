@@ -7,6 +7,7 @@ use sm_common::{
     instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
     InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
+use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
 
@@ -38,7 +39,10 @@ impl<F: PrimeField> BinarySM<F> {
 
 impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
     fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
-        Box::new(RegularCounters::new(vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE]))
+        Box::new(RegularCounters::new(
+            OPERATION_BUS_ID,
+            vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
+        ))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {

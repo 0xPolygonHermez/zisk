@@ -10,7 +10,7 @@ use sm_common::{
     InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
-use zisk_common::{DataBus, PayloadType, OPERATION_BUS_OPID};
+use zisk_common::{DataBus, PayloadType};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
@@ -50,10 +50,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .map(|minimal_trace| {
                 let mut data_bus = DataBus::<PayloadType, BusDeviceWrapper>::new();
                 self.secondary_sm.iter().for_each(|sm| {
-                    data_bus.connect_device(
-                        vec![OPERATION_BUS_OPID],
-                        Box::new(BusDeviceWrapper::new(sm.get_counter())),
-                    );
+                    let counter = sm.get_counter();
+                    let bus_ids = counter.bus_id();
+
+                    data_bus.connect_device(bus_ids, Box::new(BusDeviceWrapper::new(counter)));
                 });
 
                 ZiskEmulator::process_rom_slice_counters::<F, BusDeviceWrapper>(

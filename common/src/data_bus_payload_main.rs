@@ -3,6 +3,7 @@ use zisk_core::{InstContext, ZiskInst};
 use crate::PayloadType;
 
 const MAIN_DATA_SIZE: usize = 8;
+
 const STEP: usize = 0;
 const PC: usize = 1;
 const OP: usize = 2;
@@ -14,7 +15,7 @@ const END: usize = 7;
 
 pub type MainData<D> = [D; MAIN_DATA_SIZE];
 
-pub const OPERATION_BUS_OPID: u16 = 5000;
+pub const OPERATION_BUS_ID: u16 = 5000;
 
 pub struct OperationBusData<D>(std::marker::PhantomData<D>);
 

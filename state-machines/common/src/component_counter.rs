@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     ops::{Add, AddAssign},
 };
-use zisk_common::Opid;
+use zisk_common::BusId;
 use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub enum CounterType {
 }
 
 pub trait Metrics: Send + Sync {
-    fn measure(&mut self, opid: &Opid, data: &[u64]) -> Vec<(Opid, Vec<u64>)>;
+    fn measure(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
 
     fn add(&mut self, other: &dyn Metrics);
 
@@ -24,6 +24,8 @@ pub trait Metrics: Send + Sync {
     /// If a Metrics is interested in all operation types, it should return a vector with a single
     /// element `ZiskOperationType::None`.
     fn op_type(&self) -> Vec<ZiskOperationType>;
+
+    fn bus_id(&self) -> Vec<BusId>;
 
     fn as_any(&self) -> &dyn Any;
 }

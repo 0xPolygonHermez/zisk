@@ -5,6 +5,7 @@ use sm_common::{
     instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
     InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
+use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
@@ -29,7 +30,7 @@ impl ArithSM {
 
 impl<F: PrimeField> ComponentProvider<F> for ArithSM {
     fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
-        Box::new(RegularCounters::new(vec![zisk_core::ZiskOperationType::Arith]))
+        Box::new(RegularCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
