@@ -14,6 +14,8 @@ const END: usize = 7;
 
 pub type MainData<D> = [D; MAIN_DATA_SIZE];
 
+pub const MAIN_BUS_OPID: u16 = 5000;
+
 pub struct DataBusMain<D>(std::marker::PhantomData<D>);
 
 impl DataBusMain<u64> {

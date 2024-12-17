@@ -6,7 +6,7 @@ use crate::{
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
-use zisk_common::{BusDevice, DataBusMain, InstObserver};
+use zisk_common::{BusDevice, DataBusMain, InstObserver, MAIN_BUS_OPID};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_common::DataBus;
@@ -969,7 +969,7 @@ impl<'a> Emu<'a> {
         self.store_c_slice(instruction);
 
         let payload = DataBusMain::new_payload(instruction, &self.ctx.inst_ctx);
-        data_bus.write_to_bus(5000, payload.to_vec());
+        data_bus.write_to_bus(MAIN_BUS_OPID, payload.to_vec());
         // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
 
         // #[cfg(feature = "sp")]
