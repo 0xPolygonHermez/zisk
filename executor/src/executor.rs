@@ -5,15 +5,17 @@ use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
-use sm_common::{CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan};
+use sm_common::{
+    BusDeviceWithMetrics, BusDeviceWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx,
+    InstanceType, Plan,
+};
 use sm_main::{MainInstance, MainSM};
+use zisk_common::{DataBus, PayloadType};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
-
-use crate::MetricsProxy;
 
 pub struct ZiskExecutor<F: PrimeField> {
     pub public_inputs_path: PathBuf,
@@ -46,27 +48,34 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut metrics_slices = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut metrics_proxy = MetricsProxy::new();
+                let mut data_bus = DataBus::<PayloadType, BusDeviceWrapper>::new();
                 self.secondary_sm.iter().for_each(|sm| {
-                    metrics_proxy.register_metrics(sm.get_counter());
+                    data_bus.connect_device(
+                        vec![5000],
+                        Box::new(BusDeviceWrapper::new(sm.get_counter())),
+                    );
                 });
 
-                ZiskEmulator::process_rom_slice_counters::<F>(
+                ZiskEmulator::process_rom_slice_counters2::<F, BusDeviceWrapper>(
                     &self.zisk_rom,
                     minimal_trace,
-                    &mut metrics_proxy,
+                    &mut data_bus,
                 );
-                metrics_proxy
+
+                data_bus
+                    .devices
+                    .into_iter()
+                    .map(|device| device.inner)
+                    .collect::<Vec<Box<dyn BusDeviceWithMetrics>>>()
             })
             .collect::<Vec<_>>();
         timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
         // Group counters by chunk_id and counter type
-        let mut vec_counters =
-            (0..metrics_slices[0].metrics.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+        let mut vec_counters = (0..metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
         for (chunk_id, counter_slice) in metrics_slices.iter_mut().enumerate() {
-            for (i, counter) in counter_slice.metrics.drain(..).enumerate() {
+            for (i, counter) in counter_slice.drain(..).enumerate() {
                 vec_counters[i].push((chunk_id, counter));
             }
         }

@@ -6,9 +6,10 @@ use crate::{
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
-use zisk_common::InstObserver;
+use zisk_common::{BusDevice, DataBusMain, InstObserver};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
+use zisk_common::DataBus;
 use zisk_core::{
     InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
     SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
@@ -953,6 +954,35 @@ impl<'a> Emu<'a> {
         finished
     }
 
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_observer3<F: PrimeField, BD: BusDevice<u64>>(
+        &mut self,
+        trace_step: &EmuTraceSteps,
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) -> bool {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_slice(instruction);
+
+        let payload = DataBusMain::new_payload(instruction, &self.ctx.inst_ctx);
+        data_bus.write_to_bus(5000, payload.to_vec());
+        // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        self.ctx.inst_ctx.step += 1;
+        //trace_step.steps += 1;
+
+        false
+    }
+
     /// Run a slice of the program to generate full traces
     #[inline(always)]
     pub fn run_slice_observer2<F: PrimeField>(
@@ -971,6 +1001,27 @@ impl<'a> Emu<'a> {
         let emu_trace_steps = &emu_trace.steps;
         for _step in 0..emu_trace.steps.steps {
             self.step_observer::<F>(emu_trace_steps, &mut mem_reads_index, inst_observer);
+        }
+    }
+
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn run_slice_observer3<F: PrimeField, BD: BusDevice<u64>>(
+        &mut self,
+        emu_trace: &EmuTrace,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
+        self.ctx.inst_ctx.sp = emu_trace.start_state.sp;
+        self.ctx.inst_ctx.step = emu_trace.start_state.step;
+        self.ctx.inst_ctx.c = emu_trace.start_state.c;
+        self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+
+        let mut mem_reads_index: usize = 0;
+        let emu_trace_steps = &emu_trace.steps;
+        for _step in 0..emu_trace.steps.steps {
+            self.step_observer3::<F, BD>(emu_trace_steps, &mut mem_reads_index, data_bus);
         }
     }
 

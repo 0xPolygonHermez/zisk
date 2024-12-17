@@ -1,13 +1,16 @@
 use std::any::Any;
 
 use crate::Metrics;
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use zisk_common::{BusDevice, Opid};
+use zisk_core::ZiskOperationType;
 
 #[derive(Default)]
 pub struct DummyCounter {}
 
 impl Metrics for DummyCounter {
-    fn measure(&mut self, _: &ZiskInst, _: &InstContext) {}
+    fn measure(&mut self, _: &Opid, _: &[u64]) -> Vec<(Opid, Vec<u64>)> {
+        vec![]
+    }
 
     fn add(&mut self, _: &dyn Metrics) {}
 
@@ -17,5 +20,12 @@ impl Metrics for DummyCounter {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+impl BusDevice<u64> for DummyCounter {
+    #[inline]
+    fn process_data(&mut self, _: &Opid, _: &[u64]) -> Vec<(Opid, Vec<u64>)> {
+        vec![]
     }
 }

@@ -1,7 +1,8 @@
 use std::ops::Add;
 
 use crate::{Counter, Metrics};
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use zisk_common::{BusDevice, DataBusMain, Opid};
+use zisk_core::ZiskOperationType;
 
 pub struct RegularCounter {
     op_type: ZiskOperationType,
@@ -19,10 +20,17 @@ impl RegularCounter {
 }
 
 impl Metrics for RegularCounter {
-    fn measure(&mut self, inst: &ZiskInst, _: &InstContext) {
-        if inst.op_type == self.op_type {
-            self.counter.update(1);
+    fn measure(&mut self, opid: &Opid, data: &[u64]) -> Vec<(Opid, Vec<u64>)> {
+        if *opid == 5000 {
+            let data: &[u64; 8] = data.try_into().expect("Regular Metrics: Failed to convert data");
+            let inst_op_type = DataBusMain::get_op_type(data);
+
+            if inst_op_type == self.op_type as u64 {
+                self.counter.update(1);
+            }
         }
+
+        vec![]
     }
 
     fn add(&mut self, other: &dyn Metrics) {
@@ -47,5 +55,14 @@ impl Add for RegularCounter {
 
     fn add(self, other: Self) -> RegularCounter {
         RegularCounter { op_type: self.op_type, counter: &self.counter + &other.counter }
+    }
+}
+
+impl BusDevice<u64> for RegularCounter {
+    #[inline]
+    fn process_data(&mut self, opid: &Opid, data: &[u64]) -> Vec<(Opid, Vec<u64>)> {
+        self.measure(opid, data);
+
+        vec![]
     }
 }

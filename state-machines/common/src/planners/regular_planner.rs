@@ -1,4 +1,6 @@
-use crate::{plan, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner, RegularCounters};
+use crate::{
+    plan, BusDeviceWithMetrics, ChunkId, InstCount, InstanceType, Plan, Planner, RegularCounters,
+};
 use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
@@ -54,7 +56,7 @@ impl RegularPlanner {
 }
 
 impl Planner for RegularPlanner {
-    fn plan(&self, counters: Vec<(ChunkId, Box<dyn Metrics>)>) -> Vec<Plan> {
+    fn plan(&self, counters: Vec<(ChunkId, Box<dyn BusDeviceWithMetrics>)>) -> Vec<Plan> {
         // Prepare counts
         let mut count: Vec<Vec<InstCount>> = Vec::with_capacity(self.instances_info.len());
 

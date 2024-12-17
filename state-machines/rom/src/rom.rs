@@ -4,7 +4,9 @@ use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
+use sm_common::{
+    BusDeviceWithMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Plan, Planner,
+};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
@@ -152,7 +154,7 @@ impl RomSM {
 }
 
 impl<F: PrimeField> ComponentProvider<F> for RomSM {
-    fn get_counter(&self) -> Box<dyn Metrics> {
+    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
         Box::new(RomCounter::default())
     }
 

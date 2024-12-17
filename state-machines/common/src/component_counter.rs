@@ -4,7 +4,8 @@ use std::{
     fmt::Debug,
     ops::{Add, AddAssign},
 };
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use zisk_common::Opid;
+use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
 pub enum CounterType {
@@ -12,8 +13,8 @@ pub enum CounterType {
     CounterStats(CounterStats),
 }
 
-pub trait Metrics: Send + Sync + Any {
-    fn measure(&mut self, inst: &ZiskInst, inst_ctx: &InstContext);
+pub trait Metrics: Send + Sync {
+    fn measure(&mut self, opid: &Opid, data: &[u64]) -> Vec<(Opid, Vec<u64>)>;
 
     fn add(&mut self, other: &dyn Metrics);
 
