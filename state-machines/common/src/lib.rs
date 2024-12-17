@@ -7,7 +7,7 @@ mod field;
 mod instance_expander;
 mod instance_observer;
 mod operations;
-mod planner_helpers;
+mod planners;
 mod provable;
 mod witness_buffer;
 
@@ -20,6 +20,6 @@ pub use field::*;
 pub use instance_expander::*;
 pub use instance_observer::*;
 pub use operations::*;
-pub use planner_helpers::*;
+pub use planners::*;
 pub use provable::*;
 pub use witness_buffer::*;

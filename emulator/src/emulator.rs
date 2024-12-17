@@ -24,7 +24,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_common::InstObserver;
+use zisk_common::{BusDevice, DataBus, InstObserver};
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
@@ -218,16 +218,16 @@ impl ZiskEmulator {
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
     #[inline]
-    pub fn process_rom_slice_counters<F: PrimeField>(
+    pub fn process_rom_slice_counters<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
-        inst_observer: &mut dyn InstObserver,
+        data_bus: &mut DataBus<u64, BD>,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_observer2::<F>(emu_trace, inst_observer);
+        emu.run_slice_observer2::<F, BD>(emu_trace, data_bus);
     }
 
     /// EXPAND phase

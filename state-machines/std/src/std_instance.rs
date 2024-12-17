@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
 
 pub struct StdInstance<F: PrimeField> {
@@ -19,7 +19,7 @@ impl<F: PrimeField> StdInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for StdInstance<F> {
-    fn compute_witness(&mut self) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         let plan = &self.iectx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
@@ -29,7 +29,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     }
 
     fn instance_type(&self) -> InstanceType {
-        InstanceType::Table
+        InstanceType::Instance
     }
 }
 

@@ -1,61 +1,77 @@
 use std::sync::Arc;
 
 use p3_field::PrimeField;
-use proofman::WitnessManager;
 use sm_common::{
-    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner, RegularCounter,
+    instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
+    InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
-use zisk_pil::{ARITH_AIR_IDS, ARITH_RANGE_TABLE_AIR_IDS, ARITH_TABLE_AIR_IDS};
+use zisk_common::OPERATION_BUS_ID;
+use zisk_core::ZiskOperationType;
+use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
-use crate::{
-    ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableInstance, ArithRangeTableSM,
-    ArithTableInstance, ArithTableSM,
-};
+use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
-pub struct ArithSM<F> {
-    wcm: Arc<WitnessManager<F>>,
+pub struct ArithSM {
     arith_full_sm: Arc<ArithFullSM>,
     arith_table_sm: Arc<ArithTableSM>,
     arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
-impl<F: PrimeField> ArithSM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let arith_table_sm = ArithTableSM::new::<F>();
-        let arith_range_table_sm = ArithRangeTableSM::new::<F>();
+impl ArithSM {
+    pub fn new() -> Arc<Self> {
+        let arith_table_sm = ArithTableSM::new();
+        let arith_range_table_sm = ArithRangeTableSM::new();
 
         let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
 
-        let arith_sm = Self { wcm, arith_full_sm, arith_table_sm, arith_range_table_sm };
-
-        Arc::new(arith_sm)
+        Arc::new(Self { arith_full_sm, arith_table_sm, arith_range_table_sm })
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for ArithSM<F> {
-    fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(RegularCounter::new(zisk_core::ZiskOperationType::Arith))
+impl<F: PrimeField> ComponentProvider<F> for ArithSM {
+    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
+        Box::new(RegularCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(ArithPlanner::<F>::new())
+        Box::new(
+            RegularPlanner::new()
+                .add_instance(InstanceInfo::new(
+                    ArithTrace::<usize>::AIR_ID,
+                    ArithTrace::<usize>::AIRGROUP_ID,
+                    ArithTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::Arith,
+                ))
+                .add_table_instance(TableInfo::new(
+                    ArithTableTrace::<usize>::AIR_ID,
+                    ArithTableTrace::<usize>::AIRGROUP_ID,
+                ))
+                .add_table_instance(TableInfo::new(
+                    ArithRangeTableTrace::<usize>::AIR_ID,
+                    ArithRangeTableTrace::<usize>::AIRGROUP_ID,
+                )),
+        )
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
-            id if id == ARITH_AIR_IDS[0] => {
+            id if id == ArithTrace::<usize>::AIR_ID => {
+                instance!(
+                    ArithFullInstance,
+                    ArithFullSM,
+                    ArithTrace::<usize>::NUM_ROWS,
+                    zisk_core::ZiskOperationType::Arith
+                );
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
             }
-            id if id == ARITH_TABLE_AIR_IDS[0] => Box::new(ArithTableInstance::new(
-                self.wcm.clone(),
-                self.arith_table_sm.clone(),
-                iectx,
-            )),
-            id if id == ARITH_RANGE_TABLE_AIR_IDS[0] => Box::new(ArithRangeTableInstance::new(
-                self.wcm.clone(),
-                self.arith_range_table_sm.clone(),
-                iectx,
-            )),
+            id if id == ArithTableTrace::<usize>::AIR_ID => {
+                table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
+                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), iectx))
+            }
+            id if id == ArithRangeTableTrace::<usize>::AIR_ID => {
+                table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
+                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), iectx))
+            }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
         }
     }

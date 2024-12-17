@@ -1,26 +1,18 @@
 use std::sync::Arc;
 
-use crate::{
-    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableInstance, BinaryBasicTableSM,
-    BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableInstance,
-    BinaryExtensionTableSM, BinaryPlanner,
-};
+use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::WitnessManager;
 use sm_common::{
-    ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner, RegularCounters,
+    instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
+    InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
+use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
-use zisk_pil::{
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
-};
+use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
 
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
     // Secondary State machines
     binary_basic_sm: Arc<BinaryBasicSM>,
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
@@ -29,50 +21,87 @@ pub struct BinarySM<F: PrimeField> {
 }
 
 impl<F: PrimeField> BinarySM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
-        let binary_sm = Self {
-            wcm: wcm.clone(),
+        Arc::new(Self {
             binary_basic_sm,
             binary_basic_table_sm,
             binary_extension_sm,
             binary_extension_table_sm,
-        };
-
-        Arc::new(binary_sm)
+        })
     }
 }
 
 impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
-    fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(RegularCounters::new(vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE]))
+    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
+        Box::new(RegularCounters::new(
+            OPERATION_BUS_ID,
+            vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
+        ))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(BinaryPlanner::<F>::new())
+        Box::new(
+            RegularPlanner::new()
+                .add_instance(InstanceInfo::new(
+                    BinaryTrace::<usize>::AIR_ID,
+                    BinaryTrace::<usize>::AIRGROUP_ID,
+                    BinaryTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::Binary,
+                ))
+                .add_instance(InstanceInfo::new(
+                    BinaryExtensionTrace::<usize>::AIR_ID,
+                    BinaryExtensionTrace::<usize>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::BinaryE,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryTableTrace::<usize>::AIR_ID,
+                    BinaryTableTrace::<usize>::AIRGROUP_ID,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryExtensionTableTrace::<usize>::AIR_ID,
+                    BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
+                )),
+        )
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
-            id if id == BINARY_AIR_IDS[0] => {
+            id if id == BinaryTrace::<usize>::AIR_ID => {
+                instance!(
+                    BinaryBasicInstance,
+                    BinaryBasicSM,
+                    BinaryTrace::<usize>::NUM_ROWS,
+                    zisk_core::ZiskOperationType::Binary
+                );
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))
             }
-            id if id == BINARY_EXTENSION_AIR_IDS[0] => {
+            id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
+                instance!(
+                    BinaryExtensionInstance,
+                    BinaryExtensionSM<F>,
+                    BinaryExtensionTrace::<usize>::NUM_ROWS,
+                    zisk_core::ZiskOperationType::BinaryE
+                );
                 Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), iectx))
             }
-            id if id == BINARY_TABLE_AIR_IDS[0] => Box::new(BinaryBasicTableInstance::new(
-                self.wcm.clone(),
-                self.binary_basic_table_sm.clone(),
-                iectx,
-            )),
-            id if id == BINARY_EXTENSION_TABLE_AIR_IDS[0] => {
+            id if id == BinaryTableTrace::<usize>::AIR_ID => {
+                table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
+                Box::new(BinaryBasicTableInstance::new(self.binary_basic_table_sm.clone(), iectx))
+            }
+            id if id == BinaryExtensionTableTrace::<usize>::AIR_ID => {
+                table_instance!(
+                    BinaryExtensionTableInstance,
+                    BinaryExtensionTableSM,
+                    BinaryExtensionTableTrace
+                );
                 Box::new(BinaryExtensionTableInstance::new(
-                    self.wcm.clone(),
                     self.binary_extension_table_sm.clone(),
                     iectx,
                 ))

@@ -1,17 +1,19 @@
 use std::ops::Add;
 
 use crate::{Counter, Metrics};
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use zisk_common::{BusDevice, BusId, OperationBusData};
+use zisk_core::ZiskOperationType;
 
 pub struct RegularCounters {
     op_type: Vec<ZiskOperationType>,
+    bus_id: BusId,
     counter: Vec<Counter>,
 }
 
 impl RegularCounters {
-    pub fn new(op_type: Vec<ZiskOperationType>) -> Self {
+    pub fn new(bus_id: BusId, op_type: Vec<ZiskOperationType>) -> Self {
         let counter = vec![Counter::default(); op_type.len()];
-        Self { op_type, counter }
+        Self { bus_id, op_type, counter }
     }
 
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
@@ -23,10 +25,15 @@ impl RegularCounters {
 }
 
 impl Metrics for RegularCounters {
-    fn measure(&mut self, inst: &ZiskInst, _: &InstContext) {
-        if let Some(index) = self.op_type.iter().position(|&op_type| op_type == inst.op_type) {
+    fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+        let data: &[u64; 8] = data.try_into().expect("Regular Metrics: Failed to convert data");
+        let inst_op_type = OperationBusData::get_op_type(data);
+        if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
+        {
             self.counter[index].update(1);
         }
+
+        vec![]
     }
 
     fn add(&mut self, other: &dyn Metrics) {
@@ -41,6 +48,10 @@ impl Metrics for RegularCounters {
 
     fn op_type(&self) -> Vec<ZiskOperationType> {
         self.op_type.clone()
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -58,6 +69,15 @@ impl Add for RegularCounters {
             .zip(other.counter)
             .map(|(counter, other_counter)| &counter + &other_counter)
             .collect();
-        RegularCounters { op_type: self.op_type, counter }
+        RegularCounters { bus_id: self.bus_id, op_type: self.op_type, counter }
+    }
+}
+
+impl BusDevice<u64> for RegularCounters {
+    #[inline]
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+        self.measure(bus_id, data);
+
+        vec![]
     }
 }

@@ -5,9 +5,10 @@ use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::*;
+use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -21,6 +22,8 @@ const SIGN_BYTE: u64 = 0x80;
 
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
+
+const SE_W_OP: u8 = 0x39;
 
 pub struct BinaryExtensionSM<F: PrimeField> {
     // STD
@@ -37,11 +40,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let binary_extension_sm = Arc::new(Self { std: std.clone(), binary_extension_table_sm });
-
-        std.register_predecessor();
-
-        binary_extension_sm
+        Arc::new(Self { std: std.clone(), binary_extension_table_sm })
     }
 
     pub fn operations() -> Vec<u8> {
@@ -134,7 +133,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.in2[1] = F::from_canonical_u64(in2_1);
 
         // Set main SM step
-        row.main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(operation.step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -305,14 +304,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: &[ZiskRequiredOperation],
-        binary_e_trace: &mut BinaryExtensionTrace<F>,
-    ) {
+    pub fn prove_instance(&self, operations: &[ZiskRequiredOperation]) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let num_rows = BinaryExtensionTrace::<F>::NUM_ROWS;
-        assert!(operations.len() <= BinaryExtensionTrace::<F>::NUM_ROWS);
+        let mut binary_e_trace = BinaryExtensionTrace::new();
+
+        let num_rows = binary_e_trace.num_rows();
+        assert!(operations.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
@@ -332,8 +329,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
-        let padding_row =
-            BinaryExtensionTraceRow::<F> { op: F::from_canonical_u64(0x25), ..Default::default() };
+        // Note: We can choose any operation that trivially satisfies the constraints on padding
+        // rows
+        let padding_row = BinaryExtensionTraceRow::<F> {
+            op: F::from_canonical_u8(SE_W_OP),
+            ..Default::default()
+        };
 
         for i in operations.len()..num_rows {
             binary_e_trace[i] = padding_row;
@@ -366,5 +367,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             );
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
     }
 }

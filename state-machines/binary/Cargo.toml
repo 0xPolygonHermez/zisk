@@ -14,7 +14,6 @@ p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
-proofman = { workspace = true }
 pil-std-lib = { workspace = true }
 
 log = { workspace = true }
@@ -23,4 +22,4 @@ num-bigint = { workspace = true }
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link"]

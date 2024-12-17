@@ -5,10 +5,15 @@ use crate::{
 };
 use log::info;
 use p3_field::PrimeField;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
+
+const CHUNK_SIZE: u64 = 0x10000;
+const EXTENSION: u64 = 0xFFFFFFFF;
 
 pub struct ArithFullSM {
     arith_table_sm: Arc<ArithTableSM>,
@@ -28,12 +33,13 @@ impl ArithFullSM {
     pub fn prove_instance<F: PrimeField>(
         &self,
         inputs: &[ZiskRequiredOperation],
-        arith_trace: &mut ArithTrace<F>,
-    ) {
+    ) -> AirInstance<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
-        let num_rows = ArithTrace::<F>::NUM_ROWS;
+        let mut arith_trace = ArithTrace::new();
+
+        let num_rows = arith_trace.num_rows();
 
         timer_start_trace!(ARITH_TRACE);
         info!(
@@ -152,6 +158,42 @@ impl ArithFullSM {
                 aop.d[2] + (aop.d[3] << 16)
             });
             arith_trace[irow] = t;
+
+            // If the operation is a division, then use the binary component
+            // to check that the remainer is lower than the divisor
+            if aop.div && !aop.div_by_zero {
+                let opcode = match (aop.nr, aop.nb) {
+                    (false, false) => LTU_OP,
+                    (false, true) => LT_ABS_PN_OP,
+                    (true, false) => LT_ABS_NP_OP,
+                    (true, true) => GT_OP,
+                };
+
+                let extension = match (aop.m32, aop.nr, aop.nb) {
+                    (false, _, _) => (0, 0),
+                    (true, false, false) => (0, 0),
+                    (true, false, true) => (0, EXTENSION),
+                    (true, true, false) => (EXTENSION, 0),
+                    (true, true, true) => (EXTENSION, EXTENSION),
+                };
+
+                // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
+                // this!
+                let _operation = ZiskRequiredOperation {
+                    step: input.step,
+                    opcode,
+                    a: aop.d[0] +
+                        CHUNK_SIZE * aop.d[1] +
+                        CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
+                        CHUNK_SIZE.pow(3) * aop.d[3],
+                    b: aop.b[0] +
+                        CHUNK_SIZE * aop.b[1] +
+                        CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
+                        CHUNK_SIZE.pow(3) * aop.b[3],
+                };
+                // TODO!!!!!! Push to the DataBus
+                // binary_inputs.push(operation);
+            }
         }
         timer_stop_and_log_trace!(ARITH_TRACE);
 
@@ -193,5 +235,7 @@ impl ArithFullSM {
         timer_start_trace!(ARITH_RANGE_TABLE);
         self.arith_range_table_sm.process_slice(&range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
     }
 }

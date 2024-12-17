@@ -18,7 +18,7 @@ zisk-common = { path = "../common" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman = { workspace = true }
+witness = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
 log = { workspace = true }
