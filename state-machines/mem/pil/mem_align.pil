@@ -184,5 +184,5 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     for (int i = 0; i < RC; i++) {
         value[i] === sel_prove * prove_val[i] + sel_assume * assume_val[i];
     } 
-    permutation(MEMORY_ID, expressions: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: sel_prove - sel_assume, bus_type: PIOP_BUS_PROD);
+    permutation(MEMORY_ID, expressions: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: sel_prove - sel_assume);
 }

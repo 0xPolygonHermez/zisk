@@ -75,8 +75,7 @@ impl<F: PrimeField> MemSM<F> {
 
     pub fn unregister_predecessor(&self) {
         if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            let pctx = self.wcm.get_pctx();
-            self.std.unregister_predecessor(pctx, None);
+            self.std.unregister_predecessor();
         }
     }
 
