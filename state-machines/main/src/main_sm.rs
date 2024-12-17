@@ -116,12 +116,9 @@ impl<F: PrimeField> MainSM<F> {
             main_instance.main_trace.buffer[i] = last_row;
         }
 
-        let main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
-        let main_segment = F::from_canonical_usize(current_segment);
-
         let mut main_air_values = MainAirValues::<F>::new();
-        main_air_values.main_last_segment = main_last_segment;
-        main_air_values.main_segment = main_segment;
+        main_air_values.main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
+        main_air_values.main_segment = F::from_canonical_usize(current_segment);
 
         let air_instance = AirInstance::new_from_trace(
             FromTrace::new(&mut main_instance.main_trace).with_air_values(&mut main_air_values),

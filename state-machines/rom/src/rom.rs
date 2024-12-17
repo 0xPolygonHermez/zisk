@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
+use proofman_common::{AirInstance, FromTrace};
 use sm_common::{ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Plan, Planner};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
@@ -20,12 +21,10 @@ impl RomSM {
         Arc::new(Self { zisk_rom })
     }
 
-    pub fn prove_instance<F: PrimeField>(
-        rom: &ZiskRom,
-        plan: &Plan,
-        rom_trace: &mut RomTrace<F>,
-        rom_custom_trace: &mut RomRomTrace<F>,
-    ) {
+    pub fn prove_instance<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
+        let mut rom_trace = RomTrace::new();
+        let mut rom_custom_trace = RomRomTrace::new();
+
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
         let pc_histogram = &metadata.rom.inst_count;
@@ -70,7 +69,11 @@ impl RomSM {
             rom_trace[i] = RomTraceRow::default();
         }
 
-        Self::compute_trace_rom(rom, rom_custom_trace);
+        Self::compute_trace_rom(rom, &mut rom_custom_trace);
+
+        AirInstance::new_from_trace(
+            FromTrace::new(&mut rom_trace).with_custom_traces(vec![&mut rom_custom_trace]),
+        )
     }
 
     pub fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {

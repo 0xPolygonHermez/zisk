@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use log::info;
 use p3_field::PrimeField;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
@@ -901,10 +902,11 @@ impl BinaryBasicSM {
     pub fn prove_instance<F: PrimeField>(
         &self,
         operations: &[ZiskRequiredOperation],
-        binary_trace: &mut BinaryTrace<F>,
-    ) {
+    ) -> AirInstance<F> {
+        let mut binary_trace = BinaryTrace::new();
+
         timer_start_trace!(BINARY_TRACE);
-        let num_rows = BinaryTrace::<F>::NUM_ROWS;
+        let num_rows = binary_trace.num_rows();
         assert!(operations.len() <= num_rows);
 
         info!(
@@ -954,5 +956,7 @@ impl BinaryBasicSM {
         timer_start_trace!(BINARY_TABLE);
         self.binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }
 }

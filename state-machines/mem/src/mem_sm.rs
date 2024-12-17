@@ -93,14 +93,13 @@ impl<F: PrimeField> MemSM<F> {
                 if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
             let mem_ops = &inputs[input_offset..input_end];
 
-            self.prove_instance(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                &previous_segment,
-                air_rows,
-                global_idxs[segment_id],
-            );
+            let air_instance =
+                self.prove_instance(mem_ops, segment_id, is_last_segment, &previous_segment);
+
+            self.std
+                .pctx
+                .air_instance_repo
+                .add_air_instance(air_instance, Some(global_idxs[segment_id]));
         }
     }
 
@@ -111,21 +110,20 @@ impl<F: PrimeField> MemSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
-    #[allow(clippy::too_many_arguments)]
     pub fn prove_instance(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
-        air_mem_rows: usize,
-        global_idx: usize,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> AirInstance<F> {
+        let mut trace = MemTrace::<F>::new();
+
         assert!(
-            !mem_ops.is_empty() && mem_ops.len() <= air_mem_rows,
+            !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows,
             "MemSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            air_mem_rows
+            trace.num_rows,
         );
 
         // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
@@ -141,12 +139,9 @@ impl<F: PrimeField> MemSM<F> {
         // The length of the vector is the number of input memory operations plus one because
         // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
-        // let mut trace = MemTrace::<F>::map_buffer(&mut prover_buffer, air_mem_rows, 0).unwrap();
-        let mut trace = MemTrace::<F>::new();
-
         let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
 
-        let mut air_values = MemoryAirValues {
+        let mut air_values_mem = MemoryAirValues {
             segment_id: segment_id as u32,
             is_first_segment: segment_id == 0,
             is_last_segment,
@@ -173,7 +168,7 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].sel = F::from_bool(!mem_op.is_internal);
             trace[i].wr = F::from_bool(mem_op.is_write);
 
-            let (low_val, high_val) = self.get_u32_values(mem_op.value);
+            let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
             let addr_changes = last_addr != mem_op.addr;
@@ -207,8 +202,8 @@ impl<F: PrimeField> MemSM<F> {
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value;
 
-        let padding_size = air_mem_rows - mem_ops.len();
-        for i in mem_ops.len()..air_mem_rows {
+        let padding_size = trace.num_rows - mem_ops.len();
+        for i in mem_ops.len()..trace.num_rows {
             last_step += 1;
             trace[i].addr = addr;
             trace[i].step = F::from_canonical_u64(last_step);
@@ -221,10 +216,10 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].increment = F::one();
         }
 
-        air_values.segment_last_addr = last_addr;
-        air_values.segment_last_step = last_step;
-        air_values.segment_last_value[0] = last_value as u32;
-        air_values.segment_last_value[1] = (last_value >> 32) as u32;
+        air_values_mem.segment_last_addr = last_addr;
+        air_values_mem.segment_last_step = last_step;
+        air_values_mem.segment_last_value[0] = last_value as u32;
+        air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
 
         // Store the value of trivial increment so that they can be range checked
         // value = 1 => index = 0
@@ -248,29 +243,24 @@ impl<F: PrimeField> MemSM<F> {
         }
 
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = air_values.segment_id;
-        air_values.is_first_segment = air_values.is_first_segment;
-        air_values.is_last_segment = air_values.is_last_segment;
-        air_values.previous_segment_addr = air_values.previous_segment_addr;
-        air_values.previous_segment_step = air_values.previous_segment_step;
-        air_values.segment_last_addr = air_values.segment_last_addr;
-        air_values.segment_last_step = air_values.segment_last_step;
-        let count = air_values.previous_segment_value.len();
+        air_values.segment_id = F::from_canonical_u32(air_values_mem.segment_id);
+        air_values.is_first_segment = F::from_bool(air_values_mem.is_first_segment);
+        air_values.is_last_segment = F::from_bool(air_values_mem.is_last_segment);
+        air_values.previous_segment_step =
+            F::from_canonical_u64(air_values_mem.previous_segment_step);
+        air_values.previous_segment_addr =
+            F::from_canonical_u32(air_values_mem.previous_segment_addr);
+        air_values.segment_last_addr = F::from_canonical_u32(air_values_mem.segment_last_addr);
+        air_values.segment_last_step = F::from_canonical_u64(air_values_mem.segment_last_step);
+        let count = air_values_mem.previous_segment_value.len();
         for i in 0..count {
-            air_values.previous_segment_value[i] = air_values.previous_segment_value[i];
-            air_values.segment_last_value[i] = air_values.segment_last_value[i];
+            air_values.previous_segment_value[i] =
+                F::from_canonical_u32(air_values_mem.previous_segment_value[i]);
+            air_values.segment_last_value[i] =
+                F::from_canonical_u32(air_values_mem.segment_last_value[i]);
         }
 
-        let air_instance = AirInstance::new_from_trace(
-            FromTrace::new(&mut trace).with_air_values(&mut air_values),
-        );
-        self.std.pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
-
-        Ok(())
-    }
-
-    fn get_u32_values(&self, value: u64) -> (u32, u32) {
-        (value as u32, (value >> 32) as u32)
+        AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
 }
 

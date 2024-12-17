@@ -5,6 +5,7 @@ use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
@@ -303,14 +304,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: &[ZiskRequiredOperation],
-        binary_e_trace: &mut BinaryExtensionTrace<F>,
-    ) {
+    pub fn prove_instance(&self, operations: &[ZiskRequiredOperation]) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let num_rows = BinaryExtensionTrace::<F>::NUM_ROWS;
-        assert!(operations.len() <= BinaryExtensionTrace::<F>::NUM_ROWS);
+        let mut binary_e_trace = BinaryExtensionTrace::new();
+
+        let num_rows = binary_e_trace.num_rows();
+        assert!(operations.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
@@ -368,5 +367,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             );
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
     }
 }

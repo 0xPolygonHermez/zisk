@@ -5,6 +5,7 @@ use crate::{
 };
 use log::info;
 use p3_field::PrimeField;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
@@ -32,12 +33,13 @@ impl ArithFullSM {
     pub fn prove_instance<F: PrimeField>(
         &self,
         inputs: &[ZiskRequiredOperation],
-        arith_trace: &mut ArithTrace<F>,
-    ) {
+    ) -> AirInstance<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
-        let num_rows = ArithTrace::<F>::NUM_ROWS;
+        let mut arith_trace = ArithTrace::new();
+
+        let num_rows = arith_trace.num_rows();
 
         timer_start_trace!(ARITH_TRACE);
         info!(
@@ -233,5 +235,7 @@ impl ArithFullSM {
         timer_start_trace!(ARITH_RANGE_TABLE);
         self.arith_range_table_sm.process_slice(&range_table_inputs);
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
     }
 }
