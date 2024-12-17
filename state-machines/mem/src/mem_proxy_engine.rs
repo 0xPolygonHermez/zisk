@@ -133,6 +133,7 @@ pub struct MemProxyEngine<F: PrimeField> {
     mem_align_sm: Arc<MemAlignSM<F>>,
     next_open_addr: u32,
     next_open_step: u64,
+    last_value: u64,
     last_addr: u32,
     last_step: u64,
     intermediate_cases: u32,
@@ -156,6 +157,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
             mem_align_sm,
             next_open_addr: NO_OPEN_ADDR,
             next_open_step: NO_OPEN_STEP,
+            last_value: 0,
             last_addr: 0xFFFF_FFFF,
             last_step: 0,
             intermediate_cases: 0,
@@ -370,11 +372,12 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
         // check if step difference is too large
         if self.last_addr == w_addr && (step - self.last_step) > MEMORY_MAX_DIFF {
-            self.push_intermediate_internal_reads(w_addr, value, self.last_step, step);
+            self.push_intermediate_internal_reads(w_addr, self.last_value, self.last_step, step);
         }
 
         self.last_step = step;
         self.last_addr = w_addr;
+        self.last_value = value;
 
         let mem_op = MemInput { step, is_write, is_internal: false, addr: w_addr, value };
         debug_info!(
