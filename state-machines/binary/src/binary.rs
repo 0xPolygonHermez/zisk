@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use crate::{
-    BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM, BinaryPlanner,
-};
+use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    instance, table_instance, ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner,
-    RegularCounters,
+    instance, table_instance, ComponentProvider, Instance, InstanceExpanderCtx, InstanceInfo,
+    Metrics, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
@@ -44,7 +42,29 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(BinaryPlanner::<F>::default())
+        Box::new(
+            RegularPlanner::new()
+                .add_instance(InstanceInfo::new(
+                    BinaryTrace::<usize>::AIR_ID,
+                    BinaryTrace::<usize>::AIRGROUP_ID,
+                    BinaryTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::Binary,
+                ))
+                .add_instance(InstanceInfo::new(
+                    BinaryExtensionTrace::<usize>::AIR_ID,
+                    BinaryExtensionTrace::<usize>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::BinaryE,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryTableTrace::<usize>::AIR_ID,
+                    BinaryTableTrace::<usize>::AIRGROUP_ID,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryExtensionTableTrace::<usize>::AIR_ID,
+                    BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
+                )),
+        )
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {

@@ -29,7 +29,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     }
 
     fn instance_type(&self) -> InstanceType {
-        InstanceType::Table
+        InstanceType::Instance
     }
 }
 

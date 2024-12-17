@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    instance, table_instance, ComponentProvider, Instance, InstanceExpanderCtx, Metrics, Planner,
-    RegularCounter,
+    instance, table_instance, ComponentProvider, Instance, InstanceExpanderCtx, InstanceInfo,
+    Metrics, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
+use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
-use crate::{ArithFullSM, ArithPlanner, ArithRangeTableSM, ArithTableSM};
+use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 pub struct ArithSM {
     arith_full_sm: Arc<ArithFullSM>,
@@ -28,11 +29,27 @@ impl ArithSM {
 
 impl<F: PrimeField> ComponentProvider<F> for ArithSM {
     fn get_counter(&self) -> Box<dyn Metrics> {
-        Box::new(RegularCounter::new(zisk_core::ZiskOperationType::Arith))
+        Box::new(RegularCounters::new(vec![zisk_core::ZiskOperationType::Arith]))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        Box::new(ArithPlanner::<F>::default())
+        Box::new(
+            RegularPlanner::new()
+                .add_instance(InstanceInfo::new(
+                    ArithTrace::<usize>::AIR_ID,
+                    ArithTrace::<usize>::AIRGROUP_ID,
+                    ArithTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::Arith,
+                ))
+                .add_table_instance(TableInfo::new(
+                    ArithTableTrace::<usize>::AIR_ID,
+                    ArithTableTrace::<usize>::AIRGROUP_ID,
+                ))
+                .add_table_instance(TableInfo::new(
+                    ArithRangeTableTrace::<usize>::AIR_ID,
+                    ArithRangeTableTrace::<usize>::AIRGROUP_ID,
+                )),
+        )
     }
 
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
