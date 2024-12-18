@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
+    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance,
     InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -29,7 +29,7 @@ impl ArithSM {
 }
 
 impl<F: PrimeField> ComponentProvider<F> for ArithSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
+    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RegularCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 

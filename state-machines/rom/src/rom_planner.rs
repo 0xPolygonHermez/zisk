@@ -1,4 +1,4 @@
-use sm_common::{BusDeviceWithMetrics, ChunkId, InstanceType, Metrics, Plan, Planner};
+use sm_common::{BusDeviceMetrics, ChunkId, InstanceType, Metrics, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::RomCounter;
@@ -6,7 +6,7 @@ use crate::RomCounter;
 pub struct RomPlanner {}
 
 impl Planner for RomPlanner {
-    fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceWithMetrics>)>) -> Vec<Plan> {
+    fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         if metrics.is_empty() {
             panic!("RomPlanner::plan() No metrics found");
         }

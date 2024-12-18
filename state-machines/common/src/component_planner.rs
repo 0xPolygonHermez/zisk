@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use crate::{BusDeviceWithMetrics, InstanceType};
+use crate::{BusDeviceMetrics, InstanceType};
 
 pub type ChunkId = usize;
 
@@ -41,5 +41,5 @@ impl Plan {
 }
 
 pub trait Planner {
-    fn plan(&self, counter: Vec<(ChunkId, Box<dyn BusDeviceWithMetrics>)>) -> Vec<Plan>;
+    fn plan(&self, counter: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan>;
 }

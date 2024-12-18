@@ -2,21 +2,21 @@ use zisk_common::{BusDevice, BusId, PayloadType};
 
 use crate::Metrics;
 
-pub trait BusDeviceWithMetrics: BusDevice<u64> + Metrics + std::any::Any {}
+pub trait BusDeviceMetrics: BusDevice<u64> + Metrics + std::any::Any {}
 
-impl<T: BusDevice<u64> + Metrics + std::any::Any> BusDeviceWithMetrics for T {}
+impl<T: BusDevice<u64> + Metrics + std::any::Any> BusDeviceMetrics for T {}
 
-pub struct BusDeviceWrapper {
-    pub inner: Box<dyn BusDeviceWithMetrics>,
+pub struct BusDeviceMetricsWrapper {
+    pub inner: Box<dyn BusDeviceMetrics>,
 }
 
-impl BusDeviceWrapper {
-    pub fn new(inner: Box<dyn BusDeviceWithMetrics>) -> Self {
+impl BusDeviceMetricsWrapper {
+    pub fn new(inner: Box<dyn BusDeviceMetrics>) -> Self {
         Self { inner }
     }
 }
 
-impl BusDevice<u64> for BusDeviceWrapper {
+impl BusDevice<u64> for BusDeviceMetricsWrapper {
     #[inline(always)]
     fn process_data(
         &mut self,

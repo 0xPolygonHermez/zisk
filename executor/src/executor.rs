@@ -6,8 +6,7 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceWithMetrics, BusDeviceWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx,
-    InstanceType, Plan,
+    BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan
 };
 use sm_main::{MainInstance, MainSM};
 use zisk_common::{DataBus, PayloadType};
@@ -48,15 +47,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut metrics_slices = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = DataBus::<PayloadType, BusDeviceWrapper>::new();
+                let mut data_bus = DataBus::<PayloadType, BusDeviceMetricsWrapper>::new();
                 self.secondary_sm.iter().for_each(|sm| {
                     let counter = sm.get_counter();
                     let bus_ids = counter.bus_id();
 
-                    data_bus.connect_device(bus_ids, Box::new(BusDeviceWrapper::new(counter)));
+                    data_bus.connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
                 });
 
-                ZiskEmulator::process_rom_slice_counters::<F, BusDeviceWrapper>(
+                ZiskEmulator::process_rom_slice_counters::<F, BusDeviceMetricsWrapper>(
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
@@ -66,7 +65,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     .devices
                     .into_iter()
                     .map(|device| device.inner)
-                    .collect::<Vec<Box<dyn BusDeviceWithMetrics>>>()
+                    .collect::<Vec<Box<dyn BusDeviceMetrics>>>()
             })
             .collect::<Vec<_>>();
         timer_stop_and_log_debug!(PROCESS_OBSERVER);

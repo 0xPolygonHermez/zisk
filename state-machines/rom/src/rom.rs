@@ -5,7 +5,7 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
-    BusDeviceWithMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Plan, Planner,
+    BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Plan, Planner,
 };
 
 use crate::{RomCounter, RomInstance, RomPlanner};
@@ -154,7 +154,7 @@ impl RomSM {
 }
 
 impl<F: PrimeField> ComponentProvider<F> for RomSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
+    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RomCounter::default())
     }
 

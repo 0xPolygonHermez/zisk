@@ -7,17 +7,17 @@ pub trait BusDeviceInstance<F: PrimeField>: BusDevice<u64> + Instance<F> + std::
 
 impl<F: PrimeField, T: BusDevice<u64> + Instance<F> + std::any::Any> BusDeviceInstance<F> for T {}
 
-pub struct BusDeviceWrapper<F: PrimeField> {
+pub struct BusDeviceInstanceWrapper<F: PrimeField> {
     pub inner: Box<dyn BusDeviceInstance<F>>,
 }
 
-impl<F: PrimeField> BusDeviceWrapper<F> {
+impl<F: PrimeField> BusDeviceInstanceWrapper<F> {
     pub fn new(inner: Box<dyn BusDeviceInstance<F>>) -> Self {
         Self { inner }
     }
 }
 
-impl<F: PrimeField> BusDevice<u64> for BusDeviceWrapper<F> {
+impl<F: PrimeField> BusDevice<u64> for BusDeviceInstanceWrapper<F> {
     #[inline(always)]
     fn process_data(
         &mut self,

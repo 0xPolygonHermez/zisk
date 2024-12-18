@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{BusDeviceWithMetrics, ChunkId, InstanceType, Plan, Planner};
+use sm_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner};
 
 pub struct StdPlanner<F: PrimeField> {
     std: Arc<Std<F>>,
@@ -15,7 +15,7 @@ impl<F: PrimeField> StdPlanner<F> {
 }
 
 impl<F: PrimeField> Planner for StdPlanner<F> {
-    fn plan(&self, _: Vec<(ChunkId, Box<dyn BusDeviceWithMetrics>)>) -> Vec<Plan> {
+    fn plan(&self, _: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         self.std
             .get_ranges()
             .into_iter()

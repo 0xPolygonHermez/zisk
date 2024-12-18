@@ -4,8 +4,8 @@ use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensio
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    instance, table_instance, BusDeviceWithMetrics, ComponentProvider, Instance,
-    InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx,
+    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
@@ -38,7 +38,7 @@ impl<F: PrimeField> BinarySM<F> {
 }
 
 impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
-    fn get_counter(&self) -> Box<dyn BusDeviceWithMetrics> {
+    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RegularCounters::new(
             OPERATION_BUS_ID,
             vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
