@@ -103,7 +103,7 @@ macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_proxy_engine")]
         {
-            info!(concat!("MemProxy: ",$prefix), $($arg)*);
+            log::info!(concat!("MemProxy: ",$prefix), $($arg)*);
         }
     };
 }
