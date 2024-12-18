@@ -57,8 +57,6 @@ pub struct MemPreviousSegment {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField> MemSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]);
         let mem_sm =
             Self { wcm: wcm.clone(), std: std.clone(), registered_predecessors: AtomicU32::new(0) };
         let mem_sm = Arc::new(mem_sm);

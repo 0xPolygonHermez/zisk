@@ -17,6 +17,8 @@ pub struct RomSM<F> {
 }
 
 impl<F: Field> RomSM<F> {
+    const MY_NAME: &'static str = "ROM     ";
+
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let rom_sm = Self { wcm: wcm.clone() };
         let rom_sm = Arc::new(rom_sm);
@@ -42,9 +44,9 @@ impl<F: Field> RomSM<F> {
 
         // Create an empty ROM trace
         let pilout = Pilout::pilout();
-        let num_rows = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
+        let rom_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).num_rows();
 
-        let mut rom_trace = RomTrace::new(num_rows);
+        let mut rom_trace = RomTrace::new(rom_trace_len);
 
         // For every instruction in the rom, fill its corresponding ROM trace
         let main_trace_len = pilout.get_air(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).num_rows() as u64;
@@ -73,9 +75,17 @@ impl<F: Field> RomSM<F> {
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..num_rows {
+        for i in rom.insts.len()..rom_trace_len {
             rom_trace[i] = RomRow::default();
         }
+
+        log::info!(
+            "{}: ··· Creating ROM instance [{} / {} rows executed {:.2}%]",
+            Self::MY_NAME,
+            pc_histogram.map.len(),
+            rom_trace_len,
+            pc_histogram.map.len() as f64 / rom_trace_len as f64 * 100.0
+        );
 
         let mut air_instance = AirInstance::new(
             sctx.clone(),
