@@ -1,6 +1,7 @@
 mod input_data_sm;
 mod mem_align_rom_sm;
 mod mem_align_sm;
+mod mem_bus_helpers;
 mod mem_constants;
 mod mem_helpers;
 mod mem_module;
@@ -13,6 +14,7 @@ mod rom_data;
 pub use input_data_sm::*;
 pub use mem_align_rom_sm::*;
 pub use mem_align_sm::*;
+pub use mem_bus_helpers::*;
 pub use mem_constants::*;
 pub use mem_helpers::*;
 pub use mem_module::*;
