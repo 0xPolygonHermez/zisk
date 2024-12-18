@@ -958,7 +958,7 @@ impl<F: Field> BinaryBasicSM<F> {
         assert!(operations.len() <= air.num_rows());
 
         info!(
-            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
             air.num_rows(),

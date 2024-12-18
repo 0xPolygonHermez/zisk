@@ -391,7 +391,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         assert!(operations.len() <= air.num_rows());
 
         info!(
-            "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
             air.num_rows(),

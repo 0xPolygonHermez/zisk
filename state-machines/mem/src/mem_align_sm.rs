@@ -926,13 +926,15 @@ impl<F: PrimeField> MemAlignSM<F> {
 
             while rows.len() >= air_mem_align.num_rows() {
                 // Find the correct cutting point
-                let cutting_point = if previous_num_rows + computed_rows.len() == air_mem_align.num_rows() {
-                    air_mem_align.num_rows()
-                } else {
-                    // This is the case where previous_num_rows + computed_rows.len() > air_mem_align.num_rows()
-                    // In this case, we prove computed_rows in the next air instance
-                    previous_num_rows
-                };
+                let cutting_point =
+                    if previous_num_rows + computed_rows.len() == air_mem_align.num_rows() {
+                        air_mem_align.num_rows()
+                    } else {
+                        // This is the case where previous_num_rows + computed_rows.len() >
+                        // air_mem_align.num_rows() In this case, we prove
+                        // computed_rows in the next air instance
+                        previous_num_rows
+                    };
                 let drained_rows = rows.drain(..cutting_point).collect::<Vec<_>>();
 
                 self.fill_new_air_instance(&drained_rows);

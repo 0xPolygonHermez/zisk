@@ -91,7 +91,6 @@ use crate::{
     MAX_MAIN_STEP, MAX_MEM_ADDR, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_STEP, MAX_MEM_STEP_OFFSET,
     MEMORY_MAX_DIFF, MEM_ADDR_MASK, MEM_BYTES, MEM_BYTES_BITS,
 };
-use log::info;
 
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -545,9 +544,10 @@ impl<F: PrimeField> MemProxyEngine<F> {
             );
             module.send_inputs(&self.modules_data[module_id].inputs);
         }
-        info!(
+        debug_info!(
             "MemProxy: ··· Intermediate reads [cases:{} steps:{}]",
-            self.intermediate_cases, self.intermediate_steps
+            self.intermediate_cases,
+            self.intermediate_steps
         );
     }
     /// Fetches the address map, defining and calculating all necessary structures to manage the

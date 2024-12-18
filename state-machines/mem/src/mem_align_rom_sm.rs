@@ -6,7 +6,6 @@ use std::{
     },
 };
 
-use log::info;
 use p3_field::PrimeField;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
@@ -43,7 +42,7 @@ pub enum ExtensionTableSMErr {
 }
 
 impl<F: PrimeField> MemAlignRomSM<F> {
-    const MY_NAME: &'static str = "MemAlignRom";
+    const MY_NAME: &'static str = "MemAlROM";
 
     pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
@@ -196,9 +195,15 @@ impl<F: PrimeField> MemAlignRomSM<F> {
                 trace_buffer[*row_idx as usize] =
                     MemAlignRomRow { multiplicity: F::from_canonical_u64(*multiplicity) };
             }
-        }
 
-        info!("{}: ··· Creating Mem Align Rom instance", Self::MY_NAME,);
+            log::info!(
+                "{}: ··· Creating Mem Align ROM instance [{} / {} rows executed {:.2}%]",
+                Self::MY_NAME,
+                multiplicity.len(),
+                air_mem_align_rom_rows,
+                multiplicity.len() as f64 / air_mem_align_rom_rows as f64 * 100.0
+            );
+        }
 
         let air_instance = AirInstance::new(
             sctx,
