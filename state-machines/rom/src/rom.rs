@@ -7,6 +7,7 @@ use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
     BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Plan, Planner,
 };
+use zisk_common::ROM_BUS_ID;
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
@@ -155,7 +156,7 @@ impl RomSM {
 
 impl<F: PrimeField> ComponentProvider<F> for RomSM {
     fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::default())
+        Box::new(RomCounter::new(ROM_BUS_ID))
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {

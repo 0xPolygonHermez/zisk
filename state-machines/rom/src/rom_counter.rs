@@ -4,7 +4,6 @@ use sm_common::{CounterStats, Metrics};
 use zisk_common::{BusDevice, BusId, OperationBusData};
 use zisk_core::ZiskOperationType;
 
-#[derive(Default)]
 pub struct RomCounter {
     bus_id: BusId,
     pub rom: CounterStats,

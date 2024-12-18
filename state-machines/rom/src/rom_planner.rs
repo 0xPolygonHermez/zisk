@@ -1,4 +1,5 @@
 use sm_common::{BusDeviceMetrics, ChunkId, InstanceType, Metrics, Plan, Planner};
+use zisk_common::ROM_BUS_ID;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::RomCounter;
@@ -11,7 +12,7 @@ impl Planner for RomPlanner {
             panic!("RomPlanner::plan() No metrics found");
         }
 
-        let mut total = RomCounter::default();
+        let mut total = RomCounter::new(ROM_BUS_ID);
 
         for (_, metric) in metrics {
             let metric = metric.as_any().downcast_ref::<RomCounter>().unwrap();

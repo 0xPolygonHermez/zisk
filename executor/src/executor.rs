@@ -6,7 +6,8 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan
+    BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx,
+    InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
 use zisk_common::{DataBus, PayloadType};
@@ -52,7 +53,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     let counter = sm.get_counter();
                     let bus_ids = counter.bus_id();
 
-                    data_bus.connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
+                    data_bus
+                        .connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
                 });
 
                 ZiskEmulator::process_rom_slice_counters::<F, BusDeviceMetricsWrapper>(

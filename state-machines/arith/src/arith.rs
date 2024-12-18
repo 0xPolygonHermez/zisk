@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance,
-    InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx,
+    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
