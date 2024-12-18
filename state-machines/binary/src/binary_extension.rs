@@ -310,7 +310,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                         if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
                             out = (a_bytes[j] as u64) << 8 | SE_MASK_16;
                         } else {
-                            out = a_bytes[j] as u64;
+                            out = (a_bytes[j] as u64) << 8;
                         }
                     } else {
                         out = 0;
