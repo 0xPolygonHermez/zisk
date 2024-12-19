@@ -30,6 +30,39 @@ impl InputsCollector {
 
         let observer: &mut dyn InstObserver = &mut instance;
 
+        // let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
+
+        // data_bus.connect_device(
+        //     vec![5000],
+        //     Box::new(BusDeviceInstanceWrapper::new(sec_instance)),
+        // );
+
+        ZiskEmulator::process_rom_slice_plan(zisk_rom, min_traces, chunk_id, observer);
+
+        Ok(std::mem::take(&mut instance.inputs))
+    }
+
+    pub fn collect2(
+        check_point: CheckPoint,
+        num_rows: usize,
+        zisk_rom: &ZiskRom,
+        min_traces: &[EmuTrace],
+        op_type: ZiskOperationType,
+    ) -> Result<Vec<ZiskRequiredOperation>, Box<dyn std::error::Error + Send>> {
+        let mut instance =
+            Self { check_point, num_rows, skipping: true, skipped: 0, inputs: Vec::new(), op_type };
+
+        let chunk_id = instance.check_point.chunk_id;
+
+        let observer: &mut dyn InstObserver = &mut instance;
+
+        // let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
+
+        // data_bus.connect_device(
+        //     vec![5000],
+        //     Box::new(BusDeviceInstanceWrapper::new(sec_instance)),
+        // );
+
         ZiskEmulator::process_rom_slice_plan(zisk_rom, min_traces, chunk_id, observer);
 
         Ok(std::mem::take(&mut instance.inputs))

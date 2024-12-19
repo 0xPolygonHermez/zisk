@@ -7,7 +7,8 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_common::{OperationBusData, OperationData};
+use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -88,15 +89,18 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     }
 
     pub fn process_slice(
-        operation: &ZiskRequiredOperation,
+        operation: &OperationData<u64>,
         multiplicity: &mut [u64],
         range_check: &mut HashMap<u64, u64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
-        let op = operation.opcode;
+        let op = OperationBusData::get_op(operation);
+        let a = OperationBusData::get_a(operation);
+        let b = OperationBusData::get_b(operation);
+        let step = OperationBusData::get_step(operation);
 
         // Get a ZiskOp from the code
-        let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
+        let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
         let mut row =
@@ -110,8 +114,8 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
         // Detect if this is a sign extend operation
-        let a = if op_is_shift { operation.a } else { operation.b };
-        let b = if op_is_shift { operation.b } else { operation.a };
+        let a = if op_is_shift { a } else { b };
+        let b = if op_is_shift { b } else { a };
 
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a.to_le_bytes();
@@ -133,7 +137,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.in2[1] = F::from_canonical_u64(in2_1);
 
         // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -270,10 +274,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     t_out[j][1] = (out >> 32) & 0xffffffff;
                 }
             }
-            _ => panic!(
-                "BinaryExtensionSM::process_slice() found invalid opcode={}",
-                operation.opcode
-            ),
+            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", op),
         }
 
         // Convert the trace output to field elements
@@ -304,7 +305,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(&self, operations: &[ZiskRequiredOperation]) -> AirInstance<F> {
+    pub fn prove_instance(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let mut binary_e_trace = BinaryExtensionTrace::new();
 

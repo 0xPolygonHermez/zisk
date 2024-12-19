@@ -5,7 +5,8 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_common::{OperationBusData, OperationData};
+use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
 
 use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
@@ -160,15 +161,19 @@ impl BinaryBasicSM {
 
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
-        operation: &ZiskRequiredOperation,
+        operation: &OperationData<u64>,
         multiplicity: &mut [u64],
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let opcode = operation.opcode;
-        let (c, _) = Self::execute(opcode, operation.a, operation.b);
+        let opcode = OperationBusData::get_op(operation);
+        let a = OperationBusData::get_a(operation);
+        let b = OperationBusData::get_b(operation);
+        let step = OperationBusData::get_step(operation);
+
+        let (c, _) = Self::execute(opcode, a, b);
 
         // Set mode32
         let mode32 = Self::opcode_is_32_bits(opcode);
@@ -179,13 +184,13 @@ impl BinaryBasicSM {
         let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
 
         // Split a in bytes and store them in free_in_a
-        let a_bytes: [u8; 8] = operation.a.to_le_bytes();
+        let a_bytes: [u8; 8] = a.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
             row.free_in_a[i] = F::from_canonical_u8(*value);
         }
 
         // Split b in bytes and store them in free_in_b
-        let b_bytes: [u8; 8] = operation.b.to_le_bytes();
+        let b_bytes: [u8; 8] = b.to_le_bytes();
         for (i, value) in b_bytes.iter().enumerate() {
             row.free_in_b[i] = F::from_canonical_u8(*value);
         }
@@ -197,7 +202,7 @@ impl BinaryBasicSM {
         }
 
         // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;
@@ -214,8 +219,7 @@ impl BinaryBasicSM {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 =
-                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MINU_OP) || (opcode == MINUW_OP) {
@@ -282,8 +286,7 @@ impl BinaryBasicSM {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 =
-                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MAXU_OP) || (opcode == MAXUW_OP) {
@@ -901,7 +904,7 @@ impl BinaryBasicSM {
 
     pub fn prove_instance<F: PrimeField>(
         &self,
-        operations: &[ZiskRequiredOperation],
+        operations: &[OperationData<u64>],
     ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 

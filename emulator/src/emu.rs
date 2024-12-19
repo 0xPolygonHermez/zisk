@@ -6,7 +6,9 @@ use crate::{
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
-use zisk_common::{BusDevice, InstObserver, OperationBusData, RomBusData, OPERATION_BUS_ID, ROM_BUS_ID};
+use zisk_common::{
+    BusDevice, InstObserver, OperationBusData, RomBusData, OPERATION_BUS_ID, ROM_BUS_ID,
+};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_common::DataBus;
@@ -1129,6 +1131,46 @@ impl<'a> Emu<'a> {
         }
     }
 
+    #[inline(always)]
+    pub fn run_slice_plan_2<BD: BusDevice<u64>>(
+        &mut self,
+        vec_traces: &[EmuTrace],
+        chunk_id: usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        let emu_trace_start = &vec_traces[chunk_id].start_state;
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace_start.pc;
+        self.ctx.inst_ctx.sp = emu_trace_start.sp;
+        self.ctx.inst_ctx.step = emu_trace_start.step;
+        self.ctx.inst_ctx.c = emu_trace_start.c;
+        self.ctx.inst_ctx.regs = emu_trace_start.regs;
+
+        let mut current_box_id = chunk_id;
+        let mut current_step_idx = 0;
+
+        let mut emu_trace_steps = &vec_traces[current_box_id].steps;
+        let mut mem_reads_index: usize = 0;
+        loop {
+            //let step = &vec_traces[current_box_id].steps[current_step_idx];
+
+            if self.step_slice_plan_2(emu_trace_steps, &mut mem_reads_index, data_bus) {
+                break;
+            }
+            if self.ctx.inst_ctx.end {
+                break;
+            }
+
+            current_step_idx += 1;
+            if current_step_idx == vec_traces[current_box_id].steps.steps {
+                current_box_id += 1;
+                current_step_idx = 0;
+                emu_trace_steps = &vec_traces[current_box_id].steps;
+                mem_reads_index = 0;
+            }
+        }
+    }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn step_slice_plan(
@@ -1154,6 +1196,37 @@ impl<'a> Emu<'a> {
         //trace_step.steps += 1;
 
         finished
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_slice_plan_2<BD: BusDevice<u64>>(
+        &mut self,
+        trace_step: &EmuTraceSteps,
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) -> bool {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_slice(instruction);
+
+        let operation_payload = OperationBusData::new_payload(instruction, &self.ctx.inst_ctx);
+        if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
+            return true;
+        }
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        self.ctx.inst_ctx.step += 1;
+        //trace_step.steps += 1;
+
+        // finished
+        false
     }
 
     /// Performs one single step of the emulation

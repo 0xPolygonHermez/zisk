@@ -7,7 +7,7 @@ pub type MemData = [PayloadType; 4];
 
 /// Represents a subscriber that listens to messages on the `DataBus`.
 pub trait BusDevice<D> {
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Vec<(BusId, Vec<D>)>;
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> (bool, Vec<(BusId, Vec<D>)>);
 }
 
 /// A bus facilitating communication between publishers and subscribers.
@@ -52,27 +52,42 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         self.omni_devices.push(device_idx);
     }
 
-    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
+    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) -> bool {
         self.pending_transfers.push((bus_id, payload));
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop() {
-            self.route_data(bus_id, &payload);
+            if self.route_data(bus_id, &payload) {
+                return true;
+            }
         }
+
+        false
     }
 
-    fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
+    fn route_data(&mut self, bus_id: BusId, payload: &[D]) -> bool {
         // Notify specific subscribers
         if let Some(bus_id_devices) = self.devices_bus_id_map.get(&bus_id) {
             for &device_idx in bus_id_devices {
-                self.pending_transfers
-                    .extend(self.devices[device_idx].process_data(&bus_id, payload));
+                let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
+                self.pending_transfers.extend(result);
+
+                if end {
+                    return true;
+                }
             }
         }
 
         // Notify global subscribers
         for &device_idx in &self.omni_devices {
-            self.pending_transfers.extend(self.devices[device_idx].process_data(&bus_id, payload));
+            let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
+            self.pending_transfers.extend(result);
+
+            if end {
+                return true;
+            }
         }
+
+        false
     }
 
     pub fn debug_state(&self) {

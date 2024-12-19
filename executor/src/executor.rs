@@ -6,8 +6,8 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx,
-    InstanceType, Plan,
+    BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint,
+    ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
 use zisk_common::{DataBus, PayloadType};
@@ -208,7 +208,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                 if is_mine || plan.instance_type == InstanceType::Table {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
 
-                    let instance = self.secondary_sm[i].get_instance(iectx);
+                    let instance = self.secondary_sm[i].get_instance_bus(iectx);
                     sec_instances.push((global_idx, instance));
                 }
             }
@@ -216,18 +216,42 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
-        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Instance {
-                let _ = sec_instance.collect_inputs(&self.zisk_rom, &min_traces);
-                if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                    pctx.clone()
-                        .air_instance_repo
-                        .add_air_instance(air_instance, Some(*global_idx));
-                }
-            }
-        });
+        let mut collected_instances: Vec<_> = sec_instances
+            .par_drain(..)
+            .map(|(global_idx, mut sec_instance)| {
+                if sec_instance.instance_type() == InstanceType::Instance {
+                    let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
 
-        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
+                    if let Some(check_point) = sec_instance.check_point() {
+                        let chunk_id = check_point.chunk_id;
+
+                        let bus_device_instance = sec_instance;
+                        data_bus.connect_device(
+                            vec![5000],
+                            Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
+                        );
+
+                        ZiskEmulator::process_rom_slice_plan_2::<F, BusDeviceInstanceWrapper<F>>(
+                            &self.zisk_rom,
+                            &min_traces,
+                            chunk_id,
+                            &mut data_bus,
+                        );
+
+                        sec_instance = data_bus.devices.pop().unwrap().inner;
+                    }
+
+                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                        pctx.clone()
+                            .air_instance_repo
+                            .add_air_instance(air_instance, Some(global_idx));
+                    }
+                }
+                (global_idx, sec_instance)
+            })
+            .collect();
+
+        collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
                 if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
                     pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));

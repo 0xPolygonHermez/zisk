@@ -3,6 +3,8 @@ use proofman_common::{AirInstance, ProofCtx};
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
+use crate::CheckPoint;
+
 #[derive(PartialEq)]
 pub enum InstanceType {
     Instance,
@@ -22,6 +24,8 @@ pub trait Instance<F: PrimeField>: Send + Sync {
 
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
+    fn check_point(&self) -> Option<CheckPoint>;
+
     fn instance_type(&self) -> InstanceType;
 }
 
@@ -33,7 +37,8 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
+        use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
+        use zisk_common::BusId;
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -69,8 +74,22 @@ macro_rules! table_instance {
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
             }
 
+            fn check_point(&self) -> Option<CheckPoint> {
+                self.iectx.plan.check_point
+            }
+
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+        }
+
+        impl zisk_common::BusDevice<u64> for $InstanceName {
+            fn process_data(
+                &mut self,
+                _bus_id: &zisk_common::BusId,
+                _data: &[u64],
+            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
+                (true, vec![])
             }
         }
     };
@@ -80,7 +99,8 @@ macro_rules! table_instance {
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
         use proofman_common::{AirInstance, ProofCtx};
-        use sm_common::{InputsCollector, Instance, InstanceType};
+        use sm_common::{CheckPoint, InputsCollector, Instance, InstanceType};
+        use zisk_common::BusId;
 
         pub struct $name<F: PrimeField> {
             /// State machine
@@ -122,8 +142,22 @@ macro_rules! instance {
                 Some(self.sm.prove_instance(&self.inputs))
             }
 
+            fn check_point(&self) -> Option<CheckPoint> {
+                self.iectx.plan.check_point
+            }
+
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Instance
+            }
+        }
+
+        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {
+            fn process_data(
+                &mut self,
+                _bus_id: &zisk_common::BusId,
+                _data: &[u64],
+            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
+                (true, vec![])
             }
         }
 

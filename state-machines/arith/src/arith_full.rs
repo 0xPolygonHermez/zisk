@@ -9,6 +9,7 @@ use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
+use zisk_common::{OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
 use zisk_pil::*;
 
@@ -30,10 +31,7 @@ impl ArithFullSM {
         Arc::new(Self { arith_table_sm, arith_range_table_sm })
     }
 
-    pub fn prove_instance<F: PrimeField>(
-        &self,
-        inputs: &[ZiskRequiredOperation],
-    ) -> AirInstance<F> {
+    pub fn prove_instance<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
@@ -53,14 +51,13 @@ impl ArithFullSM {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in inputs.iter().enumerate() {
-            log::debug!(
-                "#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}",
-                irow,
-                input.opcode,
-                input.a,
-                input.b
-            );
-            aop.calculate(input.opcode, input.a, input.b);
+            let opcode = OperationBusData::get_op(input);
+            let a = OperationBusData::get_a(input);
+            let b = OperationBusData::get_b(input);
+            let step = OperationBusData::get_step(input);
+
+            log::debug!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, opcode, a, b);
+            aop.calculate(opcode, a, b);
             let mut t: ArithTraceRow<F> = Default::default();
             for i in [0, 2] {
                 t.a[i] = F::from_canonical_u64(aop.a[i]);
@@ -104,7 +101,7 @@ impl ArithFullSM {
             t.main_div = F::from_bool(aop.main_div);
             t.sext = F::from_bool(aop.sext);
             t.multiplicity = F::one();
-            t.debug_main_step = F::from_canonical_u64(input.step);
+            t.debug_main_step = F::from_canonical_u64(step);
             t.range_ab = F::from_canonical_u8(aop.range_ab);
             t.range_cd = F::from_canonical_u8(aop.range_cd);
             t.div_by_zero = F::from_bool(aop.div_by_zero);
@@ -180,7 +177,7 @@ impl ArithFullSM {
                 // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
                 // this!
                 let _operation = ZiskRequiredOperation {
-                    step: input.step,
+                    step,
                     opcode,
                     a: aop.d[0] +
                         CHUNK_SIZE * aop.d[1] +

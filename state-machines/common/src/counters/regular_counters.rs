@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use crate::{Counter, Metrics};
-use zisk_common::{BusDevice, BusId, OperationBusData, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
 pub struct RegularCounters {
@@ -26,8 +26,9 @@ impl RegularCounters {
 
 impl Metrics for RegularCounters {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: &[u64; OPERATION_BUS_DATA_SIZE] = data.try_into().expect("Regular Metrics: Failed to convert data");
-        let inst_op_type = OperationBusData::get_op_type(data);
+        let data: OperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+        let inst_op_type = OperationBusData::get_op_type(&data);
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
@@ -75,9 +76,9 @@ impl Add for RegularCounters {
 
 impl BusDevice<u64> for RegularCounters {
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        vec![]
+        (true, vec![])
     }
 }

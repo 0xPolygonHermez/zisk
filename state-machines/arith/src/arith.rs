@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx,
-    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, Instance,
+    InstanceExpanderCtx, InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
-use crate::{ArithFullSM, ArithRangeTableSM, ArithTableSM};
+use crate::{ArithFullInstance, ArithFullSM, ArithRangeTableSM, ArithTableSM};
 
 pub struct ArithSM {
     arith_full_sm: Arc<ArithFullSM>,
@@ -56,13 +56,38 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM {
     fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
         match iectx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
-                instance!(
-                    ArithFullInstance,
-                    ArithFullSM,
-                    ArithTrace::<usize>::NUM_ROWS,
-                    zisk_core::ZiskOperationType::Arith
-                );
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                // instance!(
+                //     ArithFullInstance,
+                //     ArithFullSM,
+                //     ArithTrace::<usize>::NUM_ROWS,
+                //     zisk_core::ZiskOperationType::Arith
+                // );
+                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+            }
+            id if id == ArithTableTrace::<usize>::AIR_ID => {
+                table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
+                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), iectx))
+            }
+            id if id == ArithRangeTableTrace::<usize>::AIR_ID => {
+                table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
+                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), iectx))
+            }
+            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
+        }
+    }
+
+    fn get_instance_bus(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+        match iectx.plan.air_id {
+            id if id == ArithTrace::<usize>::AIR_ID => {
+                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                // instance!(
+                //     ArithFullInstance,
+                //     ArithFullSM,
+                //     ArithTrace::<usize>::NUM_ROWS,
+                //     zisk_core::ZiskOperationType::Arith
+                // );
+                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
             }
             id if id == ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);

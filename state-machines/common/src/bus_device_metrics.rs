@@ -22,7 +22,7 @@ impl BusDevice<u64> for BusDeviceMetricsWrapper {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Vec<(BusId, Vec<PayloadType>)> {
+    ) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.inner.process_data(bus_id, data)
     }
 }
