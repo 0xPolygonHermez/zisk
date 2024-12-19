@@ -55,13 +55,13 @@ impl Planner for ArithPlanner {
         for (idx, instance) in self.instances_info.iter().enumerate() {
             let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
                 .into_iter()
-                .map(|checkpoint| {
+                .map(|check_point| {
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
                         None,
                         InstanceType::Instance,
-                        Some(checkpoint),
+                        Some(check_point),
                         None,
                     )
                 })

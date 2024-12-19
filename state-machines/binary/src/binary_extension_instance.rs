@@ -59,8 +59,8 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
         }
 
         if self.skipping {
-            let checkpoint = self.iectx.plan.check_point.as_ref().unwrap();
-            if checkpoint.skip == 0 || self.skipped == checkpoint.skip {
+            let check_point = self.iectx.plan.check_point.as_ref().unwrap();
+            if check_point.skip == 0 || self.skipped == check_point.skip {
                 self.skipping = false;
             } else {
                 self.skipped += 1;

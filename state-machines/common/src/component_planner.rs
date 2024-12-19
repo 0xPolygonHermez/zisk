@@ -34,10 +34,10 @@ impl Plan {
         air_id: usize,
         segment_id: Option<usize>,
         instance_type: InstanceType,
-        checkpoint: Option<CheckPoint>,
+        check_point: Option<CheckPoint>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point: checkpoint, meta }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta }
     }
 }
 

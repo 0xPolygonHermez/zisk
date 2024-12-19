@@ -20,7 +20,7 @@ impl InstCount {
 /// - `size`: The number of instructions at which to place checkpoints.
 ///
 /// # Returns
-/// A vector of `CheckPoint` structs, each representing a checkpoint with its associated chunk ID
+/// A vector of `CheckPoint` structs, each representing a check_point with its associated chunk ID
 /// and offset.
 ///
 /// # Example
