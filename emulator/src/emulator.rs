@@ -247,6 +247,23 @@ impl ZiskEmulator {
         emu.run_slice_plan(min_traces, chunk_id, inst_observer);
     }
 
+    /// EXPAND phase
+    /// Third phase of the witness computation
+    /// I have a
+    #[inline]
+    pub fn process_rom_slice_plan_2<F: PrimeField, BD: BusDevice<u64>>(
+        rom: &ZiskRom,
+        min_traces: &[EmuTrace],
+        chunk_id: usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        emu.run_slice_plan_2(min_traces, chunk_id, data_bus);
+    }
+
     /// Finds all files in a directory and returns a vector with their full paths
     fn list_files(directory: &str) -> std::io::Result<Vec<String>> {
         // Define an internal function to call it recursively

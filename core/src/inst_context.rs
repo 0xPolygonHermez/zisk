@@ -6,6 +6,7 @@
 
 use crate::{Mem, ROM_ENTRY};
 
+#[derive(Debug)]
 /// ZisK instruction context data container, storing the state of the execution
 pub struct InstContext {
     /// Memory, including several read-only sections and one read-write section (input data)

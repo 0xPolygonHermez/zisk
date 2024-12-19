@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
-use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
+use crate::{
+    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstance,
+    BinaryExtensionSM, BinaryExtensionTableSM,
+};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    instance, table_instance, BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx,
     InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -71,25 +74,27 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
         match iectx.plan.air_id {
             id if id == BinaryTrace::<usize>::AIR_ID => {
-                instance!(
-                    BinaryBasicInstance,
-                    BinaryBasicSM,
-                    BinaryTrace::<usize>::NUM_ROWS,
-                    zisk_core::ZiskOperationType::Binary
-                );
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))
+                // instance!(
+                //     BinaryBasicInstance,
+                //     BinaryBasicSM,
+                //     BinaryTrace::<usize>::NUM_ROWS,
+                //     zisk_core::ZiskOperationType::Binary
+                // );
+                // Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))
             }
             id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
-                instance!(
-                    BinaryExtensionInstance,
-                    BinaryExtensionSM<F>,
-                    BinaryExtensionTrace::<usize>::NUM_ROWS,
-                    zisk_core::ZiskOperationType::BinaryE
-                );
                 Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), iectx))
+                // instance!(
+                //     BinaryExtensionInstance,
+                //     BinaryExtensionSM<F>,
+                //     BinaryExtensionTrace::<usize>::NUM_ROWS,
+                //     zisk_core::ZiskOperationType::BinaryE
+                // );
+                // Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), iectx))
             }
             id if id == BinaryTableTrace::<usize>::AIR_ID => {
                 table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);

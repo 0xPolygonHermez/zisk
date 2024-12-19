@@ -1,8 +1,7 @@
 use std::any::Any;
 
 use sm_common::{CounterStats, Metrics};
-use zisk_common::{BusDevice, BusId, OperationBusData};
-use zisk_core::ZiskOperationType;
+use zisk_common::{BusDevice, BusId, RomBusData, RomData};
 
 pub struct RomCounter {
     bus_id: BusId,
@@ -19,10 +18,10 @@ impl RomCounter {
 
 impl Metrics for RomCounter {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: &[u64; 8] = data.try_into().expect("Regular Metrics: Failed to convert data");
-        let inst_pc = OperationBusData::get_pc(data);
-        let inst_step = OperationBusData::get_step(data);
-        let inst_end = OperationBusData::get_end(data);
+        let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
+        let inst_pc = RomBusData::get_pc(&data);
+        let inst_step = RomBusData::get_step(&data);
+        let inst_end = RomBusData::get_end(&data);
 
         self.rom.update(inst_pc, 1);
         if inst_end == 1 {
@@ -47,10 +46,6 @@ impl Metrics for RomCounter {
         }
     }
 
-    fn op_type(&self) -> Vec<ZiskOperationType> {
-        vec![ZiskOperationType::None]
-    }
-
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
     }
@@ -62,9 +57,9 @@ impl Metrics for RomCounter {
 
 impl BusDevice<u64> for RomCounter {
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        vec![]
+        (true, vec![])
     }
 }

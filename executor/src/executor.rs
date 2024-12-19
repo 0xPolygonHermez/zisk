@@ -1,16 +1,15 @@
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint, ComponentProvider, InstanceExpanderCtx,
-    InstanceType, Plan,
+    BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint,
+    ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
-use zisk_common::{DataBus, PayloadType};
+use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
@@ -44,7 +43,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn compute_plans(&self, min_traces: Arc<Vec<EmuTrace>>) -> Vec<Vec<Plan>> {
-        timer_start_debug!(PROCESS_OBSERVER);
+        if self.secondary_sm.is_empty() {
+            return Vec::new();
+        }
+
         let mut metrics_slices = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -66,11 +68,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 data_bus
                     .devices
                     .into_iter()
-                    .map(|device| device.inner)
+                    .map(|mut device| {
+                        device.on_close();
+                        device.inner
+                    })
                     .collect::<Vec<Box<dyn BusDeviceMetrics>>>()
             })
             .collect::<Vec<_>>();
-        timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
         // Group counters by chunk_id and counter type
         let mut vec_counters = (0..metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
@@ -88,8 +92,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
-        timer_start_debug!(PHASE1_FAST_PROCESS_ROM);
-
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
             elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
@@ -98,16 +100,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        let min_traces = ZiskEmulator::process_rom_min_trace::<F>(
+        ZiskEmulator::process_rom_min_trace::<F>(
             &self.zisk_rom,
             &public_inputs,
             &emu_options,
             num_threads,
         )
-        .expect("Error during emulator execution");
-        timer_stop_and_log_debug!(PHASE1_FAST_PROCESS_ROM);
-
-        min_traces
+        .expect("Error during emulator execution")
     }
 
     fn create_main_plans(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
@@ -132,16 +131,18 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: Arc<ProofCtx<F>>,
         main_planning: &mut Vec<Plan>,
     ) -> Vec<MainInstance<F>> {
-        let mut main_instances = Vec::new();
-
-        for plan in main_planning.drain(..) {
-            if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1) {
-                let iectx = InstanceExpanderCtx::new(global_idx, plan);
-                main_instances.push(self.main_sm.get_instance(iectx));
-            }
-        }
-
-        main_instances
+        main_planning
+            .drain(..)
+            .filter_map(|plan| {
+                if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
+                {
+                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                    Some(self.main_sm.get_instance(iectx))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -216,28 +217,61 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
-        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Instance {
-                let _ = sec_instance.collect_inputs(&self.zisk_rom, &min_traces);
-                if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                    pctx.clone()
-                        .air_instance_repo
-                        .add_air_instance(air_instance, Some(*global_idx));
+        let mut collected_instances: Vec<_> = sec_instances
+            .par_drain(..)
+            .map(|(global_idx, mut sec_instance)| {
+                if sec_instance.instance_type() == InstanceType::Instance {
+                    let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
+
+                    if let Some(check_point) = sec_instance.check_point() {
+                        let chunk_id = check_point.chunk_id;
+
+                        let bus_device_instance = sec_instance;
+                        data_bus.connect_device(
+                            vec![OPERATION_BUS_ID],
+                            Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
+                        );
+
+                        self.secondary_sm.iter().for_each(|sm| {
+                            if let Some(input_generator) = sm.get_inputs_generator() {
+                                data_bus.connect_device(
+                                    vec![OPERATION_BUS_ID],
+                                    Box::new(BusDeviceInstanceWrapper::new(input_generator)),
+                                );
+                            }
+                        });
+
+                        ZiskEmulator::process_rom_slice_plan_2::<F, BusDeviceInstanceWrapper<F>>(
+                            &self.zisk_rom,
+                            &min_traces,
+                            chunk_id,
+                            &mut data_bus,
+                        );
+
+                        sec_instance = data_bus.devices.remove(0).inner;
+                    }
+
+                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                        pctx.clone()
+                            .air_instance_repo
+                            .add_air_instance(air_instance, Some(global_idx));
+                    }
                 }
-            }
+                (global_idx, sec_instance)
+            })
+            .collect();
+
+        // Drop memory
+        std::thread::spawn(move || {
+            drop(min_traces);
         });
 
-        sec_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
+        collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
                 if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
                     pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
                 }
             }
-        });
-
-        // Drop memory
-        std::thread::spawn(move || {
-            drop(min_traces);
         });
 
         // Wait for the main task to finish

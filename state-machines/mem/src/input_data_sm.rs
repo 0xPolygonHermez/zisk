@@ -38,7 +38,7 @@ impl<F: PrimeField> InputDataSM<F> {
 
     pub fn prove(&self, inputs: &[MemInput]) {
         let mut proof_values = ZiskProofValues::from_vec_guard(self.std.pctx.get_proof_values());
-        proof_values.enable_input_data[0] = if inputs.is_empty() { F::zero() } else { F::one() };
+        proof_values.enable_input_data = if inputs.is_empty() { F::zero() } else { F::one() };
 
         // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
         // memory only need to process these special inputs, but inputs no change. At end of

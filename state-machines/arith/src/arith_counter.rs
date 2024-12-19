@@ -1,16 +1,18 @@
 use std::ops::Add;
 
-use crate::{Counter, Metrics};
+use sm_common::{Counter, Metrics};
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
-pub struct RegularCounters {
+use crate::ArithFullSM;
+
+pub struct ArithCounter {
     op_type: Vec<ZiskOperationType>,
     bus_id: BusId,
     counter: Vec<Counter>,
 }
 
-impl RegularCounters {
+impl ArithCounter {
     pub fn new(bus_id: BusId, op_type: Vec<ZiskOperationType>) -> Self {
         let counter = vec![Counter::default(); op_type.len()];
         Self { bus_id, op_type, counter }
@@ -24,7 +26,7 @@ impl RegularCounters {
     }
 }
 
-impl Metrics for RegularCounters {
+impl Metrics for ArithCounter {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
@@ -40,7 +42,7 @@ impl Metrics for RegularCounters {
     fn add(&mut self, other: &dyn Metrics) {
         let other = other
             .as_any()
-            .downcast_ref::<RegularCounters>()
+            .downcast_ref::<ArithCounter>()
             .expect("Regular Metrics: Failed to downcast");
         for (counter, other_counter) in self.counter.iter_mut().zip(other.counter.iter()) {
             *counter += other_counter;
@@ -56,25 +58,38 @@ impl Metrics for RegularCounters {
     }
 }
 
-impl Add for RegularCounters {
-    type Output = RegularCounters;
+impl Add for ArithCounter {
+    type Output = ArithCounter;
 
-    fn add(self, other: Self) -> RegularCounters {
+    fn add(self, other: Self) -> ArithCounter {
         let counter = self
             .counter
             .into_iter()
             .zip(other.counter)
             .map(|(counter, other_counter)| &counter + &other_counter)
             .collect();
-        RegularCounters { bus_id: self.bus_id, op_type: self.op_type, counter }
+        ArithCounter { bus_id: self.bus_id, op_type: self.op_type, counter }
     }
 }
 
-impl BusDevice<u64> for RegularCounters {
+impl BusDevice<u64> for ArithCounter {
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        (true, vec![])
+        let input: OperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+        let op_type = OperationBusData::get_op_type(&input);
+
+        if op_type as u32 != ZiskOperationType::Arith as u32 {
+            return (false, vec![]);
+        }
+
+        let inputs = ArithFullSM::generate_inputs(&input)
+            .into_iter() // Consumes the collection, iterating over u64
+            .map(|x| (*bus_id, x))
+            .collect::<Vec<_>>();
+
+        (false, inputs)
     }
 }

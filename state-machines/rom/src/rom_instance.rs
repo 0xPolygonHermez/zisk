@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::RomSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+use zisk_common::{BusDevice, BusId};
 use zisk_core::ZiskRom;
 
 pub struct RomInstance {
@@ -23,8 +24,18 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         Some(RomSM::prove_instance(&self.zisk_rom, &self.iectx.plan))
     }
 
+    fn check_point(&self) -> Option<CheckPointSkip> {
+        self.iectx.plan.check_point
+    }
+
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+}
+
+impl BusDevice<u64> for RomInstance {
+    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+        (true, vec![])
     }
 }
 

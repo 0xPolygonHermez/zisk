@@ -1,4 +1,4 @@
-use crate::CheckPoint;
+use crate::CheckPointSkip;
 
 #[derive(Debug)]
 pub struct InstCount {
@@ -20,7 +20,7 @@ impl InstCount {
 /// - `size`: The number of instructions at which to place checkpoints.
 ///
 /// # Returns
-/// A vector of `CheckPoint` structs, each representing a checkpoint with its associated chunk ID
+/// A vector of `CheckPoint` structs, each representing a check_point with its associated chunk ID
 /// and offset.
 ///
 /// # Example
@@ -41,12 +41,12 @@ impl InstCount {
 ///     ]
 /// );
 /// ```
-pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
+pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPointSkip> {
     if counts.is_empty() {
         return vec![];
     }
 
-    let mut checkpoints = vec![CheckPoint::new(0, 0)];
+    let mut checkpoints = vec![CheckPointSkip::new(0, 0)];
 
     let mut offset = 0i64;
 
@@ -58,7 +58,7 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
         // Add checkpoints within the current chunk
         while offset + size < inst_count {
             offset += size;
-            checkpoints.push(CheckPoint::new(current_chunk, offset as u64));
+            checkpoints.push(CheckPointSkip::new(current_chunk, offset as u64));
         }
 
         // Carry over remaining instructions to the next chunk
@@ -80,11 +80,11 @@ mod tests {
         assert_eq!(
             checkpoints,
             vec![
-                CheckPoint::new(0, 0),
-                CheckPoint::new(0, 300),
-                CheckPoint::new(1, 100),
-                CheckPoint::new(1, 400),
-                CheckPoint::new(2, 0),
+                CheckPointSkip::new(0, 0),
+                CheckPointSkip::new(0, 300),
+                CheckPointSkip::new(1, 100),
+                CheckPointSkip::new(1, 400),
+                CheckPointSkip::new(2, 0),
             ]
         );
     }
@@ -97,10 +97,10 @@ mod tests {
         assert_eq!(
             checkpoints,
             vec![
-                CheckPoint::new(0, 0),
-                CheckPoint::new(0, 250),
-                CheckPoint::new(0, 500),
-                CheckPoint::new(0, 750),
+                CheckPointSkip::new(0, 0),
+                CheckPointSkip::new(0, 250),
+                CheckPointSkip::new(0, 500),
+                CheckPointSkip::new(0, 750),
             ]
         );
     }
@@ -110,7 +110,7 @@ mod tests {
         let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
         let size = 200;
         let checkpoints = plan(&counts, size);
-        assert_eq!(checkpoints, vec![CheckPoint::new(0, 0), CheckPoint::new(1, 100),]);
+        assert_eq!(checkpoints, vec![CheckPointSkip::new(0, 0), CheckPointSkip::new(1, 100),]);
     }
 
     #[test]
@@ -121,6 +121,6 @@ mod tests {
         ];
         let size = 300;
         let checkpoints = plan(&counts, size);
-        assert_eq!(checkpoints, vec![CheckPoint::new(0, 0), CheckPoint::new(1, 0),]);
+        assert_eq!(checkpoints, vec![CheckPointSkip::new(0, 0), CheckPointSkip::new(1, 0),]);
     }
 }

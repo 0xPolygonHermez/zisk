@@ -5,7 +5,6 @@ use std::{
     ops::{Add, AddAssign},
 };
 use zisk_common::BusId;
-use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
 pub enum CounterType {
@@ -18,14 +17,9 @@ pub trait Metrics: Send + Sync {
 
     fn add(&mut self, other: &dyn Metrics);
 
-    /// Returns the operation types that this metric is interested in.
-    /// This is used to filter out metrics that are not interested while executing the ROM.
-    /// If a Metrics is not interested in any operation types, it should return an empty vector.
-    /// If a Metrics is interested in all operation types, it should return a vector with a single
-    /// element `ZiskOperationType::None`.
-    fn op_type(&self) -> Vec<ZiskOperationType>;
-
     fn bus_id(&self) -> Vec<BusId>;
+
+    fn on_close(&mut self) {}
 
     fn as_any(&self) -> &dyn Any;
 }
