@@ -68,7 +68,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 data_bus
                     .devices
                     .into_iter()
-                    .map(|device| device.inner)
+                    .map(|mut device| {
+                        device.on_close();
+                        device.inner
+                    })
                     .collect::<Vec<Box<dyn BusDeviceMetrics>>>()
             })
             .collect::<Vec<_>>();

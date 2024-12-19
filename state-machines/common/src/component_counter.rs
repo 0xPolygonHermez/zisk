@@ -19,6 +19,8 @@ pub trait Metrics: Send + Sync {
 
     fn bus_id(&self) -> Vec<BusId>;
 
+    fn on_close(&mut self) {}
+
     fn as_any(&self) -> &dyn Any;
 }
 

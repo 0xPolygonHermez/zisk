@@ -14,6 +14,11 @@ impl BusDeviceMetricsWrapper {
     pub fn new(inner: Box<dyn BusDeviceMetrics>) -> Self {
         Self { inner }
     }
+
+    #[inline(always)]
+    pub fn on_close(&mut self) {
+        self.inner.on_close();
+    }
 }
 
 impl BusDevice<u64> for BusDeviceMetricsWrapper {
