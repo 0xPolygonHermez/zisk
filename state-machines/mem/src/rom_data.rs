@@ -32,7 +32,6 @@ pub struct RomDataSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
-    num_rows: usize,
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 }
@@ -45,7 +44,6 @@ impl<F: PrimeField> RomDataSM<F> {
         let rom_data_sm = Self {
             wcm: wcm.clone(),
             std: std.clone(),
-            num_rows: air.num_rows(),
             registered_predecessors: AtomicU32::new(0),
         };
         let rom_data_sm = Arc::new(rom_data_sm);
@@ -332,7 +330,7 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         vec![(ROM_ADDR as u32, ROM_ADDR_MAX as u32)]
     }
     fn get_flush_input_size(&self) -> u32 {
-        self.num_rows as u32
+        0
     }
 }
 
