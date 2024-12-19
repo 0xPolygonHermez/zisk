@@ -913,7 +913,7 @@ impl BinaryBasicSM {
         assert!(operations.len() <= num_rows);
 
         info!(
-            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
             num_rows,

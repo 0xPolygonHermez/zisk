@@ -30,17 +30,15 @@ impl RomSM {
 
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
-        let pc_histogram = &metadata.rom.inst_count;
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
         info!(
             "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            pc_histogram.len(),
+            metadata.rom.inst_count.len(),
             main_trace_len,
-            pc_histogram.len() as f64 / main_trace_len as f64 * 100.0
-        );
-
+            metadata.rom.inst_count.len() as f64 / main_trace_len as f64 * 100.0
+        );        
         // For every instruction in the rom, fill its corresponding ROM trace
         //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -50,10 +48,10 @@ impl RomSM {
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
             let mut multiplicity: u64;
-            if pc_histogram.is_empty() {
+            if metadata.rom.inst_count.is_empty() {
                 multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
             } else {
-                let counter = pc_histogram.get(&inst.paddr);
+                let counter = metadata.rom.inst_count.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
                     if inst.paddr == metadata.end_pc {

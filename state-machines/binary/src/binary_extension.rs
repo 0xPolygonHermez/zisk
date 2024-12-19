@@ -60,12 +60,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SllW |
-            ZiskOp::SrlW |
-            ZiskOp::SraW => true,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SllW
+            | ZiskOp::SrlW
+            | ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -77,12 +77,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SignExtendB |
-            ZiskOp::SignExtendH |
-            ZiskOp::SignExtendW => false,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -114,25 +114,25 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
         // Detect if this is a sign extend operation
-        let a = if op_is_shift { a } else { b };
-        let b = if op_is_shift { b } else { a };
+        let a_val = if op_is_shift { a } else { b };
+        let b_val = if op_is_shift { b } else { a };
 
         // Split a in bytes and store them in in1
-        let a_bytes: [u8; 8] = a.to_le_bytes();
+        let a_bytes: [u8; 8] = a_val.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
             row.in1[i] = F::from_canonical_u8(*value);
         }
 
         // Store b low part into in2_low
-        let in2_low: u64 = if op_is_shift { b & 0xFF } else { 0 };
+        let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
         row.in2_low = F::from_canonical_u64(in2_low);
 
         // Store b lower bits when shifting, depending on operation size
-        let b_low = if op_is_shift_word { b & LS_5_BITS } else { b & LS_6_BITS };
+        let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
 
         // Store b into in2
-        let in2_0: u64 = if op_is_shift { (b >> 8) & 0xFFFFFF } else { b & 0xFFFFFFFF };
-        let in2_1: u64 = (b >> 32) & 0xFFFFFFFF;
+        let in2_0: u64 = if op_is_shift { (b_val >> 8) & 0xFFFFFF } else { b_val & 0xFFFFFFFF };
+        let in2_1: u64 = (b_val >> 32) & 0xFFFFFFFF;
         row.in2[0] = F::from_canonical_u64(in2_0);
         row.in2[1] = F::from_canonical_u64(in2_1);
 
@@ -248,7 +248,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
-                        out = a_bytes[j] as u64;
+                        out = (a_bytes[j] as u64) << 8;
                     } else if j == 1 {
                         if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
                             out = (a_bytes[j] as u64) << 8 | SE_MASK_16;
@@ -313,7 +313,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         assert!(operations.len() <= num_rows);
 
         info!(
-            "{}: ··· Creating Binary extension instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
             num_rows,

@@ -1,38 +1,35 @@
 use crate::ArithFullSM;
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, FromTrace, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::{ZiskOperationType, ZiskRom};
 use zisk_pil::ArithTrace;
 use ziskemu::EmuTrace;
-pub struct ArithFullInstance<F: PrimeField> {
+pub struct ArithFullInstance {
     /// Arith state machine
     arith_full_sm: Arc<ArithFullSM>,
     /// Instance expander context
     iectx: InstanceExpanderCtx,
-    /// Arith trace
-    trace: ArithTrace<F>,
     /// Inputs
     inputs: Vec<OperationData<u64>>,
 
     skipping: bool,
     skipped: u64,
 }
-impl<F: PrimeField> ArithFullInstance<F> {
+impl ArithFullInstance {
     pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
         Self {
             arith_full_sm,
             iectx,
             inputs: Vec::new(),
-            trace: ArithTrace::new(),
             skipping: true,
             skipped: 0,
         }
     }
 }
-impl<F: PrimeField> Instance<F> for ArithFullInstance<F> {
+impl<F: PrimeField> Instance<F> for ArithFullInstance {
     fn collect_inputs(
         &mut self,
         _zisk_rom: &ZiskRom,
@@ -42,8 +39,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance<F> {
     }
 
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        self.arith_full_sm.prove_instance::<F>(&self.inputs);
-        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
+        Some(self.arith_full_sm.prove_instance::<F>(&self.inputs))
     }
 
     fn check_point(&self) -> Option<CheckPoint> {
@@ -55,7 +51,9 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance<F> {
     }
 }
 
-impl<F: PrimeField> BusDevice<u64> for ArithFullInstance<F> {
+unsafe impl Sync for ArithFullInstance {}
+
+impl BusDevice<u64> for ArithFullInstance {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
@@ -77,8 +75,6 @@ impl<F: PrimeField> BusDevice<u64> for ArithFullInstance<F> {
 
         self.inputs.push(data);
 
-        (self.inputs.len() == self.trace.num_rows(), vec![])
+        (self.inputs.len() == ArithTrace::<usize>::NUM_ROWS, vec![])
     }
 }
-
-unsafe impl<F: PrimeField> Sync for ArithFullInstance<F> {}

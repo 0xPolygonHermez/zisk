@@ -1,6 +1,6 @@
 use crate::BinaryExtensionSM;
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, FromTrace, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
@@ -12,8 +12,7 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
     /// Instance expander context
     iectx: InstanceExpanderCtx,
-    /// Binary trace
-    trace: BinaryExtensionTrace<F>,
+
     /// Inputs
     inputs: Vec<OperationData<u64>>,
 
@@ -26,7 +25,6 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
             binary_extension_sm,
             iectx,
             inputs: Vec::new(),
-            trace: BinaryExtensionTrace::new(),
             skipping: true,
             skipped: 0,
         }
@@ -42,8 +40,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     }
 
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        self.binary_extension_sm.prove_instance(&self.inputs);
-        Some(AirInstance::new_from_trace(FromTrace::new(&mut self.trace)))
+        Some(self.binary_extension_sm.prove_instance(&self.inputs))
     }
 
     fn check_point(&self) -> Option<CheckPoint> {
@@ -54,6 +51,8 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         InstanceType::Instance
     }
 }
+
+unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}
 
 impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
@@ -77,8 +76,6 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
 
         self.inputs.push(data);
 
-        (self.inputs.len() == self.trace.num_rows(), vec![])
+        (self.inputs.len() == BinaryExtensionTrace::<usize>::NUM_ROWS, vec![])
     }
 }
-
-unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}

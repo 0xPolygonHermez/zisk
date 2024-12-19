@@ -157,7 +157,7 @@ impl MemSection {
 }
 
 /// Memory structure, containing several read sections and one single write section
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Mem {
     pub read_sections: Vec<MemSection>,
     pub write_section: MemSection,

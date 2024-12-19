@@ -15,11 +15,11 @@ pub struct RomBusData<D>(std::marker::PhantomData<D>);
 
 impl RomBusData<u64> {
     #[inline(always)]
-    pub fn new_payload(_: &ZiskInst, inst_ctx: &InstContext) -> RomData<u64> {
+    pub fn new_payload(instruction: &ZiskInst, inst_ctx: &InstContext) -> RomData<u64> {
         [
             inst_ctx.step,       // STEP
             inst_ctx.pc,         // PC
-            inst_ctx.end as u64, // END
+            instruction.end as u64, // END
         ]
     }
 
