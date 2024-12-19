@@ -1,45 +1,16 @@
-use crate::{
-    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceType, Plan, Planner, RegularCounters,
+use crate::ArithCounter;
+use sm_common::{
+    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceInfo, InstanceType, Plan, Planner,
+    TableInfo,
 };
-use zisk_core::ZiskOperationType;
-
-#[derive(Debug)]
-pub struct InstanceInfo {
-    pub air_id: usize,
-    pub airgroup_id: usize,
-    pub num_rows: usize,
-    pub op_type: ZiskOperationType,
-}
-
-impl InstanceInfo {
-    pub fn new(
-        air_id: usize,
-        airgroup_id: usize,
-        num_rows: usize,
-        op_type: ZiskOperationType,
-    ) -> Self {
-        InstanceInfo { air_id, airgroup_id, num_rows, op_type }
-    }
-}
-
-pub struct TableInfo {
-    pub air_id: usize,
-    pub airgroup_id: usize,
-}
-
-impl TableInfo {
-    pub fn new(air_id: usize, airgroup_id: usize) -> Self {
-        TableInfo { air_id, airgroup_id }
-    }
-}
 
 #[derive(Default)]
-pub struct RegularPlanner {
+pub struct ArithPlanner {
     instances_info: Vec<InstanceInfo>,
     tables_info: Vec<TableInfo>,
 }
 
-impl RegularPlanner {
+impl ArithPlanner {
     pub fn new() -> Self {
         Self { instances_info: Vec::new(), tables_info: Vec::new() }
     }
@@ -55,7 +26,7 @@ impl RegularPlanner {
     }
 }
 
-impl Planner for RegularPlanner {
+impl Planner for ArithPlanner {
     fn plan(&self, counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // Prepare counts
         let mut count: Vec<Vec<InstCount>> = Vec::with_capacity(self.instances_info.len());
@@ -65,7 +36,7 @@ impl Planner for RegularPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = counter.as_any().downcast_ref::<RegularCounters>().unwrap();
+            let reg_counter = counter.as_any().downcast_ref::<ArithCounter>().unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {

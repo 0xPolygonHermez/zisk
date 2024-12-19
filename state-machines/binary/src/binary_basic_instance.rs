@@ -20,13 +20,7 @@ pub struct BinaryBasicInstance {
 }
 impl BinaryBasicInstance {
     pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self {
-            binary_basic_sm,
-            iectx,
-            inputs: Vec::new(),
-            skipping: true,
-            skipped: 0,
-        }
+        Self { binary_basic_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
     }
 }
 impl<F: PrimeField> Instance<F> for BinaryBasicInstance {

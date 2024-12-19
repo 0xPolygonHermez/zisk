@@ -20,13 +20,7 @@ pub struct ArithFullInstance {
 }
 impl ArithFullInstance {
     pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self {
-            arith_full_sm,
-            iectx,
-            inputs: Vec::new(),
-            skipping: true,
-            skipped: 0,
-        }
+        Self { arith_full_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
     }
 }
 impl<F: PrimeField> Instance<F> for ArithFullInstance {

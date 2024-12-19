@@ -17,7 +17,18 @@ pub struct OperationBusData<D>(std::marker::PhantomData<D>);
 
 impl OperationBusData<u64> {
     #[inline(always)]
-    pub fn new_payload(inst: &ZiskInst, inst_ctx: &InstContext) -> OperationData<u64> {
+    pub fn from_values(
+        step: u64,
+        op: u8,
+        op_type: PayloadType,
+        a: u64,
+        b: u64,
+    ) -> OperationData<u64> {
+        [step, op as u64, op_type, a, b]
+    }
+
+    #[inline(always)]
+    pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> OperationData<u64> {
         let a = if inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
         let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 

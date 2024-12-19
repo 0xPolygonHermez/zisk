@@ -21,13 +21,7 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
 }
 impl<F: PrimeField> BinaryExtensionInstance<F> {
     pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, iectx: InstanceExpanderCtx) -> Self {
-        Self {
-            binary_extension_sm,
-            iectx,
-            inputs: Vec::new(),
-            skipping: true,
-            skipped: 0,
-        }
+        Self { binary_extension_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
     }
 }
 impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {

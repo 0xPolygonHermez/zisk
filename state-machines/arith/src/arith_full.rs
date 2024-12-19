@@ -9,8 +9,8 @@ use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
-use zisk_common::{OperationBusData, OperationData};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
+use zisk_common::{OperationBusData, OperationData, PayloadType};
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
 const CHUNK_SIZE: u64 = 0x10000;
@@ -155,42 +155,6 @@ impl ArithFullSM {
                 aop.d[2] + (aop.d[3] << 16)
             });
             arith_trace[irow] = t;
-
-            // If the operation is a division, then use the binary component
-            // to check that the remainer is lower than the divisor
-            if aop.div && !aop.div_by_zero {
-                let opcode = match (aop.nr, aop.nb) {
-                    (false, false) => LTU_OP,
-                    (false, true) => LT_ABS_PN_OP,
-                    (true, false) => LT_ABS_NP_OP,
-                    (true, true) => GT_OP,
-                };
-
-                let extension = match (aop.m32, aop.nr, aop.nb) {
-                    (false, _, _) => (0, 0),
-                    (true, false, false) => (0, 0),
-                    (true, false, true) => (0, EXTENSION),
-                    (true, true, false) => (EXTENSION, 0),
-                    (true, true, true) => (EXTENSION, EXTENSION),
-                };
-
-                // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
-                // this!
-                let _operation = ZiskRequiredOperation {
-                    step,
-                    opcode,
-                    a: aop.d[0] +
-                        CHUNK_SIZE * aop.d[1] +
-                        CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
-                        CHUNK_SIZE.pow(3) * aop.d[3],
-                    b: aop.b[0] +
-                        CHUNK_SIZE * aop.b[1] +
-                        CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
-                        CHUNK_SIZE.pow(3) * aop.b[3],
-                };
-                // TODO!!!!!! Push to the DataBus
-                // binary_inputs.push(operation);
-            }
         }
         timer_stop_and_log_trace!(ARITH_TRACE);
 
@@ -234,5 +198,52 @@ impl ArithFullSM {
         timer_stop_and_log_trace!(ARITH_RANGE_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
+    }
+
+    pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
+        let mut aop = ArithOperation::new();
+        let opcode = OperationBusData::get_op(input);
+        let a = OperationBusData::get_a(input);
+        let b = OperationBusData::get_b(input);
+        let step = OperationBusData::get_step(input);
+
+        aop.calculate(opcode, a, b);
+
+        // If the operation is a division, then use the binary component
+        // to check that the remainer is lower than the divisor
+        if aop.div && !aop.div_by_zero {
+            let opcode = match (aop.nr, aop.nb) {
+                (false, false) => LTU_OP,
+                (false, true) => LT_ABS_PN_OP,
+                (true, false) => LT_ABS_NP_OP,
+                (true, true) => GT_OP,
+            };
+
+            let extension = match (aop.m32, aop.nr, aop.nb) {
+                (false, _, _) => (0, 0),
+                (true, false, false) => (0, 0),
+                (true, false, true) => (0, EXTENSION),
+                (true, true, false) => (EXTENSION, 0),
+                (true, true, true) => (EXTENSION, EXTENSION),
+            };
+
+            // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
+            vec![OperationBusData::from_values(
+                step,
+                opcode,
+                ZiskOperationType::Binary as u64,
+                aop.d[0] +
+                    CHUNK_SIZE * aop.d[1] +
+                    CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
+                    CHUNK_SIZE.pow(3) * aop.d[3],
+                aop.b[0] +
+                    CHUNK_SIZE * aop.b[1] +
+                    CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
+                    CHUNK_SIZE.pow(3) * aop.b[3],
+            )
+            .to_vec()]
+        } else {
+            vec![]
+        }
     }
 }

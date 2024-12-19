@@ -38,7 +38,7 @@ impl RomSM {
             metadata.rom.inst_count.len(),
             main_trace_len,
             metadata.rom.inst_count.len() as f64 / main_trace_len as f64 * 100.0
-        );        
+        );
         // For every instruction in the rom, fill its corresponding ROM trace
         //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
         for (i, key) in rom.insts.keys().sorted().enumerate() {

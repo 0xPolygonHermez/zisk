@@ -1,6 +1,5 @@
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -48,7 +47,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
             return Vec::new();
         }
 
-        timer_start_debug!(PROCESS_OBSERVER);
         let mut metrics_slices = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -74,7 +72,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     .collect::<Vec<Box<dyn BusDeviceMetrics>>>()
             })
             .collect::<Vec<_>>();
-        timer_stop_and_log_debug!(PROCESS_OBSERVER);
 
         // Group counters by chunk_id and counter type
         let mut vec_counters = (0..metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
@@ -92,8 +89,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
-        timer_start_debug!(PHASE1_FAST_PROCESS_ROM);
-
         // Prepare the settings for the emulator
         let emu_options = EmuOptions {
             elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
@@ -102,16 +97,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        let min_traces = ZiskEmulator::process_rom_min_trace::<F>(
+        ZiskEmulator::process_rom_min_trace::<F>(
             &self.zisk_rom,
             &public_inputs,
             &emu_options,
             num_threads,
         )
-        .expect("Error during emulator execution");
-        timer_stop_and_log_debug!(PHASE1_FAST_PROCESS_ROM);
-
-        min_traces
+        .expect("Error during emulator execution")
     }
 
     fn create_main_plans(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
@@ -237,6 +229,15 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                             Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
                         );
 
+                        self.secondary_sm.iter().for_each(|sm| {
+                            if let Some(input_generator) = sm.get_inputs_generator() {
+                                data_bus.connect_device(
+                                    vec![OPERATION_BUS_ID],
+                                    Box::new(BusDeviceInstanceWrapper::new(input_generator)),
+                                );
+                            }
+                        });
+
                         ZiskEmulator::process_rom_slice_plan_2::<F, BusDeviceInstanceWrapper<F>>(
                             &self.zisk_rom,
                             &min_traces,
@@ -244,7 +245,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                             &mut data_bus,
                         );
 
-                        sec_instance = data_bus.devices.pop().unwrap().inner;
+                        sec_instance = data_bus.devices.remove(0).inner;
                     }
 
                     if let Some(air_instance) = sec_instance.compute_witness(&pctx) {

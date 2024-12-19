@@ -1050,10 +1050,10 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
-        let operation_payload = OperationBusData::new_payload(instruction, &self.ctx.inst_ctx);
+        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
         data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
 
-        let rom_payload = RomBusData::new_payload(instruction, &self.ctx.inst_ctx);
+        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
         data_bus.write_to_bus(ROM_BUS_ID, rom_payload.to_vec());
 
         // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
@@ -1212,7 +1212,7 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_slice(instruction);
 
-        let operation_payload = OperationBusData::new_payload(instruction, &self.ctx.inst_ctx);
+        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
         if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
             return true;
         }
