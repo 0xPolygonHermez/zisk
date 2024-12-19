@@ -2240,6 +2240,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]

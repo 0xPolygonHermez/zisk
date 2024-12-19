@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
-use crate::{InputDataSM, MemAlignRomSM, MemAlignSM, MemProxyEngine, MemSM, RomDataSM};
+use crate::{
+    InputDataSM, MemAlignRomSM, MemAlignSM, MemCounters, MemProxyEngine, MemSM, RomDataSM,
+};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
+use sm_common::{BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Planner};
 use zisk_core::ZiskRequiredMemory;
 
 pub struct MemProxy<F: PrimeField> {
@@ -40,5 +43,20 @@ impl<F: PrimeField> MemProxy<F> {
         engine.add_module("input_data", self.input_data_sm.clone());
         engine.add_module("row_data", self.rom_data_sm.clone());
         engine.prove(mem_operations)
+    }
+}
+
+impl<F: PrimeField> ComponentProvider<F> for MemProxy<F> {
+    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+        Box::new(MemCounters::new())
+        // Box::new(MemCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
+    }
+
+    fn get_planner(&self) -> Box<dyn Planner> {
+        unimplemented!("get_planner for MemProxy");
+    }
+
+    fn get_instance(&self, _iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
+        unimplemented!("get_instance for MemProxy");
     }
 }

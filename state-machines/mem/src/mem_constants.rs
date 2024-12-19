@@ -7,8 +7,13 @@ pub const MAX_MEM_STEP_OFFSET: u64 = 2;
 pub const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 2;
 pub const MAX_MEM_OPS_BY_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * MAX_MEM_OPS_BY_STEP_OFFSET;
 
-pub const MEMORY_LOAD_OP: u64 = 1;
-pub const MEMORY_STORE_OP: u64 = 2;
+pub const MEMORY_LOAD_OP: u8 = 1;
+pub const MEMORY_STORE_OP: u8 = 2;
+
+pub const MEM_REGS_MASK: u32 = 0xFFFF_FF00;
+pub const MEM_REGS_ADDR: u32 = 0xA000_0000;
+
+pub const MEM_BUS_ID: u16 = 1000;
 
 pub const MAX_MAIN_STEP: u64 = 0x1FFF_FFFF_FFFF_FFFF;
 pub const MAX_MEM_STEP: u64 = MEM_STEP_BASE +
