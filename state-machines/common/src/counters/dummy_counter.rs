@@ -2,7 +2,6 @@ use std::any::Any;
 
 use crate::Metrics;
 use zisk_common::{BusDevice, BusId};
-use zisk_core::ZiskOperationType;
 
 #[derive(Default)]
 pub struct DummyCounter {}
@@ -13,10 +12,6 @@ impl Metrics for DummyCounter {
     }
 
     fn add(&mut self, _: &dyn Metrics) {}
-
-    fn op_type(&self) -> Vec<ZiskOperationType> {
-        vec![]
-    }
 
     fn bus_id(&self) -> Vec<BusId> {
         vec![]

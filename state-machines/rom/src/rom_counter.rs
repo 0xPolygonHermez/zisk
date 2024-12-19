@@ -2,7 +2,6 @@ use std::any::Any;
 
 use sm_common::{CounterStats, Metrics};
 use zisk_common::{BusDevice, BusId, RomBusData, RomData};
-use zisk_core::ZiskOperationType;
 
 pub struct RomCounter {
     bus_id: BusId,
@@ -45,10 +44,6 @@ impl Metrics for RomCounter {
         if other.steps != 0 {
             self.steps = other.steps;
         }
-    }
-
-    fn op_type(&self) -> Vec<ZiskOperationType> {
-        vec![ZiskOperationType::None]
     }
 
     fn bus_id(&self) -> Vec<BusId> {

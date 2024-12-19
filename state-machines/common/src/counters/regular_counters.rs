@@ -47,10 +47,6 @@ impl Metrics for RegularCounters {
         }
     }
 
-    fn op_type(&self) -> Vec<ZiskOperationType> {
-        self.op_type.clone()
-    }
-
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
     }
