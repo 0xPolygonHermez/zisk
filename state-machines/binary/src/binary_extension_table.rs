@@ -3,7 +3,6 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use log::info;
 use p3_field::Field;
 use proofman::{WitnessComponent, WitnessManager};
 use proofman_common::AirInstance;
@@ -136,19 +135,30 @@ impl<F: Field> BinaryExtensionTableSM<F> {
         dctx.distribute_multiplicity(&mut multiplicity_, owner);
 
         if is_myne {
-            let trace: BinaryExtensionTableTrace<'_, _> =
-                BinaryExtensionTableTrace::new(self.num_rows);
+            let num_rows = self.num_rows;
+            let trace: BinaryExtensionTableTrace<'_, _> = BinaryExtensionTableTrace::new(num_rows);
             let mut prover_buffer = trace.buffer.unwrap();
 
-            prover_buffer[0..self.num_rows]
+            let non_zero_multiplicities = prover_buffer[0..num_rows]
                 .par_iter_mut()
                 .enumerate()
-                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
+                .map(|(i, input)| {
+                    *input = F::from_canonical_u64(multiplicity_[i]);
+                    if multiplicity_[i] != 0 {
+                        Some(1)
+                    } else {
+                        None
+                    }
+                })
+                .filter_map(|x| x)
+                .sum::<usize>();
 
-            info!(
-                "{}: ··· Creating Binary extension table instance [{} rows filled 100%]",
+            log::info!(
+                "{}: ··· Creating Binary Extension Table instance [{} / {} rows used {:.2}%]",
                 Self::MY_NAME,
-                self.num_rows,
+                non_zero_multiplicities,
+                num_rows,
+                non_zero_multiplicities as f64 / num_rows as f64 * 100.0
             );
 
             let air_instance = AirInstance::new(

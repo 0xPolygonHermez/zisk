@@ -91,7 +91,6 @@ use crate::{
     MAX_MAIN_STEP, MAX_MEM_ADDR, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_STEP, MAX_MEM_STEP_OFFSET,
     MEMORY_MAX_DIFF, MEM_ADDR_MASK, MEM_BYTES, MEM_BYTES_BITS,
 };
-use log::info;
 
 use p3_field::PrimeField;
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
@@ -104,7 +103,7 @@ macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_proxy_engine")]
         {
-            info!(concat!("MemProxy: ",$prefix), $($arg)*);
+            log::info!(concat!("MemProxy: ",$prefix), $($arg)*);
         }
     };
 }
@@ -133,6 +132,7 @@ pub struct MemProxyEngine<F: PrimeField> {
     mem_align_sm: Arc<MemAlignSM<F>>,
     next_open_addr: u32,
     next_open_step: u64,
+    last_value: u64,
     last_addr: u32,
     last_step: u64,
     intermediate_cases: u32,
@@ -156,6 +156,7 @@ impl<F: PrimeField> MemProxyEngine<F> {
             mem_align_sm,
             next_open_addr: NO_OPEN_ADDR,
             next_open_step: NO_OPEN_STEP,
+            last_value: 0,
             last_addr: 0xFFFF_FFFF,
             last_step: 0,
             intermediate_cases: 0,
@@ -370,11 +371,12 @@ impl<F: PrimeField> MemProxyEngine<F> {
 
         // check if step difference is too large
         if self.last_addr == w_addr && (step - self.last_step) > MEMORY_MAX_DIFF {
-            self.push_intermediate_internal_reads(w_addr, value, self.last_step, step);
+            self.push_intermediate_internal_reads(w_addr, self.last_value, self.last_step, step);
         }
 
         self.last_step = step;
         self.last_addr = w_addr;
+        self.last_value = value;
 
         let mem_op = MemInput { step, is_write, is_internal: false, addr: w_addr, value };
         debug_info!(
@@ -542,9 +544,10 @@ impl<F: PrimeField> MemProxyEngine<F> {
             );
             module.send_inputs(&self.modules_data[module_id].inputs);
         }
-        info!(
+        debug_info!(
             "MemProxy: ··· Intermediate reads [cases:{} steps:{}]",
-            self.intermediate_cases, self.intermediate_steps
+            self.intermediate_cases,
+            self.intermediate_steps
         );
     }
     /// Fetches the address map, defining and calculating all necessary structures to manage the

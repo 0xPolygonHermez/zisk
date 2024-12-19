@@ -267,7 +267,6 @@ impl<F: PrimeField> ArithFullSM<F> {
 
         if !binary_inputs.is_empty() {
             timer_start_trace!(ARITH_BINARY);
-            info!("{}: ··· calling binary_sm", Self::MY_NAME);
             self.binary_sm.prove(binary_inputs.as_slice(), false);
             timer_stop_and_log_trace!(ARITH_BINARY);
         }
