@@ -5,7 +5,7 @@ use ziskemu::EmuTrace;
 
 use crate::CheckPoint;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum InstanceType {
     Instance,
     Table,

@@ -1258,6 +1258,7 @@ impl<'a> Emu<'a> {
         full_trace_step
     }
 
+    #[inline(always)]
     pub fn build_full_trace_step<F: AbstractField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,

@@ -10,7 +10,7 @@ use sm_common::{
     ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
-use zisk_common::{DataBus, PayloadType};
+use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
@@ -44,6 +44,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn compute_plans(&self, min_traces: Arc<Vec<EmuTrace>>) -> Vec<Vec<Plan>> {
+        if self.secondary_sm.is_empty() {
+            return Vec::new();
+        }
+
         timer_start_debug!(PROCESS_OBSERVER);
         let mut metrics_slices = min_traces
             .par_iter()
@@ -132,16 +136,18 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: Arc<ProofCtx<F>>,
         main_planning: &mut Vec<Plan>,
     ) -> Vec<MainInstance<F>> {
-        let mut main_instances = Vec::new();
-
-        for plan in main_planning.drain(..) {
-            if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1) {
-                let iectx = InstanceExpanderCtx::new(global_idx, plan);
-                main_instances.push(self.main_sm.get_instance(iectx));
-            }
-        }
-
-        main_instances
+        main_planning
+            .drain(..)
+            .filter_map(|plan| {
+                if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
+                {
+                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                    Some(self.main_sm.get_instance(iectx))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -208,7 +214,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                 if is_mine || plan.instance_type == InstanceType::Table {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
 
-                    let instance = self.secondary_sm[i].get_instance_bus(iectx);
+                    let instance = self.secondary_sm[i].get_instance(iectx);
                     sec_instances.push((global_idx, instance));
                 }
             }
@@ -227,7 +233,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
                         let bus_device_instance = sec_instance;
                         data_bus.connect_device(
-                            vec![5000],
+                            vec![OPERATION_BUS_ID],
                             Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
                         );
 
@@ -251,17 +257,17 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
             })
             .collect();
 
+        // Drop memory
+        std::thread::spawn(move || {
+            drop(min_traces);
+        });
+
         collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
                 if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
                     pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
                 }
             }
-        });
-
-        // Drop memory
-        std::thread::spawn(move || {
-            drop(min_traces);
         });
 
         // Wait for the main task to finish

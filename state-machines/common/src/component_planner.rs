@@ -18,6 +18,7 @@ impl CheckPoint {
     }
 }
 
+#[derive(Debug)]
 pub struct Plan {
     pub airgroup_id: usize,
     pub air_id: usize,

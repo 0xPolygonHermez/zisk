@@ -102,7 +102,6 @@ impl<F: PrimeField> MainSM<F> {
         // Set Rows 1 to N of the current segment (N = maximum number of air rows)
         let emu_trace_step = &vec_traces[current_segment].steps;
         let mut mem_reads_index: usize = 0;
-        //for (idx, emu_trace) in vec_traces[current_segment].steps.iter().enumerate() {
         for idx in 0..vec_traces[current_segment].steps.steps as usize {
             let expanded_row = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
 
