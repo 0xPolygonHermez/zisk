@@ -1,7 +1,7 @@
 use crate::BinaryExtensionSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::{ZiskOperationType, ZiskRom};
@@ -37,7 +37,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         Some(self.binary_extension_sm.prove_instance(&self.inputs))
     }
 
-    fn check_point(&self) -> Option<CheckPoint> {
+    fn check_point(&self) -> Option<CheckPointSkip> {
         self.iectx.plan.check_point
     }
 
@@ -60,7 +60,7 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
 
         if self.skipping {
             let check_point = self.iectx.plan.check_point.as_ref().unwrap();
-            if check_point.skip == 0 || self.skipped == check_point.skip {
+            if check_point.collect_info.skip == 0 || self.skipped == check_point.collect_info.skip {
                 self.skipping = false;
             } else {
                 self.skipped += 1;

@@ -18,7 +18,7 @@ impl<F: PrimeField> Instance<F> for ArithInputGenerator {
         Ok(())
     }
 
-    fn check_point(&self) -> Option<sm_common::CheckPoint> {
+    fn check_point(&self) -> Option<sm_common::CheckPointSkip> {
         None
     }
 
