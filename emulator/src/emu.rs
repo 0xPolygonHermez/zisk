@@ -1810,7 +1810,7 @@ impl<'a> Emu<'a> {
         self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
         self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_slice(instruction);
+        self.store_c_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
 
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
         if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {

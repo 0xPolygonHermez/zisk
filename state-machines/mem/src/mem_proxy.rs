@@ -5,7 +5,9 @@ use crate::{
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{BusDeviceMetrics, ComponentProvider, Instance, InstanceExpanderCtx, Planner};
+use sm_common::{
+    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx, Planner,
+};
 use zisk_core::ZiskRequiredMemory;
 
 pub struct MemProxy<F: PrimeField> {
@@ -56,7 +58,10 @@ impl<F: PrimeField> ComponentProvider<F> for MemProxy<F> {
         unimplemented!("get_planner for MemProxy");
     }
 
-    fn get_instance(&self, _iectx: InstanceExpanderCtx) -> Box<dyn Instance<F>> {
+    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+        unimplemented!("get_instance for MemProxy");
+    }
+    fn get_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
         unimplemented!("get_instance for MemProxy");
     }
 }

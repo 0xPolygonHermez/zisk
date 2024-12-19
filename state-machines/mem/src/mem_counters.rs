@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use sm_common::Metrics;
 use zisk_common::{BusDevice, BusId};
-use zisk_core::ZiskOperationType;
 
 use crate::{
     MEMORY_MAX_DIFF, MEMORY_STORE_OP, MEM_BUS_ID, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK,
@@ -100,10 +99,6 @@ impl Metrics for MemCounters {
 
     fn add(&mut self, _other: &dyn Metrics) {}
 
-    fn op_type(&self) -> Vec<ZiskOperationType> {
-        vec![zisk_core::ZiskOperationType::Arith]
-    }
-
     fn bus_id(&self) -> Vec<BusId> {
         vec![MEM_BUS_ID]
     }
@@ -115,9 +110,9 @@ impl Metrics for MemCounters {
 
 impl BusDevice<u64> for MemCounters {
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        vec![]
+        (true, vec![])
     }
 }
