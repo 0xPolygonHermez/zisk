@@ -169,7 +169,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             }
         });
 
-        ZiskEmulator::process_rom_slice_plan_2::<F, BusDeviceInstanceWrapper<F>>(
+        ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
             &self.zisk_rom,
             min_traces,
             chunk_id,

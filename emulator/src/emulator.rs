@@ -24,7 +24,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
-use zisk_common::{BusDevice, DataBus, InstObserver};
+use zisk_common::{BusDevice, DataBus};
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
@@ -234,24 +234,7 @@ impl ZiskEmulator {
     /// Third phase of the witness computation
     /// I have a
     #[inline]
-    pub fn process_rom_slice_plan(
-        rom: &ZiskRom,
-        min_traces: &[EmuTrace],
-        chunk_id: usize,
-        inst_observer: &mut dyn InstObserver,
-    ) {
-        // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation
-        emu.run_slice_plan(min_traces, chunk_id, inst_observer);
-    }
-
-    /// EXPAND phase
-    /// Third phase of the witness computation
-    /// I have a
-    #[inline]
-    pub fn process_rom_slice_plan_2<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_rom_slice_plan<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
@@ -261,7 +244,7 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_plan_2(min_traces, chunk_id, data_bus);
+        emu.run_slice_plan(min_traces, chunk_id, data_bus);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths
