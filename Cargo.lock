@@ -541,12 +541,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fixedbitset"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -783,9 +777,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.4"
+version = "0.27.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6884a48c6826ec44f524c7456b163cebe9e55a18d7b5e307cb4f100371cc767"
+checksum = "2d191583f3da1305256f22463b9bb0471acad48a4e534a5218b9963e9c1f59b2"
 dependencies = [
  "futures-util",
  "http",
@@ -1104,16 +1098,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libloading"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
-dependencies = [
- "cfg-if",
- "windows-targets 0.52.6",
-]
-
-[[package]]
 name = "libredox"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1203,12 +1187,6 @@ dependencies = [
  "wasi",
  "windows-sys 0.52.0",
 ]
-
-[[package]]
-name = "multimap"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "defc4c55412d89136f966bbb339008b474350e5e6e78d2714439c386b3137a03"
 
 [[package]]
 name = "nix"
@@ -1466,43 +1444,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
-name = "petgraph"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
-dependencies = [
- "fixedbitset",
- "indexmap",
-]
-
-[[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "log",
  "num-bigint",
  "num-traits",
  "p3-field",
  "p3-goldilocks",
- "pilout",
  "proofman-common",
  "proofman-hints",
  "proofman-util",
  "rayon",
  "witness",
-]
-
-[[package]]
-name = "pilout"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
-dependencies = [
- "bytes",
- "log",
- "proofman-util",
- "prost",
- "prost-build",
 ]
 
 [[package]]
@@ -1595,16 +1550,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.2.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d1ec885c64d0457d564db4ec299b2dae3f9c02808b8ad9c3a089c591b18033"
-dependencies = [
- "proc-macro2",
- "syn",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1616,13 +1561,12 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "env_logger",
  "log",
  "p3-field",
  "p3-goldilocks",
- "pilout",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
@@ -1635,7 +1579,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "log",
  "p3-field",
@@ -1646,7 +1590,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1656,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "log",
 ]
@@ -1664,62 +1608,10 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "colored",
- "sysinfo 0.31.4",
-]
-
-[[package]]
-name = "prost"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c0fef6c4230e4ccf618a35c59d7ede15dea37de8427500f50aff708806e42ec"
-dependencies = [
- "bytes",
- "prost-derive",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0f3e5beed80eb580c68e2c600937ac2c4eedabdfd5ef1e5b7ea4f3fba84497b"
-dependencies = [
- "heck",
- "itertools 0.13.0",
- "log",
- "multimap",
- "once_cell",
- "petgraph",
- "prettyplease",
- "prost",
- "prost-types",
- "regex",
- "syn",
- "tempfile",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "157c5a9d7ea5c2ed2d9fb8f495b64759f7816c7eaea54ba3978f0d63000162e3"
-dependencies = [
- "anyhow",
- "itertools 0.13.0",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "prost-types"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc2f1e56baa61e93533aebc21af4d2134b70f66275e0fcdf3cbe43d77ff7e8fc"
-dependencies = [
- "prost",
+ "sysinfo",
 ]
 
 [[package]]
@@ -1976,7 +1868,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "sm-rom",
- "sysinfo 0.33.0",
+ "sysinfo",
  "zisk-pil",
 ]
 
@@ -2368,20 +2260,6 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.31.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "355dbe4f8799b304b05e1b0f05fc59b2a18d36645cf169607da45bde2f69a1be"
-dependencies = [
- "core-foundation-sys",
- "libc",
- "memchr",
- "ntapi",
- "rayon",
- "windows",
-]
-
-[[package]]
-name = "sysinfo"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "948512566b1895f93b1592c7574baeb2de842f224f2aab158799ecadb8ebbb46"
@@ -2622,7 +2500,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3120,11 +2998,10 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "witness"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#4b7a50672e16bda26b2cf5ea20ca204a73a5d42f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#100b2f09d3c86e766a04daa91bccdd055f2cf19b"
 dependencies = [
  "colored",
  "env_logger",
- "libloading",
  "log",
  "p3-field",
  "p3-goldilocks",
@@ -3307,7 +3184,7 @@ dependencies = [
  "pprof",
  "rayon",
  "riscv",
- "sysinfo 0.33.0",
+ "sysinfo",
  "vergen",
  "zisk-common",
  "zisk-core",
