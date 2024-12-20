@@ -12,6 +12,8 @@ pub struct CheckPoint<S> {
     pub collect_info: S,
 }
 
+pub trait IsCheckPointType {}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CollectSkip {
     pub skip: u64,
@@ -25,13 +27,19 @@ impl CheckPointSkip {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CheckPointType {
+    None,
+    Skip(CheckPointSkip),
+}
+
 #[derive(Debug)]
 pub struct Plan {
     pub airgroup_id: usize,
     pub air_id: usize,
     pub segment_id: Option<usize>,
     pub instance_type: InstanceType,
-    pub check_point: Option<CheckPointSkip>,
+    pub check_point: CheckPointType,
     pub meta: Option<Box<dyn Any>>,
 }
 
@@ -41,7 +49,7 @@ impl Plan {
         air_id: usize,
         segment_id: Option<usize>,
         instance_type: InstanceType,
-        check_point: Option<CheckPointSkip>,
+        check_point: CheckPointType,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
         Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta }

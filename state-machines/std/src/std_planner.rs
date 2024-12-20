@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner};
+use sm_common::{BusDeviceMetrics, CheckPointType, ChunkId, InstanceType, Plan, Planner};
 
 pub struct StdPlanner<F: PrimeField> {
     std: Arc<Std<F>>,
@@ -25,7 +25,7 @@ impl<F: PrimeField> Planner for StdPlanner<F> {
                     air_id,
                     None,
                     InstanceType::Table,
-                    None,
+                    CheckPointType::None,
                     Some(Box::new(rc_type)),
                 )
             })

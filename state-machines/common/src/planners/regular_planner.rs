@@ -1,5 +1,6 @@
 use crate::{
-    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceType, Plan, Planner, RegularCounters,
+    plan, BusDeviceMetrics, CheckPointType, ChunkId, InstCount, InstanceType, Plan, Planner,
+    RegularCounters,
 };
 use zisk_core::ZiskOperationType;
 
@@ -90,7 +91,7 @@ impl Planner for RegularPlanner {
                         instance.air_id,
                         None,
                         InstanceType::Instance,
-                        Some(check_point),
+                        CheckPointType::Skip(check_point),
                         None,
                     )
                 })
@@ -105,7 +106,7 @@ impl Planner for RegularPlanner {
                 table_instance.air_id,
                 None,
                 InstanceType::Table,
-                None,
+                CheckPointType::None,
                 None,
             ));
         }

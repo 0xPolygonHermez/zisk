@@ -1,6 +1,6 @@
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::Instance;
+use sm_common::{CheckPointType, Instance};
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
@@ -18,8 +18,8 @@ impl<F: PrimeField> Instance<F> for ArithInputGenerator {
         Ok(())
     }
 
-    fn check_point(&self) -> Option<sm_common::CheckPointSkip> {
-        None
+    fn check_point(&self) -> CheckPointType {
+        CheckPointType::None
     }
 
     fn instance_type(&self) -> sm_common::InstanceType {

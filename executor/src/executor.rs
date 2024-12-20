@@ -5,8 +5,8 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint,
-    ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
+    BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPointSkip,
+    CheckPointType, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
 use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
@@ -119,7 +119,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     MAIN_AIR_IDS[0],
                     Some(segment_id),
                     InstanceType::Instance,
-                    Some(CheckPoint::new(segment_id, 0)),
+                    sm_common::CheckPointType::Skip(CheckPointSkip::new(segment_id, 0)),
                     None,
                 )
             })
@@ -223,7 +223,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                 if sec_instance.instance_type() == InstanceType::Instance {
                     let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
 
-                    if let Some(check_point) = sec_instance.check_point() {
+                    if let CheckPointType::Skip(check_point) = sec_instance.check_point() {
                         let chunk_id = check_point.chunk_id;
 
                         let bus_device_instance = sec_instance;

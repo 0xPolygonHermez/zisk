@@ -1,7 +1,7 @@
 use crate::ArithCounter;
 use sm_common::{
-    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceInfo, InstanceType, Plan, Planner,
-    TableInfo,
+    plan, BusDeviceMetrics, CheckPointType, ChunkId, InstCount, InstanceInfo, InstanceType, Plan,
+    Planner, TableInfo,
 };
 
 #[derive(Default)]
@@ -61,7 +61,7 @@ impl Planner for ArithPlanner {
                         instance.air_id,
                         None,
                         InstanceType::Instance,
-                        Some(check_point),
+                        CheckPointType::Skip(check_point),
                         None,
                     )
                 })
@@ -76,7 +76,7 @@ impl Planner for ArithPlanner {
                 table_instance.air_id,
                 None,
                 InstanceType::Table,
-                None,
+                CheckPointType::None,
                 None,
             ));
         }

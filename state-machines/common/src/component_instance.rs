@@ -3,7 +3,7 @@ use proofman_common::{AirInstance, ProofCtx};
 use zisk_core::ZiskRom;
 use ziskemu::EmuTrace;
 
-use crate::CheckPointSkip;
+use crate::CheckPointType;
 
 #[derive(Debug, PartialEq)]
 pub enum InstanceType {
@@ -24,7 +24,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
 
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
-    fn check_point(&self) -> Option<CheckPointSkip>;
+    fn check_point(&self) -> CheckPointType;
 
     fn instance_type(&self) -> InstanceType;
 }
@@ -37,7 +37,9 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+        use sm_common::{
+            CheckPointSkip, CheckPointType, Instance, InstanceExpanderCtx, InstanceType,
+        };
         use zisk_common::BusId;
         use zisk_pil::$Trace;
 
@@ -74,8 +76,8 @@ macro_rules! table_instance {
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
             }
 
-            fn check_point(&self) -> Option<CheckPointSkip> {
-                self.iectx.plan.check_point
+            fn check_point(&self) -> CheckPointType {
+                self.iectx.plan.check_point.clone()
             }
 
             fn instance_type(&self) -> InstanceType {
