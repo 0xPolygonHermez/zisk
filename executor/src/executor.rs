@@ -146,11 +146,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    fn plan_checkpoint_single(
+    fn process_checkpoint(
         &self,
         min_traces: &[EmuTrace],
         sec_instance: Box<dyn BusDeviceInstance<F>>,
-        chunk_id: usize,
+        chunk_ids: &[usize],
     ) -> Box<dyn BusDeviceInstance<F>> {
         let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
 
@@ -169,12 +169,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
             }
         });
 
-        ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
-            &self.zisk_rom,
-            min_traces,
-            chunk_id,
-            &mut data_bus,
-        );
+        for chunk_id in chunk_ids {
+            ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
+                &self.zisk_rom,
+                min_traces,
+                *chunk_id,
+                &mut data_bus,
+            );
+        }
 
         data_bus.devices.remove(0).inner
     }
@@ -259,10 +261,11 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                         CheckPoint::None => {}
                         CheckPoint::Single(chunk_id) => {
                             sec_instance =
-                                self.plan_checkpoint_single(&min_traces, sec_instance, chunk_id);
+                                self.process_checkpoint(&min_traces, sec_instance, &[chunk_id]);
                         }
-                        CheckPoint::Multiple(_) => {
-                            // TODO !!!!
+                        CheckPoint::Multiple(chunk_ids) => {
+                            sec_instance =
+                                self.process_checkpoint(&min_traces, sec_instance, &chunk_ids);
                         }
                     }
 
