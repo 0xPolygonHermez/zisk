@@ -36,7 +36,6 @@ pub struct InputDataSM<F: PrimeField> {
     // STD
     std: Arc<Std<F>>,
 
-    num_rows: usize,
     // Count of registered predecessors
     registered_predecessors: AtomicU32,
 }
@@ -46,12 +45,8 @@ impl<F: PrimeField> InputDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
-        let input_data_sm = Self {
-            wcm: wcm.clone(),
-            std: std.clone(),
-            num_rows: air.num_rows(),
-            registered_predecessors: AtomicU32::new(0),
-        };
+        let input_data_sm =
+            Self { wcm: wcm.clone(), std: std.clone(), registered_predecessors: AtomicU32::new(0) };
         let input_data_sm = Arc::new(input_data_sm);
 
         wcm.register_component(
@@ -377,7 +372,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         vec![(INPUT_ADDR as u32, (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32)]
     }
     fn get_flush_input_size(&self) -> u32 {
-        self.num_rows as u32
+        0
     }
 }
 
