@@ -128,7 +128,7 @@ impl<F: PrimeField> MemAlignSM<F> {
             }
 
             self.mem_align_rom_sm.unregister_predecessor();
-            self.std.unregister_predecessor(pctx, None);
+            self.std.unregister_predecessor();
         }
     }
 

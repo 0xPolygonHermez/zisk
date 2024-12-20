@@ -266,7 +266,7 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
     }
     col witness multiplicity;
 
-    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, cols: [OP, FLAGS, RANGE_AB, RANGE_CD]);
+    lookup_proves(ARITH_TABLE_ID, mul: multiplicity, expressions: [OP, FLAGS, RANGE_AB, RANGE_CD]);
 }
 
 function arith_table_assumes( const expr op, const expr flag_m32, const expr flag_div, const expr flag_na,
@@ -275,9 +275,9 @@ function arith_table_assumes( const expr op, const expr flag_m32, const expr fla
                               const expr flag_main_mul, const expr flag_main_div, const expr flag_signed,
                               const expr range_ab, const expr range_cd) {
 
-    lookup_assumes(ARITH_TABLE_ID, cols: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
-                                           16 * flag_np + 32 * flag_nr + 64 * flag_sext +
-                                           128 * flag_div_by_zero + 256 * flag_div_overflow +
-                                           512 * flag_main_mul + 1024 * flag_main_div + 2048 * flag_signed,
-                                           range_ab, range_cd]);
+    lookup_assumes(ARITH_TABLE_ID, expressions: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
+                                                  16 * flag_np + 32 * flag_nr + 64 * flag_sext +
+                                                  128 * flag_div_by_zero + 256 * flag_div_overflow +
+                                                  512 * flag_main_mul + 1024 * flag_main_div + 2048 * flag_signed,
+                                                  range_ab, range_cd]);
 }
