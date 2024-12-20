@@ -45,11 +45,8 @@ impl<F: PrimeField> InputDataSM<F> {
     pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         let pctx = wcm.get_pctx();
         let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]);
-        let input_data_sm = Self {
-            wcm: wcm.clone(),
-            std: std.clone(),
-            registered_predecessors: AtomicU32::new(0),
-        };
+        let input_data_sm =
+            Self { wcm: wcm.clone(), std: std.clone(), registered_predecessors: AtomicU32::new(0) };
         let input_data_sm = Arc::new(input_data_sm);
 
         wcm.register_component(
