@@ -223,9 +223,10 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                 if sec_instance.instance_type() == InstanceType::Instance {
                     let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
 
-                    if let CheckPointType::Skip(check_point) = sec_instance.check_point() {
-                        let chunk_id = check_point.chunk_id;
-
+                    if let Some(chunk_id) = match sec_instance.check_point() {
+                        CheckPointType::Skip(check_point) => Some(check_point.chunk_id),
+                        _ => None,
+                    } {
                         let bus_device_instance = sec_instance;
                         data_bus.connect_device(
                             vec![OPERATION_BUS_ID],
