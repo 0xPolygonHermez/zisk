@@ -5,8 +5,8 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use sm_common::{
-    BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper, CheckPoint,
-    CollectInfoSkip, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
+    BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
+    CheckPoint, CollectInfoSkip, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainSM};
 use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
@@ -145,6 +145,39 @@ impl<F: PrimeField> ZiskExecutor<F> {
             })
             .collect()
     }
+
+    fn plan_checkpoint_single(
+        &self,
+        min_traces: &[EmuTrace],
+        sec_instance: Box<dyn BusDeviceInstance<F>>,
+        chunk_id: usize,
+    ) -> Box<dyn BusDeviceInstance<F>> {
+        let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
+
+        let bus_device_instance = sec_instance;
+        data_bus.connect_device(
+            vec![OPERATION_BUS_ID],
+            Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
+        );
+
+        self.secondary_sm.iter().for_each(|sm| {
+            if let Some(input_generator) = sm.get_inputs_generator() {
+                data_bus.connect_device(
+                    vec![OPERATION_BUS_ID],
+                    Box::new(BusDeviceInstanceWrapper::new(input_generator)),
+                );
+            }
+        });
+
+        ZiskEmulator::process_rom_slice_plan_2::<F, BusDeviceInstanceWrapper<F>>(
+            &self.zisk_rom,
+            min_traces,
+            chunk_id,
+            &mut data_bus,
+        );
+
+        data_bus.devices.remove(0).inner
+    }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
@@ -218,54 +251,30 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
         // ---------------------------------------------------------------------------------
-        let mut collected_instances: Vec<_> =
-            sec_instances
-                .par_drain(..)
-                .map(|(global_idx, mut sec_instance)| {
-                    if sec_instance.instance_type() == InstanceType::Instance {
-                        let check_point = sec_instance.check_point();
-                        if check_point != CheckPoint::None {
-                            if let CheckPoint::Single(chunk_id) = check_point {
-                                let mut data_bus =
-                                    DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
-
-                                let bus_device_instance = sec_instance;
-                                data_bus.connect_device(
-                                    vec![OPERATION_BUS_ID],
-                                    Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
-                                );
-
-                                self.secondary_sm.iter().for_each(|sm| {
-                                    if let Some(input_generator) = sm.get_inputs_generator() {
-                                        data_bus.connect_device(
-                                            vec![OPERATION_BUS_ID],
-                                            Box::new(BusDeviceInstanceWrapper::new(
-                                                input_generator,
-                                            )),
-                                        );
-                                    }
-                                });
-
-                                ZiskEmulator::process_rom_slice_plan_2::<
-                                    F,
-                                    BusDeviceInstanceWrapper<F>,
-                                >(
-                                    &self.zisk_rom, &min_traces, chunk_id, &mut data_bus
-                                );
-
-                                sec_instance = data_bus.devices.remove(0).inner;
-                            }
+        let mut collected_instances: Vec<_> = sec_instances
+            .par_drain(..)
+            .map(|(global_idx, mut sec_instance)| {
+                if sec_instance.instance_type() == InstanceType::Instance {
+                    match sec_instance.check_point() {
+                        CheckPoint::None => {}
+                        CheckPoint::Single(chunk_id) => {
+                            sec_instance =
+                                self.plan_checkpoint_single(&min_traces, sec_instance, chunk_id);
                         }
-
-                        if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                            pctx.clone()
-                                .air_instance_repo
-                                .add_air_instance(air_instance, Some(global_idx));
+                        CheckPoint::Multiple(_) => {
+                            // TODO !!!!
                         }
                     }
-                    (global_idx, sec_instance)
-                })
-                .collect();
+
+                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                        pctx.clone()
+                            .air_instance_repo
+                            .add_air_instance(air_instance, Some(global_idx));
+                    }
+                }
+                (global_idx, sec_instance)
+            })
+            .collect();
 
         // Drop memory
         std::thread::spawn(move || {
