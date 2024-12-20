@@ -7,7 +7,6 @@ edition = "2021"
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 zisk-pil = { path="../../pil" }
-ziskemu = { path = "../../emulator" }
 sm-common = { path = "../common" }
 sm-binary = { path = "../binary" }
 

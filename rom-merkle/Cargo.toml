@@ -14,5 +14,5 @@ p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754e
 p3-field = { workspace = true }
 clap = { version = "4.5.13", features = ["derive", "env"] }
 env_logger = "0.11"
-sysinfo = "0.32"
+sysinfo = "0.33"
 colored = "2"

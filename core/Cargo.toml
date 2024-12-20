@@ -12,9 +12,6 @@ name = "riscv2zisk"
 path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
-serde = { version = "1.0.204", features = ["derive"] }
-serde_json = { version = "1.0.66", features = ["preserve_order"] }
-indexmap = { version = "2.2.6", features = ["serde"] }
 json = "0.12.4"
 elf = "0.7.4"
 riscv = { path = "../riscv" }

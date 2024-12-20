@@ -510,16 +510,11 @@ version = "0.1.0"
 dependencies = [
  "log",
  "p3-field",
- "pil-std-lib",
  "proofman-common",
  "proofman-util",
  "rayon",
- "sm-arith",
- "sm-binary",
  "sm-common",
  "sm-main",
- "sm-mem",
- "sm-rom",
  "witness",
  "zisk-common",
  "zisk-core",
@@ -970,7 +965,6 @@ checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
 dependencies = [
  "equivalent",
  "hashbrown",
- "serde",
 ]
 
 [[package]]
@@ -1968,10 +1962,6 @@ dependencies = [
 [[package]]
 name = "riscv"
 version = "0.1.0"
-dependencies = [
- "elf",
- "json",
-]
 
 [[package]]
 name = "rom-merkle"
@@ -1986,7 +1976,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "sm-rom",
- "sysinfo 0.32.1",
+ "sysinfo 0.33.0",
  "zisk-pil",
 ]
 
@@ -2111,7 +2101,6 @@ version = "1.0.133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7fceb2473b9166b2294ef05efcb65a3db80803f0b03ef86a5fc88a2b85ee377"
 dependencies = [
- "indexmap",
  "itoa",
  "memchr",
  "ryu",
@@ -2171,7 +2160,6 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -2190,7 +2178,6 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -2203,7 +2190,6 @@ dependencies = [
  "rayon",
  "zisk-common",
  "zisk-core",
- "ziskemu",
 ]
 
 [[package]]
@@ -2215,11 +2201,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rayon",
- "sm-arith",
- "sm-binary",
  "sm-common",
- "sm-mem",
- "sm-rom",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2259,7 +2241,6 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -2277,8 +2258,6 @@ dependencies = [
  "sm-common",
  "zisk-common",
  "zisk-core",
- "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -2392,20 +2371,6 @@ name = "sysinfo"
 version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "355dbe4f8799b304b05e1b0f05fc59b2a18d36645cf169607da45bde2f69a1be"
-dependencies = [
- "core-foundation-sys",
- "libc",
- "memchr",
- "ntapi",
- "rayon",
- "windows",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -3292,11 +3257,8 @@ name = "zisk-core"
 version = "0.1.0"
 dependencies = [
  "elf",
- "indexmap",
  "json",
  "riscv",
- "serde",
- "serde_json",
  "tiny-keccak",
 ]
 
@@ -3355,8 +3317,3 @@ dependencies = [
 [[package]]
 name = "ziskos"
 version = "0.1.0"
-dependencies = [
- "getrandom",
- "lazy_static",
- "rand",
-]
