@@ -1,15 +1,16 @@
 use crate::BinaryExtensionSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceExpanderCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
-use zisk_core::{ZiskOperationType, ZiskRom};
+use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryExtensionTrace;
-use ziskemu::EmuTrace;
+
 pub struct BinaryExtensionInstance<F: PrimeField> {
     /// Binary extension state machine
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+
     /// Instance expander context
     iectx: InstanceExpanderCtx,
 
@@ -25,20 +26,12 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     }
 }
 impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
-    fn collect_inputs(
-        &mut self,
-        _zisk_rom: &ZiskRom,
-        _min_traces: &[EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
-
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         Some(self.binary_extension_sm.prove_instance(&self.inputs))
     }
 
-    fn check_point(&self) -> Option<CheckPointSkip> {
-        self.iectx.plan.check_point
+    fn check_point(&self) -> CheckPoint {
+        self.iectx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
@@ -59,8 +52,10 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
         }
 
         if self.skipping {
-            let check_point = self.iectx.plan.check_point.as_ref().unwrap();
-            if check_point.collect_info.skip == 0 || self.skipped == check_point.collect_info.skip {
+            let info_skip = self.iectx.plan.collect_info.as_ref().unwrap();
+            let info_skip = info_skip.downcast_ref::<CollectInfoSkip>().unwrap();
+
+            if info_skip.skip == 0 || self.skipped == info_skip.skip {
                 self.skipping = false;
             } else {
                 self.skipped += 1;

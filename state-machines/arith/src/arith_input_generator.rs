@@ -1,6 +1,6 @@
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::Instance;
+use sm_common::{CheckPoint, Instance};
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
@@ -10,16 +10,8 @@ use crate::ArithFullSM;
 pub struct ArithInputGenerator {}
 
 impl<F: PrimeField> Instance<F> for ArithInputGenerator {
-    fn collect_inputs(
-        &mut self,
-        _zisk_rom: &zisk_core::ZiskRom,
-        _min_traces: &[ziskemu::EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
-
-    fn check_point(&self) -> Option<sm_common::CheckPointSkip> {
-        None
+    fn check_point(&self) -> CheckPoint {
+        CheckPoint::None
     }
 
     fn instance_type(&self) -> sm_common::InstanceType {

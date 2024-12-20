@@ -1,9 +1,7 @@
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use zisk_core::ZiskRom;
-use ziskemu::EmuTrace;
 
-use crate::CheckPointSkip;
+use crate::CheckPoint;
 
 #[derive(Debug, PartialEq)]
 pub enum InstanceType {
@@ -12,19 +10,9 @@ pub enum InstanceType {
 }
 
 pub trait Instance<F: PrimeField>: Send + Sync {
-    fn collect_inputs(
-        &mut self,
-        zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let _ = zisk_rom;
-        let _ = min_traces;
-        Ok(())
-    }
-
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
-    fn check_point(&self) -> Option<CheckPointSkip>;
+    fn check_point(&self) -> CheckPoint;
 
     fn instance_type(&self) -> InstanceType;
 }
@@ -37,7 +25,7 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+        use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
         use zisk_common::BusId;
         use zisk_pil::$Trace;
 
@@ -74,8 +62,8 @@ macro_rules! table_instance {
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
             }
 
-            fn check_point(&self) -> Option<CheckPointSkip> {
-                self.iectx.plan.check_point
+            fn check_point(&self) -> CheckPoint {
+                self.iectx.plan.check_point.clone()
             }
 
             fn instance_type(&self) -> InstanceType {
@@ -99,7 +87,7 @@ macro_rules! table_instance {
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
         use proofman_common::{AirInstance, ProofCtx};
-        use sm_common::{CheckPointSkip, InputsCollector, Instance, InstanceType};
+        use sm_common::{CheckPointSkip, Instance, InstanceType};
         use zisk_common::BusId;
 
         pub struct $name<F: PrimeField> {
@@ -122,22 +110,6 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> Instance<F> for $name<F> {
-            fn collect_inputs(
-                &mut self,
-                zisk_rom: &zisk_core::ZiskRom,
-                min_traces: &[ziskemu::EmuTrace],
-            ) -> Result<(), Box<dyn std::error::Error + Send>> {
-                self.inputs = InputsCollector::collect(
-                    self.iectx.plan.check_point.unwrap(),
-                    $num_rows,
-                    zisk_rom,
-                    min_traces,
-                    $operation,
-                )?;
-
-                Ok(())
-            }
-
             fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 Some(self.sm.prove_instance(&self.inputs))
             }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
 use zisk_common::{BusDevice, BusId};
 
 pub struct StdInstance<F: PrimeField> {
@@ -29,8 +29,8 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
         None
     }
 
-    fn check_point(&self) -> Option<CheckPointSkip> {
-        self.iectx.plan.check_point
+    fn check_point(&self) -> CheckPoint {
+        self.iectx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
