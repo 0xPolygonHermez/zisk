@@ -9,8 +9,6 @@ mod field;
 mod instance_expander;
 mod operations;
 mod planners;
-mod provable;
-mod witness_buffer;
 
 pub use bus_device_instance::*;
 pub use bus_device_metrics::*;
@@ -23,5 +21,3 @@ pub use field::*;
 pub use instance_expander::*;
 pub use operations::*;
 pub use planners::*;
-pub use provable::*;
-pub use witness_buffer::*;
