@@ -42,7 +42,78 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.push(sm);
     }
 
-    fn compute_plans(&self, min_traces: Arc<Vec<EmuTrace>>) -> Vec<Vec<Plan>> {
+    fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
+        // Prepare the settings for the emulator
+        let emu_options = EmuOptions {
+            elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
+            inputs: None, //Some(public_inputs_path.display().to_string()),
+            trace_steps: Some(MainTrace::<F>::NUM_ROWS as u64 - 1),
+            ..EmuOptions::default()
+        };
+
+        ZiskEmulator::process_rom_min_trace::<F>(
+            &self.zisk_rom,
+            &public_inputs,
+            &emu_options,
+            num_threads,
+        )
+        .expect("Error during emulator execution")
+    }
+
+    fn count_and_plan_main(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
+        min_traces
+            .iter()
+            .enumerate()
+            .map(|(segment_id, _minimal_trace)| {
+                Plan::new(
+                    ZISK_AIRGROUP_ID,
+                    MAIN_AIR_IDS[0],
+                    Some(segment_id),
+                    InstanceType::Instance,
+                    CheckPoint::Single(segment_id),
+                    Some(Box::new(CollectInfoSkip::new(0))),
+                    None,
+                )
+            })
+            .collect()
+    }
+
+    fn create_main_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        mut main_planning: Vec<Plan>,
+    ) -> Vec<MainInstance<F>> {
+        main_planning
+            .drain(..)
+            .filter_map(|plan| {
+                if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
+                {
+                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                    Some(self.main_sm.get_instance(iectx))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn witness_main(
+        &self,
+        pctx: Arc<ProofCtx<F>>,
+        min_traces: Arc<Vec<EmuTrace>>,
+        mut main_layouts: Vec<MainInstance<F>>,
+    ) -> std::thread::JoinHandle<Vec<MainInstance<F>>> {
+        let main_sm = self.main_sm.clone();
+        let zisk_rom = self.zisk_rom.clone();
+        std::thread::spawn(move || {
+            main_layouts.par_iter_mut().for_each(|main_instance| {
+                main_sm.prove_main(pctx.clone(), &zisk_rom, &min_traces, main_instance);
+            });
+            main_layouts
+        })
+    }
+
+    fn count_and_plan_secondaries(&self, min_traces: &[EmuTrace]) -> Vec<Vec<Plan>> {
         if self.secondary_sm.is_empty() {
             return Vec::new();
         }
@@ -91,59 +162,68 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
-        // Prepare the settings for the emulator
-        let emu_options = EmuOptions {
-            elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
-            inputs: None, //Some(public_inputs_path.display().to_string()),
-            trace_steps: Some(MainTrace::<F>::NUM_ROWS as u64 - 1),
-            ..EmuOptions::default()
-        };
+    fn create_sec_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        mut plans: Vec<Vec<Plan>>,
+    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
+        // Create the buffer ta the distribution context
+        let mut sec_instances = Vec::new();
+        for (i, plans_by_sm) in plans.iter_mut().enumerate() {
+            for plan in plans_by_sm.drain(..) {
+                let (is_mine, global_idx) =
+                    pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
-        ZiskEmulator::process_rom_min_trace::<F>(
-            &self.zisk_rom,
-            &public_inputs,
-            &emu_options,
-            num_threads,
-        )
-        .expect("Error during emulator execution")
+                if is_mine || plan.instance_type == InstanceType::Table {
+                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
+
+                    let instance = self.secondary_sm[i].get_instance(iectx);
+                    sec_instances.push((global_idx, instance));
+                }
+            }
+        }
+        sec_instances
     }
 
-    fn create_main_plans(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
-        min_traces
-            .iter()
-            .enumerate()
-            .map(|(segment_id, _minimal_trace)| {
-                Plan::new(
-                    ZISK_AIRGROUP_ID,
-                    MAIN_AIR_IDS[0],
-                    Some(segment_id),
-                    InstanceType::Instance,
-                    CheckPoint::Single(segment_id),
-                    Some(Box::new(CollectInfoSkip::new(0))),
-                    None,
-                )
-            })
-            .collect()
-    }
-
-    fn create_main_instances(
+    fn expand_and_witness_sec(
         &self,
         pctx: Arc<ProofCtx<F>>,
-        main_planning: &mut Vec<Plan>,
-    ) -> Vec<MainInstance<F>> {
-        main_planning
-            .drain(..)
-            .filter_map(|plan| {
-                if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
-                {
-                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
-                    Some(self.main_sm.get_instance(iectx))
-                } else {
-                    None
+        min_traces: Arc<Vec<EmuTrace>>,
+        mut sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+    ) {
+        let mut collected_instances: Vec<_> = sec_instances
+            .par_drain(..)
+            .map(|(global_idx, mut sec_instance)| {
+                if sec_instance.instance_type() == InstanceType::Instance {
+                    match sec_instance.check_point() {
+                        CheckPoint::None => {}
+                        CheckPoint::Single(chunk_id) => {
+                            sec_instance =
+                                self.process_checkpoint(&min_traces, sec_instance, &[chunk_id]);
+                        }
+                        CheckPoint::Multiple(chunk_ids) => {
+                            sec_instance =
+                                self.process_checkpoint(&min_traces, sec_instance, &chunk_ids);
+                        }
+                    }
+
+                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                        pctx.clone()
+                            .air_instance_repo
+                            .add_air_instance(air_instance, Some(global_idx));
+                    }
                 }
+                (global_idx, sec_instance)
             })
-            .collect()
+            .collect();
+
+        collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
+            if sec_instance.instance_type() == InstanceType::Table {
+                if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                    pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
+                }
+            }
+        });
     }
 
     fn process_checkpoint(
@@ -192,104 +272,27 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         };
 
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
-        // ---------------------------------------------------------------------------------
+        // --------------------------------------------------------------------------------------------------
         let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
         let min_traces = Arc::new(min_traces);
 
-        // =================================================================================
-        // PATH A Main SM instances
-        // =================================================================================
+        // --- PATH A Main SM instances
+        // Count, Plan and create the Main SM instances + Compute the Main Witnesses
+        // --------------------------------------------------------------------------------------------------
+        let main_planning = self.count_and_plan_main(&min_traces);
+        let main_instances = self.create_main_instances(&pctx, main_planning);        
+        let main_task = self.witness_main(pctx.clone(), min_traces.clone(), main_instances);
 
-        // PATH A PHASE 2. Count & Reduce the Minimal Traces to get the Plans
-        // ---------------------------------------------------------------------------------
-        let mut main_planning = self.create_main_plans(&min_traces);
-        let mut main_layouts = self.create_main_instances(pctx.clone(), &mut main_planning);
-
-        // PATH A PHASE 3. Expand the Minimal Traces to fill the Main Traces
-        // ---------------------------------------------------------------------------------
-        let pctx_clone = pctx.clone();
-        let main_task = {
-            let main_sm = self.main_sm.clone();
-            let zisk_rom = self.zisk_rom.clone();
-            let minimal_traces = min_traces.clone();
-            std::thread::spawn(move || {
-                main_layouts.par_iter_mut().for_each(|main_instance| {
-                    main_sm.prove_main(
-                        pctx_clone.clone(),
-                        &zisk_rom,
-                        &minimal_traces,
-                        main_instance,
-                    );
-                });
-                main_layouts
-            })
-        };
-
-        // =================================================================================
-        // PATH B Secondary SM instances
-        // =================================================================================
-
-        // PATH B PHASE 2. Count & Reduce the Minimal Traces to get the Plans
-        // ---------------------------------------------------------------------------------
-        // Compute counters for each minimal trace
-        let mut plans = self.compute_plans(min_traces.clone());
-
-        // Create the buffer ta the distribution context
-        let mut sec_instances = Vec::new();
-        let pctx_clone = pctx.clone();
-        for (i, plans_by_sm) in plans.iter_mut().enumerate() {
-            for plan in plans_by_sm.drain(..) {
-                let (is_mine, global_idx) =
-                    pctx_clone.clone().dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
-
-                if is_mine || plan.instance_type == InstanceType::Table {
-                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
-
-                    let instance = self.secondary_sm[i].get_instance(iectx);
-                    sec_instances.push((global_idx, instance));
-                }
-            }
-        }
-
-        // PATH B PHASE 3. Expand the Minimal Traces to fill the Secondary SM Traces
-        // ---------------------------------------------------------------------------------
-        let mut collected_instances: Vec<_> = sec_instances
-            .par_drain(..)
-            .map(|(global_idx, mut sec_instance)| {
-                if sec_instance.instance_type() == InstanceType::Instance {
-                    match sec_instance.check_point() {
-                        CheckPoint::None => {}
-                        CheckPoint::Single(chunk_id) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &[chunk_id]);
-                        }
-                        CheckPoint::Multiple(chunk_ids) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &chunk_ids);
-                        }
-                    }
-
-                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                        pctx.clone()
-                            .air_instance_repo
-                            .add_air_instance(air_instance, Some(global_idx));
-                    }
-                }
-                (global_idx, sec_instance)
-            })
-            .collect();
+        // --- PATH B Secondary SM instances
+        // Count, Plan and create the Secondary SM instances + Expand and Compute the Witnesses
+        // --------------------------------------------------------------------------------------------------
+        let sec_planning = self.count_and_plan_secondaries(&min_traces);
+        let sec_instances = self.create_sec_instances(&pctx, sec_planning);
+        self.expand_and_witness_sec(pctx, min_traces.clone(), sec_instances);
 
         // Drop memory
         std::thread::spawn(move || {
             drop(min_traces);
-        });
-
-        collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
-                }
-            }
         });
 
         // Wait for the main task to finish
