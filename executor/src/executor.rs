@@ -280,7 +280,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // Count, Plan and create the Main SM instances + Compute the Main Witnesses
         // --------------------------------------------------------------------------------------------------
         let main_planning = self.count_and_plan_main(&min_traces);
-        let main_instances = self.create_main_instances(&pctx, main_planning);        
+        let main_instances = self.create_main_instances(&pctx, main_planning);
         let main_task = self.witness_main(pctx.clone(), min_traces.clone(), main_instances);
 
         // --- PATH B Secondary SM instances
