@@ -100,7 +100,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     pub fn detach_first_device(&mut self) -> Option<Box<BD>> {
         self.devices.pop()
     }
-    
+
     pub fn detach_devices(&mut self) -> Vec<Box<BD>> {
         std::mem::take(&mut self.devices)
     }
