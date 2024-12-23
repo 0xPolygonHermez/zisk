@@ -22,9 +22,6 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file that contains the ZisK program to be executed
     pub zisk_rom: Arc<ZiskRom>,
 
-    /// Main State Machine
-    pub main_sm: Arc<MainSM<F>>,
-
     /// Secondary State Machines
     secondary_sm: Vec<Arc<dyn ComponentProvider<F>>>,
 }
@@ -33,9 +30,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     const NUM_THREADS: usize = 8;
 
     pub fn new(public_inputs_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
-        let main_sm = MainSM::new();
-
-        Self { public_inputs_path, zisk_rom, main_sm, secondary_sm: Vec::new() }
+        Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
     }
 
     pub fn register_sm(&mut self, sm: Arc<dyn ComponentProvider<F>>) {
@@ -60,7 +55,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         .expect("Error during emulator execution")
     }
 
-    fn count_and_plan_main(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
+    fn plan_main(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
         min_traces
             .iter()
             .enumerate()
@@ -82,14 +77,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         pctx: &ProofCtx<F>,
         mut main_planning: Vec<Plan>,
-    ) -> Vec<MainInstance<F>> {
+    ) -> Vec<MainInstance> {
         main_planning
             .drain(..)
             .filter_map(|plan| {
                 if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
                 {
                     let iectx = InstanceExpanderCtx::new(global_idx, plan);
-                    Some(self.main_sm.get_instance(iectx))
+                    Some(MainInstance::new(iectx))
                 } else {
                     None
                 }
@@ -97,23 +92,23 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    fn witness_main(
+    fn expand_and_witness_main(
         &self,
         pctx: Arc<ProofCtx<F>>,
         min_traces: Arc<Vec<EmuTrace>>,
-        mut main_layouts: Vec<MainInstance<F>>,
-    ) -> std::thread::JoinHandle<Vec<MainInstance<F>>> {
-        let main_sm = self.main_sm.clone();
+        mut main_layouts: Vec<MainInstance>,
+    ) -> std::thread::JoinHandle<Vec<MainInstance>> {
         let zisk_rom = self.zisk_rom.clone();
         std::thread::spawn(move || {
             main_layouts.par_iter_mut().for_each(|main_instance| {
-                main_sm.prove_main(pctx.clone(), &zisk_rom, &min_traces, main_instance);
+                MainSM::prove_main(pctx.clone(), &zisk_rom, &min_traces, main_instance);
             });
+
             main_layouts
         })
     }
 
-    fn count_and_plan_secondaries(&self, min_traces: &[EmuTrace]) -> Vec<Vec<Plan>> {
+    fn count_sec(&self, min_traces: &[EmuTrace]) -> Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>> {
         if self.secondary_sm.is_empty() {
             return Vec::new();
         }
@@ -156,6 +151,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             }
         }
 
+        vec_counters
+    }
+
+    fn plan_sec(
+        &self,
+        mut vec_counters: Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>,
+    ) -> Vec<Vec<Plan>> {
         self.secondary_sm
             .iter()
             .map(|sm| sm.get_planner().plan(vec_counters.drain(..1).next().unwrap()))
@@ -185,13 +187,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         sec_instances
     }
 
-    fn expand_and_witness_sec(
+    fn expand_sec(
         &self,
-        pctx: Arc<ProofCtx<F>>,
+        pctx: &ProofCtx<F>,
         min_traces: Arc<Vec<EmuTrace>>,
         mut sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
-    ) {
-        let mut collected_instances: Vec<_> = sec_instances
+    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
+        let collected_instances: Vec<_> = sec_instances
             .par_drain(..)
             .map(|(global_idx, mut sec_instance)| {
                 if sec_instance.instance_type() == InstanceType::Instance {
@@ -207,19 +209,25 @@ impl<F: PrimeField> ZiskExecutor<F> {
                         }
                     }
 
-                    if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
-                        pctx.clone()
-                            .air_instance_repo
-                            .add_air_instance(air_instance, Some(global_idx));
+                    if let Some(air_instance) = sec_instance.compute_witness(pctx) {
+                        pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
                     }
                 }
                 (global_idx, sec_instance)
             })
             .collect();
 
+        collected_instances
+    }
+
+    fn witness_sec(
+        &self,
+        pctx: &ProofCtx<F>,
+        mut collected_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+    ) {
         collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(&pctx) {
+                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
                     pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
                 }
             }
@@ -279,21 +287,19 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // --- PATH A Main SM instances
         // Count, Plan and create the Main SM instances + Compute the Main Witnesses
         // --------------------------------------------------------------------------------------------------
-        let main_planning = self.count_and_plan_main(&min_traces);
+        let main_planning = self.plan_main(&min_traces);
         let main_instances = self.create_main_instances(&pctx, main_planning);
-        let main_task = self.witness_main(pctx.clone(), min_traces.clone(), main_instances);
+        let main_task =
+            self.expand_and_witness_main(pctx.clone(), min_traces.clone(), main_instances);
 
         // --- PATH B Secondary SM instances
         // Count, Plan and create the Secondary SM instances + Expand and Compute the Witnesses
         // --------------------------------------------------------------------------------------------------
-        let sec_planning = self.count_and_plan_secondaries(&min_traces);
+        let sec_count = self.count_sec(&min_traces);
+        let sec_planning = self.plan_sec(sec_count);
         let sec_instances = self.create_sec_instances(&pctx, sec_planning);
-        self.expand_and_witness_sec(pctx, min_traces.clone(), sec_instances);
-
-        // Drop memory
-        std::thread::spawn(move || {
-            drop(min_traces);
-        });
+        let sec_expanded = self.expand_sec(&pctx, min_traces, sec_instances);
+        self.witness_sec(&pctx, sec_expanded);
 
         // Wait for the main task to finish
         main_task.join().unwrap();
