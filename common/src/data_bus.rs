@@ -96,6 +96,14 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         println!("Global Devices: {:?}", self.omni_devices.len());
         println!("Pending Transfers: {:?}", self.pending_transfers.len());
     }
+
+    pub fn detach_first_device(&mut self) -> Option<Box<BD>> {
+        self.devices.pop()
+    }
+    
+    pub fn detach_devices(&mut self) -> Vec<Box<BD>> {
+        std::mem::take(&mut self.devices)
+    }
 }
 
 unsafe impl<D, BD: BusDevice<D>> Send for DataBus<D, BD> {}

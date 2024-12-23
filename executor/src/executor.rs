@@ -116,14 +116,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut metrics_slices = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = DataBus::<PayloadType, BusDeviceMetricsWrapper>::new();
-                self.secondary_sm.iter().for_each(|sm| {
-                    let counter = sm.get_counter();
-                    let bus_ids = counter.bus_id();
-
-                    data_bus
-                        .connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
-                });
+                let mut data_bus = self.get_data_bus_counters();
 
                 ZiskEmulator::process_rom_slice_counters::<F, BusDeviceMetricsWrapper>(
                     &self.zisk_rom,
@@ -131,14 +124,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     &mut data_bus,
                 );
 
-                data_bus
-                    .devices
-                    .into_iter()
-                    .map(|mut device| {
-                        device.on_close();
-                        device.inner
-                    })
-                    .collect::<Vec<Box<dyn BusDeviceMetrics>>>()
+                self.close_data_bus_counters(data_bus)
             })
             .collect::<Vec<_>>();
 
@@ -240,6 +226,50 @@ impl<F: PrimeField> ZiskExecutor<F> {
         sec_instance: Box<dyn BusDeviceInstance<F>>,
         chunk_ids: &[usize],
     ) -> Box<dyn BusDeviceInstance<F>> {
+        let mut data_bus = self.get_data_bus_collectors(sec_instance);
+
+        for chunk_id in chunk_ids {
+            ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
+                &self.zisk_rom,
+                min_traces,
+                *chunk_id,
+                &mut data_bus,
+            );
+        }
+
+        self.close_data_bus_collectors(data_bus)
+    }
+
+    fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
+        let mut data_bus = DataBus::<PayloadType, BusDeviceMetricsWrapper>::new();
+        self.secondary_sm.iter().for_each(|sm| {
+            let counter = sm.get_counter();
+            let bus_ids = counter.bus_id();
+
+            data_bus.connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
+        });
+
+        data_bus
+    }
+
+    fn close_data_bus_counters(
+        &self,
+        mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
+    ) -> Vec<Box<dyn BusDeviceMetrics>> {
+        data_bus
+            .detach_devices()
+            .into_iter()
+            .map(|mut device| {
+                device.on_close();
+                device.inner
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn get_data_bus_collectors(
+        &self,
+        sec_instance: Box<dyn BusDeviceInstance<F>>,
+    ) -> DataBus<u64, BusDeviceInstanceWrapper<F>> {
         let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
 
         let bus_device_instance = sec_instance;
@@ -256,16 +286,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 );
             }
         });
+        data_bus
+    }
 
-        for chunk_id in chunk_ids {
-            ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
-                &self.zisk_rom,
-                min_traces,
-                *chunk_id,
-                &mut data_bus,
-            );
-        }
-
+    fn close_data_bus_collectors(
+        &self,
+        mut data_bus: DataBus<u64, BusDeviceInstanceWrapper<F>>,
+    ) -> Box<dyn BusDeviceInstance<F>> {
         data_bus.devices.remove(0).inner
     }
 }
