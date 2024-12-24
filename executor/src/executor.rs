@@ -173,13 +173,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         sec_instances
     }
 
-    fn expand_sec(
+    fn expand_and_witness_sec(
         &self,
         pctx: &ProofCtx<F>,
         min_traces: Arc<Vec<EmuTrace>>,
         mut sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
-        let collected_instances: Vec<_> = sec_instances
+        sec_instances
             .par_drain(..)
             .map(|(global_idx, mut sec_instance)| {
                 if sec_instance.instance_type() == InstanceType::Instance {
@@ -201,12 +201,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
                 (global_idx, sec_instance)
             })
-            .collect();
-
-        collected_instances
+            .collect::<Vec<_>>()
     }
 
-    fn witness_sec(
+    fn witness_tables_sec(
         &self,
         pctx: &ProofCtx<F>,
         mut collected_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
@@ -325,8 +323,8 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let sec_count = self.count_sec(&min_traces);
         let sec_planning = self.plan_sec(sec_count);
         let sec_instances = self.create_sec_instances(&pctx, sec_planning);
-        let sec_expanded = self.expand_sec(&pctx, min_traces, sec_instances);
-        self.witness_sec(&pctx, sec_expanded);
+        let sec_expanded = self.expand_and_witness_sec(&pctx, min_traces, sec_instances);
+        self.witness_tables_sec(&pctx, sec_expanded);
 
         // Wait for the main task to finish
         main_task.join().unwrap();

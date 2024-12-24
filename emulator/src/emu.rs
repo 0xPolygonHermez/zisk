@@ -1077,14 +1077,12 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
 
-        let mut current_box_id = chunk_id;
+        let mut current_chunk = chunk_id;
         let mut current_step_idx = 0;
 
-        let mut emu_trace_steps = &vec_traces[current_box_id].steps;
+        let mut emu_trace_steps = &vec_traces[current_chunk].steps;
         let mut mem_reads_index: usize = 0;
         loop {
-            //let step = &vec_traces[current_box_id].steps[current_step_idx];
-
             if self.step_slice_plan(emu_trace_steps, &mut mem_reads_index, data_bus) {
                 break;
             }
@@ -1093,10 +1091,10 @@ impl<'a> Emu<'a> {
             }
 
             current_step_idx += 1;
-            if current_step_idx == vec_traces[current_box_id].steps.steps {
-                current_box_id += 1;
+            if current_step_idx == vec_traces[current_chunk].steps.steps {
+                current_chunk += 1;
                 current_step_idx = 0;
-                emu_trace_steps = &vec_traces[current_box_id].steps;
+                emu_trace_steps = &vec_traces[current_chunk].steps;
                 mem_reads_index = 0;
             }
         }
@@ -1127,7 +1125,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
-        //trace_step.steps += 1;
 
         // finished
         false
@@ -1157,7 +1154,6 @@ impl<'a> Emu<'a> {
             Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, last_c, last_pc);
 
         self.ctx.inst_ctx.step += 1;
-        //trace_step.steps += 1;
 
         full_trace_step
     }
