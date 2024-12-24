@@ -30,6 +30,12 @@ pub struct MainSM {}
 impl MainSM {
     const MY_NAME: &'static str = "MainSM  ";
 
+    /// The number of rows in the main trace is MainTrace::NUM_ROWS but the first row is used for
+    /// continuations. The number of rows that are actually used is MainTrace::NUM_ROWS - 1.
+    pub fn non_continuation_rows<F: PrimeField>() -> u64 {
+        MainTrace::<F>::NUM_ROWS as u64 - 1
+    }
+
     pub fn prove_main<F: PrimeField>(
         pctx: Arc<ProofCtx<F>>,
         zisk_rom: &ZiskRom,

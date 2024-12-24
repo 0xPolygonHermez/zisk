@@ -6,14 +6,13 @@ use rayon::prelude::*;
 
 use sm_common::{
     BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
-    CheckPoint, CollectInfoSkip, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
+    CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
 };
-use sm_main::{MainInstance, MainSM};
+use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
-use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {
@@ -41,7 +40,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
         // Settings for the emulator
         let emu_options = EmuOptions {
-            trace_steps: Some(MainTrace::<F>::NUM_ROWS as u64 - 1),
+            trace_steps: Some(MainSM::non_continuation_rows::<F>()),
             ..EmuOptions::default()
         };
 
@@ -52,22 +51,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
             num_threads,
         )
         .expect("Error during emulator execution")
-    }
-
-    fn plan_main(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
-        (0..min_traces.len())
-            .map(|segment_id| {
-                Plan::new(
-                    ZISK_AIRGROUP_ID,
-                    MAIN_AIR_IDS[0],
-                    Some(segment_id),
-                    InstanceType::Instance,
-                    CheckPoint::Single(segment_id),
-                    Some(Box::new(CollectInfoSkip::new(0))),
-                    None,
-                )
-            })
-            .collect()
     }
 
     fn create_main_instances(
@@ -306,7 +289,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // --- PATH A Main SM instances
         // Count, Plan and create the Main SM instances + Compute the Main Witnesses
         // --------------------------------------------------------------------------------------------------
-        let main_planning = self.plan_main(&min_traces);
+        let main_planning = MainPlanner::plan(&min_traces);
         let main_instances = self.create_main_instances(&pctx, main_planning);
         let main_task =
             self.expand_and_witness_main(pctx.clone(), min_traces.clone(), main_instances);
