@@ -17,10 +17,11 @@ use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 pub struct ZiskExecutor<F: PrimeField> {
-    pub public_inputs_path: PathBuf,
-
     /// ZisK ROM, a binary file that contains the ZisK program to be executed
     pub zisk_rom: Arc<ZiskRom>,
+
+    /// Path to the public inputs file
+    pub public_inputs_path: PathBuf,
 
     /// Secondary State Machines
     secondary_sm: Vec<Arc<dyn ComponentProvider<F>>>,
@@ -38,10 +39,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
-        // Prepare the settings for the emulator
+        // Settings for the emulator
         let emu_options = EmuOptions {
-            elf: None,    //Some(rom_path.to_path_buf().display().to_string()),
-            inputs: None, //Some(public_inputs_path.display().to_string()),
             trace_steps: Some(MainTrace::<F>::NUM_ROWS as u64 - 1),
             ..EmuOptions::default()
         };
@@ -56,10 +55,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn plan_main(&self, min_traces: &[EmuTrace]) -> Vec<Plan> {
-        min_traces
-            .iter()
-            .enumerate()
-            .map(|(segment_id, _minimal_trace)| {
+        (0..min_traces.len())
+            .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
                     MAIN_AIR_IDS[0],
@@ -76,15 +73,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn create_main_instances(
         &self,
         pctx: &ProofCtx<F>,
-        mut main_planning: Vec<Plan>,
+        main_planning: Vec<Plan>,
     ) -> Vec<MainInstance> {
         main_planning
-            .drain(..)
+            .into_iter()
             .filter_map(|plan| {
                 if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
                 {
-                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
-                    Some(MainInstance::new(iectx))
+                    Some(MainInstance::new(InstanceExpanderCtx::new(global_idx, plan)))
                 } else {
                     None
                 }
@@ -144,43 +140,41 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         mut vec_counters: Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>,
     ) -> Vec<Vec<Plan>> {
-        self.secondary_sm
-            .iter()
-            .map(|sm| sm.get_planner().plan(vec_counters.drain(..1).next().unwrap()))
-            .collect()
+        self.secondary_sm.iter().map(|sm| sm.get_planner().plan(vec_counters.remove(0))).collect()
     }
 
     fn create_sec_instances(
         &self,
         pctx: &ProofCtx<F>,
-        mut plans: Vec<Vec<Plan>>,
+        plans: Vec<Vec<Plan>>,
     ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
-        // Create the buffer ta the distribution context
-        let mut sec_instances = Vec::new();
-        for (i, plans_by_sm) in plans.iter_mut().enumerate() {
-            for plan in plans_by_sm.drain(..) {
-                let (is_mine, global_idx) =
-                    pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
+        plans
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, plans_by_sm)| {
+                plans_by_sm.into_iter().filter_map(move |plan| {
+                    let (is_mine, global_idx) =
+                        pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
-                if is_mine || plan.instance_type == InstanceType::Table {
-                    let iectx = InstanceExpanderCtx::new(global_idx, plan);
-
-                    let instance = self.secondary_sm[i].get_instance(iectx);
-                    sec_instances.push((global_idx, instance));
-                }
-            }
-        }
-        sec_instances
+                    if is_mine || plan.instance_type == InstanceType::Table {
+                        let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                        Some((global_idx, self.secondary_sm[i].get_instance(iectx)))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect()
     }
 
     fn expand_and_witness_sec(
         &self,
         pctx: &ProofCtx<F>,
         min_traces: Arc<Vec<EmuTrace>>,
-        mut sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
         sec_instances
-            .par_drain(..)
+            .into_par_iter()
             .map(|(global_idx, mut sec_instance)| {
                 if sec_instance.instance_type() == InstanceType::Instance {
                     match sec_instance.check_point() {
@@ -201,7 +195,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
                 (global_idx, sec_instance)
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     fn witness_tables_sec(
@@ -226,25 +220,25 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ) -> Box<dyn BusDeviceInstance<F>> {
         let mut data_bus = self.get_data_bus_collectors(sec_instance);
 
-        for chunk_id in chunk_ids {
+        chunk_ids.iter().for_each(|&chunk_id| {
             ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
                 &self.zisk_rom,
                 min_traces,
-                *chunk_id,
+                chunk_id,
                 &mut data_bus,
             );
-        }
+        });
 
         self.close_data_bus_collectors(data_bus)
     }
 
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
-        let mut data_bus = DataBus::<PayloadType, BusDeviceMetricsWrapper>::new();
+        let mut data_bus = DataBus::new();
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.get_counter();
-            let bus_ids = counter.bus_id();
 
-            data_bus.connect_device(bus_ids, Box::new(BusDeviceMetricsWrapper::new(counter)));
+            data_bus
+                .connect_device(counter.bus_id(), Box::new(BusDeviceMetricsWrapper::new(counter)));
         });
 
         data_bus
@@ -268,7 +262,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         sec_instance: Box<dyn BusDeviceInstance<F>>,
     ) -> DataBus<u64, BusDeviceInstanceWrapper<F>> {
-        let mut data_bus = DataBus::<PayloadType, BusDeviceInstanceWrapper<F>>::new();
+        let mut data_bus = DataBus::new();
 
         let bus_device_instance = sec_instance;
         data_bus.connect_device(
