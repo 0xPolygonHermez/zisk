@@ -198,9 +198,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.5"
+version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c31a0499c1dc64f458ad13872de75c0eb7e3fdb0e67964610c914b034fc5956e"
+checksum = "8d6dbb628b8f8555f86d0323c2eb39e3ec81901f4b83e091db8a6a76d316a333"
 dependencies = [
  "jobserver",
  "libc",
@@ -1447,7 +1447,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "log",
  "num-bigint",
@@ -1562,7 +1562,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "env_logger",
  "log",
@@ -1580,7 +1580,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "log",
  "p3-field",
@@ -1592,7 +1592,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1602,7 +1602,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "log",
 ]
@@ -1610,7 +1610,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "colored",
  "sysinfo",
@@ -1679,9 +1679,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.37"
+version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
+checksum = "0e4dccaaaf89514f546c693ddc140f729f958c247918a13380cccc6078391acc"
 dependencies = [
  "proc-macro2",
 ]
@@ -1787,9 +1787,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.9"
+version = "0.12.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a77c62af46e79de0a562e1a9849205ffcb7fc1238876e9bd743357570e04046f"
+checksum = "3d3536321cfc54baa8cf3e273d5e1f63f889067829c4b410fcdbac8ca7b80994"
 dependencies = [
  "base64",
  "bytes",
@@ -1819,6 +1819,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-util",
+ "tower",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -1948,9 +1949,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e819f2bc632f285be6d7cd36e25940d45b2391dd6d9b939e79de557f7014248"
+checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
 name = "ryu"
@@ -2236,9 +2237,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.91"
+version = "2.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53cbcb5a243bd33b7858b1d7f4aca2153490815872d86d955d6ea29f743c035"
+checksum = "70ae51629bf965c5c098cc9e87908a3df5301051a9e087d6f9bef5c9771ed126"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2468,6 +2469,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "tower"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d039ad9159c98b70ecfd540b2573b97f7f52c3e8d9f8ad57a24b916a536975f9"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
+ "sync_wrapper",
+ "tokio",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
+name = "tower-layer"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
+
+[[package]]
 name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2507,7 +2529,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3005,7 +3027,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "witness"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#0c35e2ad586670358e19fe157002c164de6816aa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fminor_clean#fa968a230172d537d081fd93e44a7f4feccbb8bc"
 dependencies = [
  "colored",
  "env_logger",

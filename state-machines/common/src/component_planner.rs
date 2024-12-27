@@ -7,11 +7,31 @@ pub type ChunkId = usize;
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CollectInfoSkip {
     pub skip: u64,
+    pub skipped: u64,
+    pub skipping: bool,
 }
 
 impl CollectInfoSkip {
     pub fn new(skip: u64) -> Self {
-        CollectInfoSkip { skip }
+        CollectInfoSkip {
+            skip,
+            skipped: 0,
+            skipping: skip > 0,
+        }
+    }
+
+    pub fn should_skip(&mut self) -> bool {
+        if !self.skipping {
+            return false;
+        }
+
+        if self.skip == 0 || self.skipped >= self.skip {
+            self.skipping = false;
+            return false;
+        }
+
+        self.skipped += 1;
+        true
     }
 }
 

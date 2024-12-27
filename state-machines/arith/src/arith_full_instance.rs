@@ -14,15 +14,14 @@ pub struct ArithFullInstance {
     iectx: InstanceExpanderCtx,
     /// Inputs
     inputs: Vec<OperationData<u64>>,
-
-    skipping: bool,
-    skipped: u64,
 }
+
 impl ArithFullInstance {
     pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self { arith_full_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
+        Self { arith_full_sm, iectx, inputs: Vec::new() }
     }
 }
+
 impl<F: PrimeField> Instance<F> for ArithFullInstance {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         Some(self.arith_full_sm.prove_instance::<F>(&self.inputs))
@@ -49,16 +48,11 @@ impl BusDevice<u64> for ArithFullInstance {
             return (false, vec![]);
         }
 
-        if self.skipping {
-            let info_skip = self.iectx.plan.collect_info.as_ref().unwrap();
-            let info_skip = info_skip.downcast_ref::<CollectInfoSkip>().unwrap();
-
-            if info_skip.skip == 0 || self.skipped == info_skip.skip {
-                self.skipping = false;
-            } else {
-                self.skipped += 1;
-                return (false, vec![]);
-            }
+        let info_skip = self.iectx.plan.collect_info.as_mut().unwrap();
+        let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
+        
+        if info_skip.should_skip() {
+            return (false, vec![]);
         }
 
         self.inputs.push(data);
