@@ -55,6 +55,7 @@ pub struct RiscvInstruction {
     pub csr: u32,
     pub pred: u32,
     pub succ: u32,
+    // TODO: I want some way to represent Zisk instruction here.
 }
 
 impl RiscvInstruction {

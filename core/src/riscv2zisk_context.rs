@@ -139,6 +139,7 @@ impl Riscv2ZiskContext<'_> {
             "csrrwi" => self.csrrwi(riscv_instruction),
             "csrrsi" => self.csrrsi(riscv_instruction),
             "csrrci" => self.csrrci(riscv_instruction),
+            "zisk" => self.zisk(riscv_instruction),
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
                 riscv_instruction.inst
@@ -1276,6 +1277,19 @@ impl Riscv2ZiskContext<'_> {
                 self.s += 4;
             }
         }
+    }
+
+    pub fn zisk(&mut self, i: &RiscvInstruction) {
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("reg", i.rs2 as u64, false);
+        zib.op("sub").unwrap();
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(8, 8);
+        zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += 8;
     }
 } // impl Riscv2ZiskContext
 

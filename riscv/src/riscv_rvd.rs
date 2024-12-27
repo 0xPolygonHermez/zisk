@@ -52,6 +52,20 @@ impl Rvd {
             self.opcodes.insert(3, info);
         }
 
+        // Opcode 11
+        {
+            let mut info = RvdInfo {
+                t: String::from("ZISK"),
+                op: RvdOperation { s: String::new(), map: HashMap::new() },
+            };
+            {
+                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
+                op.map.insert(1, RvdOperation { s: String::from("zisk"), map: HashMap::new() });
+                info.op.map.insert(1, op);
+            }
+            self.opcodes.insert(11, info);
+        }
+
         // Opcode 15
         {
             let mut info = RvdInfo {

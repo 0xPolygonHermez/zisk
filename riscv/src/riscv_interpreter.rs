@@ -46,6 +46,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
     // For every 32-bit instruction in the input code buffer
     let code_len = code.len();
+    let mut skip_next = false;
     for (s, inst_ref) in code.iter().enumerate().take(code_len) {
         //println!("riscv_interpreter() s={}", s);
 
@@ -55,6 +56,11 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
         // Ignore instructions that are zero
         if inst == 0 {
             //println!("riscv_interpreter() found inst=0 at position s={}", s);
+            continue;
+        }
+
+        if skip_next {
+            skip_next = false;
             continue;
         }
 
@@ -101,6 +107,18 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
             i.funct7 = (inst & 0xFE000000) >> 25;
             (i.inst, _) = getinst(&inf.op, i.funct3, i.funct7);
             assert!(!i.inst.is_empty());
+        }
+        //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+        // |   funct7      |  rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type
+        else if i.t == *"ZISK" {
+            i.funct3 = (inst & 0x7000) >> 12;
+            i.rd = (inst & 0xF80) >> 7;
+            i.rs1 = (inst & 0xF8000) >> 15;
+            i.rs2 = (inst & 0x1F00000) >> 20;
+            i.funct7 = (inst & 0xFE000000) >> 25;
+            (i.inst, _) = getinst(&inf.op, i.funct3, i.funct7);
+            assert!(!i.inst.is_empty());
+            skip_next = true;
         }
         //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
         // |  imm[11:5]    |  rs2    |   rs1   | funct3 |   imm[4:0]   |       opcode       | S-type
