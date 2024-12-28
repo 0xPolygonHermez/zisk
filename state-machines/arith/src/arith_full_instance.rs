@@ -36,8 +36,6 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     }
 }
 
-unsafe impl Sync for ArithFullInstance {}
-
 impl BusDevice<u64> for ArithFullInstance {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let data: OperationData<u64> =
@@ -50,7 +48,7 @@ impl BusDevice<u64> for ArithFullInstance {
 
         let info_skip = self.iectx.plan.collect_info.as_mut().unwrap();
         let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
-        
+
         if info_skip.should_skip() {
             return (false, vec![]);
         }

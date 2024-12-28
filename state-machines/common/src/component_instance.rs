@@ -9,7 +9,7 @@ pub enum InstanceType {
     Table,
 }
 
-pub trait Instance<F: PrimeField>: Send + Sync {
+pub trait Instance<F: PrimeField>: Send {
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
     fn check_point(&self) -> CheckPoint;
@@ -45,8 +45,6 @@ macro_rules! table_instance {
             }
         }
 
-        unsafe impl Sync for $InstanceName {}
-
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
@@ -71,15 +69,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl zisk_common::BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                _bus_id: &zisk_common::BusId,
-                _data: &[u64],
-            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
-                (true, vec![])
-            }
-        }
+        impl zisk_common::BusDevice<u64> for $InstanceName {}
     };
 }
 
@@ -123,16 +113,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {
-            fn process_data(
-                &mut self,
-                _bus_id: &zisk_common::BusId,
-                _data: &[u64],
-            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
-                (true, vec![])
-            }
-        }
-
-        unsafe impl<F: PrimeField> Sync for $name<F> {}
+        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {}
     };
 }

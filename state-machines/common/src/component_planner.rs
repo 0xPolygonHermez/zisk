@@ -13,11 +13,7 @@ pub struct CollectInfoSkip {
 
 impl CollectInfoSkip {
     pub fn new(skip: u64) -> Self {
-        CollectInfoSkip {
-            skip,
-            skipped: 0,
-            skipping: skip > 0,
-        }
+        CollectInfoSkip { skip, skipped: 0, skipping: skip > 0 }
     }
 
     pub fn should_skip(&mut self) -> bool {

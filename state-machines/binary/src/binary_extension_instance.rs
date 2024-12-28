@@ -38,8 +38,6 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     }
 }
 
-unsafe impl<F: PrimeField> Sync for BinaryExtensionInstance<F> {}
-
 impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let data: OperationData<u64> =

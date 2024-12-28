@@ -37,7 +37,7 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
 
         let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(zisk_rom.clone());
-        let binary_sm = BinarySM::new(std.clone());
+        let binary_sm = BinarySM::new(std);
         let arith_sm = ArithSM::new();
 
         let mut executor = ZiskExecutor::new(wcm.get_public_inputs_path().unwrap(), zisk_rom);

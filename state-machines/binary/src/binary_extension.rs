@@ -27,7 +27,7 @@ const LS_6_BITS: u64 = 0x3F;
 const SE_W_OP: u8 = 0x39;
 
 pub struct BinaryExtensionSM<F: PrimeField> {
-    // STD
+    // PIL2 Standard Library
     std: Arc<Std<F>>,
 
     // Secondary State machines
