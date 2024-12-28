@@ -52,11 +52,6 @@ pub struct BinaryBasicSM {
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
-#[derive(Debug)]
-pub enum BinaryBasicSMErr {
-    InvalidOpcode,
-}
-
 impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
 

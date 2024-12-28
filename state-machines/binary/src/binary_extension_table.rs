@@ -23,11 +23,6 @@ pub struct BinaryExtensionTableSM {
     multiplicity: Mutex<Vec<u64>>,
 }
 
-#[derive(Debug)]
-pub enum ExtensionTableSMErr {
-    InvalidOpcode,
-}
-
 impl BinaryExtensionTableSM {
     pub fn new<F: Field>() -> Arc<Self> {
         let binary_extension_table =
