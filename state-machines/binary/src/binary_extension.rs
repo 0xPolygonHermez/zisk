@@ -41,7 +41,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        Arc::new(Self { std: std.clone(), binary_extension_table_sm })
+        Arc::new(Self { std, binary_extension_table_sm })
     }
 
     pub fn operations() -> Vec<u8> {

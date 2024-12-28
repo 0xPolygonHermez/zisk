@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -9,52 +10,19 @@ use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
 
-use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
-
-// 64 bits opcodes
-const MINU_OP: u8 = ZiskOp::Minu.code();
-const MIN_OP: u8 = ZiskOp::Min.code();
-const MAXU_OP: u8 = ZiskOp::Maxu.code();
-const MAX_OP: u8 = ZiskOp::Max.code();
-pub const LT_ABS_NP_OP: u8 = 0x06;
-pub const LT_ABS_PN_OP: u8 = 0x07;
-pub const LTU_OP: u8 = ZiskOp::Ltu.code();
-const LT_OP: u8 = ZiskOp::Lt.code();
-pub const GT_OP: u8 = 0x0a;
-const EQ_OP: u8 = ZiskOp::Eq.code();
-const ADD_OP: u8 = ZiskOp::Add.code();
-const SUB_OP: u8 = ZiskOp::Sub.code();
-const LEU_OP: u8 = ZiskOp::Leu.code();
-const LE_OP: u8 = ZiskOp::Le.code();
-const AND_OP: u8 = ZiskOp::And.code();
-const OR_OP: u8 = ZiskOp::Or.code();
-const XOR_OP: u8 = ZiskOp::Xor.code();
-
-// 32 bits opcodes
-const MINUW_OP: u8 = ZiskOp::MinuW.code();
-const MINW_OP: u8 = ZiskOp::MinW.code();
-const MAXUW_OP: u8 = ZiskOp::MaxuW.code();
-const MAXW_OP: u8 = ZiskOp::MaxW.code();
-const LTUW_OP: u8 = ZiskOp::LtuW.code();
-const LTW_OP: u8 = ZiskOp::LtW.code();
-const EQW_OP: u8 = ZiskOp::EqW.code();
-const ADDW_OP: u8 = ZiskOp::AddW.code();
-const SUBW_OP: u8 = ZiskOp::SubW.code();
-const LEUW_OP: u8 = ZiskOp::LeuW.code();
-const LEW_OP: u8 = ZiskOp::LeW.code();
-
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
 pub struct BinaryBasicSM {
-    // Secondary State machines
+    /// Binary Basic Table
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
 impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
 
+    /// Creates a new Binary Basic state machine instance
     pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
         Arc::new(Self { binary_basic_table_sm })
     }

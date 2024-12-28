@@ -4,31 +4,34 @@ use p3_field::Field;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
 
+use crate::binary_constants::*;
+
+/// Binary Basic Table operations
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryBasicTableOp {
-    Minu = 0x02,
-    Min = 0x03,
-    Maxu = 0x04,
-    Max = 0x05,
-    LtAbsNP = 0x06,
-    LtAbsPN = 0x07,
-    Ltu = 0x08,
-    Lt = 0x09,
-    Gt = 0x0a,
-    Eq = 0x0b,
-    Add = 0x0c,
-    Sub = 0x0d,
-    Leu = 0x0e,
-    Le = 0x0f,
-    And = 0x10,
-    Or = 0x11,
-    Xor = 0x12,
+    Minu = MINU_OP,
+    Min = MIN_OP,
+    Maxu = MAXU_OP,
+    Max = MAX_OP,
+    LtAbsNP = LT_ABS_NP_OP,
+    LtAbsPN = LT_ABS_PN_OP,
+    Ltu = LTU_OP,
+    Lt = LT_OP,
+    Gt = GT_OP,
+    Eq = EQ_OP,
+    Add = ADD_OP,
+    Sub = SUB_OP,
+    Leu = LEUW_OP,
+    Le = LE_OP,
+    And = AND_OP,
+    Or = OR_OP,
+    Xor = XOR_OP,
     Ext32 = 0x13,
 }
 
 pub struct BinaryBasicTableSM {
-    // Row multiplicity table
+    // Multiplicity table
     multiplicity: Mutex<Vec<u64>>,
 }
 
