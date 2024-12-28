@@ -4,6 +4,6 @@ mod rom_instance;
 mod rom_planner;
 
 pub use rom::*;
-pub use rom_counter::*;
-pub use rom_instance::*;
-pub use rom_planner::*;
+use rom_counter::*;
+use rom_instance::*;
+use rom_planner::*;
