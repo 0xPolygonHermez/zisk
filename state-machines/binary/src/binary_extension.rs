@@ -44,20 +44,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         Arc::new(Self { std, binary_extension_table_sm })
     }
 
-    pub fn operations() -> Vec<u8> {
-        vec![
-            ZiskOp::Sll.code(),
-            ZiskOp::Srl.code(),
-            ZiskOp::Sra.code(),
-            ZiskOp::SllW.code(),
-            ZiskOp::SrlW.code(),
-            ZiskOp::SraW.code(),
-            ZiskOp::SignExtendB.code(),
-            ZiskOp::SignExtendH.code(),
-            ZiskOp::SignExtendW.code(),
-        ]
-    }
-
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
             ZiskOp::Sll |

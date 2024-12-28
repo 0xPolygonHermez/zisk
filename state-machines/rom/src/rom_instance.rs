@@ -10,7 +10,7 @@ use zisk_core::ZiskRom;
 pub struct RomInstance {
     // Zisk rom
     zisk_rom: Arc<ZiskRom>,
-    
+
     // Instance expander context
     iectx: InstanceExpanderCtx,
 }

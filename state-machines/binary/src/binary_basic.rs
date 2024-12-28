@@ -27,39 +27,6 @@ impl BinaryBasicSM {
         Arc::new(Self { binary_basic_table_sm })
     }
 
-    pub fn operations() -> Vec<u8> {
-        vec![
-            MINU_OP,
-            MIN_OP,
-            MAXU_OP,
-            MAX_OP,
-            LT_ABS_NP_OP,
-            LT_ABS_PN_OP,
-            LTU_OP,
-            LT_OP,
-            GT_OP,
-            EQ_OP,
-            ADD_OP,
-            SUB_OP,
-            LEU_OP,
-            LE_OP,
-            AND_OP,
-            OR_OP,
-            XOR_OP,
-            MINUW_OP,
-            MINW_OP,
-            MAXUW_OP,
-            MAXW_OP,
-            LTUW_OP,
-            LTW_OP,
-            EQW_OP,
-            ADDW_OP,
-            SUBW_OP,
-            LEUW_OP,
-            LEW_OP,
-        ]
-    }
-
     fn opcode_is_32_bits(opcode: u8) -> bool {
         const OPCODES_32_BITS: [u8; 11] = [
             MINUW_OP, MINW_OP, MAXUW_OP, MAXW_OP, LTUW_OP, LTW_OP, EQW_OP, ADDW_OP, SUBW_OP,

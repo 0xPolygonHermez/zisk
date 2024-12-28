@@ -1,8 +1,5 @@
 pub struct ArithTableHelpers;
 
-#[cfg(debug_assertions)]
-use crate::ARITH_TABLE;
-
 use crate::{ARITH_TABLE_ROWS, FIRST_OP, ROWS};
 
 impl ArithTableHelpers {
@@ -43,7 +40,9 @@ impl ArithTableHelpers {
         );
         row as usize
     }
+
     #[cfg(not(debug_assertions))]
+    #[cfg(test)]
     pub fn get_row(
         op: u8,
         na: bool,
@@ -56,8 +55,10 @@ impl ArithTableHelpers {
     ) -> usize {
         Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow)
     }
+
     #[cfg(debug_assertions)]
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn get_row(
         op: u8,
         na: bool,
@@ -75,6 +76,8 @@ impl ArithTableHelpers {
         range_ab: u16,
         range_cd: u16,
     ) -> usize {
+        use crate::ARITH_TABLE;
+
         let flags = if m32 { 1 } else { 0 } +
             if div { 2 } else { 0 } +
             if na { 4 } else { 0 } +
@@ -111,6 +114,7 @@ impl ArithTableHelpers {
         row
     }
 
+    #[cfg(test)]
     pub fn flags_to_string(flags: u16) -> String {
         let mut result = String::new();
         if flags & 1 != 0 {
@@ -150,10 +154,6 @@ impl ArithTableHelpers {
             result += " signed";
         }
         result
-    }
-
-    pub fn get_max_row() -> usize {
-        ROWS - 1
     }
 }
 
