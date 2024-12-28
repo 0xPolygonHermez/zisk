@@ -25,7 +25,7 @@ impl InstCount {
 ///
 /// # Example
 /// ```
-/// use sm_common::{plan, CheckPoint, InstCount};
+/// use sm_common::{plan, CheckPoint, CollectInfoSkip, InstCount};
 ///
 /// let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
 /// let size = 300;
@@ -33,11 +33,11 @@ impl InstCount {
 /// assert_eq!(
 ///     checkpoints,
 ///     vec![
-///         CheckPoint::new(0, 0),
-///         CheckPoint::new(0, 300),
-///         CheckPoint::new(1, 100),
-///         CheckPoint::new(1, 400),
-///         CheckPoint::new(2, 0),
+///         (CheckPoint::Single(0), Box::new(CollectInfoSkip::new(0))),
+///         (CheckPoint::Single(0), Box::new(CollectInfoSkip::new(300))),
+///         (CheckPoint::Single(1), Box::new(CollectInfoSkip::new(100))),
+///         (CheckPoint::Single(1), Box::new(CollectInfoSkip::new(400))),
+///         (CheckPoint::Single(2), Box::new(CollectInfoSkip::new(0))),
 ///     ]
 /// );
 /// ```
