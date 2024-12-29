@@ -484,11 +484,10 @@ impl ZiskRom {
             ctx.pc = keys[k];
             ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
             let instruction = &self.insts[&ctx.pc].i;
-            // Instruction comment
-            *s += &format!("\n/* {} */\n", instruction.to_text().as_str());
 
             // Instruction label
-            *s += &format!("pc_{:x}:\n", ctx.pc);
+            *s += "\n";
+            *s += &format!("pc_{:x}: /*{} */\n", ctx.pc, instruction.to_text().as_str());
 
             // Set register a content based on instruction a_src
             *s += &format!("\t/* a source */\n");
@@ -581,17 +580,18 @@ impl ZiskRom {
             *s += &format!("\t/* store c */\n");
 
             // Set pc
-            *s += &format!("\t/* set pc */\n");
             ctx.jump_to_dynamic_pc = false;
             ctx.jump_to_static_pc = String::new();
             if instruction.set_pc {
                 if ctx.c_is_always_zero {
+                    *s += &format!("\t/* set pc */\n");
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* pc = instruction.jmp_offset1 */\n",
                         REG_PC, instruction.jmp_offset1
                     );
                     ctx.jump_to_static_pc = format!("\tjmp pc_{:x}", instruction.jmp_offset1);
                 } else {
+                    *s += &format!("\t/* set pc */\n");
                     *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, REG_C);
                     *s += &format!(
                         "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset1 */\n",
@@ -602,6 +602,7 @@ impl ZiskRom {
             } else {
                 if ctx.flag_is_always_zero {
                     if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
+                        *s += &format!("\t/* set pc */\n");
                         *s += &format!(
                             "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset2 */\n",
                             REG_PC, instruction.jmp_offset2
@@ -610,6 +611,7 @@ impl ZiskRom {
                     }
                 } else if ctx.flag_is_always_one {
                     if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
+                        *s += &format!("\t/* set pc */\n");
                         *s += &format!(
                             "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset1 */\n",
                             REG_PC, instruction.jmp_offset1
@@ -618,6 +620,7 @@ impl ZiskRom {
                     }
                 } else {
                     // Calculate the new pc
+                    *s += &format!("\t/* set pc */\n");
                     *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
                     *s += &format!("\tjne pc_{:x}_flag_false /* flag == 1 ? */\n", ctx.pc);
                     *s += &format!(
@@ -669,16 +672,16 @@ impl ZiskRom {
         *s += "execute_end:\n";
         *s += "\tret\n";
 
-        *s += "\n";
-        *s += ".rodata\n";
-        for key in &keys {
-            // Map fixed-length pc labels to real variable-length instruction labels
-            // This is used to implement dynamic jumps, i.e. to jump to an address that is not
-            // a constant in the instruction, but dynamically built as part of the emulation
-            *s += &format!("\tlog_{:x}_msg: .string \"pc={:x}\"\n", key, key);
-            break;
-            //*s += &format!("log_{:x}_len equ $ -log.{:x}.msg\n", key, key);
-        }
+        //*s += "\n";
+        //*s += ".rodata\n";
+        //for key in &keys {
+        // Map fixed-length pc labels to real variable-length instruction labels
+        // This is used to implement dynamic jumps, i.e. to jump to an address that is not
+        // a constant in the instruction, but dynamically built as part of the emulation
+        //*s += &format!("\tlog_{:x}_msg: .string \"pc={:x}\"\n", key, key);
+        //break;
+        //*s += &format!("log_{:x}_len equ $ -log.{:x}.msg\n", key, key);
+        //}
 
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label

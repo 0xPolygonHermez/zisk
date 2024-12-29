@@ -156,73 +156,73 @@ impl ZiskInst {
     /// Used only for debugging.
     pub fn to_text(&self) -> String {
         let mut s = String::new();
+        {
+            s += &format!(" op={}={}", self.op, self.op_str);
+        }
         if self.paddr != 0 {
-            s += &(" paddr=".to_string() + &self.paddr.to_string());
+            s += &format!(" paddr={:x}", self.paddr);
         }
         if self.store_ra {
-            s += &(" store_ra=".to_string() + &self.store_ra.to_string());
+            s += &format!(" store_ra={}", self.store_ra);
         }
         if self.store_use_sp {
-            s += &(" store_use_sp=".to_string() + &self.store_use_sp.to_string());
+            s += &format!(" store_use_sp={}", self.store_use_sp);
         }
         if self.store != 0 {
             s += &format!(" store={}={}", self.store, store_to_str(self.store));
         }
         if self.store_offset != 0 {
-            s += &(" store_offset=".to_string() + &self.store_offset.to_string());
+            s += &format!(" store_offset={}", self.store_offset);
         }
         if self.set_pc {
-            s += &(" set_pc=".to_string() + &self.set_pc.to_string());
+            s += &format!(" set_pc={}", self.set_pc);
         }
         // #[cfg(feature = "sp")]
         // if self.set_sp {
         //     s += &(" set_sp=".to_string() + &self.set_sp.to_string());
         // }
         if self.ind_width != 0 {
-            s += &(" ind_width=".to_string() + &self.ind_width.to_string());
+            s += &format!(" ind_width={}", self.ind_width);
         }
         // #[cfg(feature = "sp")]
         // if self.inc_sp != 0 {
         //     s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
         // }
         if self.end {
-            s += &(" end=".to_string() + &self.end.to_string());
+            s += &format!(" end={}", self.end);
         }
         if self.a_src != 0 {
             s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
         }
         if self.a_use_sp_imm1 != 0 {
-            s += &(" a_use_sp_imm1=".to_string() + &self.a_use_sp_imm1.to_string());
+            s += &format!(" a_use_sp_imm1={:x}", self.a_use_sp_imm1);
         }
         if self.a_offset_imm0 != 0 {
-            s += &(" a_offset_imm0=".to_string() + &self.a_offset_imm0.to_string());
+            s += &format!(" a_offset_imm0={:x}", self.a_offset_imm0);
         }
         if self.b_src != 0 {
             s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
         }
         if self.b_use_sp_imm1 != 0 {
-            s += &(" b_use_sp_imm1=".to_string() + &self.b_use_sp_imm1.to_string());
+            s += &format!(" b_use_sp_imm1={:x}", self.b_use_sp_imm1);
         }
         if self.b_offset_imm0 != 0 {
-            s += &(" b_offset_imm0=".to_string() + &self.b_offset_imm0.to_string());
+            s += &format!(" b_offset_imm0={:x}", self.b_offset_imm0);
         }
         if self.jmp_offset1 != 0 {
-            s += &(" jmp_offset1=".to_string() + &self.jmp_offset1.to_string());
+            s += &format!(" jmp_offset1={:x}", self.jmp_offset1);
         }
         if self.jmp_offset2 != 0 {
-            s += &(" jmp_offset2=".to_string() + &self.jmp_offset2.to_string());
+            s += &format!(" jmp_offset2={:x}", self.jmp_offset2);
         }
         if self.is_external_op {
-            s += &(" is_external_op=".to_string() + &self.is_external_op.to_string());
-        }
-        {
-            s += &(" op=".to_string() + &self.op.to_string() + "=" + self.op_str);
+            s += &format!(" is_external_op={}", self.is_external_op);
         }
         if self.m32 {
-            s += &(" m32=".to_string() + &self.m32.to_string());
+            s += &format!(" m32={}", self.m32);
         }
         if !self.verbose.is_empty() {
-            s += &(" verbose=".to_string() + &self.verbose);
+            s += &format!(" verbose={}", self.verbose);
         }
         s
     }
@@ -230,19 +230,19 @@ impl ZiskInst {
     /// Constructs a `flags`` bitmap made of combinations of fields of the Zisk instruction.  This
     /// field is used by the PIL to proof some of the operations.
     pub fn get_flags(&self) -> u64 {
-        let flags: u64 = 1 |
-            (((self.a_src == SRC_IMM) as u64) << 1) |
-            (((self.a_src == SRC_MEM) as u64) << 2) |
-            (((self.a_src == SRC_STEP) as u64) << 3) |
-            (((self.b_src == SRC_IMM) as u64) << 4) |
-            (((self.b_src == SRC_MEM) as u64) << 5) |
-            ((self.is_external_op as u64) << 6) |
-            ((self.store_ra as u64) << 7) |
-            (((self.store == STORE_MEM) as u64) << 8) |
-            (((self.store == STORE_IND) as u64) << 9) |
-            ((self.set_pc as u64) << 10) |
-            ((self.m32 as u64) << 11) |
-            (((self.b_src == SRC_IND) as u64) << 12);
+        let flags: u64 = 1
+            | (((self.a_src == SRC_IMM) as u64) << 1)
+            | (((self.a_src == SRC_MEM) as u64) << 2)
+            | (((self.a_src == SRC_STEP) as u64) << 3)
+            | (((self.b_src == SRC_IMM) as u64) << 4)
+            | (((self.b_src == SRC_MEM) as u64) << 5)
+            | ((self.is_external_op as u64) << 6)
+            | ((self.store_ra as u64) << 7)
+            | (((self.store == STORE_MEM) as u64) << 8)
+            | (((self.store == STORE_IND) as u64) << 9)
+            | ((self.set_pc as u64) << 10)
+            | ((self.m32 as u64) << 11)
+            | (((self.b_src == SRC_IND) as u64) << 12);
 
         flags
     }
