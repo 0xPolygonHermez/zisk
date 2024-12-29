@@ -63,6 +63,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 String::new(),
                 String::new(),
                 String::new(),
+                String::new(),
             );
 
             // Convert program to rom

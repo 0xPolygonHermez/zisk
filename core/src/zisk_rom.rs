@@ -44,7 +44,32 @@
 //!     index `(pc-ROM_ENTRY)/4`
 use std::collections::HashMap;
 
-use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IND, SRC_STEP};
+use crate::{
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND,
+    SRC_MEM, SRC_STEP,
+};
+
+const REG_A: &str = "rbx";
+const REG_A_W: &str = "ebx";
+const REG_A_H: &str = "bx";
+const REG_A_B: &str = "bl";
+
+const REG_B: &str = "rax";
+const REG_B_W: &str = "eax";
+const REG_B_H: &str = "ax";
+const REG_B_B: &str = "al";
+
+const REG_C: &str = "rcx";
+const REG_C_W: &str = "ecx";
+const REG_C_H: &str = "cx";
+const REG_C_B: &str = "cl";
+
+const REG_FLAG: &str = "rdx";
+
+const REG_STEP: &str = "r11";
+const REG_SP: &str = "r10";
+const REG_PC: &str = "r9";
+const REG_AUX: &str = "r8";
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -101,6 +126,17 @@ pub struct ZiskRom {
 
     /// ROM instructions with an address that is not alligned to 4 bytes
     pub rom_na_instructions: Vec<ZiskInst>,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ZiskAsmContext {
+    pc: u64,
+    next_pc: u64,
+    flag_is_always_one: bool,
+    flag_is_always_zero: bool,
+    c_is_always_zero: bool,
+    jump_to_dynamic_pc: bool,
+    jump_to_static_pc: String,
 }
 
 /// ZisK ROM implementation
@@ -407,5 +443,729 @@ impl ZiskRom {
         if result.is_err() {
             panic!("ZiskRom::save_to_bin_file() failed writing to file={}", file_name);
         }
+    }
+
+    /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
+    /// save the string to the file
+    pub fn save_to_asm_file(&self, file_name: &str) {
+        // Get a string with the PIL data
+        let mut s = String::new();
+        self.save_to_asm(&mut s);
+
+        // Save to file
+        let path = std::path::PathBuf::from(file_name);
+        let result = std::fs::write(path, s);
+        if result.is_err() {
+            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name);
+        }
+    }
+
+    /// Saves ZisK rom into an i86-64 assembly data string
+    pub fn save_to_asm(&self, s: &mut String) {
+        // Clear output data, just in case
+        s.clear();
+
+        let mut ctx = ZiskAsmContext::default();
+
+        *s += "emulator_execute:\n";
+
+        // Save instructions program addresses into a vector
+        let mut keys: Vec<u64> = Vec::new();
+        for key in self.insts.keys() {
+            keys.push(*key);
+        }
+
+        // Sort the vector
+        keys.sort();
+
+        // For all program addresses in the vector, create an assembly set of instructions with an
+        // instruction label
+        for k in 0..keys.len() {
+            ctx.pc = keys[k];
+            ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
+            let instruction = &self.insts[&ctx.pc].i;
+            // Instruction comment
+            *s += &format!("\n/* {} */\n", instruction.to_text().as_str());
+
+            // Instruction label
+            *s += &format!("pc_{:x}:\n", ctx.pc);
+
+            // Set register a content based on instruction a_src
+            *s += &format!("\t/* a source */\n");
+            match instruction.a_src {
+                SRC_C => {
+                    *s += &format!("\tmov {}, {} /* a = c */\n", REG_A, REG_C);
+                }
+                SRC_MEM => {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* a = instruction.a_offset_imm0 */\n",
+                        REG_A, instruction.a_offset_imm0
+                    );
+                    if instruction.a_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* a += sp */\n", REG_A, REG_SP);
+                    }
+                    *s += &format!("\tmov {}, [{}] /* a = [a] = [address] */\n", REG_A, REG_A);
+                }
+                SRC_IMM => {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* Set register a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32) */\n",
+                        REG_A,
+                        instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+                    );
+                }
+                SRC_STEP => {
+                    *s += &format!("\tmov {}, {} /* Set register a = step */\n", REG_A, REG_STEP);
+                }
+                _ => {
+                    panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)
+                }
+            }
+
+            // Set register b content
+            *s += &format!("\t/* b source */\n");
+            match instruction.b_src {
+                SRC_C => {
+                    *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
+                }
+                SRC_MEM => {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* a = instruction.b_offset_imm0 */\n",
+                        REG_B, instruction.b_offset_imm0
+                    );
+                    if instruction.b_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* b += sp */\n", REG_B, REG_SP);
+                    }
+                    *s += &format!("\tmov {}, [{}] /* b = [b] = [address] */\n", REG_B, REG_B);
+                }
+                SRC_IMM => {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* Set register b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32) */\n",
+                        REG_B,
+                        instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+                    );
+                }
+                SRC_IND => {
+                    *s += &format!("\tmov {}, {} /* b = a */\n", REG_B, REG_A);
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* b += instruction.b_offset_imm0 */\n",
+                        REG_B, instruction.b_offset_imm0
+                    );
+                    if instruction.b_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* b += sp */\n", REG_B, REG_SP);
+                    }
+                    match instruction.ind_width {
+                        1 | 2 | 4 | 8 => {
+                            // TODO: implement 1, 2 and 4
+                            *s += &format!(
+                                "\tmov {}, [{}] /* b = [b] = [address] */\n",
+                                REG_B, REG_B
+                            );
+                        }
+                        _ => panic!(
+                            "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
+                            instruction.ind_width, ctx.pc
+                        ),
+                    }
+                }
+                _ => panic!(
+                    "ZiskRom::save_to_asm() Invalid b_src={} pc={}",
+                    instruction.b_src, ctx.pc
+                ),
+            }
+
+            // Execute operation, storing result is registers c and flag
+            *s += &format!("\t/* c, flag = f(a, b) */\n");
+            *s += Self::operation_to_asm(&mut ctx, instruction.op).as_str();
+
+            // Store register c
+            *s += &format!("\t/* store c */\n");
+
+            // Set pc
+            *s += &format!("\t/* set pc */\n");
+            ctx.jump_to_dynamic_pc = false;
+            ctx.jump_to_static_pc = String::new();
+            if instruction.set_pc {
+                if ctx.c_is_always_zero {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* pc = instruction.jmp_offset1 */\n",
+                        REG_PC, instruction.jmp_offset1
+                    );
+                    ctx.jump_to_static_pc = format!("\tjmp pc_{:x}", instruction.jmp_offset1);
+                } else {
+                    *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, REG_C);
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset1 */\n",
+                        REG_PC, instruction.jmp_offset1
+                    );
+                    ctx.jump_to_dynamic_pc = true;
+                }
+            } else {
+                if ctx.flag_is_always_zero {
+                    if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset2 */\n",
+                            REG_PC, instruction.jmp_offset2
+                        );
+                        ctx.jump_to_dynamic_pc = true;
+                    }
+                } else if ctx.flag_is_always_one {
+                    if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset1 */\n",
+                            REG_PC, instruction.jmp_offset1
+                        );
+                        ctx.jump_to_dynamic_pc = true;
+                    }
+                } else {
+                    // Calculate the new pc
+                    *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+                    *s += &format!("\tjne pc_{:x}_flag_false /* flag == 1 ? */\n", ctx.pc);
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset1 */\n",
+                        REG_PC, instruction.jmp_offset1
+                    );
+                    *s += &format!("\tjmp pc_{:x}_flag_done\n", ctx.pc);
+                    *s += &format!("pc_{:x}_flag_false:\n", ctx.pc);
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset2 */\n",
+                        REG_PC, instruction.jmp_offset2
+                    );
+                    *s += &format!("pc_{:x}_flag_done:\n", ctx.pc);
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += instruction.jmp_offset2 */\n",
+                        REG_PC, instruction.jmp_offset2
+                    );
+                    ctx.jump_to_dynamic_pc = true;
+                }
+            }
+
+            // Increment step counter
+            *s += &format!("\t/* increment step */\n");
+            *s += &format!("\tinc {}\n", REG_STEP);
+
+            // Jump to new pc, if not the next one
+            if instruction.end {
+                *s += "\t/* end */\n";
+                *s += "\tjmp execute_end\n";
+            } else if !ctx.jump_to_static_pc.is_empty() {
+                *s += "\t/* static jump */\n";
+                *s += ctx.jump_to_static_pc.as_str();
+            } else if ctx.jump_to_dynamic_pc {
+                *s += "\t/* dynamic jump */\n";
+                *s += &format!("\tmov {}, 0x80000000\n", REG_AUX);
+                *s += &format!("\tcmp {}, {}\n", REG_PC, REG_AUX);
+                *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
+                *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_AUX);
+                *s += &format!("\tadd {}, map_pc_80000000 /* pc += map_pc_80000000 */\n", REG_PC);
+                *s += &format!("\tjmp {} /* jump to pc */\n", REG_PC);
+                *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
+                *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
+                *s += &format!("\tadd {}, map_pc_1000 /* pc += map_pc_1000 */\n", REG_PC);
+                *s += &format!("\tjmp {} /* jump to pc */\n", REG_PC);
+            }
+        }
+
+        *s += "\n";
+        *s += "execute_end:\n";
+        *s += "\tret\n";
+
+        *s += "\n";
+        *s += ".rodata\n";
+        for key in &keys {
+            // Map fixed-length pc labels to real variable-length instruction labels
+            // This is used to implement dynamic jumps, i.e. to jump to an address that is not
+            // a constant in the instruction, but dynamically built as part of the emulation
+            *s += &format!("\tlog_{:x}_msg: .string \"pc={:x}\"\n", key, key);
+            break;
+            //*s += &format!("log_{:x}_len equ $ -log.{:x}.msg\n", key, key);
+        }
+
+        // For all program addresses in the vector, create an assembly set of instructions with a
+        // map label
+        *s += "\n";
+        for key in &keys {
+            // Map fixed-length pc labels to real variable-length instruction labels
+            // This is used to implement dynamic jumps, i.e. to jump to an address that is not
+            // a constant in the instruction, but dynamically built as part of the emulation
+            *s += &format!("map_pc_{:x}: jmp pc_{:x}\n", key, key);
+        }
+
+        println!(
+            "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst",
+            s.len(),
+            keys.len(),
+            s.len() as f64 / keys.len() as f64,
+        )
+    }
+
+    fn operation_to_asm(ctx: &mut ZiskAsmContext, opcode: u8) -> String {
+        // Set flags to false, by default
+        ctx.flag_is_always_one = false;
+        ctx.flag_is_always_zero = false;
+        ctx.c_is_always_zero = false;
+
+        // Declare a return string
+        let mut s = String::new();
+        let zisk_op = ZiskOp::try_from_code(opcode).unwrap();
+        match zisk_op {
+            ZiskOp::Flag => {
+                s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
+                ctx.c_is_always_zero = true;
+                //s += &format!("\tmov {}, 1\n", REG_FLAG);
+                ctx.flag_is_always_one = true;
+            }
+            ZiskOp::CopyB => {
+                s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendB => {
+                //s += &format!("\tmov {}, {}\n", REG_B_B, REG_B);
+                //TODO: s += &format!("\tmovsx {}, {}\n", REG_C, REG_B_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendH => {
+                //s += &format!("\tmov {}}, {}\n", REG_B_H, REG_B);
+                //TODO: s += &format!("\tmovsx {}, {}\n", REG_C, REG_B_H);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendW => {
+                //s += &format!("\tmov eax, {}\n", REG_B);
+                s += &format!("\tcdqe\n");
+                //TODO:s += &format!("\tmovsx {}, {}\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Add => {
+                // call	<core::num::wrapping::Wrapping<u64> as core::ops::arith::Add>::add
+                s += &format!("\tmov {}, {} /* Add: c = a */\n", REG_C, REG_A);
+                s += &format!("\tadd {}, {} /* Add: c = c + b = a + b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::AddW => {
+                // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Add>::add
+                // cdqe
+                s += &format!("\tadd {}, {}\n", REG_B, REG_A);
+                s += &format!("\tcdqe\n");
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sub => {
+                // call	<core::num::wrapping::Wrapping<u64> as core::ops::arith::Sub>::sub
+                s += &format!("\tmov {}, {} /* Sub: c = a */\n", REG_C, REG_A);
+                s += &format!("\tsub {}, {} /* Sub: c = c - b = c - a */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SubW => {
+                // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Sub>::sub
+                // cdqe
+                s += &format!("\tsub {}, {}\n", REG_B, REG_A);
+                s += &format!("\tcdqe\n");
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sll => {
+                s += &format!("\tand {}, 63 /* Sll: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* Sll: c = a */\n", REG_C, REG_A);
+                s += &format!("\tshl {}, {} /* Sll: c = a << b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SllW => {
+                // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shl<usize>>::shl
+                // cdqe
+                s += &format!("\tand {}, 63 /* SllW: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_C_W, REG_A_W);
+                s += &format!("\tshl {}, {} /* SllW: c = a_w << b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sra => {
+                // (((a as i64) >> (b & 0x3f)) as u64, false)
+                s += &format!("\tand {}, 63 /* Sra: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, REG_A);
+                s += &format!("\tsar {}, {} /* Sra: c = a >> b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Srl => {
+                s += &format!("\tand {}, 63 /* Srl: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_C, REG_A);
+                s += &format!("\tshr {}, {} /* Srl: c = a >> b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SraW => {
+                // ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
+                // call	<core::num::wrapping::Wrapping<i32> as core::ops::bit::Shr<usize>>::shr
+                // cdqe
+                s += &format!("\tand {}, 63 /* SraW: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* SraW: c = a_w */\n", REG_C_W, REG_A_W);
+                s += &format!("\tshr {}, {} /* SraW: c = a_w >> b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SrlW => {
+                // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shr<usize>>::shr
+                // cdqe
+                s += &format!("\tand {}, 63 /* SrlW: b = b & 0x3f */\n", REG_B);
+                s += &format!("\tmov {}, {} /* SrlW: c = a_w */\n", REG_C_W, REG_A_W);
+                s += &format!("\tshr {}, {} /* SrlW: c = a_w >> b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::Eq => {
+                s += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, REG_B);
+                s += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
+                s += &format!("pc_{:x}_equal_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_equal_done:\n", ctx.pc);
+            }
+            ZiskOp::EqW => {
+                s += &format!("\tcmp {}, {} /* EqW: a == b ? */\n", REG_A_W, REG_B_W);
+                s += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
+                s += &format!("pc_{:x}_equal_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
+            }
+            ZiskOp::Ltu => {
+                s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, REG_B);
+                s += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltu_done:\n", ctx.pc);
+            }
+            ZiskOp::Lt => {
+                s += &format!("\tcmp {}, {} /* Lt: a == b ? */\n", REG_A, REG_B);
+                s += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lt_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lt_done:\n", ctx.pc);
+            }
+            ZiskOp::LtuW => {
+                s += &format!("\tcmp {}, {} /* LtuW: a == b ? */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltuw_done:\n", ctx.pc);
+            }
+            ZiskOp::LtW => {
+                s += &format!("\tcmp {}, {} /* LtW: a == b ? */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltw_done:\n", ctx.pc);
+            }
+            ZiskOp::Leu => {
+                s += &format!("\tcmp {}, {} /* Leu: a == b ? */\n", REG_A, REG_B);
+                s += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tpc_{:x}_jmp leu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_leu_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_leu_done:\n", ctx.pc);
+            }
+            ZiskOp::Le => {
+                s += &format!("\tcmp {}, {} /* Le: a == b ? */\n", REG_A, REG_B);
+                s += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lte_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lte_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lte_done:\n", ctx.pc);
+            }
+            ZiskOp::LeuW => {
+                s += &format!("\tcmp {}, {} /* LeuW: a == b ? */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_leuw_done:\n", ctx.pc);
+            }
+            ZiskOp::LeW => {
+                s += &format!("\tcmp {}, {} /* LeW: a == b ? */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lew_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lew_done:\n", ctx.pc);
+            }
+            ZiskOp::And => {
+                s += &format!("\tmov {}, {} /* And: c = a */\n", REG_C, REG_A);
+                s += &format!("\tand {}, {} /* And: c = c AND b = a AND b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Or => {
+                s += &format!("\tmov {}, {} /* Or: c = a */\n", REG_C, REG_A);
+                s += &format!("\tor {}, {} /* Or: c = c OR b = a OR b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Xor => {
+                s += &format!("\tmov {}, {} /* Xor: c = a */\n", REG_C, REG_A);
+                s += &format!("\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulu => {
+                // mulq
+                // Unsigned full multiply of %rax by S
+                // Result stored in %rdx:%rax
+                s += &format!("\t/*mulq {}*/ /* Mulu */\n", REG_A);
+                s += &format!("\tmov {}, {} /* Mulu */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Muluh => {
+                s += &format!("\t/*mulq {}*/ /* Muluh */\n", REG_A);
+                s += &format!("\tmov {}, {} /* Muluh */\n", REG_C, REG_FLAG);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulsuh => {
+                s += &format!("\t/*imulq {}*/ /* Mulsuh */\n", REG_A);
+                s += &format!("\tmov {}, {} /* Mulsuh */\n", REG_C, REG_FLAG);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mul => {
+                s += &format!("\t/*imulq {}*/ /* Mul */\n", REG_A);
+                s += &format!("\tmov {}, {} /* Mul */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulh => {
+                s += &format!("\t/*imulq {}*/ /* Mulh */\n", REG_A);
+                s += &format!("\tmov {}, {} /* Mulh */\n", REG_C, REG_FLAG);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MulW => {
+                s += &format!("\tmov {}, {} /* MulW */\n", REG_B_W, REG_B);
+                s += &format!("\t/*imulq {}*/ /* MulW */\n", REG_A_W);
+                s += &format!("\tmov {}, {} /* MulW */\n", REG_C, REG_B);
+                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Divu => {
+                s += &format!("\tcmp {}, 0 /* Divu */\n", REG_B);
+                s += &format!("\tje pc_{:x}_divu_b_is_zerof\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tmov {}, {}\n", REG_B, REG_A);
+                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tje pc_{:x}_divu_donef\n", ctx.pc);
+                s += &format!("pc_{:x}_divu_b_is_zero\n", ctx.pc);
+                s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
+                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_divu_done\n", ctx.pc);
+            }
+            ZiskOp::Remu => {
+                s += &format!("\tcmp {}, 0 /* Remu *\n", REG_B);
+                s += &format!("\tje pc_{:x}_remu_b_is_zerof\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tmov {}, {}\n", REG_B, REG_A);
+                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tje pc_{:x}_remu_donef\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_b_is_zero\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_A);
+                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_remu_done\n", ctx.pc);
+            }
+            ZiskOp::Div => {
+                s += &format!("\tcmp {}, 0 /* Div */\n", REG_B);
+                s += &format!("\tje pc_{:x}_div_b_is_zerof\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tmov {}, {}\n", REG_B, REG_A);
+                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tje pc_{:x}_div_donef\n", ctx.pc);
+                s += &format!("pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
+                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_div_done\n", ctx.pc);
+            }
+            ZiskOp::Rem => {
+                s += &format!("\tcmp {}, 0 /* Rem */\n", REG_B);
+                s += &format!("\tje pc_{:x}_rem_b_is_zerof\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tmov {}, {}\n", REG_B, REG_A);
+                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tje pc_{:x}_rem_donef\n", ctx.pc);
+                s += &format!("pc_{:x}_rem_b_is_zero\n", ctx.pc);
+                s += &format!("\tmov {}, {}\n", REG_C, REG_A);
+                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_rem_done\n", ctx.pc);
+            }
+            ZiskOp::DivuW => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* DivuW */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::RemuW => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* RemuW */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::DivW => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* DivW */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::RemW => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* RemW */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::Minu => {
+                s += &format!("\tcmp {}, {} /* Minu: compare a and b */\n", REG_A, REG_B);
+                s += &format!("\tjb pc_{:x}_minu_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_minu_a_is_not_belowf\n", ctx.pc);
+                s += &format!("pc_{:x}_minu_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_minu_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Min => {
+                s += &format!("\tcmp {}, {} /* Min: compare a and b */\n", REG_A, REG_B);
+                s += &format!("\tjl pc_{:x}_min_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tpc_{:x}_jmp min_a_is_not_belowf\n", ctx.pc);
+                s += &format!("pc_{:x}_min_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_min_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MinuW => {
+                s += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjb pc_{:x}_minuw_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_minuw_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_minuw_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_minuw_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MinW => {
+                s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjl pc_{:x}_minw_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_minw_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_minw_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_minw_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Maxu => {
+                s += &format!("\tcmp {}, {} /* Maxu: compare a and b */\n", REG_A, REG_B);
+                s += &format!("\tja pc_{:x}_maxu_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_maxu_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_maxu_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_maxu_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Max => {
+                s += &format!("\tcmp {}, {} /* Max: compare a and b */\n", REG_A, REG_B);
+                s += &format!("\tjg pc_{:x}_max_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_max_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_max_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_max_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MaxuW => {
+                s += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tja pc_{:x}_maxuw_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_maxuw_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_maxuw_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_maxuw_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MaxW => {
+                s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tjg pc_{:x}_maxw_a_is_belowf\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
+                s += &format!("\tjmp pc_{:x}_maxw_a_is_not_below_bf\n", ctx.pc);
+                s += &format!("pc_{:x}_maxw_a_is_below_b:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
+                s += &format!("pc_{:x}_maxw_a_is_not_below_b:\n", ctx.pc);
+                //s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Keccak => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* Keccak */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+            ZiskOp::PubOut => {
+                // TODO
+                s += &format!("\tmov {}, 0 /* PubOut */\n", REG_C);
+                s += &format!("\tmov {}, 0\n", REG_FLAG);
+            }
+        }
+        s
     }
 }

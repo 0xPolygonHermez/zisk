@@ -53,9 +53,9 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
                 // Add init data as a read/write memory section, initialized by code
                 // If the data is a writable memory section, add it to the ROM memory using Zisk
                 // copy instructions
-                if (section_header.sh_flags & SHF_WRITE as u64) != 0 &&
-                    addr >= RAM_ADDR &&
-                    addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
+                if (section_header.sh_flags & SHF_WRITE as u64) != 0
+                    && addr >= RAM_ADDR
+                    && addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
                 {
                     //println! {"elf2rom() new RW from={:x} length={:x}={}", addr, data.len(),
                     //data.len()};
@@ -175,6 +175,7 @@ pub fn elf2romfile(
     rom_file: String,
     pil_file: String,
     bin_file: String,
+    asm_file: String,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
     rom.save_to_json_file(&rom_file);
@@ -183,6 +184,9 @@ pub fn elf2romfile(
     }
     if !bin_file.is_empty() {
         rom.save_to_bin_file(&bin_file);
+    }
+    if !asm_file.is_empty() {
+        rom.save_to_asm_file(&asm_file);
     }
     Ok(())
 }

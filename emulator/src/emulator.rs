@@ -82,7 +82,13 @@ impl ZiskEmulator {
 
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
         // file name
-        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+        let riscv2zisk = Riscv2zisk::new(
+            elf_filename,
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
         let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
