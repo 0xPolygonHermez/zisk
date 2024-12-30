@@ -7,7 +7,7 @@ use crate::{
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceCtx,
     InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -82,7 +82,7 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match iectx.plan.air_id {
             id if id == BinaryTrace::<usize>::AIR_ID => {
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))

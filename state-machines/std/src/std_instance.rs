@@ -3,7 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use zisk_common::BusDevice;
 
 pub struct StdInstance<F: PrimeField> {
@@ -11,11 +11,11 @@ pub struct StdInstance<F: PrimeField> {
     std: Arc<Std<F>>,
 
     /// Instance expander context
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
 }
 
 impl<F: PrimeField> StdInstance<F> {
-    pub fn new(std: Arc<Std<F>>, iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(std: Arc<Std<F>>, iectx: InstanceCtx) -> Self {
         Self { std, iectx }
     }
 }

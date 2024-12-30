@@ -6,7 +6,7 @@ use rayon::prelude::*;
 
 use sm_common::{
     BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
-    CheckPoint, ComponentProvider, InstanceExpanderCtx, InstanceType, Plan,
+    CheckPoint, ComponentProvider, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
@@ -63,7 +63,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .filter_map(|plan| {
                 if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
                 {
-                    Some(MainInstance::new(InstanceExpanderCtx::new(global_idx, plan)))
+                    Some(MainInstance::new(InstanceCtx::new(global_idx, plan)))
                 } else {
                     None
                 }
@@ -140,7 +140,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                         pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
                     if is_mine || plan.instance_type == InstanceType::Table {
-                        let iectx = InstanceExpanderCtx::new(global_idx, plan);
+                        let iectx = InstanceCtx::new(global_idx, plan);
                         Some((global_idx, self.secondary_sm[i].get_instance(iectx)))
                     } else {
                         None

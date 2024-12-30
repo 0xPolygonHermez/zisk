@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::RomSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use zisk_common::BusDevice;
 use zisk_core::ZiskRom;
 
@@ -12,11 +12,11 @@ pub struct RomInstance {
     zisk_rom: Arc<ZiskRom>,
 
     // Instance expander context
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
 }
 
 impl RomInstance {
-    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceCtx) -> Self {
         Self { zisk_rom, iectx }
     }
 }

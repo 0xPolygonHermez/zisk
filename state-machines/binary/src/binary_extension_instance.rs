@@ -1,7 +1,7 @@
 use crate::BinaryExtensionSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
@@ -12,14 +12,14 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
     /// Instance expander context
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
 
     /// Inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl<F: PrimeField> BinaryExtensionInstance<F> {
-    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, iectx: InstanceCtx) -> Self {
         Self { binary_extension_sm, iectx, inputs: Vec::new() }
     }
 }

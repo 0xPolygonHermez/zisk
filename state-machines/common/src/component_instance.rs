@@ -25,7 +25,7 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPoint, Instance, InstanceExpanderCtx, InstanceType};
+        use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_common::BusId;
         use zisk_pil::$Trace;
 
@@ -36,11 +36,11 @@ macro_rules! table_instance {
             table_sm: Arc<$TableSM>,
 
             /// Instance expander context
-            iectx: InstanceExpanderCtx,
+            iectx: InstanceCtx,
         }
 
         impl $InstanceName {
-            pub fn new(table_sm: Arc<$TableSM>, iectx: InstanceExpanderCtx) -> Self {
+            pub fn new(table_sm: Arc<$TableSM>, iectx: InstanceCtx) -> Self {
                 Self { table_sm, iectx }
             }
         }
@@ -85,7 +85,7 @@ macro_rules! instance {
             sm: Arc<$sm>,
 
             /// Instance expander context
-            iectx: InstanceExpanderCtx,
+            iectx: InstanceCtx,
 
             /// Inputs
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
@@ -94,7 +94,7 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> $name<F> {
-            pub fn new(sm: Arc<$sm>, iectx: InstanceExpanderCtx) -> Self {
+            pub fn new(sm: Arc<$sm>, iectx: InstanceCtx) -> Self {
                 Self { sm, iectx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
             }
         }

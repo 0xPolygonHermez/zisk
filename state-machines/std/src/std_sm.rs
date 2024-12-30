@@ -3,8 +3,7 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, DummyCounter, InstanceExpanderCtx,
-    Planner,
+    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, DummyCounter, InstanceCtx, Planner,
 };
 
 use crate::{StdInstance, StdPlanner};
@@ -28,7 +27,7 @@ impl<F: PrimeField> ComponentProvider<F> for StdSM<F> {
         Box::new(StdPlanner::new(self.std.clone()))
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         Box::new(StdInstance::new(self.std.clone(), iectx))
     }
 }

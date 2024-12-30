@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -56,7 +56,7 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match iectx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))

@@ -1,7 +1,7 @@
 use crate::ArithFullSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
@@ -11,13 +11,13 @@ pub struct ArithFullInstance {
     /// Arith state machine
     arith_full_sm: Arc<ArithFullSM>,
     /// Instance expander context
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
     /// Inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl ArithFullInstance {
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceCtx) -> Self {
         Self { arith_full_sm, iectx, inputs: Vec::new() }
     }
 }

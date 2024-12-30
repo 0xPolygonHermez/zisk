@@ -1,7 +1,7 @@
 use crate::BinaryBasicSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
@@ -12,14 +12,14 @@ pub struct BinaryBasicInstance {
     binary_basic_sm: Arc<BinaryBasicSM>,
 
     /// Instance expander context
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
 
     /// Inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl BinaryBasicInstance {
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceCtx) -> Self {
         Self { binary_basic_sm, iectx, inputs: Vec::new() }
     }
 }

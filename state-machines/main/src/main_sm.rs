@@ -1,6 +1,6 @@
 use log::info;
 use p3_field::PrimeField;
-use sm_common::InstanceExpanderCtx;
+use sm_common::InstanceCtx;
 
 use std::sync::Arc;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
@@ -11,11 +11,11 @@ use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuTrace};
 
 pub struct MainInstance {
-    iectx: InstanceExpanderCtx,
+    iectx: InstanceCtx,
 }
 
 impl MainInstance {
-    pub fn new(iectx: InstanceExpanderCtx) -> Self {
+    pub fn new(iectx: InstanceCtx) -> Self {
         Self { iectx }
     }
 }
