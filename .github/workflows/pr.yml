@@ -8,12 +8,13 @@ on:
       - "**"
   merge_group:
 
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
 jobs:
   test-x86_64:
     name: Test on x86_64
     runs-on: ubuntu-latest
-    env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -39,8 +40,6 @@ jobs:
   lint:
     name: Formatting & Clippy
     runs-on: ubuntu-latest
-    env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
