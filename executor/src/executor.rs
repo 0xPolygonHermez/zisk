@@ -6,7 +6,7 @@ use rayon::prelude::*;
 
 use sm_common::{
     BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
-    CheckPoint, ComponentProvider, InstanceCtx, InstanceType, Plan,
+    CheckPoint, ComponentBuilder, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
@@ -23,7 +23,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub public_inputs_path: PathBuf,
 
     /// Secondary State Machines
-    secondary_sm: Vec<Arc<dyn ComponentProvider<F>>>,
+    secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -33,7 +33,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
     }
 
-    pub fn register_sm(&mut self, sm: Arc<dyn ComponentProvider<F>>) {
+    pub fn register_sm(&mut self, sm: Arc<dyn ComponentBuilder<F>>) {
         self.secondary_sm.push(sm);
     }
 
@@ -123,7 +123,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         mut vec_counters: Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>,
     ) -> Vec<Vec<Plan>> {
-        self.secondary_sm.iter().map(|sm| sm.get_planner().plan(vec_counters.remove(0))).collect()
+        self.secondary_sm.iter().map(|sm| sm.build_planner().plan(vec_counters.remove(0))).collect()
     }
 
     fn create_sec_instances(
@@ -141,7 +141,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
                     if is_mine || plan.instance_type == InstanceType::Table {
                         let iectx = InstanceCtx::new(global_idx, plan);
-                        Some((global_idx, self.secondary_sm[i].get_instance(iectx)))
+                        Some((global_idx, self.secondary_sm[i].build_inputs_collector(iectx)))
                     } else {
                         None
                     }
@@ -218,7 +218,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
         let mut data_bus = DataBus::new();
         self.secondary_sm.iter().for_each(|sm| {
-            let counter = sm.get_counter();
+            let counter = sm.build_counter();
 
             data_bus
                 .connect_device(counter.bus_id(), Box::new(BusDeviceMetricsWrapper::new(counter)));
@@ -254,7 +254,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         );
 
         self.secondary_sm.iter().for_each(|sm| {
-            if let Some(input_generator) = sm.get_inputs_generator() {
+            if let Some(input_generator) = sm.build_inputs_generator() {
                 data_bus.connect_device(
                     vec![OPERATION_BUS_ID],
                     Box::new(BusDeviceInstanceWrapper::new(input_generator)),

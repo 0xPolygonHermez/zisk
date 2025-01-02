@@ -7,7 +7,7 @@ use crate::{
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
     InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -48,15 +48,15 @@ impl<F: PrimeField> BinarySM<F> {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RegularCounters::new(
             OPERATION_BUS_ID,
             vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
         ))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(
             RegularPlanner::new()
                 .add_instance(InstanceInfo::new(
@@ -82,7 +82,7 @@ impl<F: PrimeField> ComponentProvider<F> for BinarySM<F> {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match iectx.plan.air_id {
             id if id == BinaryTrace::<usize>::AIR_ID => {
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), iectx))

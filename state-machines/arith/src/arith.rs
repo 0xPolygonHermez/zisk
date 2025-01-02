@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -31,12 +31,12 @@ impl ArithSM {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for ArithSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(ArithCounter::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(
             ArithPlanner::new()
                 .add_instance(InstanceInfo::new(
@@ -56,7 +56,7 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match iectx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
@@ -80,7 +80,7 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM {
         }
     }
 
-    fn get_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
         Some(Box::new(ArithInputGenerator::default()))
     }
 }

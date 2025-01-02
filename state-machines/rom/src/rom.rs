@@ -5,7 +5,7 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceCtx, Plan, Planner,
+    BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
 };
 use zisk_common::ROM_BUS_ID;
 
@@ -152,16 +152,16 @@ impl RomSM {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for RomSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RomCounter::new(ROM_BUS_ID))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(RomPlanner {})
     }
 
-    fn get_instance(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         Box::new(RomInstance::new(self.zisk_rom.clone(), iectx))
     }
 }
