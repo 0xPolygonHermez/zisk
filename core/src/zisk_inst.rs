@@ -156,11 +156,38 @@ impl ZiskInst {
     /// Used only for debugging.
     pub fn to_text(&self) -> String {
         let mut s = String::new();
+        if self.paddr != 0 {
+            s += &format!(" paddr=0x{:x}", self.paddr);
+        }
+        if self.a_src != 0 {
+            s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
+        }
+        if self.a_use_sp_imm1 != 0 {
+            s += &format!(" a_use_sp_imm1=0x{:x}", self.a_use_sp_imm1);
+        }
+        if self.a_offset_imm0 != 0 {
+            s += &format!(" a_offset_imm0=0x{:x}", self.a_offset_imm0);
+        }
+        if self.b_src != 0 {
+            s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
+        }
+        if self.b_use_sp_imm1 != 0 {
+            s += &format!(" b_use_sp_imm1=0x{:x}", self.b_use_sp_imm1);
+        }
+        if self.b_offset_imm0 != 0 {
+            s += &format!(" b_offset_imm0=0x{:x}", self.b_offset_imm0);
+        }
+        if self.ind_width != 0 {
+            s += &format!(" ind_width={}", self.ind_width);
+        }
         {
             s += &format!(" op={}={}", self.op, self.op_str);
         }
-        if self.paddr != 0 {
-            s += &format!(" paddr={:x}", self.paddr);
+        if self.store != 0 {
+            s += &format!(" store={}={}", self.store, store_to_str(self.store));
+        }
+        if self.store_offset != 0 {
+            s += &format!(" store_offset=0x{:x}", self.store_offset as u64);
         }
         if self.store_ra {
             s += &format!(" store_ra={}", self.store_ra);
@@ -168,52 +195,25 @@ impl ZiskInst {
         if self.store_use_sp {
             s += &format!(" store_use_sp={}", self.store_use_sp);
         }
-        if self.store != 0 {
-            s += &format!(" store={}={}", self.store, store_to_str(self.store));
-        }
-        if self.store_offset != 0 {
-            s += &format!(" store_offset={}", self.store_offset);
-        }
         if self.set_pc {
             s += &format!(" set_pc={}", self.set_pc);
+        }
+        if self.jmp_offset1 != 0 {
+            s += &format!(" jmp_offset1={:x}", self.jmp_offset1);
+        }
+        if self.jmp_offset2 != 0 {
+            s += &format!(" jmp_offset2=0x{:x}", self.jmp_offset2);
         }
         // #[cfg(feature = "sp")]
         // if self.set_sp {
         //     s += &(" set_sp=".to_string() + &self.set_sp.to_string());
         // }
-        if self.ind_width != 0 {
-            s += &format!(" ind_width={}", self.ind_width);
-        }
         // #[cfg(feature = "sp")]
         // if self.inc_sp != 0 {
         //     s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
         // }
         if self.end {
             s += &format!(" end={}", self.end);
-        }
-        if self.a_src != 0 {
-            s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
-        }
-        if self.a_use_sp_imm1 != 0 {
-            s += &format!(" a_use_sp_imm1={:x}", self.a_use_sp_imm1);
-        }
-        if self.a_offset_imm0 != 0 {
-            s += &format!(" a_offset_imm0={:x}", self.a_offset_imm0);
-        }
-        if self.b_src != 0 {
-            s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
-        }
-        if self.b_use_sp_imm1 != 0 {
-            s += &format!(" b_use_sp_imm1={:x}", self.b_use_sp_imm1);
-        }
-        if self.b_offset_imm0 != 0 {
-            s += &format!(" b_offset_imm0={:x}", self.b_offset_imm0);
-        }
-        if self.jmp_offset1 != 0 {
-            s += &format!(" jmp_offset1={:x}", self.jmp_offset1);
-        }
-        if self.jmp_offset2 != 0 {
-            s += &format!(" jmp_offset2={:x}", self.jmp_offset2);
         }
         if self.is_external_op {
             s += &format!(" is_external_op={}", self.is_external_op);
