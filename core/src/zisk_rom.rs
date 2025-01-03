@@ -610,10 +610,27 @@ impl ZiskRom {
                         );
                     }
                     match instruction.ind_width {
-                        1 | 2 | 4 | 8 => {
-                            // TODO: implement 1, 2 and 4
+                        8 => {
                             *s += &format!(
                                 "\tmov {}, qword ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
+                                REG_B, REG_ADDRESS
+                            );
+                        }
+                        4 => {
+                            *s += &format!(
+                                "\tmov {}, dword ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
+                                REG_B, REG_ADDRESS
+                            );
+                        }
+                        2 => {
+                            *s += &format!(
+                                "\tmov {}, word ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
+                                REG_B, REG_ADDRESS
+                            );
+                        }
+                        1 => {
+                            *s += &format!(
+                                "\tmov {}, byte ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
                                 REG_B, REG_ADDRESS
                             );
                         }
@@ -641,24 +658,10 @@ impl ZiskRom {
                 }
                 STORE_MEM => {
                     if instruction.store_ra {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x}/* STORE_MEM: (ra): value = pc + jmp_offset2 */\n",
-                            REG_VALUE,
-                            ctx.pc as i64 + instruction.jmp_offset2
-                        );
+                        value = format!("0x{:x}", (ctx.pc as i64 + instruction.jmp_offset2) as u64);
                     } else {
-                        //*s += &format!("\t/* STORE_MEM: value = c */\n");
                         value = ctx.c_string_value.clone();
                     }
-                    /*if !instruction.store_use_sp {
-                    *s += &format!(
-                        "\tmov dword ptr [0x{:x}], {} /* STORE_MEM: mem[i.store_offset] = value {}*/
-\n",
-                            instruction.store_offset,
-                            value,
-                            if instruction.store_ra { "" } else { "= c " }
-                        );
-                    } else {*/
                     *s += &format!(
                         "\tmov {}, 0x{:x}/* STORE_MEM: address = i.store_offset */\n",
                         REG_ADDRESS, instruction.store_offset
@@ -676,7 +679,6 @@ impl ZiskRom {
                         value,
                         if instruction.store_ra { "" } else { "= c " }
                     );
-                    //}
                 }
                 STORE_IND => {
                     if instruction.store_ra {
@@ -707,11 +709,37 @@ impl ZiskRom {
                     }
 
                     match instruction.ind_width {
-                        1 | 2 | 4 | 8 => {
-                            // TODO: implement 1, 2 and 4
+                        8 => {
                             *s += &format!(
                                 "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
                                 if value.starts_with("0x") { "qword ptr " } else { "" },
+                                REG_ADDRESS,
+                                value,
+                                if instruction.store_ra { "" } else { "= c " }
+                            );
+                        }
+                        4 => {
+                            *s += &format!(
+                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                if value.starts_with("0x") { "dword ptr " } else { "" },
+                                REG_ADDRESS,
+                                value,
+                                if instruction.store_ra { "" } else { "= c " }
+                            );
+                        }
+                        2 => {
+                            *s += &format!(
+                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                if value.starts_with("0x") { "word ptr " } else { "" },
+                                REG_ADDRESS,
+                                value,
+                                if instruction.store_ra { "" } else { "= c " }
+                            );
+                        }
+                        1 => {
+                            *s += &format!(
+                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                if value.starts_with("0x") { "byte ptr " } else { "" },
                                 REG_ADDRESS,
                                 value,
                                 if instruction.store_ra { "" } else { "= c " }
