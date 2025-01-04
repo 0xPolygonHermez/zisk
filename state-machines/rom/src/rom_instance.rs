@@ -8,10 +8,10 @@ use zisk_common::BusDevice;
 use zisk_core::ZiskRom;
 
 pub struct RomInstance {
-    // Zisk rom
+    /// Zisk rom
     zisk_rom: Arc<ZiskRom>,
 
-    // Instance expander context
+    /// Instance context
     iectx: InstanceCtx,
 }
 

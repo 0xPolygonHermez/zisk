@@ -7,8 +7,13 @@ use zisk_core::ZiskOperationType;
 use crate::ArithFullSM;
 
 pub struct ArithCounter {
+    /// Vector of Zisk Operation Type instructions to be counted
     op_type: Vec<ZiskOperationType>,
+
+    /// Connected Bus Id
     bus_id: BusId,
+
+    /// Vector of counters, one for each Zisk Operation Type accepted
     counter: Vec<Counter>,
 }
 

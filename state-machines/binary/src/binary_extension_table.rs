@@ -19,7 +19,7 @@ pub enum BinaryExtensionTableOp {
 }
 
 pub struct BinaryExtensionTableSM {
-    // Row multiplicity table
+    // Multiplicity table
     multiplicity: Mutex<Vec<u64>>,
 }
 

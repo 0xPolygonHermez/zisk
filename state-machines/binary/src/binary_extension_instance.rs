@@ -8,13 +8,13 @@ use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryExtensionTrace;
 
 pub struct BinaryExtensionInstance<F: PrimeField> {
-    /// Binary extension state machine
+    /// Binary Extension state machine
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
-    /// Instance expander context
+    /// Instance context
     iectx: InstanceCtx,
 
-    /// Inputs
+    /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 

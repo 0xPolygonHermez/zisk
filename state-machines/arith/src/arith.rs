@@ -14,13 +14,20 @@ use crate::{
     ArithRangeTableSM, ArithTableSM,
 };
 
+/// Arith state machine
 pub struct ArithSM {
+    /// Arith Full state machine
     arith_full_sm: Arc<ArithFullSM>,
+
+    /// Arith Table state machine
     arith_table_sm: Arc<ArithTableSM>,
+
+    /// Arith Range Table state machine
     arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
 impl ArithSM {
+    /// Creates a new ArithSM instance
     pub fn new() -> Arc<Self> {
         let arith_table_sm = ArithTableSM::new();
         let arith_range_table_sm = ArithRangeTableSM::new();

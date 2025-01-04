@@ -30,7 +30,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     // PIL2 Standard Library
     std: Arc<Std<F>>,
 
-    // Secondary State machines
+    // Secondary state machines
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 

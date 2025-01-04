@@ -9,6 +9,7 @@ use sm_common::{
 use crate::{StdInstance, StdPlanner};
 
 pub struct StdSM<F: PrimeField> {
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 

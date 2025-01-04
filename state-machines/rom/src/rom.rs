@@ -14,6 +14,7 @@ use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace, RomTraceRow};
 
 pub struct RomSM {
+    /// Zisk Rom
     zisk_rom: Arc<ZiskRom>,
 }
 

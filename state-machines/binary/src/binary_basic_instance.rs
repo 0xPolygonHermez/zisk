@@ -8,13 +8,13 @@ use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryTrace;
 
 pub struct BinaryBasicInstance {
-    /// Binary basic state machine
+    /// Binary Basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
 
-    /// Instance expander context
+    /// Instance context
     iectx: InstanceCtx,
 
-    /// Inputs
+    /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 

@@ -10,9 +10,11 @@ use zisk_pil::ArithTrace;
 pub struct ArithFullInstance {
     /// Arith state machine
     arith_full_sm: Arc<ArithFullSM>,
-    /// Instance expander context
+
+    /// Instance context
     iectx: InstanceCtx,
-    /// Inputs
+    
+    /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 

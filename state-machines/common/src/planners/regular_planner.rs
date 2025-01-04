@@ -6,9 +6,16 @@ use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
 pub struct InstanceInfo {
-    pub air_id: usize,
+    /// Airgroup Id
     pub airgroup_id: usize,
+
+    /// Air Id
+    pub air_id: usize,
+
+    /// Number of rows
     pub num_rows: usize,
+
+    /// Zisk Operation Type
     pub op_type: ZiskOperationType,
 }
 
@@ -24,8 +31,11 @@ impl InstanceInfo {
 }
 
 pub struct TableInfo {
-    pub air_id: usize,
+    /// Airgroup Id
     pub airgroup_id: usize,
+
+    /// Air Id
+    pub air_id: usize,
 }
 
 impl TableInfo {

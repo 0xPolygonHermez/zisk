@@ -11,6 +11,7 @@ use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuTrace};
 
 pub struct MainInstance {
+    /// Instance Context
     iectx: InstanceCtx,
 }
 

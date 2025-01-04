@@ -7,6 +7,7 @@ pub trait BusDeviceInstance<F: PrimeField>: BusDevice<u64> + Instance<F> + std::
 
 impl<F: PrimeField, T: BusDevice<u64> + Instance<F> + std::any::Any> BusDeviceInstance<F> for T {}
 
+/// Shared wrapper to encapsulate dual functionality (BusDevice + Instance) in a single object.
 pub struct BusDeviceInstanceWrapper<F: PrimeField> {
     pub inner: Box<dyn BusDeviceInstance<F>>,
 }

@@ -6,8 +6,13 @@ pub type ChunkId = usize;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CollectInfoSkip {
+    /// Number of instructions to be skipped
     pub skip: u64,
+
+    /// Number of already skipped instrucions
     pub skipped: u64,
+
+    /// Flag to indicate if we are either we are skipping or not
     pub skipping: bool,
 }
 
@@ -40,12 +45,25 @@ pub enum CheckPoint {
 
 #[derive(Debug)]
 pub struct Plan {
+    /// Airgroup Id
     pub airgroup_id: usize,
+
+    /// Air Id
     pub air_id: usize,
+
+    /// Segment Id
     pub segment_id: Option<usize>,
+
+    /// Instance type
     pub instance_type: InstanceType,
+
+    /// Checkpoint type
     pub check_point: CheckPoint,
+
+    /// Information to be able to collect the inputs
     pub collect_info: Option<Box<dyn Any>>,
+
+    /// Extra meta information
     pub meta: Option<Box<dyn Any>>,
 }
 

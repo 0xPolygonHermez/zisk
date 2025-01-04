@@ -158,6 +158,7 @@ impl ArithTableHelpers {
 }
 
 pub struct ArithTableInputs {
+    /// Multiplicity table
     multiplicity: [u64; ROWS],
 }
 

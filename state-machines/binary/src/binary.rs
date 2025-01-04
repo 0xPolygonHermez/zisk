@@ -17,16 +17,16 @@ use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace
 /// Binary state machine
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
-    /// Reference to the Binary Basic State Machine
+    /// Binary Basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
 
-    /// Reference to the Binary Basic Table State Machine
+    /// Binary Basic Table state machine
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
-    /// Reference to the Binary Extension State Machine
+    /// Binary Extension state machine
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
-    /// Reference to the Binary Extension Table State Machine
+    /// Binary Extension Table state machine
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 

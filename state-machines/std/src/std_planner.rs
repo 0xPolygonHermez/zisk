@@ -5,6 +5,7 @@ use pil_std_lib::Std;
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Plan, Planner};
 
 pub struct StdPlanner<F: PrimeField> {
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 

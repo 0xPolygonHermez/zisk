@@ -35,7 +35,7 @@ macro_rules! table_instance {
             /// State machine
             table_sm: Arc<$TableSM>,
 
-            /// Instance expander context
+            /// Instance context
             iectx: InstanceCtx,
         }
 
@@ -84,10 +84,10 @@ macro_rules! instance {
             /// State machine
             sm: Arc<$sm>,
 
-            /// Instance expander context
+            /// Instance context
             iectx: InstanceCtx,
 
-            /// Inputs
+            /// Collected inputs
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
 
             _phantom: std::marker::PhantomData<F>,

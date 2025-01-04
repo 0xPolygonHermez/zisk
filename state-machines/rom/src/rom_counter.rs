@@ -4,9 +4,16 @@ use sm_common::{CounterStats, Metrics};
 use zisk_common::{BusDevice, BusId, RomBusData, RomData};
 
 pub struct RomCounter {
+    /// Bus Id
     bus_id: BusId,
+
+    /// Execution Statistics counter
     pub rom: CounterStats,
+
+    /// PC of the last executed instruction
     pub end_pc: u64,
+
+    /// Number of executed instructions
     pub steps: u64,
 }
 

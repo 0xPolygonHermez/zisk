@@ -22,7 +22,7 @@ const _: () = {
 };
 
 pub struct RomDataSM<F: PrimeField> {
-    // STD
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 

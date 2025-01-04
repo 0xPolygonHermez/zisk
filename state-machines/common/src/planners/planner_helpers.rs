@@ -2,7 +2,10 @@ use crate::{CheckPoint, CollectInfoSkip};
 
 #[derive(Debug)]
 pub struct InstCount {
+    /// Chunk Id
     pub chunk_id: usize,
+
+    /// Counted Instructions
     pub inst_count: u64,
 }
 

@@ -22,7 +22,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// Path to the public inputs file
     pub public_inputs_path: PathBuf,
 
-    /// Secondary State Machines
+    /// Registrered state machines
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 }
 

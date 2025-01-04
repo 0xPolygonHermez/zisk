@@ -26,6 +26,7 @@ pub trait Metrics: Send + Sync {
 
 #[derive(Default, Debug, Clone)]
 pub struct Counter {
+    /// Counted instructions
     pub inst_count: u64,
 }
 
@@ -51,6 +52,7 @@ impl AddAssign<&Counter> for Counter {
 
 #[derive(Default, Debug, Clone)]
 pub struct CounterStats {
+    /// Hash map of counted instructions by PC (key: PC, value: number of counted instructions)
     pub inst_count: HashMap<u64, u64>,
 }
 

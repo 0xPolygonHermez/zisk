@@ -1,7 +1,10 @@
 use crate::Plan;
 
 pub struct InstanceCtx {
+    /// Plan for the current instance
     pub plan: Plan,
+
+    /// Global Id of the current instance
     pub global_idx: usize,
 }
 

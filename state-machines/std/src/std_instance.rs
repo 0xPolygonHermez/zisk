@@ -10,7 +10,7 @@ pub struct StdInstance<F: PrimeField> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 
-    /// Instance expander context
+    /// Instance context
     iectx: InstanceCtx,
 }
 

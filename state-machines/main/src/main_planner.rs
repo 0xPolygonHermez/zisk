@@ -1,3 +1,5 @@
+//! This is the Main state machine planner
+
 use sm_common::{CheckPoint, CollectInfoSkip, InstanceType, Plan};
 use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
