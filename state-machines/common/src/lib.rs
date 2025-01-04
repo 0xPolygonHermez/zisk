@@ -6,7 +6,7 @@ mod component_instance;
 mod component_planner;
 mod counters;
 mod field;
-mod instance_expander;
+mod instance_context;
 mod operations;
 mod planners;
 
@@ -18,6 +18,6 @@ pub use component_instance::*;
 pub use component_planner::*;
 pub use counters::*;
 pub use field::*;
-pub use instance_expander::*;
+pub use instance_context::*;
 pub use operations::*;
 pub use planners::*;
