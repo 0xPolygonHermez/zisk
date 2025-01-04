@@ -11,18 +11,18 @@ pub struct StdInstance<F: PrimeField> {
     std: Arc<Std<F>>,
 
     /// Instance context
-    iectx: InstanceCtx,
+    ictx: InstanceCtx,
 }
 
 impl<F: PrimeField> StdInstance<F> {
-    pub fn new(std: Arc<Std<F>>, iectx: InstanceCtx) -> Self {
-        Self { std, iectx }
+    pub fn new(std: Arc<Std<F>>, ictx: InstanceCtx) -> Self {
+        Self { std, ictx }
     }
 }
 
 impl<F: PrimeField> Instance<F> for StdInstance<F> {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        let plan = &self.iectx.plan;
+        let plan = &self.ictx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
         self.std.drain_inputs(rc_type);
@@ -31,7 +31,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     }
 
     fn check_point(&self) -> CheckPoint {
-        self.iectx.plan.check_point.clone()
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {

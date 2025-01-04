@@ -12,15 +12,15 @@ pub struct ArithFullInstance {
     arith_full_sm: Arc<ArithFullSM>,
 
     /// Instance context
-    iectx: InstanceCtx,
-    
+    ictx: InstanceCtx,
+
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl ArithFullInstance {
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceCtx) -> Self {
-        Self { arith_full_sm, iectx, inputs: Vec::new() }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx) -> Self {
+        Self { arith_full_sm, ictx, inputs: Vec::new() }
     }
 }
 
@@ -30,7 +30,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     }
 
     fn check_point(&self) -> CheckPoint {
-        self.iectx.plan.check_point.clone()
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
@@ -48,7 +48,7 @@ impl BusDevice<u64> for ArithFullInstance {
             return (false, vec![]);
         }
 
-        let info_skip = self.iectx.plan.collect_info.as_mut().unwrap();
+        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
         let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
 
         if info_skip.should_skip() {

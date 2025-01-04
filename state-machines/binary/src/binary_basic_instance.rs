@@ -12,15 +12,15 @@ pub struct BinaryBasicInstance {
     binary_basic_sm: Arc<BinaryBasicSM>,
 
     /// Instance context
-    iectx: InstanceCtx,
+    ictx: InstanceCtx,
 
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl BinaryBasicInstance {
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceCtx) -> Self {
-        Self { binary_basic_sm, iectx, inputs: Vec::new() }
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
+        Self { binary_basic_sm, ictx, inputs: Vec::new() }
     }
 }
 
@@ -30,7 +30,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     }
 
     fn check_point(&self) -> CheckPoint {
-        self.iectx.plan.check_point.clone()
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
@@ -48,7 +48,7 @@ impl BusDevice<u64> for BinaryBasicInstance {
             return (false, vec![]);
         }
 
-        let info_skip = self.iectx.plan.collect_info.as_mut().unwrap();
+        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
         let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
         if info_skip.should_skip() {
             return (false, vec![]);

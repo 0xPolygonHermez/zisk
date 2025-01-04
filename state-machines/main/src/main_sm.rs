@@ -12,12 +12,12 @@ use ziskemu::{Emu, EmuTrace};
 
 pub struct MainInstance {
     /// Instance Context
-    iectx: InstanceCtx,
+    ictx: InstanceCtx,
 }
 
 impl MainInstance {
-    pub fn new(iectx: InstanceCtx) -> Self {
-        Self { iectx }
+    pub fn new(ictx: InstanceCtx) -> Self {
+        Self { ictx }
     }
 }
 
@@ -45,8 +45,8 @@ impl MainSM {
     ) {
         let mut main_trace = MainTrace::new();
 
-        let iectx = &main_instance.iectx;
-        let current_segment = iectx.plan.segment_id.unwrap();
+        let ictx = &main_instance.ictx;
+        let current_segment = ictx.plan.segment_id.unwrap();
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
         let filled_rows = vec_traces[current_segment].steps.steps as usize;
@@ -161,6 +161,6 @@ impl MainSM {
             FromTrace::new(&mut main_trace).with_air_values(&mut main_air_values),
         );
 
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.iectx.global_idx));
+        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.ictx.global_idx));
     }
 }

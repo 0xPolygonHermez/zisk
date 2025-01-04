@@ -12,22 +12,22 @@ pub struct RomInstance {
     zisk_rom: Arc<ZiskRom>,
 
     /// Instance context
-    iectx: InstanceCtx,
+    ictx: InstanceCtx,
 }
 
 impl RomInstance {
-    pub fn new(zisk_rom: Arc<ZiskRom>, iectx: InstanceCtx) -> Self {
-        Self { zisk_rom, iectx }
+    pub fn new(zisk_rom: Arc<ZiskRom>, ictx: InstanceCtx) -> Self {
+        Self { zisk_rom, ictx }
     }
 }
 
 impl<F: PrimeField> Instance<F> for RomInstance {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(RomSM::prove_instance(&self.zisk_rom, &self.iectx.plan))
+        Some(RomSM::prove_instance(&self.zisk_rom, &self.ictx.plan))
     }
 
     fn check_point(&self) -> CheckPoint {
-        self.iectx.plan.check_point.clone()
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {

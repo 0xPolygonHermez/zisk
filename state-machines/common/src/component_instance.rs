@@ -36,12 +36,12 @@ macro_rules! table_instance {
             table_sm: Arc<$TableSM>,
 
             /// Instance context
-            iectx: InstanceCtx,
+            ictx: InstanceCtx,
         }
 
         impl $InstanceName {
-            pub fn new(table_sm: Arc<$TableSM>, iectx: InstanceCtx) -> Self {
-                Self { table_sm, iectx }
+            pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx) -> Self {
+                Self { table_sm, ictx }
             }
         }
 
@@ -49,7 +49,7 @@ macro_rules! table_instance {
             fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
-                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
+                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_idx);
 
                 let mut trace = $Trace::new();
 
@@ -61,7 +61,7 @@ macro_rules! table_instance {
             }
 
             fn check_point(&self) -> CheckPoint {
-                self.iectx.plan.check_point.clone()
+                self.ictx.plan.check_point.clone()
             }
 
             fn instance_type(&self) -> InstanceType {
@@ -85,7 +85,7 @@ macro_rules! instance {
             sm: Arc<$sm>,
 
             /// Instance context
-            iectx: InstanceCtx,
+            ictx: InstanceCtx,
 
             /// Collected inputs
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
@@ -94,8 +94,8 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> $name<F> {
-            pub fn new(sm: Arc<$sm>, iectx: InstanceCtx) -> Self {
-                Self { sm, iectx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
+            pub fn new(sm: Arc<$sm>, ictx: InstanceCtx) -> Self {
+                Self { sm, ictx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
             }
         }
 
@@ -105,7 +105,7 @@ macro_rules! instance {
             }
 
             fn check_point(&self) -> Option<CheckPointSkip> {
-                self.iectx.plan.check_point
+                self.ictx.plan.check_point
             }
 
             fn instance_type(&self) -> InstanceType {

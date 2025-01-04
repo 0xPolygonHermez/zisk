@@ -8,7 +8,6 @@ impl<T: BusDevice<u64> + Metrics + std::any::Any> BusDeviceMetrics for T {}
 
 /// Shared wrapper to encapsulate dual functionality (BusDevice + Metrics) in a single object.
 pub struct BusDeviceMetricsWrapper {
-    
     pub inner: Box<dyn BusDeviceMetrics>,
 }
 

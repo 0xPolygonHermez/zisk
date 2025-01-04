@@ -63,27 +63,27 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         )
     }
 
-    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
-        match iectx.plan.air_id {
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        match ictx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
-                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
                 // instance!(
                 //     ArithFullInstance,
                 //     ArithFullSM,
                 //     ArithTrace::<usize>::NUM_ROWS,
                 //     zisk_core::ZiskOperationType::Arith
                 // );
-                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
             }
             id if id == ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
-                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), iectx))
+                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), ictx))
             }
             id if id == ArithRangeTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
-                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), iectx))
+                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), ictx))
             }
-            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
+            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }
 

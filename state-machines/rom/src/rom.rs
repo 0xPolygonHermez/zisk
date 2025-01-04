@@ -162,7 +162,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
         Box::new(RomPlanner {})
     }
 
-    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
-        Box::new(RomInstance::new(self.zisk_rom.clone(), iectx))
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        Box::new(RomInstance::new(self.zisk_rom.clone(), ictx))
     }
 }

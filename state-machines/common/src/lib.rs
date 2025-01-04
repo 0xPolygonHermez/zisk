@@ -1,9 +1,9 @@
 mod bus_device_instance;
 mod bus_device_metrics;
+mod component_builder;
 mod component_counter;
 mod component_instance;
 mod component_planner;
-mod component_builder;
 mod counters;
 mod field;
 mod instance_expander;
@@ -12,10 +12,10 @@ mod planners;
 
 pub use bus_device_instance::*;
 pub use bus_device_metrics::*;
+pub use component_builder::*;
 pub use component_counter::*;
 pub use component_instance::*;
 pub use component_planner::*;
-pub use component_builder::*;
 pub use counters::*;
 pub use field::*;
 pub use instance_expander::*;

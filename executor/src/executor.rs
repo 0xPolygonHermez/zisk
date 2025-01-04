@@ -140,8 +140,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
                         pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
                     if is_mine || plan.instance_type == InstanceType::Table {
-                        let iectx = InstanceCtx::new(global_idx, plan);
-                        Some((global_idx, self.secondary_sm[i].build_inputs_collector(iectx)))
+                        let ictx = InstanceCtx::new(global_idx, plan);
+                        Some((global_idx, self.secondary_sm[i].build_inputs_collector(ictx)))
                     } else {
                         None
                     }

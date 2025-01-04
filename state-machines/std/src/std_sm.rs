@@ -28,7 +28,7 @@ impl<F: PrimeField> ComponentBuilder<F> for StdSM<F> {
         Box::new(StdPlanner::new(self.std.clone()))
     }
 
-    fn build_inputs_collector(&self, iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
-        Box::new(StdInstance::new(self.std.clone(), iectx))
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        Box::new(StdInstance::new(self.std.clone(), ictx))
     }
 }
