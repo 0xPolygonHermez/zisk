@@ -9,32 +9,24 @@ pub struct RomCounter {
 
     /// Execution Statistics counter
     pub rom: CounterStats,
-
-    /// PC of the last executed instruction
-    pub end_pc: u64,
-
-    /// Number of executed instructions
-    pub steps: u64,
 }
 
 impl RomCounter {
     pub fn new(bus_id: BusId) -> Self {
-        Self { bus_id, rom: CounterStats::default(), end_pc: 0, steps: 0 }
+        Self { bus_id, rom: CounterStats::default() }
     }
 }
 
 impl Metrics for RomCounter {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
-        let inst_pc = RomBusData::get_pc(&data);
-        let inst_step = RomBusData::get_step(&data);
-        let inst_end = RomBusData::get_end(&data);
 
-        self.rom.update(inst_pc, 1);
-        if inst_end == 1 {
-            self.end_pc = inst_pc;
-            self.steps = inst_step + 1;
-        }
+        self.rom.update(
+            RomBusData::get_pc(&data),
+            RomBusData::get_step(&data),
+            1,
+            RomBusData::get_end(&data) == 1,
+        );
 
         vec![]
     }
@@ -43,14 +35,6 @@ impl Metrics for RomCounter {
         let other =
             other.as_any().downcast_ref::<RomCounter>().expect("Rom Metrics: Failed to downcast");
         self.rom += &other.rom;
-
-        if other.end_pc != 0 {
-            self.end_pc = other.end_pc;
-        }
-
-        if other.steps != 0 {
-            self.steps = other.steps;
-        }
     }
 
     fn bus_id(&self) -> Vec<BusId> {

@@ -55,9 +55,9 @@ impl RomSM {
                 let counter = metadata.rom.inst_count.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
-                    if inst.paddr == metadata.end_pc {
+                    if inst.paddr == metadata.rom.end_pc {
                         multiplicity +=
-                            main_trace_len - 1 - (metadata.steps % (main_trace_len - 1));
+                            main_trace_len - 1 - (metadata.rom.steps % (main_trace_len - 1));
                     }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
