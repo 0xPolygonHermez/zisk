@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
-use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
+use sm_common::{CheckPoint, ChunkId, CollectInfoSkip, InstanceType, Plan};
 use zisk_pil::{MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemAlignPlanner<'a> {
@@ -79,16 +79,17 @@ impl<'a> MemAlignPlanner<'a> {
             return;
         }
         // TODO: add multi chunk_id, with skip
+        let chunks = std::mem::take(&mut self.current_chunks);
         let instance = Plan::new(
             ZISK_AIRGROUP_ID,
             MEM_ALIGN_AIR_IDS[0],
             Some(self.instances.len()),
             InstanceType::Instance,
-            Some(CheckPoint::new(self.current_chunks[0], self.current_skip as u64)),
+            CheckPoint::Multiple(chunks),
+            Some(Box::new(CollectInfoSkip::new(self.current_skip as u64))),
             None,
         );
         self.instances.push(instance);
-        self.current_chunks.clear();
     }
     fn open_new_instance(&mut self, next_instance_skip: u32, use_current_chunk_id: bool) {
         self.current_skip = next_instance_skip;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator, UsesCounter, MEMORY_MAX_DIFF};
-use sm_common::{ChunkId, InstanceType, Plan};
+use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 
 pub struct MemModulePlanner<'a> {
     airgroup_id: usize,
@@ -163,16 +163,17 @@ impl<'a> MemModulePlanner<'a> {
         // }
 
         let checkpoint = std::mem::take(&mut self.current_checkpoint);
+        let chunks = std::mem::take(&mut self.current_checkpoint_chunks);
         let instance = Plan::new(
             self.airgroup_id,
             self.air_id,
             Some(self.instances.len()),
             InstanceType::Instance,
+            CheckPoint::Multiple(chunks),
             None,
             Some(Box::new(checkpoint)),
         );
         self.instances.push(instance);
-        self.current_checkpoint_chunks.clear();
     }
     fn set_current_chunk_id(&mut self, chunk_id: ChunkId) {
         if self.current_chunk_id == Some(chunk_id) && !self.current_checkpoint_chunks.is_empty() {

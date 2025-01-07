@@ -6,9 +6,7 @@ use crate::{
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx, Planner,
-};
+use sm_common::{BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Planner};
 use zisk_core::ZiskRequiredMemory;
 
 pub struct MemProxy<F: PrimeField> {
@@ -49,20 +47,20 @@ impl<F: PrimeField> MemProxy<F> {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for MemProxy<F> {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for MemProxy<F> {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(MemCounters::new())
         // Box::new(MemCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(MemPlanner::new())
     }
 
-    fn get_instance(&self, _iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_inputs_collector(&self, _iectx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         unimplemented!("get_instance for MemProxy");
     }
-    fn get_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
         unimplemented!("get_instance for MemProxy");
     }
 }
