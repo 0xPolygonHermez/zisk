@@ -14,13 +14,20 @@ pub struct BinaryBasicInstance {
     /// Instance context
     ictx: InstanceCtx,
 
+    /// Skip info
+    skip_info: CollectInfoSkip,
+
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl BinaryBasicInstance {
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
-        Self { binary_basic_sm, ictx, inputs: Vec::new() }
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx) -> Self {
+        let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
+        let skip_info =
+            *collect_info.downcast::<CollectInfoSkip>().expect("Expected CollectInfoSkip");
+
+        Self { binary_basic_sm, ictx, skip_info, inputs: Vec::new() }
     }
 }
 
@@ -48,9 +55,7 @@ impl BusDevice<u64> for BinaryBasicInstance {
             return (false, vec![]);
         }
 
-        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
-        let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
-        if info_skip.should_skip() {
+        if self.skip_info.should_skip() {
             return (false, vec![]);
         }
 
