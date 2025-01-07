@@ -23,8 +23,8 @@ impl MemBusHelpers {
                 MAX_MEM_OPS_BY_MAIN_STEP * step +
                 MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
-            mem_values[0] as u64,
-            mem_values[1] as u64,
+            mem_values[0],
+            mem_values[1],
             0,
         ]
     }
@@ -43,8 +43,8 @@ impl MemBusHelpers {
                 MAX_MEM_OPS_BY_MAIN_STEP * step +
                 MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
-            mem_values[0] as u64,
-            mem_values[1] as u64,
+            mem_values[0],
+            mem_values[1],
             value,
         ]
     }

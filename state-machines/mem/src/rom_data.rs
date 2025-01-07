@@ -10,8 +10,8 @@ use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{RomDataAirValues, RomDataTrace};
 
-const ROM_W_ADDR: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
-const ROM_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
+pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
+pub const ROM_DATA_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     // assert!(
@@ -63,7 +63,7 @@ impl<F: PrimeField> RomDataSM<F> {
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
             let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: ROM_W_ADDR, step: 0, value: 0 }
+                MemPreviousSegment { addr: ROM_DATA_W_ADDR_INIT, step: 0, value: 0 }
             } else {
                 MemPreviousSegment {
                     addr: inputs[input_offset - 1].addr,
@@ -137,7 +137,7 @@ impl<F: PrimeField> RomDataSM<F> {
         // range of instance
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
         self.std.range_check(
-            F::from_canonical_u32(previous_segment.addr - ROM_W_ADDR + 1),
+            F::from_canonical_u32(previous_segment.addr - ROM_DATA_W_ADDR_INIT + 1),
             F::one(),
             range_id,
         );
@@ -189,7 +189,7 @@ impl<F: PrimeField> RomDataSM<F> {
         air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
 
         self.std.range_check(
-            F::from_canonical_u32(ROM_W_ADDR_END - last_addr + 1),
+            F::from_canonical_u32(ROM_DATA_W_ADDR_END - last_addr + 1),
             F::one(),
             range_id,
         );
@@ -217,6 +217,12 @@ impl<F: PrimeField> RomDataSM<F> {
 
     fn get_u32_values(&self, value: u64) -> (u32, u32) {
         (value as u32, (value >> 32) as u32)
+    }
+    pub fn get_from_addr() -> u32 {
+        ROM_DATA_W_ADDR_INIT
+    }
+    pub fn get_to_addr() -> u32 {
+        ROM_DATA_W_ADDR_END
     }
 }
 

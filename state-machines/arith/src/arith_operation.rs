@@ -133,22 +133,22 @@ impl ArithOperation {
         self.op = op;
         self.input_a = input_a;
         self.input_b = input_b;
-        self.div_by_zero = input_b == 0 &&
-            (op == ZiskOp::Div.code() ||
-                op == ZiskOp::Rem.code() ||
-                op == ZiskOp::DivW.code() ||
-                op == ZiskOp::RemW.code() ||
-                op == ZiskOp::Divu.code() ||
-                op == ZiskOp::Remu.code() ||
-                op == ZiskOp::DivuW.code() ||
-                op == ZiskOp::RemuW.code());
+        self.div_by_zero = input_b == 0
+            && (op == ZiskOp::Div.code()
+                || op == ZiskOp::Rem.code()
+                || op == ZiskOp::DivW.code()
+                || op == ZiskOp::RemW.code()
+                || op == ZiskOp::Divu.code()
+                || op == ZiskOp::Remu.code()
+                || op == ZiskOp::DivuW.code()
+                || op == ZiskOp::RemuW.code());
 
-        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code()) &&
-            input_a == 0x8000_0000_0000_0000 &&
-            input_b == 0xFFFF_FFFF_FFFF_FFFF) ||
-            ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code()) &&
-                input_a == 0x8000_0000 &&
-                input_b == 0xFFFF_FFFF);
+        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
+            && input_a == 0x8000_0000_0000_0000
+            && input_b == 0xFFFF_FFFF_FFFF_FFFF)
+            || ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code())
+                && input_a == 0x8000_0000
+                && input_b == 0xFFFF_FFFF);
 
         let [a, b, c, d] = Self::calculate_abcd_from_ab(op, input_a, input_b);
         self.a = Self::u64_to_chunks(a);
@@ -578,15 +578,15 @@ impl ArithOperation {
         assert!(range_c1 == 0 || range_c3 == 0, "range_c1:{} range_c3:{}", range_c1, range_c3);
         assert!(range_d1 == 0 || range_d3 == 0, "range_d1:{} range_d3:{}", range_d1, range_d3);
 
-        self.range_ab = (range_a3 + range_a1) * 3 +
-            range_b3 +
-            range_b1 +
-            if (range_a1 + range_b1) > 0 { 8 } else { 0 };
+        self.range_ab = (range_a3 + range_a1) * 3
+            + range_b3
+            + range_b1
+            + if (range_a1 + range_b1) > 0 { 8 } else { 0 };
 
-        self.range_cd = (range_c3 + range_c1) * 3 +
-            range_d3 +
-            range_d1 +
-            if (range_c1 + range_d1) > 0 { 8 } else { 0 };
+        self.range_cd = (range_c3 + range_c1) * 3
+            + range_d3
+            + range_d1
+            + if (range_c1 + range_d1) > 0 { 8 } else { 0 };
     }
 
     pub fn calculate_chunks(&self) -> [i64; 8] {
@@ -614,40 +614,40 @@ impl ArithOperation {
         let nb_fa = nb * (1 - 2 * na);
 
         chunks[0] = fab * a[0] * b[0]  // chunk0
-            - c[0] +
-            2 * np * c[0] +
-            div * d[0] -
-            2 * nr * d[0];
+            - c[0]
+            + 2 * np * c[0]
+            + div * d[0]
+            - 2 * nr * d[0];
 
         chunks[1] = fab * a[1] * b[0]    // chunk1
-            + fab * a[0] * b[1] -
-            c[1] +
-            2 * np * c[1] +
-            div * d[1] -
-            2 * nr * d[1];
+            + fab * a[0] * b[1]
+            - c[1]
+            + 2 * np * c[1]
+            + div * d[1]
+            - 2 * nr * d[1];
 
         chunks[2] = fab * a[2] * b[0]    // chunk2
             + fab * a[1] * b[1]
             + fab * a[0] * b[2]
             + a[0] * nb_fa * m32
-            + b[0] * na_fb * m32 -
-            c[2] +
-            2 * np * c[2] +
-            div * d[2] -
-            2 * nr * d[2] -
-            np * div * m32 +
-            nr * m32; // div == 0 ==> nr = 0
+            + b[0] * na_fb * m32
+            - c[2]
+            + 2 * np * c[2]
+            + div * d[2]
+            - 2 * nr * d[2]
+            - np * div * m32
+            + nr * m32; // div == 0 ==> nr = 0
 
         chunks[3] = fab * a[3] * b[0]    // chunk3
             + fab * a[2] * b[1]
             + fab * a[1] * b[2]
             + fab * a[0] * b[3]
             + a[1] * nb_fa * m32
-            + b[1] * na_fb * m32 -
-            c[3] +
-            2 * np * c[3] +
-            div * d[3] -
-            2 * nr * d[3];
+            + b[1] * na_fb * m32
+            - c[3]
+            + 2 * np * c[3]
+            + div * d[3]
+            - 2 * nr * d[3];
 
         chunks[4] = fab * a[3] * b[1]    // chunk4
             + fab * a[2] * b[2]
@@ -671,23 +671,23 @@ impl ArithOperation {
         chunks[5] = fab * a[3] * b[2]    // chunk5
             + fab * a[2] * b[3]
             + a[1] * nb_fa * (1 - m32)
-            + b[1] * na_fb * (1 - m32) -
-            d[1] * (1 - div) +
-            d[1] * 2 * np * (1 - div);
+            + b[1] * na_fb * (1 - m32)
+            - d[1] * (1 - div)
+            + d[1] * 2 * np * (1 - div);
 
         chunks[6] = fab * a[3] * b[3]    // chunk6
             + a[2] * nb_fa * (1 - m32)
-            + b[2] * na_fb * (1 - m32) -
-            d[2] * (1 - div) +
-            d[2] * 2 * np * (1 - div);
+            + b[2] * na_fb * (1 - m32)
+            - d[2] * (1 - div)
+            + d[2] * 2 * np * (1 - div);
 
         // 0x4000_0000_0000_0000__8000_0000_0000_0000
         chunks[7] = 0x10000 * na * nb  * (1 - m32)  // chunk7
             + a[3] * nb_fa * (1 - m32)
-            + b[3] * na_fb * (1 - m32) -
-            0x10000 * np * (1 - div) * (1 - m32) -
-            d[3] * (1 - div) +
-            d[3] * 2 * np * (1 - div);
+            + b[3] * na_fb * (1 - m32)
+            - 0x10000 * np * (1 - div) * (1 - m32)
+            - d[3] * (1 - div)
+            + d[3] * 2 * np * (1 - div);
 
         chunks
     }

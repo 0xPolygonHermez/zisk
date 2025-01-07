@@ -10,8 +10,8 @@ use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataAirValues, InputDataTrace, ZiskProofValues};
 
-const INPUT_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
-const INPUT_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
+pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
+pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
@@ -70,7 +70,7 @@ impl<F: PrimeField> InputDataSM<F> {
             let is_last_segment = segment_id == num_segments - 1;
             let input_offset = segment_id * air_rows;
             let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: INPUT_W_ADDR_INIT, step: 0, value: 0 }
+                MemPreviousSegment { addr: INPUT_DATA_W_ADDR_INIT, step: 0, value: 0 }
             } else {
                 MemPreviousSegment {
                     addr: inputs[input_offset - 1].addr,
@@ -149,7 +149,7 @@ impl<F: PrimeField> InputDataSM<F> {
         // range of instance
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
         self.std.range_check(
-            F::from_canonical_u32(previous_segment.addr - INPUT_W_ADDR_INIT + 1),
+            F::from_canonical_u32(previous_segment.addr - INPUT_DATA_W_ADDR_INIT + 1),
             F::one(),
             range_id,
         );
@@ -209,7 +209,7 @@ impl<F: PrimeField> InputDataSM<F> {
         air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
 
         self.std.range_check(
-            F::from_canonical_u32(INPUT_W_ADDR_END - last_addr + 1),
+            F::from_canonical_u32(INPUT_DATA_W_ADDR_END - last_addr + 1),
             F::one(),
             range_id,
         );
@@ -254,6 +254,12 @@ impl<F: PrimeField> InputDataSM<F> {
 
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
+    }
+    pub fn get_from_addr() -> u32 {
+        INPUT_ADDR as u32
+    }
+    pub fn get_to_addr() -> u32 {
+        (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
     }
 }
 

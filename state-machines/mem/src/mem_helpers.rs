@@ -68,9 +68,9 @@ pub struct MemHelpers {}
 
 impl MemHelpers {
     pub fn main_step_to_address_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE +
-            MAX_MEM_OPS_BY_MAIN_STEP * step +
-            MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
+        MEM_STEP_BASE
+            + MAX_MEM_OPS_BY_MAIN_STEP * step
+            + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
     }
 }
 

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    InputDataSM, MemAlignRomSM, MemAlignSM, MemCounters, MemProxyEngine, MemSM, RomDataSM,
+    InputDataSM, MemAlignRomSM, MemAlignSM, MemCounters, MemPlanner, MemProxyEngine, MemSM,
+    RomDataSM,
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -55,10 +56,10 @@ impl<F: PrimeField> ComponentProvider<F> for MemProxy<F> {
     }
 
     fn get_planner(&self) -> Box<dyn Planner> {
-        unimplemented!("get_planner for MemProxy");
+        Box::new(MemPlanner::new())
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn get_instance(&self, _iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
         unimplemented!("get_instance for MemProxy");
     }
     fn get_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {

@@ -7,18 +7,23 @@ use crate::{
     MEMORY_MAX_DIFF, MEMORY_STORE_OP, MEM_BUS_ID, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK,
 };
 
+use log::info;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsesCounter {
     pub first_step: u64,
     pub last_step: u64,
     pub count: u64,
+    pub last_value: u64,
 }
 
+#[derive(Default)]
 pub struct MemCounters {
-    registers: [UsesCounter; 32],
-    addr: HashMap<u32, UsesCounter>,
-    mem_align: Vec<u8>,
-    mem_align_rows: u32,
+    pub registers: [UsesCounter; 32],
+    pub addr: HashMap<u32, UsesCounter>,
+    pub addr_sorted: Vec<(u32, UsesCounter)>,
+    pub mem_align: Vec<u8>,
+    pub mem_align_rows: u32,
 }
 
 impl MemCounters {
@@ -27,6 +32,7 @@ impl MemCounters {
         Self {
             registers: [empty_counter; 32],
             addr: HashMap::new(),
+            addr_sorted: Vec::new(),
             mem_align: Vec::new(),
             mem_align_rows: 0,
         }
@@ -52,26 +58,43 @@ impl Metrics for MemCounters {
         if (addr & MEM_REGS_MASK) == MEM_REGS_ADDR {
             let reg_index = ((addr >> 3) & 0x1F) as usize;
             if self.registers[reg_index].count == 0 {
-                self.registers[reg_index] =
-                    UsesCounter { first_step: step, last_step: step, count: 1 };
+                self.registers[reg_index] = UsesCounter {
+                    first_step: step,
+                    last_step: step,
+                    count: 1,
+                    last_value: data[4],
+                };
             } else {
                 self.registers[reg_index].count +=
                     1 + Self::count_extra_internal_reads(self.registers[reg_index].last_step, step);
                 self.registers[reg_index].last_step = step;
+                self.registers[reg_index].last_value = data[4];
             }
         } else {
             let aligned = addr & 0x7 == 0 && bytes == 8;
+            // TODO: last value must be calculated as last value operation
+            // R: value[4]
+            // RR:
+            let last_value = data[4];
             if aligned {
+                // TODO: read, write
                 self.addr
                     .entry(addr_w)
                     .and_modify(|value| {
                         value.count += 1;
                         value.last_step = step;
+                        value.last_value = last_value;
                     })
-                    .or_insert(UsesCounter { first_step: step, last_step: step, count: 1 });
+                    .or_insert(UsesCounter {
+                        first_step: step,
+                        last_step: step,
+                        count: 1,
+                        last_value,
+                    });
             } else {
                 // TODO: use mem_align helpers
-
+                // TODO: last value must be calculated as last value operation
+                let last_value = 0;
                 let addr_count =
                     if ((addr + bytes as u32) >> MEM_BYTES_BITS) != addr_w { 2 } else { 1 };
                 let ops_by_addr = if op == MEMORY_STORE_OP { 2 } else { 1 };
@@ -84,8 +107,16 @@ impl Metrics for MemCounters {
                             value.count += ops_by_addr +
                                 Self::count_extra_internal_reads(value.last_step, step);
                             value.last_step = last_step;
+                            value.last_value = last_value
                         })
-                        .or_insert(UsesCounter { first_step: step, last_step, count: ops_by_addr });
+                        .or_insert(UsesCounter {
+                            first_step: step,
+                            last_step,
+                            count: ops_by_addr,
+                            last_value,
+                        });
+                    // if addr_count > 1, then addr_w must be the next (addr_w is expressed in
+                    // MEM_BYTES)
                     addr_w += 1;
                 }
                 let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;
@@ -102,7 +133,13 @@ impl Metrics for MemCounters {
     fn bus_id(&self) -> Vec<BusId> {
         vec![MEM_BUS_ID]
     }
-
+    fn on_close(&mut self) {
+        // address must be ordered
+        info!("[Mem]   Closing....");
+        let addr_hashmap = std::mem::take(&mut self.addr);
+        self.addr_sorted = addr_hashmap.into_iter().collect();
+        self.addr_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    }
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

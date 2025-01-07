@@ -77,8 +77,8 @@ impl InstObserver for InputsCollector {
         }
 
         if self.skipping {
-            if self.check_point.collect_info.skip == 0 ||
-                self.skipped == self.check_point.collect_info.skip
+            if self.check_point.collect_info.skip == 0
+                || self.skipped == self.check_point.collect_info.skip
             {
                 self.skipping = false;
             } else {

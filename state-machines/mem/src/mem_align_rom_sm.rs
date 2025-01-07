@@ -48,9 +48,9 @@ impl MemAlignRomSM {
             ),
 
             MemOp::TwoWrites => (
-                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
-                    ONE_WORD_COMBINATIONS * OP_SIZES[1] +
-                    TWO_WORD_COMBINATIONS * OP_SIZES[2],
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0]
+                    + ONE_WORD_COMBINATIONS * OP_SIZES[1]
+                    + TWO_WORD_COMBINATIONS * OP_SIZES[2],
                 false,
             ),
         };
