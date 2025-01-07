@@ -15,21 +15,16 @@ witness_library!(WitnessLib, Goldilocks);
 
 impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
     fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
-        // If rom_path has an .elf extension it must be converted to a ZisK ROM
-        let zisk_rom = if wcm.get_rom_path().unwrap().extension().unwrap() == "elf" {
-            // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(
-                wcm.get_rom_path().unwrap().display().to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-            );
+        // Create an instance of the RISCV -> ZisK program converter
+        let rv2zk = Riscv2zisk::new(
+            wcm.get_rom_path().unwrap().display().to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
 
-            // Convert program to ROM
-            rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e))
-        } else {
-            panic!("ROM file must be an ELF file");
-        };
+        // Convert program to ROM
+        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
         let zisk_rom = Arc::new(zisk_rom);
 
         // Create the secondary state machines
