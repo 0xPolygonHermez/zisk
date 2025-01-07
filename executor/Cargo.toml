@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sm-arith = { path = "../state-machines/arith" }
-sm-binary = { path = "../state-machines/binary" }
 sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
-sm-mem = { path = "../state-machines/mem" }
-sm-rom = { path = "../state-machines/rom" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
@@ -20,7 +16,6 @@ proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 p3-field = { workspace=true }
-pil-std-lib = { workspace = true }
 log = { workspace = true }
 
 rayon = { workspace = true }

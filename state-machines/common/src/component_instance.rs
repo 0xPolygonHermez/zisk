@@ -1,9 +1,7 @@
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use zisk_core::ZiskRom;
-use ziskemu::EmuTrace;
 
-use crate::CheckPointSkip;
+use crate::CheckPoint;
 
 #[derive(Debug, PartialEq)]
 pub enum InstanceType {
@@ -11,20 +9,10 @@ pub enum InstanceType {
     Table,
 }
 
-pub trait Instance<F: PrimeField>: Send + Sync {
-    fn collect_inputs(
-        &mut self,
-        zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        let _ = zisk_rom;
-        let _ = min_traces;
-        Ok(())
-    }
-
+pub trait Instance<F: PrimeField>: Send {
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
-    fn check_point(&self) -> Option<CheckPointSkip>;
+    fn check_point(&self) -> CheckPoint;
 
     fn instance_type(&self) -> InstanceType;
 }
@@ -37,7 +25,7 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+        use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_common::BusId;
         use zisk_pil::$Trace;
 
@@ -47,23 +35,21 @@ macro_rules! table_instance {
             /// State machine
             table_sm: Arc<$TableSM>,
 
-            /// Instance expander context
-            iectx: InstanceExpanderCtx,
+            /// Instance context
+            ictx: InstanceCtx,
         }
 
         impl $InstanceName {
-            pub fn new(table_sm: Arc<$TableSM>, iectx: InstanceExpanderCtx) -> Self {
-                Self { table_sm, iectx }
+            pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx) -> Self {
+                Self { table_sm, ictx }
             }
         }
-
-        unsafe impl Sync for $InstanceName {}
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
-                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.iectx.global_idx);
+                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_idx);
 
                 let mut trace = $Trace::new();
 
@@ -74,8 +60,8 @@ macro_rules! table_instance {
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
             }
 
-            fn check_point(&self) -> Option<CheckPointSkip> {
-                self.iectx.plan.check_point
+            fn check_point(&self) -> CheckPoint {
+                self.ictx.plan.check_point.clone()
             }
 
             fn instance_type(&self) -> InstanceType {
@@ -83,15 +69,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl zisk_common::BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                _bus_id: &zisk_common::BusId,
-                _data: &[u64],
-            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
-                (true, vec![])
-            }
-        }
+        impl zisk_common::BusDevice<u64> for $InstanceName {}
     };
 }
 
@@ -99,51 +77,35 @@ macro_rules! table_instance {
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
         use proofman_common::{AirInstance, ProofCtx};
-        use sm_common::{CheckPointSkip, InputsCollector, Instance, InstanceType};
+        use sm_common::{CheckPointSkip, Instance, InstanceType};
         use zisk_common::BusId;
 
         pub struct $name<F: PrimeField> {
             /// State machine
             sm: Arc<$sm>,
 
-            /// Instance expander context
-            iectx: InstanceExpanderCtx,
+            /// Instance context
+            ictx: InstanceCtx,
 
-            /// Inputs
+            /// Collected inputs
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
 
             _phantom: std::marker::PhantomData<F>,
         }
 
         impl<F: PrimeField> $name<F> {
-            pub fn new(sm: Arc<$sm>, iectx: InstanceExpanderCtx) -> Self {
-                Self { sm, iectx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
+            pub fn new(sm: Arc<$sm>, ictx: InstanceCtx) -> Self {
+                Self { sm, ictx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
             }
         }
 
         impl<F: PrimeField> Instance<F> for $name<F> {
-            fn collect_inputs(
-                &mut self,
-                zisk_rom: &zisk_core::ZiskRom,
-                min_traces: &[ziskemu::EmuTrace],
-            ) -> Result<(), Box<dyn std::error::Error + Send>> {
-                self.inputs = InputsCollector::collect(
-                    self.iectx.plan.check_point.unwrap(),
-                    $num_rows,
-                    zisk_rom,
-                    min_traces,
-                    $operation,
-                )?;
-
-                Ok(())
-            }
-
             fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 Some(self.sm.prove_instance(&self.inputs))
             }
 
             fn check_point(&self) -> Option<CheckPointSkip> {
-                self.iectx.plan.check_point
+                self.ictx.plan.check_point
             }
 
             fn instance_type(&self) -> InstanceType {
@@ -151,16 +113,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {
-            fn process_data(
-                &mut self,
-                _bus_id: &zisk_common::BusId,
-                _data: &[u64],
-            ) -> (bool, Vec<(BusId, Vec<u64>)>) {
-                (true, vec![])
-            }
-        }
-
-        unsafe impl<F: PrimeField> Sync for $name<F> {}
+        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {}
     };
 }

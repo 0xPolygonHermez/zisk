@@ -1,51 +1,42 @@
 use crate::BinaryBasicSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
-use zisk_core::{ZiskOperationType, ZiskRom};
+use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryTrace;
-use ziskemu::EmuTrace;
+
 pub struct BinaryBasicInstance {
-    /// Binary basic state machine
+    /// Binary Basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
-    /// Instance expander context
-    iectx: InstanceExpanderCtx,
-    /// Inputs
+
+    /// Instance context
+    ictx: InstanceCtx,
+
+    /// Collected inputs
     inputs: Vec<OperationData<u64>>,
-
-    skipping: bool,
-    skipped: u64,
 }
+
 impl BinaryBasicInstance {
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self { binary_basic_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
+        Self { binary_basic_sm, ictx, inputs: Vec::new() }
     }
 }
-impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
-    fn collect_inputs(
-        &mut self,
-        _zisk_rom: &ZiskRom,
-        _min_traces: &[EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
 
+impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         Some(self.binary_basic_sm.prove_instance::<F>(&self.inputs))
     }
 
-    fn check_point(&self) -> Option<CheckPointSkip> {
-        self.iectx.plan.check_point
+    fn check_point(&self) -> CheckPoint {
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
 }
-
-unsafe impl Sync for BinaryBasicInstance {}
 
 impl BusDevice<u64> for BinaryBasicInstance {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
@@ -57,14 +48,10 @@ impl BusDevice<u64> for BinaryBasicInstance {
             return (false, vec![]);
         }
 
-        if self.skipping {
-            let check_point = self.iectx.plan.check_point.as_ref().unwrap();
-            if check_point.collect_info.skip == 0 || self.skipped == check_point.collect_info.skip {
-                self.skipping = false;
-            } else {
-                self.skipped += 1;
-                return (false, vec![]);
-            }
+        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
+        let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
+        if info_skip.should_skip() {
+            return (false, vec![]);
         }
 
         self.inputs.push(data);

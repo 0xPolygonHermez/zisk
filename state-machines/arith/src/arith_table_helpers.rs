@@ -1,8 +1,5 @@
 pub struct ArithTableHelpers;
 
-#[cfg(debug_assertions)]
-use crate::ARITH_TABLE;
-
 use crate::{ARITH_TABLE_ROWS, FIRST_OP, ROWS};
 
 impl ArithTableHelpers {
@@ -17,14 +14,14 @@ impl ArithTableHelpers {
         div_by_zero: bool,
         div_overflow: bool,
     ) -> usize {
-        let index = (op - FIRST_OP) as u64 * 128
-            + na as u64
-            + nb as u64 * 2
-            + np as u64 * 4
-            + nr as u64 * 8
-            + sext as u64 * 16
-            + div_by_zero as u64 * 32
-            + div_overflow as u64 * 64;
+        let index = (op - FIRST_OP) as u64 * 128 +
+            na as u64 +
+            nb as u64 * 2 +
+            np as u64 * 4 +
+            nr as u64 * 8 +
+            sext as u64 * 16 +
+            div_by_zero as u64 * 32 +
+            div_overflow as u64 * 64;
         debug_assert!(index < ARITH_TABLE_ROWS.len() as u64);
         let row = ARITH_TABLE_ROWS[index as usize];
         debug_assert!(
@@ -43,7 +40,9 @@ impl ArithTableHelpers {
         );
         row as usize
     }
+
     #[cfg(not(debug_assertions))]
+    #[cfg(test)]
     pub fn get_row(
         op: u8,
         na: bool,
@@ -56,8 +55,10 @@ impl ArithTableHelpers {
     ) -> usize {
         Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow)
     }
+
     #[cfg(debug_assertions)]
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn get_row(
         op: u8,
         na: bool,
@@ -75,18 +76,20 @@ impl ArithTableHelpers {
         range_ab: u16,
         range_cd: u16,
     ) -> usize {
-        let flags = if m32 { 1 } else { 0 }
-            + if div { 2 } else { 0 }
-            + if na { 4 } else { 0 }
-            + if nb { 8 } else { 0 }
-            + if np { 16 } else { 0 }
-            + if nr { 32 } else { 0 }
-            + if sext { 64 } else { 0 }
-            + if div_by_zero { 128 } else { 0 }
-            + if div_overflow { 256 } else { 0 }
-            + if main_mul { 512 } else { 0 }
-            + if main_div { 1024 } else { 0 }
-            + if signed { 2048 } else { 0 };
+        use crate::ARITH_TABLE;
+
+        let flags = if m32 { 1 } else { 0 } +
+            if div { 2 } else { 0 } +
+            if na { 4 } else { 0 } +
+            if nb { 8 } else { 0 } +
+            if np { 16 } else { 0 } +
+            if nr { 32 } else { 0 } +
+            if sext { 64 } else { 0 } +
+            if div_by_zero { 128 } else { 0 } +
+            if div_overflow { 256 } else { 0 } +
+            if main_mul { 512 } else { 0 } +
+            if main_div { 1024 } else { 0 } +
+            if signed { 2048 } else { 0 };
         let row = Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow);
         assert_eq!(
             op as u16, ARITH_TABLE[row][0],
@@ -111,6 +114,7 @@ impl ArithTableHelpers {
         row
     }
 
+    #[cfg(test)]
     pub fn flags_to_string(flags: u16) -> String {
         let mut result = String::new();
         if flags & 1 != 0 {
@@ -151,13 +155,10 @@ impl ArithTableHelpers {
         }
         result
     }
-
-    pub fn get_max_row() -> usize {
-        ROWS - 1
-    }
 }
 
 pub struct ArithTableInputs {
+    /// Multiplicity table
     multiplicity: [u64; ROWS],
 }
 

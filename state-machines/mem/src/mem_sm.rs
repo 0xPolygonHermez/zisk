@@ -21,7 +21,7 @@ const _: () = {
 };
 
 pub struct MemSM<F: PrimeField> {
-    // STD
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 

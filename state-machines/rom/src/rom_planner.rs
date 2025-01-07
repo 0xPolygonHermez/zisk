@@ -1,4 +1,4 @@
-use sm_common::{BusDeviceMetrics, ChunkId, InstanceType, Metrics, Plan, Planner};
+use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
 use zisk_common::ROM_BUS_ID;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -24,6 +24,7 @@ impl Planner for RomPlanner {
             ROM_AIR_IDS[0],
             None,
             InstanceType::Instance,
+            CheckPoint::None,
             None,
             Some(Box::new(total)),
         )]

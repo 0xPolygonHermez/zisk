@@ -27,6 +27,7 @@ const _: () = {
 };
 
 pub struct InputDataSM<F: PrimeField> {
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 

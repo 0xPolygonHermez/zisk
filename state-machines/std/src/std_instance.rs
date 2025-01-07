@@ -3,25 +3,26 @@ use std::sync::Arc;
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
-use zisk_common::{BusDevice, BusId};
+use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+use zisk_common::BusDevice;
 
 pub struct StdInstance<F: PrimeField> {
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 
-    /// Instance expander context
-    iectx: InstanceExpanderCtx,
+    /// Instance context
+    ictx: InstanceCtx,
 }
 
 impl<F: PrimeField> StdInstance<F> {
-    pub fn new(std: Arc<Std<F>>, iectx: InstanceExpanderCtx) -> Self {
-        Self { std, iectx }
+    pub fn new(std: Arc<Std<F>>, ictx: InstanceCtx) -> Self {
+        Self { std, ictx }
     }
 }
 
 impl<F: PrimeField> Instance<F> for StdInstance<F> {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        let plan = &self.iectx.plan;
+        let plan = &self.ictx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
         self.std.drain_inputs(rc_type);
@@ -29,8 +30,8 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
         None
     }
 
-    fn check_point(&self) -> Option<CheckPointSkip> {
-        self.iectx.plan.check_point
+    fn check_point(&self) -> CheckPoint {
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
@@ -38,10 +39,4 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     }
 }
 
-impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
-    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        (true, vec![])
-    }
-}
-
-unsafe impl<F: PrimeField> Sync for StdInstance<F> {}
+impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {}

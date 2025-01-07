@@ -1,13 +1,21 @@
 use crate::{
-    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceType, Plan, Planner, RegularCounters,
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Plan, Planner,
+    RegularCounters,
 };
 use zisk_core::ZiskOperationType;
 
 #[derive(Debug)]
 pub struct InstanceInfo {
-    pub air_id: usize,
+    /// Airgroup Id
     pub airgroup_id: usize,
+
+    /// Air Id
+    pub air_id: usize,
+
+    /// Number of rows
     pub num_rows: usize,
+
+    /// Zisk Operation Type
     pub op_type: ZiskOperationType,
 }
 
@@ -23,8 +31,11 @@ impl InstanceInfo {
 }
 
 pub struct TableInfo {
-    pub air_id: usize,
+    /// Airgroup Id
     pub airgroup_id: usize,
+
+    /// Air Id
+    pub air_id: usize,
 }
 
 impl TableInfo {
@@ -84,13 +95,14 @@ impl Planner for RegularPlanner {
         for (idx, instance) in self.instances_info.iter().enumerate() {
             let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
                 .into_iter()
-                .map(|check_point| {
+                .map(|(check_point, collect_info_skip)| {
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
                         None,
                         InstanceType::Instance,
-                        Some(check_point),
+                        check_point,
+                        Some(collect_info_skip),
                         None,
                     )
                 })
@@ -105,6 +117,7 @@ impl Planner for RegularPlanner {
                 table_instance.air_id,
                 None,
                 InstanceType::Table,
+                CheckPoint::None,
                 None,
                 None,
             ));

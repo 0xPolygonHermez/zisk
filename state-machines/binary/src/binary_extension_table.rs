@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use p3_field::Field;
-use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
+use zisk_core::{P2_11, P2_19, P2_8};
 use zisk_pil::BinaryExtensionTableTrace;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -19,13 +19,8 @@ pub enum BinaryExtensionTableOp {
 }
 
 pub struct BinaryExtensionTableSM {
-    // Row multiplicity table
+    // Multiplicity table
     multiplicity: Mutex<Vec<u64>>,
-}
-
-#[derive(Debug)]
-pub enum ExtensionTableSMErr {
-    InvalidOpcode,
 }
 
 impl BinaryExtensionTableSM {
@@ -34,20 +29,6 @@ impl BinaryExtensionTableSM {
             Self { multiplicity: Mutex::new(vec![0; BinaryExtensionTableTrace::<F>::NUM_ROWS]) };
 
         Arc::new(binary_extension_table)
-    }
-
-    pub fn operations() -> Vec<u8> {
-        vec![
-            ZiskOp::Sll.code(),
-            ZiskOp::Srl.code(),
-            ZiskOp::Sra.code(),
-            ZiskOp::SllW.code(),
-            ZiskOp::SrlW.code(),
-            ZiskOp::SraW.code(),
-            ZiskOp::SignExtendB.code(),
-            ZiskOp::SignExtendH.code(),
-            ZiskOp::SignExtendW.code(),
-        ]
     }
 
     pub fn process_slice(&self, input: &[u64]) {

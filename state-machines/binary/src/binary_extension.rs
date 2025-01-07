@@ -27,10 +27,10 @@ const LS_6_BITS: u64 = 0x3F;
 const SE_W_OP: u8 = 0x39;
 
 pub struct BinaryExtensionSM<F: PrimeField> {
-    // STD
+    // PIL2 Standard Library
     std: Arc<Std<F>>,
 
-    // Secondary State machines
+    // Secondary state machines
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
@@ -41,21 +41,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        Arc::new(Self { std: std.clone(), binary_extension_table_sm })
-    }
-
-    pub fn operations() -> Vec<u8> {
-        vec![
-            ZiskOp::Sll.code(),
-            ZiskOp::Srl.code(),
-            ZiskOp::Sra.code(),
-            ZiskOp::SllW.code(),
-            ZiskOp::SrlW.code(),
-            ZiskOp::SraW.code(),
-            ZiskOp::SignExtendB.code(),
-            ZiskOp::SignExtendH.code(),
-            ZiskOp::SignExtendW.code(),
-        ]
+        Arc::new(Self { std, binary_extension_table_sm })
     }
 
     fn opcode_is_shift(opcode: ZiskOp) -> bool {

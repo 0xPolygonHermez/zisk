@@ -4,6 +4,8 @@ use proofman_common as common;
 pub use proofman_macros::trace;
 pub use proofman_macros::values;
 
+use std::fmt;
+
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 

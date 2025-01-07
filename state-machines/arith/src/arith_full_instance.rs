@@ -1,51 +1,42 @@
 use crate::ArithFullSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPointSkip, Instance, InstanceExpanderCtx, InstanceType};
+use sm_common::{CheckPoint, CollectInfoSkip, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
-use zisk_core::{ZiskOperationType, ZiskRom};
+use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
-use ziskemu::EmuTrace;
+
 pub struct ArithFullInstance {
     /// Arith state machine
     arith_full_sm: Arc<ArithFullSM>,
-    /// Instance expander context
-    iectx: InstanceExpanderCtx,
-    /// Inputs
+
+    /// Instance context
+    ictx: InstanceCtx,
+
+    /// Collected inputs
     inputs: Vec<OperationData<u64>>,
-
-    skipping: bool,
-    skipped: u64,
 }
+
 impl ArithFullInstance {
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, iectx: InstanceExpanderCtx) -> Self {
-        Self { arith_full_sm, iectx, inputs: Vec::new(), skipping: true, skipped: 0 }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx) -> Self {
+        Self { arith_full_sm, ictx, inputs: Vec::new() }
     }
 }
-impl<F: PrimeField> Instance<F> for ArithFullInstance {
-    fn collect_inputs(
-        &mut self,
-        _zisk_rom: &ZiskRom,
-        _min_traces: &[EmuTrace],
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
-        Ok(())
-    }
 
+impl<F: PrimeField> Instance<F> for ArithFullInstance {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
         Some(self.arith_full_sm.prove_instance::<F>(&self.inputs))
     }
 
-    fn check_point(&self) -> Option<CheckPointSkip> {
-        self.iectx.plan.check_point
+    fn check_point(&self) -> CheckPoint {
+        self.ictx.plan.check_point.clone()
     }
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
 }
-
-unsafe impl Sync for ArithFullInstance {}
 
 impl BusDevice<u64> for ArithFullInstance {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
@@ -57,14 +48,11 @@ impl BusDevice<u64> for ArithFullInstance {
             return (false, vec![]);
         }
 
-        if self.skipping {
-            let check_point = self.iectx.plan.check_point.as_ref().unwrap();
-            if check_point.collect_info.skip == 0 || self.skipped == check_point.collect_info.skip {
-                self.skipping = false;
-            } else {
-                self.skipped += 1;
-                return (false, vec![]);
-            }
+        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
+        let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
+
+        if info_skip.should_skip() {
+            return (false, vec![]);
         }
 
         self.inputs.push(data);

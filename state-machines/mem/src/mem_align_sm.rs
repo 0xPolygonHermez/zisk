@@ -42,7 +42,7 @@ pub struct MemAlignResponse {
     pub value: Option<u64>,
 }
 pub struct MemAlignSM<F: PrimeField> {
-    // STD
+    /// PIL2 standard library
     std: Arc<Std<F>>,
 
     // Computed row information

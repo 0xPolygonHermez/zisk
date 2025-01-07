@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
 use zisk_common::OPERATION_BUS_ID;
@@ -14,13 +14,20 @@ use crate::{
     ArithRangeTableSM, ArithTableSM,
 };
 
+/// Arith state machine
 pub struct ArithSM {
+    /// Arith Full state machine
     arith_full_sm: Arc<ArithFullSM>,
+
+    /// Arith Table state machine
     arith_table_sm: Arc<ArithTableSM>,
+
+    /// Arith Range Table state machine
     arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
 impl ArithSM {
+    /// Creates a new ArithSM instance
     pub fn new() -> Arc<Self> {
         let arith_table_sm = ArithTableSM::new();
         let arith_range_table_sm = ArithRangeTableSM::new();
@@ -31,12 +38,12 @@ impl ArithSM {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for ArithSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(ArithCounter::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(
             ArithPlanner::new()
                 .add_instance(InstanceInfo::new(
@@ -56,31 +63,31 @@ impl<F: PrimeField> ComponentProvider<F> for ArithSM {
         )
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
-        match iectx.plan.air_id {
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        match ictx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
-                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
                 // instance!(
                 //     ArithFullInstance,
                 //     ArithFullSM,
                 //     ArithTrace::<usize>::NUM_ROWS,
                 //     zisk_core::ZiskOperationType::Arith
                 // );
-                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), iectx))
+                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
             }
             id if id == ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
-                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), iectx))
+                Box::new(ArithTableInstance::new(self.arith_table_sm.clone(), ictx))
             }
             id if id == ArithRangeTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
-                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), iectx))
+                Box::new(ArithRangeTableInstance::new(self.arith_range_table_sm.clone(), ictx))
             }
-            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", iectx.plan.air_id),
+            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }
 
-    fn get_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
         Some(Box::new(ArithInputGenerator::default()))
     }
 }

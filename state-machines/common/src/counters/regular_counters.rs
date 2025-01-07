@@ -5,8 +5,13 @@ use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
 pub struct RegularCounters {
+    /// Vector of Zisk Operation Type instructions to be counted
     op_type: Vec<ZiskOperationType>,
+
+    /// Connected Bus Id
     bus_id: BusId,
+
+    /// Vector of counters, one for each Zisk Operation Type accepted
     counter: Vec<Counter>,
 }
 

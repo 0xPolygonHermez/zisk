@@ -4,6 +4,7 @@ use crate::ArithTableInputs;
 use zisk_pil::ArithTableTrace;
 
 pub struct ArithTableSM {
+    /// Multiplicity table
     multiplicity: Mutex<Vec<u64>>,
 }
 

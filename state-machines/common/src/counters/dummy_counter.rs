@@ -22,9 +22,4 @@ impl Metrics for DummyCounter {
     }
 }
 
-impl BusDevice<u64> for DummyCounter {
-    #[inline]
-    fn process_data(&mut self, _: &BusId, _: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        (true, vec![])
-    }
-}
+impl BusDevice<u64> for DummyCounter {}

@@ -17,7 +17,10 @@ const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
 
 pub struct ArithFullSM {
+    /// Arith Table state machine
     arith_table_sm: Arc<ArithTableSM>,
+
+    /// Arith Range Table state machine
     arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 

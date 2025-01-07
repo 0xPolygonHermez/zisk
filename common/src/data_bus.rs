@@ -6,8 +6,12 @@ pub type PayloadType = u64;
 pub type MemData = [PayloadType; 4];
 
 /// Represents a subscriber that listens to messages on the `DataBus`.
-pub trait BusDevice<D> {
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> (bool, Vec<(BusId, Vec<D>)>);
+pub trait BusDevice<D>: Send {
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> (bool, Vec<(BusId, Vec<D>)>) {
+        let _ = bus_id;
+        let _ = data;
+        (true, vec![])
+    }
 }
 
 /// A bus facilitating communication between publishers and subscribers.
@@ -96,6 +100,12 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         println!("Global Devices: {:?}", self.omni_devices.len());
         println!("Pending Transfers: {:?}", self.pending_transfers.len());
     }
-}
 
-unsafe impl<D, BD: BusDevice<D>> Send for DataBus<D, BD> {}
+    pub fn detach_first_device(&mut self) -> Option<Box<BD>> {
+        self.devices.pop()
+    }
+
+    pub fn detach_devices(&mut self) -> Vec<Box<BD>> {
+        std::mem::take(&mut self.devices)
+    }
+}

@@ -5,7 +5,7 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentProvider, InstanceExpanderCtx, Plan, Planner,
+    BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
 };
 use zisk_common::ROM_BUS_ID;
 
@@ -14,6 +14,7 @@ use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace, RomTraceRow};
 
 pub struct RomSM {
+    /// Zisk Rom
     zisk_rom: Arc<ZiskRom>,
 }
 
@@ -54,9 +55,9 @@ impl RomSM {
                 let counter = metadata.rom.inst_count.get(&inst.paddr);
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
-                    if inst.paddr == metadata.end_pc {
+                    if inst.paddr == metadata.rom.end_pc {
                         multiplicity +=
-                            main_trace_len - 1 - (metadata.steps % (main_trace_len - 1));
+                            main_trace_len - 1 - (metadata.rom.steps % (main_trace_len - 1));
                     }
                 } else {
                     continue; // We skip those pc's that are not used in this execution
@@ -77,7 +78,7 @@ impl RomSM {
         )
     }
 
-    pub fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
+    fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -152,16 +153,16 @@ impl RomSM {
     }
 }
 
-impl<F: PrimeField> ComponentProvider<F> for RomSM {
-    fn get_counter(&self) -> Box<dyn BusDeviceMetrics> {
+impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RomCounter::new(ROM_BUS_ID))
     }
 
-    fn get_planner(&self) -> Box<dyn Planner> {
+    fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(RomPlanner {})
     }
 
-    fn get_instance(&self, iectx: InstanceExpanderCtx) -> Box<dyn BusDeviceInstance<F>> {
-        Box::new(RomInstance::new(self.zisk_rom.clone(), iectx))
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        Box::new(RomInstance::new(self.zisk_rom.clone(), ictx))
     }
 }
