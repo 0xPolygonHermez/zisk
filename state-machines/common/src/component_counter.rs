@@ -70,7 +70,6 @@ impl CounterStats {
         *count += num as u64;
 
         if end {
-            println!("End: {} {}", pc, step);
             self.end_pc = pc;
             self.steps = step + 1;
         }
