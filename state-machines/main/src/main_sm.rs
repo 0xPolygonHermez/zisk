@@ -187,6 +187,6 @@ impl MainSM {
             FromTrace::new(&mut main_trace).with_air_values(&mut main_air_values),
         );
 
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.ictx.global_idx));
+        pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_idx);
     }
 }

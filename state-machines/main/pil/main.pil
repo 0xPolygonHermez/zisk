@@ -1,6 +1,6 @@
 require "std_lookup.pil"
 require "std_permutation.pil"
-require "std_common.pil"
+require "std_direct.pil"
 
 const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x2000;
@@ -163,7 +163,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Operation.assume => how organize software
     col witness __debug_operation_bus_enabled;
 
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -241,7 +241,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //
 
     const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
-    permutation (MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
+    permutation (MAIN_CONTINUATION_ID, expressions: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
                                         sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
 
     flag * (1 - flag) === 0;
@@ -271,6 +271,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
 
-    direct_global_update_proves(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
-    direct_global_update_assumes(MAIN_CONTINUATION_ID, cols: [0, 1, 0x1000_0000, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
+    direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, 4096, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
+    direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, 0x1000_0000, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
 }

@@ -26,11 +26,11 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/minor_clean" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/minor_clean" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/minor_clean" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/minor_clean" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/minor_clean" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/merge-std-chang" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/merge-std-chang" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/merge-std-chang" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/merge-std-chang" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/merge-std-chang" }
 # Local development
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }

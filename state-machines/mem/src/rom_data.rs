@@ -78,10 +78,10 @@ impl<F: PrimeField> RomDataSM<F> {
             let air_instance =
                 self.prove_instance(mem_ops, segment_id, is_last_segment, &previous_segment);
 
-            self.std
-                .pctx
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(global_idxs[segment_id]));
+            // self.std
+            //     .pctx
+            //     .air_instance_repo
+            //     .add_air_instance(air_instance, global_idxs[segment_id]);
         }
     }
 
