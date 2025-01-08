@@ -70,6 +70,9 @@ const REG_STEP: &str = "r11";
 const REG_SP: &str = "r10";
 const REG_PC: &str = "r9";
 const REG_VALUE: &str = "r12";
+const REG_VALUE_W: &str = "r12d";
+const REG_VALUE_H: &str = "r12w";
+const REG_VALUE_B: &str = "r12b";
 const REG_ADDRESS: &str = "r13";
 
 // #[cfg(feature = "sp")]
@@ -612,26 +615,26 @@ impl ZiskRom {
                     match instruction.ind_width {
                         8 => {
                             *s += &format!(
-                                "\tmov {}, qword ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
+                                "\tmov {}, qword ptr [{}] /* b=SRC_IND(8): b = mem[address] */\n",
                                 REG_B, REG_ADDRESS
                             );
                         }
                         4 => {
                             *s += &format!(
-                                "\tmov {}, dword ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
-                                REG_B, REG_ADDRESS
+                                "\tmov {}, [{}] /* b=SRC_IND(4): b = mem[address] */\n",
+                                REG_B_W, REG_ADDRESS
                             );
                         }
                         2 => {
                             *s += &format!(
-                                "\tmov {}, word ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
-                                REG_B, REG_ADDRESS
+                                "\tmov {}, word ptr [{}] /* b=SRC_IND(2): b = mem[address] */\n",
+                                REG_B_H, REG_ADDRESS
                             );
                         }
                         1 => {
                             *s += &format!(
-                                "\tmov {}, byte ptr [{}] /* b=SRC_IND: b = mem[address] */\n",
-                                REG_B, REG_ADDRESS
+                                "\tmov {}, byte ptr [{}] /* b=SRC_IND(1): b = mem[address] */\n",
+                                REG_B_B, REG_ADDRESS
                             );
                         }
                         _ => panic!(
@@ -673,24 +676,30 @@ impl ZiskRom {
                         );
                     }
                     *s += &format!(
+                        "\tmov {}, {} /* STORE_MEM: reg_value = value */\n",
+                        REG_VALUE, value
+                    );
+                    *s += &format!(
                         "\tmov {}[{}], {} /* STORE_MEM: mem[address] = value {}*/\n",
                         if value.starts_with("0x") { "qword ptr " } else { "" },
                         REG_ADDRESS,
-                        value,
+                        REG_VALUE,
                         if instruction.store_ra { "" } else { "= c " }
                     );
                 }
                 STORE_IND => {
+                    // Calculate value
                     if instruction.store_ra {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x} /* STORE_IND: (ra): value = pc + i.jmp_offset2 */\n",
-                            REG_VALUE,
-                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
-                        );
+                        value = format!("0x{:x}", (ctx.pc as i64 + instruction.jmp_offset2) as u64);
                     } else {
-                        //*s += &format!("\t/* STORE_IND: value = c */\n");
                         value = ctx.c_string_value.clone();
                     }
+                    *s += &format!(
+                        "\tmov {}, {} /* STORE_IND: reg_value = value */\n",
+                        REG_VALUE, value
+                    );
+
+                    // Calculate address
                     *s += &format!(
                         "\tmov {}, {} /* STORE_IND: address = a */\n",
                         REG_ADDRESS, ctx.a_string_value
@@ -708,40 +717,41 @@ impl ZiskRom {
                         );
                     }
 
+                    // Store mem[address] = value
                     match instruction.ind_width {
                         8 => {
                             *s += &format!(
-                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                "\tmov {}[{}], {} /* STORE_IND(8): mem[address] = value {}*/\n",
                                 if value.starts_with("0x") { "qword ptr " } else { "" },
                                 REG_ADDRESS,
-                                value,
+                                REG_VALUE,
                                 if instruction.store_ra { "" } else { "= c " }
                             );
                         }
                         4 => {
                             *s += &format!(
-                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                "\tmov {}[{}], {} /* STORE_IND(4): mem[address] = value {}*/\n",
                                 if value.starts_with("0x") { "dword ptr " } else { "" },
                                 REG_ADDRESS,
-                                value,
+                                REG_VALUE_W,
                                 if instruction.store_ra { "" } else { "= c " }
                             );
                         }
                         2 => {
                             *s += &format!(
-                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                "\tmov {}[{}], {} /* STORE_IND(2): mem[address] = value {}*/\n",
                                 if value.starts_with("0x") { "word ptr " } else { "" },
                                 REG_ADDRESS,
-                                value,
+                                REG_VALUE_H,
                                 if instruction.store_ra { "" } else { "= c " }
                             );
                         }
                         1 => {
                             *s += &format!(
-                                "\tmov {}[{}], {} /* STORE_IND: mem[address] = value {}*/\n",
+                                "\tmov {}[{}], {} /* STORE_IND(1): mem[address] = value {}*/\n",
                                 if value.starts_with("0x") { "byte ptr " } else { "" },
                                 REG_ADDRESS,
-                                value,
+                                REG_VALUE_B,
                                 if instruction.store_ra { "" } else { "= c " }
                             );
                         }
@@ -827,7 +837,7 @@ impl ZiskRom {
             //     "\tjnz pc_{:x}_no_store_data /* skip if storing is not required */\n",
             //     ctx.pc
             // );
-            // *s += &format!("\tnop\n");
+            // *s += &format!("\t/* Store data */\n");
             // *s += &format!("pc_{:x}_no_store_data:\n", ctx.pc);
 
             // Jump to new pc, if not the next one
@@ -842,11 +852,11 @@ impl ZiskRom {
                 *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
                 *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
                 *s += &format!("\tadd {}, map_pc_80000000 /* pc += map_pc_80000000 */\n", REG_PC);
-                *s += &format!("\tjmp {} /* jump to pc */\n", REG_PC);
+                *s += &format!("\tjmp [{}] /* jump to pc */\n", REG_PC);
                 *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
                 *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
                 *s += &format!("\tadd {}, map_pc_1000 /* pc += map_pc_1000 */\n", REG_PC);
-                *s += &format!("\tjmp {} /* jump to pc */\n", REG_PC);
+                *s += &format!("\tjmp [{}] /* jump to pc */\n", REG_PC);
             }
         }
 
@@ -873,6 +883,10 @@ impl ZiskRom {
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
             *s += &format!("map_pc_{:x}: jmp pc_{:x}\n", key, key);
+
+            // *s += &format!("map_pc_{:x}:\n", key);
+            // *s += &format!("\tmov {}, pc_{:x}\n", REG_VALUE, key);
+            // *s += &format!("\tjmp {}\n", REG_VALUE);
         }
 
         let mut lines = s.lines();
@@ -979,7 +993,7 @@ impl ZiskRom {
                     );
                 }
                 // Sign extend byte to quad
-                s += &format!("\tmovsx {}, {}\n", REG_C, REG_B_W);
+                s += &format!("\tmovsxd {}, {}\n", REG_C, REG_B_W);
 
                 ctx.flag_is_always_zero = true;
             }
