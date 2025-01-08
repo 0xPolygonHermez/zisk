@@ -483,7 +483,20 @@ impl ZiskRom {
 
         let mut ctx = ZiskAsmContext::default();
 
-        *s += "emulator_execute:\n";
+        *s += ".intel_syntax noprefix\n";
+        *s += ".code64\n";
+        *s += ".section .rodata\n";
+        *s += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
+        *s += ".set msglen, (. - msg)\n\n";
+
+        *s += ".section .text\n";
+        *s += ".global emulator_start\n";
+        *s += "emulator_start:\n";
+        *s += "\tmov rax, 1\n";
+        *s += "\tmov rdi, 1\n";
+        *s += "\tlea rsi, msg\n";
+        *s += "\tmov rdx, msglen\n";
+        *s += "\tsyscall\n\n";
 
         // Save instructions program addresses into a vector
         let mut keys: Vec<u64> = Vec::new();
@@ -514,27 +527,27 @@ impl ZiskRom {
                     *s += &format!("\tmov {}, {} /* a=SRC_C: a = c */\n", REG_A, REG_C);
                 }
                 SRC_MEM => {
-                    if instruction.a_use_sp_imm1 == 0 {
-                        // *s += &format!(
-                        //     "\tmov {}, [0x{:x}] /* a=SRC_MEM: a = mem[i.a_offset_imm0] */\n",
-                        //     REG_A, instruction.a_offset_imm0
-                        // );
-                        ctx.a_is_expression = true;
-                        ctx.a_string_value = format!("[0x{:x}]", instruction.a_offset_imm0);
-                    } else {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x} /* a=SRC_MEM: address = i.a_offset_imm0 */\n",
-                            REG_ADDRESS, instruction.a_offset_imm0
-                        );
-                        *s += &format!(
-                            "\tadd {}, {} /* a=SRC_MEM: address += sp */\n",
-                            REG_ADDRESS, REG_SP
-                        );
-                        *s += &format!(
-                            "\tmov {}, [{}] /* a=SRC_MEM: a = mem[address] */\n",
-                            REG_A, REG_ADDRESS
-                        );
-                    }
+                    // if instruction.a_use_sp_imm1 == 0 {
+                    //     // *s += &format!(
+                    //     //     "\tmov {}, [0x{:x}] /* a=SRC_MEM: a = mem[i.a_offset_imm0] */\n",
+                    //     //     REG_A, instruction.a_offset_imm0
+                    //     // );
+                    //     ctx.a_is_expression = true;
+                    //     ctx.a_string_value = format!("[0x{:x}]", instruction.a_offset_imm0);
+                    // } else {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* a=SRC_MEM: address = i.a_offset_imm0 */\n",
+                        REG_ADDRESS, instruction.a_offset_imm0
+                    );
+                    *s += &format!(
+                        "\tadd {}, {} /* a=SRC_MEM: address += sp */\n",
+                        REG_ADDRESS, REG_SP
+                    );
+                    *s += &format!(
+                        "\tmov {}, [{}] /* a=SRC_MEM: a = mem[address] */\n",
+                        REG_A, REG_ADDRESS
+                    );
+                    //}
                 }
                 SRC_IMM => {
                     // *s += &format!(
@@ -564,27 +577,27 @@ impl ZiskRom {
                     *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
                 }
                 SRC_MEM => {
-                    if instruction.b_use_sp_imm1 == 0 {
-                        // *s += &format!(
-                        //     "\tmov {}, [0x{:x}] /* b=SRC_MEM: b = mem[i.b_offset_imm0] */\n",
-                        //     REG_B, instruction.b_offset_imm0
-                        // );
-                        ctx.b_is_expression = true;
-                        ctx.b_string_value = format!("[0x{:x}]", instruction.b_offset_imm0);
-                    } else {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x} /* b=SRC_MEM: address = i.b_offset_imm0 */\n",
-                            REG_ADDRESS, instruction.b_offset_imm0
-                        );
-                        *s += &format!(
-                            "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
-                            REG_ADDRESS, REG_SP
-                        );
-                        *s += &format!(
-                            "\tmov {}, [{}] /* b=SRC_MEM: b = mem[address] */\n",
-                            REG_B, REG_ADDRESS
-                        );
-                    }
+                    // if instruction.b_use_sp_imm1 == 0 {
+                    //     // *s += &format!(
+                    //     //     "\tmov {}, [0x{:x}] /* b=SRC_MEM: b = mem[i.b_offset_imm0] */\n",
+                    //     //     REG_B, instruction.b_offset_imm0
+                    //     // );
+                    //     ctx.b_is_expression = true;
+                    //     ctx.b_string_value = format!("[0x{:x}]", instruction.b_offset_imm0);
+                    // } else {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* b=SRC_MEM: address = i.b_offset_imm0 */\n",
+                        REG_ADDRESS, instruction.b_offset_imm0
+                    );
+                    *s += &format!(
+                        "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
+                        REG_ADDRESS, REG_SP
+                    );
+                    *s += &format!(
+                        "\tmov {}, [{}] /* b=SRC_MEM: b = mem[address] */\n",
+                        REG_B, REG_ADDRESS
+                    );
+                    //}
                 }
                 SRC_IMM => {
                     // *s += &format!(
@@ -862,6 +875,11 @@ impl ZiskRom {
 
         *s += "\n";
         *s += "execute_end:\n";
+
+        *s += "\tmov rax, 60\n";
+        *s += "\tmov rdi, 0\n";
+        *s += "\tsyscall\n\n";
+
         *s += "\tret\n";
 
         //*s += "\n";
@@ -1045,23 +1063,27 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sll => {
-                s += &format!("\tmov {}, {} /* Sll: c = a */\n", REG_C, ctx.a_string_value);
                 // c <<= b
                 if ctx.b_is_constant {
+                    s += &format!("\tmov {}, {} /* Sll: c = a */\n", REG_C, ctx.a_string_value);
                     s += &format!(
                         "\tshl {}, 0x{:x} /* Sll: c = a << b */\n",
                         REG_C,
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
+                    s += &format!(
+                        "\tmov {}, {} /* Sll: c(value) = a */\n",
+                        REG_VALUE, ctx.a_string_value
+                    );
                     if ctx.b_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* Sll: b = value */\n",
-                            REG_B, ctx.b_string_value
+                            REG_C, ctx.b_string_value
                         );
                     }
-                    s += &format!("\tand {}, 0x3f /* Sll: b = b & 0x3f */\n", REG_B);
-                    s += &format!("\tshl {}, {} /* Sll: c = a << b */\n", REG_C, REG_B);
+                    s += &format!("\tshl {}, {} /* Sll: c(value) = a << b */\n", REG_VALUE, REG_C);
+                    s += &format!("\tmov {}, {} /* Sll: c = value */\n", REG_C, REG_VALUE);
                 }
                 ctx.flag_is_always_zero = true;
             }
@@ -1071,17 +1093,17 @@ impl ZiskRom {
                 if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, 0x{:x} /* SllW: c = a_w */\n",
-                        REG_C_W,
+                        REG_VALUE_W,
                         ctx.a_numeric_value & 0xffffffff
                     );
                 } else {
                     if ctx.a_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* SllW: a = value */\n",
-                            REG_A, ctx.a_string_value
+                            REG_VALUE_W, ctx.a_string_value
                         );
                     }
-                    s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_C_W, REG_A_W);
+                    //s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_C_W, REG_A_W);
                 }
                 if ctx.b_is_constant {
                     s += &format!(
@@ -1093,52 +1115,62 @@ impl ZiskRom {
                     if ctx.b_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* SllW: b = value */\n",
-                            REG_B, ctx.b_string_value
+                            REG_C, ctx.b_string_value
                         );
                     }
-                    s += &format!("\tand {}, 0x3f /* SllW: b = b & 0x3f */\n", REG_B);
-                    s += &format!("\tshl {}, {} /* SllW: c = a_w << b */\n", REG_C, REG_B);
+                    //s += &format!("\tand {}, 0x3f /* SllW: b = b & 0x3f */\n", REG_B);
                 }
+                s += &format!("\tshl {}, {} /* SllW: c(value) = a_w << b */\n", REG_VALUE, REG_C);
+                s += &format!("\tmov {}, {} /* SllW: c = value */\n", REG_C, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
                 // (((a as i64) >> (b & 0x3f)) as u64, false)
                 s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a_string_value);
                 if ctx.b_is_constant {
+                    s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a_string_value);
                     s += &format!(
                         "\tsar {}, 0x{:x} /* Sra: c = a >> b */\n",
                         REG_C,
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
+                    s += &format!(
+                        "\tmov {}, {} /* Sra: c(value) = a */\n",
+                        REG_VALUE, ctx.a_string_value
+                    );
                     if ctx.b_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* Sra: b = value */\n",
-                            REG_B, ctx.b_string_value
+                            REG_C, ctx.b_string_value
                         );
+                    } else {
+                        s += &format!("\tmov {}, {} /* Sra: c = b */\n", REG_C, REG_B);
                     }
-                    s += &format!("\tand {}, 0x3f /* Sra: b = b & 0x3f */\n", REG_B);
-                    s += &format!("\tsar {}, {} /* Sra: c = a >> b */\n", REG_C, REG_B);
+                    s += &format!("\tsar {}, {} /* Sra: c(value) = a >> b */\n", REG_VALUE, REG_C);
+                    s += &format!("\tmov {}, {} /* Sra: c = value */\n", REG_C, REG_VALUE);
                 }
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Srl => {
-                s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_C, ctx.a_string_value);
                 if ctx.b_is_constant {
+                    s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_C, ctx.a_string_value);
                     s += &format!(
                         "\tshr {}, 0x{:x} /* Srl: c = a >> b */\n",
                         REG_C,
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
+                    s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_VALUE, ctx.a_string_value);
                     if ctx.b_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* Srl: b = value */\n",
-                            REG_B, ctx.b_string_value
+                            REG_C, ctx.b_string_value
                         );
                     }
-                    s += &format!("\tand {}, 0x3f /* Srl: b = b & 0x3f */\n", REG_B);
-                    s += &format!("\tshr {}, {} /* Srl: c = a >> b */\n", REG_C, REG_B);
+                    //s += &format!("\tand {}, 0x3f /* Srl: b = b & 0x3f */\n", REG_B);
+                    s += &format!("\tshr {}, {} /* Srl: c(value) = a >> b */\n", REG_VALUE, REG_C);
+                    s += &format!("\tmov {}, {} /* Srl: c = value */\n", REG_C, REG_VALUE);
                 }
                 //s += &format!("\tmov {}, 0\n", REG_FLAG);
                 ctx.flag_is_always_zero = true;
@@ -1187,17 +1219,17 @@ impl ZiskRom {
                 if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, 0x{:x} /* SrlW: c = a_w */\n",
-                        REG_C_W,
+                        REG_VALUE_W,
                         ctx.a_numeric_value & 0xffffffff
                     );
                 } else {
                     if ctx.a_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* SrlW: a = value */\n",
-                            REG_A, ctx.a_string_value
+                            REG_VALUE_W, ctx.a_string_value
                         );
                     }
-                    s += &format!("\tmov {}, {} /* SrlW: c = a_w */\n", REG_C_W, REG_A_W);
+                    //s += &format!("\tmov {}, {} /* SrlW: c = a_w */\n", REG_C_W, REG_A_W);
                 }
                 if ctx.b_is_constant {
                     s += &format!(
@@ -1209,12 +1241,13 @@ impl ZiskRom {
                     if ctx.b_is_expression {
                         s += &format!(
                             "\tmov {}, {} /* SrlW: b = value */\n",
-                            REG_B, ctx.b_string_value
+                            REG_C, ctx.b_string_value
                         );
                     }
-                    s += &format!("\tand {}, 0x3f /* SrlW: b = b & 0x3f */\n", REG_B);
-                    s += &format!("\tshr {}, {} /* SrlW: c = a_w >> b */\n", REG_C, REG_B);
+                    //s += &format!("\tand {}, 0x3f /* SrlW: b = b & 0x3f */\n", REG_B);
                 }
+                s += &format!("\tshr {}, {} /* SrlW: c(value) = a_w >> b */\n", REG_VALUE, REG_C);
+                s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Eq => {
