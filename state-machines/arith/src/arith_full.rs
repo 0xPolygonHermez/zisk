@@ -84,7 +84,6 @@ impl ArithFullSM {
             let b = OperationBusData::get_b(input);
             let step = OperationBusData::get_step(input);
 
-            log::debug!("#{} ARITH op:0x{:X} a:0x{:X} b:0x{:X}", irow, opcode, a, b);
             aop.calculate(opcode, a, b);
             let mut t: ArithTraceRow<F> = Default::default();
             for i in [0, 2] {
