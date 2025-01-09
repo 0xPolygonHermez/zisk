@@ -278,7 +278,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ) {
         table_instances.par_iter_mut().for_each(|(global_idx, table_instance)| {
             if let Some(air_instance) = table_instance.compute_witness(pctx) {
-                pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
+                if pctx.dctx_is_my_instance(*global_idx) {
+                    pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
+                }
             }
         });
     }
