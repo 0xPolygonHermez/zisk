@@ -228,19 +228,19 @@ impl ZiskInst {
     /// Constructs a `flags`` bitmap made of combinations of fields of the Zisk instruction.  This
     /// field is used by the PIL to proof some of the operations.
     pub fn get_flags(&self) -> u64 {
-        let flags: u64 = 1
-            | (((self.a_src == SRC_IMM) as u64) << 1)
-            | (((self.a_src == SRC_MEM) as u64) << 2)
-            | (((self.a_src == SRC_STEP) as u64) << 3)
-            | (((self.b_src == SRC_IMM) as u64) << 4)
-            | (((self.b_src == SRC_MEM) as u64) << 5)
-            | ((self.is_external_op as u64) << 6)
-            | ((self.store_ra as u64) << 7)
-            | (((self.store == STORE_MEM) as u64) << 8)
-            | (((self.store == STORE_IND) as u64) << 9)
-            | ((self.set_pc as u64) << 10)
-            | ((self.m32 as u64) << 11)
-            | (((self.b_src == SRC_IND) as u64) << 12);
+        let flags: u64 = 1 |
+            (((self.a_src == SRC_IMM) as u64) << 1) |
+            (((self.a_src == SRC_MEM) as u64) << 2) |
+            (((self.a_src == SRC_STEP) as u64) << 3) |
+            (((self.b_src == SRC_IMM) as u64) << 4) |
+            (((self.b_src == SRC_MEM) as u64) << 5) |
+            ((self.is_external_op as u64) << 6) |
+            ((self.store_ra as u64) << 7) |
+            (((self.store == STORE_MEM) as u64) << 8) |
+            (((self.store == STORE_IND) as u64) << 9) |
+            ((self.set_pc as u64) << 10) |
+            ((self.m32 as u64) << 11) |
+            (((self.b_src == SRC_IND) as u64) << 12);
 
         flags
     }

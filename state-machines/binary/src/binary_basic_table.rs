@@ -100,72 +100,72 @@ impl BinaryBasicTableSM {
 
     fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor => true,
+            BinaryBasicTableOp::Minu |
+            BinaryBasicTableOp::Min |
+            BinaryBasicTableOp::Maxu |
+            BinaryBasicTableOp::Max |
+            BinaryBasicTableOp::LtAbsNP |
+            BinaryBasicTableOp::LtAbsPN |
+            BinaryBasicTableOp::Ltu |
+            BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
+            BinaryBasicTableOp::Eq |
+            BinaryBasicTableOp::Add |
+            BinaryBasicTableOp::Sub |
+            BinaryBasicTableOp::Leu |
+            BinaryBasicTableOp::Le |
+            BinaryBasicTableOp::And |
+            BinaryBasicTableOp::Or |
+            BinaryBasicTableOp::Xor => true,
             BinaryBasicTableOp::Ext32 => false,
         }
     }
 
     fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub => true,
+            BinaryBasicTableOp::Minu |
+            BinaryBasicTableOp::Min |
+            BinaryBasicTableOp::Maxu |
+            BinaryBasicTableOp::Max |
+            BinaryBasicTableOp::LtAbsNP |
+            BinaryBasicTableOp::LtAbsPN |
+            BinaryBasicTableOp::Ltu |
+            BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
+            BinaryBasicTableOp::Eq |
+            BinaryBasicTableOp::Add |
+            BinaryBasicTableOp::Sub => true,
 
-            BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => false,
+            BinaryBasicTableOp::Leu |
+            BinaryBasicTableOp::Le |
+            BinaryBasicTableOp::And |
+            BinaryBasicTableOp::Or |
+            BinaryBasicTableOp::Xor |
+            BinaryBasicTableOp::Ext32 => false,
         }
     }
 
     fn opcode_result_is_a(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max => true,
+            BinaryBasicTableOp::Minu |
+            BinaryBasicTableOp::Min |
+            BinaryBasicTableOp::Maxu |
+            BinaryBasicTableOp::Max => true,
 
-            BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => false,
+            BinaryBasicTableOp::LtAbsNP |
+            BinaryBasicTableOp::LtAbsPN |
+            BinaryBasicTableOp::Ltu |
+            BinaryBasicTableOp::Lt |
+            BinaryBasicTableOp::Gt |
+            BinaryBasicTableOp::Eq |
+            BinaryBasicTableOp::Add |
+            BinaryBasicTableOp::Sub |
+            BinaryBasicTableOp::Leu |
+            BinaryBasicTableOp::Le |
+            BinaryBasicTableOp::And |
+            BinaryBasicTableOp::Or |
+            BinaryBasicTableOp::Xor |
+            BinaryBasicTableOp::Ext32 => false,
         }
     }
 
