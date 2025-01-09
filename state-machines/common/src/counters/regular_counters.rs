@@ -1,26 +1,49 @@
-use std::ops::Add;
+//! The `RegularCounters` module defines a generic counter for tracking operations
+//! sent over the data bus. It is designed to be reusable across multiple state machines
+//! and collects metrics for specified `ZiskOperationType` instructions.
 
 use crate::{Counter, Metrics};
+use std::ops::Add;
 use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
+/// The `RegularCounters` struct represents a generic counter that monitors and measures
+/// operations on the data bus.
+///
+/// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
+/// accepted operation type whenever data is processed on the bus.
 pub struct RegularCounters {
-    /// Vector of Zisk Operation Type instructions to be counted
+    /// Vector of `ZiskOperationType` instructions to be counted.
     op_type: Vec<ZiskOperationType>,
 
-    /// Connected Bus Id
+    /// The connected bus ID.
     bus_id: BusId,
 
-    /// Vector of counters, one for each Zisk Operation Type accepted
+    /// Vector of counters, one for each accepted `ZiskOperationType`.
     counter: Vec<Counter>,
 }
 
 impl RegularCounters {
+    /// Creates a new instance of `RegularCounters`.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus to which this counter is connected.
+    /// * `op_type` - A vector of `ZiskOperationType` instructions to monitor.
+    ///
+    /// # Returns
+    /// A new `RegularCounters` instance.
     pub fn new(bus_id: BusId, op_type: Vec<ZiskOperationType>) -> Self {
         let counter = vec![Counter::default(); op_type.len()];
         Self { bus_id, op_type, counter }
     }
 
+    /// Retrieves the count of instructions for a specific `ZiskOperationType`.
+    ///
+    /// # Arguments
+    /// * `op_type` - The operation type to retrieve the count for.
+    ///
+    /// # Returns
+    /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         if let Some(index) = self.op_type.iter().position(|&_op_type| op_type == _op_type) {
             return Some(self.counter[index].inst_count);
@@ -30,6 +53,14 @@ impl RegularCounters {
 }
 
 impl Metrics for RegularCounters {
+    /// Tracks activity on the connected bus and updates counters for recognized operations.
+    ///
+    /// # Arguments
+    /// * `_bus_id` - The ID of the bus (ignored in this implementation).
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
@@ -42,6 +73,13 @@ impl Metrics for RegularCounters {
         vec![]
     }
 
+    /// Merges metrics from another `RegularCounters`.
+    ///
+    /// # Arguments
+    /// * `other` - A reference to another `Metrics` instance that must be a `RegularCounters`.
+    ///
+    /// # Panics
+    /// Panics if the `other` is not of type `RegularCounters`.
     fn add(&mut self, other: &dyn Metrics) {
         let other = other
             .as_any()
@@ -52,10 +90,18 @@ impl Metrics for RegularCounters {
         }
     }
 
+    /// Returns the bus IDs associated with this counter.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
+    ///
+    /// # Returns
+    /// A reference to `self` as `dyn std::any::Any`.
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -64,6 +110,14 @@ impl Metrics for RegularCounters {
 impl Add for RegularCounters {
     type Output = RegularCounters;
 
+    /// Combines two `RegularCounters` instances by summing their counters.
+    ///
+    /// # Arguments
+    /// * `self` - The first `RegularCounters` instance.
+    /// * `other` - The second `RegularCounters` instance.
+    ///
+    /// # Returns
+    /// A new `RegularCounters` with combined counters.
     fn add(self, other: Self) -> RegularCounters {
         let counter = self
             .counter
@@ -76,6 +130,16 @@ impl Add for RegularCounters {
 }
 
 impl BusDevice<u64> for RegularCounters {
+    /// Processes data received on the bus, updating counters.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// A tuple where:
+    /// - The first element is `true`, indicating that processing should continue.
+    /// - The second element is an empty vector, as this implementation does not produce derived inputs.
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);

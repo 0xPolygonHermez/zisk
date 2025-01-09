@@ -1,3 +1,11 @@
+//! The `ArithSM` module implements the Arithmetic State Machine,
+//! coordinating sub-state machines to handle various arithmetic operations seamlessly.
+//!
+//! Key components of this module include:
+//! - The `ArithSM` struct, encapsulating the full, table, and range table state machines.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, input collectors,
+//!   and input generators specific to arithmetic computations.
+
 use std::sync::Arc;
 
 use p3_field::PrimeField;
@@ -14,7 +22,8 @@ use crate::{
     ArithRangeTableSM, ArithTableSM,
 };
 
-/// Arith state machine
+/// The `ArithSM` struct represents the Arithmetic State Machine, which
+/// is a proxy machine to manage state machines involved in arithmetic operations.
 pub struct ArithSM {
     /// Arith Full state machine
     arith_full_sm: Arc<ArithFullSM>,
@@ -27,7 +36,10 @@ pub struct ArithSM {
 }
 
 impl ArithSM {
-    /// Creates a new ArithSM instance
+    /// Creates a new instance of the `ArithSM` state machine.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `ArithSM` containing initialized sub-state machines.
     pub fn new() -> Arc<Self> {
         let arith_table_sm = ArithTableSM::new();
         let arith_range_table_sm = ArithRangeTableSM::new();
@@ -39,10 +51,18 @@ impl ArithSM {
 }
 
 impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
+    /// Builds and returns a new counter for monitoring arithmetic operations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `ArithCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(ArithCounter::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
+    /// Builds a planner to plan arithmetic-related instances.
+    ///
+    /// # Returns
+    /// A boxed implementation of `ArithPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(
             ArithPlanner::new()
@@ -63,17 +83,21 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         )
     }
 
+    /// Builds an inputs data collector for arithmetic operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `ictx` - The context of the instance, containing the plan and its associated configurations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
+    ///
+    /// # Panics
+    /// Panics if the provided `air_id` is not supported.
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match ictx.plan.air_id {
             id if id == ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
-                // instance!(
-                //     ArithFullInstance,
-                //     ArithFullSM,
-                //     ArithTrace::<usize>::NUM_ROWS,
-                //     zisk_core::ZiskOperationType::Arith
-                // );
-                // Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
             }
             id if id == ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
@@ -87,6 +111,10 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         }
     }
 
+    /// Creates and returns an input generator for arithmetic state machine computations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `ArithInputGenerator`.
     fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
         Some(Box::new(ArithInputGenerator::default()))
     }
