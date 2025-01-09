@@ -174,7 +174,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                     }
 
                     // increase the multiplicity of internal reads
-                    range_check_data[(MEMORY_MAX_DIFF - 1) as usize] += internal_reads as u64;
+                    range_check_data[(MEMORY_MAX_DIFF - 1) as usize] += internal_reads;
 
                     // control the edge case when there aren't enough rows to complete the internal
                     // reads or regular memory operation

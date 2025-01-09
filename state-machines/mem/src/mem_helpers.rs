@@ -88,7 +88,7 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn is_double(addr: u32, bytes: u8) -> bool {
-        addr & MEM_ADDR_ALIGN_MASK + bytes as u32 > 8
+        (addr & MEM_ADDR_ALIGN_MASK) + bytes as u32 > 8
     }
     #[inline(always)]
     pub fn is_write(op: u8) -> bool {
@@ -149,7 +149,7 @@ impl MemHelpers {
         let hi_mask = !(byte_mask >> (8 - offset));
         let hi_write = (hi_mask & read_values[1]) | (value >> (8 - offset));
 
-        return [lo_write, hi_write]
+        [lo_write, hi_write]
     }
 }
 impl fmt::Debug for MemAlignResponse {

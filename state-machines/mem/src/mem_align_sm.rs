@@ -807,7 +807,7 @@ impl<F: PrimeField> MemAlignSM<F> {
 
         let mut index = 0;
         for input in mem_ops.iter() {
-            let count = self.prove_mem_align_op(&input, &mut trace, index);
+            let count = self.prove_mem_align_op(input, &mut trace, index);
             for i in 0..count {
                 for j in 0..CHUNK_NUM {
                     let element = trace[index + i].reg[j]

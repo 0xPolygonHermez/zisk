@@ -41,12 +41,10 @@ impl<F: PrimeField> MemModuleInstance<F> {
             } else {
                 self.process_unaligned_double_read(addr_w, data);
             }
+        } else if is_write {
+            self.process_unaligned_single_write(addr_w, bytes, data);
         } else {
-            if is_write {
-                self.process_unaligned_single_write(addr_w, bytes, data);
-            } else {
-                self.process_unaligned_single_read(addr_w, data);
-            }
+            self.process_unaligned_single_read(addr_w, data);
         }
     }
 
