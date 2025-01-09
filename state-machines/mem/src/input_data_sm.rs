@@ -75,23 +75,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
             trace.num_rows()
         );
 
-        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
-        // segments In a Memory AIR instance, the first row is reserved as a dummy row.
-        // This dummy row is used to facilitate the continuation state between different AIR
-        // segments. It ensures seamless transitions when multiple AIR segments are
-        // processed consecutively. This design avoids discontinuities in memory access
-        // patterns and ensures that the memory trace is continuous, For this reason we use
-        // AIR num_rows - 1 as the number of rows in each memory AIR instance
-
-        // Create a vector of Mem0Row instances, one for each memory operation
-        // Recall that first row is a dummy row used for the continuations between AIR segments
-        // The length of the vector is the number of input memory operations plus one because
-        // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
-
-        //println! {"InputDataSM::prove_instance() mem_ops.len={} prover_buffer.len={}
-        // air.num_rows={}", mem_ops.len(), prover_buffer.len(), air.num_rows()};
-
-        let mut range_check_data: Vec<u64> = vec![0; 1 << 16];
+        let mut range_check_data = Box::new([0u64; 1 << 16]);
 
         let mut air_values_mem = MemoryAirValues {
             segment_id: segment_id as u32,

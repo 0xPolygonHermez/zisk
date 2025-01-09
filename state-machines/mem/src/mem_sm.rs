@@ -81,20 +81,13 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             trace.num_rows,
         );
 
-        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
-        // segments In a Memory AIR instance, the first row is reserved as a dummy row.
-        // This dummy row is used to facilitate the continuation state between different AIR
-        // segments. It ensures seamless transitions when multiple AIR segments are
-        // processed consecutively. This design avoids discontinuities in memory access
-        // patterns and ensures that the memory trace is continuous, For this reason we use
-        // AIR num_rows - 1 as the number of rows in each memory AIR instance
+        let std = self.std.clone();
+        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let mut range_check_data = Box::new([0u16; MEMORY_MAX_DIFF as usize]);
+        let f_range_check_max_value = F::from_canonical_u64(0xFFFF + 1);
 
-        // Create a vector of Mem0Row instances, one for each memory operation
-        // Recall that first row is a dummy row used for the continuations between AIR segments
-        // The length of the vector is the number of input memory operations plus one because
-        // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
-
-        let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
+        // use special counter for internal reads
+        let mut range_check_data_max = 0u64;
 
         let mut air_values_mem = MemoryAirValues {
             segment_id: segment_id as u32,
@@ -173,8 +166,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                         i += 1;
                     }
 
-                    // increase the multiplicity of internal reads
-                    range_check_data[(MEMORY_MAX_DIFF - 1) as usize] += internal_reads;
+                    range_check_data_max += internal_reads;
 
                     // control the edge case when there aren't enough rows to complete the internal
                     // reads or regular memory operation
@@ -199,8 +191,18 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             i += 1;
 
             // Store the value of incremenet so it can be range checked
-            if increment <= MEMORY_MAX_DIFF || increment == 0 {
-                range_check_data[(increment - 1) as usize] += 1;
+            let range_index = increment as usize - 1;
+            if range_index < MEMORY_MAX_DIFF as usize {
+                if range_check_data[range_index] == 0xFFFF {
+                    range_check_data[range_index] = 0;
+                    std.range_check(
+                        F::from_canonical_u64(increment),
+                        f_range_check_max_value,
+                        range_id,
+                    );
+                } else {
+                    range_check_data[range_index] += 1;
+                }
             } else {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
@@ -241,7 +243,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
 
         // Store the value of trivial increment so that they can be range checked
         // value = 1 => index = 0
-        range_check_data[0] += padding_size as u64;
+        self.std.range_check(F::zero(), F::from_canonical_usize(padding_size), range_id);
 
         // no add extra +1 because index = value - 1
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
@@ -255,10 +257,15 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             }
             self.std.range_check(
                 F::from_canonical_usize(value + 1),
-                F::from_canonical_u64(multiplicity),
+                F::from_canonical_u16(multiplicity),
                 range_id,
             );
         }
+        self.std.range_check(
+            f_range_check_max_value,
+            F::from_canonical_u64(range_check_data_max),
+            range_id,
+        );
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_canonical_u32(air_values_mem.segment_id);
