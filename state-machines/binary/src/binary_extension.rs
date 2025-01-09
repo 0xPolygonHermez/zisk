@@ -234,12 +234,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
-                        out = (a_bytes[j] as u64) << 8;
+                        out = a_bytes[j] as u64;
                     } else if j == 1 {
                         if ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
                             out = (a_bytes[j] as u64) << 8 | SE_MASK_16;
                         } else {
-                            out = a_bytes[j] as u64;
+                            out = (a_bytes[j] as u64) << 8;
                         }
                     } else {
                         out = 0;
