@@ -3,7 +3,8 @@
 //!
 //! Key components of this module include:
 //! - The `StdSM` struct, which provides access to the PIL2 standard library.
-//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input
+//!   collectors.
 
 use std::sync::Arc;
 
@@ -55,7 +56,8 @@ impl<F: PrimeField> ComponentBuilder<F> for StdSM<F> {
     /// Builds an inputs data collector for standard library operations.
     ///
     /// # Arguments
-    /// * `ictx` - The context of the instance, containing the plan and its associated configurations.
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `StdInstance`.

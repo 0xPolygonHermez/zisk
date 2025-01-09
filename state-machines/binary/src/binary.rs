@@ -2,8 +2,10 @@
 //! coordinating sub-state machines to handle various binary operations seamlessly.
 //!
 //! Key components of this module include:
-//! - The `BinarySM` struct, encapsulating the basic and extension state machines along with their table counterparts.
-//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors specific to binary operations.
+//! - The `BinarySM` struct, encapsulating the basic and extension state machines along with their
+//!   table counterparts.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors
+//!   specific to binary operations.
 
 use std::sync::Arc;
 
@@ -66,7 +68,8 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// Builds and returns a new counter for monitoring binary operations.
     ///
     /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for binary and extension binary operations.
+    /// A boxed implementation of `RegularCounters` configured for binary and extension binary
+    /// operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RegularCounters::new(
             OPERATION_BUS_ID,
@@ -107,7 +110,8 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// Builds an inputs data collector for binary operations.
     ///
     /// # Arguments
-    /// * `ictx` - The context of the instance, containing the plan and its associated configurations.
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.

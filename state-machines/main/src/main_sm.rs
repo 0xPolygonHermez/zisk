@@ -3,7 +3,8 @@
 //!
 //! Key components of this module include:
 //! - The `MainSM` struct, which handles the main execution trace computation.
-//! - The `MainInstance` struct, representing the execution context of a specific main trace segment.
+//! - The `MainInstance` struct, representing the execution context of a specific main trace
+//!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
 use log::info;
@@ -53,7 +54,8 @@ impl MainSM {
         MainTrace::<F>::NUM_ROWS as u64 - 1
     }
 
-    /// Computes the main witness trace for a given segment based on the provided proof context, ROM, and emulation traces.
+    /// Computes the main witness trace for a given segment based on the provided proof context,
+    /// ROM, and emulation traces.
     ///
     /// # Arguments
     /// * `pctx` - Shared proof context for managing instances and air values.

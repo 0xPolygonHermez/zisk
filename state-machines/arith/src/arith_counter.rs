@@ -143,7 +143,6 @@ impl BusDevice<u64> for ArithCounter {
     /// A tuple where:
     /// - The first element indicates whether processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus.
-
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);

@@ -2,9 +2,11 @@
 //! directly managing the ROM execution process, generating traces, and computing custom traces.
 //!
 //! Key components of this module include:
-//! - The `RomSM` struct, which represents the ROM State Machine and encapsulates ROM-related operations.
+//! - The `RomSM` struct, which represents the ROM State Machine and encapsulates ROM-related
+//!   operations.
 //! - Methods for proving instances and computing traces from the ROM data.
-//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input
+//!   collectors.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -207,7 +209,8 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// Builds an inputs data collector for ROM operations.
     ///
     /// # Arguments
-    /// * `ictx` - The context of the instance, containing the plan and its associated configurations.
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.

@@ -1,25 +1,56 @@
+//! The `ArithPlanner` module defines a planner for generating execution plans specific to
+//! arithmetic operations.
+//!
+//! It organizes execution plans for both regular instances and table instances,
+//! leveraging arithmetic operation counts and metadata to construct detailed plans.
+
 use crate::ArithCounter;
 use sm_common::{
     plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Plan,
     Planner, TableInfo,
 };
 
+/// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.
+///
+/// It allows adding metadata about instances and tables and generates plans
+/// based on the provided counters.
 #[derive(Default)]
 pub struct ArithPlanner {
+    /// Arithmetic instances info to be planned.
     instances_info: Vec<InstanceInfo>,
+
+    /// Arithmetic table instances info to be planned.
     tables_info: Vec<TableInfo>,
 }
 
 impl ArithPlanner {
+    /// Creates a new `ArithPlanner`.
+    ///
+    /// # Returns
+    /// A new `ArithPlanner` instance with no preconfigured instances or tables.
     pub fn new() -> Self {
         Self { instances_info: Vec::new(), tables_info: Vec::new() }
     }
 
+    /// Adds an arithmetic instance to the planner.
+    ///
+    /// # Arguments
+    /// * `instance_info` - The `InstanceInfo` describing the arithmetic instance to be added.
+    ///
+    /// # Returns
+    /// The updated `ArithPlanner` instance.
     pub fn add_instance(mut self, instance_info: InstanceInfo) -> Self {
         self.instances_info.push(instance_info);
         self
     }
 
+    /// Adds an arithmetic table instance to the planner.
+    ///
+    /// # Arguments
+    /// * `table_info` - The `TableInfo` describing the arithmetic table instance to be added.
+    ///
+    /// # Returns
+    /// The updated `ArithPlanner` instance.
     pub fn add_table_instance(mut self, table_info: TableInfo) -> Self {
         self.tables_info.push(table_info);
         self
@@ -27,6 +58,18 @@ impl ArithPlanner {
 }
 
 impl Planner for ArithPlanner {
+    /// Generates execution plans for arithmetic instances and tables.
+    ///
+    /// # Arguments
+    /// * `counters` - A vector of counters, each associated with a `ChunkId` and `ArithCounter`
+    ///   metrics data.
+    ///
+    /// # Returns
+    /// A vector of `Plan` instances representing execution configurations for the instances and
+    /// tables.
+    ///
+    /// # Panics
+    /// Panics if any counter cannot be downcasted to an `ArithCounter`.
     fn plan(&self, counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // Prepare counts
         let mut count: Vec<Vec<InstCount>> = Vec::with_capacity(self.instances_info.len());

@@ -87,7 +87,8 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     ///
     /// # Arguments
     ///
-    /// * `ictx` - The context of the instance, containing the plan and its associated configurations.
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
