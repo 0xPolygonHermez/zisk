@@ -32,59 +32,18 @@ impl<F: PrimeField> RomDataSM<F> {
         Arc::new(Self { std: std.clone() })
     }
 
-    pub fn prove(&self, inputs: &[MemInput]) {
-        // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
-        // memory only need to process these special inputs, but inputs no change. At end of
-        // inputs proxy add an extra internal input to jump to last address
-
-        let airgroup_id = RomDataTrace::<usize>::AIRGROUP_ID;
-        let air_id = RomDataTrace::<usize>::AIR_ID;
-        let air_rows = RomDataTrace::<usize>::NUM_ROWS;
-
-        // at least one row to go
-        let count = inputs.len();
-        let count_rem = count % air_rows;
-        let num_segments = (count / air_rows) + if count_rem > 0 { 1 } else { 0 };
-
-        let mut global_idxs = vec![0; num_segments];
-
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..num_segments {
-            // TODO: Review
-            if let (true, global_idx) =
-                self.std.pctx.dctx.write().unwrap().add_instance(airgroup_id, air_id, 1)
-            {
-                global_idxs[i] = global_idx;
-            }
-        }
-
-        #[allow(clippy::needless_range_loop)]
-        for segment_id in 0..num_segments {
-            let is_last_segment = segment_id == num_segments - 1;
-            let input_offset = segment_id * air_rows;
-            let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: ROM_DATA_W_ADDR_INIT, step: 0, value: 0 }
-            } else {
-                MemPreviousSegment {
-                    addr: inputs[input_offset - 1].addr,
-                    step: inputs[input_offset - 1].step,
-                    value: inputs[input_offset - 1].value,
-                }
-            };
-            let input_end =
-                if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
-            let mem_ops = &inputs[input_offset..input_end];
-
-            let air_instance =
-                self.prove_instance(mem_ops, segment_id, is_last_segment, &previous_segment);
-
-            self.std
-                .pctx
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(global_idxs[segment_id]));
-        }
+    fn get_u32_values(&self, value: u64) -> (u32, u32) {
+        (value as u32, (value >> 32) as u32)
     }
+    pub fn get_from_addr() -> u32 {
+        ROM_DATA_W_ADDR_INIT
+    }
+    pub fn get_to_addr() -> u32 {
+        ROM_DATA_W_ADDR_END
+    }
+}
 
+impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -92,7 +51,7 @@ impl<F: PrimeField> RomDataSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
-    pub fn prove_instance(
+    fn prove_instance(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -107,19 +66,6 @@ impl<F: PrimeField> RomDataSM<F> {
             mem_ops.len(),
             trace.num_rows()
         );
-
-        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
-        // segments In a Memory AIR instance, the first row is reserved as a dummy row.
-        // This dummy row is used to facilitate the continuation state between different AIR
-        // segments. It ensures seamless transitions when multiple AIR segments are
-        // processed consecutively. This design avoids discontinuities in memory access
-        // patterns and ensures that the memory trace is continuous, For this reason we use
-        // AIR num_rows - 1 as the number of rows in each memory AIR instance
-
-        // Create a vector of Mem0Row instances, one for each memory operation
-        // Recall that first row is a dummy row used for the continuations between AIR segments
-        // The length of the vector is the number of input memory operations plus one because
-        // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
 
         let mut air_values_mem = MemoryAirValues {
             segment_id: segment_id as u32,
@@ -147,10 +93,38 @@ impl<F: PrimeField> RomDataSM<F> {
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
-        for (i, mem_op) in mem_ops.iter().enumerate() {
+        let mut i = 0;
+        for mem_op in mem_ops.iter() {
+            let mut internal_reads = (mem_op.addr - last_addr) - 1;
+            if internal_reads > 1 {
+                // check if has enough rows to complete the internal reads + regular memory
+                let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                if incomplete {
+                    internal_reads = (trace.num_rows - i) as u32;
+                }
+
+                trace[i].addr_changes = F::one();
+                last_addr += 1;
+                trace[i].addr = F::from_canonical_u32(last_addr);
+                trace[i].value = [F::zero(), F::zero()];
+                trace[i].sel = F::zero();
+                i += 1;
+
+                for _j in 1..internal_reads {
+                    trace[i] = trace[i - 1];
+                    last_addr += 1;
+                    trace[i].addr = F::from_canonical_u32(last_addr);
+                    i += 1;
+                }
+                // the step, value of internal reads isn't relevant
+                trace[i].sel = F::zero();
+                if incomplete {
+                    break;
+                }
+            }
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
             trace[i].step = F::from_canonical_u64(mem_op.step);
-            trace[i].sel = F::from_bool(!mem_op.is_internal);
+            trace[i].sel = F::one();
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
@@ -162,17 +136,17 @@ impl<F: PrimeField> RomDataSM<F> {
             last_addr = mem_op.addr;
             last_step = mem_op.step;
             last_value = mem_op.value;
+            i += 1;
         }
-
+        let count = i;
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
-        let last_row_idx = mem_ops.len() - 1;
+        let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value;
 
-        let padding_size = trace.num_rows() - mem_ops.len();
-        for i in mem_ops.len()..trace.num_rows() {
+        for i in count..trace.num_rows() {
             last_step += 1;
             trace[i].addr = addr;
             trace[i].step = F::from_canonical_u64(last_step);
@@ -215,26 +189,7 @@ impl<F: PrimeField> RomDataSM<F> {
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
 
-    fn get_u32_values(&self, value: u64) -> (u32, u32) {
-        (value as u32, (value >> 32) as u32)
-    }
-    pub fn get_from_addr() -> u32 {
-        ROM_DATA_W_ADDR_INIT
-    }
-    pub fn get_to_addr() -> u32 {
-        ROM_DATA_W_ADDR_END
-    }
-}
-
-impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
-    fn send_inputs(&self, mem_op: &[MemInput]) {
-        self.prove(mem_op);
-    }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(ROM_ADDR as u32, ROM_ADDR_MAX as u32)]
-    }
-    fn get_flush_input_size(&self) -> u32 {
-        // self.num_rows as u32
-        0
     }
 }

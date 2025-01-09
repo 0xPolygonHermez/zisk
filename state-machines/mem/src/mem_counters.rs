@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use sm_common::Metrics;
 use zisk_common::{BusDevice, BusId};
 
-use crate::{
-    MEMORY_MAX_DIFF, MEMORY_STORE_OP, MEM_BUS_ID, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK,
-};
+use crate::{MemHelpers, MEM_BUS_ID, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK};
 
 use log::info;
 
@@ -37,14 +35,6 @@ impl MemCounters {
             mem_align_rows: 0,
         }
     }
-    pub fn count_extra_internal_reads(previous_step: u64, step: u64) -> u64 {
-        let diff = step - previous_step;
-        if diff > MEMORY_MAX_DIFF {
-            (diff - 1) / MEMORY_MAX_DIFF
-        } else {
-            0
-        }
-    }
 }
 
 impl Metrics for MemCounters {
@@ -65,8 +55,11 @@ impl Metrics for MemCounters {
                     last_value: data[4],
                 };
             } else {
-                self.registers[reg_index].count +=
-                    1 + Self::count_extra_internal_reads(self.registers[reg_index].last_step, step);
+                // TODO: this only applies to non-imputable memories (mem)
+                self.registers[reg_index].count += 1 + MemHelpers::get_extra_internal_reads(
+                    self.registers[reg_index].last_step,
+                    step,
+                );
                 self.registers[reg_index].last_step = step;
                 self.registers[reg_index].last_value = data[4];
             }
@@ -95,9 +88,8 @@ impl Metrics for MemCounters {
                 // TODO: use mem_align helpers
                 // TODO: last value must be calculated as last value operation
                 let last_value = 0;
-                let addr_count =
-                    if ((addr + bytes as u32) >> MEM_BYTES_BITS) != addr_w { 2 } else { 1 };
-                let ops_by_addr = if op == MEMORY_STORE_OP { 2 } else { 1 };
+                let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
+                let ops_by_addr = if MemHelpers::is_write(op) { 2 } else { 1 };
 
                 let last_step = step + ops_by_addr - 1;
                 for index in 0..addr_count {
@@ -105,7 +97,11 @@ impl Metrics for MemCounters {
                         .entry(addr_w + index)
                         .and_modify(|value| {
                             value.count += ops_by_addr +
-                                Self::count_extra_internal_reads(value.last_step, step);
+                                MemHelpers::get_extra_internal_reads_by_addr(
+                                    addr_w + index,
+                                    value.last_step,
+                                    step,
+                                );
                             value.last_step = last_step;
                             value.last_value = last_value
                         })

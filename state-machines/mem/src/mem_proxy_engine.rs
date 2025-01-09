@@ -163,40 +163,6 @@ impl<F: PrimeField> MemProxyEngine<F> {
         }
     }
 
-    pub fn add_module(&mut self, name: &str, module: Arc<dyn MemModule<F>>) {
-        if self.modules.is_empty() {
-            self.current_module = String::from(name);
-        }
-        let module_id = self.modules.len() as u8;
-        self.modules.push(module.clone());
-
-        let ranges = module.get_addr_ranges();
-        let flush_input_size = module.get_flush_input_size();
-
-        for range in ranges.iter() {
-            debug_info!("adding range 0x{:X} 0x{:X} to {}", range.0, range.1, name);
-            self.insert_address_range(range.0, range.1, module_id);
-        }
-        self.modules_data.push(MemModuleData {
-            name: String::from(name),
-            inputs: Vec::new(),
-            flush_input_size: if flush_input_size == 0 {
-                0xFFFF_FFFF_FFFF_FFFF
-            } else {
-                flush_input_size as usize
-            },
-        });
-    }
-    /* insert in sort way the address map and verify that */
-    fn insert_address_range(&mut self, from_addr: u32, to_addr: u32, module_id: u8) {
-        let region = AddressRegion { from_addr, to_addr, module_id };
-        if let Some(index) = self.addr_map.iter().position(|x| x.from_addr >= from_addr) {
-            self.addr_map.insert(index, region);
-        } else {
-            self.addr_map.push(region);
-        }
-    }
-
     pub fn prove(
         &mut self,
         mem_operations: &mut Vec<ZiskRequiredMemory>,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
-use sm_common::{CheckPoint, ChunkId, CollectInfoSkip, InstanceType, Plan};
+use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 use zisk_pil::{MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemAlignPlanner<'a> {
@@ -12,6 +12,13 @@ pub struct MemAlignPlanner<'a> {
     current_chunks: Vec<ChunkId>,
     current_rows_available: u32,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
+}
+
+#[derive(Clone)]
+pub struct MemAlignCheckPoint {
+    pub skip: u32,
+    pub count: u32,
+    pub rows: u32,
 }
 
 // TODO: dynamic
@@ -86,7 +93,11 @@ impl<'a> MemAlignPlanner<'a> {
             Some(self.instances.len()),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
-            Some(Box::new(CollectInfoSkip::new(self.current_skip as u64))),
+            Some(Box::new(MemAlignCheckPoint {
+                skip: self.current_skip,
+                count: 0,
+                rows: self.num_rows - self.current_rows_available,
+            })),
             None,
         );
         self.instances.push(instance);

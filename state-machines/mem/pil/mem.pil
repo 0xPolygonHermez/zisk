@@ -90,17 +90,24 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
     }
 
-    if (!immutable) {
+
+    if (free_input_mem) {
+        // free input memory must be read-only
+        const int air.wr = 0;
+    } else if (inmutable) {
+        // immutable memory in address change, must be write first or a read of zero.
+        const expr air.wr = addr_changes * sel;
+        for (int i = 0; i < RC; i++) {
+            // addr_changes * (1 - wr) * value[i] === 0;
+            addr_changes * (1 - sel) * value[i] === 0;
+        }
+    } else {
         col witness air.wr;
         const expr air.rd = 1 - wr;
         wr * (1 - wr) === 0;
-    } else {
-        // a free input memory must be read-only, an immutable memory must be write
-        // on first row of new address (addr_changes = 1)
-        const expr air.wr = free_input_mem ? 0 : addr_changes;
+        // if wr is 1, sel must be 1 (not allowed writes)
+        wr * (1 - sel) === 0;
     }
-    // if wr is 1, sel must be 1 (not allowed writes)
-    wr * (1 - sel) === 0;
 
     sel * (1 - sel) === 0;
 

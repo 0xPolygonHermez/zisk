@@ -8,7 +8,7 @@ use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
-use zisk_pil::{InputDataAirValues, InputDataTrace, ZiskProofValues};
+use zisk_pil::{InputDataAirValues, InputDataTrace};
 
 pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -36,62 +36,21 @@ impl<F: PrimeField> InputDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
-
-    pub fn prove(&self, inputs: &[MemInput]) {
-        let mut proof_values = ZiskProofValues::from_vec_guard(self.std.pctx.get_proof_values());
-        proof_values.enable_input_data = if inputs.is_empty() { F::zero() } else { F::one() };
-
-        // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
-        // memory only need to process these special inputs, but inputs no change. At end of
-        // inputs proxy add an extra internal input to jump to last address
-
-        let airgroup_id = InputDataTrace::<usize>::AIRGROUP_ID;
-        let air_id = InputDataTrace::<usize>::AIR_ID;
-        let air_rows = InputDataTrace::<usize>::NUM_ROWS;
-
-        // at least one row to go
-        let count = inputs.len();
-        let count_rem = count % air_rows;
-        let num_segments = (count / air_rows) + if count_rem > 0 { 1 } else { 0 };
-
-        let mut global_idxs = vec![0; num_segments];
-
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..num_segments {
-            // TODO: Review
-            if let (true, global_idx) =
-                self.std.pctx.dctx.write().unwrap().add_instance(airgroup_id, air_id, 1)
-            {
-                global_idxs[i] = global_idx;
-            }
-        }
-
-        #[allow(clippy::needless_range_loop)]
-        for segment_id in 0..num_segments {
-            let is_last_segment = segment_id == num_segments - 1;
-            let input_offset = segment_id * air_rows;
-            let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: INPUT_DATA_W_ADDR_INIT, step: 0, value: 0 }
-            } else {
-                MemPreviousSegment {
-                    addr: inputs[input_offset - 1].addr,
-                    step: inputs[input_offset - 1].step,
-                    value: inputs[input_offset - 1].value,
-                }
-            };
-            let input_end =
-                if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
-            let mem_ops = &inputs[input_offset..input_end];
-
-            let air_instance =
-                self.prove_instance(mem_ops, segment_id, is_last_segment, &previous_segment);
-
-            self.std
-                .pctx
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(global_idxs[segment_id]));
-        }
+    fn get_u16_values(&self, value: u64) -> [u16; 4] {
+        [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
     }
+    pub fn get_from_addr() -> u32 {
+        INPUT_ADDR as u32
+    }
+    pub fn get_to_addr() -> u32 {
+        (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
+    }
+}
+
+impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
+    // TODO PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
+    // memory only need to process these special inputs, but inputs no change. At end of
+    // inputs proxy add an extra internal input to jump to last address
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
@@ -100,7 +59,7 @@ impl<F: PrimeField> InputDataSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
-    pub fn prove_instance(
+    fn prove_instance(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -155,15 +114,50 @@ impl<F: PrimeField> InputDataSM<F> {
             range_id,
         );
 
-        // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
-        for (i, mem_op) in mem_ops.iter().enumerate() {
+        let mut i = 0;
+        for mem_op in mem_ops.iter() {
+            let mut internal_reads = (mem_op.addr - last_addr) - 1;
+            if internal_reads > 1 {
+                // check if has enough rows to complete the internal reads + regular memory
+                let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                if incomplete {
+                    internal_reads = (trace.num_rows - i) as u32;
+                }
+
+                trace[i].addr_changes = F::one();
+                last_addr += 1;
+                trace[i].addr = F::from_canonical_u32(last_addr);
+
+                // the step, value of internal reads isn't relevant
+                last_step = 0;
+                trace[i].step = F::zero();
+                trace[i].sel = F::zero();
+
+                // setting value to zero, is not relevant for internal reads
+                last_value = 0;
+                for j in 0..4 {
+                    trace[i].value_word[j] = F::zero();
+                }
+                i += 1;
+
+                for _j in 1..internal_reads {
+                    trace[i] = trace[i - 1];
+                    last_addr += 1;
+                    trace[i].addr = F::from_canonical_u32(last_addr);
+                    i += 1;
+                }
+                range_check_data[0] += 4 * internal_reads as u64;
+                if incomplete {
+                    break;
+                }
+            }
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
             trace[i].step = F::from_canonical_u64(mem_op.step);
-            trace[i].sel = F::from_bool(!mem_op.is_internal);
+            trace[i].sel = F::one();
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
@@ -179,16 +173,18 @@ impl<F: PrimeField> InputDataSM<F> {
             last_addr = mem_op.addr;
             last_step = mem_op.step;
             last_value = mem_op.value;
+            i += 1;
         }
+        let count = i;
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
-        let last_row_idx = mem_ops.len() - 1;
+        let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value_word;
 
-        let padding_size = trace.num_rows() - mem_ops.len();
-        for i in mem_ops.len()..trace.num_rows() {
+        let padding_size = trace.num_rows() - count;
+        for i in count..trace.num_rows() {
             last_step += 1;
 
             // TODO CHECK
@@ -218,7 +214,7 @@ impl<F: PrimeField> InputDataSM<F> {
         // range of chunks
         let range_id = self.std.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), None);
         for (value, &multiplicity) in range_check_data.iter().enumerate() {
-            if (multiplicity == 0) {
+            if multiplicity == 0 {
                 continue;
             }
 
@@ -253,26 +249,7 @@ impl<F: PrimeField> InputDataSM<F> {
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
 
-    fn get_u16_values(&self, value: u64) -> [u16; 4] {
-        [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
-    }
-    pub fn get_from_addr() -> u32 {
-        INPUT_ADDR as u32
-    }
-    pub fn get_to_addr() -> u32 {
-        (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
-    }
-}
-
-impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
-    fn send_inputs(&self, mem_op: &[MemInput]) {
-        self.prove(mem_op);
-    }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(INPUT_ADDR as u32, (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32)]
-    }
-    fn get_flush_input_size(&self) -> u32 {
-        // self.num_rows as u32
-        0
     }
 }

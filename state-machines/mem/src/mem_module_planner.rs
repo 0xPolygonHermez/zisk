@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{MemCounters, MemPlanCalculator, UsesCounter, MEMORY_MAX_DIFF};
+use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, MEMORY_MAX_DIFF};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 
 pub struct MemModulePlanner<'a> {
@@ -22,12 +22,15 @@ pub struct MemModulePlanner<'a> {
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
 }
 
-#[derive(Debug, Default)]
-struct MemInstanceCheckPoint {
-    prev_addr: u32,
-    skip_internal: u32,
-    prev_step: u64,
-    prev_value: u64,
+#[derive(Debug, Default, Clone)]
+pub struct MemInstanceCheckPoint {
+    pub prev_addr: u32,
+    pub last_addr: u32,
+    pub skip_internal: u32,
+    pub is_last_segment: bool,
+    pub prev_step: u64,
+    pub last_step: u64,
+    pub prev_value: u64,
 }
 
 impl<'a> MemModulePlanner<'a> {
@@ -56,9 +59,12 @@ impl<'a> MemModulePlanner<'a> {
             current_checkpoint_chunks: Vec::new(),
             current_checkpoint: MemInstanceCheckPoint {
                 prev_addr: from_addr,
+                last_addr: 0,
+                last_step: 0,
                 skip_internal: 0,
                 prev_step: 0,
                 prev_value: 0,
+                is_last_segment: false,
             },
         }
     }
@@ -162,7 +168,10 @@ impl<'a> MemModulePlanner<'a> {
         //     instance.add_chunk_id(chunk_id.clone());
         // }
 
-        let checkpoint = std::mem::take(&mut self.current_checkpoint);
+        let mut checkpoint = std::mem::take(&mut self.current_checkpoint);
+        checkpoint.last_addr = self.last_addr;
+        checkpoint.last_step = self.last_step;
+
         let chunks = std::mem::take(&mut self.current_checkpoint_chunks);
         let instance = Plan::new(
             self.airgroup_id,
@@ -188,6 +197,11 @@ impl<'a> MemModulePlanner<'a> {
         // check internal reads (update last_xxx)
         // reopen instance if need and set his chunk_id
         if self.last_addr != addr {
+            return;
+        }
+
+        // TODO: dynamic by addr mapping
+        if !MemHelpers::step_extra_reads_enabled(addr) {
             return;
         }
 
