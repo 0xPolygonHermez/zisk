@@ -156,11 +156,11 @@ impl ZiskInst {
     /// Used only for debugging.
     pub fn to_text(&self) -> String {
         let mut s = String::new();
-        if !self.verbose.is_empty() {
-            s += &format!(" verbose={}", self.verbose);
-        }
         if self.paddr != 0 {
             s += &format!(" paddr=0x{:x}", self.paddr);
+        }
+        if !self.verbose.is_empty() {
+            s += &format!(" verbose={}", self.verbose);
         }
         if self.a_src != 0 {
             s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));

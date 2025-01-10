@@ -138,20 +138,19 @@ pub struct ZiskAsmContext {
     next_pc: u64,
     flag_is_always_one: bool,
     flag_is_always_zero: bool,
-    c_is_always_zero: bool,
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
 
     a_is_constant: bool,    // a is a constant value known at compilation time
-    a_is_expression: bool, // a is an expression that can be used to calculate a value at execution time
-    a_numeric_value: u64,  // a numeric value, only valid if a_is_constant
+    a_numeric_value: u64,   // a numeric value, only valid if a_is_constant
     a_string_value: String, // a string value: a constant value, an expression, or a register
 
     b_is_constant: bool,    // b is a constant value known at compilation time
-    b_is_expression: bool, // b is an expression that can be used to calculate a value at execution time
-    b_numeric_value: u64,  // b numeric value, only valid if b_is_constant
+    b_numeric_value: u64,   // b numeric value, only valid if b_is_constant
     b_string_value: String, // b string value: a constant value, an expression, or a register
 
+    c_is_constant: bool,    // c is a constant value known at compilation time
+    c_numeric_value: u64,   // c numeric value, only valid if c_is_constant
     c_string_value: String, // c string value: a constant value, an expression, or a register
 }
 
@@ -483,11 +482,27 @@ impl ZiskRom {
 
         let mut ctx = ZiskAsmContext::default();
 
+        // Save instructions program addresses into a vector
+        let mut keys: Vec<u64> = Vec::new();
+        for key in self.insts.keys() {
+            keys.push(*key);
+        }
+
+        // Sort the vector
+        keys.sort();
+
         *s += ".intel_syntax noprefix\n";
         *s += ".code64\n";
         *s += ".section .rodata\n";
         *s += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
         *s += ".set msglen, (. - msg)\n\n";
+        for k in 0..keys.len() {
+            let pc = keys[k];
+            let instruction = &self.insts[&pc].i;
+            *s += &format!("pc_{}_log: .ascii \"PCLOG={}\\n\"\n", pc, instruction.to_text());
+            *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
+        }
+        //*s += "instruction_format: .ascii \"PC=%d\\n\"\n";
 
         *s += ".section .text\n";
         *s += ".global emulator_start\n";
@@ -497,15 +512,6 @@ impl ZiskRom {
         *s += "\tlea rsi, msg\n";
         *s += "\tmov rdx, msglen\n";
         *s += "\tsyscall\n\n";
-
-        // Save instructions program addresses into a vector
-        let mut keys: Vec<u64> = Vec::new();
-        for key in self.insts.keys() {
-            keys.push(*key);
-        }
-
-        // Sort the vector
-        keys.sort();
 
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
@@ -518,23 +524,26 @@ impl ZiskRom {
             *s += "\n";
             *s += &format!("pc_{:x}: /*{} */\n", ctx.pc, instruction.to_text().as_str());
 
+            // Log instruction pc
+            // *s += &format!("\tlea rdi, instruction_format\n");
+            // *s += &format!("\tmov rsi, {}\n", ctx.pc);
+            // *s += &format!("\tmov rax, 0\n");
+            // *s += &format!("\tcall printf\n");
+
+            // *s += "\tmov rax, 1\n";
+            // *s += "\tmov rdi, 1\n";
+            // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
+            // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
+            // *s += "\tsyscall\n\n";
+
             // Set register a content based on instruction a_src
             ctx.a_is_constant = false;
-            ctx.a_is_expression = false;
             ctx.a_string_value = REG_A.to_string();
             match instruction.a_src {
                 SRC_C => {
                     *s += &format!("\tmov {}, {} /* a=SRC_C: a = c */\n", REG_A, REG_C);
                 }
                 SRC_MEM => {
-                    // if instruction.a_use_sp_imm1 == 0 {
-                    //     // *s += &format!(
-                    //     //     "\tmov {}, [0x{:x}] /* a=SRC_MEM: a = mem[i.a_offset_imm0] */\n",
-                    //     //     REG_A, instruction.a_offset_imm0
-                    //     // );
-                    //     ctx.a_is_expression = true;
-                    //     ctx.a_string_value = format!("[0x{:x}]", instruction.a_offset_imm0);
-                    // } else {
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* a=SRC_MEM: address = i.a_offset_imm0 */\n",
                         REG_ADDRESS, instruction.a_offset_imm0
@@ -547,14 +556,8 @@ impl ZiskRom {
                         "\tmov {}, [{}] /* a=SRC_MEM: a = mem[address] */\n",
                         REG_A, REG_ADDRESS
                     );
-                    //}
                 }
                 SRC_IMM => {
-                    // *s += &format!(
-                    //     "\tmov {}, 0x{:x} /* a=SRC_IMM: a = i.a_offset_imm0 | (i.a_use_sp_imm1 << 32) */\n",
-                    //     REG_A,
-                    //     instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
-                    // );
                     ctx.a_is_constant = true;
                     ctx.a_numeric_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
@@ -570,21 +573,12 @@ impl ZiskRom {
 
             // Set register b content
             ctx.b_is_constant = false;
-            ctx.b_is_expression = false;
             ctx.b_string_value = REG_B.to_string();
             match instruction.b_src {
                 SRC_C => {
                     *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
                 }
                 SRC_MEM => {
-                    // if instruction.b_use_sp_imm1 == 0 {
-                    //     // *s += &format!(
-                    //     //     "\tmov {}, [0x{:x}] /* b=SRC_MEM: b = mem[i.b_offset_imm0] */\n",
-                    //     //     REG_B, instruction.b_offset_imm0
-                    //     // );
-                    //     ctx.b_is_expression = true;
-                    //     ctx.b_string_value = format!("[0x{:x}]", instruction.b_offset_imm0);
-                    // } else {
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* b=SRC_MEM: address = i.b_offset_imm0 */\n",
                         REG_ADDRESS, instruction.b_offset_imm0
@@ -597,14 +591,8 @@ impl ZiskRom {
                         "\tmov {}, [{}] /* b=SRC_MEM: b = mem[address] */\n",
                         REG_B, REG_ADDRESS
                     );
-                    //}
                 }
                 SRC_IMM => {
-                    // *s += &format!(
-                    //     "\tmov {}, 0x{:x} /* b=SRC_IMM: b = i.b_offset_imm0 | (i.b_use_sp_imm1 << 32) */\n",
-                    //     REG_B,
-                    //     instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
-                    // );
                     ctx.b_is_constant = true;
                     ctx.b_numeric_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
@@ -784,18 +772,21 @@ impl ZiskRom {
             ctx.jump_to_dynamic_pc = false;
             ctx.jump_to_static_pc = String::new();
             if instruction.set_pc {
-                if ctx.c_is_always_zero {
+                if ctx.c_is_constant {
+                    let new_pc = (ctx.c_numeric_value as i64 + instruction.jmp_offset1) as u64;
                     *s += &format!(
-                        "\tmov {}, 0x{:x} /* set_pc: pc = i.jmp_offset1 */\n",
-                        REG_PC, instruction.jmp_offset1
+                        "\tmov {}, 0x{:x} /* set_pc 1: pc = i.jmp_offset1 */\n",
+                        REG_PC, new_pc
                     );
                     ctx.jump_to_static_pc =
-                        format!("\tjmp pc_{:x} /* jump to static pc */", instruction.jmp_offset1);
+                        format!("\tjmp pc_{:x} /* set_pc 1: jump to static pc */\n", new_pc);
                 } else {
-                    *s +=
-                        &format!("\tmov {}, {} /* set_pc: pc = c */\n", REG_PC, ctx.c_string_value);
                     *s += &format!(
-                        "\tadd {}, 0x{:x} /* set_pc: pc += i.jmp_offset1 */\n",
+                        "\tmov {}, {} /* set_pc 2: pc = c */\n",
+                        REG_PC, ctx.c_string_value
+                    );
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* set_pc 2: pc += i.jmp_offset1 */\n",
                         REG_PC, instruction.jmp_offset1
                     );
                     ctx.jump_to_dynamic_pc = true;
@@ -804,38 +795,50 @@ impl ZiskRom {
                 if ctx.flag_is_always_zero {
                     if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
                         *s += &format!(
-                            "\tadd {}, 0x{:x} /* set_pc: pc += i.jmp_offset2 */\n",
-                            REG_PC, instruction.jmp_offset2
+                            "\tmov {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
+                            REG_PC,
+                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
                         );
+                        // *s += &format!(
+                        //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
+                        //     REG_PC, instruction.jmp_offset2
+                        // );
                         ctx.jump_to_dynamic_pc = true;
                     }
                 } else if ctx.flag_is_always_one {
                     if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
                         *s += &format!(
-                            "\tadd {}, 0x{:x} /* set_pc: pc += i.jmp_offset1 */\n",
-                            REG_PC, instruction.jmp_offset1
+                            "\tmov {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                            REG_PC,
+                            (ctx.pc as i64 + instruction.jmp_offset1) as u64
                         );
+                        // *s += &format!(
+                        //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                        //     REG_PC, instruction.jmp_offset1
+                        // );
                         ctx.jump_to_dynamic_pc = true;
                     }
                 } else {
                     // Calculate the new pc
-                    *s += &format!("\tcmp {}, 1 /* set_pc: flag == 1 ? */\n", REG_FLAG);
+                    *s += &format!("\tcmp {}, 1 /* set_pc 5: flag == 1 ? */\n", REG_FLAG);
                     *s += &format!("\tjne pc_{:x}_flag_false /* flag == 1 ? */\n", ctx.pc);
                     *s += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                        REG_PC, instruction.jmp_offset1
+                        "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                        REG_PC,
+                        (ctx.pc as i64 + instruction.jmp_offset1) as u64
                     );
                     *s += &format!("\tjmp pc_{:x}_flag_done\n", ctx.pc);
                     *s += &format!("pc_{:x}_flag_false:\n", ctx.pc);
                     *s += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-                        REG_PC, instruction.jmp_offset2
+                        "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                        REG_PC,
+                        (ctx.pc as i64 + instruction.jmp_offset2) as u64
                     );
                     *s += &format!("pc_{:x}_flag_done:\n", ctx.pc);
-                    *s += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-                        REG_PC, instruction.jmp_offset2
-                    );
+                    // *s += &format!(
+                    //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                    //     REG_PC, instruction.jmp_offset2
+                    // );
                     ctx.jump_to_dynamic_pc = true;
                 }
             }
@@ -864,21 +867,23 @@ impl ZiskRom {
                 *s += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
                 *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
                 *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
-                *s += &format!("\tadd {}, map_pc_80000000 /* pc += map_pc_80000000 */\n", REG_PC);
-                *s += &format!("\tjmp [{}] /* jump to pc */\n", REG_PC);
+                *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
+                //*s += &format!("\tadd rsi, map_pc_80000000 /* pc += map_pc_80000000 */\n");
+                *s += &format!("\tjmp [map_pc_80000000 + rsi*2] /* jump to pc */\n");
                 *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
                 *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
-                *s += &format!("\tadd {}, map_pc_1000 /* pc += map_pc_1000 */\n", REG_PC);
-                *s += &format!("\tjmp [{}] /* jump to pc */\n", REG_PC);
+                *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
+                //*s += &format!("\tadd rsi, map_pc_1000 /* pc += map_pc_1000 */\n");
+                *s += &format!("\tjmp [map_pc_1000 + rsi*2] /* jump to pc */\n");
             }
         }
 
         *s += "\n";
         *s += "execute_end:\n";
 
-        *s += "\tmov rax, 60\n";
-        *s += "\tmov rdi, 0\n";
-        *s += "\tsyscall\n\n";
+        // *s += "\tmov rax, 60\n";
+        // *s += "\tmov rdi, 0\n";
+        // *s += "\tsyscall\n\n";
 
         *s += "\tret\n";
 
@@ -896,11 +901,13 @@ impl ZiskRom {
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label
         *s += "\n";
+        *s += ".section .rodata\n";
+        *s += "\t.align 8\n";
         for key in &keys {
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
-            *s += &format!("map_pc_{:x}: jmp pc_{:x}\n", key, key);
+            *s += &format!("map_pc_{:x}:\n\t.quad pc_{:x}\n", key, key);
 
             // *s += &format!("map_pc_{:x}:\n", key);
             // *s += &format!("\tmov {}, pc_{:x}\n", REG_VALUE, key);
@@ -956,7 +963,6 @@ impl ZiskRom {
         // Set flags to false, by default
         ctx.flag_is_always_one = false;
         ctx.flag_is_always_zero = false;
-        ctx.c_is_always_zero = false;
         ctx.c_string_value = REG_C.to_string();
 
         // Declare a return string
@@ -966,19 +972,22 @@ impl ZiskRom {
             ZiskOp::Flag => {
                 //s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
                 s += &format!("\t/* Flag: c = 0 */\n");
-                ctx.c_is_always_zero = true;
+                ctx.c_is_constant = true;
+                ctx.c_numeric_value = 0;
                 ctx.c_string_value = "0".to_string();
                 ctx.flag_is_always_one = true;
             }
             ZiskOp::CopyB => {
                 //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b_string_value);
                 s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b_string_value);
+                ctx.c_is_constant = ctx.b_is_constant;
+                ctx.c_numeric_value = ctx.b_numeric_value;
                 ctx.c_string_value = ctx.b_string_value.clone();
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SignExtendB => {
                 // Make sure b is stored in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* SignExtendB: b = value */\n",
                         REG_B, ctx.b_string_value
@@ -991,7 +1000,7 @@ impl ZiskRom {
             }
             ZiskOp::SignExtendH => {
                 // Make sure b is stored in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* SignExtendH: b = value */\n",
                         REG_B, ctx.b_string_value
@@ -1004,7 +1013,7 @@ impl ZiskRom {
             }
             ZiskOp::SignExtendW => {
                 // Make sure b is stored in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* SignExtendW: b = value */\n",
                         REG_B, ctx.b_string_value
@@ -1032,7 +1041,7 @@ impl ZiskRom {
             ZiskOp::AddW => {
                 // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Add>::add
                 // cdqe
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* AddW: b = value */\n", REG_B, ctx.b_string_value);
                 }
@@ -1053,7 +1062,7 @@ impl ZiskRom {
             ZiskOp::SubW => {
                 // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Sub>::sub
                 // cdqe
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* SubW: b = value */\n", REG_B, ctx.b_string_value);
                 }
@@ -1076,12 +1085,6 @@ impl ZiskRom {
                         "\tmov {}, {} /* Sll: c(value) = a */\n",
                         REG_VALUE, ctx.a_string_value
                     );
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* Sll: b = value */\n",
-                            REG_C, ctx.b_string_value
-                        );
-                    }
                     s += &format!("\tshl {}, {} /* Sll: c(value) = a << b */\n", REG_VALUE, REG_C);
                     s += &format!("\tmov {}, {} /* Sll: c = value */\n", REG_C, REG_VALUE);
                 }
@@ -1097,13 +1100,7 @@ impl ZiskRom {
                         ctx.a_numeric_value & 0xffffffff
                     );
                 } else {
-                    if ctx.a_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SllW: a = value */\n",
-                            REG_VALUE_W, ctx.a_string_value
-                        );
-                    }
-                    //s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_C_W, REG_A_W);
+                    s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_VALUE_W, REG_A_W);
                 }
                 if ctx.b_is_constant {
                     s += &format!(
@@ -1112,13 +1109,8 @@ impl ZiskRom {
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SllW: b = value */\n",
-                            REG_C, ctx.b_string_value
-                        );
-                    }
-                    //s += &format!("\tand {}, 0x3f /* SllW: b = b & 0x3f */\n", REG_B);
+                    s +=
+                        &format!("\tmov {}, {} /* SllW: b = value */\n", REG_C, ctx.b_string_value);
                 }
                 s += &format!("\tshl {}, {} /* SllW: c(value) = a_w << b */\n", REG_VALUE, REG_C);
                 s += &format!("\tmov {}, {} /* SllW: c = value */\n", REG_C, REG_VALUE);
@@ -1139,14 +1131,7 @@ impl ZiskRom {
                         "\tmov {}, {} /* Sra: c(value) = a */\n",
                         REG_VALUE, ctx.a_string_value
                     );
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* Sra: b = value */\n",
-                            REG_C, ctx.b_string_value
-                        );
-                    } else {
-                        s += &format!("\tmov {}, {} /* Sra: c = b */\n", REG_C, REG_B);
-                    }
+                    s += &format!("\tmov {}, {} /* Sra: c = b */\n", REG_C, REG_B);
                     s += &format!("\tsar {}, {} /* Sra: c(value) = a >> b */\n", REG_VALUE, REG_C);
                     s += &format!("\tmov {}, {} /* Sra: c = value */\n", REG_C, REG_VALUE);
                 }
@@ -1162,17 +1147,10 @@ impl ZiskRom {
                     );
                 } else {
                     s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_VALUE, ctx.a_string_value);
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* Srl: b = value */\n",
-                            REG_C, ctx.b_string_value
-                        );
-                    }
-                    //s += &format!("\tand {}, 0x3f /* Srl: b = b & 0x3f */\n", REG_B);
+                    s += &format!("\tmov {}, {} /* Srl: b = value */\n", REG_C, ctx.b_string_value);
                     s += &format!("\tshr {}, {} /* Srl: c(value) = a >> b */\n", REG_VALUE, REG_C);
                     s += &format!("\tmov {}, {} /* Srl: c = value */\n", REG_C, REG_VALUE);
                 }
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SraW => {
@@ -1186,12 +1164,6 @@ impl ZiskRom {
                         ctx.a_numeric_value & 0xffffffff
                     );
                 } else {
-                    if ctx.a_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SraW: a = value */\n",
-                            REG_A, ctx.a_string_value
-                        );
-                    }
                     s += &format!("\tmov {}, {} /* SraW: c = a_w */\n", REG_C_W, REG_A_W);
                 }
                 if ctx.b_is_constant {
@@ -1201,16 +1173,8 @@ impl ZiskRom {
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SraW: b = value */\n",
-                            REG_B, ctx.b_string_value
-                        );
-                    }
-                    s += &format!("\tand {}, 0x3f /* SraW: b = b & 0x3f */\n", REG_B);
                     s += &format!("\tshr {}, {} /* SraW: c = a_w >> b */\n", REG_C, REG_B);
                 }
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SrlW => {
@@ -1222,14 +1186,6 @@ impl ZiskRom {
                         REG_VALUE_W,
                         ctx.a_numeric_value & 0xffffffff
                     );
-                } else {
-                    if ctx.a_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SrlW: a = value */\n",
-                            REG_VALUE_W, ctx.a_string_value
-                        );
-                    }
-                    //s += &format!("\tmov {}, {} /* SrlW: c = a_w */\n", REG_C_W, REG_A_W);
                 }
                 if ctx.b_is_constant {
                     s += &format!(
@@ -1238,13 +1194,7 @@ impl ZiskRom {
                         ctx.b_numeric_value & 0x3f
                     );
                 } else {
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* SrlW: b = value */\n",
-                            REG_C, ctx.b_string_value
-                        );
-                    }
-                    //s += &format!("\tand {}, 0x3f /* SrlW: b = b & 0x3f */\n", REG_B);
+                    s += &format!("\tmov {}, {} /* SrlW: b = value */\n", REG_C, REG_B);
                 }
                 s += &format!("\tshr {}, {} /* SrlW: c(value) = a_w >> b */\n", REG_VALUE, REG_C);
                 s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
@@ -1252,7 +1202,7 @@ impl ZiskRom {
             }
             ZiskOp::Eq => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Eq: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, ctx.b_string_value);
@@ -1273,11 +1223,6 @@ impl ZiskRom {
                         REG_A,
                         ctx.a_numeric_value & 0xffffffff
                     );
-                } else if ctx.a_is_expression {
-                    s += &format!(
-                        "\tmov {}, {} /* EqW: a = expression */\n",
-                        REG_A, ctx.a_string_value
-                    );
                 }
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b_is_constant {
@@ -1287,12 +1232,6 @@ impl ZiskRom {
                         ctx.b_numeric_value & 0xffffffff
                     );
                 } else {
-                    if ctx.b_is_expression {
-                        s += &format!(
-                            "\tmov {}, {} /* EqW: b = value */\n",
-                            REG_B, ctx.b_string_value
-                        );
-                    }
                     s += &format!("\tcmp {}, {} /* EqW: a == b ? */\n", REG_A_W, REG_B_W);
                 }
                 s += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
@@ -1306,7 +1245,7 @@ impl ZiskRom {
             }
             ZiskOp::Ltu => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Ltu: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b_string_value);
@@ -1321,7 +1260,7 @@ impl ZiskRom {
             }
             ZiskOp::Lt => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Lt: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Lt: a == b ? */\n", REG_A, ctx.b_string_value);
@@ -1392,7 +1331,7 @@ impl ZiskRom {
             }
             ZiskOp::Leu => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Leu: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Leu: a == b ? */\n", REG_A, ctx.b_string_value);
@@ -1407,7 +1346,7 @@ impl ZiskRom {
             }
             ZiskOp::Le => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Le: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Le: a == b ? */\n", REG_A, ctx.b_string_value);
@@ -1542,7 +1481,7 @@ impl ZiskRom {
             }
             ZiskOp::Divu => {
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Divu: b = value */\n", REG_B, ctx.b_string_value);
                 }
@@ -1562,7 +1501,7 @@ impl ZiskRom {
             }
             ZiskOp::Remu => {
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Remu: b = value */\n", REG_B, ctx.b_string_value);
                 }
@@ -1582,7 +1521,7 @@ impl ZiskRom {
             }
             ZiskOp::Div => {
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!("\tmov {}, {} /* Div: b = value */\n", REG_B, ctx.b_string_value);
                 }
                 s += &format!("\tcmp {}, 0 /* Div: b == 0 ? */\n", REG_B);
@@ -1601,7 +1540,7 @@ impl ZiskRom {
             }
             ZiskOp::Rem => {
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!("\tmov {}, {} /* Rem: b = value */\n", REG_B, ctx.b_string_value);
                 }
                 s += &format!("\tcmp {}, 0 /* Rem: b == 0 ? */\n", REG_B);
@@ -1620,7 +1559,7 @@ impl ZiskRom {
             }
             ZiskOp::DivuW => {
                 // Make sure a is in REG_A_W
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivuW: a = value */\n",
                         REG_A_W, ctx.a_string_value
@@ -1629,7 +1568,7 @@ impl ZiskRom {
                     s += &format!("\tmov {}, {} /* DivuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivuW: b = value */\n",
                         REG_B_W, ctx.b_string_value
@@ -1653,7 +1592,7 @@ impl ZiskRom {
             }
             ZiskOp::RemuW => {
                 // Make sure a is in REG_A_W
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemuW: a = value */\n",
                         REG_A_W, ctx.a_string_value
@@ -1662,7 +1601,7 @@ impl ZiskRom {
                     s += &format!("\tmov {}, {} /* RemuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemuW: b = value */\n",
                         REG_B_W, ctx.b_string_value
@@ -1686,7 +1625,7 @@ impl ZiskRom {
             }
             ZiskOp::DivW => {
                 // Make sure a is in REG_A_W
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivW: a = value */\n",
                         REG_A_W, ctx.a_string_value
@@ -1695,7 +1634,7 @@ impl ZiskRom {
                     s += &format!("\tmov {}, {} /* DivW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivW: b = value */\n",
                         REG_B_W, ctx.b_string_value
@@ -1719,7 +1658,7 @@ impl ZiskRom {
             }
             ZiskOp::RemW => {
                 // Make sure a is in REG_A_W
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemW: a = value */\n",
                         REG_A_W, ctx.a_string_value
@@ -1728,7 +1667,7 @@ impl ZiskRom {
                     s += &format!("\tmov {}, {} /* RemW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemW: b = value */\n",
                         REG_B_W, ctx.b_string_value
@@ -1752,7 +1691,7 @@ impl ZiskRom {
             }
             ZiskOp::Minu => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.b_is_expression {
+                if ctx.a_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Minu: a = value */\n", REG_A, ctx.a_string_value);
                 }
@@ -1770,7 +1709,7 @@ impl ZiskRom {
             }
             ZiskOp::Min => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Min: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!(
@@ -1787,14 +1726,14 @@ impl ZiskRom {
             }
             ZiskOp::MinuW => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* MinuW: a = value */\n",
                         REG_A, ctx.a_string_value
                     );
                 }
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* MinuW: b = value */\n",
                         REG_B, ctx.b_string_value
@@ -1811,12 +1750,12 @@ impl ZiskRom {
             }
             ZiskOp::MinW => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* MinW: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* MinW: b = value */\n", REG_B, ctx.b_string_value);
                 }
@@ -1831,7 +1770,7 @@ impl ZiskRom {
             }
             ZiskOp::Maxu => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Maxu: a = value */\n", REG_A, ctx.a_string_value);
                 }
@@ -1849,7 +1788,7 @@ impl ZiskRom {
             }
             ZiskOp::Max => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!("\tmov {}, {} /* Max: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 s += &format!(
@@ -1866,14 +1805,14 @@ impl ZiskRom {
             }
             ZiskOp::MaxuW => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* MaxuW: a = value */\n",
                         REG_A, ctx.a_string_value
                     );
                 }
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s += &format!(
                         "\tmov {}, {} /* MaxuW: b = value */\n",
                         REG_B, ctx.b_string_value
@@ -1890,12 +1829,12 @@ impl ZiskRom {
             }
             ZiskOp::MaxW => {
                 // Make sure a is in REG_A
-                if ctx.a_is_constant || ctx.a_is_expression {
+                if ctx.a_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* MaxW: a = value */\n", REG_A, ctx.a_string_value);
                 }
                 // Make sure b is in REG_B
-                if ctx.b_is_constant || ctx.b_is_expression {
+                if ctx.b_is_constant {
                     s +=
                         &format!("\tmov {}, {} /* MaxW: b = value */\n", REG_B, ctx.b_string_value);
                 }

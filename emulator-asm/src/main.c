@@ -39,12 +39,12 @@ int main(int argc, char *argv[])
 
     unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
     unsigned int output_size = *pOutput;
-    printf("Output size=%d", output_size);
+    printf("Output size=%d\n", output_size);
 
     for (unsigned int i = 0; i < output_size; i++)
     {
         pOutput++;
-        printf("%08x", *pOutput);
+        printf("%08x\n", *pOutput);
     }
     printf("Emulator C end\n");
 }
