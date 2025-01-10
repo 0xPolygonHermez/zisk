@@ -6,6 +6,7 @@
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 use witness::WitnessComponent;
+use itertools::Itertools;
 
 use rayon::prelude::*;
 
@@ -274,12 +275,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
-        mut table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        table_instances.par_iter_mut().for_each(|(global_idx, table_instance)| {
-            if let Some(air_instance) = table_instance.compute_witness(pctx) {
-                if pctx.dctx_is_my_instance(*global_idx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
+        let mut instances = table_instances.into_iter().filter(|(_, sec_instance)| sec_instance.instance_type() == InstanceType::Table).collect::<Vec<_>>().into_iter().sorted_by(|(a, _), (b, _)| {
+            let (airgroup_id_a, air_id_a) = pctx.dctx_get_instance_info(*a);
+            let (airgroup_id_b, air_id_b) = pctx.dctx_get_instance_info(*b);
+
+            airgroup_id_a.cmp(&airgroup_id_b).then(air_id_a.cmp(&air_id_b))
+        }).collect::<Vec<_>>();
+
+        instances.iter_mut().for_each(|(global_idx, sec_instance)| {
+            if sec_instance.instance_type() == InstanceType::Table {
+                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
+                    if pctx.dctx_is_my_instance(*global_idx) {
+                        pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
+                    }
                 }
             }
         });
