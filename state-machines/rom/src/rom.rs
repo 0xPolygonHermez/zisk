@@ -51,7 +51,7 @@ impl RomSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
-    pub fn prove_instance<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new();
         let mut rom_custom_trace = RomRomTrace::new();
 

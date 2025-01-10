@@ -1,3 +1,9 @@
+//! The `ArithFullSM` module implements the Arithmetic Full State Machine.
+//!
+//! This state machine manages the computation of arithmetic operations and their associated
+//! trace generation. It coordinates with `ArithTableSM` and `ArithRangeTableSM` to handle
+//! state transitions and multiplicity updates.
+
 use std::sync::Arc;
 
 use crate::{
@@ -16,17 +22,29 @@ use zisk_pil::*;
 const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
 
+/// The `ArithFullSM` struct represents the Arithmetic Full State Machine.
+///
+/// This state machine coordinates the computation of arithmetic operations and updates
+/// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
 pub struct ArithFullSM {
-    /// Arith Table state machine
+    /// The Arithmetic Table State Machine.
     arith_table_sm: Arc<ArithTableSM>,
 
-    /// Arith Range Table state machine
+    /// The Arithmetic Range Table State Machine.
     arith_range_table_sm: Arc<ArithRangeTableSM>,
 }
 
 impl ArithFullSM {
     const MY_NAME: &'static str = "Arith   ";
 
+    /// Creates a new `ArithFullSM` instance.
+    ///
+    /// # Arguments
+    /// * `arith_table_sm` - A reference to the `ArithTableSM`.
+    /// * `arith_range_table_sm` - A reference to the `ArithRangeTableSM`.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new(
         arith_table_sm: Arc<ArithTableSM>,
         arith_range_table_sm: Arc<ArithRangeTableSM>,
@@ -34,7 +52,14 @@ impl ArithFullSM {
         Arc::new(Self { arith_table_sm, arith_range_table_sm })
     }
 
-    pub fn prove_instance<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+    /// Computes the witness for arithmetic operations and updates associated tables.
+    ///
+    /// # Arguments
+    /// * `inputs` - A slice of `OperationData` representing the arithmetic inputs.
+    ///
+    /// # Returns
+    /// An `AirInstance` containing the computed arithmetic trace.
+    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
@@ -203,6 +228,7 @@ impl ArithFullSM {
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
     }
 
+    /// Generates binary inputs for operations requiring additional validation (e.g., division).
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
         let opcode = OperationBusData::get_op(input);

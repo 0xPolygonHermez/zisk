@@ -1,3 +1,8 @@
+//! The `ZiskExecutor` module provides the main logic for orchestrating the execution of the ZisK
+//! ROM program to generate the witness computation. It is responsible for managing state machines,
+//! planning instances, and computing witnesses for both main and secondary state machines,
+//! leveraging parallel processing for efficiency.
+
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 use witness::WitnessComponent;
@@ -15,28 +20,48 @@ use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
+/// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
+/// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField> {
-    /// ZisK ROM, a binary file that contains the ZisK program to be executed
+    /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
-    /// Path to the public inputs file
+    /// Path to the public inputs file.
     pub public_inputs_path: PathBuf,
 
-    /// Registrered state machines
+    /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
+    /// The number of threads to use for parallel processing.
     const NUM_THREADS: usize = 8;
 
+    /// Creates a new instance of the `ZiskExecutor`.
+    ///
+    /// # Arguments
+    /// * `public_inputs_path` - Path to the public inputs file.
+    /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(public_inputs_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
         Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
     }
 
+    /// Registers a secondary state machine with the executor.
+    ///
+    /// # Arguments
+    /// * `sm` - The state machine to register.
     pub fn register_sm(&mut self, sm: Arc<dyn ComponentBuilder<F>>) {
         self.secondary_sm.push(sm);
     }
 
+    /// Computes minimal traces by processing the ZisK ROM with given public inputs.
+    ///
+    /// # Arguments
+    /// * `public_inputs` - Public inputs for the ROM execution.
+    /// * `num_threads` - Number of threads to use for parallel execution.
+    ///
+    /// # Returns
+    /// A vector of `EmuTrace` instances representing minimal traces.
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
         // Settings for the emulator
         let emu_options = EmuOptions {
@@ -53,6 +78,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         .expect("Error during emulator execution")
     }
 
+    /// Creates main state machine instances based on the provided planning.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances.
+    /// * `main_planning` - Planning information for main state machines.
+    ///
+    /// # Returns
+    /// A vector of `MainInstance` objects.
     fn create_main_instances(
         &self,
         pctx: &ProofCtx<F>,
@@ -71,6 +104,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
+    /// Expands and computes witnesses for main state machines in parallel.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `main_layouts` - Main instances to compute witnesses for.
+    ///
+    /// # Returns
+    /// A thread handle for the witness computation task.
     fn expand_and_witness_main(
         &self,
         pctx: Arc<ProofCtx<F>>,
@@ -87,6 +129,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         })
     }
 
+    /// Counts metrics for secondary state machines based on minimal traces.
+    ///
+    /// # Arguments
+    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    ///
+    /// # Returns
+    /// A vector of metrics grouped by chunk ID.
     fn count_sec(&self, min_traces: &[EmuTrace]) -> Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>> {
         if self.secondary_sm.is_empty() {
             return Vec::new();
@@ -119,6 +168,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         vec_counters
     }
 
+    /// Plans the secondary state machines by generating plans from the counted metrics.
+    ///
+    /// # Arguments
+    /// * `vec_counters` - A vector of counters grouped by chunk ID.
+    ///
+    /// # Returns
+    /// A vector of plans for each secondary state machine.
     fn plan_sec(
         &self,
         mut vec_counters: Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>,
@@ -126,6 +182,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.iter().map(|sm| sm.build_planner().plan(vec_counters.remove(0))).collect()
     }
 
+    /// Creates secondary state machine instances based on their plans.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances.
+    /// * `plans` - A vector of plans for each secondary state machine.
+    ///
+    /// # Returns
+    /// A vector of collected instances paired with their global indices.
     fn create_sec_instances(
         &self,
         pctx: &ProofCtx<F>,
@@ -150,6 +214,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
+    /// Expands and computes witnesses for secondary state machines.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances.
+    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `sec_instances` - Secondary state machine instances to compute witnesses for.
+    ///
+    /// # Returns
+    /// A vector of expanded secondary instances paired with their global indices.
     fn expand_and_witness_sec(
         &self,
         pctx: &ProofCtx<F>,
@@ -181,6 +254,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
+    /// Computes and generates witnesses for secondary state machine instances of type `Table`.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances.
+    /// * `collected_instances` - A vector of collected secondary state machine instances.
     fn witness_tables_sec(
         &self,
         pctx: &ProofCtx<F>,
@@ -195,6 +273,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
         });
     }
 
+    /// Processes a checkpoint to compute the witness for a secondary state machine instance.
+    ///
+    /// # Arguments
+    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `sec_instance` - The secondary state machine instance to process.
+    /// * `chunk_ids` - The chunk IDs that the instance needs to process.
+    ///
+    /// # Returns
+    /// The updated secondary instance after processing the checkpoint.
     fn process_checkpoint(
         &self,
         min_traces: &[EmuTrace],
@@ -215,6 +302,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.close_data_bus_collectors(data_bus)
     }
 
+    /// Retrieves a `DataBus` configured with counters for each secondary state machine.
+    ///
+    /// # Returns
+    /// A `DataBus` instance with connected counters for each registered secondary state machine.
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
         let mut data_bus = DataBus::new();
         self.secondary_sm.iter().for_each(|sm| {
@@ -227,6 +318,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         data_bus
     }
 
+    /// Finalizes a `DataBus` with counters, detaching and closing all devices.
+    ///
+    /// # Arguments
+    /// * `data_bus` - A `DataBus` instance with attached counters.
+    ///
+    /// # Returns
+    /// A vector containing all detached counters after closing their associated devices.
     fn close_data_bus_counters(
         &self,
         mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
@@ -241,6 +339,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect::<Vec<_>>()
     }
 
+    /// Retrieves a data bus for managing collectors in secondary state machines.
+    ///
+    /// # Arguments
+    /// * `sec_instance` - The secondary state machine instance to manage.
+    ///
+    /// # Returns
+    /// A `DataBus` instance with collectors connected.
     fn get_data_bus_collectors(
         &self,
         sec_instance: Box<dyn BusDeviceInstance<F>>,
@@ -264,6 +369,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         data_bus
     }
 
+    /// Closes a data bus used for managing collectors and returns the first instance.
+    ///
+    /// # Arguments
+    /// * `data_bus` - The `DataBus` instance to close.
+    ///
+    /// # Returns
+    /// The first `BusDeviceInstance` after detaching the bus.
     fn close_data_bus_collectors(
         &self,
         mut data_bus: DataBus<u64, BusDeviceInstanceWrapper<F>>,
@@ -273,6 +385,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
+    /// Executes the ZisK ROM program and computes all necessary witnesses.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances and computation.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         // Call emulate with these options
         let public_inputs = {

@@ -3,7 +3,7 @@
 //! It generates execution plans for segments of the main trace, mapping each segment
 //! to a specific `Plan` instance.
 
-use sm_common::{CheckPoint, CollectInfoSkip, InstanceType, Plan};
+use sm_common::{CheckPoint, CollectSkipper, InstanceType, Plan};
 use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
 
@@ -33,7 +33,7 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    Some(Box::new(CollectInfoSkip::new(0))),
+                    Some(Box::new(CollectSkipper::new(0))),
                     None,
                 )
             })

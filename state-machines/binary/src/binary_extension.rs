@@ -1,3 +1,8 @@
+//! The `BinaryExtensionSM` module defines the Binary Extension State Machine.
+//!
+//! This state machine handles binary extension-related operations, computes traces, and manages
+//! range checks and multiplicities for table rows based on the operations provided.
+
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
@@ -11,6 +16,7 @@ use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
+// Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
 
@@ -26,17 +32,30 @@ const LS_6_BITS: u64 = 0x3F;
 
 const SE_W_OP: u8 = 0x39;
 
+/// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
+///
+/// It processes binary extension-related operations and generates necessary traces and multiplicity
+/// tables for the operations. It also manages range checks through the PIL2 standard library.
 pub struct BinaryExtensionSM<F: PrimeField> {
-    // PIL2 Standard Library
+    /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
-    // Secondary state machines
+    /// Reference to the Binary Extension Table State Machine.
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 impl<F: PrimeField> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
+    /// Creates a new instance of the `BinaryExtensionSM`.
+    ///
+    /// # Arguments
+    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `binary_extension_table_sm` - An `Arc`-wrapped reference to the Binary Extension Table
+    ///   State Machine.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
@@ -44,6 +63,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         Arc::new(Self { std, binary_extension_table_sm })
     }
 
+    /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
             ZiskOp::Sll |
@@ -59,6 +79,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
     }
 
+    /// Determines if the given opcode represents a shift word operation.
     fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
@@ -74,6 +95,15 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
     }
 
+    /// Processes a single operation and generates the corresponding trace row.
+    ///
+    /// # Arguments
+    /// * `operation` - The operation to process.
+    /// * `multiplicity` - A mutable reference to the multiplicity table to update.
+    /// * `range_check` - A mutable reference to the range check table to update.
+    ///
+    /// # Returns
+    /// A `BinaryExtensionTraceRow` representing the processed trace.
     pub fn process_slice(
         operation: &OperationData<u64>,
         multiplicity: &mut [u64],
@@ -291,7 +321,14 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
+    /// Computes the witness for the given set of operations.
+    ///
+    /// # Arguments
+    /// * `operations` - The list of operations to process.
+    ///
+    /// # Returns
+    /// An `AirInstance` representing the computed witness.
+    pub fn compute_witness(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let mut binary_e_trace = BinaryExtensionTrace::new();
 

@@ -1,3 +1,8 @@
+//! This module defines constants for binary operation opcodes in both 32-bit and 64-bit variants.
+//!
+//! These constants are derived from the `ZiskOp` enum and represent the numeric opcodes for each
+//! operation.
+
 use zisk_core::zisk_ops::ZiskOp;
 
 /// Binary 32 bits opcodes

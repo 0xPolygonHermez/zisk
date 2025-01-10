@@ -1,6 +1,6 @@
 //! The `Planner` module provides core structures and traits for organizing and managing
 //! execution plans. It defines the `Plan` structure, `Planner` trait, and utility types
-//! like `CheckPoint` and `CollectInfoSkip` for efficient planning and execution flows.
+//! like `CheckPoint` and `CollectSkipper` for efficient planning and execution flows.
 
 use std::any::Any;
 
@@ -9,12 +9,12 @@ use crate::{BusDeviceMetrics, InstanceType};
 /// A type alias for identifying chunks in planning.
 pub type ChunkId = usize;
 
-/// The `CollectInfoSkip` struct defines logic for skipping instructions during input collection.
+/// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
 ///
 /// This utility helps manage scenarios where a specific number of instructions need to be skipped
 /// before processing resumes.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct CollectInfoSkip {
+pub struct CollectSkipper {
     /// Number of instructions to be skipped.
     pub skip: u64,
 
@@ -25,16 +25,16 @@ pub struct CollectInfoSkip {
     pub skipping: bool,
 }
 
-impl CollectInfoSkip {
-    /// Creates a new `CollectInfoSkip` instance.
+impl CollectSkipper {
+    /// Creates a new `CollectSkipper` instance.
     ///
     /// # Arguments
     /// * `skip` - The number of instructions to skip.
     ///
     /// # Returns
-    /// A new `CollectInfoSkip` instance with initial settings.
+    /// A new `CollectSkipper` instance with initial settings.
     pub fn new(skip: u64) -> Self {
-        CollectInfoSkip { skip, skipped: 0, skipping: skip > 0 }
+        CollectSkipper { skip, skipped: 0, skipping: skip > 0 }
     }
 
     /// Determines whether the current instruction should be skipped.

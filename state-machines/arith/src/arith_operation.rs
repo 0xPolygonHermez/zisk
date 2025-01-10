@@ -1,8 +1,14 @@
+//! The `ArithOperation` module provides a comprehensive implementation for arithmetic operations,
+//! including support for signed and unsigned arithmetic, multiplication, division, and modular
+//! arithmetic. It manages inputs, intermediate states, flags, and results to facilitate the
+//! execution of complex operations.
+
 use zisk_core::zisk_ops::ZiskOp;
 
 use crate::arith_range_table_helpers::*;
 use std::fmt;
 
+/// Represents an arithmetic operation, including its inputs, results, and intermediate flags.
 pub struct ArithOperation {
     pub op: u8,
     pub input_a: u64,
@@ -28,12 +34,14 @@ pub struct ArithOperation {
     pub div_overflow: bool,
 }
 
+/// Provides a default implementation for `ArithOperation`.
 impl Default for ArithOperation {
     fn default() -> Self {
         Self::new()
     }
 }
 impl fmt::Debug for ArithOperation {
+    /// Formats the `ArithOperation` for debugging, including flags, inputs, and chunk values.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut flags = String::new();
         if self.m32 {
@@ -96,6 +104,7 @@ impl fmt::Debug for ArithOperation {
 }
 
 impl ArithOperation {
+    /// Dumps the chunks of a specified value into the provided formatter.
     fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u64; 4]) -> fmt::Result {
         writeln!(
             f,
@@ -103,6 +112,8 @@ impl ArithOperation {
             name, value[0], value[1], value[2], value[3]
         )
     }
+
+    /// Creates a new instance of `ArithOperation` with default values.
     pub fn new() -> Self {
         Self {
             op: 0,
@@ -129,6 +140,8 @@ impl ArithOperation {
             range_cd: 0,
         }
     }
+
+    /// Performs the arithmetic operation based on the opcode and inputs.
     pub fn calculate(&mut self, op: u8, input_a: u64, input_b: u64) {
         self.op = op;
         self.input_a = input_a;
@@ -159,6 +172,8 @@ impl ArithOperation {
         let chunks = self.calculate_chunks();
         self.update_carries(&chunks);
     }
+
+    /// Updates carry values based on computed chunks.
     fn update_carries(&mut self, chunks: &[i64; 8]) {
         for (i, chunk) in chunks.iter().enumerate() {
             let chunk_value = chunk + if i > 0 { self.carry[i - 1] } else { 0 };
@@ -168,6 +183,8 @@ impl ArithOperation {
             self.carry[i] = chunk_value / 0x10000;
         }
     }
+
+    /// Computes the signed representation of a 32-bit value.
     fn sign32(abs_value: u64, negative: bool) -> u64 {
         assert!(0xFFFF_FFFF >= abs_value, "abs_value:0x{0:X}({0}) is too big", abs_value);
         if negative {
@@ -177,6 +194,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the signed representation of a 64-bit value.
     fn sign64(abs_value: u64, negative: bool) -> u64 {
         if negative {
             (0xFFFF_FFFF_FFFF_FFFF - abs_value) + 1
@@ -184,6 +202,8 @@ impl ArithOperation {
             abs_value
         }
     }
+
+    /// Computes the signed representation of a 128-bit value.
     fn sign128(abs_value: u128, negative: bool) -> u128 {
         if negative {
             (0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF - abs_value) + 1
@@ -191,20 +211,27 @@ impl ArithOperation {
             abs_value
         }
     }
+
+    /// Extracts the absolute value and sign bit of a 32-bit input.
     fn abs32(value: u64) -> [u64; 2] {
         let negative = if (value & 0x8000_0000) != 0 { 1 } else { 0 };
         let abs_value = if negative == 1 { (0xFFFF_FFFF - value) + 1 } else { value };
         [abs_value, negative]
     }
+
+    /// Extracts the absolute value and sign bit of a 64-bit input.
     fn abs64(value: u64) -> [u64; 2] {
         let negative = if (value & 0x8000_0000_0000_0000) != 0 { 1 } else { 0 };
         let abs_value = if negative == 1 { (0xFFFF_FFFF_FFFF_FFFF - value) + 1 } else { value };
         [abs_value, negative]
     }
+
+    /// Computes the product of the lower 32 bits of two inputs.
     fn calculate_mul_w(a: u64, b: u64) -> u64 {
         (a & 0xFFFF_FFFF) * (b & 0xFFFF_FFFF)
     }
 
+    /// Computes the signed multiplication of a 64-bit and unsigned 64-bit value.
     fn calculate_mulsu(a: u64, b: u64) -> [u64; 2] {
         let [abs_a, na] = Self::abs64(a);
         let abs_c = abs_a as u128 * b as u128;
@@ -213,6 +240,7 @@ impl ArithOperation {
         [c as u64, (c >> 64) as u64]
     }
 
+    /// Computes the signed multiplication of two 64-bit values.
     fn calculate_mul(a: u64, b: u64) -> [u64; 2] {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
@@ -222,6 +250,7 @@ impl ArithOperation {
         [c as u64, (c >> 64) as u64]
     }
 
+    /// Computes the signed division of two 64-bit values.
     fn calculate_div(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
@@ -233,6 +262,8 @@ impl ArithOperation {
             Self::sign64(abs_c, nc == 1)
         }
     }
+
+    /// Computes the signed division of two 32-bit values.
     fn calculate_div_w(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs32(a);
         let [abs_b, nb] = Self::abs32(b);
@@ -245,6 +276,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the unsigned division of two 64-bit values.
     fn calculate_divu(a: u64, b: u64) -> u64 {
         if b == 0 {
             0xFFFF_FFFF_FFFF_FFFF
@@ -253,6 +285,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the unsigned division of two 32-bit values.
     fn calculate_divu_w(a: u64, b: u64) -> u64 {
         if b == 0 {
             0xFFFF_FFFF
@@ -261,6 +294,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the unsigned remainder of two 64-bit values.
     fn calculate_remu(a: u64, b: u64) -> u64 {
         if b == 0 {
             a
@@ -269,6 +303,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the unsigned remainder of two 32-bit values.
     fn calculate_remu_w(a: u64, b: u64) -> u64 {
         if b == 0 {
             a
@@ -277,6 +312,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the signed remainder of two 64-bit values.
     fn calculate_rem(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, _nb] = Self::abs64(b);
@@ -289,6 +325,7 @@ impl ArithOperation {
         }
     }
 
+    /// Computes the signed remainder of two 32-bit values.
     fn calculate_rem_w(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs32(a);
         let [abs_b, _nb] = Self::abs32(b);
@@ -301,6 +338,7 @@ impl ArithOperation {
         }
     }
 
+    /// Calculates intermediate results (A, B, C, D) from inputs (A, B) based on the operation.
     fn calculate_abcd_from_ab(op: u8, a: u64, b: u64) -> [u64; 4] {
         let zisk_op = ZiskOp::try_from_code(op).unwrap();
         match zisk_op {
@@ -334,6 +372,8 @@ impl ArithOperation {
             }
         }
     }
+
+    /// Updates the operation's flags and range values based on inputs and results.
     fn update_flags_and_ranges(&mut self, op: u8, a: u64, b: u64, c: u64, d: u64) {
         self.m32 = false;
         self.div = false;
@@ -589,6 +629,7 @@ impl ArithOperation {
             if (range_c1 + range_d1) > 0 { 8 } else { 0 };
     }
 
+    /// Calculates the operation's output chunks for further processing.
     pub fn calculate_chunks(&self) -> [i64; 8] {
         // TODO: unroll this function in variants (div,m32) and (na,nb,nr,np)
         // div, m32, na, nb === f(div,m32,na,nb) => fa, nb, nr
@@ -691,6 +732,8 @@ impl ArithOperation {
 
         chunks
     }
+
+    /// Converts a 64-bit value into its four 16-bit chunks.
     fn u64_to_chunks(a: u64) -> [u64; 4] {
         [a & 0xFFFF, (a >> 16) & 0xFFFF, (a >> 32) & 0xFFFF, (a >> 48) & 0xFFFF]
     }
