@@ -1,3 +1,12 @@
+//! The `BinarySM` module implements the Binary State Machine,
+//! coordinating sub-state machines to handle various binary operations seamlessly.
+//!
+//! Key components of this module include:
+//! - The `BinarySM` struct, encapsulating the basic and extension state machines along with their
+//!   table counterparts.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors
+//!   specific to binary operations.
+
 use std::sync::Arc;
 
 use crate::{
@@ -14,7 +23,8 @@ use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
 
-/// Binary state machine
+/// The `BinarySM` struct represents the Binary State Machine,
+/// managing both basic and extension binary operations.
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
     /// Binary Basic state machine
@@ -31,7 +41,13 @@ pub struct BinarySM<F: PrimeField> {
 }
 
 impl<F: PrimeField> BinarySM<F> {
-    /// Creates a new BinarySM instance
+    /// Creates a new instance of the `BinarySM` state machine.
+    ///
+    /// # Arguments
+    /// * `std` - PIL2 standard library utilities.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
@@ -49,6 +65,11 @@ impl<F: PrimeField> BinarySM<F> {
 }
 
 impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
+    /// Builds and returns a new counter for monitoring binary operations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RegularCounters` configured for binary and extension binary
+    /// operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RegularCounters::new(
             OPERATION_BUS_ID,
@@ -56,6 +77,10 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         ))
     }
 
+    /// Builds a planner to plan binary-related instances.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(
             RegularPlanner::new()
@@ -82,6 +107,17 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         )
     }
 
+    /// Builds an inputs data collector for binary operations.
+    ///
+    /// # Arguments
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
+    ///
+    /// # Panics
+    /// Panics if the provided `air_id` is not supported.
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match ictx.plan.air_id {
             id if id == BinaryTrace::<usize>::AIR_ID => {

@@ -1,3 +1,7 @@
+//! The `ArithCounter` module defines a counter for tracking arithmetic-related operations
+//! sent over the data bus. It connects to the bus and gathers metrics for specific
+//! `ZiskOperationType::Arith` instructions.
+
 use std::ops::Add;
 
 use sm_common::{Counter, Metrics};
@@ -6,23 +10,43 @@ use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
 
+/// The `ArithCounter` struct represents a counter that monitors and measures
+/// arithmetic-related operations on the data bus.
+///
+/// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
+/// accepted operation type whenever data is processed on the bus.
 pub struct ArithCounter {
-    /// Vector of Zisk Operation Type instructions to be counted
+    /// Vector of `ZiskOperationType` instructions to be counted.
     op_type: Vec<ZiskOperationType>,
 
-    /// Connected Bus Id
+    /// The connected bus ID.
     bus_id: BusId,
 
-    /// Vector of counters, one for each Zisk Operation Type accepted
+    /// Vector of counters, one for each accepted `ZiskOperationType`.
     counter: Vec<Counter>,
 }
 
 impl ArithCounter {
+    /// Creates a new instance of `ArithCounter`.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus to which this counter is connected.
+    /// * `op_type` - A vector of `ZiskOperationType` instructions to monitor.
+    ///
+    /// # Returns
+    /// A new `ArithCounter` instance.
     pub fn new(bus_id: BusId, op_type: Vec<ZiskOperationType>) -> Self {
         let counter = vec![Counter::default(); op_type.len()];
         Self { bus_id, op_type, counter }
     }
 
+    /// Retrieves the count of instructions for a specific `ZiskOperationType`.
+    ///
+    /// # Arguments
+    /// * `op_type` - The operation type to retrieve the count for.
+    ///
+    /// # Returns
+    /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         if let Some(index) = self.op_type.iter().position(|&_op_type| op_type == _op_type) {
             return Some(self.counter[index].inst_count);
@@ -32,7 +56,15 @@ impl ArithCounter {
 }
 
 impl Metrics for ArithCounter {
-    fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    /// Tracks activity on the connected bus and updates counters for recognized operations.
+    ///
+    /// # Arguments
+    /// * `_bus_id` - The ID of the bus (unused in this implementation).
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let inst_op_type = OperationBusData::get_op_type(&data);
@@ -44,6 +76,13 @@ impl Metrics for ArithCounter {
         vec![]
     }
 
+    /// Merges metrics from another `ArithCounter`.
+    ///
+    /// # Arguments
+    /// * `other` - A reference to another `Metrics` instance that should be an `ArithCounter`.
+    ///
+    /// # Panics
+    /// Panics if the `other` is not of type `ArithCounter`.
     fn add(&mut self, other: &dyn Metrics) {
         let other = other
             .as_any()
@@ -54,10 +93,18 @@ impl Metrics for ArithCounter {
         }
     }
 
+    /// Returns the bus IDs associated with this counter.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
+    ///
+    /// # Returns
+    /// A reference to `self` as `dyn std::any::Any`.
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -66,6 +113,14 @@ impl Metrics for ArithCounter {
 impl Add for ArithCounter {
     type Output = ArithCounter;
 
+    /// Combines two `ArithCounter` instances by summing their counters.
+    ///
+    /// # Arguments
+    /// * `self` - The first `ArithCounter` instance.
+    /// * `other` - The second `ArithCounter` instance.
+    ///
+    /// # Returns
+    /// A new `ArithCounter` with combined counters.
     fn add(self, other: Self) -> ArithCounter {
         let counter = self
             .counter
@@ -78,6 +133,16 @@ impl Add for ArithCounter {
 }
 
 impl BusDevice<u64> for ArithCounter {
+    /// Processes data received on the bus, updating counters and generating inputs when applicable.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// A tuple where:
+    /// - The first element indicates whether processing should continue.
+    /// - The second element contains derived inputs to be sent back to the bus.
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
@@ -91,7 +156,7 @@ impl BusDevice<u64> for ArithCounter {
         }
 
         let inputs = ArithFullSM::generate_inputs(&input)
-            .into_iter() // Consumes the collection, iterating over u64
+            .into_iter()
             .map(|x| (*bus_id, x))
             .collect::<Vec<_>>();
 

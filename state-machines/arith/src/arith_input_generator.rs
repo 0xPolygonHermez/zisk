@@ -34,7 +34,7 @@ impl BusDevice<u64> for ArithInputGenerator {
         }
 
         let inputs = ArithFullSM::generate_inputs(&input)
-            .into_iter() // Consumes the collection, iterating over u64
+            .into_iter()
             .map(|x| (*bus_id, x))
             .collect::<Vec<_>>();
 

@@ -1,26 +1,46 @@
+//! The `Planner` module provides core structures and traits for organizing and managing
+//! execution plans. It defines the `Plan` structure, `Planner` trait, and utility types
+//! like `CheckPoint` and `CollectInfoSkip` for efficient planning and execution flows.
+
 use std::any::Any;
 
 use crate::{BusDeviceMetrics, InstanceType};
 
+/// A type alias for identifying chunks in planning.
 pub type ChunkId = usize;
 
+/// The `CollectInfoSkip` struct defines logic for skipping instructions during input collection.
+///
+/// This utility helps manage scenarios where a specific number of instructions need to be skipped
+/// before processing resumes.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CollectInfoSkip {
-    /// Number of instructions to be skipped
+    /// Number of instructions to be skipped.
     pub skip: u64,
 
-    /// Number of already skipped instrucions
+    /// Number of already skipped instrucions.
     pub skipped: u64,
 
-    /// Flag to indicate if we are either we are skipping or not
+    /// Flag indicating whether skipping is active.
     pub skipping: bool,
 }
 
 impl CollectInfoSkip {
+    /// Creates a new `CollectInfoSkip` instance.
+    ///
+    /// # Arguments
+    /// * `skip` - The number of instructions to skip.
+    ///
+    /// # Returns
+    /// A new `CollectInfoSkip` instance with initial settings.
     pub fn new(skip: u64) -> Self {
         CollectInfoSkip { skip, skipped: 0, skipping: skip > 0 }
     }
 
+    /// Determines whether the current instruction should be skipped.
+    ///
+    /// # Returns
+    /// `true` if the instruction should be skipped, `false` otherwise.
     pub fn should_skip(&mut self) -> bool {
         if !self.skipping {
             return false;
@@ -36,38 +56,58 @@ impl CollectInfoSkip {
     }
 }
 
+/// Represents different types of checkpoints in a plan.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CheckPoint {
+    /// No checkpoint.
     None,
+
+    /// A single chunk checkpoint.
     Single(ChunkId),
+
+    /// Multiple chunk checkpoints.
     Multiple(Vec<ChunkId>),
 }
 
+/// The `Plan` struct represents a single execution plan.
 #[derive(Debug)]
 pub struct Plan {
-    /// Airgroup Id
+    /// The AIR group ID.
     pub airgroup_id: usize,
 
-    /// Air Id
+    /// The AIR ID.
     pub air_id: usize,
 
-    /// Segment Id
+    /// The segment ID associated with this plan.
     pub segment_id: Option<usize>,
 
-    /// Instance type
+    /// The type of instance associated with this plan.
     pub instance_type: InstanceType,
 
-    /// Checkpoint type
+    /// The checkpoint type associated with this plan.
     pub check_point: CheckPoint,
 
-    /// Information to be able to collect the inputs
+    /// Information required for input collection.
     pub collect_info: Option<Box<dyn Any>>,
 
-    /// Extra meta information
+    /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
 }
 
 impl Plan {
+    /// Creates a new `Plan` instance.
+    ///
+    /// # Arguments
+    /// * `airgroup_id` - The AIR group ID.
+    /// * `air_id` - The AIR ID.
+    /// * `segment_id` - The segment ID (if any).
+    /// * `instance_type` - The type of instance.
+    /// * `check_point` - The checkpoint type.
+    /// * `collect_info` - Optional input collection information.
+    /// * `meta` - Optional additional metadata.
+    ///
+    /// # Returns
+    /// A new `Plan` instance with the specified settings.
     pub fn new(
         airgroup_id: usize,
         air_id: usize,
@@ -81,6 +121,18 @@ impl Plan {
     }
 }
 
+/// The `Planner` trait defines the interface for creating execution plans.
+///
+/// Implementers of this trait must define how plans are generated from input metrics.
 pub trait Planner {
+    /// Generates a vector of `Plan` instances based on provided metrics.
+    ///
+    /// # Arguments
+    /// * `counter` - A vector of tuples where:
+    ///   - The first element is a `ChunkId` identifying the metric's source.
+    ///   - The second element is a boxed implementation of `BusDeviceMetrics`.
+    ///
+    /// # Returns
+    /// A vector of `Plan` instances.
     fn plan(&self, counter: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan>;
 }

@@ -14,13 +14,20 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
     /// Instance context
     ictx: InstanceCtx,
 
+    /// Skip info
+    skip_info: CollectInfoSkip,
+
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
 }
 
 impl<F: PrimeField> BinaryExtensionInstance<F> {
-    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { binary_extension_sm, ictx, inputs: Vec::new() }
+    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, mut ictx: InstanceCtx) -> Self {
+        let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
+        let skip_info =
+            *collect_info.downcast::<CollectInfoSkip>().expect("Expected CollectInfoSkip");
+
+        Self { binary_extension_sm, ictx, skip_info, inputs: Vec::new() }
     }
 }
 
@@ -48,9 +55,7 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
             return (false, vec![]);
         }
 
-        let info_skip = self.ictx.plan.collect_info.as_mut().unwrap();
-        let info_skip = info_skip.downcast_mut::<CollectInfoSkip>().unwrap();
-        if info_skip.should_skip() {
+        if self.skip_info.should_skip() {
             return (false, vec![]);
         }
 

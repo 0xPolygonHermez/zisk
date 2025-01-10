@@ -1,3 +1,13 @@
+//! The `RomSM` module implements the ROM State Machine,
+//! directly managing the ROM execution process, generating traces, and computing custom traces.
+//!
+//! Key components of this module include:
+//! - The `RomSM` struct, which represents the ROM State Machine and encapsulates ROM-related
+//!   operations.
+//! - Methods for proving instances and computing traces from the ROM data.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input
+//!   collectors.
+
 use std::{path::PathBuf, sync::Arc};
 
 use itertools::Itertools;
@@ -13,6 +23,7 @@ use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace, RomTraceRow};
 
+/// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Arc<ZiskRom>,
@@ -21,10 +32,25 @@ pub struct RomSM {
 impl RomSM {
     const MY_NAME: &'static str = "RomSM   ";
 
+    /// Creates a new instance of the `RomSM` state machine.
+    ///
+    /// # Arguments
+    /// * `zisk_rom` - The Zisk ROM representation.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
         Arc::new(Self { zisk_rom })
     }
 
+    /// Computes the witness for the provided plan using the given ROM.
+    ///
+    /// # Arguments
+    /// * `rom` - Reference to the Zisk ROM.
+    /// * `plan` - The execution plan for computing the witness.
+    ///
+    /// # Returns
+    /// An `AirInstance` containing the computed witness trace data.
     pub fn prove_instance<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new();
         let mut rom_custom_trace = RomRomTrace::new();
@@ -78,6 +104,11 @@ impl RomSM {
         )
     }
 
+    /// Computes the ROM trace based on the ROM instructions.
+    ///
+    /// # Arguments
+    /// * `rom` - Reference to the Zisk ROM.
+    /// * `rom_custom_trace` - Reference to the custom ROM trace.
     fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -133,6 +164,11 @@ impl RomSM {
         }
     }
 
+    /// Computes a custom trace ROM from the given ELF file.
+    ///
+    /// # Arguments
+    /// * `rom_path` - The path to the ELF file.
+    /// * `rom_custom_trace` - Reference to the custom ROM trace.
     pub fn compute_custom_trace_rom<F: PrimeField>(
         rom_path: PathBuf,
         rom_custom_trace: &mut RomRomTrace<F>,
@@ -154,14 +190,30 @@ impl RomSM {
 }
 
 impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+    /// Builds and returns a new counter for monitoring ROM operations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RomCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(RomCounter::new(ROM_BUS_ID))
     }
 
+    /// Builds a planner for ROM-related instances.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RomPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(RomPlanner {})
     }
 
+    /// Builds an inputs data collector for ROM operations.
+    ///
+    /// # Arguments
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RomInstance`.
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         Box::new(RomInstance::new(self.zisk_rom.clone(), ictx))
     }
