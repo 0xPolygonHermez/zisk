@@ -65,7 +65,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.arith_full_sm.compute_witness::<F>(&self.inputs))
+        Some(self.arith_full_sm.compute_witness(&self.inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.
