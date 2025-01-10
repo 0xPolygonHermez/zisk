@@ -155,15 +155,14 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
 
 impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        if *_bus_id != MEM_BUS_ID {
-            return (false, vec![])
-        }
-
         info!("MemModuleInstance process_data bus_id:{} len: {}", _bus_id, data.len());
         info!(
             "MemModuleInstance process_data len: {:X},{:X},{:X},{:X},{:X}",
             data[0], data[1], data[2], data[3], data[4]
         );
+        if *_bus_id != MEM_BUS_ID {
+            return (false, vec![])
+        }
 
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);

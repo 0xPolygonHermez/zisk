@@ -1711,11 +1711,25 @@ impl<'a> Emu<'a> {
         data_bus: &mut DataBus<u64, BD>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
-        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
+        self.source_a_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
+        self.source_b_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_mem_reads_consume(instruction, &trace_step.mem_reads, mem_reads_index);
-
+        self.store_c_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
         if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
             return true;
