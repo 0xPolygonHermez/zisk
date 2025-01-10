@@ -507,11 +507,17 @@ impl ZiskRom {
         *s += ".section .text\n";
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
-        *s += "\tmov rax, 1\n";
-        *s += "\tmov rdi, 1\n";
-        *s += "\tlea rsi, msg\n";
-        *s += "\tmov rdx, msglen\n";
-        *s += "\tsyscall\n\n";
+
+        // Log start message
+        // *s += "\tmov rax, 1\n";
+        // *s += "\tmov rdi, 1\n";
+        // *s += "\tlea rsi, msg\n";
+        // *s += "\tmov rdx, msglen\n";
+        // *s += "\tsyscall\n\n";
+
+        // Registers initialization
+        *s += &format!("\tmov {}, 0 /* Registers initialization: step = 0 */\n", REG_STEP);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: sp = 0 */\n", REG_SP);
 
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
@@ -980,6 +986,7 @@ impl ZiskRom {
             ZiskOp::CopyB => {
                 //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b_string_value);
                 s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b_string_value);
+                //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b_string_value);
                 ctx.c_is_constant = ctx.b_is_constant;
                 ctx.c_numeric_value = ctx.b_numeric_value;
                 ctx.c_string_value = ctx.b_string_value.clone();
