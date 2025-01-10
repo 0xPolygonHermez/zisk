@@ -120,15 +120,25 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match ictx.plan.air_id {
-            id if id == BinaryTrace::<usize>::AIR_ID => {
-                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
-            }
+            id if id == BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
+                self.binary_basic_sm.clone(),
+                ictx,
+                OPERATION_BUS_ID,
+            )),
             id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
-                Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))
+                Box::new(BinaryExtensionInstance::new(
+                    self.binary_extension_sm.clone(),
+                    ictx,
+                    OPERATION_BUS_ID,
+                ))
             }
             id if id == BinaryTableTrace::<usize>::AIR_ID => {
                 table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
-                Box::new(BinaryBasicTableInstance::new(self.binary_basic_table_sm.clone(), ictx))
+                Box::new(BinaryBasicTableInstance::new(
+                    self.binary_basic_table_sm.clone(),
+                    ictx,
+                    OPERATION_BUS_ID,
+                ))
             }
             id if id == BinaryExtensionTableTrace::<usize>::AIR_ID => {
                 table_instance!(
@@ -139,6 +149,7 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
                 Box::new(BinaryExtensionTableInstance::new(
                     self.binary_extension_table_sm.clone(),
                     ictx,
+                    OPERATION_BUS_ID,
                 ))
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),

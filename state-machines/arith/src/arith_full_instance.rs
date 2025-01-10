@@ -19,15 +19,17 @@ pub struct ArithFullInstance {
 
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
+
+    bus_id: BusId,
 }
 
 impl ArithFullInstance {
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx, bus_id: BusId) -> Self {
         let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
         let skip_info =
             *collect_info.downcast::<CollectInfoSkip>().expect("Expected CollectInfoSkip");
 
-        Self { arith_full_sm, ictx, skip_info, inputs: Vec::new() }
+        Self { arith_full_sm, ictx, skip_info, inputs: Vec::new(), bus_id }
     }
 }
 
@@ -42,6 +44,10 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
 
