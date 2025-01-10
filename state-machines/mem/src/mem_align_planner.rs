@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
+use log::info;
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 use zisk_pil::{MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -42,12 +43,18 @@ impl<'a> MemAlignPlanner<'a> {
         }
 
         let count = self.counters.len();
+        info!("[Mem]   MemAlignPlan {}", count);
+
         for index in 0..count {
             let chunk_id = self.counters[index].0;
             let counter = self.counters[index].1;
+            info!("[Mem]   MemAlignPlan 2A index:{}", index);
             self.set_current_chunk_id(chunk_id);
+            info!("[Mem]   MemAlignPlan 2B index:{}", index);
             self.add_to_current_instance(counter.mem_align_rows, &counter.mem_align);
         }
+        let count = self.counters.len();
+        info!("[Mem]   MemAlignPlan 3 {}", count);
         self.close_current_instance();
         vec![]
     }
@@ -78,6 +85,9 @@ impl<'a> MemAlignPlanner<'a> {
             }
             operations_rows_offset += count;
             self.open_new_instance(operations_rows_offset, pending_rows > 0);
+            if pending_rows == 0 {
+                break;
+            }
         }
     }
     fn close_current_instance(&mut self) {
@@ -93,12 +103,12 @@ impl<'a> MemAlignPlanner<'a> {
             Some(self.instances.len()),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
+            None,
             Some(Box::new(MemAlignCheckPoint {
                 skip: self.current_skip,
                 count: 0,
                 rows: self.num_rows - self.current_rows_available,
             })),
-            None,
         );
         self.instances.push(instance);
     }

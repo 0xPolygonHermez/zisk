@@ -1,4 +1,5 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
+use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
@@ -19,6 +20,8 @@ pub struct MemAlignInstance<F: PrimeField> {
 
 impl<F: PrimeField> MemAlignInstance<F> {
     pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
+        info!("[Mem]   MemAlignInstance");
+
         let checkpoint =
             ictx.plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap().clone();
 

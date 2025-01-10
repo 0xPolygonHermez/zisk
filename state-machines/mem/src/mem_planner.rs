@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use log::info;
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
 use zisk_pil::{INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -25,6 +26,7 @@ impl MemPlanner {
 impl Planner for MemPlanner {
     fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
+        info!("[Mem]   Start Plan....");
         let _counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
@@ -57,13 +59,18 @@ impl Planner for MemPlanner {
             )),
             Box::new(MemAlignPlanner::new(counters.clone())),
         ];
+        info!("[Mem]   Plan 1");
+
         for item in &mut planners {
+            info!("[Mem]   Plan 1#");
             item.plan();
         }
+        info!("[Mem]   Plan 2");
         let mut plans: Vec<Plan> = Vec::new();
         for item in &mut planners {
             plans.append(&mut item.collect_plans());
         }
+        info!("[Mem]   Plan 3");
         plans
     }
 }

@@ -21,8 +21,6 @@ pub const MAIN_AIR_IDS: &[usize] = &[0];
 
 pub const ROM_AIR_IDS: &[usize] = &[1];
 
-pub const ARITH_AIR_IDS: &[usize] = &[2];
-
 pub const MEM_AIR_IDS: &[usize] = &[2];
 
 pub const ROM_DATA_AIR_IDS: &[usize] = &[3];
@@ -33,20 +31,25 @@ pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
 
 pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[6];
 
-pub const ARITH_TABLE_AIR_IDS: &[usize] = &[3];
+pub const ARITH_AIR_IDS: &[usize] = &[7];
 
-pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[4];
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
 
-pub const BINARY_AIR_IDS: &[usize] = &[5];
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[6];
+pub const BINARY_AIR_IDS: &[usize] = &[10];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[7];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[11];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[8];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[9];
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[13];
 
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[14];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
 
 
 //PUBLICS
@@ -97,35 +100,43 @@ trace!(MemAlignRomTrace<F> {
 
 trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 2, 2097152 );
+},  0, 7, 2097152 );
 
 trace!(ArithTableTrace<F> {
  multiplicity: F,
-},  0, 3, 128 );
+},  0, 8, 128 );
 
 trace!(ArithRangeTableTrace<F> {
  multiplicity: F,
-},  0, 4, 4194304 );
+},  0, 9, 4194304 );
 
 trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F, debug_main_step: F,
-},  0, 5, 2097152 );
+},  0, 10, 2097152 );
 
 trace!(BinaryTableTrace<F> {
  multiplicity: F,
-},  0, 6, 8388608 );
+},  0, 11, 8388608 );
 
 trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], debug_main_step: F, multiplicity: F,
-},  0, 7, 2097152 );
+},  0, 12, 2097152 );
 
 trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
-},  0, 8, 4194304 );
+},  0, 13, 4194304 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 1],
-},  0, 9, 16777216 );
+ mul: [F; 2],
+},  0, 14, 16777216 );
+
+trace!(U8AirTrace<F> {
+ mul: F,
+},  0, 15, 256 );
+
+trace!(U16AirTrace<F> {
+ mul: F,
+},  0, 16, 65536 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -145,4 +156,72 @@ values!(RomDataAirValues<F> {
 
 values!(InputDataAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+});
+
+values!(MainAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RomAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RomDataAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(InputDataAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignRomAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithRangeTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(SpecifiedRangesAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U8AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U16AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });

@@ -2,6 +2,7 @@ use executor::ZiskExecutor;
 use pil_std_lib::Std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
+use sm_mem::MemProxy;
 use sm_rom::RomSM;
 use sm_std::StdSM;
 use std::sync::Arc;
@@ -37,14 +38,16 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
 
         let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(zisk_rom.clone());
-        let binary_sm = BinarySM::new(std);
+        let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
+        let mem_proxy = MemProxy::new(std.clone());
 
         let mut executor = ZiskExecutor::new(wcm.get_public_inputs_path().unwrap(), zisk_rom);
         executor.register_sm(std_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
         executor.register_sm(arith_sm);
+        executor.register_sm(mem_proxy);
 
         wcm.register_component(Arc::new(executor));
     }

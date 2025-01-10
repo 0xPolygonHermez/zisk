@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, MEMORY_MAX_DIFF};
+use log::info;
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 
 pub struct MemModulePlanner<'a> {
@@ -72,6 +73,7 @@ impl<'a> MemModulePlanner<'a> {
         if self.counters.is_empty() {
             panic!("MemPlanner::plan() No metrics found");
         }
+        info!("[Mem]   MemModulePlan {}", self.counters.len());
 
         // create a list of cursors, this list has the non-empty indexs of metric (couters) and his
         // cursor init to first position

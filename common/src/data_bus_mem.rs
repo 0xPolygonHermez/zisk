@@ -1,6 +1,6 @@
 pub const MEM_BUS_ID: u16 = 10;
 
-pub const MEM_BUS_DATA_SIZE: usize = 5;
+pub const MEM_BUS_DATA_SIZE: usize = 7;
 
 const OP: usize = 0;
 const ADDR: usize = 1;

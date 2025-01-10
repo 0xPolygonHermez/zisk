@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use sm_common::Metrics;
-use zisk_common::{BusDevice, BusId};
+use zisk_common::{BusDevice, BusId, MEM_BUS_ID};
 
-use crate::{MemHelpers, MEM_BUS_ID, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK};
+use crate::{MemHelpers, MEM_BYTES_BITS, MEM_REGS_ADDR, MEM_REGS_MASK};
 
 use log::info;
 
@@ -39,6 +39,7 @@ impl MemCounters {
 
 impl Metrics for MemCounters {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+        // info!("[Mem]   MemCounters::measure....");
         let op = data[0] as u8;
         let addr = data[1] as u32;
         let mut addr_w = addr >> MEM_BYTES_BITS;
@@ -135,6 +136,7 @@ impl Metrics for MemCounters {
         let addr_hashmap = std::mem::take(&mut self.addr);
         self.addr_sorted = addr_hashmap.into_iter().collect();
         self.addr_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        info!("[Mem]   Closed");
     }
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -146,6 +148,6 @@ impl BusDevice<u64> for MemCounters {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        (true, vec![])
+        (false, vec![])
     }
 }

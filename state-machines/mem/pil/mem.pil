@@ -94,7 +94,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     if (free_input_mem) {
         // free input memory must be read-only
         const int air.wr = 0;
-    } else if (inmutable) {
+    } else if (immutable) {
         // immutable memory in address change, must be write first or a read of zero.
         const expr air.wr = addr_changes * sel;
         for (int i = 0; i < RC; i++) {
