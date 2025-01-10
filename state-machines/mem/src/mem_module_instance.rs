@@ -148,6 +148,9 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![MEM_BUS_ID]
+    }
 }
 
 impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {

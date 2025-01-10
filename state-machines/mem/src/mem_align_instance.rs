@@ -4,7 +4,7 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
-use zisk_common::{BusDevice, BusId, MemBusData};
+use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 
 pub struct MemAlignInstance<F: PrimeField> {
     checkpoint: MemAlignCheckPoint,
@@ -47,6 +47,9 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![MEM_BUS_ID]
     }
 }
 

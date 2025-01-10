@@ -10,6 +10,7 @@ use pil_std_lib::Std;
 use sm_common::{
     table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Planner,
 };
+use zisk_common::MEM_BUS_ID;
 use zisk_pil::{InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace};
 
 pub struct MemProxy<F: PrimeField> {
@@ -60,7 +61,7 @@ impl<F: PrimeField> ComponentBuilder<F> for MemProxy<F> {
             }
             id if id == MemAlignRomTrace::<usize>::AIR_ID => {
                 table_instance!(MemAlignRomInstance, MemAlignRomSM, MemAlignRomTrace);
-                Box::new(MemAlignRomInstance::new(self.mem_align_rom_sm.clone(), ictx))
+                Box::new(MemAlignRomInstance::new(self.mem_align_rom_sm.clone(), ictx, MEM_BUS_ID))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
