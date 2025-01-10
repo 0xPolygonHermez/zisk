@@ -223,7 +223,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of expanded secondary instances paired with their global indices.
-    fn expand_and_witness_sec(
+    fn collect_and_witness_sec(
         &self,
         pctx: &ProofCtx<F>,
         min_traces: Arc<Vec<EmuTrace>>,
@@ -259,7 +259,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances.
     /// * `collected_instances` - A vector of collected secondary state machine instances.
-    fn witness_tables_sec(
+    fn witness_sec_tables(
         &self,
         pctx: &ProofCtx<F>,
         mut collected_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
@@ -416,8 +416,8 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let sec_count = self.count_sec(&min_traces);
         let sec_planning = self.plan_sec(sec_count);
         let sec_instances = self.create_sec_instances(&pctx, sec_planning);
-        let sec_expanded = self.expand_and_witness_sec(&pctx, min_traces, sec_instances);
-        self.witness_tables_sec(&pctx, sec_expanded);
+        let sec_expanded = self.collect_and_witness_sec(&pctx, min_traces, sec_instances);
+        self.witness_sec_tables(&pctx, sec_expanded);
 
         // Wait for the main task to finish
         main_task.join().unwrap();
