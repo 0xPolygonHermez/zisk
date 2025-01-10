@@ -19,15 +19,17 @@ pub struct BinaryBasicInstance {
 
     /// Collected inputs
     inputs: Vec<OperationData<u64>>,
+
+    bus_id: BusId,
 }
 
 impl BinaryBasicInstance {
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx, bus_id: BusId) -> Self {
         let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
         let skip_info =
             *collect_info.downcast::<CollectInfoSkip>().expect("Expected CollectInfoSkip");
 
-        Self { binary_basic_sm, ictx, skip_info, inputs: Vec::new() }
+        Self { binary_basic_sm, ictx, skip_info, inputs: Vec::new(), bus_id }
     }
 }
 
@@ -42,6 +44,10 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
 

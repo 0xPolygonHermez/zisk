@@ -4,7 +4,7 @@ use crate::RomSM;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
-use zisk_common::BusDevice;
+use zisk_common::{BusDevice, BusId};
 use zisk_core::ZiskRom;
 
 pub struct RomInstance {
@@ -32,6 +32,10 @@ impl<F: PrimeField> Instance<F> for RomInstance {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![]
     }
 }
 

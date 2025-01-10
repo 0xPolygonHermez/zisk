@@ -9,7 +9,7 @@ use sm_common::{
     CheckPoint, ComponentBuilder, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_common::{DataBus, PayloadType, OPERATION_BUS_ID};
+use zisk_common::{DataBus, PayloadType};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
@@ -249,14 +249,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         let bus_device_instance = sec_instance;
         data_bus.connect_device(
-            vec![OPERATION_BUS_ID],
+            bus_device_instance.bus_id(),
             Box::new(BusDeviceInstanceWrapper::new(bus_device_instance)),
         );
 
         self.secondary_sm.iter().for_each(|sm| {
             if let Some(input_generator) = sm.build_inputs_generator() {
                 data_bus.connect_device(
-                    vec![OPERATION_BUS_ID],
+                    input_generator.bus_id(),
                     Box::new(BusDeviceInstanceWrapper::new(input_generator)),
                 );
             }

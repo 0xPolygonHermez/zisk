@@ -6,8 +6,15 @@ use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
 
-#[derive(Default)]
-pub struct ArithInputGenerator {}
+pub struct ArithInputGenerator {
+    bus_id: BusId,
+}
+
+impl ArithInputGenerator {
+    pub fn new(bus_id: BusId) -> Self {
+        Self { bus_id }
+    }
+}
 
 impl<F: PrimeField> Instance<F> for ArithInputGenerator {
     fn check_point(&self) -> CheckPoint {
@@ -20,6 +27,10 @@ impl<F: PrimeField> Instance<F> for ArithInputGenerator {
 
     fn compute_witness(&mut self, _: &ProofCtx<F>) -> Option<AirInstance<F>> {
         None
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
 

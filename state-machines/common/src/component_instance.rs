@@ -1,5 +1,6 @@
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
+use zisk_common::BusId;
 
 use crate::CheckPoint;
 
@@ -15,6 +16,8 @@ pub trait Instance<F: PrimeField>: Send {
     fn check_point(&self) -> CheckPoint;
 
     fn instance_type(&self) -> InstanceType;
+
+    fn bus_id(&self) -> Vec<BusId>;
 }
 
 #[macro_export]
@@ -37,11 +40,13 @@ macro_rules! table_instance {
 
             /// Instance context
             ictx: InstanceCtx,
+
+            bus_id: BusId,
         }
 
         impl $InstanceName {
-            pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx) -> Self {
-                Self { table_sm, ictx }
+            pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
+                Self { table_sm, ictx, bus_id }
             }
         }
 
@@ -66,6 +71,10 @@ macro_rules! table_instance {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+
+            fn bus_id(&self) -> Vec<BusId> {
+                vec![self.bus_id]
             }
         }
 

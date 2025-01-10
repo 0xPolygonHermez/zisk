@@ -4,7 +4,7 @@ use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
-use zisk_common::BusDevice;
+use zisk_common::{BusDevice, BusId};
 
 pub struct StdInstance<F: PrimeField> {
     /// PIL2 standard library
@@ -36,6 +36,10 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![]
     }
 }
 
