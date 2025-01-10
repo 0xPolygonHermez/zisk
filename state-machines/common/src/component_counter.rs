@@ -15,8 +15,6 @@ pub enum CounterType {
 pub trait Metrics: Send + Sync {
     fn measure(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
 
-    fn add(&mut self, other: &dyn Metrics);
-
     fn bus_id(&self) -> Vec<BusId>;
 
     fn on_close(&mut self) {}

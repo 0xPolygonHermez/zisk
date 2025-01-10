@@ -29,12 +29,6 @@ impl Metrics for DummyCounter {
         vec![]
     }
 
-    /// Does nothing when merging metrics from another `Metrics` instance.
-    ///
-    /// # Arguments
-    /// * `_` - A reference to another `Metrics` instance (ignored in this implementation).
-    fn add(&mut self, _: &dyn Metrics) {}
-
     /// Returns an empty vector as this counter is not associated with any bus IDs.
     ///
     /// # Returns

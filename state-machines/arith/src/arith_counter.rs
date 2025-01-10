@@ -76,23 +76,6 @@ impl Metrics for ArithCounter {
         vec![]
     }
 
-    /// Merges metrics from another `ArithCounter`.
-    ///
-    /// # Arguments
-    /// * `other` - A reference to another `Metrics` instance that should be an `ArithCounter`.
-    ///
-    /// # Panics
-    /// Panics if the `other` is not of type `ArithCounter`.
-    fn add(&mut self, other: &dyn Metrics) {
-        let other = other
-            .as_any()
-            .downcast_ref::<ArithCounter>()
-            .expect("Regular Metrics: Failed to downcast");
-        for (counter, other_counter) in self.counter.iter_mut().zip(other.counter.iter()) {
-            *counter += other_counter;
-        }
-    }
-
     /// Returns the bus IDs associated with this counter.
     ///
     /// # Returns
