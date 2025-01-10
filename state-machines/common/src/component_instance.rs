@@ -146,7 +146,7 @@ macro_rules! instance {
         use zisk_common::BusId;
 
         /// Represents a standalone computation instance.
-        pub struct $name<F: PrimeField> {
+        pub struct $name {
             /// The state machine.
             sm: Arc<$sm>,
 
@@ -155,9 +155,6 @@ macro_rules! instance {
 
             /// Collected inputs for computation.
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
-
-            /// Phantom marker for generic field type.
-            _phantom: std::marker::PhantomData<F>,
         }
 
         impl<F: PrimeField> $name<F> {
@@ -167,11 +164,11 @@ macro_rules! instance {
             /// * `sm` - An `Arc` reference to the state machine.
             /// * `ictx` - The instance context for the computation.
             pub fn new(sm: Arc<$sm>, ictx: InstanceCtx) -> Self {
-                Self { sm, ictx, inputs: Vec::new(), _phantom: std::marker::PhantomData }
+                Self { sm, ictx, inputs: Vec::new() }
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $name<F> {
+        impl<F: PrimeField> Instance<F> for $name {
             fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 Some(self.sm.compute_witness(&self.inputs))
             }
@@ -185,6 +182,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name<F> {}
+        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name {}
     };
 }
