@@ -71,7 +71,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     /// # Returns
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
-        InstanceType::Instance
+        InstanceType::Table
     }
 
     /// Returns the bus IDs associated with this instance.
