@@ -495,12 +495,14 @@ impl ZiskRom {
         *s += ".section .rodata\n";
         *s += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
         *s += ".set msglen, (. - msg)\n\n";
-        for k in 0..keys.len() {
-            let pc = keys[k];
-            let instruction = &self.insts[&pc].i;
-            *s += &format!("pc_{}_log: .ascii \"PCLOG={}\\n\"\n", pc, instruction.to_text());
-            *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
-        }
+
+        // for k in 0..keys.len() {
+        //     let pc = keys[k];
+        //     let instruction = &self.insts[&pc].i;
+        //     *s += &format!("pc_{}_log: .ascii \"PCLOG={}\\n\"\n", pc, instruction.to_text());
+        //     *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
+        // }
+
         //*s += "instruction_format: .ascii \"PC=%d\\n\"\n";
 
         *s += ".section .text\n";
@@ -780,7 +782,7 @@ impl ZiskRom {
                 if ctx.c.is_constant {
                     let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
                     *s += &format!(
-                        "\tmov {}, 0x{:x} /* set_pc 1: pc = i.jmp_offset1 */\n",
+                        "\tmov {}, 0x{:x} /* set_pc 1: pc = c + i.jmp_offset1 */\n",
                         REG_PC, new_pc
                     );
                     ctx.jump_to_static_pc =
@@ -874,12 +876,12 @@ impl ZiskRom {
                 *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
                 *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
                 //*s += &format!("\tadd rsi, map_pc_80000000 /* pc += map_pc_80000000 */\n");
-                *s += &format!("\tjmp [map_pc_80000000 + rsi*2] /* jump to pc */\n");
+                *s += &format!("\tjmp far [map_pc_80000000 + rsi*2] /* jump to pc */\n");
                 *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
                 *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
                 *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
                 //*s += &format!("\tadd rsi, map_pc_1000 /* pc += map_pc_1000 */\n");
-                *s += &format!("\tjmp [map_pc_1000 + rsi*2] /* jump to pc */\n");
+                *s += &format!("\tjmp far [map_pc_1000 + rsi*2] /* jump to pc */\n");
             }
         }
 
@@ -912,7 +914,7 @@ impl ZiskRom {
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
-            *s += &format!("map_pc_{:x}:\n\t.quad pc_{:x}\n", key, key);
+            *s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
 
             // *s += &format!("map_pc_{:x}:\n", key);
             // *s += &format!("\tmov {}, pc_{:x}\n", REG_VALUE, key);
@@ -973,6 +975,9 @@ impl ZiskRom {
         // Declare a return string
         let mut s = String::new();
         let zisk_op = ZiskOp::try_from_code(opcode).unwrap();
+        ctx.c.is_constant = false;
+        ctx.c.constant_value = 0;
+        ctx.c.string_value = REG_C.to_string();
         match zisk_op {
             ZiskOp::Flag => {
                 //s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
@@ -1065,11 +1070,13 @@ impl ZiskRom {
             ZiskOp::SubW => {
                 // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Sub>::sub
                 // cdqe
-                if ctx.b.is_constant {
+                // Make sure a is in REG_A
+                if ctx.a.is_constant {
                     s +=
-                        &format!("\tmov {}, {} /* SubW: b = value */\n", REG_B, ctx.b.string_value);
+                        &format!("\tmov {}, {} /* SubW: a = value */\n", REG_A, ctx.a.string_value);
                 }
-                s += &format!("\tsub {}, {} /* SubW: b -= a */\n", REG_B, ctx.a.string_value);
+                s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
                 s += &format!("\tcdqe /* SubW: trunk b */\n");
                 s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
                 ctx.flag_is_always_zero = true;
@@ -1088,6 +1095,7 @@ impl ZiskRom {
                         "\tmov {}, {} /* Sll: c(value) = a */\n",
                         REG_VALUE, ctx.a.string_value
                     );
+                    s += &format!("\tmov {}, {} /* Sll: c = b */\n", REG_C, REG_B);
                     s += &format!("\tshl {}, {} /* Sll: c(value) = a << b */\n", REG_VALUE, REG_C);
                     s += &format!("\tmov {}, {} /* Sll: c = value */\n", REG_C, REG_VALUE);
                 }
@@ -1493,14 +1501,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tdivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_divu_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_divu_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_divu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divu_done:\n", ctx.pc);
             }
             ZiskOp::Remu => {
                 // Make sure b is in REG_B
@@ -1513,14 +1521,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tdivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_remu_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_remu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_done:\n", ctx.pc);
             }
             ZiskOp::Div => {
                 // Make sure b is in REG_B
@@ -1532,14 +1540,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tidivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_div_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_div_done\n", ctx.pc);
+                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
             }
             ZiskOp::Rem => {
                 // Make sure b is in REG_B
@@ -1551,14 +1559,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tidivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
-                s += &format!("pc_{:x}_rem_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_rem_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_rem_done\n", ctx.pc);
+                s += &format!("pc_{:x}_rem_done:\n", ctx.pc);
             }
             ZiskOp::DivuW => {
                 // Make sure a is in REG_A_W
@@ -1584,14 +1592,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tdivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_div_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_div_done\n", ctx.pc);
+                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
             }
             ZiskOp::RemuW => {
                 // Make sure a is in REG_A_W
@@ -1617,14 +1625,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}, 0\n", REG_C);
+                s += &format!("\tdivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_remu_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_remu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_done:\n", ctx.pc);
             }
             ZiskOp::DivW => {
                 // Make sure a is in REG_A_W
@@ -1650,14 +1658,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tidivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+                s += &format!("\tje pc_{:x}_div_done:\n", ctx.pc);
                 s += &format!("pc_{:x}_div_b_is_zero\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_div_done\n", ctx.pc);
+                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
             }
             ZiskOp::RemW => {
                 // Make sure a is in REG_A_W
@@ -1683,14 +1691,14 @@ impl ZiskRom {
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}, 0\n", REG_C);
+                s += &format!("\tidivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
-                s += &format!("pc_{:x}_rem_b_is_zero\n", ctx.pc);
+                s += &format!("pc_{:x}_rem_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_rem_done\n", ctx.pc);
+                s += &format!("pc_{:x}_rem_done:\n", ctx.pc);
             }
             ZiskOp::Minu => {
                 // Make sure a is in REG_A
