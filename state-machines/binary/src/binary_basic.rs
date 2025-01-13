@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
+use crate::{binary_constants::*, BinaryBasicTableAgent, BinaryBasicTableOp, BinaryBasicTableSM};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -12,17 +12,14 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
+use zisk_pil::{BinaryTrace, BinaryTraceRow};
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
-pub struct BinaryBasicSM {
-    /// Reference to the Binary Basic Table State Machine.
-    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
-}
+pub struct BinaryBasicSM {}
 
 impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
@@ -35,8 +32,9 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// A new `BinaryBasicSM` instance.
-    pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
-        Arc::new(Self { binary_basic_table_sm })
+    /// Creates a new Binary Basic state machine instance
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {})
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.
@@ -140,7 +138,7 @@ impl BinaryBasicSM {
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
         input: &OperationData<u64>,
-        multiplicity: &mut [u64],
+        binary_basic_table_agent: &mut BinaryBasicTableAgent,
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
@@ -257,7 +255,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
@@ -324,7 +322,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             LT_ABS_NP_OP => {
@@ -380,7 +378,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             LT_ABS_PN_OP => {
@@ -436,7 +434,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -498,7 +496,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             GT_OP => {
@@ -551,7 +549,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -598,7 +596,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -643,7 +641,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -687,7 +685,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -740,7 +738,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             AND_OP => {
@@ -771,7 +769,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             OR_OP => {
@@ -802,7 +800,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             XOR_OP => {
@@ -834,7 +832,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    binary_basic_table_agent.process_input(row as usize, 1);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
@@ -887,7 +885,10 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(
+        binary_basic_table_agent: &mut BinaryBasicTableAgent,
+        inputs: &[OperationData<u64>],
+    ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
         timer_start_trace!(BINARY_TRACE);
@@ -902,10 +903,8 @@ impl BinaryBasicSM {
             inputs.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
-
         for (i, operation) in inputs.iter().enumerate() {
-            let row = Self::process_slice(operation, &mut multiplicity_table);
+            let row = Self::process_slice(operation, binary_basic_table_agent);
             binary_trace[i] = row;
         }
         timer_stop_and_log_trace!(BINARY_TRACE);
@@ -934,12 +933,12 @@ impl BinaryBasicSM {
                 last as u64,
                 0,
             );
-            multiplicity_table[row as usize] += multiplicity;
+            binary_basic_table_agent.process_input(row as usize, multiplicity);
         }
         timer_stop_and_log_trace!(BINARY_PADDING);
 
         timer_start_trace!(BINARY_TABLE);
-        self.binary_basic_table_sm.process_slice(&multiplicity_table);
+        binary_basic_table_agent.finalize();
         timer_stop_and_log_trace!(BINARY_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))

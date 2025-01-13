@@ -4,8 +4,9 @@
 //! It manages collected inputs and interacts with the `BinaryExtensionSM` to compute witnesses for
 //! execution plans.
 
-use crate::BinaryExtensionSM;
+use crate::{BinaryExtensionSM, BinaryExtensionTableAgent, BinaryExtensionTableSM};
 use p3_field::PrimeField;
+use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
@@ -13,14 +14,38 @@ use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryExtensionTrace;
 
+pub struct BinaryExtensionInstanceBuilder {}
+
+impl BinaryExtensionInstanceBuilder {
+    pub fn build<F: PrimeField>(
+        std: Arc<Std<F>>,
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+        ictx: InstanceCtx,
+        bus_id: BusId,
+    ) -> Box<BinaryExtensionInstance<F>> {
+        let binary_extension_table_agent =
+            BinaryExtensionTableAgent::new(binary_extension_table_sm);
+
+        Box::new(BinaryExtensionInstance::new(
+            std.clone(),
+            binary_extension_table_agent,
+            ictx,
+            bus_id,
+        ))
+    }
+}
+
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
 /// computations.
 ///
 /// It encapsulates the `BinaryExtensionSM` and its associated context, and it processes input data
 /// to compute witnesses for binary extension operations.
 pub struct BinaryExtensionInstance<F: PrimeField> {
-    /// Binary Extension state machine.
-    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    /// PIL2 standard library
+    std: Arc<Std<F>>,
+
+    /// Binary Extension Table agent
+    binary_extension_table_agent: BinaryExtensionTableAgent,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -47,7 +72,8 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     /// A new `BinaryExtensionInstance` instance initialized with the provided state machine and
     /// context.
     pub fn new(
-        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+        std: Arc<Std<F>>,
+        binary_extension_table_agent: BinaryExtensionTableAgent,
         mut ictx: InstanceCtx,
         bus_id: BusId,
     ) -> Self {
@@ -55,7 +81,14 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
         let collect_skipper =
             *collect_info.downcast::<CollectSkipper>().expect("Expected CollectSkipper");
 
-        Self { binary_extension_sm, ictx, collect_skipper, inputs: Vec::new(), bus_id }
+        Self {
+            std,
+            binary_extension_table_agent,
+            ictx,
+            collect_skipper,
+            inputs: Vec::new(),
+            bus_id,
+        }
     }
 }
 
@@ -71,7 +104,11 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.binary_extension_sm.compute_witness(&self.inputs))
+        Some(BinaryExtensionSM::compute_witness(
+            &self.std,
+            &mut self.binary_extension_table_agent,
+            &self.inputs,
+        ))
     }
 
     /// Retrieves the checkpoint associated with this instance.

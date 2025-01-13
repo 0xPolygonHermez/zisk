@@ -25,6 +25,32 @@ pub enum BinaryExtensionTableOp {
     SignExtendW = 0x39,
 }
 
+pub struct BinaryExtensionTableAgent {
+    /// Binary Basic Table
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+
+    // Multiplicity table
+    table: Vec<u64>,
+}
+
+impl BinaryExtensionTableAgent {
+    pub fn new(binary_extension_table_sm: Arc<BinaryExtensionTableSM>) -> Self {
+        Self {
+            binary_extension_table_sm,
+            table: vec![0; BinaryExtensionTableTrace::<u64>::NUM_ROWS],
+        }
+    }
+
+    #[inline(always)]
+    pub fn process_input(&mut self, idx: usize, val: u64) {
+        self.table[idx] += val;
+    }
+
+    pub fn finalize(&self) {
+        self.binary_extension_table_sm.process_slice(&self.table);
+    }
+}
+
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
 ///
 /// This state machine manages multiplicity for table rows and processes operations such as shifts

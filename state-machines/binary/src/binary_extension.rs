@@ -5,7 +5,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
+use crate::{BinaryExtensionTableAgent, BinaryExtensionTableOp, BinaryExtensionTableSM};
 use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -14,7 +14,7 @@ use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
+use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 
 // Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -36,15 +36,9 @@ const SE_W_OP: u8 = 0x39;
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
 /// tables for the operations. It also manages range checks through the PIL2 standard library.
-pub struct BinaryExtensionSM<F: PrimeField> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryExtensionSM {}
 
-    /// Reference to the Binary Extension Table State Machine.
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
-}
-
-impl<F: PrimeField> BinaryExtensionSM<F> {
+impl BinaryExtensionSM {
     const MY_NAME: &'static str = "BinaryE ";
 
     /// Creates a new instance of the `BinaryExtensionSM`.
@@ -56,11 +50,8 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
-    pub fn new(
-        std: Arc<Std<F>>,
-        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
-    ) -> Arc<Self> {
-        Arc::new(Self { std, binary_extension_table_sm })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {})
     }
 
     /// Determines if the given opcode represents a shift operation.
@@ -104,9 +95,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(
+    pub fn process_slice<F: PrimeField>(
         operation: &OperationData<u64>,
-        multiplicity: &mut [u64],
+        binary_extension_table_agent: &mut BinaryExtensionTableAgent,
         range_check: &mut HashMap<u64, u64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
@@ -309,7 +300,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            multiplicity[row as usize] += 1;
+            binary_extension_table_agent.process_input(row as usize, 1);
         }
 
         // Store the range check
@@ -328,26 +319,30 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(
+        std: &Std<F>,
+        binary_extension_table_agent: &mut BinaryExtensionTableAgent,
+        inputs: &[OperationData<u64>],
+    ) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
         let mut binary_e_trace = BinaryExtensionTrace::new();
 
         let num_rows = binary_e_trace.num_rows();
-        assert!(operations.len() <= num_rows);
+        assert!(inputs.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            operations.len(),
+            inputs.len(),
             num_rows,
-            operations.len() as f64 / num_rows as f64 * 100.0
+            inputs.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
 
-        for (i, operation) in operations.iter().enumerate() {
-            let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
+        for (i, operation) in inputs.iter().enumerate() {
+            let row =
+                Self::process_slice(operation, binary_extension_table_agent, &mut range_check);
             binary_e_trace[i] = row;
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
@@ -360,11 +355,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             ..Default::default()
         };
 
-        for i in operations.len()..num_rows {
+        for i in inputs.len()..num_rows {
             binary_e_trace[i] = padding_row;
         }
 
-        let padding_size = num_rows - operations.len();
+        let padding_size = num_rows - inputs.len();
         for i in 0..8 {
             let multiplicity = padding_size as u64;
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -373,18 +368,18 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 0,
                 0,
             );
-            multiplicity_table[row as usize] += multiplicity;
+            binary_extension_table_agent.process_input(row as usize, multiplicity);
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
 
         timer_start_debug!(BINARY_EXTENSION_TABLE);
-        self.binary_extension_table_sm.process_slice(&multiplicity_table);
+        binary_extension_table_agent.finalize();
         timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
-        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+        let range_id = std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
         timer_start_debug!(BINARY_EXTENSION_RANGE);
         for (value, multiplicity) in &range_check {
-            self.std.range_check(
+            std.range_check(
                 F::from_canonical_u64(*value),
                 F::from_canonical_u64(*multiplicity),
                 range_id,

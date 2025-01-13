@@ -6,6 +6,7 @@
 use std::sync::{Arc, Mutex};
 
 use p3_field::Field;
+
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
 
@@ -33,6 +34,29 @@ pub enum BinaryBasicTableOp {
     Or = OR_OP,
     Xor = XOR_OP,
     Ext32 = 0x13,
+}
+
+pub struct BinaryBasicTableAgent {
+    /// Binary Basic Table
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+
+    // Multiplicity table
+    table: Vec<u64>,
+}
+
+impl BinaryBasicTableAgent {
+    pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Self {
+        Self { binary_basic_table_sm, table: vec![0; BinaryTableTrace::<u64>::NUM_ROWS] }
+    }
+
+    #[inline(always)]
+    pub fn process_input(&mut self, idx: usize, val: u64) {
+        self.table[idx] += val;
+    }
+
+    pub fn finalize(&self) {
+        self.binary_basic_table_sm.process_slice(&self.table);
+    }
 }
 
 /// The `BinaryBasicTableSM` struct represents the Binary Basic Table State Machine.

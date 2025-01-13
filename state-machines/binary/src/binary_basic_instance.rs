@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::BinaryBasicSM;
+use crate::{BinaryBasicSM, BinaryBasicTableAgent, BinaryBasicTableSM};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
@@ -13,13 +13,29 @@ use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryTrace;
 
+pub struct BinaryBasicInstanceBuilder {}
+
+impl BinaryBasicInstanceBuilder {
+    pub fn build(
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+        ictx: InstanceCtx,
+        bus_id: BusId,
+    ) -> Box<BinaryBasicInstance> {
+        Box::new(BinaryBasicInstance::new(
+            BinaryBasicTableAgent::new(binary_basic_table_sm),
+            ictx,
+            bus_id,
+        ))
+    }
+}
+
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
 /// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
 pub struct BinaryBasicInstance {
-    /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryBasicSM>,
+    /// Binary Basic state machine
+    binary_basic_table_agent: BinaryBasicTableAgent,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -44,12 +60,16 @@ impl BinaryBasicInstance {
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx, bus_id: BusId) -> Self {
+    pub fn new(
+        binary_basic_table_agent: BinaryBasicTableAgent,
+        mut ictx: InstanceCtx,
+        bus_id: BusId,
+    ) -> Self {
         let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
         let collect_skipper =
             *collect_info.downcast::<CollectSkipper>().expect("Expected CollectSkipper");
 
-        Self { binary_basic_sm, ictx, collect_skipper, inputs: Vec::new(), bus_id }
+        Self { binary_basic_table_agent, ictx, collect_skipper, inputs: Vec::new(), bus_id }
     }
 }
 
@@ -65,7 +85,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.binary_basic_sm.compute_witness(&self.inputs))
+        Some(BinaryBasicSM::compute_witness(&mut self.binary_basic_table_agent, &self.inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.

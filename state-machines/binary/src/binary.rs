@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::{
-    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstance,
+    BinaryBasicInstanceBuilder, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstanceBuilder,
     BinaryExtensionSM, BinaryExtensionTableSM,
 };
 use p3_field::PrimeField;
@@ -27,6 +27,9 @@ use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace
 /// managing both basic and extension binary operations.
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
+    /// PIL2 standard library
+    std: Arc<Std<F>>,
+
     /// Binary Basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
 
@@ -34,7 +37,7 @@ pub struct BinarySM<F: PrimeField> {
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
     /// Binary Extension state machine
-    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    binary_extension_sm: Arc<BinaryExtensionSM>,
 
     /// Binary Extension Table state machine
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
@@ -50,12 +53,13 @@ impl<F: PrimeField> BinarySM<F> {
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
-        let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
+        let binary_basic_sm = BinaryBasicSM::new();
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
-        let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
+        let binary_extension_sm = BinaryExtensionSM::new();
 
         Arc::new(Self {
+            std,
             binary_basic_sm,
             binary_basic_table_sm,
             binary_extension_sm,
@@ -120,17 +124,18 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
         match ictx.plan.air_id {
-            id if id == BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
-                self.binary_basic_sm.clone(),
+            id if id == BinaryTrace::<usize>::AIR_ID => BinaryBasicInstanceBuilder::build(
+                self.binary_basic_table_sm.clone(),
                 ictx,
                 OPERATION_BUS_ID,
-            )),
+            ),
             id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
-                Box::new(BinaryExtensionInstance::new(
-                    self.binary_extension_sm.clone(),
+                BinaryExtensionInstanceBuilder::build(
+                    self.std.clone(),
+                    self.binary_extension_table_sm.clone(),
                     ictx,
                     OPERATION_BUS_ID,
-                ))
+                )
             }
             id if id == BinaryTableTrace::<usize>::AIR_ID => {
                 table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
