@@ -182,6 +182,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.iter().map(|sm| sm.build_planner().plan(vec_counters.remove(0))).collect()
     }
 
+    /// Prepares and configures the secondary instances using the provided plans before their creation.
+    ///
+    /// # Arguments
+    /// * `pctx` - A reference to the proof context, providing shared resources for configuration.
+    /// * `plannings` - A vector of vectors containing plans for each secondary state machine.
+    ///
+    /// # Panics
+    /// This function will panic if the length of `plannings` does not match the length of `self.secondary_sm`.
+    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &Vec<Vec<Plan>>) {
+        self.secondary_sm
+            .iter()
+            .enumerate()
+            .for_each(|(i, sm)| sm.configure_instances(pctx, &plannings[i]));
+    }
+
     /// Creates secondary state machine instances based on their plans.
     ///
     /// # Arguments
@@ -415,6 +430,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // --------------------------------------------------------------------------------------------------
         let sec_count = self.count_sec(&min_traces);
         let sec_planning = self.plan_sec(sec_count);
+        self.configure_instances(&pctx, &sec_planning);
         let sec_instances = self.create_sec_instances(&pctx, sec_planning);
         let sec_expanded = self.collect_and_witness_sec(&pctx, min_traces, sec_instances);
         self.witness_sec_tables(&pctx, sec_expanded);

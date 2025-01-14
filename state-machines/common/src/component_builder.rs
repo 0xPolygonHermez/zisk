@@ -4,8 +4,9 @@
 //! This trait provides methods to create counters, planners, input collectors, and optional
 //! input generators, enabling flexible and modular integration of components.
 
-use crate::{BusDeviceInstance, BusDeviceMetrics, InstanceCtx, Planner};
+use crate::{BusDeviceInstance, BusDeviceMetrics, InstanceCtx, Plan, Planner};
 use p3_field::PrimeField;
+use proofman_common::ProofCtx;
 
 /// The `ComponentBuilder` trait provides an interface for building components
 /// such as counters, planners, input collectors, and optional input generators.
@@ -25,6 +26,14 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     /// # Returns
     /// A boxed implementation of `Planner`.
     fn build_planner(&self) -> Box<dyn Planner>;
+
+    /// Prepares and configures instances using the provided plans before their creation.
+    ///
+    /// # Arguments
+    /// * `pctx` - A reference to the proof context, providing shared resources for configuration.
+    /// * `plannings` - A collection of plans used to configure each instance appropriately.
+    #[allow(unused_variables)]
+    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {}
 
     /// Builds an inputs bus device data collector for capturing and processing bus device inputs.
     ///
