@@ -874,14 +874,17 @@ impl ZiskRom {
                 *s += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
                 *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
                 *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
-                *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
-                //*s += &format!("\tadd rsi, map_pc_80000000 /* pc += map_pc_80000000 */\n");
-                *s += &format!("\tjmp far [map_pc_80000000 + rsi*2] /* jump to pc */\n");
+                *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *s +=
+                    &format!("\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n");
+                *s += &format!("\tmov rax, [rbx + rax*2] /* rax = table entry address */\n");
+                *s += &format!("\tjmp rax /* jump to table entry address */\n");
                 *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
                 *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
-                *s += &format!("\tmov rsi, {} /* jump to pc */\n", REG_PC);
-                //*s += &format!("\tadd rsi, map_pc_1000 /* pc += map_pc_1000 */\n");
-                *s += &format!("\tjmp far [map_pc_1000 + rsi*2] /* jump to pc */\n");
+                *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *s += &format!("\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n");
+                *s += &format!("\tmov rax, [rbx + rax*2] /* rax = table entry address */\n");
+                *s += &format!("\tjmp rax /* jump to table entry address */\n");
             }
         }
 
@@ -908,18 +911,27 @@ impl ZiskRom {
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label
         *s += "\n";
+        //*s += ".data\n";
         *s += ".section .rodata\n";
-        *s += "\t.align 8\n";
+        *s += ".align 64\n";
         for key in &keys {
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
-            *s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
+            //*s += "\t.align 64\n";
+            match *key {
+                0x1000 | 0x10000000 | 0x80000000 => {
+                    *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
+                }
+                _ => *s += &format!(", pc_{:x}", key),
+            }
+            //*s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
 
             // *s += &format!("map_pc_{:x}:\n", key);
             // *s += &format!("\tmov {}, pc_{:x}\n", REG_VALUE, key);
             // *s += &format!("\tjmp {}\n", REG_VALUE);
         }
+        *s += "\n";
 
         let mut lines = s.lines();
         //let mut empty_lines_counter = 0u64;
