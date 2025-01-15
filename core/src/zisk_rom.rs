@@ -1116,27 +1116,32 @@ impl ZiskRom {
             ZiskOp::SllW => {
                 // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shl<usize>>::shl
                 // cdqe
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* SllW: c = a_w */\n",
-                        REG_VALUE_W,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                } else {
-                    s += &format!("\tmov {}, {} /* SllW: c = a_w */\n", REG_VALUE_W, REG_A_W);
-                }
                 if ctx.b.is_constant {
+                    s += &format!("\tmov {}, {} /* SllW: c = a */\n", REG_C, ctx.a.string_value);
                     s += &format!(
-                        "\tshl {}, 0x{:x} /* SllW: c = a_w << b */\n",
-                        REG_C,
+                        "\tshl {}, 0x{:x} /* SllW: c = a << b */\n",
+                        REG_C_W,
                         ctx.b.constant_value & 0x3f
                     );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SllW: sign extend to quad */\n",
+                        REG_C, REG_C_W
+                    );
                 } else {
-                    s +=
-                        &format!("\tmov {}, {} /* SllW: b = value */\n", REG_C, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* SllW: c(value) = a */\n",
+                        REG_VALUE, ctx.a.string_value
+                    );
+                    s += &format!("\tmov {}, {} /* SllW: c = b */\n", REG_C, REG_B);
+                    s += &format!(
+                        "\tshl {}, {} /* SllW: c(value) = a << b */\n",
+                        REG_VALUE_W, REG_C_W
+                    );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SllW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
                 }
-                s += &format!("\tshl {}, {} /* SllW: c(value) = a_w << b */\n", REG_VALUE, REG_C);
-                s += &format!("\tmov {}, {} /* SllW: c = value */\n", REG_C, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
@@ -1180,47 +1185,65 @@ impl ZiskRom {
                 // ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
                 // call	<core::num::wrapping::Wrapping<i32> as core::ops::bit::Shr<usize>>::shr
                 // cdqe
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* SraW: c = a_w */\n",
-                        REG_C_W,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                } else {
-                    s += &format!("\tmov {}, {} /* SraW: c = a_w */\n", REG_C_W, REG_A_W);
-                }
                 if ctx.b.is_constant {
+                    s +=
+                        &format!("\tmov {}, {} /* SraW: c = a */\n", REG_VALUE, ctx.a.string_value);
                     s += &format!(
-                        "\tshr {}, 0x{:x} /* SraW: c = a_w >> b */\n",
-                        REG_C,
+                        "\tsar {}, 0x{:x} /* SraW: c = a >> b */\n",
+                        REG_VALUE_W,
                         ctx.b.constant_value & 0x3f
                     );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
                 } else {
-                    s += &format!("\tshr {}, {} /* SraW: c = a_w >> b */\n", REG_C, REG_B);
+                    s += &format!(
+                        "\tmov {}, {} /* SraW: c(value) = a */\n",
+                        REG_VALUE, ctx.a.string_value
+                    );
+                    s += &format!("\tmov {}, {} /* SraW: c = b */\n", REG_C, REG_B);
+                    s += &format!(
+                        "\tsar {}, {} /* SraW: c(value) = a >> b */\n",
+                        REG_VALUE_W, REG_C_W
+                    );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
                 }
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SrlW => {
                 // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shr<usize>>::shr
                 // cdqe
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* SrlW: c = a_w */\n",
-                        REG_VALUE_W,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                }
                 if ctx.b.is_constant {
+                    s +=
+                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
                     s += &format!(
-                        "\tshr {}, 0x{:x} /* SrlW: c = a_w >> b */\n",
-                        REG_C,
+                        "\tshr {}, 0x{:x} /* SrlW: c = a >> b */\n",
+                        REG_VALUE_W,
                         ctx.b.constant_value & 0x3f
                     );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SrlW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
                 } else {
-                    s += &format!("\tmov {}, {} /* SrlW: b = value */\n", REG_C, REG_B);
+                    s +=
+                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
+                    s +=
+                        &format!("\tmov {}, {} /* SrlW: b = value */\n", REG_C, ctx.b.string_value);
+                    s += &format!(
+                        "\tshr {}, {} /* SrlW: c(value) = a >> b */\n",
+                        REG_VALUE_W, REG_C_W
+                    );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SlrW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
                 }
-                s += &format!("\tshr {}, {} /* SrlW: c(value) = a_w >> b */\n", REG_VALUE, REG_C);
-                s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
+                //s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Eq => {
