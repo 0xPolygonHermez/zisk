@@ -3,10 +3,10 @@
 //! planning instances, and computing witnesses for both main and secondary state machines,
 //! leveraging parallel processing for efficiency.
 
+use itertools::Itertools;
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 use witness::WitnessComponent;
-use itertools::Itertools;
 
 use rayon::prelude::*;
 
@@ -98,9 +98,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
         main_planning
             .into_iter()
             .filter_map(|plan| {
-                if let (true, global_id) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
-                {
-                    Some(MainInstance::new(InstanceCtx::new(global_id, plan)))
+                if let (true, global_idx) = pctx.dctx_add_instance(
+                    plan.airgroup_id,
+                    plan.air_id,
+                    pctx.get_weight(plan.airgroup_id, plan.air_id),
+                ) {
+                    Some(MainInstance::new(InstanceCtx::new(global_idx, plan)))
                 } else {
                     None
                 }
@@ -197,23 +200,41 @@ impl<F: PrimeField> ZiskExecutor<F> {
         Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Table instances
         Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Non-table instances
     ) {
+        let gids: Vec<_> = plans
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, plans_by_sm)| {
+                plans_by_sm.into_iter().filter_map(move |plan| {
+                    Some((
+                        pctx.dctx_add_instance_no_assign(
+                            plan.airgroup_id,
+                            plan.air_id,
+                            pctx.get_weight(plan.airgroup_id, plan.air_id),
+                        ),
+                        plan.instance_type == InstanceType::Table,
+                        plan,
+                        i,
+                    ))
+                })
+            })
+            .collect();
+
+        pctx.dctx_assign_instances();
+
         let mut table_instances = Vec::new();
         let mut other_instances = Vec::new();
 
-        plans.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
-            plans_by_sm.into_iter().for_each(|plan| {
-                let (is_mine, global_id) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
-
-                if is_mine || plan.instance_type == InstanceType::Table {
-                    let ictx = InstanceCtx::new(global_id, plan);
-                    let instance = (global_id, self.secondary_sm[i].build_inputs_collector(ictx));
-                    if instance.1.instance_type() == InstanceType::Table {
-                        table_instances.push(instance);
-                    } else {
-                        other_instances.push(instance);
-                    }
+        gids.into_iter().for_each(|(global_idx, is_table, plan, i)| {
+            let is_mine = pctx.dctx_is_my_instance(global_idx);
+            if is_mine || is_table {
+                let ictx = InstanceCtx::new(global_idx, plan);
+                let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
+                if is_table {
+                    table_instances.push(instance);
+                } else {
+                    other_instances.push(instance);
                 }
-            });
+            }
         });
 
         (table_instances, other_instances)
@@ -283,12 +304,18 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: &ProofCtx<F>,
         table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        let mut instances = table_instances.into_iter().filter(|(_, sec_instance)| sec_instance.instance_type() == InstanceType::Table).collect::<Vec<_>>().into_iter().sorted_by(|(a, _), (b, _)| {
-            let (airgroup_id_a, air_id_a) = pctx.dctx_get_instance_info(*a);
-            let (airgroup_id_b, air_id_b) = pctx.dctx_get_instance_info(*b);
+        let mut instances = table_instances
+            .into_iter()
+            .filter(|(_, sec_instance)| sec_instance.instance_type() == InstanceType::Table)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .sorted_by(|(a, _), (b, _)| {
+                let (airgroup_id_a, air_id_a) = pctx.dctx_get_instance_info(*a);
+                let (airgroup_id_b, air_id_b) = pctx.dctx_get_instance_info(*b);
 
-            airgroup_id_a.cmp(&airgroup_id_b).then(air_id_a.cmp(&air_id_b))
-        }).collect::<Vec<_>>();
+                airgroup_id_a.cmp(&airgroup_id_b).then(air_id_a.cmp(&air_id_b))
+            })
+            .collect::<Vec<_>>();
 
         instances.iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
